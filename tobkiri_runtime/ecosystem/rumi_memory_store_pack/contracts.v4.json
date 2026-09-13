@@ -1,0 +1,199 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.memory.manage.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:memory.manage",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_memory_store_pack.memory-manage",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_memory_store_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_memory_store_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_memory_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "memories-v1",
+          "rollback_id": "memories-v1"
+        },
+        "provider_id": "rumi_memory_store_pack.memory-store.manage",
+        "required_capabilities": [
+          "memory.manage"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:c4de98376932534dbb8c551390cd6810402318574dd48ad5093271eec5dbc164",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.memory.migrate.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:memory.migrate",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_memory_store_pack.memory-migrate",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_memory_store_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_memory_store_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_memory_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "memories-v1",
+          "rollback_id": "memories-v1"
+        },
+        "provider_id": "rumi_memory_store_pack.memory-store.migrate",
+        "required_capabilities": [
+          "memory.migrate"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:35a3a01a16cabef303e2a7d0e343b99648bf0888a507266c5002fe3dbb9a1b99",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.memory.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:memory.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_memory_store_pack.memory-resource",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_memory_store_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_memory_store_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_memory_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "memories-v1",
+          "rollback_id": "memories-v1"
+        },
+        "provider_id": "rumi_memory_store_pack.memory-store.resource",
+        "required_capabilities": [
+          "memory.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:b2aca6a2cac49ddf1e3c86d43d1caccf08a486cbf536cc2b00ca7684e6b809ef",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_memory_store_pack",
+  "source_identity": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5"
+}

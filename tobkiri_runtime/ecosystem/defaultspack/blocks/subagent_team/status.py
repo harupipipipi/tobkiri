@@ -4,13 +4,13 @@ from domain.subagent_team.service import SubagentTeamService
 from ._helpers import company_id_from, invalid, missing_team, require_dict
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     if input_data is None:
         input_data = {}
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     try:
-        service = SubagentTeamService()
+        service = SubagentTeamService(settings_owner=settings_owner)
         company_id = company_id_from(input_data)
         result = service.status(company_id) if company_id else None
         if result is None:

@@ -1,0 +1,16 @@
+{
+  "architecture": "arm64",
+  "boot_mode": "efi",
+  "format": "raw",
+  "license": {
+    "spdx_id": "LicenseRef-Debian-Distribution",
+    "url": "https://www.debian.org/legal/licenses/"
+  },
+  "schema": "io.tobkiri.packvm-vz-image-descriptor.v1",
+  "source": {
+    "sha256": "sha256:9440bc19285b9e0ccb217fd5ac818a253a3c0bfd46c9ac83241959c78f90ad71",
+    "sha512": "f21843e29eade9747b1b7bb7d9622c30613eb3d875fbb6a7f9bd76acaadfdbfe0ef68137da4eb7520e440a6cd3bbb248db41aa322f58d11e71fea667eb569a2c",
+    "size_bytes": 3221225472,
+    "url": "https://gemmei.ftp.acc.umu.se/images/cloud/trixie/20260819-2575/debian-13-generic-arm64-20260819-2575.raw"
+  }
+}

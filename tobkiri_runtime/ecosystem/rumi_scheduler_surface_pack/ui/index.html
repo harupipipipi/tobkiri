@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scheduler</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main aria-label="Scheduler">
+      <header>
+        <div><p id="profile"></p><h1>Scheduler</h1></div>
+        <button id="reload" type="button">Reload</button>
+      </header>
+      <p class="notice">Schedule changes require an approved tool or action flow.</p>
+      <section class="summary" aria-label="Scheduler status">
+        <article><span>Runtime</span><strong id="runtime-state">Loading…</strong></article>
+        <article><span>Schedules</span><strong id="schedule-count">—</strong></article>
+        <article><span>Last tick</span><strong id="last-tick">—</strong></article>
+      </section>
+      <p id="error" role="alert"></p>
+      <section aria-labelledby="schedule-title">
+        <h2 id="schedule-title">Schedules</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Action</th><th>Status</th><th>Next run</th><th>Attempts</th></tr></thead>
+            <tbody id="schedules"></tbody>
+          </table>
+        </div>
+        <p id="empty" hidden>No schedules in this profile.</p>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
+

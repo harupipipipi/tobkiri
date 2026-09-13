@@ -11,21 +11,29 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
 def _reset_stores(monkeypatch, tmp_path):
+    kanban_db = tmp_path / "kanban.db"
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_KANBAN_DB_PATH", str(tmp_path / "kanban.db"))
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_KANBAN_DB_PATH", str(kanban_db))
 
     from domain.chat.store import ChatStore
     from domain.kanban.store import KanbanStore
 
     ChatStore._instance = None
     KanbanStore._instance = None
-    return ChatStore
+    return ChatStore, kanban_db
+
+
+def _kanban_service(db_path):
+    from domain.kanban.service import KanbanService
+    from ecosystem.rumi_kanban_state_store_pack.runtime.store import KanbanStateStore
+
+    return KanbanService(db_path=db_path, state_store_factory=KanbanStateStore)
 
 
 def test_import_conversation_creates_group_board_cards_and_prompt_note(tmp_path, monkeypatch):
-    ChatStore = _reset_stores(monkeypatch, tmp_path)
+    ChatStore, kanban_db = _reset_stores(monkeypatch, tmp_path)
 
-    from domain.kanban.service import KanbanService, append_kanban_system_prompt_note
+    from domain.kanban.service import append_kanban_system_prompt_note
 
     chat_store = ChatStore()
     conversation = chat_store.create_conversation(model="stub/default", group_id="group-alpha")
@@ -45,7 +53,7 @@ def test_import_conversation_creates_group_board_cards_and_prompt_note(tmp_path,
         },
     )
 
-    service = KanbanService()
+    service = _kanban_service(kanban_db)
     board = service.bootstrap_board({"scope_type": "group", "scope_id": "group-alpha"})["board"]
     imported = service.import_conversation(board["board_id"], {"conversation_id": conversation["id"], "use_ai": False})
 
@@ -64,10 +72,10 @@ def test_import_conversation_creates_group_board_cards_and_prompt_note(tmp_path,
 
 
 def test_synced_conversation_updates_existing_kanban_board(tmp_path, monkeypatch):
-    ChatStore = _reset_stores(monkeypatch, tmp_path)
+    ChatStore, kanban_db = _reset_stores(monkeypatch, tmp_path)
 
     from domain.kanban.chat_sync import sync_conversation_kanban
-    from domain.kanban.service import KanbanService
+    from ecosystem.rumi_kanban_state_store_pack.runtime.store import KanbanStateStore
 
     chat_store = ChatStore()
     conversation = chat_store.create_conversation(model="stub/default", group_id="group-alpha")
@@ -87,7 +95,7 @@ def test_synced_conversation_updates_existing_kanban_board(tmp_path, monkeypatch
         },
     )
 
-    service = KanbanService()
+    service = _kanban_service(kanban_db)
     board = service.bootstrap_board({"scope_type": "group", "scope_id": "group-alpha"})["board"]
     first = service.import_conversation(board["board_id"], {"conversation_id": conversation["id"], "use_ai": False})
     assert [card["title"] for card in first["cards"]] == ["initial task"]
@@ -100,7 +108,12 @@ def test_synced_conversation_updates_existing_kanban_board(tmp_path, monkeypatch
             "raw_text": "TODO: browser QA",
         },
     )
-    synced = sync_conversation_kanban(conversation["id"], reason="test")
+    synced = sync_conversation_kanban(
+        conversation["id"],
+        reason="test",
+        db_path=kanban_db,
+        state_store_factory=KanbanStateStore,
+    )
 
     assert synced is not None
     titles = [card["title"] for card in synced["cards"]]
@@ -109,9 +122,7 @@ def test_synced_conversation_updates_existing_kanban_board(tmp_path, monkeypatch
 
 
 def test_import_conversation_ignores_provider_error_diagnostics(tmp_path, monkeypatch):
-    ChatStore = _reset_stores(monkeypatch, tmp_path)
-
-    from domain.kanban.service import KanbanService
+    ChatStore, kanban_db = _reset_stores(monkeypatch, tmp_path)
 
     chat_store = ChatStore()
     conversation = chat_store.create_conversation(model="openai/gpt-5.4")
@@ -144,7 +155,7 @@ def test_import_conversation_ignores_provider_error_diagnostics(tmp_path, monkey
         },
     )
 
-    service = KanbanService()
+    service = _kanban_service(kanban_db)
     board = service.bootstrap_board({"scope_type": "conversation", "scope_id": conversation["id"]})["board"]
     imported = service.import_conversation(board["board_id"], {"conversation_id": conversation["id"], "use_ai": False})
 
@@ -155,15 +166,13 @@ def test_import_conversation_ignores_provider_error_diagnostics(tmp_path, monkey
 
 
 def test_reimport_removes_stale_conversation_cards(tmp_path, monkeypatch):
-    ChatStore = _reset_stores(monkeypatch, tmp_path)
-
-    from domain.kanban.service import KanbanService
+    ChatStore, kanban_db = _reset_stores(monkeypatch, tmp_path)
 
     chat_store = ChatStore()
     conversation = chat_store.create_conversation(model="stub/default")
     conversation = chat_store.update_conversation(conversation["id"], {"title": "Shrink import"})
 
-    service = KanbanService()
+    service = _kanban_service(kanban_db)
     board = service.bootstrap_board({"scope_type": "conversation", "scope_id": conversation["id"]})["board"]
     first = service.import_conversation(
         board["board_id"],
@@ -188,10 +197,9 @@ def test_reimport_removes_stale_conversation_cards(tmp_path, monkeypatch):
 
 
 def test_import_conversation_passes_provider_timeout_and_falls_back(tmp_path, monkeypatch):
-    ChatStore = _reset_stores(monkeypatch, tmp_path)
+    ChatStore, kanban_db = _reset_stores(monkeypatch, tmp_path)
 
     from domain.ai_client.client import AIClient
-    from domain.kanban.service import KanbanService
 
     def timeout_complete(self, model, messages, tools=None, params=None):
         del self, model, messages, tools, params
@@ -211,7 +219,7 @@ def test_import_conversation_passes_provider_timeout_and_falls_back(tmp_path, mo
         },
     )
 
-    service = KanbanService()
+    service = _kanban_service(kanban_db)
     board = service.bootstrap_board({"scope_type": "conversation", "scope_id": conversation["id"]})["board"]
     imported = service.import_conversation(
         board["board_id"],
@@ -229,10 +237,9 @@ def test_import_conversation_passes_provider_timeout_and_falls_back(tmp_path, mo
 
 
 def test_import_conversation_passes_request_timeout_to_provider(tmp_path, monkeypatch):
-    ChatStore = _reset_stores(monkeypatch, tmp_path)
+    ChatStore, kanban_db = _reset_stores(monkeypatch, tmp_path)
 
     from domain.ai_client.client import AIClient
-    from domain.kanban.service import KanbanService
 
     seen_params = {}
 
@@ -247,7 +254,7 @@ def test_import_conversation_passes_request_timeout_to_provider(tmp_path, monkey
     conversation = chat_store.create_conversation(model="stub/default")
     conversation = chat_store.update_conversation(conversation["id"], {"title": "Provider timeout"})
 
-    service = KanbanService()
+    service = _kanban_service(kanban_db)
     board = service.bootstrap_board({"scope_type": "conversation", "scope_id": conversation["id"]})["board"]
     imported = service.import_conversation(
         board["board_id"],
@@ -265,10 +272,9 @@ def test_import_conversation_passes_request_timeout_to_provider(tmp_path, monkey
 
 
 def test_import_conversation_without_authority_context_skips_ai(tmp_path, monkeypatch):
-    ChatStore = _reset_stores(monkeypatch, tmp_path)
+    ChatStore, kanban_db = _reset_stores(monkeypatch, tmp_path)
 
     from domain.ai_client.client import AIClient
-    from domain.kanban.service import KanbanService
 
     def fail_complete(self, model, messages, tools=None, params=None):
         del self, model, messages, tools, params
@@ -288,7 +294,7 @@ def test_import_conversation_without_authority_context_skips_ai(tmp_path, monkey
         },
     )
 
-    service = KanbanService()
+    service = _kanban_service(kanban_db)
     board = service.bootstrap_board({"scope_type": "conversation", "scope_id": conversation["id"]})["board"]
     imported = service.import_conversation(
         board["board_id"],

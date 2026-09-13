@@ -1,0 +1,69 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.media.capture.v1",
+      "rumi.action.media.output.v1"
+    ],
+    "requires": [
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Bounded private-media capture and audio output requests.",
+  "display_name": "Rumi Media Capture Host Service",
+  "host_execution": false,
+  "metadata": {
+    "authority_split": [
+      "capture",
+      "output"
+    ],
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:39fa29b151ee0a15d1cfa796503c5126821da1b448c462734da71c5d53f9ebb3",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:4331551bed04acdcffdb1a5a5469acc55bbcbc04fb8105567e4d3006c11d0571"
+    },
+    "executor_owner": "rumi_viewer_host_broker",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:4331551bed04acdcffdb1a5a5469acc55bbcbc04fb8105567e4d3006c11d0571"
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_send": false,
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "raw_media_persistence": false,
+    "read_only_projection": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_media_capture_host_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_media_capture_host_service_pack",
+  "provenance": {
+    "build_identity": "rumi_media_capture_host_service_pack:1.0.0",
+    "content_hash": "sha256:2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "host.authority.consume",
+    "media.capture",
+    "media.output"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

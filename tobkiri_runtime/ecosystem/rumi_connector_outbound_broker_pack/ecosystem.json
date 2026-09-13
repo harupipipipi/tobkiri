@@ -1,0 +1,70 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.connector.outbound.v1",
+      "rumi.resource.connector.outbound.v1"
+    ],
+    "requires": [
+      "rumi.resource.connector.registry.v1",
+      "rumi.service.connector.adapter.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Receipt-gated delivery lifecycle and exact vendor handoff.",
+  "display_name": "Rumi Connector Outbound Broker",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:c29973235ac7124eb27e5c0ab69aff94663f2c14ef6664849d4345bf20d0fc8b",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:93807f1a61d02cbc97aa2548e390207ad5b5def201a53ed240ca55ba855d38fd"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:93807f1a61d02cbc97aa2548e390207ad5b5def201a53ed240ca55ba855d38fd"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "connector_outbound_delivery_ledger"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_connector_outbound_broker_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_outbound_broker_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_outbound_broker_pack:1.0.0",
+    "content_hash": "sha256:f5d20e862418385b9aedf06cb2e58fc3cd4a824022971061add8738c48747573",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.adapter.deliver",
+    "connector.outbound.control",
+    "connector.outbound.read",
+    "connector.registry.read",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

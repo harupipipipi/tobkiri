@@ -93,19 +93,30 @@ class LinuxNativeProvider:
                 )
             )
         else:
-            session = self._new_session()
-            missing_commands = list(session.missing_commands())
-            installed = not missing_commands
-            if missing_commands:
-                missing.extend(f"command:{name}" for name in missing_commands)
+            try:
+                session = self._new_session()
+            except SandboxContractError as exc:
+                missing.append("v4_desktop_host_session")
                 diagnostics.append(
                     Diagnostic(
-                        code="LINUX_NATIVE_COMMANDS_MISSING",
-                        message="Linux native desktop helper commands are not available in the runtime.",
+                        code="LINUX_NATIVE_V4_SESSION_UNAVAILABLE",
+                        message=str(exc),
                         severity="warning",
-                        details={"missing_commands": missing_commands},
                     )
                 )
+            else:
+                missing_commands = list(session.missing_commands())
+                installed = not missing_commands
+                if missing_commands:
+                    missing.extend(f"command:{name}" for name in missing_commands)
+                    diagnostics.append(
+                        Diagnostic(
+                            code="LINUX_NATIVE_COMMANDS_MISSING",
+                            message="Linux native desktop helper commands are not available in the runtime.",
+                            severity="warning",
+                            details={"missing_commands": missing_commands},
+                        )
+                    )
 
         missing_capabilities = sorted(request.required_capabilities - capabilities)
         missing.extend(missing_capabilities)
@@ -318,13 +329,12 @@ class LinuxNativeProvider:
     def _new_session(self, *, width: int | None = None, height: int | None = None) -> Any:
         if self._session_factory is not None:
             return self._session_factory(width=width, height=height)
-        from ecosystem.rumi_default_tools_pack.domain.computer.linux.x11_virtual import (
-            X11VirtualSession,
-            X11VirtualSessionConfig,
+        del width, height
+        raise SandboxContractError(
+            RUNTIME_PROVIDER_UNAVAILABLE,
+            "Linux native desktop requires an injected v4 desktop host session.",
+            status_code=503,
         )
-
-        config = X11VirtualSessionConfig(width=width or 1440, height=height or 900)
-        return X11VirtualSession(config)
 
     def _apply_startup(self, session: Any, instance: ProviderInstance) -> dict[str, Any]:
         startup = instance.opaque_state.get("startup") if isinstance(instance.opaque_state, Mapping) else {}
@@ -540,13 +550,13 @@ class LinuxNativeGuestAgent:
 
     def _dispatch_input(self, request: DesktopInputRequest) -> dict[str, Any]:
         if request.action == "move":
-            return self._session.move(int(request.x), int(request.y))
+            return self._session.move(int(request.x or 0), int(request.y or 0))
         if request.action == "click":
-            return self._session.click(int(request.x), int(request.y), button=str(request.button or "left"))
+            return self._session.click(int(request.x or 0), int(request.y or 0), button=str(request.button or "left"))
         if request.action == "double_click":
-            return self._session.double_click(int(request.x), int(request.y), button=str(request.button or "left"))
+            return self._session.double_click(int(request.x or 0), int(request.y or 0), button=str(request.button or "left"))
         if request.action == "drag":
-            return self._session.drag(int(request.x), int(request.y), int(request.to_x), int(request.to_y), button=str(request.button or "left"))
+            return self._session.drag(int(request.x or 0), int(request.y or 0), int(request.to_x or 0), int(request.to_y or 0), button=str(request.button or "left"))
         if request.action == "scroll":
             direction = "down" if int(request.delta_y or 0) >= 0 else "up"
             clicks = max(1, abs(int(request.delta_y or request.delta_x or 1)))
@@ -589,11 +599,11 @@ def _cleanup_persisted_x11_session(opaque_state: Mapping[str, Any]) -> dict[str,
 
 
 def _cleanup_owned_x11_session(metadata: Mapping[str, Any]) -> dict[str, Any]:
-    try:
-        from ecosystem.rumi_default_tools_pack.domain.computer.linux.x11_virtual import cleanup_owned_display
-    except Exception:
-        return {"cleaned": False}
-    return cleanup_owned_display(metadata)
+    del metadata
+    return {
+        "cleaned": False,
+        "reason": "Linux native cleanup requires the owning v4 desktop host session.",
+    }
 
 
 def _without_x11_runtime_state(opaque_state: Mapping[str, Any]) -> dict[str, Any]:
@@ -737,7 +747,11 @@ def _subprocess_runner(command: Sequence[str], input_text: str | None, timeout: 
 
 def _positive_int(value: object, fallback: int) -> int:
     try:
-        parsed = int(value or 0)
+        parsed = int(_numeric_value(value) or 0)
     except (TypeError, ValueError):
         return fallback
     return parsed if parsed > 0 else fallback
+
+
+def _numeric_value(value: object) -> int | float | str:
+    return value if isinstance(value, (int, float, str)) else 0

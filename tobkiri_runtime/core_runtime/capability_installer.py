@@ -31,7 +31,7 @@ import shutil
 import threading
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from .hmac_key_manager import generate_or_load_signing_key, compute_data_hmac, verify_data_hmac
 
@@ -356,7 +356,7 @@ class CapabilityInstaller:
     @staticmethod
     def _audit_event(
         event_type: str,
-        severity: str,
+        severity: Literal["info", "warning", "error", "critical"],
         description: str,
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -543,7 +543,7 @@ class CapabilityInstaller:
                         continue
 
                     valid, ep_error, handler_py_path = self._validate_entrypoint(entrypoint, slug_dir)
-                    if not valid:
+                    if not valid or handler_py_path is None:
                         result.errors.append({
                             "pack_id": pack_id,
                             "slug": slug,
@@ -698,7 +698,7 @@ class CapabilityInstaller:
 
             entrypoint = handler_data.get("entrypoint", "handler.py:execute")
             valid, ep_error, handler_py_path = self._validate_entrypoint(entrypoint, source_dir)
-            if not valid:
+            if not valid or handler_py_path is None:
                 self._mark_failed(item, f"Entrypoint validation failed: {ep_error}")
                 return ApproveResult(success=False, error=f"Entrypoint validation failed: {ep_error}")
 
@@ -749,8 +749,9 @@ class CapabilityInstaller:
                 source_json_path, source_py_path,
             )
             if not symlink_ok:
-                self._mark_failed(item, symlink_error)
-                return ApproveResult(success=False, error=symlink_error)
+                failure_reason = symlink_error or "symlink validation failed"
+                self._mark_failed(item, failure_reason)
+                return ApproveResult(success=False, error=failure_reason)
 
             try:
                 final_sha256 = self._compute_sha256(source_py_path)

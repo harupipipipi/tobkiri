@@ -1,0 +1,160 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:d2295d0a4d91dd7cffa6aefc3dba880e863b711dd32d688cc06bad0d95fe7ee9",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:978f30aeae69ba9c5616e837c712e0977447e82268cdb82ad3a11366e3f819de",
+      "kind": "executable",
+      "path": "runtime/service.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.desktop.host.v1",
+      "operations": [
+        "rumi_desktop_host_service_pack.desktop-host-control"
+      ],
+      "revision_digest": "sha256:45a731410e1f6a11b04f6611b01991a5415dc65dc61e2418ea70aaa1fd09523c"
+    },
+    {
+      "contract_id": "tobkiri.resource.desktop.host.v1",
+      "operations": [
+        "rumi_desktop_host_service_pack.desktop-host-observe"
+      ],
+      "revision_digest": "sha256:0010a537ece2b635b57a4288ae8ea9661025140cf6b28a8c864b703522b52205"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:45a731410e1f6a11b04f6611b01991a5415dc65dc61e2418ea70aaa1fd09523c",
+      "id": "rumi_desktop_host_service_pack.desktop-host.control",
+      "implementation_digest": "sha256:978f30aeae69ba9c5616e837c712e0977447e82268cdb82ad3a11366e3f819de",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_desktop_host_service_pack.desktop-host-control"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:0010a537ece2b635b57a4288ae8ea9661025140cf6b28a8c864b703522b52205",
+      "id": "rumi_desktop_host_service_pack.desktop-host.observe",
+      "implementation_digest": "sha256:978f30aeae69ba9c5616e837c712e0977447e82268cdb82ad3a11366e3f819de",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_desktop_host_service_pack.desktop-host-observe"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:b186aa7b575b3ae2107d83aa065b2c1e8dc3fe775cfb1fad01e7ff3d17a5a882",
+    "contract_catalog_digest": "sha256:96c04cbe6e07dcbd15339e342c4bffcf166933d01b586192268a0787dffa7e1a",
+    "source_identity": "sha256:ca73b3e6f40b82deeb3c77a28d1d70fba39feac0cbd166b4d8a0b68c87495d40"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.desktop.host.v1",
+      "rumi.resource.desktop.host.v1",
+      "rumi:ecosystem/rumi_desktop_host_service_pack",
+      "rumi_desktop_host_service_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.desktop.host.v1",
+      "effect_ceiling": [
+        "capability:desktop.host.control"
+      ],
+      "operation_id": "rumi_desktop_host_service_pack.desktop-host-control",
+      "owner": "rumi_desktop_host_service_pack",
+      "provider_id": "rumi_desktop_host_service_pack.desktop-host.control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.desktop.host.v1",
+      "effect_ceiling": [
+        "capability:desktop.host.observe"
+      ],
+      "operation_id": "rumi_desktop_host_service_pack.desktop-host-observe",
+      "owner": "rumi_desktop_host_service_pack",
+      "provider_id": "rumi_desktop_host_service_pack.desktop-host.observe",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:b186aa7b575b3ae2107d83aa065b2c1e8dc3fe775cfb1fad01e7ff3d17a5a882",
+    "display_name": "Rumi Desktop Host Service",
+    "id": "rumi_desktop_host_service_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:ca73b3e6f40b82deeb3c77a28d1d70fba39feac0cbd166b4d8a0b68c87495d40",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:ca73b3e6f40b82deeb3c77a28d1d70fba39feac0cbd166b4d8a0b68c87495d40",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_desktop_host_service_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.desktop.host.v1",
+      "operations": [
+        "rumi_desktop_host_service_pack.desktop-host-control"
+      ],
+      "owner": "rumi_desktop_host_service_pack",
+      "provider_id": "rumi_desktop_host_service_pack.desktop-host.control"
+    },
+    {
+      "contract_reference": "tobkiri.resource.desktop.host.v1",
+      "operations": [
+        "rumi_desktop_host_service_pack.desktop-host-observe"
+      ],
+      "owner": "rumi_desktop_host_service_pack",
+      "provider_id": "rumi_desktop_host_service_pack.desktop-host.observe"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "desktop.host.control",
+      "desktop.host.observe",
+      "host.authority.consume"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

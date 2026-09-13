@@ -32,17 +32,19 @@ import socket
 import struct
 from typing import Any, Dict, Optional
 
+from .host_contract import host_contract_value
+
 
 # デフォルトのUDSソケットパス（コンテナ内）
 DEFAULT_SOCKET_PATH = "/run/rumi/egress.sock"
 
 # 環境変数でオーバーライド可能
-SOCKET_PATH = os.environ.get("RUMI_EGRESS_SOCKET", DEFAULT_SOCKET_PATH)
+SOCKET_PATH = os.getenv("RUMI_EGRESS_SOCKET", DEFAULT_SOCKET_PATH)
 
 # BUG-5-1: TCP fallback environment variables
-EGRESS_HOST = os.environ.get("RUMI_EGRESS_HOST", "")
-EGRESS_PORT = int(os.environ.get("RUMI_EGRESS_PORT", "0") or "0")
-EGRESS_TOKEN = os.environ.get("RUMI_EGRESS_TOKEN", "")
+EGRESS_HOST = os.getenv("RUMI_EGRESS_HOST", "")
+EGRESS_PORT = int(os.getenv("RUMI_EGRESS_PORT", "0") or "0")
+EGRESS_TOKEN = host_contract_value("egress_token")
 _TCP_MODE = bool(EGRESS_HOST and EGRESS_PORT)
 
 # プロトコル定数

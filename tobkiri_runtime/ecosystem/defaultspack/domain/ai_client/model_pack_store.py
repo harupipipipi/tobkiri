@@ -133,10 +133,6 @@ def normalize_model_packs(value: Any, *, composite_models: Any = None) -> list[d
 
 class ModelPackStore:
     def __init__(self, settings: dict[str, Any] | None = None) -> None:
-        if settings is None:
-            from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
-
-            settings = ModelRuntimeSettingsService().get_settings()
         self._settings = settings if isinstance(settings, dict) else {}
 
     @staticmethod

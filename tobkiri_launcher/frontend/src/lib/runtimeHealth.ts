@@ -1,6 +1,8 @@
+import type {RuntimeStatus} from './apiTypes';
+
 export type ViewerRuntimeHealthState = {
   runtimeReady: boolean;
-  runtimeStatus: "starting" | "panel_ready" | "runtime_ready" | "error";
+  runtimeStatus: RuntimeStatus;
   runtimeError: string | null;
   runtimeDisconnected: boolean;
   lastRuntimeHealthyAt: number | null;
@@ -9,7 +11,11 @@ export type ViewerRuntimeHealthState = {
 export type RuntimeBannerTone = "success" | "warning" | "danger";
 
 export function runtimeMonitorDelay(state: ViewerRuntimeHealthState): number {
-  if (state.runtimeDisconnected || state.runtimeStatus === "error") return 2_500;
+  if (
+    state.runtimeDisconnected
+    || state.runtimeStatus === "error"
+    || state.runtimeStatus === "profile_reconfirmation_required"
+  ) return 2_500;
   if (!state.runtimeReady) return 350;
   return 15_000;
 }
@@ -61,10 +67,18 @@ export function describeRuntimeBadge(
       showOfflineBadge: true,
     };
   }
+  if (state.runtimeStatus === "profile_reconfirmation_required") {
+    return {
+      tone: "warning",
+      label: "Profile reconfirmation required",
+      detail: "Review and activate the exact Defaults v4 transaction before using local operations.",
+      showOfflineBadge: false,
+    };
+  }
   return {
     tone: "warning",
     label: "Preparing",
-    detail: "Rumi を開くための足場を整えています。",
+    detail: "Tobkiri を開くための足場を整えています。",
     showOfflineBadge: false,
   };
 }
@@ -81,14 +95,21 @@ export function describeRuntimeBanner(
     return {
       tone: "danger",
       title: "接続がほどけても、いまの画面はここに残します。",
-      detail: `${formatElapsedLabel(state.lastRuntimeHealthyAt, now)} までは安定していました。Viewer は再接続を続けています。必要なら Settings から再起動できます。`,
+      detail: `${formatElapsedLabel(state.lastRuntimeHealthyAt, now)} までは安定していました。Tobkiri Launcher は再接続を続けています。必要なら Launcher を再起動できます。`,
     };
   }
   if (state.runtimeStatus === "error") {
     return {
       tone: "danger",
       title: "起動は止まりましたが、復帰の道筋は残しています。",
-      detail: state.runtimeError || "Settings から原因確認や再起動を行えます。",
+      detail: state.runtimeError || "Tobkiri Launcher を再起動して原因を確認できます。",
+    };
+  }
+  if (state.runtimeStatus === "profile_reconfirmation_required") {
+    return {
+      tone: "warning",
+      title: "Profile reconfirmation is required before runtime operations can resume.",
+      detail: "Open Setup to review the exact Defaults v4 transaction and activate it.",
     };
   }
   return {

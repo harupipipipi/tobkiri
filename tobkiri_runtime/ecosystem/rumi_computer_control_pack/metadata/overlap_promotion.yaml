@@ -1,7 +1,7 @@
 version: rumi.pack_overlap.v1
 pack_id: rumi_computer_control_pack
 
-defaultspack_promotion:
+base_pack_promotion:
   eligible: false
   reason: Optional computer-control playbook pack; defaultspack remains the grant, approval, audit, and routing authority.
   promoted_capabilities: []

@@ -1,9 +1,15 @@
 """defaults.coding.file_patch — old/new replacement patch."""
 
 from blocks._common import error, ok
-from blocks.coding._approval import approval_invalid_response, approval_required, is_server_approved
-from blocks.coding._workspace import resolve_workspace, with_workspace, workspace_error_response
-from domain.coding.file_ops import FileOps
+from blocks.coding._approval import approval_required
+from blocks.coding._workspace import canonical_mutation_guard
+from domain.coding.contract_adapter import (
+    FILE_PATCH,
+    authorize_legacy_coding_operation,
+    invoke_coding_contract,
+    service_payload,
+    workspace_id,
+)
 from domain.safety.audit import record_attempt, record_execution, record_failure
 
 
@@ -18,31 +24,39 @@ def run(input_data, context=None):
     operation = "file.patch"
     record_attempt(operation, "medium", {"path": path})
     try:
-        workspace = resolve_workspace(input_data, context, mutation=True, operation=operation)
-    except Exception as exc:
-        workspace_error = workspace_error_response(exc, error)
-        if workspace_error:
-            return workspace_error
-        return error(str(exc), code="WORKSPACE_ERROR")
-    if not is_server_approved(context, operation, input_data):
-        invalid = approval_invalid_response(operation, input_data, error)
-        if invalid:
-            return invalid
-        return ok(approval_required(operation, "medium", args=input_data, path=path))
-    try:
-        ops = FileOps(workspace.root_path)
-        checkpoint = None
-        if input_data.get("checkpoint", True) is not False:
-            checkpoint = ops.checkpoint_before_mutation(
-                operation,
-                [path],
-                metadata={"path": path},
+        selected_workspace_id = workspace_id(input_data)
+        arguments = {
+            "path": str(path),
+            "old": str(old),
+            "new": str(new),
+            "encoding": str(input_data.get("encoding") or "utf-8"),
+            "expected_sha256": str(input_data.get("expected_sha256") or ""),
+        }
+        authorization = authorize_legacy_coding_operation(
+            legacy_operation=operation,
+            service_pack_id="rumi_file_patch_pack",
+            service_operation="file.patch",
+            authority="file.patch",
+            arguments=arguments,
+            input_data=input_data,
+            context=context,
+            selected_workspace_id=selected_workspace_id,
+            mutation_guard=canonical_mutation_guard,
+        )
+        if not authorization.get("authorized"):
+            if authorization.get("reason") == "approval_required":
+                return ok(approval_required(operation, "medium", args=input_data, path=path))
+            return error(
+                str(authorization.get("message") or authorization.get("reason")),
+                code=str(authorization.get("code") or "APPROVAL_INVALID"),
             )
-        result = ops.apply_patch_text(path, old, new)
-        if checkpoint is not None:
-            result["checkpoint"] = checkpoint
+        result = invoke_coding_contract(
+            FILE_PATCH,
+            "apply",
+            service_payload(authorization, arguments),
+        )
         record_execution(operation, "medium", {"path": path})
-        return ok(with_workspace(result, workspace))
+        return ok(result)
     except PermissionError as exc:
         record_failure(operation, "medium", str(exc), {"path": path})
         return error(str(exc), code="PATH_RESTRICTED")
@@ -50,7 +64,4 @@ def run(input_data, context=None):
         record_failure(operation, "medium", str(exc), {"path": path})
         return error(str(exc), code="PATCH_ERROR")
     except Exception as exc:
-        workspace_error = workspace_error_response(exc, error)
-        if workspace_error:
-            return workspace_error
         return error(str(exc), code="PATCH_ERROR")

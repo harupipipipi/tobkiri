@@ -15,6 +15,9 @@ import zipfile
 from pathlib import Path
 from typing import Iterable
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tobkiri_runtime.core_runtime.pack_boundary import resolve_pack_root
+
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 MAX_LOG_FILES = 40
 MAX_FRAME_BYTES = 5 * 1024 * 1024
@@ -185,6 +188,7 @@ def main() -> int:
 
     root = repo_root(Path.cwd())
     output = Path(args.output).expanduser().resolve()
+    managed_template_root = resolve_pack_root("rumi_sandbox_runtime_pack") / "templates"
 
     with tempfile.TemporaryDirectory(prefix="rumi-runtime-bundle-") as tmp_name:
         tmp = Path(tmp_name)
@@ -206,7 +210,7 @@ def main() -> int:
                 "git",
                 "ls-files",
                 "tobkiri_runtime/docs/managed-sandbox-runtime-implementation-plan.md",
-                "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/templates",
+                str(managed_template_root),
                 "tobkiri_runtime/scripts/quality/check_template_contracts.py",
                 "scripts/support/collect_managed_runtime_bundle.py",
             ],
@@ -216,7 +220,7 @@ def main() -> int:
                 "--others",
                 "--exclude-standard",
                 "tobkiri_runtime/docs/managed-sandbox-runtime-implementation-plan.md",
-                "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/templates",
+                str(managed_template_root),
                 "tobkiri_runtime/scripts/quality/check_template_contracts.py",
                 "scripts/support/collect_managed_runtime_bundle.py",
             ],

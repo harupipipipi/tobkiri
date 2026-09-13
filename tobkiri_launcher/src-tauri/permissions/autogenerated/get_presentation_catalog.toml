@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-presentation-catalog"
+description = "Enables the get_presentation_catalog command without any pre-configured scope."
+commands.allow = ["get_presentation_catalog"]
+
+[[permission]]
+identifier = "deny-get-presentation-catalog"
+description = "Denies the get_presentation_catalog command without any pre-configured scope."
+commands.deny = ["get_presentation_catalog"]

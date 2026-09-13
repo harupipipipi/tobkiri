@@ -16,12 +16,26 @@ import {
   updateChangeRequestComment,
 } from "./changeRequests";
 
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
+function requestTarget(input: RequestInfo | URL): string {
+  const raw = String(input);
+  const marker = "/api/contracts/defaultspack/";
+  const markerIndex = raw.indexOf(marker);
+  if (markerIndex < 0) return raw;
+  const operation = decodeURIComponent(raw.slice(markerIndex + marker.length));
+  const separator = operation.indexOf(" ");
+  return separator < 0 ? operation : operation.slice(separator + 1);
+}
+
 test("listChangeRequests uses canonical endpoint and normalizes backend snapshots", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";
   let requestCache: RequestCache | undefined;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestCache = init?.cache;
     return new Response(JSON.stringify({
       status: "ok",
@@ -51,7 +65,7 @@ test("listChangeRequests uses canonical endpoint and normalizes backend snapshot
 
   try {
     const result = await listChangeRequests({ workspace_id: "ws_1" });
-    assert.equal(requestUrl, "/api/change-requests?workspace_id=ws_1");
+    assert.equal(requestUrl, routeKey("api/change-requests?workspace_id=ws_1"));
     assert.equal(requestCache, "no-store");
     assert.equal(result.apiAvailable, true);
     assert.deepEqual(result.open.map((review) => review.id), ["cr_1"]);
@@ -102,7 +116,7 @@ test("getChangeRequest hydrates detail records and drift state", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     return new Response(JSON.stringify({
       status: "ok",
       data: {
@@ -126,7 +140,7 @@ test("getChangeRequest hydrates detail records and drift state", async () => {
 
   try {
     const result = await getChangeRequest("cr hydrate");
-    assert.equal(requestUrl, "/api/change-requests/cr%20hydrate");
+    assert.equal(requestUrl, routeKey("api/change-requests/cr%20hydrate"));
     assert.equal(result?.is_stale, true);
     assert.equal(result?.drift?.current_working_tree_hash, "sha256:current");
     assert.deepEqual(result?.files?.map((file) => file.path), ["src/app.ts"]);
@@ -140,7 +154,7 @@ test("create and refresh change requests use read-only canonical routes", async 
   const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     calls.push({
-      url: String(input),
+      url: requestTarget(input),
       method: init?.method,
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
@@ -163,12 +177,12 @@ test("create and refresh change requests use read-only canonical routes", async 
     assert.equal(refreshed?.id, "cr_refresh");
     assert.deepEqual(calls, [
       {
-        url: "/api/change-requests",
+        url: routeKey("api/change-requests"),
         method: "POST",
         body: { domain: "change_request", source: "working_tree", workspace_id: "ws_1" },
       },
       {
-        url: "/api/change-requests/cr%20create/refresh",
+        url: routeKey("api/change-requests/cr%20create/refresh"),
         method: "POST",
         body: { workspace_id: "ws_1" },
       },
@@ -183,7 +197,7 @@ test("change request review actions use canonical mutation routes", async () => 
   const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     calls.push({
-      url: String(input),
+      url: requestTarget(input),
       method: init?.method,
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
@@ -214,11 +228,11 @@ test("change request review actions use canonical mutation routes", async () => 
     assert.equal(decided?.decision, "approved");
     assert.equal(check.check?.status, "passed");
     assert.deepEqual(calls.map((call) => [call.method, call.url]), [
-      ["POST", "/api/change-requests/cr%20review/comments"],
-      ["PATCH", "/api/change-requests/cr%20review/comments/crc%201"],
-      ["POST", "/api/change-requests/cr%20review/decision"],
-      ["PATCH", "/api/change-requests/cr%20review/viewed-files"],
-      ["POST", "/api/change-requests/cr%20review/checks/run"],
+      ["POST", routeKey("api/change-requests/cr%20review/comments")],
+      ["PATCH", routeKey("api/change-requests/cr%20review/comments/crc%201")],
+      ["POST", routeKey("api/change-requests/cr%20review/decision")],
+      ["PATCH", routeKey("api/change-requests/cr%20review/viewed-files")],
+      ["POST", routeKey("api/change-requests/cr%20review/checks/run")],
     ]);
   } finally {
     globalThis.fetch = originalFetch;
@@ -257,7 +271,7 @@ test("exportChangeRequestPatch uses canonical export route", async () => {
   const originalFetch = globalThis.fetch;
   let requestUrl = "";
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     assert.equal(init?.method, "POST");
     return new Response(JSON.stringify({
       status: "ok",
@@ -271,7 +285,7 @@ test("exportChangeRequestPatch uses canonical export route", async () => {
 
   try {
     const result = await exportChangeRequestPatch("cr review");
-    assert.equal(requestUrl, "/api/change-requests/cr%20review/export-patch");
+    assert.equal(requestUrl, routeKey("api/change-requests/cr%20review/export-patch"));
     assert.equal(result?.filename, "cr_review.patch");
     assert.match(result?.patch ?? "", /diff --git/);
     assert.equal(result?.patch_bytes, 31);

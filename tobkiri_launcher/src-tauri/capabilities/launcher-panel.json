@@ -1,0 +1,23 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "launcher-panel",
+  "description": "Non-credential Launcher controls exposed to the authenticated primary panel.",
+  "local": false,
+  "windows": ["main"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:8765/*",
+      "http://localhost:8765/*",
+      "http://127.0.0.1:8766/*",
+      "http://localhost:8766/*"
+    ]
+  },
+  "permissions": [
+    "allow-get-background-control-status",
+    "allow-get-desktop-system-info",
+    "allow-launch-defaultspack-desktop",
+    "allow-open-external-url",
+    "allow-send-to-background",
+    "allow-show-app-window"
+  ]
+}

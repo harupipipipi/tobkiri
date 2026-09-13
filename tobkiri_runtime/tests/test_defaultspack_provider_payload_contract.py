@@ -133,6 +133,78 @@ def test_openai_compatible_cerebras_reasoning_none_contract(monkeypatch):
     assert "reasoning_effort" not in captured["body"]
 
 
+def test_openai_compatible_recovers_tool_call_omitted_by_stream(monkeypatch):
+    from domain.ai_client.providers.openai_compatible_provider import (
+        OpenAICompatibleProvider,
+    )
+    from domain.ai_client.providers.openai_provider import OpenAIProvider
+
+    provider = OpenAICompatibleProvider(
+        provider_id="compatible",
+        api_key="key",
+        base_url="https://example.test",
+        known_models=[{"id": "compatible/model", "model_id": "model"}],
+    )
+    monkeypatch.setattr(
+        OpenAIProvider,
+        "stream",
+        lambda *_args, **_kwargs: iter(
+            [
+                {
+                    "type": "stream_end",
+                    "finish_reason": "tool_calls",
+                    "usage": {
+                        "input_tokens": 2,
+                        "output_tokens": 1,
+                        "total_tokens": 3,
+                    },
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        provider,
+        "complete",
+        lambda *_args, **_kwargs: {
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "call_recovered",
+                    "name": "repository_context_prepare",
+                    "input": '{"query":"find files"}',
+                }
+            ],
+            "finish_reason": "tool_calls",
+            "usage": {
+                "input_tokens": 2,
+                "output_tokens": 2,
+                "total_tokens": 4,
+            },
+        },
+    )
+
+    events = list(
+        provider.stream(
+            "model",
+            [{"role": "user", "content": "Use the tool"}],
+            [{"type": "function", "function": {"name": "tool"}}],
+            {},
+        )
+    )
+
+    assert [event["type"] for event in events] == [
+        "tool_call_start",
+        "tool_call_delta",
+        "tool_call_end",
+        "stream_end",
+    ]
+    assert events[-1]["usage"] == {
+        "input_tokens": 4,
+        "output_tokens": 3,
+        "total_tokens": 7,
+    }
+
+
 def test_openrouter_chat_body_preserves_curated_gateway_params(monkeypatch):
     from domain.ai_client.providers.openrouter_provider import OpenRouterProvider
 
@@ -155,12 +227,8 @@ def test_openrouter_chat_body_preserves_curated_gateway_params(monkeypatch):
             "type": "chat",
         },
     ]
-    monkeypatch.setattr(
-        OpenRouterProvider,
-        "_catalog_models",
-        classmethod(lambda cls: [dict(model) for model in catalog_models]),
-    )
-    provider = OpenRouterProvider()
+    provider = OpenRouterProvider(known_models=[])
+    monkeypatch.setattr(provider, "_remote_discovered_models", lambda: [dict(model) for model in catalog_models])
 
     def fake_request_json(path, body):
         captured["request"] = {"path": path, "body": body}

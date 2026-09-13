@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conformance_support.host_contract import host_contract
+
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -18,6 +20,32 @@ sys.path.insert(0, str(ROOT))
 class _HmacKey:
     def get_active_key(self) -> str:
         return "authority-test-key-" + ("x" * 32)
+
+
+@pytest.fixture(autouse=True)
+def _bind_canonical_host_contract(tmp_path, monkeypatch):
+    """Provide a secure Host contract visible to approval worker threads."""
+    user_data = tmp_path / "host-user-data"
+    user_data.mkdir(mode=0o700)
+    user_data.chmod(0o700)
+    contract_path = user_data / "host_contract.json"
+    contract_path.write_text(
+        json.dumps(
+            host_contract(
+                profile_id="profile:work",
+                values={
+                    "panel_bootstrap_secret": (
+                        "panel-bootstrap-test-secret-" + ("p" * 32)
+                    )
+                },
+            )
+        ),
+        encoding="utf-8",
+    )
+    contract_path.chmod(0o600)
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    monkeypatch.setenv("TOBKIRI_HOST_CONTRACT_PATH", str(contract_path))
+    yield
 
 
 def _service(tmp_path, monkeypatch):
@@ -1647,7 +1675,7 @@ def test_authority_service_resolves_from_di(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("RUMI_AUTHORITY_MODE", "enforce")
 
-    from core_runtime.authority import AuthorityService, get_authority_service
+    from core_runtime.authority import get_authority_service
     from core_runtime.capability_grant_manager import reset_capability_grant_manager
     from core_runtime.di_container import get_container, reset_container
 
@@ -1660,7 +1688,8 @@ def test_authority_service_resolves_from_di(tmp_path, monkeypatch):
     try:
         container = get_container()
         assert container.has("capability_grant_manager")
-        assert isinstance(get_authority_service(), AuthorityService)
+        with pytest.raises(RuntimeError, match="captured V4DispatchSession"):
+            get_authority_service()
     finally:
         reset_container()
 
@@ -2002,7 +2031,7 @@ def test_authority_pack_request_display_metadata(tmp_path, monkeypatch):
         principal_id="profile:default__surface:defaultspack__node:pack-review",
         permission_id="pack.approve",
         resource={
-            "kind": "defaultspack.pack_request",
+            "kind": "pack.approval_request",
             "pack_id": "defaultspack",
             "target_pack_id": "samplepack",
             "pack_request_id": "pack_req_1",

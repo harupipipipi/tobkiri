@@ -1,0 +1,80 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:a01f8db972fc6f61f0104f35200e6503f7c3ce5408e0993f5816cb0fe051b0ca",
+      "kind": "asset",
+      "path": "catalog/form_action_recipes.yaml"
+    },
+    {
+      "digest": "sha256:d9b3b67d493d658f55b87fab9d514768a29c7811121e1ce49409a6d615ff87a0",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "source_identity": "sha256:e94bf811171b51805a55a09c37127fb861f1e13d766b42241b17a2678196c956",
+    "artifact_set_digest": "sha256:d26123efe24b21b4f92f4bf7a55a8b52f557c467b490f1a7e7ed400a06cf1090",
+    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_browser_form_operator_pack",
+      "rumi_browser_form_operator_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:485b7e577aa436d7076b2acc814b3b3a566577f1f30b2bc7077af574057fbc5c",
+    "display_name": "Rumi Browser Form Operator Pack",
+    "id": "rumi_browser_form_operator_pack",
+    "kind": "application",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_browser_form_operator_pack/pack.v4.json",
+    "source_digest": "sha256:e94bf811171b51805a55a09c37127fb861f1e13d766b42241b17a2678196c956",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:d97c53023c0e6bbf7fc36df0137199e8963ef90485877059589f4523184a2f5f",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:b81499d68f3db6d8a49f4e0f515f8d97cfae02128f468b7bd7f41e0487724ad3",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_browser_form_operator_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:e94bf811171b51805a55a09c37127fb861f1e13d766b42241b17a2678196c956"
+      }
+    ]
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

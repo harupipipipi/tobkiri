@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import html
 import http.client
-import json
-import os
 import re
 import socket
 import threading
@@ -14,6 +12,13 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Callable
+
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import (
+    GlobalContractInvocationError,
+    GlobalContractUnavailable,
+    invoke_global_contract,
+)
 
 from .defaultspack_bridge import DefaultspackBridge
 from .route_decision import ASK_AI_WITH_SEARCH, GOOGLE_REDIRECT, RouteDecision
@@ -661,133 +666,43 @@ class SearchTargetResolver:
         return {"screenshot_error": reason or "no_screenshot_provider_available"}
 
     def _capture_with_cdp(self, url: str) -> dict[str, Any]:
-        try:
-            from ecosystem.rumi_default_tools_pack.domain.browser.cdp_client import BrowserCDPClient
-        except Exception as exc:
-            return {"screenshot_error": f"browser_cdp_import_failed:{exc}"}
-
-        client = BrowserCDPClient(timeout=5.0)
-        if not client.is_available():
-            return {"screenshot_error": "browser_cdp_unavailable"}
-
-        tab = client.resolve_tab(url=url)
-        created_tab_id = ""
-        created_ws_url = ""
-        if tab is None or url not in str(tab.url or ""):
-            try:
-                created = self._open_cdp_tab(client, url)
-                if created is not None:
-                    tab = created
-                    created_tab_id = str(created.id or "")
-                    created_ws_url = str(created.web_socket_debugger_url or "")
-                    time.sleep(max(0.2, float(os.environ.get("SEARCH_HOME_CDP_CAPTURE_WAIT_SECONDS", "1.0"))))
-            except Exception as exc:
-                return {"screenshot_error": f"browser_cdp_open_tab_failed:{exc}"}
-        if tab is None:
-            return {"screenshot_error": "browser_cdp_no_matching_tab"}
-
-        try:
-            capture = client.capture_screenshot(tab)
-        except Exception as exc:
-            return {"screenshot_error": f"browser_cdp_capture_failed:{exc}"}
-        finally:
-            if created_tab_id:
-                self._close_cdp_tab(client, created_tab_id, created_ws_url)
-        return dict(capture or {})
+        return self._capture_with_v4_browser_contract(url, provider="browser_cdp")
 
     def _capture_with_browser_companion(self, url: str) -> dict[str, Any]:
+        return self._capture_with_v4_browser_contract(url, provider="browser_companion")
+
+    @staticmethod
+    def _capture_with_v4_browser_contract(url: str, *, provider: str) -> dict[str, Any]:
+        session = get_container().get_or_none("v4_dispatch_session")
+        if session is None:
+            return {"screenshot_error": "v4_browser_host_session_unavailable"}
         try:
-            from ecosystem.rumi_default_tools_pack.domain.tool.browser_companion import BrowserCompanionController
-        except Exception as exc:
-            return {"screenshot_error": f"browser_companion_import_failed:{exc}"}
-
-        controller = BrowserCompanionController()
-        tabs_result = controller.run("browser.tabs", {}, context={})
-        tabs = tabs_result.get("tabs") if isinstance(tabs_result, dict) else None
-        if not isinstance(tabs, list):
-            return {"screenshot_error": str(tabs_result.get("reason") or "browser_companion_tabs_unavailable") if isinstance(tabs_result, dict) else "browser_companion_tabs_unavailable"}
-
-        matched_tab = None
-        for tab in tabs:
-            if not isinstance(tab, dict):
-                continue
-            tab_url = str(tab.get("url") or "")
-            if tab_url == url or url.startswith(tab_url) or tab_url.startswith(url):
-                matched_tab = tab
-                break
-        if matched_tab is None:
-            return {"screenshot_error": "browser_companion_no_matching_tab"}
-
-        snapshot = controller.run(
-            "page.snapshot",
-            {"tab_id": matched_tab.get("id"), "include_capture": True},
-            context={},
-        )
-        if not isinstance(snapshot, dict) or snapshot.get("is_error"):
-            return {"screenshot_error": str(snapshot.get("reason") or "browser_companion_capture_failed") if isinstance(snapshot, dict) else "browser_companion_capture_failed"}
-        result = {
-            "data_url": snapshot.get("data_url"),
-            "path": snapshot.get("path"),
-            "provider": "browser_companion",
+            result = invoke_global_contract(
+                session,
+                "rumi.resource.browser.host.v1",
+                "browser.capture.page",
+                {
+                    "url": url,
+                    "profile_id": str(getattr(session, "profile_id", "")).strip(),
+                    "_contract_consumer_pack_id": "search_home_pack",
+                    "_contract_consumer_function_id": "search_target_resolver",
+                },
+            )
+        except (GlobalContractInvocationError, GlobalContractUnavailable) as exc:
+            return {"screenshot_error": f"{provider}_contract_unavailable:{exc}"}
+        if not isinstance(result, dict):
+            return {"screenshot_error": f"{provider}_contract_invalid_result"}
+        if result.get("is_error") or not result.get("data_url"):
+            return {
+                "screenshot_error": str(
+                    result.get("reason") or f"{provider}_capture_unavailable"
+                )
+            }
+        return {
+            "data_url": result.get("data_url"),
+            "path": result.get("path"),
+            "provider": str(result.get("provider") or "browser_host_contract"),
         }
-        if snapshot.get("path"):
-            result["path"] = snapshot.get("path")
-        return result
-
-    @staticmethod
-    def _open_cdp_tab(client: Any, url: str) -> Any | None:
-        endpoint = str(getattr(client, "endpoint", "") or "").rstrip("/")
-        if not endpoint:
-            return None
-        request = urllib.request.Request(
-            f"{endpoint}/json/new?{urllib.parse.quote(url, safe='')}",
-            method="PUT",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=float(getattr(client, "timeout", 5.0) or 5.0)) as response:
-                payload = response.read().decode("utf-8")
-        except Exception:
-            with urllib.request.urlopen(f"{endpoint}/json/new?{urllib.parse.quote(url, safe='')}", timeout=float(getattr(client, "timeout", 5.0) or 5.0)) as response:
-                payload = response.read().decode("utf-8")
-        raw = urllib.parse.unquote(payload) if payload.startswith("%7B") else payload
-        try:
-            data = urllib.parse.unquote(raw) if raw.startswith("%7B") else raw
-            parsed = json.loads(data)
-        except json.JSONDecodeError:
-            parsed = {}
-        try:
-            from ecosystem.rumi_default_tools_pack.domain.browser.cdp_client import CDPTab
-        except Exception:
-            return None
-        if not isinstance(parsed, dict):
-            return None
-        return CDPTab(
-            id=str(parsed.get("id") or ""),
-            title=str(parsed.get("title") or ""),
-            url=str(parsed.get("url") or url),
-            web_socket_debugger_url=str(parsed.get("webSocketDebuggerUrl") or ""),
-        )
-
-    @staticmethod
-    def _close_cdp_tab(client: Any, tab_id: str, ws_url: str = "") -> None:
-        endpoint = str(getattr(client, "endpoint", "") or "").rstrip("/")
-        if endpoint and tab_id:
-            try:
-                urllib.request.urlopen(f"{endpoint}/json/close/{urllib.parse.quote(str(tab_id), safe='')}", timeout=float(getattr(client, "timeout", 5.0) or 5.0))
-                return
-            except Exception:
-                pass
-        if ws_url:
-            try:
-                import websocket  # type: ignore[import]
-            except Exception:
-                return
-            try:
-                socket = websocket.create_connection(ws_url, timeout=float(getattr(client, "timeout", 5.0) or 5.0))
-                socket.send('{"id":1,"method":"Page.close"}')
-                socket.close()
-            except Exception:
-                return
 
     def _heuristic_select(
         self,

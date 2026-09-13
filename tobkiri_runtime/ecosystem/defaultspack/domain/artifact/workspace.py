@@ -80,9 +80,5 @@ class ArtifactWorkspace:
         if isinstance(conversation_workspace, str) and conversation_workspace.strip():
             candidates.append(Path(conversation_workspace) / "artifacts")
 
-        workspace_root = self.context.get("workspace_root")
-        if isinstance(workspace_root, str) and workspace_root.strip():
-            candidates.append(Path(workspace_root) / ".rumi" / "artifacts")
-
         candidates.append(self.pack_root / "user_data" / "artifacts")
         return candidates

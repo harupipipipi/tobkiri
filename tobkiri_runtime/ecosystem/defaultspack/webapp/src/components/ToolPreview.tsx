@@ -8,6 +8,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 import { ArtifactPreviewDialog, type ArtifactPreviewDialogItem } from './ArtifactPreviewDialog';
+import { ErrorNotice } from './ErrorNotice';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -839,7 +840,13 @@ function HtmlPreviewContent({
           />
         ) : !isLoading ? (
           <div className="flex h-full items-center justify-center bg-zinc-950 px-4 text-center text-[11px] text-zinc-500">
-            {error ? `HTML を読み込めませんでした: ${error}` : 'HTML preview の内容がありません。'}
+            {error ? (
+              <ErrorNotice
+                className="max-w-md text-left"
+                copyLabel="HTML プレビューエラーをコピー"
+                message={`HTML を読み込めませんでした: ${error}`}
+              />
+            ) : 'HTML preview の内容がありません。'}
           </div>
         ) : null}
       </div>
@@ -860,9 +867,11 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
     }
     if (loaded.error && !content) {
       return (
-        <div className="m-3 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-[11px] text-zinc-500">
-          diff を読み込めませんでした: {loaded.error}
-        </div>
+        <ErrorNotice
+          className="m-3 text-[11px]"
+          copyLabel="diff プレビューエラーをコピー"
+          message={`diff を読み込めませんでした: ${loaded.error}`}
+        />
       );
     }
     return <CodePreviewContent data={{ type: 'code', filename: data.filename, language: 'diff', diff: content }} />;
@@ -902,9 +911,11 @@ function FilePreviewContent({ data }: { data: FilePreview }) {
         {loaded.isLoading ? (
           <div className="flex h-full items-center justify-center text-[11px] text-zinc-600">内容を読み込んでいます</div>
         ) : loaded.error && !content ? (
-          <div className="m-3 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2 text-[11px] text-zinc-500">
-            内容を読み込めませんでした: {loaded.error}
-          </div>
+          <ErrorNotice
+            className="m-3 text-[11px]"
+            copyLabel="ファイルプレビューエラーをコピー"
+            message={`内容を読み込めませんでした: ${loaded.error}`}
+          />
         ) : (
           <pre className="text-[11px] font-mono leading-[1.6]">
             {(content || '').split('\n').map((line, i) => (

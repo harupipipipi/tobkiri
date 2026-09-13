@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
+from typing import List
 
-from .discovery import discover_templates
+from .discovery import TemplateRoot, discover_templates
 from .models import RumiTemplate, TemplateDiagnostic, TemplateKind, TemplateStatus
 from .validation import validate_template
 
@@ -71,7 +73,7 @@ class TemplateRegistry:
     def get(self, template_id: str) -> RumiTemplate | None:
         return self._templates.get(template_id)
 
-    def diagnostics(self, template_id: str | None = None) -> list[TemplateDiagnostic]:
+    def diagnostics(self, template_id: str | None = None) -> List[TemplateDiagnostic]:
         if template_id is not None:
             return list(self._diagnostics.get(template_id, []))
         diagnostics: list[TemplateDiagnostic] = []
@@ -85,7 +87,7 @@ class TemplateRegistry:
 
 
 def build_template_registry(
-    roots: list[str] | None = None,
+    roots: list[str | Path | TemplateRoot] | None = None,
     *,
     defaultspack_root: str | None = None,
 ) -> tuple[TemplateRegistry, list[TemplateDiagnostic]]:

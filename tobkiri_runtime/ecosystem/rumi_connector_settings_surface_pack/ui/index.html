@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Connections</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main aria-label="Connections">
+      <header><div><p id="profile"></p><h1>Connections</h1></div><button id="reload" type="button">Reload</button></header>
+      <p class="notice">Secrets and credential handles are never displayed here.</p>
+      <section class="summary" aria-label="Connection summary">
+        <article><span>Connectors</span><strong id="connector-count">—</strong></article>
+        <article><span>Enabled</span><strong id="enabled-count">—</strong></article>
+        <article><span>Credentials</span><strong id="credential-count">—</strong></article>
+      </section>
+      <p id="error" role="alert"></p>
+      <section aria-labelledby="connector-title"><h2 id="connector-title">Connector instances</h2><div id="connectors" class="cards"></div><p id="empty" hidden>No connector instances in this profile.</p></section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
+

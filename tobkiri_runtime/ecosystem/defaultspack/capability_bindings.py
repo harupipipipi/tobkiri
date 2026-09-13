@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from core_runtime.surface_launch_target import surface_launch_target_from_instance
+from ecosystem.defaultspack.defaultspack.surface_contributions import (
+    migrate_defaultspack_frontend_surface_contributions,
+    register_defaultspack_surface_contribution,
+)
 
 
 def register_defaultspack_binding_handlers(interface_registry: Any) -> Dict[str, Any]:
@@ -92,6 +96,7 @@ def bind_frontend_surface(
     nodes: Dict[str, Any] | None = None,
     profile: Any = None,
 ) -> Dict[str, Any] | None:
+    migrate_defaultspack_frontend_surface_contributions(runtime_profile)
     frontend = _frontend_record(runtime_profile, target)
     surface_ref = _instance_ref(source)
     frontend["surface"] = surface_ref
@@ -108,8 +113,12 @@ def bind_frontend_surface(
         diagnostics=diagnostics,
     )
     if launch_target:
-        frontend["surface_launch_target"] = launch_target
-        runtime_profile.setdefault("launch", {})["surface"] = launch_target
+        contribution = register_defaultspack_surface_contribution(
+            runtime_profile,
+            launch_target,
+        )
+        frontend["surface_launch_target"] = contribution["target"]
+        runtime_profile.setdefault("launch", {})["surface"] = contribution["target"]
     if diagnostics:
         return {"diagnostics": diagnostics}
     return None

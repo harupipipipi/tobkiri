@@ -54,6 +54,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .docker_run_builder import DockerRunBuilder
+from .paths import (
+    PACK_DATA_BASE_DIR,
+    discover_pack_locations,
+    get_pack_block_dirs,
+    is_path_within,
+    PackLocation,
+)
 
 # ============================================================
 # Docker可用性キャッシュ (#17)
@@ -68,22 +76,6 @@ _DOCKER_CHECK_CACHE_TTL: float = float(os.environ.get("RUMI_DOCKER_CHECK_CACHE_T
 # SEC-2: Docker image ダイジェスト固定
 DEFAULT_EXECUTOR_IMAGE: str = "python:3.11-slim@sha256:233de06753d30d120b1a3ce359d8d3be8bda78524cd8f520c99883bfe33964cf"
 EXECUTOR_IMAGE: str = os.environ.get("RUMI_EXECUTOR_IMAGE") or DEFAULT_EXECUTOR_IMAGE
-
-
-
-from .docker_run_builder import DockerRunBuilder
-
-from .paths import (
-    ECOSYSTEM_DIR,
-    PACK_DATA_BASE_DIR,
-    discover_pack_locations,
-    find_ecosystem_json,
-    get_pack_block_dirs,
-    is_path_within,
-    PackLocation,
-)
-
-
 
 # ============================================================
 # UDS GID ユーティリティ (A-1: --group-add 対応)
@@ -269,6 +261,7 @@ class PathValidator:
         """
         try:
             path = Path(file_path)
+            resolved: Path | None
 
             # owner_pack 未指定の場合は原則拒否（sandbox のみ許可）
             if not owner_pack:
@@ -445,7 +438,6 @@ class PythonFileExecutor:
 
         # principal 強制（v1）: principal は必ず owner_pack に固定
         # FlowStep から principal_id が来ても無視（乱用事故防止）
-        effective_principal = resolved_pack
         if principal_id is not None and principal_id != resolved_pack:
             try:
                 from .audit_logger import get_audit_logger
@@ -486,7 +478,7 @@ class PythonFileExecutor:
 
         # 3. パス検証
         path_valid, path_error, resolved_path = self._path_validator.validate(file_path, resolved_pack)
-        if not path_valid:
+        if not path_valid or resolved_path is None:
             result.error = path_error
             result.error_type = "path_rejected"
             result.execution_mode = "rejected"
@@ -573,8 +565,8 @@ class PythonFileExecutor:
                 success=result.success,
                 execution_mode=result.execution_mode,
                 execution_time_ms=result.execution_time_ms,
-                error=result.error,
-                error_type=result.error_type,
+                error=result.error or "",
+                error_type=result.error_type or "",
                 warnings=result.warnings
             )
         except Exception:
@@ -902,19 +894,18 @@ request = http_request
                     stderr=subprocess.PIPE,
                 )
 
+                stdout_pipe = proc.stdout
+                stderr_pipe = proc.stderr
+                if stdout_pipe is None or stderr_pipe is None:
+                    raise RuntimeError("executor output pipes were not created")
+
                 # タイムアウト付きで stdout を制限読み取り
-                import selectors
-                stdout_chunks = []
-                stderr_chunks = []
-                stdout_total = 0
-                stdout_exceeded = False
                 deadline = _t14.monotonic() + timeout_seconds
 
                 # communicate に頼らず、stdout を制限付きで読む
                 # ただし stderr も回収する必要があるため Popen.communicate 的に処理
-                raw_stdout = proc.stdout.read(MAX_STDOUT_SIZE + 1)
+                raw_stdout = stdout_pipe.read(MAX_STDOUT_SIZE + 1)
                 if len(raw_stdout) > MAX_STDOUT_SIZE:
-                    stdout_exceeded = True
                     proc.kill()
                     proc.wait(timeout=5)
                     result.error = f"stdout exceeded size limit ({MAX_STDOUT_SIZE} bytes)"
@@ -922,7 +913,7 @@ request = http_request
                 else:
                     remaining_timeout = max(0.1, deadline - _t14.monotonic())
                     try:
-                        raw_stderr = proc.stderr.read()
+                        raw_stderr = stderr_pipe.read()
                         proc.wait(timeout=remaining_timeout)
                     except subprocess.TimeoutExpired:
                         proc.kill()
@@ -1286,8 +1277,8 @@ else:
         def proxy_request(
             method: str,
             url: str,
-            headers: Dict[str, str] = None,
-            body: str = None,
+            headers: Dict[str, str] | None = None,
+            body: str | None = None,
             timeout_seconds: float = 30.0
         ) -> Dict[str, Any]:
             """
@@ -1377,7 +1368,7 @@ else:
                 event_type=f"python_file_call_{rejection_type}_rejected",
                 severity="warning",
                 description=result.error or f"Rejected due to {rejection_type}",
-                pack_id=context.owner_pack,
+                pack_id=context.owner_pack or "unknown",
                 details={
                     "flow_id": context.flow_id,
                     "step_id": context.step_id,

@@ -1,0 +1,83 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:2c54e3470a52bce164bb07973955a47da81b978bf13446ce6b70fb3bd1bc4b18",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:34ff7ec1e6954fbc69fe10ac50b1a153b8b50b6d899f270a5545e5f5da8d06d1",
+      "kind": "asset",
+      "path": "policies/host_capability_boundary.policy.yaml"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "source_identity": "sha256:908e111b79b841deee54fa2ecda86600b19fda379a5f06949ee126449f09edf7",
+    "artifact_set_digest": "sha256:c2a9083c25e87faa458ee5fd9d533cabea0557cf4f86ef3ad5eebd262a7eaad7",
+    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_host_capabilities_pack",
+      "rumi_host_capabilities_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:279834b70350137716865bf09b00d7bd86519304e3a6944804882c6361274709",
+    "display_name": "rumi_host_capabilities_pack",
+    "id": "rumi_host_capabilities_pack",
+    "kind": "application",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_host_capabilities_pack/pack.v4.json",
+    "source_digest": "sha256:908e111b79b841deee54fa2ecda86600b19fda379a5f06949ee126449f09edf7",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:e636ffd93dc798631aec4fe2e97380ebe6a963fadc5de7a06b6623c9ddb8a257",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:b6e07995bd8c37b123c54516a648dbd3c8ab077a3e9a60d19a3b4cdfe8232c75",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_host_capabilities_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:908e111b79b841deee54fa2ecda86600b19fda379a5f06949ee126449f09edf7"
+      }
+    ]
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "host.permission.open_settings",
+      "host.permission.status"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

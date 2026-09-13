@@ -21,7 +21,7 @@
     "mock_execution": "handoff_to_rumi_sandbox_runtime_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "API Toolsmith is a declarative review and handoff pack; it must not be promoted into defaultspack until runtime tool registration, secret review, and real contract-test evidence exist outside this pack.",
     "criteria": [

@@ -1,0 +1,111 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:54ee42c48b02418cdc6f9fe2e1006197f8e6e7c896d7be2dbbc2116b6afa8d28",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:fa8c19cbc42474a90474f4879873b285698936dbedea75b70667220f18c35784",
+      "kind": "sidecar",
+      "path": "frontend/contributions/connections-route.json"
+    },
+    {
+      "digest": "sha256:f8e70d99a69db1bbe03ef0bb298ce4bc86abb34965092965e22d98997327e9fe",
+      "kind": "sidecar",
+      "path": "frontend/contributions/connections-settings.json"
+    },
+    {
+      "digest": "sha256:a011c47573faf147dc79a7bb6ef9bb92f18a07eb27dc24b680055638302255db",
+      "kind": "sidecar",
+      "path": "ui/app.js"
+    },
+    {
+      "digest": "sha256:754ae26aa606582d574f9993d49d10742358d6b344331443078db828e3bb41f0",
+      "kind": "sidecar",
+      "path": "ui/index.html"
+    },
+    {
+      "digest": "sha256:b9d378f1c75cd3ff6977660deb62c9de5bc23100968de08d91daf46a8a0ad3d2",
+      "kind": "sidecar",
+      "path": "ui/style.css"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "source_identity": "sha256:de54c4a93298f09a609c07da7e53a639caa5867593440c2377501747b52dbf22",
+    "artifact_set_digest": "sha256:927279fea1a272a42616b4881ee66edff5c3660e40f3ee9920e9959ddda30230",
+    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_connector_settings_surface_pack",
+      "rumi_connector_settings_surface_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:3cb71d9e00e41d0e17c4bcba4fe3ea3cbae3ab41533bab20378424b7f30713e0",
+    "display_name": "Rumi Connector Settings Surface",
+    "id": "rumi_connector_settings_surface_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_connector_settings_surface_pack/pack.v4.json",
+    "source_digest": "sha256:de54c4a93298f09a609c07da7e53a639caa5867593440c2377501747b52dbf22",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:2f07cad6d4a154c40058ac50483edcd4d17493e28a2629f870ca75bee69a157e",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:69df520ecc5cab7c3f85790c573026369a1ff9ff947a41e6512155343d860712",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_connector_settings_surface_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:de54c4a93298f09a609c07da7e53a639caa5867593440c2377501747b52dbf22"
+      }
+    ]
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "connector.gateway.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.connector.gateway.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_connector_transport_gateway_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

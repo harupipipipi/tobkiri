@@ -1,0 +1,210 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_ai_gateway_pack",
+  "source_identity": "sha256:948c0e77c4fcfe9c442e003e0843d24eadba4bc985a7dc407baf486afae91f56",
+  "variants": [
+    {
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.generate.python",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.generate.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.preflight.python",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "implementation_path": "runtime/preflight.py",
+      "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ai.readiness.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:ff956d72ff72a242f94b251f4ed29a02dbf60447e8a20c121a8775c71cb27b9b",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "messages": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "content": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "enum": [
+                        "system",
+                        "user",
+                        "assistant"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "role",
+                    "content"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 2048,
+                "minItems": 1,
+                "type": "array"
+              },
+              "model_profile_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "tool_calling": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "model_profile_id",
+              "messages"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "catalog_revision": {
+                "type": "string"
+              },
+              "model_id": {
+                "type": "string"
+              },
+              "model_profile_id": {
+                "type": "string"
+              },
+              "provider_instance_id": {
+                "type": "string"
+              },
+              "ready": {
+                "const": true
+              }
+            },
+            "required": [
+              "ready",
+              "model_profile_id",
+              "model_id",
+              "provider_instance_id",
+              "catalog_revision"
+            ],
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics.python",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.routing-diagnostics",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ai.routing.diagnostics.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:b41c3f794afcdf4913c27f3245d162472e43f7dc712ccdf5e1dc0486c599eb46",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_ai_gateway_pack.ai-gateway.stream.python",
+      "function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "implementation_path": "runtime/gateway.py",
+      "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.stream.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:487608b15370de52d2d22aef5b42ee1947a37476b3588c3ee8ce60bf35ee5597",
+          "operation_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:b21cffd93ac3bf716fe79332b09704830de6ab41b6720c15b49acf136e131b7f",
+  "catalog_digest": "sha256:b966d1966abcaaaecf0b1ded9737ed49cd015d72d4537b0e748d6aa491ee5803"
+}

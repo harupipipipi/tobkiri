@@ -132,6 +132,23 @@ class TestUuidUtils:
 
 
 class TestMountManager:
+
+    def test_uses_configured_user_data_root_by_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        temp_dir: Path,
+    ) -> None:
+        """Desktop runtime mounts must honor the configured user-data root."""
+        user_data = temp_dir / "launcher-user-data"
+        monkeypatch.delenv("TOBKIRI_USER_DATA", raising=False)
+        monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+
+        manager = MountManager()
+
+        assert manager.config_path == user_data / "mounts.json"
+        assert manager.get_path("data.settings").resolve() == (
+            user_data / "settings"
+        ).resolve()
     """マウント管理のテスト"""
     
     @pytest.fixture

@@ -1,0 +1,62 @@
+[
+  {
+    "name": "plain text has no mention",
+    "text": "plain text",
+    "tokens": [],
+    "active_query": null
+  },
+  {
+    "name": "basic active mention",
+    "text": "@tool",
+    "known_values": ["tool"],
+    "tokens": ["tool"],
+    "active_query": "tool"
+  },
+  {
+    "name": "mention after normal text",
+    "text": "Use @tool",
+    "known_values": ["tool"],
+    "tokens": ["tool"],
+    "active_query": "tool"
+  },
+  {
+    "name": "two mentions retain order",
+    "text": "@tool and @skill",
+    "known_values": ["tool", "skill"],
+    "tokens": ["tool", "skill"],
+    "active_query": "skill"
+  },
+  {
+    "name": "escaped mention is inert",
+    "text": "\\@escaped",
+    "known_values": ["escaped"],
+    "tokens": [],
+    "active_query": null
+  },
+  {
+    "name": "email address is not a mention",
+    "text": "prefix@example.com",
+    "known_values": ["example.com"],
+    "tokens": [],
+    "active_query": null
+  },
+  {
+    "name": "supplementary-plane Unicode mention",
+    "text": "@𐐀tool",
+    "known_values": ["𐐀tool"],
+    "tokens": ["𐐀tool"],
+    "active_query": "𐐀tool",
+    "cursor_codepoint": 6,
+    "cursor_utf16": 7,
+    "active_start_codepoint": 0,
+    "active_start_utf16": 0,
+    "token_spans": [[0, 6]]
+  },
+  {
+    "name": "closed punctuation ends active query",
+    "text": "(@tool)",
+    "known_values": ["tool"],
+    "tokens": ["tool"],
+    "active_query": null
+  }
+]

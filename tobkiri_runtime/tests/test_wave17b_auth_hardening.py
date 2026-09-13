@@ -524,28 +524,20 @@ class TestPrincipalIdValidation:
 
 class TestPermissionManagerMode:
     def test_permissive_mode_warning(self, caplog):
-        """PermissionManager logs warning in permissive mode."""
-        import logging
-        from core_runtime.permission_manager import PermissionManager
+        """The retired PermissionManager cannot select a permissive mode."""
+        del caplog
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        with mock.patch.dict(os.environ, {"RUMI_PERMISSION_MODE": "permissive"}, clear=False):
-            with caplog.at_level(logging.WARNING, logger="core_runtime.permission_manager"):
-                PermissionManager()
-
-        assert any("PERMISSIVE" in r.message for r in caplog.records)
+        assert_retired_module_absent("core_runtime.permission_manager")
 
     def test_env_var_mode_selection(self):
-        """PermissionManager reads RUMI_PERMISSION_MODE from env."""
-        from core_runtime.permission_manager import PermissionManager
+        """Environment mode cannot replace the captured v4 security epoch."""
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-        with mock.patch.dict(os.environ, {"RUMI_PERMISSION_MODE": "secure"}):
-            pm = PermissionManager()
-        assert pm.get_mode() == "secure"
+        assert_profile_resolver_requires_authority_snapshot()
 
     def test_explicit_mode_overrides_env(self):
-        """Explicit mode parameter takes precedence over env var."""
-        from core_runtime.permission_manager import PermissionManager
+        """Caller-supplied mode cannot override Host-captured authority."""
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        with mock.patch.dict(os.environ, {"RUMI_PERMISSION_MODE": "secure"}):
-            pm = PermissionManager(mode="permissive")
-        assert pm.get_mode() == "permissive"
+        assert_retired_module_absent("core_runtime.permission_manager")

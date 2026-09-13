@@ -1,9 +1,15 @@
 """defaults.coding.file_delete — ファイル削除ブロック"""
 
 from blocks._common import ok, error
-from blocks.coding._approval import approval_invalid_response, approval_required, is_server_approved
-from blocks.coding._workspace import resolve_workspace, with_workspace, workspace_error_response
-from domain.coding.file_ops import FileOps
+from blocks.coding._approval import approval_required
+from blocks.coding._workspace import canonical_mutation_guard
+from domain.coding.contract_adapter import (
+    FILE_MUTATE,
+    authorize_legacy_coding_operation,
+    invoke_coding_contract,
+    service_payload,
+    workspace_id,
+)
 from domain.safety.audit import record_attempt, record_execution, record_failure
 
 
@@ -22,35 +28,35 @@ def run(input_data, context=None):
     operation = "file.delete"
     record_attempt(operation, "high", {"path": path})
     try:
-        workspace = resolve_workspace(input_data, context, mutation=True, operation=operation)
-    except Exception as e:
-        workspace_error = workspace_error_response(e, error)
-        if workspace_error:
-            return workspace_error
-        return error(str(e), code="WORKSPACE_ERROR")
-    if not is_server_approved(context, operation, input_data):
-        invalid = approval_invalid_response(operation, input_data, error)
-        if invalid:
-            return invalid
-        return ok(approval_required(operation, "high", args=input_data, path=path))
-
-    try:
-        ops = FileOps(workspace.root_path)
-        checkpoint = None
-        if input_data.get("checkpoint", True) is not False:
-            checkpoint = ops.checkpoint_before_mutation(
-                operation,
-                [path],
-                metadata={"path": path},
+        selected_workspace_id = workspace_id(input_data)
+        arguments = {
+            "path": str(path),
+            "expected_sha256": str(input_data.get("expected_sha256") or ""),
+        }
+        authorization = authorize_legacy_coding_operation(
+            legacy_operation=operation,
+            service_pack_id="rumi_file_mutation_pack",
+            service_operation="file.delete",
+            authority="file.delete",
+            arguments=arguments,
+            input_data=input_data,
+            context=context,
+            selected_workspace_id=selected_workspace_id,
+            mutation_guard=canonical_mutation_guard,
+        )
+        if not authorization.get("authorized"):
+            if authorization.get("reason") == "approval_required":
+                return ok(approval_required(operation, "high", args=input_data, path=path))
+            return error(
+                str(authorization.get("message") or authorization.get("reason")),
+                code=str(authorization.get("code") or "APPROVAL_INVALID"),
             )
-        ops.delete_file(path)
+        data = invoke_coding_contract(
+            FILE_MUTATE,
+            "delete",
+            service_payload(authorization, arguments),
+        )
         record_execution(operation, "high", {"path": path})
-        data = with_workspace({
-            "path": path,
-            "deleted": True,
-        }, workspace)
-        if checkpoint is not None:
-            data["checkpoint"] = checkpoint
         return ok(data)
     except FileNotFoundError as e:
         return error(str(e), code="FILE_NOT_FOUND")
@@ -60,8 +66,5 @@ def run(input_data, context=None):
     except ValueError as e:
         return error(str(e), code="PATH_TRAVERSAL")
     except Exception as e:
-        workspace_error = workspace_error_response(e, error)
-        if workspace_error:
-            return workspace_error
         record_failure(operation, "high", str(e), {"path": path})
         return error(str(e), code="DELETE_ERROR")

@@ -1,0 +1,159 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:02cd3ee96d97be8c0c49950c7ff52832f8acfe3c48d2182a3c813e9df9858c3b",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
+      "kind": "executable",
+      "path": "runtime/authoring.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.tool.authoring.publish.v1",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-publish"
+      ],
+      "revision_digest": "sha256:cd7a3ebc54c48ab00c37224f96f056dabc07b8863bbded6ee0747bf0974da656"
+    },
+    {
+      "contract_id": "tobkiri.service.tool.authoring.validate.v1",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-validate"
+      ],
+      "revision_digest": "sha256:19feb9d8bbd4ff7cc45275b0192413bdae7155a6ec60704fec953ca09618fb6e"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:cd7a3ebc54c48ab00c37224f96f056dabc07b8863bbded6ee0747bf0974da656",
+      "id": "rumi_tool_authoring_pack.tool-authoring.publish",
+      "implementation_digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-publish"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:19feb9d8bbd4ff7cc45275b0192413bdae7155a6ec60704fec953ca09618fb6e",
+      "id": "rumi_tool_authoring_pack.tool-authoring.validate",
+      "implementation_digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-validate"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:3b24f458f5c281843652aed4192cb82875fc4bb1d76c0adc33a6db2c88920f27",
+    "contract_catalog_digest": "sha256:e6d5272e4f17b122410221a7d6da6b95f17d81282da60ef9781afd78b45ff10d",
+    "source_identity": "sha256:110aedd002865a99636ea79703f5ea62ea7fdd029c203db0265f2b35cbae1ecd"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.tool.authoring.publish.v1",
+      "rumi.service.tool.authoring.validate.v1",
+      "rumi:ecosystem/rumi_tool_authoring_pack",
+      "rumi_tool_authoring_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.tool.authoring.publish.v1",
+      "effect_ceiling": [
+        "capability:tool.authoring.publish",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_tool_authoring_pack.tool-authoring-publish",
+      "owner": "rumi_tool_authoring_pack",
+      "provider_id": "rumi_tool_authoring_pack.tool-authoring.publish",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.tool.authoring.validate.v1",
+      "effect_ceiling": [
+        "capability:tool.authoring.validate",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_tool_authoring_pack.tool-authoring-validate",
+      "owner": "rumi_tool_authoring_pack",
+      "provider_id": "rumi_tool_authoring_pack.tool-authoring.validate",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:3b24f458f5c281843652aed4192cb82875fc4bb1d76c0adc33a6db2c88920f27",
+    "display_name": "Rumi Tool Authoring",
+    "id": "rumi_tool_authoring_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:110aedd002865a99636ea79703f5ea62ea7fdd029c203db0265f2b35cbae1ecd",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:110aedd002865a99636ea79703f5ea62ea7fdd029c203db0265f2b35cbae1ecd",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_authoring_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.tool.authoring.publish.v1",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-publish"
+      ],
+      "owner": "rumi_tool_authoring_pack",
+      "provider_id": "rumi_tool_authoring_pack.tool-authoring.publish"
+    },
+    {
+      "contract_reference": "tobkiri.service.tool.authoring.validate.v1",
+      "operations": [
+        "rumi_tool_authoring_pack.tool-authoring-validate"
+      ],
+      "owner": "rumi_tool_authoring_pack",
+      "provider_id": "rumi_tool_authoring_pack.tool-authoring.validate"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "tool.authoring.publish",
+      "tool.authoring.validate"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.tool.definition.manage.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

@@ -26,7 +26,7 @@
     "profiles": "allow_side_by_side",
     "artifact_catalogs": "merge_by_catalog_id"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Optional workspace catalog pack; it augments defaultspack instead of replacing it."
   },

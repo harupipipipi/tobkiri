@@ -25,7 +25,7 @@
     "restart_evidence": "owned_by_rumi_agent_continuity_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Continuity packets need real restart success evidence and durable owner integrations before defaultspack promotion.",
     "promotion_blockers": [

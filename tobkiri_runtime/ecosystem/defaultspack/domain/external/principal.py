@@ -28,7 +28,12 @@ def principal_from(value: Any, *, default_type: str = "unknown") -> ExternalPrin
         return value
     if not isinstance(value, dict):
         return ExternalPrincipal(default_type, str(value or ""))
-    metadata = value.get("metadata") if isinstance(value.get("metadata"), dict) else {}
+    metadata_value = value.get("metadata")
+    metadata: dict[str, object] = (
+        {str(key): item for key, item in metadata_value.items()}
+        if isinstance(metadata_value, dict)
+        else {}
+    )
     return ExternalPrincipal(
         type=str(value.get("type") or default_type or "unknown"),
         id=str(value.get("id") or ""),

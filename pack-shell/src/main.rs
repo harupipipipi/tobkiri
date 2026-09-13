@@ -68,6 +68,9 @@ fn run(config: PackShellConfig) -> Result<i32> {
         let mut kp = KernelProcess::new(config.kernel_cmd.clone());
         kp.start(config.port)
             .context("Failed to start kernel process")?;
+        if !kp.is_running() {
+            anyhow::bail!("Kernel process exited immediately after start");
+        }
         _kernel_process = Some(kp);
 
         // Step 3: Wait for kernel to become healthy

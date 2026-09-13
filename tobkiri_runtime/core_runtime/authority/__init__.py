@@ -1,27 +1,23 @@
-"""Authority service public entry points."""
+"""Authority data types retained after the v4 execution-authority cutover."""
 
 from __future__ import annotations
 
 from .models import AuthorityDecision, AuthorityRequest, AuthorityResource
 from .principal import build_principal_id
-from .service import AuthorityService
-from .test_harness import AuthorityQAHarness, AuthorityQAModeError, AuthorityQAScenario
 
 
-def get_authority_service() -> AuthorityService:
-    from core_runtime.di_container import get_container
-
-    return get_container().get("authority_service")
+def get_authority_service() -> None:
+    """Reject access to the removed execution-authority singleton."""
+    raise RuntimeError(
+        "legacy authority service is unavailable; use AuthorityV4Adapter "
+        "through the captured V4DispatchSession"
+    )
 
 
 __all__ = [
     "AuthorityDecision",
     "AuthorityRequest",
     "AuthorityResource",
-    "AuthorityQAHarness",
-    "AuthorityQAModeError",
-    "AuthorityQAScenario",
-    "AuthorityService",
     "build_principal_id",
     "get_authority_service",
 ]

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import type { CodingCheckpoint, CodingDiffResponse } from "../../lib/api";
 import { codingResources } from "../../features/coding/resources/codingResources";
+import { ErrorNotice } from "../ErrorNotice";
 import { codingActionRequiresApproval } from "./approvalQueueSync";
 
 function checkpointLabel(checkpoint: CodingCheckpoint): string {
@@ -276,7 +277,13 @@ export function CheckpointPanel({
         </div>
       </div>
 
-      {error && <p role="alert" className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-200">{error}</p>}
+      {error && (
+        <ErrorNotice
+          className="mb-2 px-2 py-1 text-[11px]"
+          copyLabel="チェックポイントのエラーをコピー"
+          message={error}
+        />
+      )}
       {message && <p role="status" className="mb-2 rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300">{message}</p>}
 
       <div className="flex items-center gap-1.5">

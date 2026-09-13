@@ -18,6 +18,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_sandbox_runtime_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 
@@ -37,7 +38,8 @@ def _meaningful_pack_assets() -> set[str]:
     return {
         path.relative_to(PACK_DIR).as_posix()
         for path in PACK_DIR.rglob("*")
-        if path.is_file() and path.name != "ecosystem.json"
+        if path.is_file()
+        and path.name not in {"ecosystem.json", "executables.v4.json"}
     }
 
 
@@ -69,7 +71,8 @@ def test_pack_required_assets_metadata_and_schema_validity() -> None:
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
     assert ecosystem["vocabulary"]["types"]
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert "depends_on" not in ecosystem
     assert "optional_integrations" not in ecosystem
     assert ecosystem["required_secrets"] == []
@@ -77,7 +80,9 @@ def test_pack_required_assets_metadata_and_schema_validity() -> None:
     assert ecosystem["metadata"]["network_policy"] == "none_by_default"
     assert ecosystem["metadata"]["executable_code"] is False
     assert ecosystem["metadata"]["registers_tools"] is False
-    assert _asset_index_paths(ecosystem) == _meaningful_pack_assets()
+    assert _asset_index_paths(ecosystem) == (
+        _meaningful_pack_assets() - V4_AUTHORITY_ARTIFACTS
+    )
 
 
 def test_pack_yaml_json_assets_parse() -> None:
@@ -96,10 +101,10 @@ def test_pack_setup_discoverable_and_validates_dependencies() -> None:
     assert setup["risk_level"] == "high"
     assert candidate.depends_on == []
     assert candidate.overlap_policy["code_execution"] == "requires_defaultspack_tool_grants"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "Sandbox Runtime" in candidate.defaultspack_promotion["reason"]
-    assert "secret_mounts_require_security_review" in candidate.defaultspack_promotion["promotion_blockers"]
-    assert "runtime_receipt_schema_cases" in candidate.defaultspack_promotion["promotion_evidence_required"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "Sandbox Runtime" in candidate.base_pack_promotion["reason"]
+    assert "secret_mounts_require_security_review" in candidate.base_pack_promotion["promotion_blockers"]
+    assert "runtime_receipt_schema_cases" in candidate.base_pack_promotion["promotion_evidence_required"]
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

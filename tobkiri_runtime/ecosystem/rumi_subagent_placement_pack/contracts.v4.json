@@ -1,0 +1,379 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.subagent.placement.compile.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:subagent.placement.compile",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-compiler",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_subagent_placement_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_subagent_placement_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_subagent_placement_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_subagent_placement_pack.subagent-placement.compiler",
+        "required_capabilities": [
+          "subagent.placement.compile"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:fa8e324fbf3d343bf6ba0993ae1c33c1d60c00b841a91f122631ba4802eeca8c",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.subagent.placement.patch.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:subagent.placement.patch",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-patch",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_subagent_placement_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_subagent_placement_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_subagent_placement_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_subagent_placement_pack.subagent-placement.patch",
+        "required_capabilities": [
+          "subagent.placement.patch"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:9014240b6e54d160eb0fe65ac8011b92aeb60d250f5586b260277534b59cc664",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.subagent.placement.stage.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:subagent.placement.compile",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-core-stage",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_subagent_placement_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_subagent_placement_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "chain",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_subagent_placement_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_subagent_placement_pack.subagent-placement.core-stage",
+        "required_capabilities": [
+          "subagent.placement.compile"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:9838253ef8ea929a23fb62599989ba10f2cec5a386de92ce6ae470927ce30aab",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.subagent.protocol.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:subagent.placement.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-protocols",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_subagent_placement_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_subagent_placement_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "isolate",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_subagent_placement_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_subagent_placement_pack.subagent-placement.builtin-protocols",
+        "required_capabilities": [
+          "subagent.placement.read"
+        ],
+        "security": "internal"
+      },
+      "revision_digest": "sha256:3455347724726799cb884a186d29e3435e8d67d90bf60aad263fab7ca1ce09a7",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.subagent.runtime.assignment.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:subagent.runtime.assign",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-assignment",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_subagent_placement_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_subagent_placement_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_subagent_placement_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_subagent_placement_pack.subagent-placement.assignment",
+        "required_capabilities": [
+          "subagent.runtime.assign"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:3ad4f81123132b1bd31d3af7fcfc659b3f8280ac3bc98391811707a148632e3d",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.subagent.topology.compile.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:subagent.topology.compile",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_subagent_placement_pack.subagent-placement-topology",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_subagent_placement_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_subagent_placement_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_subagent_placement_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_subagent_placement_pack.subagent-placement.topology",
+        "required_capabilities": [
+          "subagent.topology.compile"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:8f1b901213cce8edaa9ce321aad9e16a890452a35148407f6dcf89a78230d793",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_subagent_placement_pack",
+  "source_identity": "sha256:8eb11e971bb380b7a80568f9a18c1bf9258c44d54b94d65e69335f670f20e48b"
+}

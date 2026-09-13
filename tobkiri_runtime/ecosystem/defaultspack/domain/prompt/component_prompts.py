@@ -34,7 +34,7 @@ def _load_rules(manifest: dict[str, Any]) -> dict[str, Any]:
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -70,7 +70,9 @@ def component_prompt_text(prompt_id: str) -> str | None:
 def component_prompt_records() -> dict[str, dict[str, Any]]:
     records: dict[str, dict[str, Any]] = {}
     for prompt_id, manifest in component_prompt_manifests().items():
-        body = component_prompt_text(prompt_id) or ""
+        body = component_prompt_text(prompt_id)
+        if body is None:
+            continue
         rules = _load_rules(manifest)
         records[prompt_id] = {
             "id": prompt_id,

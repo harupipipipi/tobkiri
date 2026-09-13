@@ -1,0 +1,157 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.tool.authorize.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "core-authority",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "tool-approval.authorize",
+        "required_capabilities": [
+          "tool.authority.consume"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:03ff0d15044227dd93e47aeb4640ff6633375b66fd284d20ab0ded3dff21e8df",
+      "contract_id": "rumi.service.tool.authorize.v1",
+      "id": "tool-authorize",
+      "loader": "python",
+      "module": "ecosystem.rumi_tool_approval_bridge_pack.runtime.bridge",
+      "symbol": "create_authorize_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.tool.authorize.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Core-authority one-shot approval binding for tool invocations.",
+        "display_name": "Rumi Tool Approval Bridge",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:28111b11791cc3bb072dba54bb5ddf943d8c0e39a610919a21e5085f0bf79793",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:875d534c9a41b2844e4bd78cba38740dd66f9d108ab238649d8d1123989bf00a"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "tool_approval_bridge"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "replay": "one_shot",
+            "self_approval": false
+          }
+        },
+        "pack_id": "rumi_tool_approval_bridge_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_approval_bridge_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_approval_bridge_pack:1.0.0",
+          "content_hash": "sha256:6fa3365a03542b990453151845e59b62424513f9c8dff2398b99744130347cec",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_approval_bridge_pack"
+    },
+    "rumi.tool_approval.boundary": {
+      "replay": "one_shot",
+      "self_approval": false,
+      "token_scope": [
+        "operation",
+        "args_hash",
+        "caller",
+        "profile",
+        "expiry",
+        "replay"
+      ]
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_approval_bridge_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:875d534c9a41b2844e4bd78cba38740dd66f9d108ab238649d8d1123989bf00a"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.safety.approval",
+      "defaultspack.domain.tool.executor.approval"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior approval bridge; revoke outstanding one-shot tokens.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Core-authority one-shot approval binding for tool invocations.",
+    "display_name": "Rumi Tool Approval Bridge",
+    "id": "rumi.tool_approval_bridge",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "tool.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_approval_bridge_pack:1.0.0",
+    "content_hash": "sha256:6fa3365a03542b990453151845e59b62424513f9c8dff2398b99744130347cec",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

@@ -1,0 +1,64 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.media.inspect.v1"
+    ],
+    "requires": [
+      "rumi.service.file.inspect.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_file_inspect_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Read-only workspace document and media inspection.",
+  "display_name": "Rumi Media Inspect Service",
+  "host_execution": false,
+  "metadata": {
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:945779951b78e8a0efacc486a28383a46d40afb575b915f7298014bb31587450",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91"
+    },
+    "capture": false,
+    "file_access": "global_contract_only",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only": true,
+    "read_only_projection": true,
+    "tool_or_ui_registry_imports": false,
+    "vision_inference": false
+  },
+  "pack_id": "rumi_media_inspect_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_media_inspect_service_pack",
+  "provenance": {
+    "build_identity": "rumi_media_inspect_service_pack:1.0.0",
+    "content_hash": "sha256:73d0c3316b34ace2b00abf868dbbc6ac47c67be1a694b472485637f63b22553e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "file.inspect",
+    "media.inspect"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

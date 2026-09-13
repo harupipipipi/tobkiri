@@ -1,0 +1,66 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.policy.evaluate.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Authority-operation policy independent from concrete tool IDs.",
+  "display_name": "Rumi Tool Policy",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:da2d0697b8feb3db9c7abd4c6aa7cb4e3ad62aaadc496740cc19ba4df56920fe",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:0a9fbb0b955e09bbd29e1d2def89e849b3a610050642bc64eb9575e85f708a82"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:0a9fbb0b955e09bbd29e1d2def89e849b3a610050642bc64eb9575e85f708a82"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "tool_authority_policy"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "service_mutate_approval_required": true,
+      "tool_id_branches": false,
+      "unknown_authority": "deny"
+    }
+  },
+  "pack_id": "rumi_tool_policy_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_policy_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_policy_pack:1.0.0",
+    "content_hash": "sha256:e2088425d6e0dc5c4ee87974670f925e23923de11dfc12967656026304002ccf",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.policy.evaluate"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

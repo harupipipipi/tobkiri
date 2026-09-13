@@ -1,3 +1,7 @@
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -124,7 +128,7 @@ test("same-origin paths are not trusted without exact attachment identity", () =
     `${APP_ORIGIN}/api/attachments/abcdefgh-evil`,
     `${APP_ORIGIN}/api/media/attachments/abcdefgh`,
     `${APP_ORIGIN}/api/blobs/abcdefgh`,
-    "/api/attachments/abcdefgh",
+    routeKey("api/attachments/abcdefgh"),
   ]) {
     assert.notEqual(
       classifyUntrustedImageUrl(value, { appOrigin: APP_ORIGIN }).disposition,

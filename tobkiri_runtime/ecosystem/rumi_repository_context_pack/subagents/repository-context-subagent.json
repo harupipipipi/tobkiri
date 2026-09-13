@@ -1,0 +1,77 @@
+{
+  "schema_version": "tobkiri.subagent/v1",
+  "kind": "subagent",
+  "id": "tobkiri.repository-context",
+  "version": "1.0.0",
+  "display_name": "Repository Context Subagent",
+  "description": "Selects and summarizes repository evidence before a stronger model investigates.",
+  "runtime": {
+    "driver_contract": "rumi.service.subagent.runtime.v1",
+    "driver_key": "repository-context",
+    "supported_isolation": ["process", "sandbox"],
+    "state_modes": ["ephemeral"]
+  },
+  "interfaces": {
+    "accepts": ["tobkiri.repository-investigation/v1"],
+    "produces": ["tobkiri.repository-evidence/v1"],
+    "protocols": [
+      "tobkiri.protocol/agent-tool/v1",
+      "tobkiri.protocol/delegate/v1"
+    ]
+  },
+  "ports": {
+    "model": {
+      "contract": "rumi.service.ai.generate.v1",
+      "binding_policy": "placement_required"
+    },
+    "tools": {
+      "contract": "rumi.service.file.inspect.v1",
+      "binding_policy": "placement_required"
+    },
+    "skills": {"binding_policy": "placement"},
+    "workspace": {
+      "contract": "rumi.resource.workspace.v1",
+      "binding_policy": "placement_required"
+    },
+    "context": {"binding_policy": "placement"}
+  },
+  "requirements": {
+    "model_capabilities": ["text", "structured_output"],
+    "runtime_capabilities": [],
+    "required_capabilities": [
+      "file.inspect",
+      "ai.gateway.generate",
+      "subagent.placement.compile",
+      "repository.content.external_share"
+    ],
+    "optional_capabilities": [],
+    "denied_capabilities": [
+      "file.write",
+      "git.publish",
+      "secret.read",
+      "terminal.execute"
+    ],
+    "minimum_pack_trust": "verified"
+  },
+  "behavior": {
+    "base_instructions": {
+      "resource_ref": "pack-resource://prompts/repository-context.system.md",
+      "merge": "sealed_prefix"
+    },
+    "placement_role_instructions": "required"
+  },
+  "limits": {
+    "maximum_parallel_runs": 4,
+    "maximum_steps": 2,
+    "maximum_tool_calls": 260,
+    "maximum_cost": 1.0,
+    "timeout_seconds": 600,
+    "context_token_budget": 64000
+  },
+  "enforcement": {
+    "tool_allowlist": "host_enforced",
+    "workspace_scope": "host_enforced",
+    "output_schema": "host_validated",
+    "system_prompt": "behavioral_only"
+  }
+}

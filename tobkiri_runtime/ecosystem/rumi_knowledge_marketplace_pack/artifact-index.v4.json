@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:574c99f1ba8c812efcfe6412b575fe48dbfb673389f065b68d7b76da88b953b5",
+  "artifacts": [
+    {
+      "digest": "sha256:ad57eecc355251e7f3fa895a1af41c15630a822204dd4b8c817096490c33fe4a",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:f79ed10c3c59524a07646eece92d8c7ecf2841025570a678ce484dd26f7f7e07",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:856e92189ecccc2b5e5209316fc7cbb88509e45dd2a4eb3f63cbae8bbed07481",
+      "path": "frontend_extensions/marketplace_preview.ui.json",
+      "role": "asset"
+    },
+    {
+      "digest": "sha256:65a77b2615c64bc6a59e9431249f1173b5521310f1878fb86a9f06ea4af6a4f9",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:c1a24e938769a4ee35ed4efd28537302206fce22228e36860134382494d1f2b7"
+  },
+  "pack_id": "rumi_knowledge_marketplace_pack",
+  "source_identity": "sha256:5baa14ac26596a7be0407d2a91e6b0dc5d96262d5f2356a90d69d59d074e7d37"
+}

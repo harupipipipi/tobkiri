@@ -2,14 +2,23 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 from ._helpers import _log_internal_error, _SAFE_ERROR_MSG
+
+if TYPE_CHECKING:
+    from ..approval_manager import ApprovalManager
+    from ..container_orchestrator import ContainerOrchestrator
+    from ..host_privilege_manager import HostPrivilegeManager
 
 logger = logging.getLogger(__name__)
 
 
 class PackLifecycleHandlersMixin:
     """Pack アンインストール / インポート / 適用 のハンドラ"""
+
+    approval_manager: ApprovalManager | None
+    container_orchestrator: ContainerOrchestrator | None
+    host_privilege_manager: HostPrivilegeManager | None
 
     def _uninstall_pack(self, pack_id: str) -> dict:
         # --- バリデーション ---
@@ -191,7 +200,9 @@ class PackLifecycleHandlersMixin:
                 mode=mode,
                 actor=self._pack_apply_actor(actor),
             )
-            return result.to_dict() if hasattr(result, "to_dict") else result
+            if isinstance(result, dict):
+                return result
+            return result.to_dict()
         except Exception as e:
             _log_internal_error("pack_apply", e)
             return {"success": False, "error": _SAFE_ERROR_MSG}

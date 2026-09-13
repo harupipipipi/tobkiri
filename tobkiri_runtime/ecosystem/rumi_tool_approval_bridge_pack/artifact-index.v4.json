@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:28111b11791cc3bb072dba54bb5ddf943d8c0e39a610919a21e5085f0bf79793",
+  "artifacts": [
+    {
+      "digest": "sha256:d0391e6a25f0472998f48638f4b19f2d0f366d43efa005afb11499233df6c2dd",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:88918bdd21600394571e98289986158b4fc5407cd902273e815dfb192c0c82dd",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:45b7befb6e4e65aab490fb95f621e45d1f34653e43cd736b6f0f01ddd698229a",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:03ff0d15044227dd93e47aeb4640ff6633375b66fd284d20ab0ded3dff21e8df",
+      "path": "runtime/bridge.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:cfaf5ec062403c1bc72b3916b5ef1f41fb6a498a5707c900757f0037b06229b5"
+  },
+  "pack_id": "rumi_tool_approval_bridge_pack",
+  "source_identity": "sha256:875d534c9a41b2844e4bd78cba38740dd66f9d108ab238649d8d1123989bf00a"
+}

@@ -18,7 +18,20 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Protocol,
+    Set,
+)
+
+if TYPE_CHECKING:
+    from .audit_logger import AuditLogger
 
 from .compat import safe_chmod
 
@@ -40,9 +53,19 @@ _PERSIST_FILENAME = "host_privileges.json"
 # ---------------------------------------------------------------------------
 
 _hmac_available = False
-_hmac_generate_or_load_signing_key = None
-_hmac_compute_data_hmac = None
-_hmac_verify_data_hmac = None
+class _SigningKeyLoader(Protocol):
+    def __call__(
+        self,
+        key_path: Path,
+        env_var: Optional[str] = None,
+    ) -> bytes: ...
+
+
+_hmac_generate_or_load_signing_key: Optional[_SigningKeyLoader] = None
+_hmac_compute_data_hmac: Optional[Callable[[bytes, Dict[str, Any]], str]] = None
+_hmac_verify_data_hmac: Optional[
+    Callable[[bytes, Dict[str, Any], str], bool]
+] = None
 
 try:
     from .hmac_key_manager import (
@@ -55,7 +78,7 @@ except Exception:
     logger.warning("hmac_key_manager が利用不可。HMAC 署名なしで動作します。")
 
 _audit_available = False
-_get_audit_logger = None
+_get_audit_logger: Optional[Callable[[], "AuditLogger"]] = None
 
 try:
     from .audit_logger import get_audit_logger as _get_audit_logger
@@ -151,7 +174,11 @@ class HostPrivilegeManager:
     # 監査ログ
     # ------------------------------------------------------------------
 
-    def _audit(self, event_type: str, severity: str, description: str,
+    def _audit(
+        self,
+        event_type: str,
+        severity: Literal["info", "warning", "error", "critical"],
+        description: str,
                pack_id: Optional[str] = None,
                details: Optional[Dict[str, Any]] = None) -> None:
         """監査ログを記録 (best-effort)。"""

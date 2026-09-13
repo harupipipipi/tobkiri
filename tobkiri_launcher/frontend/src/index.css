@@ -21,31 +21,38 @@
   --radius-md: calc(var(--radius) - 4px);
   --radius-sm: calc(var(--radius) - 6px);
 
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  --font-serif: 'Noto Serif JP', serif;
-  --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Roboto Mono', ui-monospace, monospace;
 }
 
 @layer base {
   /* ----------------------------------
-     Design Tokens
+     Design tokens
+
+     Themes differ by density and surface only. Accent and semantic state
+     colors are product-owned and identical across themes so that one state
+     keeps one meaning everywhere, and so that no theme reproduces the
+     visual identity of a particular AI vendor.
      ---------------------------------- */
   :root {
-    /* Colors */
+    /* Surfaces */
     --bg-main: #ffffff;
     --bg-sidebar: #f8f9fa;
     --bg-header: #ffffff;
     --bg-card: #ffffff;
     --bg-hover: #f1f3f5;
     --text-main: #111827;
-    --text-muted: #6b7280;
+    --text-muted: #5b6472;
     --border: #e5e7eb;
-    --accent: #6366f1;
+
+    /* Accent and semantic state (AA against the surface they sit on) */
+    --accent: #4f46e5;
     --accent-fg: #ffffff;
-    --destructive: #dc2626;
+    --destructive: #c62828;
     --destructive-fg: #ffffff;
-    --success: #16a34a;
-    --warning: #d97706;
+    --success: #15803d;
+    --warning: #b45309;
+
     --radius: 0.75rem;
 
     /* Spacing rhythm */
@@ -65,7 +72,7 @@
     --text-2xl: 1.5rem;
     --text-3xl: 1.875rem;
 
-    /* Shadows */
+    /* Elevation: each step must represent real stacking, not decoration */
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.05);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
@@ -76,30 +83,8 @@
     --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
 
     /* Focus ring */
-    --ring-color: color-mix(in srgb, var(--accent) 40%, transparent);
+    --ring-color: color-mix(in srgb, var(--accent) 55%, transparent);
     --ring-offset: 2px;
-
-    /* Flow tokens */
-    --flow-canvas-top: rgba(255, 222, 150, 0.78);
-    --flow-canvas-bottom: #fff1c9;
-    --flow-grid-color: rgba(211, 136, 58, 0.32);
-    --flow-edge: #e1764c;
-    --flow-edge-selected: #b44be2;
-    --flow-node-fill: #fff7f0;
-    --flow-node-border: #d8785e;
-    --flow-node-shadow: rgba(148, 80, 50, 0.18);
-    --flow-node-cap: #ef5a79;
-    --flow-node-cap-text: #fff7fb;
-    --flow-node-text: #5c3018;
-    --flow-node-muted: rgba(92, 48, 24, 0.68);
-    --flow-port-fill: #fff2e6;
-    --flow-port-border: #e0a070;
-    --flow-port-handle: #d8785e;
-    --flow-port-handle-border: #fff0d7;
-    --flow-node-selected: #8b5cf6;
-    --flow-node-running: #38bdf8;
-    --flow-node-success: #34d399;
-    --flow-node-error: #fb7185;
   }
 
   :root.dark {
@@ -111,66 +96,28 @@
     --text-main: #f5f5f5;
     --text-muted: #a1a1aa;
     --border: #27272a;
-    --destructive: #ef4444;
-    --destructive-fg: #ffffff;
-    --success: #22c55e;
-    --warning: #f59e0b;
+
+    --accent: #a5b4fc;
+    --accent-fg: #1e1b4b;
+    --destructive: #f87171;
+    --destructive-fg: #1a0505;
+    --success: #4ade80;
+    --warning: #fbbf24;
+
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.3);
-    --flow-canvas-top: rgba(255, 194, 102, 0.16);
-    --flow-canvas-bottom: #140f0b;
-    --flow-grid-color: rgba(255, 173, 84, 0.18);
-    --flow-edge: #e58a5d;
-    --flow-edge-selected: #d67cff;
-    --flow-node-fill: #1e1e24;
-    --flow-node-border: #3a3a45;
-    --flow-node-shadow: rgba(0, 0, 0, 0.5);
-    --flow-node-cap: #ef5a79;
-    --flow-node-cap-text: #fff7fb;
-    --flow-node-text: #e5e5e5;
-    --flow-node-muted: rgba(229, 229, 229, 0.6);
-    --flow-port-fill: #252530;
-    --flow-port-border: #4a4a55;
-    --flow-port-handle: #ef5a79;
-    --flow-port-handle-border: #3a3a45;
-    --flow-node-selected: #c084fc;
-    --flow-node-running: #7dd3fc;
-    --flow-node-success: #6ee7b7;
-    --flow-node-error: #fda4af;
   }
 
   /* ----------------------------------
-     Minimal (Claude風)
+     Minimal: compact radius, plain surfaces.
      ---------------------------------- */
   :root.theme-minimal {
-    --bg-main: #ffffff;
     --bg-sidebar: #f8f9fa;
-    --bg-header: #ffffff;
-    --bg-card: #ffffff;
     --bg-hover: #f1f3f5;
     --text-main: #1a1a1a;
-    --text-muted: #666666;
     --border: #e5e5e5;
-    --accent: #d97757;
-    --accent-fg: #ffffff;
     --radius: 0.5rem;
-    --flow-canvas-top: rgba(234, 196, 152, 0.5);
-    --flow-canvas-bottom: #f6ede2;
-    --flow-grid-color: rgba(176, 126, 83, 0.28);
-    --flow-edge: #c97c52;
-    --flow-edge-selected: #9f5de2;
-    --flow-node-fill: #faf6f2;
-    --flow-node-border: #b87a5e;
-    --flow-node-shadow: rgba(148, 98, 70, 0.2);
-    --flow-node-cap: #c86d5d;
-    --flow-node-cap-text: #fffaf7;
-    --flow-node-text: #4d2a1b;
-    --flow-node-muted: rgba(77, 42, 27, 0.7);
-    --flow-port-fill: #fdf3e7;
-    --flow-port-border: #d9a06b;
-    --flow-port-handle: #c97c52;
-    --flow-port-handle-border: #fff0d7;
   }
 
   :root.dark.theme-minimal {
@@ -180,150 +127,38 @@
     --bg-card: #1e1e1e;
     --bg-hover: #2a2a2a;
     --text-main: #ececec;
-    --text-muted: #8e8e8e;
+    --text-muted: #9a9a9a;
     --border: #2a2a2a;
-    --flow-canvas-top: rgba(201, 124, 82, 0.16);
-    --flow-canvas-bottom: #14110f;
-    --flow-grid-color: rgba(201, 124, 82, 0.18);
-    --flow-edge: #d59a73;
-    --flow-edge-selected: #c084fc;
-    --flow-node-fill: #1e1e1e;
-    --flow-node-border: #3a3a3a;
-    --flow-node-shadow: rgba(0, 0, 0, 0.4);
-    --flow-node-cap: #b85f4f;
-    --flow-node-cap-text: #fff8f5;
-    --flow-node-text: #ececec;
-    --flow-node-muted: rgba(236, 236, 236, 0.6);
-    --flow-port-fill: #262626;
-    --flow-port-border: #454545;
-    --flow-port-handle: #c97c52;
-    --flow-port-handle-border: #3a3a3a;
   }
 
   /* ----------------------------------
-     Standard (ChatGPT風)
-     ---------------------------------- */
-  :root.theme-standard {
-    --bg-main: #ffffff;
-    --bg-sidebar: #f9f9f9;
-    --bg-header: #ffffff;
-    --bg-card: #ffffff;
-    --bg-hover: #ececec;
-    --text-main: #0d0d0d;
-    --text-muted: #676767;
-    --border: #e5e5e5;
-    --accent: #10a37f;
-    --accent-fg: #ffffff;
-    --radius: 0.5rem;
-    --flow-canvas-top: rgba(166, 226, 214, 0.4);
-    --flow-canvas-bottom: #edf8f4;
-    --flow-grid-color: rgba(16, 163, 127, 0.22);
-    --flow-edge: #14967a;
-    --flow-edge-selected: #8b5cf6;
-    --flow-node-fill: #f7fffc;
-    --flow-node-border: #22a38c;
-    --flow-node-shadow: rgba(19, 122, 99, 0.2);
-    --flow-node-cap: #0f8b75;
-    --flow-node-cap-text: #f4fffd;
-    --flow-node-text: #0d4f43;
-    --flow-node-muted: rgba(13, 79, 67, 0.68);
-    --flow-port-fill: #effcf7;
-    --flow-port-border: #55c3a8;
-    --flow-port-handle: #10a37f;
-    --flow-port-handle-border: #d4fff1;
-  }
-
-  :root.dark.theme-standard {
-    --bg-main: #212121;
-    --bg-sidebar: #171717;
-    --bg-header: #212121;
-    --bg-card: #2f2f2f;
-    --bg-hover: #3a3a3a;
-    --text-main: #ececec;
-    --text-muted: #b4b4b4;
-    --border: #424242;
-    --flow-canvas-top: rgba(16, 163, 127, 0.15);
-    --flow-canvas-bottom: #0d1715;
-    --flow-grid-color: rgba(78, 203, 171, 0.16);
-    --flow-edge: #4cd3b2;
-    --flow-edge-selected: #c084fc;
-    --flow-node-fill: #181f1c;
-    --flow-node-border: #2a3d36;
-    --flow-node-shadow: rgba(0, 0, 0, 0.4);
-    --flow-node-cap: #117764;
-    --flow-node-cap-text: #effff9;
-    --flow-node-text: #e5e5e5;
-    --flow-node-muted: rgba(229, 229, 229, 0.6);
-    --flow-port-fill: #1f2a26;
-    --flow-port-border: #3a5a4e;
-    --flow-port-handle: #10a37f;
-    --flow-port-handle-border: #2a3d36;
-  }
-
-  /* ----------------------------------
-     Rounded (Gemini風)
+     Rounded: large radius, the working surface sits below the cards.
      ---------------------------------- */
   :root.theme-rounded {
-    --bg-main: #f0f4f9;
-    --bg-sidebar: #f0f4f9;
-    --bg-header: #f0f4f9;
+    --bg-main: #f7f7f8;
+    --bg-sidebar: #f7f7f8;
+    --bg-header: #f7f7f8;
     --bg-card: #ffffff;
-    --bg-hover: #e1e5ea;
+    --bg-hover: #e8e9eb;
     --text-main: #1f1f1f;
-    --text-muted: #444746;
-    --border: #e0e0e0;
-    --accent: #0b57d0;
-    --accent-fg: #ffffff;
+    --text-muted: #55595e;
+    --border: #e0e1e3;
     --radius: 1.5rem;
-    --flow-canvas-top: rgba(181, 206, 255, 0.45);
-    --flow-canvas-bottom: #eef4ff;
-    --flow-grid-color: rgba(84, 130, 255, 0.22);
-    --flow-edge: #5b7cff;
-    --flow-edge-selected: #d66bff;
-    --flow-node-fill: #f9fbff;
-    --flow-node-border: #6b8cff;
-    --flow-node-shadow: rgba(79, 107, 199, 0.2);
-    --flow-node-cap: #5a73f3;
-    --flow-node-cap-text: #f8faff;
-    --flow-node-text: #243a7a;
-    --flow-node-muted: rgba(36, 58, 122, 0.68);
-    --flow-port-fill: #f1f5ff;
-    --flow-port-border: #9ab0ff;
-    --flow-port-handle: #6b8cff;
-    --flow-port-handle-border: #edf2ff;
   }
 
   :root.dark.theme-rounded {
-    --bg-main: #131314;
-    --bg-sidebar: #1e1f20;
-    --bg-header: #131314;
-    --bg-card: #282a2c;
-    --bg-hover: #333537;
-    --text-main: #e3e3e3;
-    --text-muted: #c4c7c5;
-    --border: #444746;
-    --accent: #a8c7fa;
-    --accent-fg: #041e49;
-    --flow-canvas-top: rgba(120, 150, 255, 0.16);
-    --flow-canvas-bottom: #0d1323;
-    --flow-grid-color: rgba(145, 170, 255, 0.18);
-    --flow-edge: #8ea7ff;
-    --flow-edge-selected: #d48dff;
-    --flow-node-fill: #181a1c;
-    --flow-node-border: #333538;
-    --flow-node-shadow: rgba(0, 0, 0, 0.4);
-    --flow-node-cap: #617cf0;
-    --flow-node-cap-text: #f8faff;
-    --flow-node-text: #e3e3e3;
-    --flow-node-muted: rgba(227, 227, 227, 0.6);
-    --flow-port-fill: #222427;
-    --flow-port-border: #444746;
-    --flow-port-handle: #617cf0;
-    --flow-port-handle-border: #333538;
+    --bg-main: #101012;
+    --bg-sidebar: #17171a;
+    --bg-header: #101012;
+    --bg-card: #1d1d21;
+    --bg-hover: #26262b;
+    --text-main: #e8e8ea;
+    --text-muted: #a8abb0;
+    --border: #33343a;
   }
 
   /* ----------------------------------
-     Base Styles
+     Base styles
      ---------------------------------- */
   *,
   *::before,
@@ -366,336 +201,12 @@
     line-height: 1.3;
   }
 
-  /* Focus ring utility */
-  .focus-ring {
-    outline: none;
-  }
-  .focus-ring:focus-visible {
-    box-shadow: 0 0 0 var(--ring-offset) var(--bg-main), 0 0 0 calc(var(--ring-offset) + 2px) var(--ring-color);
-  }
-
-  .rumi-select {
-    min-width: 0;
-    appearance: none;
-    -webkit-appearance: none;
-    background-color: var(--bg-main);
-    background-image:
-      linear-gradient(45deg, transparent 50%, currentColor 50%),
-      linear-gradient(135deg, currentColor 50%, transparent 50%);
-    background-position:
-      calc(100% - 18px) calc(50% - 3px),
-      calc(100% - 12px) calc(50% - 3px);
-    background-size: 6px 6px, 6px 6px;
-    background-repeat: no-repeat;
-    box-shadow: none;
-    color: var(--text-main);
-  }
-
-  .rumi-select:focus-visible {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--ring-color);
-  }
-
-  /* ----------------------------------
-     Flow Styles (preserved)
-     ---------------------------------- */
-  .flow-focus-shell {
-    --flow-canvas-top: var(--bg-main);
-    --flow-canvas-bottom: var(--bg-main);
-    --flow-grid-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
-    --flow-node-fill: var(--bg-card);
-    --flow-node-border: var(--border);
-    --flow-node-shadow: rgba(0, 0, 0, 0.18);
-    --flow-node-cap: color-mix(in srgb, var(--bg-hover) 78%, var(--bg-card));
-    --flow-node-cap-text: var(--text-main);
-    --flow-node-text: var(--text-main);
-    --flow-node-muted: var(--text-muted);
-    --flow-port-fill: var(--bg-main);
-    --flow-port-border: var(--border);
-    --flow-port-handle: var(--text-muted);
-    --flow-port-handle-border: var(--bg-card);
-    --flow-canvas: linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--flow-canvas-top) 62%, var(--bg-main) 38%) 0%,
-      color-mix(in srgb, var(--flow-canvas-bottom) 92%, var(--bg-main) 8%) 100%
-    );
-  }
-
-  .flow-canvas {
-    background: var(--flow-canvas);
-  }
-
-  .flow-grid {
-    background: transparent;
-  }
-
-  .react-flow__edge-path {
-    stroke: color-mix(in srgb, var(--flow-edge) 82%, white 18%) !important;
-    stroke-width: 2.5px !important;
-    stroke-linecap: round !important;
-  }
-
-  .react-flow__edge.selected .react-flow__edge-path {
-    stroke: var(--flow-edge-selected) !important;
-  }
-
-  .flow-node-shell {
-    position: relative;
-    min-width: 220px;
-    padding-top: 0;
-    color: var(--flow-node-text);
-    filter: none;
-  }
-
-  .flow-node-card {
-    position: relative;
-    overflow: hidden;
-    border: 1px solid var(--flow-node-border);
-    border-radius: 0.8rem;
-    background: var(--flow-node-fill);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.025),
-      0 8px 20px var(--flow-node-shadow);
-  }
-
-  .flow-node-shell.is-selected .flow-node-card {
-    border-color: color-mix(in srgb, var(--flow-node-selected) 58%, var(--flow-node-border));
-    box-shadow:
-      0 0 0 2px color-mix(in srgb, var(--flow-node-selected) 22%, transparent),
-      0 8px 20px var(--flow-node-shadow);
-  }
-
-  .flow-node-shell.is-running .flow-node-card {
-    border-color: color-mix(in srgb, var(--flow-node-running) 54%, var(--flow-node-border));
-  }
-
-  .flow-node-shell.is-success .flow-node-card {
-    border-color: color-mix(in srgb, var(--flow-node-success) 54%, var(--flow-node-border));
-  }
-
-  .flow-node-shell.is-error .flow-node-card {
-    border-color: color-mix(in srgb, var(--flow-node-error) 58%, var(--flow-node-border));
-  }
-
-  .flow-node-cap {
-    position: relative;
-    z-index: 2;
-    display: flex;
-    width: 100%;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.65rem 0.8rem;
-    border-bottom: 1px solid var(--flow-node-border);
-    background: var(--flow-node-cap);
-    color: var(--flow-node-cap-text);
-    font-size: 0.75rem;
-    font-weight: 650;
-    user-select: none;
-  }
-
-  .flow-node-status-dot {
-    width: 0.42rem;
-    height: 0.42rem;
-    flex: none;
-    border-radius: 999px;
-    background: var(--text-muted);
-  }
-
-  .flow-node-shell.is-running .flow-node-status-dot { background: var(--flow-node-running); }
-  .flow-node-shell.is-success .flow-node-status-dot { background: var(--flow-node-success); }
-  .flow-node-shell.is-error .flow-node-status-dot { background: var(--flow-node-error); }
-
-  .flow-node-body {
-    min-height: 104px;
-    padding: 1.1rem 4.1rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .flow-node-core {
-    display: flex;
-    max-width: 100%;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.45rem;
-    text-align: center;
-  }
-
-  .flow-node-subtitle {
-    font-size: 0.67rem;
-    font-weight: 600;
-    color: var(--flow-node-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .flow-node-token {
-    display: inline-flex;
-    min-width: 0;
-    max-width: 138px;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.2rem;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    padding: 0;
-    box-shadow: none;
-  }
-
-  .flow-node-token-title {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.82rem;
-    font-weight: 650;
-    color: var(--flow-node-text);
-  }
-
-  .flow-node-token-subtext {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.72rem;
-    color: var(--flow-node-muted);
-  }
-
-  .flow-port-stack {
-    position: absolute;
-    top: 50%;
-    z-index: 3;
-    display: flex;
-    flex-direction: column;
-    gap: 0.55rem;
-    transform: translateY(-50%);
-  }
-
-  .flow-port-stack-left {
-    left: 0.65rem;
-    align-items: flex-start;
-  }
-
-  .flow-port-stack-right {
-    right: 0.65rem;
-    align-items: flex-end;
-  }
-
-  .flow-port-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-
-  .flow-port-tag {
-    max-width: 72px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    border: 1px solid color-mix(in srgb, var(--flow-port-border) 62%, transparent);
-    border-radius: 0.42rem;
-    background: color-mix(in srgb, var(--flow-port-fill) 92%, var(--flow-node-fill) 8%);
-    padding: 0.25rem 0.42rem;
-    font-size: 0.62rem;
-    font-weight: 550;
-    color: var(--flow-node-muted);
-  }
-
-  .flow-port-handle {
-    width: 10px !important;
-    height: 10px !important;
-    border-color: var(--flow-port-handle-border) !important;
-    background: var(--flow-port-handle) !important;
-  }
-
-  .flow-port-item-left .react-flow__handle-left,
-  .flow-port-item-right .react-flow__handle-right {
-    top: 50% !important;
-    transform: translateY(-50%) !important;
-    margin: 0 !important;
-  }
-
-  .flow-port-item-left .react-flow__handle-left {
-    left: -0.95rem !important;
-  }
-
-  .flow-port-item-right .react-flow__handle-right {
-    right: -0.95rem !important;
-  }
-
-  .flow-reroute-node {
-    color: var(--flow-node-text);
-    border-color: var(--flow-port-border);
-    background: var(--flow-node-fill);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--flow-port-border) 18%, transparent);
-  }
-
-  /* React Flow Controls Override */
-  .react-flow__controls {
-    box-shadow: var(--shadow-md) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-md) !important;
-    background-color: var(--bg-card) !important;
-    overflow: hidden !important;
-    display: flex !important;
-    flex-direction: column !important;
-  }
-
-  .react-flow__controls-button {
-    background-color: var(--bg-card) !important;
-    border-bottom: 1px solid var(--border) !important;
-    border-top: none !important;
-    border-left: none !important;
-    border-right: none !important;
-    fill: var(--text-main) !important;
-    color: var(--text-main) !important;
-    transition: background-color var(--transition-fast) !important;
-    width: 32px !important;
-    height: 32px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 0 !important;
-  }
-
-  .react-flow__controls-button:hover {
-    background-color: var(--bg-hover) !important;
-  }
-
-  .react-flow__controls-button:last-child {
-    border-bottom: none !important;
-  }
-
-  .react-flow__controls-button svg {
-    width: 16px !important;
-    height: 16px !important;
-    fill: currentColor !important;
-  }
-
-  .react-flow__attribution {
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
-
   /* ----------------------------------
      Scrollbar
      ---------------------------------- */
-  .scrollbar-hidden {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-
-  .scrollbar-hidden::-webkit-scrollbar {
-    display: none;
-  }
-
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 10px;
+    height: 10px;
   }
 
   ::-webkit-scrollbar-track {
@@ -703,21 +214,25 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--text-muted) 30%, transparent 70%);
+    background: color-mix(in srgb, var(--text-muted) 32%, transparent);
+    border: 2px solid transparent;
+    background-clip: content-box;
     border-radius: 999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in srgb, var(--text-muted) 50%, transparent 50%);
+    background: color-mix(in srgb, var(--text-muted) 55%, transparent);
+    border: 2px solid transparent;
+    background-clip: content-box;
   }
 
-  .scrollbar-thin {
+  * {
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--text-muted) 30%, transparent 70%) transparent;
+    scrollbar-color: color-mix(in srgb, var(--text-muted) 32%, transparent) transparent;
   }
 
   /* ----------------------------------
-     Page transition animation
+     Page transition
      ---------------------------------- */
   @keyframes fadeInUp {
     from {
@@ -730,51 +245,34 @@
     }
   }
 
-  .page-enter {
-    animation: fadeInUp var(--transition-slow) ease-out;
+  @media (prefers-reduced-motion: no-preference) {
+    .page-enter {
+      animation: fadeInUp var(--transition-slow) ease-out;
+    }
   }
 
   /* ----------------------------------
-     Luxe control-panel accents
-     Reusable, additive design tokens that reinforce the
-     workspace-as-runtime feel without competing with the theme system.
+     Status pill: one shape for "this is current runtime state",
+     colored by the semantic token the caller passes in.
      ---------------------------------- */
   .rumi-control-pill {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.18rem 0.55rem;
+    padding: 0.25rem 0.6rem;
     border-radius: 999px;
-    font-size: 0.6875rem;
+    font-size: var(--text-xs);
     font-weight: 600;
-    letter-spacing: 0.02em;
     color: var(--text-main);
-    background: color-mix(in srgb, var(--bg-card) 80%, transparent 20%);
+    background: var(--bg-card);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-sm);
   }
 
   .rumi-control-pill-dot {
     width: 0.4rem;
     height: 0.4rem;
+    flex: none;
     border-radius: 999px;
     background: currentColor;
-    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 18%, transparent);
-  }
-
-  .rumi-control-divider {
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      color-mix(in srgb, var(--border) 80%, transparent 20%) 50%,
-      transparent 100%
-    );
-  }
-
-  @media (prefers-reduced-motion: no-preference) {
-    .rumi-control-pill {
-      transition: background-color 200ms ease, border-color 200ms ease;
-    }
   }
 }

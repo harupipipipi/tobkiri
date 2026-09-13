@@ -1,0 +1,187 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.connector.gateway.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:connector.gateway.control"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_connector_transport_gateway_pack.connector-gateway-action",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "rumi_connector_transport_gateway_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_transport_gateway_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_connector_transport_gateway_pack.connector-gateway.action",
+        "required_capabilities": [
+          "connector.gateway.control"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:b00cf709c53b1217dce3bd7b68d75cb77bdf6cd64ba56224040756a0ecd5bae1",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.connector.gateway.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:connector.gateway.read"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_connector_transport_gateway_pack.connector-gateway-resource",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "rumi_connector_transport_gateway_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_transport_gateway_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "isolate",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_connector_transport_gateway_pack.connector-gateway.resource",
+        "required_capabilities": [
+          "connector.gateway.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:8286eb043563b9b78575f3fe36ae675d5a84bb5ee3a187e9766c471b1bfc8286",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.transport.connector.gateway.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:connector.gateway.receive"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_connector_transport_gateway_pack.connector-gateway-transport",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "declarative"
+        }
+      ],
+      "owner": "rumi_connector_transport_gateway_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_connector_transport_gateway_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_connector_transport_gateway_pack.connector-gateway.transport",
+        "required_capabilities": [
+          "connector.gateway.receive"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:0043e2661e2546f3216085f71a21944a5ae1e025d080ea87be2762097f096cbb",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_connector_transport_gateway_pack",
+  "source_identity": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c"
+}

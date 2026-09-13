@@ -115,7 +115,7 @@ def adaptive_store_root(profile_id: str) -> Path:
         )
     except Exception:
         base = Path(os.environ.get("RUMI_USER_DATA") or Path.cwd() / "user_data")
-        return base / "profiles" / clean_profile_id(profile_id) / "user_data" / "adaptive"
+        return base / "workspaces" / clean_profile_id(profile_id) / "state" / "adaptive"
 
 
 def workspace_root_from(args: dict[str, Any] | None, ctx: dict[str, Any] | None) -> Path:

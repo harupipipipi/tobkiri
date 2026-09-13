@@ -1,0 +1,194 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.request.prepare.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ai_pipeline_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "ai-pipeline.prepare",
+        "required_capabilities": [
+          "ai.request.prepare"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.failover.decide.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ai_pipeline_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "ai-pipeline.failover",
+        "required_capabilities": [
+          "ai.failover.decide"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
+      "contract_id": "rumi.service.ai.request.prepare.v1",
+      "id": "ai-request-prepare",
+      "loader": "python",
+      "module": "ecosystem.rumi_ai_pipeline_pack.runtime.pipeline",
+      "symbol": "create_prepare_operation"
+    },
+    {
+      "artifact_hash": "sha256:b1a3104fa7af317958dff3e18a39e4a5f443311ca94d58ae97301d6516303ed4",
+      "contract_id": "rumi.service.ai.failover.decide.v1",
+      "id": "ai-failover-decide",
+      "loader": "python",
+      "module": "ecosystem.rumi_ai_pipeline_pack.runtime.pipeline",
+      "symbol": "create_failover_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.ai_pipeline.boundary": {
+      "idempotency_required": true,
+      "provider_execution": false,
+      "raw_credentials": false,
+      "tool_failover": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.ai.failover.decide.v1",
+            "rumi.service.ai.request.prepare.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Replaceable request normalization and replay-safe failover decisions.",
+        "display_name": "Rumi AI Pipeline",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:8e7776d17dc46d40ce2c87050b44197db5d2003715f764607194462ae29f4df5",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:1c4d9ebb82cbe1116f47d205e7ff2283c3760d6cf5f80d2461fee941854e9be5"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "ai_request_normalization",
+            "ai_failover_policy"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "network": false,
+            "raw_credentials": false,
+            "tool_replay": false,
+            "unbound_retry": false
+          }
+        },
+        "pack_id": "rumi_ai_pipeline_pack",
+        "pack_identity": "rumi:ecosystem/rumi_ai_pipeline_pack",
+        "provenance": {
+          "build_identity": "rumi_ai_pipeline_pack:1.0.0",
+          "content_hash": "sha256:6aa3873a6190ce32955bf4d169ff2001422f9b367be4657b90d5fb7921ac2beb",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.failover.decide",
+          "ai.request.prepare"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_ai_pipeline_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_ai_pipeline_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:1c4d9ebb82cbe1116f47d205e7ff2283c3760d6cf5f80d2461fee941854e9be5"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "from": [
+      "rumi_ai_gateway_pack.runtime.gateway._deadline",
+      "rumi_ai_gateway_pack.runtime.gateway.failover"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior request and failover providers.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Replaceable request normalization and replay-safe failover decisions.",
+    "display_name": "Rumi AI Pipeline",
+    "id": "rumi.ai_pipeline",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.request.prepare"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.failover.decide"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_ai_pipeline_pack:1.0.0",
+    "content_hash": "sha256:6aa3873a6190ce32955bf4d169ff2001422f9b367be4657b90d5fb7921ac2beb",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

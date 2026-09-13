@@ -22,6 +22,7 @@ mutations also retain the existing origin and CSRF checks.
 | Flow execution and route reload | `pack_api_server.py` POST branches | core principal | required | default per path | runtime.flow | flow capability and route administration functions | v2.4 |
 | Defaultspack compatibility HTTP routes | `ecosystem/defaultspack/transport/registry.py` | metadata-resolved local transport policy | local origin; CSRF for sensitive mutations | transport default | per-entry owner in `legacy_http_routes.yaml` | declared `function_id` or `none` | metadata-resolved |
 
-The chat-channel family is no longer in the compatibility row: its eight
-routes are declared in `ecosystem/defaultspack/ecosystem.json` and dispatch
-directly to `chat_channel_*` functions.
+The chat-channel family is no longer in the compatibility row. Its former
+legacy-manifest declaration is historical only; the v4 integrity boundary
+reads the finite Pack and executable catalogs and does not dispatch from that
+projection.

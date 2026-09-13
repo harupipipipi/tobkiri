@@ -1,224 +1,199 @@
-"""Memory Store — シングルトンのインメモリストア.
-
-4つのストレージ領域を管理する:
-- short_term : dict  — セッション内のみ保持する key-value
-- long_term  : list  — 永続的なメモリエントリ
-- project_context : dict — プロジェクト固有の情報
-- vector_store : list — ベクトルストア (最小動作版は文字列部分一致で代用)
-"""
+"""Deprecated MemoryStore facade over the selected global memory owner."""
 
 from __future__ import annotations
 
-import threading
-import time
 import uuid
-from typing import Any, Dict, List, Optional
+import warnings
+from typing import Any, Mapping
 
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import (
+    captured_profile_id,
+    invoke_global_contract,
+)
 
-def _timestamp() -> str:
-    """ISO 8601 タイムスタンプを返す."""
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def _compute_score(query: str, content: str) -> float:
-    """クエリとコンテンツの類似度スコアを計算する.
-
-    最小動作版ではベクトル検索の代わりに文字列ベースの
-    3段階マッチングで代用する:
-      1. 完全一致        → 1.0
-      2. 部分文字列一致  → len(query) / len(content)
-      3. 単語レベル一致  → 一致単語数 / クエリ単語数
-    """
-    q = query.lower().strip()
-    c = content.lower().strip()
-
-    if not q or not c:
-        return 0.0
-
-    # 完全一致
-    if q == c:
-        return 1.0
-
-    # 部分文字列一致
-    if q in c:
-        return round(len(q) / max(len(c), 1), 4)
-
-    # 単語レベルのマッチング
-    q_words = set(q.split())
-    c_words = set(c.split())
-    if not q_words:
-        return 0.0
-    matched = q_words & c_words
-    if not matched:
-        return 0.0
-    return round(len(matched) / len(q_words), 4)
+RESOURCE = "rumi.resource.memory.v1"
+MANAGE = "rumi.action.memory.manage.v1"
 
 
 class MemoryStore:
-    """スレッドセーフなシングルトン Memory Store."""
-
-    _instance: Optional["MemoryStore"] = None
-    _lock: threading.Lock = threading.Lock()
-    _initialized: bool = False
-
-    # -- シングルトン ---------------------------------------------------------
-    def __new__(cls) -> "MemoryStore":
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
+    """Finite legacy facade; never owns or writes a secondary memory store."""
 
     def __init__(self) -> None:
-        if self._initialized:
-            return
-        with self._lock:
-            if self._initialized:
-                return
-            self.short_term: Dict[str, Any] = {}
-            self.long_term: List[Dict[str, Any]] = []
-            self.project_context: Dict[str, Any] = {}
-            self.vector_store: List[Dict[str, Any]] = []
-            self._initialized = True
+        warnings.warn(
+            "domain.memory.store.MemoryStore is a Wave 7 compatibility facade",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
-    # -- long_term 操作 -------------------------------------------------------
-    def store(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """long_term にメモリエントリを追加する."""
-        entry = {
+    @property
+    def long_term(self) -> list[dict[str, Any]]:
+        """Project legacy long-term records read-only from the global owner."""
+        return self._items()
+
+    @property
+    def vector_store(self) -> list[dict[str, Any]]:
+        """Project the same source records; vectors are not authoritative."""
+        return self._items()
+
+    @property
+    def short_term(self) -> dict[str, Any]:
+        """Return no canonical short-term map; turn runtime owns ephemeral state."""
+        return {}
+
+    @property
+    def project_context(self) -> dict[str, Any]:
+        """Project records explicitly scoped as project context."""
+        result: dict[str, Any] = {}
+        for item in self._items():
+            if item.get("scope") != "project_context":
+                continue
+            metadata = item.get("metadata")
+            key = metadata.get("key") if isinstance(metadata, Mapping) else None
+            if key:
+                result[str(key)] = item.get("content")
+        return result
+
+    def store(
+        self,
+        content: str,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Write exactly once through the selected global owner."""
+        metadata = dict(metadata or {})
+        item = {
             "id": str(uuid.uuid4()),
-            "content": content,
-            "metadata": metadata if metadata is not None else {},
-            "created_at": _timestamp(),
+            "content": str(content),
+            "scope": str(metadata.get("scope") or "user"),
+            "source": "legacy_memory_facade",
+            "metadata": metadata,
         }
-        with self._lock:
-            self.long_term.append(entry)
-        try:
-            from domain.memory2.markdown_store import MarkdownMemoryStore
-            from domain.memory2.sqlite_store import MemorySQLiteStore
+        result = self._put_with_retry(item)
+        return dict(result.get("item") or {})
 
-            durable = MemorySQLiteStore().add(
-                content,
-                metadata or {},
-                scope=(metadata or {}).get("scope", "user") if isinstance(metadata, dict) else "user",
-                source="legacy_memory_store",
-                memory_id=entry["id"],
-            )
-            MarkdownMemoryStore().append_memory(content, metadata or {})
-            entry.update({"durable": True, "durable_id": durable["id"]})
-        except Exception:
-            entry["durable"] = False
-        return entry
+    def recall(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Read search results only from the selected global owner."""
+        result = _invoke(RESOURCE, "search", {"query": query, "limit": limit})
+        return [dict(item) for item in result.get("items") or []]
 
-    def recall(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """long_term から部分一致検索し、スコア順で返す."""
-        results: List[Dict[str, Any]] = []
-        with self._lock:
-            entries = list(self.long_term)
-
-        for entry in entries:
-            score = _compute_score(query, entry["content"])
-            if score > 0.0:
-                results.append({
-                    "id": entry["id"],
-                    "content": entry["content"],
-                    "metadata": entry["metadata"],
-                    "score": score,
-                })
-
-        results.sort(key=lambda r: r["score"], reverse=True)
-        try:
-            from domain.memory2.search import MemorySearch
-
-            seen = {item["id"] for item in results}
-            for item in MemorySearch().search(query, limit=limit):
-                if item["id"] in seen:
-                    continue
-                results.append({
-                    "id": item["id"],
-                    "content": item["content"],
-                    "metadata": item.get("metadata", {}),
-                    "score": item.get("score", 0.0),
-                })
-        except Exception:
-            pass
-
-        results.sort(key=lambda r: r["score"], reverse=True)
-        return results[:limit]
-
-    def search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """recall のエイリアス."""
+    def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Alias recall for the finite legacy surface."""
         return self.recall(query, limit)
 
-    # -- vector_store 操作 ----------------------------------------------------
-    def vector_add(self, content: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """vector_store にエントリを追加する (embedding は None)."""
-        entry = {
-            "id": str(uuid.uuid4()),
-            "content": content,
-            "embedding": None,
-            "metadata": metadata if metadata is not None else {},
-        }
-        with self._lock:
-            self.vector_store.append(entry)
-        try:
-            from domain.memory2.sqlite_store import MemorySQLiteStore
+    def vector_add(
+        self,
+        content: str,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Store source content once; no authoritative vector copy is created."""
+        values = dict(metadata or {})
+        values["legacy_projection"] = "vector"
+        return self.store(content, values)
 
-            MemorySQLiteStore().add(
-                content,
-                metadata or {},
-                scope=(metadata or {}).get("scope", "user") if isinstance(metadata, dict) else "user",
-                source="legacy_vector_store",
-                memory_id=entry["id"],
-            )
-        except Exception:
-            pass
-        return entry
+    def vector_search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Search the source owner instead of a second vector store."""
+        return self.recall(query, limit)
 
-    def vector_search(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """vector_store から部分一致検索しスコア順で返す."""
-        results: List[Dict[str, Any]] = []
-        with self._lock:
-            entries = list(self.vector_store)
-
-        for entry in entries:
-            score = _compute_score(query, entry["content"])
-            if score > 0.0:
-                results.append({
-                    "id": entry["id"],
-                    "content": entry["content"],
-                    "metadata": entry["metadata"],
-                    "score": score,
-                })
-
-        results.sort(key=lambda r: r["score"], reverse=True)
-        return results[:limit]
-
-    # -- 削除・クリア ---------------------------------------------------------
     def delete(self, memory_id: str) -> bool:
-        """指定 ID のエントリを long_term と vector_store から削除する."""
-        found = False
-        with self._lock:
-            before_lt = len(self.long_term)
-            self.long_term = [e for e in self.long_term if e["id"] != memory_id]
-            if len(self.long_term) < before_lt:
-                found = True
+        """Delete one record through the selected owner."""
+        _invoke(
+            MANAGE,
+            "delete",
+            {"memory_id": memory_id, "expected_revision": self._revision()},
+        )
+        return True
 
-            before_vs = len(self.vector_store)
-            self.vector_store = [e for e in self.vector_store if e["id"] != memory_id]
-            if len(self.vector_store) < before_vs:
-                found = True
-        try:
-            from domain.memory2.sqlite_store import MemorySQLiteStore
-
-            found = MemorySQLiteStore().delete(memory_id) or found
-        except Exception:
-            pass
-        return found
+    def update(
+        self, memory_id: str, updates: Mapping[str, Any]
+    ) -> dict[str, Any] | None:
+        """Replace one record atomically through the selected owner."""
+        current = next(
+            (item for item in self._items() if item.get("id") == memory_id),
+            None,
+        )
+        if current is None:
+            return None
+        item = dict(current)
+        for key in ("content", "scope", "source", "expires_at"):
+            if key in updates:
+                item[key] = updates[key]
+        if isinstance(updates.get("metadata"), Mapping):
+            item["metadata"] = dict(updates["metadata"])
+        result = self._put_with_retry(item)
+        return dict(result.get("item") or {})
 
     def clear(self) -> None:
-        """全ストレージをクリアする."""
-        with self._lock:
-            self.short_term.clear()
-            self.long_term.clear()
-            self.project_context.clear()
-            self.vector_store.clear()
+        """Delete projected records one by one with fresh owner revisions."""
+        for item in self._items():
+            self.delete(str(item["id"]))
+
+    def put_project_context(self, key: str, value: Any) -> dict[str, Any]:
+        """Write one project-context record through the owner contract."""
+        existing = next(
+            (
+                item
+                for item in self._items()
+                if item.get("scope") == "project_context"
+                and isinstance(item.get("metadata"), Mapping)
+                and item["metadata"].get("key") == key
+            ),
+            None,
+        )
+        item = {
+            "id": existing.get("id") if existing else str(uuid.uuid4()),
+            "content": value,
+            "scope": "project_context",
+            "source": "legacy_memory_facade",
+            "metadata": {"key": key},
+        }
+        result = self._put_with_retry(item)
+        return dict(result.get("item") or {})
+
+    def put_record(self, item: Mapping[str, Any]) -> dict[str, Any]:
+        """Upsert a finite compatibility record while retaining its ID."""
+        result = self._put_with_retry(dict(item))
+        return dict(result.get("item") or {})
+
+    def list_records(self) -> list[dict[str, Any]]:
+        """Return the complete read-only compatibility projection."""
+        return self._items()
+
+    def _items(self) -> list[dict[str, Any]]:
+        snapshot = _invoke(RESOURCE, "snapshot", {})
+        return [dict(item) for item in snapshot.get("items") or []]
+
+    def _revision(self) -> int:
+        snapshot = _invoke(RESOURCE, "snapshot", {})
+        return int(snapshot.get("revision") or 0)
+
+    def _put_with_retry(self, item: Mapping[str, Any]) -> Any:
+        """Retry only stale optimistic revisions from concurrent callers.
+
+        The owner remains responsible for atomicity and conflict detection.
+        This facade may have to re-read its revision between two threads; it
+        retries that one expected conflict without masking owner unavailability
+        or any other policy/error response.
+        """
+        for attempt in range(8):
+            try:
+                return _invoke(
+                    MANAGE,
+                    "put",
+                    {"item": dict(item), "expected_revision": self._revision()},
+                )
+            except RuntimeError as exc:
+                if str(exc) != "memory store revision is stale" or attempt == 7:
+                    raise
+        raise RuntimeError("memory owner write retry limit reached")
+
+
+def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
+    registry = get_container().get_or_none("v4_dispatch_session")
+    if registry is None:
+        raise RuntimeError("global memory owner is unavailable")
+    return invoke_global_contract(
+        registry,
+        contract_id,
+        operation,
+        {"profile_id": captured_profile_id(registry), **dict(payload)},
+    )

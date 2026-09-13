@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 
 TERMINAL_OPERATION_STATES = {"completed", "failed", "cancelled"}
@@ -35,7 +35,7 @@ class RuntimeOperationStore:
             raise ValueError("operation_id is required")
         with self._lock:
             current = self._operations.get(operation_id)
-            if str(current.get("status") if isinstance(current, dict) else "") == "cancelled":
+            if isinstance(current, dict) and str(current.get("status") or "") == "cancelled":
                 preserved = dict(current)
                 incoming_events = operation.get("progress_events")
                 if isinstance(incoming_events, list):
@@ -106,7 +106,12 @@ class RuntimeOperationStore:
             progress_events.append(dict(event))
             raw_percent = event.get("percent")
             try:
-                progress = int(float(raw_percent))
+                numeric_percent = (
+                    raw_percent
+                    if isinstance(raw_percent, (int, float, str))
+                    else 0
+                )
+                progress = int(float(numeric_percent))
             except (TypeError, ValueError):
                 progress = int(current.get("progress") or 0)
             stored = {
@@ -157,10 +162,10 @@ class RuntimeOperationStore:
         *,
         updated_at: str,
         message: str = "Runtime operation was interrupted before completion.",
-    ) -> list[dict[str, Any]]:
-        interrupted: list[dict[str, Any]] = []
+    ) -> List[dict[str, Any]]:
+        interrupted: List[dict[str, Any]] = []
         with self._lock:
-            for operation_id, current in list(self._operations.items()):
+            for operation_id, current in tuple(self._operations.items()):
                 status = str(current.get("status") or "")
                 if not status or status in TERMINAL_OPERATION_STATES:
                     continue

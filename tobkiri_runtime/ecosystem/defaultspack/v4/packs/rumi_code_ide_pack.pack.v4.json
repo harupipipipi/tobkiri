@@ -1,0 +1,77 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:70aee7a7e80546e2caa28982bc50bf1fbc1b5e42185d4a7a8a365f6c2bff7efe",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "source_identity": "sha256:0a23098f7666d8b9b52146d1d48488485e74d01893de1c228eb6a0ecab496adf",
+    "artifact_set_digest": "sha256:7a648faea6d59410d992ea62dd82df498dcdc8f92e69f668655404c22841f610",
+    "contract_catalog_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_code_ide_pack",
+      "rumi_code_ide_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:432bc34761f64e01f7cb9dba3106eaf9186f4207b1e91b561b048e90a0554247",
+    "display_name": "rumi_code_ide_pack",
+    "id": "rumi_code_ide_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_code_ide_pack/pack.v4.json",
+    "source_digest": "sha256:0a23098f7666d8b9b52146d1d48488485e74d01893de1c228eb6a0ecab496adf",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:c8b9e7b3d967dbd92b809627ae35610169b8996082811b7b60b90fbe275d4f62",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:79cbfba4eb95ddaaee7b24d1346d02adb997e055c3378f7eede8e7b5bfd1fe14",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_code_ide_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:0a23098f7666d8b9b52146d1d48488485e74d01893de1c228eb6a0ecab496adf"
+      }
+    ]
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_default_tools_pack": ">=1.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

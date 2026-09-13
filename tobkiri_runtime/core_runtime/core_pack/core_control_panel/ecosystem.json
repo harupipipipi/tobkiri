@@ -180,11 +180,6 @@
     },
     {
       "method": "GET",
-      "path_pattern": "/api/panel/profiles/{id}/nodes",
-      "handler": "_capability_get_profile_nodes"
-    },
-    {
-      "method": "GET",
       "path": "/api/graphs",
       "handler": "_capability_get_graphs"
     },
@@ -212,6 +207,11 @@
       "method": "GET",
       "path_pattern": "/api/panel/runtime-profile/{id}",
       "handler": "_capability_get_runtime_profile"
+    },
+    {
+      "method": "POST",
+      "path_pattern": "/api/panel/packs/{id}/approve",
+      "handler": "_panel_approve_pack"
     },
     {
       "method": "POST",

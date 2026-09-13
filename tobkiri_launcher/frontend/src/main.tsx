@@ -4,8 +4,8 @@ import App from './App.tsx';
 import { ErrorBoundary } from './components/ui/ErrorBoundary.tsx';
 import { bootstrapDocumentAppearance } from './lib/appearance.ts';
 import './index.css';
-import '@xyflow/react/dist/style.css';
 
+performance.mark('tobkiri:app-entry');
 bootstrapDocumentAppearance();
 
 createRoot(document.getElementById('root')!).render(

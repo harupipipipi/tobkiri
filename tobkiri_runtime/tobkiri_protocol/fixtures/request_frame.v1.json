@@ -1,0 +1,10 @@
+{
+  "protocol": "io.tobkiri.request.v1",
+  "type": "invoke",
+  "contract_id": "example.worker.v1",
+  "version_range": ">=1.0.0,<2.0.0",
+  "operation_id": "run",
+  "payload": {"input": "hello"},
+  "timeout_ms": 1000,
+  "idempotency_key": "run-001"
+}

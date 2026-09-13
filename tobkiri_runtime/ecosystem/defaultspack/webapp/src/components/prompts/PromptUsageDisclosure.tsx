@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { PromptUsageSummary } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { ErrorNotice } from "../ErrorNotice";
 import { PromptUsageSegmentCard } from "./PromptUsageSegmentCard";
 import { allPromptUsageSegments, tokenText } from "./promptSegmentView";
 
@@ -67,7 +68,14 @@ export function PromptUsageDisclosure({ usage, loadPromptTrace }: PromptUsageDis
       </button>
       {open && (
         <div className="border-t border-zinc-800 px-3 py-3">
-          {error && <div className="mb-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-100">{error}</div>}
+          {error && (
+            <ErrorNotice
+              className="mb-3 px-2 py-1.5 text-[11px]"
+              copyLabel="プロンプト詳細エラーをコピー"
+              message={error}
+              severity="warning"
+            />
+          )}
           <div className="grid gap-2">
             {segments.map((segment) => (
               <PromptUsageSegmentCard key={`${segment.id}-${segment.status}`} segment={segment} variant="disclosure" />

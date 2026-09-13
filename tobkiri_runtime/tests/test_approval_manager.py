@@ -15,50 +15,63 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core_runtime.approval_manager import (
+from core_runtime.approval_manager import (  # noqa: E402
     ApprovalManager,
-    ApprovalResult,
     PackApproval,
     PackStatus,
 )
 
-TRUSTED_BUILTIN_PACK_IDS = ("defaultspack", "rumi_default_tools_pack")
+SYSTEM_PACK_IDS = ("system_ui", "system_tools")
 
 
-def test_trusted_builtin_packs_are_approved_without_user_grants(tmp_path):
+def _system_descriptor(pack_id: str, pack_dir: Path) -> dict[str, object]:
+    return {
+        "schema": "io.tobkiri.system-pack-trust.v1",
+        "pack_id": pack_id,
+        "root": str(pack_dir.resolve()),
+        "trust_class": "system",
+        "allow_in_process": True,
+    }
+
+
+def test_system_pack_descriptors_are_approved_without_user_grants(tmp_path):
     ecosystem_dir = tmp_path / "bundle" / "app" / "ecosystem"
-    for pack_id in TRUSTED_BUILTIN_PACK_IDS:
-        _make_pack_dir(ecosystem_dir, pack_id)
+    pack_dirs = {
+        pack_id: _make_pack_dir(ecosystem_dir, pack_id)
+        for pack_id in SYSTEM_PACK_IDS
+    }
     mgr = ApprovalManager(
         packs_dir=str(ecosystem_dir),
         grants_dir=str(tmp_path / "grants"),
         secret_key="test-secret-key-for-hmac",
+        system_pack_descriptors=[
+            _system_descriptor(pack_id, pack_dir)
+            for pack_id, pack_dir in pack_dirs.items()
+        ],
     )
 
-    for pack_id in TRUSTED_BUILTIN_PACK_IDS:
+    for pack_id in SYSTEM_PACK_IDS:
         assert mgr.get_status(pack_id) == PackStatus.APPROVED
         assert mgr.verify_hash(pack_id) is True
         assert mgr.verify_hash_detailed(pack_id)["valid"] is True
         assert pack_id in mgr.get_approved_pack_ids()
 
 
-@pytest.mark.parametrize("pack_id", TRUSTED_BUILTIN_PACK_IDS)
-def test_repo_ecosystem_trusted_builtin_pack_is_approved_without_user_grants(tmp_path, pack_id):
-    ecosystem_dir = PROJECT_ROOT / "ecosystem"
-    assert (ecosystem_dir / pack_id).is_dir()
+def test_system_pack_descriptor_requires_the_exact_canonical_root(tmp_path):
+    ecosystem_dir = tmp_path / "bundle" / "app" / "ecosystem"
+    pack_dir = _make_pack_dir(ecosystem_dir, "system_ui")
+    wrong_root = _make_pack_dir(tmp_path / "other" / "ecosystem", "system_ui")
 
     mgr = ApprovalManager(
         packs_dir=str(ecosystem_dir),
         grants_dir=str(tmp_path / "grants"),
         secret_key="test-secret-key-for-hmac",
+        system_pack_descriptors=[_system_descriptor("system_ui", wrong_root)],
     )
 
-    assert mgr.get_approval(pack_id) is None
-    assert mgr.get_status(pack_id) == PackStatus.APPROVED
-    assert mgr.verify_hash(pack_id) is True
-    assert mgr.verify_hash_detailed(pack_id)["valid"] is True
-    assert pack_id in mgr.get_approved_pack_ids()
-    assert not (tmp_path / "grants" / f"{pack_id}.grants.json").exists()
+    assert mgr.get_approval("system_ui") is None
+    assert mgr.get_status("system_ui") is None
+    assert mgr.is_pack_in_process_allowed("system_ui", pack_dir) is False
 
 
 # ===================================================================
@@ -154,6 +167,51 @@ class TestApprove:
         data = json.loads(grant_file.read_text(encoding="utf-8"))
         assert data["status"] == "approved"
         assert "_hmac_signature" in data
+
+    def test_approve_if_snapshot_accepts_exact_contents(self, tmp_path, monkeypatch):
+        mgr, _ = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        snapshot = mgr.get_pack_approval_snapshot("testpack")
+
+        result = mgr.approve_if_snapshot("testpack", snapshot["snapshot_digest"])
+
+        assert result.success is True
+        assert mgr.is_pack_approved_and_verified("testpack")[0] is True
+
+    def test_approve_if_snapshot_rejects_changed_contents(self, tmp_path, monkeypatch):
+        mgr, pack_dir = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        snapshot = mgr.get_pack_approval_snapshot("testpack")
+        (pack_dir / "handler.py").write_text("def run(): return 'changed'\n", encoding="utf-8")
+
+        result = mgr.approve_if_snapshot("testpack", snapshot["snapshot_digest"])
+
+        assert result.success is False
+        assert "changed" in str(result.error).lower()
+        assert mgr.get_status("testpack") != PackStatus.APPROVED
+
+    def test_approve_if_snapshot_rejects_external_write_between_compare_and_persist(
+        self, tmp_path, monkeypatch
+    ):
+        mgr, pack_dir = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        snapshot = mgr.get_pack_approval_snapshot("testpack")
+        original_persist = mgr._persist_approved_snapshot
+
+        def replace_before_persist(pack_id, file_hashes):
+            (pack_dir / "handler.py").write_text(
+                "def run(): return 'raced'\n", encoding="utf-8"
+            )
+            return original_persist(pack_id, file_hashes)
+
+        monkeypatch.setattr(mgr, "_persist_approved_snapshot", replace_before_persist)
+
+        result = mgr.approve_if_snapshot(
+            "testpack", snapshot["snapshot_digest"]
+        )
+
+        assert result.success is False
+        assert result.status == PackStatus.MODIFIED
+        approval = mgr.get_approval("testpack")
+        assert approval is not None
+        assert approval.file_hashes != mgr._compute_pack_hashes_nocache(pack_dir)
 
 
 # ===================================================================
@@ -378,8 +436,8 @@ class TestMiscOperations:
         assert is_valid is False
         assert reason == "not_approved"
 
-    @pytest.mark.parametrize("pack_id", TRUSTED_BUILTIN_PACK_IDS)
-    def test_non_bundled_builtin_named_pack_copy_requires_user_grant(self, tmp_path, monkeypatch, pack_id):
+    @pytest.mark.parametrize("pack_id", SYSTEM_PACK_IDS)
+    def test_unlisted_system_like_pack_copy_requires_user_grant(self, tmp_path, monkeypatch, pack_id):
         mgr, _ = _make_manager(tmp_path, pack_id=pack_id, monkeypatch=monkeypatch)
 
         assert mgr.get_status(pack_id) == PackStatus.INSTALLED

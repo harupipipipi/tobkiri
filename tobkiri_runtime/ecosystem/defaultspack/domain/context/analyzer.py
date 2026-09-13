@@ -342,7 +342,9 @@ def analyze_system():
     # ツール数
     registered_tools_count = 0
     try:
-        from domain.tool.registry import ToolRegistry
+        from domain.tool.catalog_contract_client import (
+            ContractToolCatalog as ToolRegistry,
+        )
         tool_registry = ToolRegistry()
         tools = tool_registry.list_tools()
         registered_tools_count = len(tools)

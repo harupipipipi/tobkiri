@@ -119,6 +119,7 @@ _AI_JUDGE_SYSTEM = build_content_classifier_prompt(
 class ConsentChecker:
     """同意チェッカー（シングルトン）"""
     _instance = None
+    _initialized: bool
 
     def __new__(cls):
         if cls._instance is None:

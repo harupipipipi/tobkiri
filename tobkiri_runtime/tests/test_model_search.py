@@ -63,6 +63,31 @@ def test_search_models_matches_multi_word_queries_across_model_separators():
     assert [item["profile_id"] for item in result["models"]] == ["gitlawb-opengateway/mimo-v2-omni"]
 
 
+def test_search_models_maps_legacy_hy3_free_terms_to_current_live_profiles():
+    from domain.ai_client.model_search import search_models
+
+    profiles = [
+        _profile(
+            "openrouter/tencent/hy3",
+            display_name="Tencent: Hy3",
+            provider_display_name="OpenRouter",
+        ),
+        _profile(
+            "openrouter/tencent/hy3-preview",
+            display_name="Tencent: Hy3 preview",
+            provider_display_name="OpenRouter",
+        ),
+    ]
+
+    result = search_models({"query": "hy3 free", "max_results": 5}, profiles=profiles)
+
+    assert [item["profile_id"] for item in result["models"]] == [
+        "openrouter/tencent/hy3",
+        "openrouter/tencent/hy3-preview",
+    ]
+    assert all(not item["profile_id"].endswith(":free") for item in result["models"])
+
+
 def test_recommend_model_reports_reason_codes():
     from domain.ai_client.model_search import recommend_model
 
@@ -73,3 +98,67 @@ def test_recommend_model_reports_reason_codes():
 
     assert result["selected_model"]["profile_id"] == "google/gemini"
     assert "requires_vision" in result["reason_codes"]
+
+
+def test_profile_catalog_unions_live_openrouter_chat_and_reasoning_models(monkeypatch):
+    from ecosystem.defaultspack.backend.ai_client import provider_catalog
+    from domain.ai_client import model_search
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+
+    saved_profile = _profile("openrouter/acme/saved", configured=True)
+    live_models = [
+        {
+            "model_id": "openrouter/acme/atlas-reasoner",
+            "provider_model_id": "acme/atlas-reasoner",
+            "provider_id": "openrouter",
+            "display_name": "Atlas Reasoner",
+            "type": "reasoning",
+            "capabilities": ["chat", "text_input", "text_output", "thinking"],
+            "context_length": 262144,
+            "available": True,
+            "metadata": {"inventory_source": "openrouter_models_api"},
+        },
+        {
+            "model_id": "openrouter/acme/vector",
+            "provider_model_id": "acme/vector",
+            "provider_id": "openrouter",
+            "display_name": "Atlas Vector",
+            "type": "embedding",
+            "capabilities": ["text_input"],
+            "available": True,
+        },
+    ]
+    monkeypatch.setattr(provider_catalog, "list_profile_catalog", lambda: [saved_profile])
+    monkeypatch.setattr(
+        provider_catalog,
+        "list_model_catalog",
+        lambda provider="": live_models if provider == "openrouter" else [],
+    )
+    monkeypatch.setattr(ModelRuntimeSettingsService, "get_settings", lambda self: {})
+    monkeypatch.setattr(
+        ModelRuntimeSettingsService,
+        "runtime_defined_profiles",
+        lambda self, settings: [],
+    )
+
+    profiles = model_search._profile_catalog()
+    result = model_search.search_models(
+        {
+            "provider_id": "openrouter",
+            "requires": {"thinking": True},
+            "max_results": 10,
+        },
+        profiles=profiles,
+    )
+
+    assert [item["profile_id"] for item in result["models"]] == [
+        "openrouter/acme/atlas-reasoner"
+    ]
+    assert result["models"][0]["model_id"] == "acme/atlas-reasoner"
+    assert {profile["profile_id"] for profile in profiles} == {
+        "openrouter/acme/saved",
+        "openrouter/acme/atlas-reasoner",
+    }
+    assert "openrouter/acme/vector" not in {
+        profile["profile_id"] for profile in profiles
+    }

@@ -24,7 +24,7 @@
     "tool_aliases": "prefer_explicit_pack_namespace",
     "agent_services": "expose_playbooks_not_service_ownership"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "criteria": [
       "semantic_dom_contract_stable",

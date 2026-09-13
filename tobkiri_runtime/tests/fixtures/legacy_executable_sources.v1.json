@@ -1,0 +1,2473 @@
+{
+  "schema": "io.tobkiri.legacy-executable-source-input.v1",
+  "source_format": "legacy-entrypoint-map",
+  "implementation_adapters": [
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.action.turn.lifecycle.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-lifecycle"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:e5da9fa888b02fc2f6e7c9425441e68c8efee772ae1b76788a1eeefc410af12d"
+    },
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-resource"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:e5da9fa888b02fc2f6e7c9425441e68c8efee772ae1b76788a1eeefc410af12d"
+    },
+    {
+      "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+      "legacy": {
+        "pack_id": "rumi_turn_runtime_pack",
+        "owner": "rumi_turn_runtime_pack",
+        "contract_id": "tobkiri.event.turn.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/turns.py",
+        "implementation_digest": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
+        "operation_ids": [
+          "rumi_turn_runtime_pack.turn-events"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:e5da9fa888b02fc2f6e7c9425441e68c8efee772ae1b76788a1eeefc410af12d"
+    },
+    {
+      "function_id": "rumi_conversation_store_pack.conversation-store.message-manage",
+      "legacy": {
+        "pack_id": "rumi_conversation_store_pack",
+        "owner": "rumi_conversation_store_pack",
+        "contract_id": "tobkiri.action.message.manage.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/store.py",
+        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "operation_ids": [
+          "rumi_conversation_store_pack.message-manage"
+        ]
+      },
+      "implementation_path": "runtime/message_host.py",
+      "implementation_digest": "sha256:114882d4816bb9bd069710b88c3b0d9a2a2eb1dac7eaa318f15691f1bbea7f71"
+    },
+    {
+      "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+      "legacy": {
+        "pack_id": "rumi_conversation_store_pack",
+        "owner": "rumi_conversation_store_pack",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/store.py",
+        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "operation_ids": [
+          "rumi_conversation_store_pack.conversation-manage"
+        ]
+      },
+      "implementation_path": "runtime/manage_host.py",
+      "implementation_digest": "sha256:6cf18a8d563d7ee11102c7c1eef1c229813b5767af77262bd3f122c1d59f2981"
+    },
+    {
+      "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+      "legacy": {
+        "pack_id": "rumi_conversation_store_pack",
+        "owner": "rumi_conversation_store_pack",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/store.py",
+        "implementation_digest": "sha256:3f498229d0c148d39e11fae31b464ed0152a8077a617ec6b379bc19e6f6f0bc5",
+        "operation_ids": [
+          "rumi_conversation_store_pack.conversation-resource"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:e4f8763040b57b54d86f609804993d5c2935506d67e0566cbf7783fb2e992062"
+    },
+    {
+      "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "legacy": {
+        "pack_id": "rumi_tool_registry_pack",
+        "owner": "rumi_tool_registry_pack",
+        "contract_id": "tobkiri.resource.tool.definition.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/registry.py",
+        "implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+        "operation_ids": [
+          "rumi_tool_registry_pack.tool-definition-resource"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
+    },
+    {
+      "function_id": "rumi_tool_registry_pack.tool-registry.manage",
+      "legacy": {
+        "pack_id": "rumi_tool_registry_pack",
+        "owner": "rumi_tool_registry_pack",
+        "contract_id": "tobkiri.action.tool.definition.manage.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/registry.py",
+        "implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+        "operation_ids": [
+          "rumi_tool_registry_pack.tool-definition-manage"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
+    },
+    {
+      "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
+      "legacy": {
+        "pack_id": "rumi_tool_registry_pack",
+        "owner": "rumi_tool_registry_pack",
+        "contract_id": "tobkiri.action.tool.definition.migrate.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/registry.py",
+        "implementation_digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+        "operation_ids": [
+          "rumi_tool_registry_pack.tool-definition-migrate"
+        ]
+      },
+      "implementation_path": "runtime/host.py",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
+    },
+    {
+      "function_id": "rumi_prompt_studio_pack.prompt-studio.resource",
+      "legacy": {
+        "pack_id": "rumi_prompt_studio_pack",
+        "owner": "rumi_prompt_studio_pack",
+        "contract_id": "tobkiri.resource.prompt.studio.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/process.py",
+        "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+        "operation_ids": [
+          "rumi_prompt_studio_pack.prompt-studio-resource"
+        ]
+      },
+      "implementation_path": "runtime/resource_host.py",
+      "implementation_digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c"
+    },
+    {
+      "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+      "legacy": {
+        "pack_id": "rumi_scheduler_tool_adapter_pack",
+        "owner": "rumi_scheduler_tool_adapter_pack",
+        "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
+        "contract_version": "1.0.0",
+        "implementation_path": "runtime/adapter.py",
+        "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+        "operation_ids": [
+          "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
+        ]
+      },
+      "implementation_path": "runtime/definitions_component.wasm",
+      "implementation_digest": "sha256:13e5031b5327950835112ef8481c97e2bb6040358083334c8ed6cd2bd8a9287f"
+    }
+  ],
+  "operation_id_overrides": [
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "entrypoint_id": "ai-gateway-generate",
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate"
+    },
+    {
+      "pack_id": "rumi_ai_gateway_pack",
+      "entrypoint_id": "ai-gateway-stream",
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.stream"
+    },
+    {
+      "pack_id": "rumi_git_publish_pack",
+      "entrypoint_id": "git-publish",
+      "operation_id": "rumi_git_publish_pack.git-push"
+    },
+    {
+      "pack_id": "rumi_git_write_pack",
+      "entrypoint_id": "git-write",
+      "operation_id": "rumi_git_write_pack.git-commit"
+    }
+  ],
+  "function_id_overrides": [
+    {
+      "pack_id": "rumi_git_write_pack",
+      "entrypoint_id": "git-write",
+      "function_id": "rumi_git_write_pack.git-commit.service"
+    }
+  ],
+  "packs": {
+    "rumi_default_tools_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_default_tools_pack.calculator",
+          "operation_ids": [
+            "rumi_default_tools_pack.calculator-evaluate"
+          ],
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/calculator.py"
+        }
+      ]
+    },
+    "rumi_turn_runtime_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-stop"
+          ],
+          "contract_id": "tobkiri.action.turn.stop.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "status",
+                "turn_id",
+                "stopped"
+              ],
+              "properties": {
+                "status": {
+                  "const": "cancellation_requested"
+                },
+                "turn_id": {
+                  "type": "string"
+                },
+                "stopped": {
+                  "const": false
+                }
+              }
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-reconcile"
+          ],
+          "contract_id": "tobkiri.action.turn.reconcile.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "turn_id"
+              ],
+              "properties": {
+                "turn_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+          "operation_ids": [
+            "rumi_turn_runtime_pack.turn-saved"
+          ],
+          "contract_id": "tobkiri.action.turn.saved.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "input": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  }
+                }
+              },
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "rumi_ai_gateway_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+          "operation_ids": [
+            "rumi_ai_gateway_pack.ai-gateway.preflight"
+          ],
+          "contract_id": "tobkiri.resource.ai.readiness.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/preflight.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "model_profile_id",
+                "messages"
+              ],
+              "properties": {
+                "model_profile_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "messages": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 2048,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "role",
+                      "content"
+                    ],
+                    "properties": {
+                      "role": {
+                        "enum": [
+                          "system",
+                          "user",
+                          "assistant"
+                        ]
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ready",
+                "model_profile_id",
+                "model_id",
+                "provider_instance_id",
+                "catalog_revision"
+              ],
+              "properties": {
+                "ready": {
+                  "const": true
+                },
+                "model_profile_id": {
+                  "type": "string"
+                },
+                "model_id": {
+                  "type": "string"
+                },
+                "provider_instance_id": {
+                  "type": "string"
+                },
+                "catalog_revision": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "defaultspack": {
+      "entries": [
+        {
+          "function_id": "defaultspack.application-presentation",
+          "operation_ids": [
+            "defaultspack.presentation.read"
+          ],
+          "contract_id": "tobkiri.resource.application.presentation.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/application_presentation.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "ui",
+                    "commands"
+                  ]
+                },
+                "model_options": {
+                  "type": "array",
+                  "maxItems": 256,
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "value",
+                      "label"
+                    ],
+                    "properties": {
+                      "value": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 4096
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "profile_id": {
+                  "type": "string"
+                },
+                "_session_id": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "function_id": "defaultspack.conversation.saved",
+          "operation_ids": [
+            "saved_complete"
+          ],
+          "contract_id": "conversation.saved-turn.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/saved_conversation.py",
+          "schemas": {
+            "input": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "title": "Saved conversation initial input",
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "request"
+              ],
+              "properties": {
+                "request": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "properties": {
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_id": {
+                      "$ref": "#/$defs/identifier"
+                    },
+                    "conversation_revision": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9007199254740991
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  }
+                }
+              },
+              "$defs": {
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[A-Za-z0-9]",
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  }
+                }
+              }
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        {
+          "function_id": "defaultspack.conversation",
+          "operation_ids": [
+            "complete"
+          ],
+          "contract_id": "conversation.turn.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/conversation.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "required": [
+                "messages"
+              ],
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "messages": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "tools": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "params": {
+                  "type": "object"
+                },
+                "context": {
+                  "type": "object"
+                },
+                "runtime_context": {
+                  "type": "object"
+                },
+                "timezone": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object",
+              "required": [
+                "code",
+                "message"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "rumi_ai_pipeline_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_pipeline_pack.ai-pipeline.failover",
+          "operation_ids": [
+            "rumi_ai_pipeline_pack.ai-failover-decide.generate",
+            "rumi_ai_pipeline_pack.ai-failover-decide.stream"
+          ],
+          "contract_id": "rumi.service.ai.failover.decide.v1",
+          "implementation_path": "runtime/pipeline.py"
+        },
+        {
+          "function_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare",
+          "operation_ids": [
+            "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+            "rumi_ai_pipeline_pack.ai-request-prepare.stream"
+          ],
+          "contract_id": "rumi.service.ai.request.prepare.v1",
+          "implementation_path": "runtime/pipeline.py"
+        }
+      ]
+    },
+    "rumi_ai_routing_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_routing_pack.ai-routing.default",
+          "operation_ids": [
+            "rumi_ai_routing_pack.ai-route.generate",
+            "rumi_ai_routing_pack.ai-route.stream"
+          ],
+          "contract_id": "rumi.service.ai.route.v1",
+          "implementation_path": "runtime/router.py"
+        }
+      ]
+    },
+    "rumi_ai_tool_bridge_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize",
+          "operation_ids": [
+            "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+            "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream"
+          ],
+          "contract_id": "rumi.service.ai.tool_intent.normalize.v1",
+          "implementation_path": "runtime/bridge.py"
+        }
+      ]
+    },
+    "rumi_ai_usage_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_ai_usage_pack.ai-usage.cost",
+          "operation_ids": [
+            "rumi_ai_usage_pack.ai-usage-cost.generate",
+            "rumi_ai_usage_pack.ai-usage-cost.stream"
+          ],
+          "contract_id": "rumi.service.ai.usage.cost.v1",
+          "implementation_path": "runtime/usage.py"
+        }
+      ]
+    },
+    "rumi_file_inspect_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_file_inspect_pack.file-inspect.service",
+          "operation_ids": [
+            "rumi_file_inspect_pack.file-inspect.for-media"
+          ],
+          "contract_id": "rumi.service.file.inspect.v1",
+          "implementation_path": "runtime/inspect.py"
+        }
+      ]
+    },
+    "rumi_model_catalog_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_model_catalog_pack.model-catalog.bundled",
+          "operation_ids": [
+            "rumi_model_catalog_pack.bundled-model-catalog.generate",
+            "rumi_model_catalog_pack.bundled-model-catalog.stream"
+          ],
+          "contract_id": "rumi.resource.ai.model.catalog.v1",
+          "implementation_path": "runtime/catalog.py"
+        }
+      ]
+    },
+    "rumi_model_registry_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "operation_ids": [
+            "rumi_model_registry_pack.model-profile-resource.generate",
+            "rumi_model_registry_pack.model-profile-resource.stream"
+          ],
+          "contract_id": "rumi.resource.ai.model.profile.v1",
+          "implementation_path": "runtime/process.py"
+        }
+      ]
+    },
+    "rumi_provider_registry_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
+          "operation_ids": [
+            "rumi_provider_registry_pack.provider-configure-prepare"
+          ],
+          "contract_id": "rumi.action.ai.provider.registry.manage.v1",
+          "implementation_path": "runtime/process.py"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-configure.execute",
+          "operation_ids": [
+            "rumi_provider_registry_pack.provider-configure"
+          ],
+          "contract_id": "rumi.action.ai.provider.registry.manage.v1",
+          "implementation_path": "runtime/process.py"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-registry.health",
+          "operation_ids": [
+            "rumi_provider_registry_pack.provider-registry-health.generate",
+            "rumi_provider_registry_pack.provider-registry-health.stream"
+          ],
+          "contract_id": "rumi.resource.ai.provider.health.v1",
+          "implementation_path": "runtime/health_process.py"
+        },
+        {
+          "function_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "operation_ids": [
+            "rumi_provider_registry_pack.provider-registry-resource.generate",
+            "rumi_provider_registry_pack.provider-registry-resource.stream"
+          ],
+          "contract_id": "rumi.resource.ai.provider.registry.v1",
+          "implementation_path": "runtime/process.py"
+        }
+      ]
+    },
+    "tobkiri_host_pack_control": {
+      "entries": [
+        {
+          "function_id": "tobkiri.host.control-presentation",
+          "operation_ids": [
+            "profile.change.activate",
+            "profile.change.approve",
+            "profile.change.resolve",
+            "profile.change.review",
+            "profile.catalog.read",
+            "operation.status.read",
+            "profile.read",
+            "settings.read",
+            "topology.contracts.read",
+            "topology.operations.read",
+            "topology.packs.read",
+            "topology.principals.read"
+          ],
+          "contract_id": "tobkiri.host.control-presentation.v4",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/catalog.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "tobkiri.host.pack-control",
+          "operation_ids": [
+            "approval.approve",
+            "approval.candidate",
+            "approval.revoke",
+            "catalog.read",
+            "dashboard.read",
+            "pack.disable",
+            "pack.enable",
+            "pack.install",
+            "pack.status",
+            "profile.reload",
+            "runtime.restart"
+          ],
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/catalog.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_shell_execute_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_shell_execute_pack.shell-prepare.service",
+          "operation_ids": [
+            "rumi_shell_execute_pack.shell-prepare"
+          ],
+          "contract_id": "tobkiri.service.shell.execute.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/execute.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_git_write_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_git_write_pack.git-commit-prepare.service",
+          "operation_ids": [
+            "rumi_git_write_pack.git-commit-prepare"
+          ],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-restore-prepare.service",
+          "operation_ids": [
+            "rumi_git_write_pack.git-restore-prepare"
+          ],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-restore.service",
+          "operation_ids": [
+            "rumi_git_write_pack.git-restore"
+          ],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-apply-patch-prepare.service",
+          "operation_ids": [
+            "rumi_git_write_pack.git-apply-patch-prepare"
+          ],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_git_write_pack.git-apply-patch.service",
+          "operation_ids": [
+            "rumi_git_write_pack.git-apply-patch"
+          ],
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/write.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_git_publish_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_git_publish_pack.git-push-prepare.service",
+          "operation_ids": [
+            "rumi_git_publish_pack.git-push-prepare"
+          ],
+          "contract_id": "tobkiri.service.git.publish.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/publish.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_host_authority_bridge_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "operation_ids": [
+            "interactive_approval.get",
+            "interactive_approval.list",
+            "interactive_approval.approve",
+            "interactive_approval.deny"
+          ],
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/bridge.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+          "operation_ids": [
+            "interactive_effect.manage"
+          ],
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/bridge.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "rumi_command_protocol_pack": {
+      "entries": [
+        {
+          "function_id": "rumi_command_protocol_pack.catalog.read",
+          "operation_ids": [
+            "command.catalog.read"
+          ],
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/catalog.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "rumi_command_protocol_pack.high-risk-command.service",
+          "operation_ids": [
+            "high_risk_command.manage"
+          ],
+          "contract_id": "tobkiri.service.command.high-risk.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/high_risk_adapter.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "tobkiri_ui_settings_pack": {
+      "entries": [
+        {
+          "function_id": "tobkiri.ui.preferences.write",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.preferences-write"
+          ],
+          "contract_id": "tobkiri.action.ui.preferences.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
+          "schemas": {
+            "input": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "profile_id",
+                "changes",
+                "expected_revision"
+              ],
+              "properties": {
+                "profile_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "changes": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "additionalProperties": false,
+                  "properties": {
+                    "general": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "composer_placeholder": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "show_activity_in_messages": {
+                          "type": "boolean"
+                        },
+                        "keyboard_button_navigation": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut_enabled": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "spotlight_shortcut_text_input": {
+                          "type": "boolean"
+                        },
+                        "language": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    },
+                    "chat_rendering": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "show_widgets": {
+                          "type": "boolean"
+                        },
+                        "unknown_block_strategy": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    }
+                  }
+                },
+                "expected_revision": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "output": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "values",
+                "document_revision"
+              ],
+              "properties": {
+                "values": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "additionalProperties": false,
+                  "properties": {
+                    "general": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "composer_placeholder": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "show_activity_in_messages": {
+                          "type": "boolean"
+                        },
+                        "keyboard_button_navigation": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut_enabled": {
+                          "type": "boolean"
+                        },
+                        "spotlight_shortcut": {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        "spotlight_shortcut_text_input": {
+                          "type": "boolean"
+                        },
+                        "language": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    },
+                    "chat_rendering": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "show_widgets": {
+                          "type": "boolean"
+                        },
+                        "unknown_block_strategy": {
+                          "type": "string",
+                          "maxLength": 2048
+                        }
+                      }
+                    }
+                  }
+                },
+                "document_revision": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "tobkiri.ui.settings.read",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.settings-read"
+          ],
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "tobkiri.ui.catalog.read",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.catalog-read"
+          ],
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/settings.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "tobkiri_workflow_pack": {
+      "entries": [
+        {
+          "function_id": "tobkiri.workflow.provider",
+          "operation_ids": [
+            "definition.archive",
+            "definition.create",
+            "definition.delete",
+            "definition.get",
+            "definition.list",
+            "definition.publish",
+            "definition.update",
+            "definition.validate",
+            "definition.compile-preview",
+            "operation.palette",
+            "run.cancel",
+            "run.advance",
+            "run.create",
+            "run.get",
+            "run.pause",
+            "run.reconcile-recovery",
+            "run.resume",
+            "run.step.execute",
+            "run.step.resume",
+            "run.step.retry"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/provider.py",
+          "schemas": {
+            "input": {
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "tobkiri_mcp_connection_pack": {
+      "entries": [
+        {
+          "function_id": "mcp.connection.prepare.service",
+          "operation_ids": [
+            "mcp.connection.prepare"
+          ],
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allowed_tools": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "items": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "cwd": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "env": {
+                          "additionalProperties": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxProperties": 128,
+                          "type": "object"
+                        },
+                        "transport": {
+                          "const": "stdio"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "command",
+                        "env",
+                        "cwd"
+                      ],
+                      "type": "object"
+                    },
+                    "server_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "server_id",
+                    "config",
+                    "allowed_tools"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "type": "object"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowed_tools": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "command": {
+                              "items": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "cwd": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            },
+                            "env": {
+                              "additionalProperties": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxProperties": 128,
+                              "type": "object"
+                            },
+                            "transport": {
+                              "const": "stdio"
+                            }
+                          },
+                          "required": [
+                            "transport",
+                            "command",
+                            "env",
+                            "cwd"
+                          ],
+                          "type": "object"
+                        },
+                        "server_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "server_id",
+                        "config",
+                        "allowed_tools"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "plan"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arguments": {
+                      "type": "object"
+                    },
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "tool": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id",
+                    "tool",
+                    "arguments"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "maxProperties": 0
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "mcp.connection.connect.service",
+          "operation_ids": [
+            "mcp.connection.connect"
+          ],
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allowed_tools": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "items": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "cwd": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "env": {
+                          "additionalProperties": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxProperties": 128,
+                          "type": "object"
+                        },
+                        "transport": {
+                          "const": "stdio"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "command",
+                        "env",
+                        "cwd"
+                      ],
+                      "type": "object"
+                    },
+                    "server_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "server_id",
+                    "config",
+                    "allowed_tools"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "type": "object"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowed_tools": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "command": {
+                              "items": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "cwd": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            },
+                            "env": {
+                              "additionalProperties": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxProperties": 128,
+                              "type": "object"
+                            },
+                            "transport": {
+                              "const": "stdio"
+                            }
+                          },
+                          "required": [
+                            "transport",
+                            "command",
+                            "env",
+                            "cwd"
+                          ],
+                          "type": "object"
+                        },
+                        "server_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "server_id",
+                        "config",
+                        "allowed_tools"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "plan"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arguments": {
+                      "type": "object"
+                    },
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "tool": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id",
+                    "tool",
+                    "arguments"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "maxProperties": 0
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "mcp.connection.call.service",
+          "operation_ids": [
+            "mcp.connection.call"
+          ],
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allowed_tools": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "items": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "cwd": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "env": {
+                          "additionalProperties": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxProperties": 128,
+                          "type": "object"
+                        },
+                        "transport": {
+                          "const": "stdio"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "command",
+                        "env",
+                        "cwd"
+                      ],
+                      "type": "object"
+                    },
+                    "server_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "server_id",
+                    "config",
+                    "allowed_tools"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "type": "object"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowed_tools": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "command": {
+                              "items": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "cwd": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            },
+                            "env": {
+                              "additionalProperties": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxProperties": 128,
+                              "type": "object"
+                            },
+                            "transport": {
+                              "const": "stdio"
+                            }
+                          },
+                          "required": [
+                            "transport",
+                            "command",
+                            "env",
+                            "cwd"
+                          ],
+                          "type": "object"
+                        },
+                        "server_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "server_id",
+                        "config",
+                        "allowed_tools"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "plan"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arguments": {
+                      "type": "object"
+                    },
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "tool": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id",
+                    "tool",
+                    "arguments"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "maxProperties": 0
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "mcp.connection.disconnect.service",
+          "operation_ids": [
+            "mcp.connection.disconnect"
+          ],
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allowed_tools": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "items": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "cwd": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "env": {
+                          "additionalProperties": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxProperties": 128,
+                          "type": "object"
+                        },
+                        "transport": {
+                          "const": "stdio"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "command",
+                        "env",
+                        "cwd"
+                      ],
+                      "type": "object"
+                    },
+                    "server_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "server_id",
+                    "config",
+                    "allowed_tools"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "type": "object"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowed_tools": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "command": {
+                              "items": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "cwd": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            },
+                            "env": {
+                              "additionalProperties": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxProperties": 128,
+                              "type": "object"
+                            },
+                            "transport": {
+                              "const": "stdio"
+                            }
+                          },
+                          "required": [
+                            "transport",
+                            "command",
+                            "env",
+                            "cwd"
+                          ],
+                          "type": "object"
+                        },
+                        "server_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "server_id",
+                        "config",
+                        "allowed_tools"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "plan"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arguments": {
+                      "type": "object"
+                    },
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "tool": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id",
+                    "tool",
+                    "arguments"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "maxProperties": 0
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "mcp.connection.list.service",
+          "operation_ids": [
+            "mcp.connection.list"
+          ],
+          "contract_id": "tobkiri.service.mcp.connection.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/host.py",
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "allowed_tools": {
+                      "items": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "minItems": 1,
+                      "type": "array",
+                      "uniqueItems": true
+                    },
+                    "config": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "items": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxItems": 256,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "cwd": {
+                          "maxLength": 4096,
+                          "type": "string"
+                        },
+                        "env": {
+                          "additionalProperties": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "maxProperties": 128,
+                          "type": "object"
+                        },
+                        "transport": {
+                          "const": "stdio"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "command",
+                        "env",
+                        "cwd"
+                      ],
+                      "type": "object"
+                    },
+                    "server_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "server_id",
+                    "config",
+                    "allowed_tools"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "plan": {
+                      "type": "object"
+                    },
+                    "request": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "allowed_tools": {
+                          "items": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                            "type": "string"
+                          },
+                          "maxItems": 64,
+                          "minItems": 1,
+                          "type": "array",
+                          "uniqueItems": true
+                        },
+                        "config": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "command": {
+                              "items": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxItems": 256,
+                              "minItems": 1,
+                              "type": "array"
+                            },
+                            "cwd": {
+                              "maxLength": 4096,
+                              "type": "string"
+                            },
+                            "env": {
+                              "additionalProperties": {
+                                "maxLength": 16384,
+                                "type": "string"
+                              },
+                              "maxProperties": 128,
+                              "type": "object"
+                            },
+                            "transport": {
+                              "const": "stdio"
+                            }
+                          },
+                          "required": [
+                            "transport",
+                            "command",
+                            "env",
+                            "cwd"
+                          ],
+                          "type": "object"
+                        },
+                        "server_id": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "server_id",
+                        "config",
+                        "allowed_tools"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "request",
+                    "plan"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arguments": {
+                      "type": "object"
+                    },
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    },
+                    "tool": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id",
+                    "tool",
+                    "arguments"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connection_id": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "connection_id"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "maxProperties": 0
+                }
+              ]
+            },
+            "output": {
+              "type": "object"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

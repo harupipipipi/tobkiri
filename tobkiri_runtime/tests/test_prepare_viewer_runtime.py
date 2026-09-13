@@ -22,6 +22,50 @@ def _load_module():
     return module
 
 
+def test_run_command_preserves_explicit_environment_and_disables_bytecode(monkeypatch):
+    module = _load_module()
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    environment = {"PATH": "/test/bin", "PYTHONDONTWRITEBYTECODE": "0"}
+    module.run_command(["python", "--version"], env=environment)
+
+    assert captured["env"] == {
+        "PATH": "/test/bin",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    assert environment["PYTHONDONTWRITEBYTECODE"] == "0"
+
+
+def test_prepare_dev_defaults_refuses_false_clean_source_provenance(tmp_path, monkeypatch):
+    module = _load_module()
+    artifact = tmp_path / "test.AppImage"
+    artifact.write_bytes(b"development shell")
+    runtime_root = tmp_path / "tobkiri_runtime"
+    (runtime_root / "ecosystem/defaultspack/v4").mkdir(parents=True)
+    monkeypatch.setattr(module, "_target_shell_spec", lambda *_args: {
+        "platform": "linux", "architecture": "x86_64", "bundle": "appimage",
+        "artifact": artifact, "relative_path": "Tobkiri.AppImage",
+        "entrypoint": "Tobkiri.AppImage",
+    })
+    commands = []
+
+    def fake_command(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=" M source.py\n")
+
+    monkeypatch.setattr(module, "run_command", fake_command)
+    with pytest.raises(RuntimeError, match="refusing to attest"):
+        module.prepare_dev_defaults(tmp_path, "x86_64-unknown-linux-gnu")
+
+    assert not (runtime_root / module.SOURCE_PROVENANCE_FILENAME).exists()
+    assert not any("-c" in command for command in commands)
+
+
 def test_resolve_target_prefers_explicit_then_tauri_environment(monkeypatch):
     module = _load_module()
     monkeypatch.setattr(module, "host_target", lambda: "host-target")
@@ -139,10 +183,75 @@ def test_prepare_dev_fails_with_actionable_repo_path_when_uv_is_missing(
         module.prepare_dev(tmp_path, "x86_64-unknown-linux-gnu")
 
 
+def test_dev_environment_prepares_uv_pack_shell_then_defaults(tmp_path, monkeypatch):
+    module = _load_module()
+    calls = []
+    monkeypatch.setattr(module, "prepare_dev", lambda root, target: calls.append(("uv", root, target)))
+    monkeypatch.setattr(
+        module,
+        "prepare_dev_pack_shell",
+        lambda root, target: calls.append(("pack-shell", root, target)),
+    )
+    monkeypatch.setattr(
+        module,
+        "prepare_dev_defaults",
+        lambda root, target: calls.append(("defaults", root, target)),
+    )
+
+    module.prepare_dev_environment(tmp_path, "aarch64-apple-darwin")
+
+    assert [call[0] for call in calls] == ["uv", "pack-shell", "defaults"]
+
+
+def test_macos_dev_shell_spec_uses_debug_unsigned_app(tmp_path):
+    module = _load_module()
+
+    spec = module._target_shell_spec(tmp_path, "aarch64-apple-darwin")
+
+    assert spec["bundle"] == "app"
+    assert spec["platform"] == "macos"
+    assert spec["architecture"] == "arm64"
+    assert spec["relative_path"] == "Tobkiri.app"
+    assert str(spec["artifact"]).endswith(
+        "src-tauri/target/aarch64-apple-darwin/debug/bundle/macos/Tobkiri.app"
+    )
+
+
+def test_prepare_dev_pack_shell_writes_verified_debug_digest(tmp_path, monkeypatch):
+    module = _load_module()
+    target = "aarch64-apple-darwin"
+    binary = tmp_path / "pack-shell" / "target" / target / "debug" / "pack-shell"
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b"development pack shell")
+    catalog = tmp_path / "tobkiri_launcher/src-tauri/bundled/presentation_catalog.json"
+    catalog.parent.mkdir(parents=True)
+    catalog.write_text('{"schema":"test"}\n', encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(module, "run_command", lambda command, **kwargs: calls.append((command, kwargs)))
+
+    result = module.prepare_dev_pack_shell(tmp_path, target)
+
+    assert result == binary
+    assert calls[0][0][:3] == ["cargo", "build", "--target"]
+    assert binary.with_name("pack-shell.sha256").read_text(encoding="ascii") == (
+        "09c7e24d31c73da978ebed794be79537edf9d0f2e2f7ff6f1ffa985f4db676a1\n"
+    )
+    assert (tmp_path / "tobkiri_runtime/bundled/pack-shell").read_bytes() == binary.read_bytes()
+    assert (tmp_path / "tobkiri_runtime/bundled/presentation_catalog.json").read_text(
+        encoding="utf-8"
+    ) == catalog.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("sealed", [False, True])
 def test_prepare_release_builds_pack_shell_then_runs_verified_resource_preparer(
     tmp_path,
     monkeypatch,
+    sealed,
 ):
+    if sealed:
+        monkeypatch.setenv("TOBKIRI_PACKAGING_PYTHON_SNAPSHOT", str(tmp_path / "sealed"))
+    else:
+        monkeypatch.delenv("TOBKIRI_PACKAGING_PYTHON_SNAPSHOT", raising=False)
     module = _load_module()
     manifest = tmp_path / "pack-shell" / "Cargo.toml"
     preparer_path = tmp_path / ".github" / "scripts" / "prepare_tauri_resources.py"
@@ -151,13 +260,16 @@ def test_prepare_release_builds_pack_shell_then_runs_verified_resource_preparer(
     manifest.write_text("[package]\nname='pack-shell'\n", encoding="utf-8")
     preparer_path.write_text("# test\n", encoding="utf-8")
 
+    calls: list[tuple[list[str], Path | None]] = []
     fake_preparer = SimpleNamespace(
         UV_PINNED_VERSION="0.11.14",
         UV_SHA256_BY_TARGET={"x86_64-pc-windows-msvc": "sha"},
+        seal_pack_shell_binary=lambda root, target: calls.append(
+            (["seal-pack-shell", os.fspath(root), target], root)
+        ),
     )
-    monkeypatch.setattr(module, "load_resource_preparer", lambda _root: fake_preparer)
 
-    calls: list[tuple[list[str], Path | None]] = []
+    monkeypatch.setattr(module, "load_resource_preparer", lambda _root: fake_preparer)
 
     def fake_run(command, *, cwd=None, capture_output=False):
         del capture_output
@@ -170,10 +282,16 @@ def test_prepare_release_builds_pack_shell_then_runs_verified_resource_preparer(
 
     assert calls[0][0][:4] == ["cargo", "build", "--locked", "--release"]
     assert calls[0][0][4:6] == ["--target", "x86_64-pc-windows-msvc"]
-    assert calls[1][0][0] == os.fspath(module.sys.executable)
-    assert "--uv-version" in calls[1][0]
-    assert "0.11.14" in calls[1][0]
-    assert "--require-runtime-tools" in calls[1][0]
+    assert calls[1] == (
+        ["seal-pack-shell", os.fspath(tmp_path), "x86_64-pc-windows-msvc"],
+        tmp_path,
+    )
+    assert calls[2][0][0] == os.fspath(module.sys.executable)
+    assert calls[2][0][1:3] == ["-I", "-B"]
+    assert calls[2][1] == (tmp_path / "sealed" if sealed else tmp_path)
+    assert "--uv-version" in calls[2][0]
+    assert "0.11.14" in calls[2][0]
+    assert "--require-runtime-tools" in calls[2][0]
 
 
 def test_prepare_release_rejects_target_without_pinned_checksum(tmp_path, monkeypatch):
@@ -205,6 +323,7 @@ def test_prepare_release_removes_read_only_dev_uv_before_verified_stage(tmp_path
     fake_preparer = SimpleNamespace(
         UV_PINNED_VERSION="0.0.0",
         UV_SHA256_BY_TARGET={target: "fixture"},
+        seal_pack_shell_binary=lambda _root, _target: None,
     )
     calls = []
     monkeypatch.setattr(module, "load_resource_preparer", lambda _root: fake_preparer)
@@ -214,4 +333,4 @@ def test_prepare_release_removes_read_only_dev_uv_before_verified_stage(tmp_path
 
     assert not destination.exists()
     assert len(calls) == 2
-    assert "prepare_tauri_resources.py" in str(calls[1][1])
+    assert "prepare_tauri_resources.py" in str(calls[1][3])

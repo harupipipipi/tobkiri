@@ -3,12 +3,20 @@ from __future__ import annotations
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+
+def _settings_owner(tmp_path: Path) -> Any:
+    """Return an isolated explicit owner for model runtime settings."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return FrontendSettingsStore(tmp_path / "frontend_settings.json")
 
 
 def test_temporal_context_prompt_uses_configured_timezone():
@@ -26,7 +34,7 @@ def test_temporal_context_prompt_uses_configured_timezone():
     assert "Today is 2026-06-06." in prompt
 
 
-def test_ai_complete_injects_temporal_context(monkeypatch):
+def test_ai_complete_injects_temporal_context(monkeypatch, tmp_path: Path):
     from blocks.ai.complete import run
 
     captured: dict[str, object] = {}
@@ -43,6 +51,7 @@ def test_ai_complete_injects_temporal_context(monkeypatch):
             "messages": [{"role": "user", "content": "What happened today?"}],
         },
         {"timezone": "Asia/Tokyo"},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     messages = captured["request"]["messages"]
@@ -52,7 +61,9 @@ def test_ai_complete_injects_temporal_context(monkeypatch):
     assert "Today is " in messages[0]["content"]
 
 
-def test_ai_complete_passes_profile_authority_context(monkeypatch):
+def test_ai_complete_passes_profile_authority_context(
+    monkeypatch, tmp_path: Path
+):
     from blocks.ai.complete import run
 
     captured: dict[str, object] = {}
@@ -70,6 +81,7 @@ def test_ai_complete_passes_profile_authority_context(monkeypatch):
             "conversation_id": "conv-1",
         },
         {"profile_id": "defaultspack.mimo_coding_company"},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert result["status"] == "ok"
@@ -80,7 +92,9 @@ def test_ai_complete_passes_profile_authority_context(monkeypatch):
     }
 
 
-def test_ai_complete_does_not_synthesize_principal_from_payload_profile(monkeypatch):
+def test_ai_complete_does_not_synthesize_principal_from_payload_profile(
+    monkeypatch, tmp_path: Path
+):
     from blocks.ai.complete import run
 
     captured: dict[str, object] = {}
@@ -99,6 +113,7 @@ def test_ai_complete_does_not_synthesize_principal_from_payload_profile(monkeypa
             "principal_id": "profile:payload-spoof",
         },
         {},
+        settings_owner=_settings_owner(tmp_path),
     )
 
     assert result["status"] == "ok"

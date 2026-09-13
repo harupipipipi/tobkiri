@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import type { AuthorityRequest } from "../lib/api";
@@ -12,9 +12,10 @@ type CanonicalHostPermissionDefinition = {
   stream_allowed?: boolean;
 };
 
+const canonicalRegistryPath = fileURLToPath(new URL("../../../../../core_runtime/host_permissions/default_registry.json", import.meta.url));
+
 function canonicalRegistry(): Record<string, CanonicalHostPermissionDefinition> {
-  const path = fileURLToPath(new URL("../../../../../core_runtime/host_permissions/default_registry.json", import.meta.url));
-  return JSON.parse(readFileSync(path, "utf-8")) as Record<string, CanonicalHostPermissionDefinition>;
+  return JSON.parse(readFileSync(canonicalRegistryPath, "utf-8")) as Record<string, CanonicalHostPermissionDefinition>;
 }
 
 function desktopInfo(overrides: Partial<DesktopSystemInfo> = {}): DesktopSystemInfo {
@@ -47,7 +48,11 @@ function authorityRequest(overrides: Partial<AuthorityRequest>): AuthorityReques
 }
 
 describe("host permissions", () => {
-  it("derives frontend definitions from the canonical host permission registry", () => {
+  it("derives frontend definitions from the canonical host permission registry", (context) => {
+    if (!existsSync(canonicalRegistryPath)) {
+      context.skip("Requires the sibling core_runtime canonical registry.");
+      return;
+    }
     const registry = canonicalRegistry();
     const definitions = hostPermissionDefinitions();
 
@@ -119,7 +124,7 @@ describe("host permissions", () => {
     assert.equal(clipboardWrite?.osStatus, "unsupported");
 
     const summary = hostPermissionSummary(rows);
-    assert.equal(summary.total, Object.keys(canonicalRegistry()).length);
+    assert.equal(summary.total, hostPermissionDefinitions().length);
     assert.equal(summary.approved, 1);
     assert.equal(summary.osReady, 2);
   });

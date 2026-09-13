@@ -1,0 +1,373 @@
+from __future__ import annotations
+
+import json
+import shutil
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from tobkiri_host.artifact_compiler import compile_pack_root, routes_for_plan
+from tobkiri_host.errors import InvalidArtifactError, ResolutionError
+from tobkiri_protocol.errors import SchemaValidationError
+
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_mcp_gateway_calls_compile_as_external_effects() -> None:
+    """Arbitrary remote tool calls must retain ambiguous-outcome handling."""
+    compiled = compile_pack_root(ROOT / "ecosystem" / "rumi_mcp_gateway_pack")
+    operations = [
+        operation
+        for function in compiled.artifact.functions
+        for operation in function.operations
+    ]
+    assert len(operations) == 1
+    assert operations[0].effect_class.value == "external_effect"
+
+
+@pytest.mark.parametrize(
+    ("pack_id", "function_id", "operation_id"),
+    (
+        ("defaultspack", "defaultspack.conversation", "complete"),
+        (
+            "rumi_ai_gateway_pack",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+        ),
+        (
+            "rumi_ai_gateway_pack",
+            "rumi_ai_gateway_pack.ai-gateway.stream",
+            "rumi_ai_gateway_pack.ai-gateway.stream",
+        ),
+        (
+            "rumi_provider_adapters_pack",
+            "rumi_provider_adapters_pack.provider.compatibility.generate",
+            "rumi_provider_adapters_pack.provider-generate",
+        ),
+        (
+            "rumi_provider_adapters_pack",
+            "rumi_provider_adapters_pack.provider.compatibility.stream",
+            "rumi_provider_adapters_pack.provider-stream",
+        ),
+    ),
+)
+def test_ai_conversation_chain_outlives_provider_transport_deadline(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> None:
+    """Cold PackVM startup must not consume the provider's response budget."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / pack_id / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item for item in catalog["variants"] if item["function_id"] == function_id
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == operation_id
+    )
+
+    assert operation["timeout_default_ms"] == 120_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
+@pytest.mark.parametrize(
+    ("pack_id", "function_id", "operation_id"),
+    (
+        (
+            "tobkiri_ui_settings_pack",
+            "tobkiri.ui.catalog.read",
+            "tobkiri_ui_settings_pack.catalog-read",
+        ),
+        (
+            "tobkiri_ui_settings_pack",
+            "tobkiri.ui.settings.read",
+            "tobkiri_ui_settings_pack.settings-read",
+        ),
+        (
+            "rumi_command_protocol_pack",
+            "rumi_command_protocol_pack.catalog.read",
+            "command.catalog.read",
+        ),
+        (
+            "defaultspack",
+            "defaultspack.application-presentation",
+            "defaultspack.presentation.read",
+        ),
+        *(
+            (
+                "tobkiri_host_pack_control",
+                "tobkiri.host.control-presentation",
+                operation_id,
+            )
+            for operation_id in (
+                "profile.catalog.read",
+                "profile.read",
+                "settings.read",
+                "topology.contracts.read",
+                "topology.operations.read",
+                "topology.packs.read",
+                "topology.principals.read",
+            )
+        ),
+    ),
+)
+def test_native_startup_reads_outlive_cold_packvm_start(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> None:
+    """Startup reads may include one bounded native PackVM cold start."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / pack_id / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item for item in catalog["variants"] if item["function_id"] == function_id
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == operation_id
+    )
+
+    assert operation["timeout_default_ms"] == 120_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
+def test_unrelated_saved_turn_keeps_standard_deadline() -> None:
+    """The native startup allowance must stay limited to the selected reads."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / "defaultspack" / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item
+        for item in catalog["variants"]
+        if item["function_id"] == "defaultspack.conversation.saved"
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == "saved_complete"
+    )
+
+    assert operation["timeout_default_ms"] == 30_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
+def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
+    pack_roots = sorted(path.parent for path in (ROOT / "ecosystem").glob("*/pack.v4.json"))
+    compiled = [compile_pack_root(path) for path in pack_roots]
+    declared = json.loads(
+        (ROOT / "schemas/pack_v4_catalog.v1.json").read_text(encoding="utf-8")
+    )["pack_ids"]
+    assert {item.artifact.pack_id for item in compiled} == set(declared)
+    assert {item.artifact.pack_id for item in compiled} == {path.name for path in pack_roots}
+
+    command = next(
+        item for item in compiled if item.artifact.pack_id == "rumi_command_protocol_pack"
+    )
+    assert set(command.routes) == {
+        ("tobkiri.resource.command.catalog.v1", "command.catalog.read"),
+        ("tobkiri.service.command.high-risk.v1", "high_risk_command.manage")
+    }
+
+    conversation = next(item for item in compiled if item.artifact.pack_id == "defaultspack")
+    inspect = next(item for item in compiled if item.artifact.pack_id == "rumi_file_inspect_pack")
+    selected_operations = {
+        (operation.contract_id, operation.operation_id)
+        for artifact in (conversation.artifact, inspect.artifact)
+        for function in artifact.functions
+        for operation in function.operations
+    }
+    assert selected_operations == {
+        ("conversation.turn.v1", "complete"),
+        ("conversation.saved-turn.v1", "saved_complete"),
+        ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
+        (
+            "tobkiri.service.file.inspect.v1",
+            "rumi_file_inspect_pack.file-inspect",
+        ),
+        (
+            "tobkiri.service.file.inspect.v1",
+            "rumi_file_inspect_pack.file-inspect.for-media",
+        ),
+    }
+    assert set(conversation.routes) == {
+        ("conversation.turn.v1", "complete"),
+        ("conversation.saved-turn.v1", "saved_complete"),
+        ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
+    }
+    assert set(inspect.routes) == {
+        (
+            "tobkiri.service.file.inspect.v1",
+            "rumi_file_inspect_pack.file-inspect",
+        ),
+        (
+            "tobkiri.service.file.inspect.v1",
+            "rumi_file_inspect_pack.file-inspect.for-media",
+        ),
+    }
+
+
+def test_compiler_rejects_tamper_missing_variant_and_source_swap(
+    tmp_path: Path,
+) -> None:
+    copied = tmp_path / "defaultspack"
+    shutil.copytree(ROOT / "ecosystem" / "defaultspack", copied)
+    runtime = copied / "runtime" / "conversation.py"
+    runtime.write_text(runtime.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(InvalidArtifactError, match="digest mismatch"):
+        compile_pack_root(copied)
+
+    shutil.rmtree(copied)
+    shutil.copytree(ROOT / "ecosystem" / "defaultspack", copied)
+    catalog_path = copied / "executables.v4.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["variants"] = []
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    with pytest.raises((InvalidArtifactError, SchemaValidationError)):
+        compile_pack_root(copied)
+
+    shutil.rmtree(copied)
+    shutil.copytree(ROOT / "ecosystem" / "defaultspack", copied)
+    catalog_path = copied / "executables.v4.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    catalog["source_identity"] = "sha256:" + "0" * 64
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    with pytest.raises(InvalidArtifactError, match="source identity"):
+        compile_pack_root(copied)
+
+
+def test_compiler_rejects_missing_stale_duplicate_and_unqualified_catalogs(
+    tmp_path: Path,
+) -> None:
+    copied = tmp_path / "pack"
+    source = ROOT / "ecosystem" / "defaultspack"
+    shutil.copytree(source, copied)
+    (copied / "executables.v4.json").unlink()
+    with pytest.raises((FileNotFoundError, SchemaValidationError)):
+        compile_pack_root(copied)
+
+    shutil.rmtree(copied)
+    shutil.copytree(source, copied)
+    path = copied / "executables.v4.json"
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    catalog["catalog_digest"] = "sha256:" + "0" * 64
+    path.write_text(json.dumps(catalog), encoding="utf-8")
+    with pytest.raises(InvalidArtifactError, match="catalog digest"):
+        compile_pack_root(copied)
+
+    shutil.rmtree(copied)
+    shutil.copytree(source, copied)
+    path = copied / "executables.v4.json"
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    catalog["variants"].append(catalog["variants"][0])
+    unsigned = {key: value for key, value in catalog.items() if key != "catalog_digest"}
+    from tobkiri_protocol.canonical import canonical_digest
+
+    catalog["catalog_digest"] = canonical_digest(unsigned)
+    path.write_text(json.dumps(catalog), encoding="utf-8")
+    with pytest.raises(
+        (InvalidArtifactError, SchemaValidationError),
+        match="duplicate Function|duplicate identity",
+    ):
+        compile_pack_root(copied)
+
+    shutil.rmtree(copied)
+    shutil.copytree(source, copied)
+    path = copied / "executables.v4.json"
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    catalog["variants"][0]["operations"].append(catalog["variants"][0]["operations"][0])
+    unsigned = {key: value for key, value in catalog.items() if key != "catalog_digest"}
+    catalog["catalog_digest"] = canonical_digest(unsigned)
+    path.write_text(json.dumps(catalog), encoding="utf-8")
+    with pytest.raises(
+        (InvalidArtifactError, SchemaValidationError),
+        match="duplicated or unqualified|duplicate identity",
+    ):
+        compile_pack_root(copied)
+
+
+def test_compiler_rejects_catalog_swap_after_catalog_self_digest_reseal(
+    tmp_path: Path,
+) -> None:
+    copied = tmp_path / "defaultspack"
+    shutil.copytree(ROOT / "ecosystem" / "defaultspack", copied)
+    path = copied / "executables.v4.json"
+    catalog = json.loads(path.read_text(encoding="utf-8"))
+    catalog["variants"][0]["backend"] = "tobkiri.remote-pack-v4"
+    from tobkiri_protocol.canonical import canonical_digest
+
+    catalog["catalog_digest"] = canonical_digest(
+        {key: value for key, value in catalog.items() if key != "catalog_digest"}
+    )
+    path.write_text(json.dumps(catalog), encoding="utf-8")
+    with pytest.raises(InvalidArtifactError, match="artifact digest mismatch"):
+        compile_pack_root(copied)
+
+
+def _single_plan_binding(compiled: Any) -> dict[str, Any]:
+    key, metadata = next(iter(compiled.routes.items()))
+    contract_id, operation_id = key
+    function = compiled.artifact.function(metadata["function_id"])
+    operation = next(
+        item
+        for item in function.operations
+        if item.contract_id == contract_id and item.operation_id == operation_id
+    )
+    principal = {
+        "parent_artifact_digest": compiled.artifact.digest,
+        "function_implementation_digest": function.implementation_digest,
+        "function_id": function.function_id,
+        "contract_revision_digest": operation.revision_digest,
+        "operation_id": operation.operation_id,
+    }
+    return {
+        "pack_id": compiled.artifact.pack_id,
+        "artifact_digest": compiled.artifact.digest,
+        "function_principal": principal,
+        "contract_id": contract_id,
+        "operation_id": operation_id,
+        "domain_kind": metadata["domain_kind"],
+        "executable_catalog_digest": metadata["catalog_digest"],
+        "variant_id": metadata["variant_id"],
+        "platform": metadata["platform"],
+        "architecture": metadata["architecture"],
+        "runtime_abi": metadata["runtime_abi"],
+        "backend": metadata["backend"],
+        "execution_kind": metadata["execution_kind"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("executable_catalog_digest", "sha256:" + "0" * 64),
+        ("variant_id", "defaultspack.swapped"),
+        ("backend", "tobkiri.remote-pack-v4"),
+        ("execution_kind", "remote"),
+        ("domain_kind", "remote"),
+    ),
+)
+def test_routes_for_plan_rejects_every_exact_variant_pin_swap(
+    field: str,
+    value: str,
+) -> None:
+    compiled = compile_pack_root(ROOT / "ecosystem" / "defaultspack")
+    binding = _single_plan_binding(compiled)
+    binding[field] = value
+    with pytest.raises(ResolutionError, match="executable variant pin"):
+        routes_for_plan({"bindings": [binding]}, (compiled,))

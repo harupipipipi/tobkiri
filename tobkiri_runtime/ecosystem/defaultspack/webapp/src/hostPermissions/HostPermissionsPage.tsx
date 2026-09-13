@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw, ShieldCheck, ShieldQuestion } from "lucide-react";
 
+import { ErrorNotice } from "../components/ErrorNotice";
 import { cn } from "../lib/cn";
 import { openHostPermissionSettings } from "../lib/desktopApproval";
 import { isDesktopSystemInfoAvailable } from "../lib/desktopSystemInfo";
@@ -9,26 +10,37 @@ import { hostPermissionStatusLabel, type HostPermissionBucket, type HostPermissi
 
 type LoadState = "loading" | "ready" | "error";
 
+type PageNotice = {
+  message: string;
+  severity: "error" | "warning" | "success";
+};
+
 export function HostPermissionsPage() {
   const [snapshot, setSnapshot] = useState<HostPermissionsSnapshot | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [message, setMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<PageNotice | null>(null);
   const [openingPermissionId, setOpeningPermissionId] = useState<string | null>(null);
   const tauriAvailable = useMemo(() => isDesktopSystemInfoAvailable(), []);
 
   const refresh = async () => {
     setLoadState("loading");
-    setMessage(null);
+    setNotice(null);
     try {
       const nextSnapshot = await fetchHostPermissionsSnapshot();
       setSnapshot(nextSnapshot);
       setLoadState("ready");
       if (nextSnapshot.authorityError) {
-        setMessage(`Rumi approval history is unavailable: ${nextSnapshot.authorityError}`);
+        setNotice({
+          message: `Tobkiri approval history is unavailable: ${nextSnapshot.authorityError}`,
+          severity: "warning",
+        });
       }
     } catch (error) {
       setLoadState("error");
-      setMessage(error instanceof Error ? error.message : "Host permissions could not be loaded.");
+      setNotice({
+        message: error instanceof Error ? error.message : "Host permissions could not be loaded.",
+        severity: "error",
+      });
     }
   };
 
@@ -73,27 +85,45 @@ export function HostPermissionsPage() {
           <StatusStrip snapshot={snapshot} loading={loadState === "loading"} />
 
           {!tauriAvailable && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
-              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-              OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge.
-            </div>
+            <ErrorNotice
+              className="rounded-lg px-3 py-2 text-xs leading-5"
+              copyLabel="Copy desktop bridge warning"
+              copyText="OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge."
+              errorIcon="desktop-bridge"
+              message="OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge."
+              severity="warning"
+            />
           )}
 
-          {message && (
+          {notice?.severity === "success" ? (
             <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-400">
-              {message}
+              {notice.message}
             </div>
-          )}
+          ) : null}
+          {notice?.severity === "error" || notice?.severity === "warning" ? (
+            <ErrorNotice
+              className="rounded-lg px-3 py-2 text-xs leading-5"
+              copyLabel={notice.severity === "error" ? "Copy host permissions error" : "Copy host permissions warning"}
+              copyText={notice.message}
+              errorIcon={`host-permissions-${notice.severity}`}
+              message={notice.message}
+              severity={notice.severity}
+            />
+          ) : null}
 
           {loadState === "error" ? (
-            <div className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-4 text-sm text-rose-100">
-              Host permission status could not be loaded.
-            </div>
+            <ErrorNotice
+              className="rounded-lg px-3 py-4 text-sm"
+              copyLabel="Copy host permissions load error"
+              copyText="Host permission status could not be loaded."
+              errorIcon="host-permissions-load"
+              message="Host permission status could not be loaded."
+            />
           ) : (
             <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70">
               <div className="grid grid-cols-[minmax(190px,1.2fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)_minmax(78px,0.45fr)_minmax(90px,0.5fr)_minmax(180px,1fr)_minmax(116px,0.55fr)] gap-3 border-b border-zinc-800 bg-zinc-900/50 px-3 py-2 text-[11px] font-semibold text-zinc-500 max-lg:hidden">
                 <span>Permission</span>
-                <span>Rumi approval</span>
+                <span>Tobkiri approval</span>
                 <span>OS permission</span>
                 <span>Risk</span>
                 <span>Stream</span>
@@ -109,16 +139,27 @@ export function HostPermissionsPage() {
                     opening={openingPermissionId === row.id}
                     onOpenSettings={async () => {
                       if (!tauriAvailable) {
-                        setMessage("Open OS Settings is available only in Tobkiri Launcher.");
+                        setNotice({
+                          message: "Open OS Settings is available only in Tobkiri Launcher.",
+                          severity: "warning",
+                        });
                         return;
                       }
                       setOpeningPermissionId(row.id);
-                      setMessage(null);
+                      setNotice(null);
                       try {
                         const opened = await openHostPermissionSettings(row.id);
-                        setMessage(opened ? `${row.label} settings opened.` : "Open OS Settings is available only in Tobkiri Launcher.");
+                        setNotice(opened
+                          ? { message: `${row.label} settings opened.`, severity: "success" }
+                          : {
+                            message: "Open OS Settings is available only in Tobkiri Launcher.",
+                            severity: "warning",
+                          });
                       } catch (error) {
-                        setMessage(error instanceof Error ? error.message : "OS settings could not be opened.");
+                        setNotice({
+                          message: error instanceof Error ? error.message : "OS settings could not be opened.",
+                          severity: "error",
+                        });
                       } finally {
                         setOpeningPermissionId(null);
                       }
@@ -141,7 +182,7 @@ export function HostPermissionsPage() {
 function StatusStrip({ snapshot, loading }: { snapshot: HostPermissionsSnapshot | null; loading: boolean }) {
   const summary = snapshot?.summary;
   const items = [
-    { label: "Rumi approvals", value: summary ? `${summary.approved}/${summary.total}` : "..." },
+    { label: "Tobkiri approvals", value: summary ? `${summary.approved}/${summary.total}` : "..." },
     { label: "OS ready", value: summary ? `${summary.osReady}/${summary.total}` : "..." },
     { label: "Permission host", value: snapshot?.info?.permission_subject || snapshot?.info?.app_name || "Unknown" },
     { label: "Reliability", value: snapshot?.info ? (snapshot.info.reliable ? "Verified" : "Unverified") : "Unavailable" },
@@ -183,7 +224,7 @@ function HostPermissionListRow({
         </div>
         <p className="mt-1 text-xs leading-5 text-zinc-500 lg:hidden">{row.description}</p>
       </div>
-      <LabeledCell label="Rumi approval">
+      <LabeledCell label="Tobkiri approval">
         <StatusBadge status={row.rumiStatus} />
       </LabeledCell>
       <LabeledCell label="OS permission">

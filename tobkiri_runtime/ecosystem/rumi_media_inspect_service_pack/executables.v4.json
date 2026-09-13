@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:d8f516bca2371c78f9b3632e8899a3eeac99fa73082d2be7e729dcef6157e1d9",
+  "pack_id": "rumi_media_inspect_service_pack",
+  "source_identity": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_media_inspect_service_pack.media-inspect.service",
+      "implementation_digest": "sha256:73d0c3316b34ace2b00abf868dbbc6ac47c67be1a694b472485637f63b22553e",
+      "implementation_path": "runtime/inspect.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.media.inspect.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_media_inspect_service_pack.media-inspect",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:126f3e57d7495583979089d400899841257afaff7ab899253d80bba60c6517a3",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_media_inspect_service_pack.media-inspect.service.python"
+    }
+  ]
+}

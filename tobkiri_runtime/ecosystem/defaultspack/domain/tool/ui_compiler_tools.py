@@ -87,7 +87,8 @@ def _run_stage(
     context: dict[str, Any] | None,
 ) -> dict[str, Any]:
     data = dict(arguments or {}) if isinstance(arguments, dict) else {}
-    options = dict(data.get("options") if isinstance(data.get("options"), dict) else {})
+    raw_options = data.get("options")
+    options = dict(raw_options) if isinstance(raw_options, dict) else {}
     stop_after = _STAGE_TO_STOP_AFTER.get(stage)
     if stop_after:
         options["stopAfter"] = stop_after
@@ -97,9 +98,9 @@ def _run_stage(
         widget = result.get("widget")
         if isinstance(widget, dict):
             widget["type"] = stage
-        data = result.get("data")
-        if isinstance(data, dict):
-            data["stage"] = stage
+        result_data = result.get("data")
+        if isinstance(result_data, dict):
+            result_data["stage"] = stage
     return result
 
 
@@ -120,7 +121,7 @@ def _authorized(context: dict[str, Any] | None) -> bool:
 def _trusted_workspace(context: dict[str, Any] | None) -> str | None:
     if not isinstance(context, dict):
         return None
-    raw = context.get("workspace_root") or context.get("workspaceRoot") or context.get("conversation_workspace_dir") or context.get("workspace_dir")
+    raw = context.get("workspace_root") or context.get("conversation_workspace_dir")
     return str(raw) if raw else None
 
 

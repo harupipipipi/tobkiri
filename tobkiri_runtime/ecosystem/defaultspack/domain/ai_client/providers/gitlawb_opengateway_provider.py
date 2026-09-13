@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from .component_metadata import model_manifests_from_provider_components
 from .openai_compatible_provider import OpenAICompatibleProvider
 
 
 class GitlawbOpengatewayProvider(OpenAICompatibleProvider):
-    """Gitlawb OpenGateway provider limited to the Rumi-approved allowlist."""
+    """Gitlawb OpenGateway provider backed by the account-visible /models API."""
 
     DEFAULT_USER_AGENT = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 Chrome/124 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
     )
     MODEL_IDS = {
         "mimo-v2-flash",
@@ -121,8 +121,12 @@ class GitlawbOpengatewayProvider(OpenAICompatibleProvider):
             },
         },
     ]
+    # The historical entries above are intentionally inert. Availability is
+    # exclusively fetched from the gateway for the configured API key.
+    KNOWN_MODELS: List[Dict[str, Any]] = []
 
     def __init__(self) -> None:
+        catalog_models = model_manifests_from_provider_components("gitlawb-opengateway")
         super().__init__(
             provider_id="gitlawb-opengateway",
             display_name="Gitlawb OpenGateway",
@@ -130,19 +134,24 @@ class GitlawbOpengatewayProvider(OpenAICompatibleProvider):
             base_url_env="GITLAWB_OPENGATEWAY_BASE_URL",
             default_base_url="https://opengateway.gitlawb.com/v1",
             credential_required=True,
-            known_models=self.KNOWN_MODELS,
+            known_models=catalog_models,
             extra_headers={
                 "User-Agent": self.DEFAULT_USER_AGENT,
             },
+            remote_model_discovery=True,
         )
 
-    @classmethod
-    def _assert_supported_model(cls, model: str) -> None:
-        if str(model or "").strip() not in cls.MODEL_IDS:
-            supported = ", ".join(sorted(cls.MODEL_IDS))
+    def _assert_supported_model(self, model: str) -> None:
+        model_id = str(model or "").strip()
+        if model_id.startswith("gitlawb-opengateway/"):
+            model_id = model_id.split("/", 1)[1]
+        # The gateway is the model authority.  Selected catalog metadata can
+        # describe known routing/capability records, but it must not reject a
+        # newly provisioned account model before the gateway sees the request.
+        if not model_id:
             raise RuntimeError(
-                "gitlawb-opengateway: unsupported model. "
-                f"defaultspack supports only: {supported}"
+                "unsupported model for gitlawb-opengateway: "
+                f"{model}; model id is empty"
             )
 
     @staticmethod
@@ -159,7 +168,7 @@ class GitlawbOpengatewayProvider(OpenAICompatibleProvider):
             body["max_completion_tokens"] = params["max_completion_tokens"]
 
     def list_models(self) -> List[Dict[str, Any]]:
-        return [dict(model) for model in self.KNOWN_MODELS]
+        return self._merge_remote_models(self.KNOWN_MODELS)
 
     def complete(self, model, messages, tools, params):
         self._assert_supported_model(model)

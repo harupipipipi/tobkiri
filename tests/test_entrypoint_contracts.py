@@ -39,3 +39,17 @@ def test_control_panel_bundle_uses_v3_startup_profile_contract():
     bundle_text = "\n".join(_read(script) for script in scripts)
     assert "base_pack" in bundle_text
     assert "standard_pack_id" not in bundle_text
+
+
+def test_pack_architecture_entrypoint_targets_canonical_runtime():
+    entrypoint = _read(ROOT / "scripts" / "quality" / "scan_pack_architecture.py")
+
+    assert '"tobkiri_runtime"' in entrypoint
+    assert '"rumi_ai_1_10"' not in entrypoint
+
+
+def test_just_windows_shell_supports_existing_command_chains():
+    justfile = _read(ROOT / "justfile")
+
+    assert 'set windows-shell := ["cmd.exe", "/C"]' in justfile
+    assert "powershell.exe" not in justfile

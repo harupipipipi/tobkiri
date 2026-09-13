@@ -1,15 +1,25 @@
-import os
+"""Retired standalone Defaultspack HTTP entrypoint.
+
+The launcher starts ``ecosystem.defaultspack.desktop_app``, which captures an
+immutable Pack v4 activation and serves only Host-owned contract routes.  The
+historical standalone transport exposed direct Flow execution and therefore
+cannot participate in production startup.
+"""
+
+from __future__ import annotations
+
 import sys
-from pathlib import Path
 
-# Add defaultspack root, its parent (ecosystem), and the workspace root to sys.path
-defaultspack_root = Path(__file__).resolve().parent
-sys.path.insert(0, str(defaultspack_root))
-sys.path.insert(0, str(defaultspack_root.parent))
-sys.path.insert(0, str(defaultspack_root.parent.parent))
 
-from transport.http import start_http_server
+def main() -> int:
+    """Fail closed instead of starting the pre-Broker HTTP transport."""
+
+    print(
+        "Defaultspack standalone HTTP is retired; launch Tobkiri Launcher.",
+        file=sys.stderr,
+    )
+    return 2
+
 
 if __name__ == "__main__":
-    print("Starting defaultspack HTTP server in standalone mode on port 8766...")
-    start_http_server(None)
+    raise SystemExit(main())

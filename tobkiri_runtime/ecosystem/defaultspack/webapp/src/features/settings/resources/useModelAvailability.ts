@@ -9,6 +9,9 @@ export type ModelCandidate = {
 
 export type ModelAvailabilityAfterKeySave =
   | {
+      status: "saved";
+    }
+  | {
       status: "models_available";
       profiles: ModelProfile[];
       selected_profile_id: string;
@@ -32,6 +35,12 @@ export function availabilityCopy(value: ModelAvailabilityAfterKeySave | null | u
   text: string;
 } {
   if (!value) return { tone: "idle", text: "" };
+  if (value.status === "saved") {
+    return {
+      tone: "success",
+      text: "API key saved.",
+    };
+  }
   if (isModelsAvailable(value)) {
     const selected = value.profiles.find((profile) => profile.profile_id === value.selected_profile_id);
     return {

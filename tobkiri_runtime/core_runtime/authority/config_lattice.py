@@ -99,6 +99,51 @@ def authority_config_from_resource(resource: Mapping[str, Any] | None) -> dict[s
     return config
 
 
+def resource_within_authority_config(
+    config: Mapping[str, Any], resource: Mapping[str, Any]
+) -> bool:
+    """Return whether a route resource is inside an already-meet grant config."""
+    fields: dict[str, list[str]] = {}
+    for resource_key, config_key in AUTHORITY_RESOURCE_CONFIG_FIELDS:
+        fields.setdefault(config_key, []).append(resource_key)
+    for config_key, resource_keys in fields.items():
+        if config_key not in config:
+            continue
+        allowed = set(_string_values(config.get(config_key)))
+        actual = {
+            value
+            for key in resource_keys
+            if (value := str(resource.get(key) or "").strip())
+        }
+        if not allowed or not actual.intersection(allowed):
+            return False
+    if AUTHORITY_PORT_FACET in config:
+        raw_port = resource.get("port")
+        if not isinstance(raw_port, (str, int, float, bytes)):
+            return False
+        try:
+            port = int(raw_port)
+        except (TypeError, ValueError):
+            return False
+        if port not in set(_port_values(config.get(AUTHORITY_PORT_FACET))):
+            return False
+    if "allow_stream" in config and resource.get("stream"):
+        if not bool(config.get("allow_stream")):
+            return False
+    if "max_input_tokens" in config and resource.get("input_tokens") is not None:
+        raw_max_tokens = config.get("max_input_tokens")
+        if not isinstance(raw_max_tokens, (str, int, float, bytes)):
+            return False
+        try:
+            if int(resource.get("input_tokens") or 0) > int(
+                raw_max_tokens
+            ):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
 def validate_authority_config(config: Mapping[str, Any] | None) -> dict[str, Any]:
     if config is None:
         return {}

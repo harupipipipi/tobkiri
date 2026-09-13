@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-register-defaultspack-dock"
+description = "Enables the register_defaultspack_dock command without any pre-configured scope."
+commands.allow = ["register_defaultspack_dock"]
+
+[[permission]]
+identifier = "deny-register-defaultspack-dock"
+description = "Denies the register_defaultspack_dock command without any pre-configured scope."
+commands.deny = ["register_defaultspack_dock"]

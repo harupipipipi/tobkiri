@@ -4,6 +4,7 @@ import { ExternalLink, Loader2, MessageSquare, RefreshCcw, SendHorizontal, Shiel
 import type { Conversation } from "../lib/api";
 import type { AuthorityApproval } from "../lib/authorityApproval";
 import { cn } from "../lib/cn";
+import { ErrorNotice } from "../components/ErrorNotice";
 import { ambientMiniChatMessages } from "./ambientMiniChatState";
 
 type Props = {
@@ -142,9 +143,11 @@ export function AmbientMiniChat({
           </div>
         )}
         {error && (
-          <div data-testid="ambient-mini-chat-status" className="rounded-md border border-red-400/25 bg-red-500/10 px-2 py-1.5 text-[11px] leading-5 text-red-100">
-            {error}
-          </div>
+          <ErrorNotice
+            className="px-2 py-1.5 text-[11px] leading-5"
+            copyLabel="ミニチャットエラーをコピー"
+            message={error}
+          />
         )}
       </div>
 

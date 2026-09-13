@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 from pathlib import Path
 from typing import Iterable, Optional
@@ -11,8 +10,6 @@ from .registry import ExtensionRegistry
 
 _LOCK = threading.Lock()
 _REGISTRY: Optional[ExtensionRegistry] = None
-_EXTRA_EXTENSION_ROOTS_ENV = "RUMI_DEFAULTSPACK_EXTENSION_ROOTS"
-_APP_ECOSYSTEM_ENVS = ("RUMI_APP_DIR", "RUMI_CORE_DIR")
 
 
 def get_extensions_root() -> Path:
@@ -23,7 +20,7 @@ def get_extensions_root() -> Path:
 
 def _coerce_extension_root(path: Path | str) -> Path:
     candidate = Path(path).expanduser()
-    if (candidate / "ecosystem.json").is_file():
+    if (candidate / "pack.v4.json").is_file():
         return candidate / "extensions"
     return candidate
 
@@ -35,8 +32,10 @@ def _append_unique_root(roots: list[Path], root: Path | str) -> None:
 
 
 def _pack_id_for_root(pack_root: Path) -> str:
-    for manifest_name in ("rumi-pack.json", "ecosystem.json"):
-        manifest_path = pack_root / manifest_name
+    for manifest_path in (
+        pack_root / "pack.v4.json",
+        pack_root / "v4" / "packs" / f"{pack_root.name}.pack.v4.json",
+    ):
         if not manifest_path.is_file():
             continue
         try:
@@ -45,10 +44,9 @@ def _pack_id_for_root(pack_root: Path) -> str:
             continue
         if not isinstance(raw, dict):
             continue
-        for key in ("pack_id", "id"):
-            value = str(raw.get(key) or "").strip()
-            if value:
-                return value
+        value = str((raw.get("pack") or {}).get("id") or "").strip()
+        if value:
+            return value
     return pack_root.name
 
 
@@ -63,41 +61,13 @@ def _append_ecosystem_extension_roots(
         return
     active_pack_name = pack_root.name
     active_pack_id = _pack_id_for_root(pack_root)
-    for path in sorted(ecosystem_dir.iterdir()):
+    for pack_id in sorted(selected_pack_ids or set()):
+        path = ecosystem_dir / pack_id
         extensions = path / "extensions"
         if path == pack_root or path.name in {active_pack_name, active_pack_id}:
             continue
-        if selected_pack_ids is not None and path.name not in selected_pack_ids:
-            continue
-        if path.is_dir() and (path / "ecosystem.json").is_file() and extensions.is_dir():
+        if path.is_dir() and _pack_id_for_root(path) == pack_id and extensions.is_dir():
             _append_unique_root(roots, extensions)
-
-
-def _extra_extension_roots_from_env(raw: str | None = None) -> list[Path]:
-    value = os.environ.get(_EXTRA_EXTENSION_ROOTS_ENV, "") if raw is None else raw
-    roots: list[Path] = []
-    for item in value.split(os.pathsep):
-        item = item.strip()
-        if not item:
-            continue
-        _append_unique_root(roots, item)
-    return roots
-
-
-def _app_ecosystem_dirs_from_env() -> list[Path]:
-    dirs: list[Path] = []
-    for env_name in _APP_ECOSYSTEM_ENVS:
-        raw = str(os.environ.get(env_name, "") or "").strip()
-        if not raw:
-            continue
-        app_dir = Path(raw).expanduser()
-        candidates = [app_dir / "ecosystem"]
-        if app_dir.name == "ecosystem":
-            candidates.insert(0, app_dir)
-        for candidate in candidates:
-            if candidate.is_dir() and candidate not in dirs:
-                dirs.append(candidate)
-    return dirs
 
 
 def build_extensions_roots(
@@ -121,15 +91,6 @@ def build_extensions_roots(
         pack_root=pack_root,
         selected_pack_ids=selected_pack_ids,
     )
-    for app_ecosystem_dir in _app_ecosystem_dirs_from_env():
-        _append_ecosystem_extension_roots(
-            roots,
-            app_ecosystem_dir,
-            pack_root=pack_root,
-            selected_pack_ids=selected_pack_ids,
-        )
-
-    _append_unique_root(roots, pack_root / "user_data" / "shared" / "extensions")
     for root in extra_roots or ():
         _append_unique_root(roots, root)
     return roots
@@ -137,10 +98,7 @@ def build_extensions_roots(
 
 def get_extensions_roots() -> list[Path]:
     pack_root = Path(__file__).resolve().parents[2]
-    return build_extensions_roots(
-        pack_root,
-        extra_roots=_extra_extension_roots_from_env(),
-    )
+    return build_extensions_roots(pack_root)
 
 
 def get_extension_registry(

@@ -1,0 +1,190 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:0de86359c4293c08115734fdb3f7effb7fca312dfdba0a1dbb7e04b58c8461ba",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+      "kind": "executable",
+      "path": "runtime/store.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.memory.manage.v1",
+      "operations": [
+        "rumi_memory_store_pack.memory-manage"
+      ],
+      "revision_digest": "sha256:c4de98376932534dbb8c551390cd6810402318574dd48ad5093271eec5dbc164"
+    },
+    {
+      "contract_id": "tobkiri.action.memory.migrate.v1",
+      "operations": [
+        "rumi_memory_store_pack.memory-migrate"
+      ],
+      "revision_digest": "sha256:35a3a01a16cabef303e2a7d0e343b99648bf0888a507266c5002fe3dbb9a1b99"
+    },
+    {
+      "contract_id": "tobkiri.resource.memory.v1",
+      "operations": [
+        "rumi_memory_store_pack.memory-resource"
+      ],
+      "revision_digest": "sha256:b2aca6a2cac49ddf1e3c86d43d1caccf08a486cbf536cc2b00ca7684e6b809ef"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:c4de98376932534dbb8c551390cd6810402318574dd48ad5093271eec5dbc164",
+      "id": "rumi_memory_store_pack.memory-store.manage",
+      "implementation_digest": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_memory_store_pack.memory-manage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:35a3a01a16cabef303e2a7d0e343b99648bf0888a507266c5002fe3dbb9a1b99",
+      "id": "rumi_memory_store_pack.memory-store.migrate",
+      "implementation_digest": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_memory_store_pack.memory-migrate"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:b2aca6a2cac49ddf1e3c86d43d1caccf08a486cbf536cc2b00ca7684e6b809ef",
+      "id": "rumi_memory_store_pack.memory-store.resource",
+      "implementation_digest": "sha256:748a376741d5e9b4556e17ee9f6b5b49cc7b168c901262799b79312d12ae2153",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_memory_store_pack.memory-resource"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:e6c41be1578ca92be19f9dbe4658903bcb9e0ba737c11f31f836e0ee3bc1d6f1",
+    "contract_catalog_digest": "sha256:29bf4037d508d03ea08c7cab8ed7aad04f6ba5bdea882b3c241c27575e4aa3cb",
+    "source_identity": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.memory.manage.v1",
+      "rumi.action.memory.migrate.v1",
+      "rumi.resource.memory.v1",
+      "rumi:ecosystem/rumi_memory_store_pack",
+      "rumi_memory_store_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.memory.manage.v1",
+      "effect_ceiling": [
+        "capability:memory.manage",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_memory_store_pack.memory-manage",
+      "owner": "rumi_memory_store_pack",
+      "provider_id": "rumi_memory_store_pack.memory-store.manage",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.memory.migrate.v1",
+      "effect_ceiling": [
+        "capability:memory.migrate",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_memory_store_pack.memory-migrate",
+      "owner": "rumi_memory_store_pack",
+      "provider_id": "rumi_memory_store_pack.memory-store.migrate",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.memory.v1",
+      "effect_ceiling": [
+        "capability:memory.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_memory_store_pack.memory-resource",
+      "owner": "rumi_memory_store_pack",
+      "provider_id": "rumi_memory_store_pack.memory-store.resource",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:e6c41be1578ca92be19f9dbe4658903bcb9e0ba737c11f31f836e0ee3bc1d6f1",
+    "display_name": "Rumi Memory Store",
+    "id": "rumi_memory_store_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:1a7ce4500bb58e6177e738b3635d9f2306e32ea4ee6bd83b1d7d76e21a90bfc5",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_memory_store_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.memory.manage.v1",
+      "operations": [
+        "rumi_memory_store_pack.memory-manage"
+      ],
+      "owner": "rumi_memory_store_pack",
+      "provider_id": "rumi_memory_store_pack.memory-store.manage"
+    },
+    {
+      "contract_reference": "tobkiri.action.memory.migrate.v1",
+      "operations": [
+        "rumi_memory_store_pack.memory-migrate"
+      ],
+      "owner": "rumi_memory_store_pack",
+      "provider_id": "rumi_memory_store_pack.memory-store.migrate"
+    },
+    {
+      "contract_reference": "tobkiri.resource.memory.v1",
+      "operations": [
+        "rumi_memory_store_pack.memory-resource"
+      ],
+      "owner": "rumi_memory_store_pack",
+      "provider_id": "rumi_memory_store_pack.memory-store.resource"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "memory.manage",
+      "memory.migrate",
+      "memory.read"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

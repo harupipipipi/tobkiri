@@ -499,6 +499,106 @@ class TestGoalBlockLoop(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["data"]["max_iterations"], HARD_MAX_ITERATIONS)
         self.assertTrue(result["data"]["achieved"])
+        self.assertEqual(len(handler.calls), 2)
+
+    def test_goal_loop_bounds_model_calls_at_hard_iteration_cap(self):
+        import importlib
+
+        goal_module = importlib.import_module("blocks.goal.run")
+        from blocks.goal.run import HARD_MAX_ITERATIONS
+
+        calls = []
+
+        def fake_call_model(input_data, context, *, call_handler=None):
+            del context, call_handler
+            calls.append(input_data)
+            messages = input_data.get("messages", [])
+            is_evaluator = any(
+                message.get("content") == goal_module.EVALUATOR_SYSTEM_PROMPT
+                for message in messages
+                if isinstance(message, dict)
+            )
+            if is_evaluator:
+                output = json.dumps(
+                    {
+                        "achieved": False,
+                        "reason": "Keep going.",
+                        "next_instruction": "Continue.",
+                    }
+                )
+            else:
+                output = "Progress."
+            return {"status": "ok", "output": output}
+
+        with patch("blocks.goal.run.call_model", side_effect=fake_call_model):
+            result = goal_module.run(
+                {"goal": "Bound the loop", "max_iterations": 999999},
+                {},
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["data"]["max_iterations"], HARD_MAX_ITERATIONS)
+        self.assertEqual(result["data"]["iteration_count"], HARD_MAX_ITERATIONS)
+        self.assertEqual(len(calls), HARD_MAX_ITERATIONS * 2)
+        self.assertEqual(result["data"]["stopped_reason"], "max_iterations_reached")
+
+    def test_goal_loop_cancellation_stops_before_model_call_without_children(self):
+        from blocks.goal.run import run as goal_run
+
+        handler = Mock(side_effect=AssertionError("cancelled goal called the model"))
+        with patch(
+            "subprocess.Popen",
+            side_effect=AssertionError("goal unexpectedly spawned a child"),
+        ), patch(
+            "subprocess.run",
+            side_effect=AssertionError("goal unexpectedly ran a child"),
+        ):
+            result = goal_run(
+                {"goal": "Cancel immediately", "max_iterations": 20},
+                {"call_handler": handler, "is_cancelled": lambda: True},
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["data"]["stopped_reason"], "cancelled")
+        self.assertEqual(result["data"]["iteration_count"], 0)
+        handler.assert_not_called()
+
+    def test_goal_loop_cancellation_after_worker_skips_evaluator(self):
+        from blocks.goal.run import run as goal_run
+
+        checks = 0
+
+        def is_cancelled():
+            nonlocal checks
+            checks += 1
+            return checks >= 2
+
+        handler = _ScriptedCallHandler(["Worker output"])
+        result = goal_run(
+            {"goal": "Cancel after worker", "max_iterations": 20},
+            {"call_handler": handler, "is_cancelled": is_cancelled},
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["data"]["stopped_reason"], "cancelled")
+        self.assertEqual(result["data"]["iteration_count"], 1)
+        self.assertEqual(result["data"]["iterations"][0]["phase"], "cancelled")
+        self.assertEqual(len(handler.calls), 1)
+
+    def test_rich_goal_deadline_stops_before_model_call(self):
+        from blocks.goal.run import run as goal_run
+
+        handler = Mock(side_effect=AssertionError("expired goal called the model"))
+        with patch("blocks.goal.run.time.monotonic", side_effect=[100.0, 101.0]):
+            result = goal_run(
+                {"goal": "/rich bounded by timeout", "rich_timeout_seconds": 1},
+                {"call_handler": handler},
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["data"]["stopped_reason"], "deadline_reached")
+        self.assertEqual(result["data"]["iteration_count"], 0)
+        handler.assert_not_called()
 
     def test_goal_loop_surfaces_worker_failure_with_partial_iterations(self):
         from blocks.goal.run import run as goal_run

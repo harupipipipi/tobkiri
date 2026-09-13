@@ -16,10 +16,15 @@ def _column_by_title(columns, title):
     return next(column for column in columns if column["title"] == title)
 
 
-def test_kanban_store_bootstraps_board_and_moves_cards(tmp_path):
+def _store(path):
+    from ecosystem.rumi_kanban_state_store_pack.runtime.store import KanbanStateStore
     from domain.kanban.store import KanbanStore
 
-    store = KanbanStore(tmp_path / "kanban.db")
+    return KanbanStore(path, state_store_factory=KanbanStateStore)
+
+
+def test_kanban_store_bootstraps_board_and_moves_cards(tmp_path):
+    store = _store(tmp_path / "kanban.db")
     board = store.get_or_create_board("conversation", "conv-1", title="Conversation board")
     columns = store.list_columns(board["board_id"])
 
@@ -58,9 +63,8 @@ def test_kanban_store_bootstraps_board_and_moves_cards(tmp_path):
 
 def test_kanban_store_rejects_empty_title_updates(tmp_path):
     from domain.kanban.models import KanbanValidationError
-    from domain.kanban.store import KanbanStore
 
-    store = KanbanStore(tmp_path / "kanban.db")
+    store = _store(tmp_path / "kanban.db")
     board = store.get_or_create_board("conversation", "conv-empty-title")
     card = store.create_card(board["board_id"], {"title": "Keep title"})
 
@@ -71,9 +75,7 @@ def test_kanban_store_rejects_empty_title_updates(tmp_path):
 
 
 def test_kanban_store_accepts_group_scope(tmp_path):
-    from domain.kanban.store import KanbanStore
-
-    store = KanbanStore(tmp_path / "kanban.db")
+    store = _store(tmp_path / "kanban.db")
     board = store.get_or_create_board("group", "group-alpha", title="Alpha board")
     same = store.get_or_create_board("group", "group-alpha")
 
@@ -83,11 +85,30 @@ def test_kanban_store_accepts_group_scope(tmp_path):
     assert [column["title"] for column in store.list_columns(board["board_id"])] == ["Backlog", "Doing", "Review", "Done"]
 
 
+def test_kanban_store_fails_closed_without_an_injected_owner(tmp_path):
+    from domain.kanban.store import KanbanOwnerUnavailable, KanbanStore
+    from domain.kanban.service import KanbanService
+
+    with pytest.raises(KanbanOwnerUnavailable, match="injected state-store factory"):
+        KanbanStore(tmp_path / "kanban.db")
+    with pytest.raises(KanbanOwnerUnavailable, match="injected state-store factory"):
+        KanbanService()
+
+    def empty_factory(profile_id, *, root=None):
+        del profile_id, root
+        return None
+
+    with pytest.raises(KanbanOwnerUnavailable, match="usable owner"):
+        KanbanStore(
+            tmp_path / "kanban.db",
+            state_store_factory=empty_factory,
+        )
+
+
 def test_kanban_service_agent_transitions_are_local_noops(tmp_path):
     from domain.kanban.service import KanbanService
-    from domain.kanban.store import KanbanStore
 
-    service = KanbanService(KanbanStore(tmp_path / "kanban.db"))
+    service = KanbanService(_store(tmp_path / "kanban.db"))
     snapshot = service.bootstrap_board({"scope_type": "workspace", "scope_id": "workspace-1"})
     board_id = snapshot["board"]["board_id"]
 

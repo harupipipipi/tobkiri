@@ -366,7 +366,7 @@ class MobileDeviceStore {
           jsonDecode(raw) as Map<String, dynamic>,
         );
         if (identity.deviceId.trim().isNotEmpty && identity.canSignApproval) {
-          return _ensureEncryptionKey(identity);
+          return await _ensureEncryptionKey(identity);
         }
       }
     } catch (_) {

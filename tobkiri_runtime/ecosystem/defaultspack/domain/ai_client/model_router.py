@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
 """
 model_router.py — モデルルーティングロジック
 
@@ -9,19 +5,27 @@ AIClient をラップし、入力を分析して最適モデルに自動ルー�
 AIClient 自体は変更しない。
 """
 
-import time
-import json
 import copy
+import os
+import sys
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from domain.ai_client.task_analyzer import analyze_fast, analyze_heavy
-from domain.ai_client.model_profiles import ModelProfileManager
-from domain.ai_client.model_groups import normalize_model_groups
-from domain.ai_client.model_pack_router import select_model_pack
-from domain.ai_client.model_pack_store import ModelPackStore
-from domain.ai_client.model_roles import normalize_utility_model_policy, normalize_utility_models
-from domain.ai_client.model_search import get_model_capabilities, models_for_group
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+
+from domain.ai_client.model_pack_router import select_model_pack  # noqa: E402
+from domain.ai_client.model_pack_store import ModelPackStore  # noqa: E402
+from domain.ai_client.model_profiles import ModelProfileManager  # noqa: E402
+from domain.ai_client.model_roles import (  # noqa: E402
+    normalize_utility_model_policy,
+    normalize_utility_models,
+)
+from domain.ai_client.model_search import (  # noqa: E402
+    get_model_capabilities,
+    models_for_group,
+)
+from domain.ai_client.task_analyzer import analyze_fast, analyze_heavy  # noqa: E402
 
 
 @dataclass
@@ -112,7 +116,11 @@ def route_model_request(
     candidates = models_for_group(selected_group, settings, profiles=profiles)
     if not candidates:
         candidates = models_for_group("default", settings, profiles=profiles)
-    original_caps = get_model_capabilities(original, profiles=profiles)
+    original_caps = get_model_capabilities(
+        original,
+        profiles=profiles,
+        settings=settings,
+    )
     selected = original_caps or (candidates[0] if candidates else {"profile_id": original})
     reason_codes: list[str] = ["preferred_model"]
     warnings: list[str] = []

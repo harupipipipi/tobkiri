@@ -29,12 +29,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional, List
 
-
-logger = logging.getLogger(__name__)
-
 from .compat import safe_chmod
 from .docker_run_builder import DockerRunBuilder
 from .paths import LOCAL_PACK_ID, PACK_DATA_BASE_DIR as _PACK_DATA_BASE_DIR
+
+logger = logging.getLogger(__name__)
 
 # lib 実行用定数
 LIB_INSTALL = "install"
@@ -54,7 +53,7 @@ MAX_CONTEXT_PAYLOAD_SIZE = 1 * 1024 * 1024  # 1 MB
 MAX_CONTEXT_DEPTH = 10
 
 # SEC-1 Wave 4: ホスト実行タイムアウト
-MAX_HOST_EXECUTION_TIMEOUT = int(os.environ.get("RUMI_HOST_EXEC_TIMEOUT", "120"))
+MAX_HOST_EXECUTION_TIMEOUT = int(os.getenv("RUMI_HOST_EXEC_TIMEOUT", "120"))
 
 
 def get_secrets_grant_manager():
@@ -166,7 +165,7 @@ class SecureExecutor:
         phase: str,
         file_path: Path,
         context: Dict[str, Any],
-        component_dir: Path = None,
+        component_dir: Path | None = None,
         timeout: int = 60
     ) -> ExecutionResult:
         if not file_path.exists():
@@ -456,7 +455,7 @@ else:
         pack_id: str,
         lib_type: str,
         lib_file: Path,
-        context: Dict[str, Any] = None,
+        context: Dict[str, Any] | None = None,
         timeout: int = 120
     ) -> ExecutionResult:
         import time
@@ -510,6 +509,7 @@ else:
                 lib_type=lib_type
             )
         pack_data_dir = dir_result
+        execution_context = dict(context or {})
         
         if self.is_docker_available():
             return self._execute_lib_in_container(
@@ -517,7 +517,7 @@ else:
                 lib_type=lib_type,
                 lib_file=lib_file,
                 pack_data_dir=pack_data_dir,
-                context=context,
+                context=execution_context,
                 timeout=timeout,
                 start_time=start_time
             )
@@ -536,7 +536,7 @@ else:
             lib_type=lib_type,
             lib_file=lib_file,
             pack_data_dir=pack_data_dir,
-            context=context,
+            context=execution_context,
             start_time=start_time,
             timeout=timeout
         )

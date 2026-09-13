@@ -58,7 +58,7 @@
       }
     }
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Memory knowledge pack augments defaultspack with contracts and policies and must not become the default runtime pack."
   },

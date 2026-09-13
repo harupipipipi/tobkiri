@@ -1,0 +1,2951 @@
+{
+  "authority_references": [],
+  "base": {
+    "artifact_digest": null,
+    "definition_revision": null,
+    "pack_id": "defaults-basepack",
+    "resolution": "verified_exact_artifact_required"
+  },
+  "catalog_revision": null,
+  "display_name": "Tobkiri Defaults",
+  "mode": "interactive",
+  "packs": [
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_default_tools_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_registry_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_credential_broker_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_turn_runtime_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "tobkiri_ui_settings_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_conversation_store_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "defaultspack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_file_inspect_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "tobkiri_host_pack_control",
+      "role": "provider"
+    },
+    {
+      "pack_id": "runtime.tauri.application.default",
+      "artifact_digest": null,
+      "role": "application"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_ai_gateway_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_model_catalog_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_model_registry_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_ai_pipeline_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_provider_adapters_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_ai_routing_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_ai_stream_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_ai_tool_bridge_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_ai_usage_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_provider_registry_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_shell_execute_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_git_write_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_git_publish_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_command_protocol_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_broker_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_validation_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_result_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_tool_local_executor_pack",
+      "role": "provider"
+    },
+    {
+      "artifact_digest": null,
+      "pack_id": "rumi_prompt_studio_pack",
+      "role": "provider"
+    }
+  ],
+  "profile_api_version": "io.tobkiri.profile.v5",
+  "profile_authority_snapshot_digest": null,
+  "profile_id": "defaults",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v1",
+    "source_kind": "generated",
+    "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
+    "source_digest": "sha256:9044c5f2ca96728847720bca6d398898d9a833df1dd4482439fb65e732aa2e72",
+    "repository_commit": "working-tree",
+    "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
+    "generator": "tobkiri-profile-artifacts",
+    "generator_version": "1.0.0",
+    "normative": false,
+    "evidence": [
+      {
+        "path": "core_runtime/profile_content_projection.py",
+        "rule_id": "compatibility-projection-input-bytes",
+        "digest": "sha256:7b938bb506ae8375d8c81d673588d9aa3c6fc6dda769558b97022e62b24736c3"
+      },
+      {
+        "path": "scripts/generate_profile_artifacts.py",
+        "rule_id": "compatibility-projection-generator-bytes",
+        "digest": "sha256:b9307ee0de2eea69e3cf927a5a91224ae0b27f859e5120eab5283003a0228590"
+      },
+      {
+        "path": "scripts/profile_compatibility_provenance.py",
+        "rule_id": "compatibility-projection-input-bytes",
+        "digest": "sha256:dae3c22b26b3080befc4b91630ed20df77015789873c09bb7e2793353e613aae"
+      },
+      {
+        "path": "tobkiri_protocol/canonical.py",
+        "rule_id": "compatibility-projection-input-bytes",
+        "digest": "sha256:9f068ab737e2c9c152348601d604c6c81a060edf207c483849a90ca97ccd434e"
+      },
+      {
+        "path": "tobkiri_protocol/executable_catalog.py",
+        "rule_id": "compatibility-projection-input-bytes",
+        "digest": "sha256:8df8e31596e2315eb03c6cb5bc0ccf024febbf54c2d1797dd2b339a564285653"
+      },
+      {
+        "path": "tobkiri_protocol/profile_scope.py",
+        "rule_id": "compatibility-projection-input-bytes",
+        "digest": "sha256:1ade83af2666f6db934652b6b10070bffc8f89145b2b5711b7dcb9d960f925fa"
+      },
+      {
+        "path": "tobkiri_protocol/provenance.py",
+        "rule_id": "compatibility-projection-input-bytes",
+        "digest": "sha256:9598187b7a80a22505ee7eb7de391f1886c289da2d87e9e89d7a86d563571a31"
+      },
+      {
+        "path": "tobkiri_protocol/validation.py",
+        "rule_id": "compatibility-projection-input-bytes",
+        "digest": "sha256:2ac005f422774b97371285a066a9e209b2750161aea75bf48bc6e4dfa30c2143"
+      }
+    ]
+  },
+  "requested_edges": [
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.tool.definition.v1"
+          ],
+          "operation": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_model_registry_pack.model-registry.manage",
+      "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:e6a4c0eb6f5dd04d117aa8343af2319b3d5d06a502b14ecebfbba08e0b2dd052",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.ai.model.profile.manage.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "contract_id": "tobkiri.service.interactive-effect.v1",
+      "operation_id": "interactive_effect.manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-effect.v1"
+          ],
+          "operation": [
+            "interactive_effect.manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_provider_registry_pack.provider-configure.prepare",
+      "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-configure-prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a714d68b67a922348c528b65c3f44f1acd979832fec29af27b92c184135769a5",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.ai.provider.registry.manage.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-configure-prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_provider_registry_pack.provider-configure.execute",
+      "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-configure",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a714d68b67a922348c528b65c3f44f1acd979832fec29af27b92c184135769a5",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.ai.provider.registry.manage.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-configure"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_provider_registry_pack.provider-configure.execute",
+      "target_provider_id": "rumi_credential_broker_pack.credential-broker.manage",
+      "contract_id": "tobkiri.action.credential.manage.v1",
+      "operation_id": "rumi_credential_broker_pack.credential-manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:9a3ec12fa73aaa2dadbfb4e70c6b3ddb14800a7275de26ce7bd503a033065c69",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.credential.manage.v1"
+          ],
+          "operation": [
+            "rumi_credential_broker_pack.credential-manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.turn.stop.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-stop",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:3f5ff1b9da2dad13182a97d48ff8e5a270fb8fa3c42d254a943957713087790f",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.turn.stop.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-stop"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.stop"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.turn.reconcile.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:4206c74719c2a3e9a033544695736ef6273747c2c9a186ec7330a57fca283070",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.turn.reconcile.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-reconcile"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile"
+    },
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.conversation.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "contract_id": "tobkiri.service.ai.route.v1",
+      "operation_id": "rumi_ai_routing_pack.ai-route.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.route.v1"
+          ],
+          "operation": [
+            "rumi_ai_routing_pack.ai-route.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_routing_pack.ai-routing.default"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.turn.saved.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-saved",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:8a5ba2543950c85126e9f6c79d5740076597473805ec53d6a453c9f5752d589f",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.turn.saved.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-saved"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.saved"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.turn.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:31cacd04091ad82c6e46a1ae66aab82f132202b75c805c5130e38a64ba0c7dd7",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.turn.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.resource"
+    },
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+      "contract_id": "tobkiri.action.turn.lifecycle.v1",
+      "operation_id": "rumi_turn_runtime_pack.turn-lifecycle",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a7cf23d352ca9838379fd3acc501c52fb5cb7e4b0b708d4d0c5c637a3bb680f5",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.turn.lifecycle.v1"
+          ],
+          "operation": [
+            "rumi_turn_runtime_pack.turn-lifecycle"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle"
+    },
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.conversation.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+      "contract_id": "conversation.saved-turn.v1",
+      "operation_id": "saved_complete",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:63915151fb1d4ae599d26940f2ed6638a16a6ec7e5bac52c04a7ead0d15038bd",
+        "dimensions": {
+          "contract": [
+            "conversation.saved-turn.v1"
+          ],
+          "operation": [
+            "saved_complete"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "defaultspack.conversation.saved"
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.conversation.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "contract_id": "tobkiri.action.message.manage.v1",
+      "operation_id": "rumi_conversation_store_pack.message-manage",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:9dd8f4b40122ccebecee571c81ad10a71b07bc791baee7dedfa96ed8214e5fc4",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.message.manage.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.message-manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.message-manage"
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "contract_id": "tobkiri.service.ai.generate.v1",
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.generate.v1"
+          ],
+          "operation": [
+            "rumi_ai_gateway_pack.ai-gateway.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_gateway_pack.ai-gateway.generate"
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "contract_id": "tobkiri.resource.ai.readiness.v1",
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ff956d72ff72a242f94b251f4ed29a02dbf60447e8a20c121a8775c71cb27b9b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.readiness.v1"
+          ],
+          "operation": [
+            "rumi_ai_gateway_pack.ai-gateway.preflight"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_gateway_pack.ai-gateway.preflight"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "contract_id": "tobkiri.service.ai.request.prepare.v1",
+      "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.request.prepare.v1"
+          ],
+          "operation": [
+            "rumi_ai_pipeline_pack.ai-request-prepare.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "contract_id": "tobkiri.resource.ai.provider.health.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-registry-health.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.provider.health.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-registry-health.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_registry_pack.provider-registry.health"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.catalog.v1"
+          ],
+          "operation": [
+            "rumi_model_catalog_pack.bundled-model-catalog.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_catalog_pack.model-catalog.bundled"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.preflight",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
+    {
+      "caller_function_id": "rumi_command_protocol_pack.catalog.read",
+      "contract_id": "tobkiri.resource.application.presentation.v1",
+      "operation_id": "defaultspack.presentation.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.application.presentation.v1"
+          ],
+          "operation": [
+            "defaultspack.presentation.read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "defaultspack.application-presentation"
+    },
+    {
+      "caller_function_id": "tobkiri.ui.catalog.read",
+      "contract_id": "tobkiri.resource.application.presentation.v1",
+      "operation_id": "defaultspack.presentation.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.application.presentation.v1"
+          ],
+          "operation": [
+            "defaultspack.presentation.read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "defaultspack.application-presentation"
+    },
+    {
+      "caller_function_id": "tobkiri.ui.settings.read",
+      "contract_id": "tobkiri.resource.application.presentation.v1",
+      "operation_id": "defaultspack.presentation.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.application.presentation.v1"
+          ],
+          "operation": [
+            "defaultspack.presentation.read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "defaultspack.application-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.command.catalog.v1",
+      "operation_id": "command.catalog.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.command.catalog.v1"
+          ],
+          "operation": [
+            "command.catalog.read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_command_protocol_pack.catalog.read"
+    },
+    {
+      "caller_function_id": "tobkiri.ui.catalog.read",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.ui.settings.v1",
+      "operation_id": "tobkiri_ui_settings_pack.catalog-read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ui.settings.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.catalog-read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.catalog.read"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.ui.settings.v1",
+      "operation_id": "tobkiri_ui_settings_pack.settings-read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ui.settings.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.settings-read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.settings.read"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.ui.preferences.v1",
+      "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.ui.preferences.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.preferences-write"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.preferences.write"
+    },
+    {
+      "caller_function_id": "tobkiri.ui.settings.read",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.conversation.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:254d3ee4bdbe11bf21f658bbb3b89a1d6510ef7dbf77fb9108dcc4b426496156",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.conversation.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.resource"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.conversation.manage.v1",
+      "operation_id": "rumi_conversation_store_pack.conversation-manage",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:8869274e7d77752a9d1e64e274bf82fab48f10b0a7dd5f316cb5cb528a4407aa",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.conversation.manage.v1"
+          ],
+          "operation": [
+            "rumi_conversation_store_pack.conversation-manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_conversation_store_pack.conversation-store.manage"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "conversation.turn.v1",
+      "operation_id": "complete",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:4ab185713b507f4cece1a3fadadcd9b8ed0918f66570d9d6d7b3b22f0ebca59a",
+        "dimensions": {
+          "contract": [
+            "conversation.turn.v1"
+          ],
+          "operation": [
+            "complete"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "defaultspack.conversation"
+    },
+    {
+      "caller_function_id": "defaultspack.conversation",
+      "contract_id": "tobkiri.service.ai.generate.v1",
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:39eddd13b6cfae773c5f2e31705f8f073b42e54d0160f49918f87b8eeb63d768",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.generate.v1"
+          ],
+          "operation": [
+            "rumi_ai_gateway_pack.ai-gateway.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_gateway_pack.ai-gateway.generate"
+    },
+    {
+      "caller_function_id": "defaultspack.conversation",
+      "contract_id": "tobkiri.service.ai.stream.v1",
+      "operation_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:487608b15370de52d2d22aef5b42ee1947a37476b3588c3ee8ce60bf35ee5597",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.stream.v1"
+          ],
+          "operation": [
+            "rumi_ai_gateway_pack.ai-gateway.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_gateway_pack.ai-gateway.stream"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.service.ai.request.prepare.v1",
+      "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.request.prepare.v1"
+          ],
+          "operation": [
+            "rumi_ai_pipeline_pack.ai-request-prepare.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.request.prepare.v1",
+      "operation_id": "rumi_ai_pipeline_pack.ai-request-prepare.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:96fc8b32cf8543c448b07b66c3b47e03e3db113de522debd0f619d0f247b78bc",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.request.prepare.v1"
+          ],
+          "operation": [
+            "rumi_ai_pipeline_pack.ai-request-prepare.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.prepare"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.resource.ai.provider.health.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-registry-health.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.provider.health.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-registry-health.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_registry_pack.provider-registry.health"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.resource.ai.provider.health.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-registry-health.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:5636a93e43b5226774e2add17ae792f15ec4ff53fd6202d5027dfc3a1ea840a4",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.provider.health.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-registry-health.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_registry_pack.provider-registry.health"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.catalog.v1"
+          ],
+          "operation": [
+            "rumi_model_catalog_pack.bundled-model-catalog.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_catalog_pack.model-catalog.bundled"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.resource.ai.model.catalog.v1",
+      "operation_id": "rumi_model_catalog_pack.bundled-model-catalog.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:edab2fe547a7bb14d2c96ea62a5354a59065a37aeaa112dfc19e63c0b84af35c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.catalog.v1"
+          ],
+          "operation": [
+            "rumi_model_catalog_pack.bundled-model-catalog.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_catalog_pack.model-catalog.bundled"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.service.ai.failover.decide.v1",
+      "operation_id": "rumi_ai_pipeline_pack.ai-failover-decide.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:39508895d8bb9105029c246dcefaf063aba8c62f6e498f626d55f03b1d1d063d",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.failover.decide.v1"
+          ],
+          "operation": [
+            "rumi_ai_pipeline_pack.ai-failover-decide.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.failover"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.failover.decide.v1",
+      "operation_id": "rumi_ai_pipeline_pack.ai-failover-decide.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:39508895d8bb9105029c246dcefaf063aba8c62f6e498f626d55f03b1d1d063d",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.failover.decide.v1"
+          ],
+          "operation": [
+            "rumi_ai_pipeline_pack.ai-failover-decide.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_pipeline_pack.ai-pipeline.failover"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.service.ai.provider.generate.v1",
+      "operation_id": "rumi_provider_adapters_pack.provider-generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:729e08de33262fe2c1b9269ed22d4090f0fcd29321301c46d093c808c9211e95",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.provider.generate.v1"
+          ],
+          "operation": [
+            "rumi_provider_adapters_pack.provider-generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_adapters_pack.provider.compatibility.generate"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.provider.stream.v1",
+      "operation_id": "rumi_provider_adapters_pack.provider-stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:8fd2fa8b32bf0d21ffbf0ca8976feeefe042ed54a3e8c6ef93bf00bb9cba971d",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.provider.stream.v1"
+          ],
+          "operation": [
+            "rumi_provider_adapters_pack.provider-stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_adapters_pack.provider.compatibility.stream"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.service.ai.route.v1",
+      "operation_id": "rumi_ai_routing_pack.ai-route.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.route.v1"
+          ],
+          "operation": [
+            "rumi_ai_routing_pack.ai-route.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_routing_pack.ai-routing.default"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.route.v1",
+      "operation_id": "rumi_ai_routing_pack.ai-route.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:4d1d08cfdfacb74c67488e417daf2a56cfa51a981e216d3f1a49c734dd6ced4c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.route.v1"
+          ],
+          "operation": [
+            "rumi_ai_routing_pack.ai-route.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_routing_pack.ai-routing.default"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.stream.normalize.v1",
+      "operation_id": "rumi_ai_stream_pack.ai-stream-normalize",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:88929a94dedfbbc04a8ca78a3c88c01bcb2703a480402e8ad0afbfea8b62d6ad",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.stream.normalize.v1"
+          ],
+          "operation": [
+            "rumi_ai_stream_pack.ai-stream-normalize"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_stream_pack.ai-stream.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.tool_intent.normalize.v1"
+          ],
+          "operation": [
+            "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.tool_intent.normalize.v1",
+      "operation_id": "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d61573162f6e5bca7acadfb039dc367001fc1422ad1fc27a184586c77b0b6c75",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.tool_intent.normalize.v1"
+          ],
+          "operation": [
+            "rumi_ai_tool_bridge_pack.ai-tool-intent-normalize.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_tool_bridge_pack.ai-tool-bridge.normalize"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.generate",
+      "contract_id": "tobkiri.service.ai.usage.cost.v1",
+      "operation_id": "rumi_ai_usage_pack.ai-usage-cost.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:04a8f126370dafe88c38fe8b465b97e666097e515823d55921d98f0c588d68fc",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.usage.cost.v1"
+          ],
+          "operation": [
+            "rumi_ai_usage_pack.ai-usage-cost.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_usage_pack.ai-usage.cost"
+    },
+    {
+      "caller_function_id": "rumi_ai_gateway_pack.ai-gateway.stream",
+      "contract_id": "tobkiri.service.ai.usage.cost.v1",
+      "operation_id": "rumi_ai_usage_pack.ai-usage-cost.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:04a8f126370dafe88c38fe8b465b97e666097e515823d55921d98f0c588d68fc",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.ai.usage.cost.v1"
+          ],
+          "operation": [
+            "rumi_ai_usage_pack.ai-usage-cost.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_ai_usage_pack.ai-usage.cost"
+    },
+    {
+      "caller_function_id": "rumi_provider_adapters_pack.provider.compatibility.generate",
+      "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-registry-resource.generate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ae3b4954e4d3ccfce933d44a9fd23409ef9626e5916a280ed304780437088e34",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.provider.registry.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-registry-resource.generate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_registry_pack.provider-registry.resource"
+    },
+    {
+      "caller_function_id": "rumi_provider_adapters_pack.provider.compatibility.stream",
+      "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+      "operation_id": "rumi_provider_registry_pack.provider-registry-resource.stream",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ae3b4954e4d3ccfce933d44a9fd23409ef9626e5916a280ed304780437088e34",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.provider.registry.v1"
+          ],
+          "operation": [
+            "rumi_provider_registry_pack.provider-registry-resource.stream"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_provider_registry_pack.provider-registry.resource"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "catalog.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "catalog.read"
+          ],
+          "resource_namespace": [
+            "pack.catalog"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "pack.install",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "ceremony": [
+            "explicit_install"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "pack.install"
+          ],
+          "resource_namespace": [
+            "pack.catalog"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "dashboard.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "dashboard.read"
+          ],
+          "resource_namespace": [
+            "panel.dashboard"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "approval.candidate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "ceremony": [
+            "approval_prepare"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "approval.candidate"
+          ],
+          "resource_namespace": [
+            "pack.approval"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "approval.approve",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "ceremony": [
+            "approval_commit"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "approval.approve"
+          ],
+          "resource_namespace": [
+            "pack.approval"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "approval.revoke",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "ceremony": [
+            "approval_revoke"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "approval.revoke"
+          ],
+          "resource_namespace": [
+            "pack.approval"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "pack.enable",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "ceremony": [
+            "profile_activation"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "pack.enable"
+          ],
+          "resource_namespace": [
+            "profile.pack-set"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "pack.disable",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "ceremony": [
+            "profile_revocation"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "pack.disable"
+          ],
+          "resource_namespace": [
+            "profile.pack-set"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "pack.status",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "pack.status"
+          ],
+          "resource_namespace": [
+            "pack.status"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "profile.change.activate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "ceremony": [
+            "activation"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "profile.change.activate"
+          ],
+          "resource_namespace": [
+            "profile.activation"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "profile.change.approve",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "ceremony": [
+            "authority_approval"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "profile.change.approve"
+          ],
+          "resource_namespace": [
+            "profile.activation"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "profile.change.resolve",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "profile.change.resolve"
+          ],
+          "resource_namespace": [
+            "profile.candidate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "profile.change.review",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "profile.change.review"
+          ],
+          "resource_namespace": [
+            "profile.candidate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "operation.status.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "operation.status.read"
+          ],
+          "resource_namespace": [
+            "control.operation-status"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "profile.catalog.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "profile.catalog.read"
+          ],
+          "resource_namespace": [
+            "profile.catalog"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "profile.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "profile.read"
+          ],
+          "resource_namespace": [
+            "profile.runtime-surface"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "settings.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "settings.read"
+          ],
+          "resource_namespace": [
+            "profile.runtime-settings"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "topology.contracts.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "topology.contracts.read"
+          ],
+          "resource_namespace": [
+            "profile.topology"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "topology.operations.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "topology.operations.read"
+          ],
+          "resource_namespace": [
+            "profile.topology"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "topology.packs.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "topology.packs.read"
+          ],
+          "resource_namespace": [
+            "profile.topology"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operation_id": "topology.principals.read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+        "dimensions": {
+          "access": [
+            "read_only"
+          ],
+          "contract": [
+            "tobkiri.host.control-presentation.v4"
+          ],
+          "operation": [
+            "topology.principals.read"
+          ],
+          "resource_namespace": [
+            "profile.topology"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "profile.reload",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "ceremony": [
+            "explicit_reload"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "profile.reload"
+          ],
+          "resource_namespace": [
+            "profile.activation"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "shell.tauri.pack-control",
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "runtime.restart",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+        "dimensions": {
+          "ceremony": [
+            "explicit_restart"
+          ],
+          "contract": [
+            "tobkiri.host.pack-control.v4"
+          ],
+          "operation": [
+            "runtime.restart"
+          ],
+          "resource_namespace": [
+            "runtime.lifecycle"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.host.pack-control"
+    },
+    {
+      "caller_function_id": "defaultspack.conversation",
+      "contract_id": "tobkiri.service.file.inspect.v1",
+      "operation_id": "rumi_file_inspect_pack.file-inspect",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:120000de7f447efd8b7973c23cf293a22ec144fe49d8a1eb08c9aea73d30345b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.file.inspect.v1"
+          ],
+          "operation": [
+            "rumi_file_inspect_pack.file-inspect"
+          ],
+          "resource_namespace": [
+            "workspace"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_file_inspect_pack.file-inspect.service"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.get",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.get"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.list",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.list"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.approve",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.approve"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "contract_id": "tobkiri.service.interactive-approval.v1",
+      "operation_id": "interactive_approval.deny",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-approval.v1"
+          ],
+          "operation": [
+            "interactive_approval.deny"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_command_protocol_pack.high-risk-command.service",
+      "contract_id": "tobkiri.service.command.high-risk.v1",
+      "operation_id": "high_risk_command.manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:036e4b61a2be06a5cfe321d9d15c2511bd0f2b7feb55ebdccca764b4685b732f",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.command.high-risk.v1"
+          ],
+          "operation": [
+            "high_risk_command.manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_command_protocol_pack.high-risk-command.service",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "contract_id": "tobkiri.service.interactive-effect.v1",
+      "operation_id": "interactive_effect.manage",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.interactive-effect.v1"
+          ],
+          "operation": [
+            "interactive_effect.manage"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_shell_execute_pack.shell-prepare.service",
+      "contract_id": "tobkiri.service.shell.execute.v1",
+      "operation_id": "rumi_shell_execute_pack.shell-prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.shell.execute.v1"
+          ],
+          "operation": [
+            "rumi_shell_execute_pack.shell-prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_shell_execute_pack.shell-execute.service",
+      "contract_id": "tobkiri.service.shell.execute.v1",
+      "operation_id": "rumi_shell_execute_pack.shell-execute",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.shell.execute.v1"
+          ],
+          "operation": [
+            "rumi_shell_execute_pack.shell-execute"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_git_write_pack.git-commit-prepare.service",
+      "contract_id": "tobkiri.service.git.write.v1",
+      "operation_id": "rumi_git_write_pack.git-commit-prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.git.write.v1"
+          ],
+          "operation": [
+            "rumi_git_write_pack.git-commit-prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_git_write_pack.git-commit.service",
+      "contract_id": "tobkiri.service.git.write.v1",
+      "operation_id": "rumi_git_write_pack.git-commit",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.git.write.v1"
+          ],
+          "operation": [
+            "rumi_git_write_pack.git-commit"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_git_write_pack.git-restore-prepare.service",
+      "contract_id": "tobkiri.service.git.write.v1",
+      "operation_id": "rumi_git_write_pack.git-restore-prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.git.write.v1"
+          ],
+          "operation": [
+            "rumi_git_write_pack.git-restore-prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_git_write_pack.git-restore.service",
+      "contract_id": "tobkiri.service.git.write.v1",
+      "operation_id": "rumi_git_write_pack.git-restore",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.git.write.v1"
+          ],
+          "operation": [
+            "rumi_git_write_pack.git-restore"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_git_write_pack.git-apply-patch-prepare.service",
+      "contract_id": "tobkiri.service.git.write.v1",
+      "operation_id": "rumi_git_write_pack.git-apply-patch-prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.git.write.v1"
+          ],
+          "operation": [
+            "rumi_git_write_pack.git-apply-patch-prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_git_write_pack.git-apply-patch.service",
+      "contract_id": "tobkiri.service.git.write.v1",
+      "operation_id": "rumi_git_write_pack.git-apply-patch",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.git.write.v1"
+          ],
+          "operation": [
+            "rumi_git_write_pack.git-apply-patch"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_git_publish_pack.git-push-prepare.service",
+      "contract_id": "tobkiri.service.git.publish.v1",
+      "operation_id": "rumi_git_publish_pack.git-push-prepare",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.git.publish.v1"
+          ],
+          "operation": [
+            "rumi_git_publish_pack.git-push-prepare"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "target_provider_id": "rumi_git_publish_pack.git-publish.service",
+      "contract_id": "tobkiri.service.git.publish.v1",
+      "operation_id": "rumi_git_publish_pack.git-push",
+      "authority_mode": "interactive_only",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:b2699757006625a794cf2fc94e525b53e526471e96b544bb885c24cb06200b6c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.git.publish.v1"
+          ],
+          "operation": [
+            "rumi_git_publish_pack.git-push"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_shell_execute_pack.shell-prepare.service",
+      "target_provider_id": "rumi_shell_policy_pack.shell-policy.inspect",
+      "contract_id": "tobkiri.service.shell.inspect.v1",
+      "operation_id": "rumi_shell_policy_pack.shell-inspect",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:186479de12112205be50ff0f0cc3a9e6ffb80e5b225bf84ebd30d539a12efe7b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.shell.inspect.v1"
+          ],
+          "operation": [
+            "rumi_shell_policy_pack.shell-inspect"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_shell_execute_pack.shell-prepare.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_shell_execute_pack.shell-execute.service",
+      "target_provider_id": "rumi_shell_policy_pack.shell-policy.inspect",
+      "contract_id": "tobkiri.service.shell.inspect.v1",
+      "operation_id": "rumi_shell_policy_pack.shell-inspect",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:186479de12112205be50ff0f0cc3a9e6ffb80e5b225bf84ebd30d539a12efe7b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.shell.inspect.v1"
+          ],
+          "operation": [
+            "rumi_shell_policy_pack.shell-inspect"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_shell_execute_pack.shell-execute.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_git_write_pack.git-commit-prepare.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_git_write_pack.git-commit.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_git_write_pack.git-restore-prepare.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_git_write_pack.git-restore.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_git_write_pack.git-apply-patch-prepare.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_git_write_pack.git-apply-patch.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_git_publish_pack.git-push-prepare.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_git_publish_pack.git-publish.service",
+      "target_provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+      "contract_id": "tobkiri.resource.workspace.v1",
+      "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:71356e27c97eb72918a59d95fa91b06efaf3b759842080f5a59e91272e369b1a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.workspace.v1"
+          ],
+          "operation": [
+            "rumi_workspace_mount_pack.workspace-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "target_provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.tool.definition.v1"
+          ],
+          "operation": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.tool.definition.v1"
+          ],
+          "operation": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "target_provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.tool.definition.v1"
+          ],
+          "operation": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "target_provider_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "contract_id": "tobkiri.service.tool.invoke.v1",
+      "operation_id": "rumi_tool_broker_pack.tool-invoke",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:158048cd75aff7396e9d7eb4a80f777f679c3217398cfa26f2fbc3f3d9375a89",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.invoke.v1"
+          ],
+          "operation": [
+            "rumi_tool_broker_pack.tool-invoke"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_tool_validation_pack.tool-validation.arguments",
+      "contract_id": "tobkiri.service.tool.arguments.validate.v1",
+      "operation_id": "rumi_tool_validation_pack.tool-arguments-validate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:66d9f4c2832315ec15d0eec37ed1cb7e77b212ba21bbaf883d6eacbbd838435a",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.arguments.validate.v1"
+          ],
+          "operation": [
+            "rumi_tool_validation_pack.tool-arguments-validate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_tool_result_pack.tool-result.normalize",
+      "contract_id": "tobkiri.service.tool.result.normalize.v1",
+      "operation_id": "rumi_tool_result_pack.tool-result-normalize",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ecb2a872eefc9feba498285de1177833149a46e6c9d1a59320f21dc4303eece4",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.result.normalize.v1"
+          ],
+          "operation": [
+            "rumi_tool_result_pack.tool-result-normalize"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "target_provider_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "contract_id": "tobkiri.service.tool.execute.v1",
+      "operation_id": "rumi_tool_local_executor_pack.tool-local-execute",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:ed2eba5075751888f2889bcc404c72e63263c629a0d2a1aff043fade09b0c0eb",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.execute.v1"
+          ],
+          "operation": [
+            "rumi_tool_local_executor_pack.tool-local-execute"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_tool_local_executor_pack.tool-executor.local",
+      "target_provider_id": "rumi_default_tools_pack.calculator",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "operation_id": "rumi_default_tools_pack.calculator-evaluate",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:df8675d478395ad57d70438196be7bd2321fffe492d56a954cfed7da42dfca4b",
+        "dimensions": {
+          "contract": [
+            "tobkiri.service.tool.local.operation.v1"
+          ],
+          "operation": [
+            "rumi_default_tools_pack.calculator-evaluate"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+      "target_provider_id": "rumi_prompt_studio_pack.prompt-studio.resource",
+      "contract_id": "tobkiri.resource.prompt.studio.v1",
+      "operation_id": "rumi_prompt_studio_pack.prompt-studio-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:8e4a5e863a872e5d26bd84d7d4e128c6f465755841fda7a205b281d2c793a478",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.prompt.studio.v1"
+          ],
+          "operation": [
+            "rumi_prompt_studio_pack.prompt-studio-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "defaultspack.conversation.saved",
+      "target_provider_id": "rumi_prompt_studio_pack.prompt-studio.resource",
+      "contract_id": "tobkiri.resource.prompt.studio.v1",
+      "operation_id": "rumi_prompt_studio_pack.prompt-studio-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:8e4a5e863a872e5d26bd84d7d4e128c6f465755841fda7a205b281d2c793a478",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.prompt.studio.v1"
+          ],
+          "operation": [
+            "rumi_prompt_studio_pack.prompt-studio-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    }
+  ],
+  "shell": {
+    "architecture": "arm64",
+    "artifact_digest": null,
+    "contract_id": "app.shell.v1",
+    "definition_revision": null,
+    "pack_id": "shell.tauri.default",
+    "platform": "macos",
+    "provider_id": "shell.tauri.default",
+    "executable_artifact_digest": null
+  },
+  "state": "needs_resolution",
+  "frontend_entry_id": "chat",
+  "content_projections": []
+}

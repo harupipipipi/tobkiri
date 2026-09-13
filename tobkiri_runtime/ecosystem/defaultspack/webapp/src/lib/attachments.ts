@@ -2,6 +2,7 @@ import type { AttachedFile } from "../renderers/types";
 
 const TEXT_TRUNCATE_LIMIT = 120_000;
 const IMAGE_INLINE_LIMIT_BYTES = 8 * 1024 * 1024;
+const AUDIO_INLINE_LIMIT_BYTES = 25 * 1024 * 1024;
 const ATTACHMENT_NAME_LIMIT = 240;
 
 const TEXT_MIME_PREFIXES = ["text/"];
@@ -131,6 +132,25 @@ export async function fileToAttachment(file: File): Promise<AttachedFile> {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
       reader.onerror = () => reject(reader.error ?? new Error("画像を読み込めませんでした"));
+      reader.readAsDataURL(file);
+    });
+    return {
+      ...base,
+      dataUrl,
+    };
+  }
+
+  if (/^audio\//.test(file.type || "")) {
+    if (file.size > AUDIO_INLINE_LIMIT_BYTES) {
+      return {
+        ...base,
+        truncated: true,
+      };
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error ?? new Error("音声ファイルを読み込めませんでした"));
       reader.readAsDataURL(file);
     });
     return {

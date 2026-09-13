@@ -354,9 +354,13 @@ def _read_structured(
         payload = _read_json(path, result, source_kind)
     else:
         try:
-            import yaml
+            import importlib
 
-            payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+            yaml_module = importlib.import_module("yaml")
+            safe_load = getattr(yaml_module, "safe_load", None)
+            if not callable(safe_load):
+                raise RuntimeError("PyYAML safe_load is unavailable")
+            payload = safe_load(path.read_text(encoding="utf-8"))
         except Exception as exc:
             result.diagnostics.append(
                 _diagnostic(

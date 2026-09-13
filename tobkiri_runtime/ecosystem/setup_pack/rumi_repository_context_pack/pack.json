@@ -1,0 +1,42 @@
+{
+  "pack_id": "rumi_repository_context_pack",
+  "display_name": "Tobkiri Repository Context Pack",
+  "description": "Low-cost repository evidence selection through a Subagent Placement.",
+  "target_pack_id": "rumi_repository_context_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "high",
+  "supports_all_ok": false,
+  "depends_on": [
+    "rumi_subagent_placement_pack",
+    "rumi_file_inspect_pack",
+    "rumi_ai_gateway_pack"
+  ],
+  "required_permissions": [
+    "subagent.catalog.read",
+    "subagent.placement.read",
+    "subagent.placement.compile",
+    "repository.context.prepare",
+    "file.inspect",
+    "ai.gateway.generate"
+  ],
+  "conflicts_with": [],
+  "compatibility": {
+    "python": ">=3.10",
+    "platforms": ["macos", "linux", "windows"]
+  },
+  "marketplace": {
+    "id": "rumi.repository_context",
+    "registry": "bundled",
+    "publisher": "rumi-ai",
+    "status": "verified",
+    "category": "agent",
+    "channel": "experimental"
+  },
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": [
+    "Read-only workspace service only.",
+    "Credential-like paths and content are excluded before model calls.",
+    "The low-cost model returns structured evidence; it grants no authority."
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "artifact_set_digest": "sha256:3cb71d9e00e41d0e17c4bcba4fe3ea3cbae3ab41533bab20378424b7f30713e0",
+  "artifacts": [
+    {
+      "digest": "sha256:726fe47cff9f2543f2f95999b0d45b11bbb9aca45274acf7744285aae80f9b5e",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:8e2d48829d6e5e31a91044fca372dd45b5e6c47900b940325a08e2caef78fe1e",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:fa8c19cbc42474a90474f4879873b285698936dbedea75b70667220f18c35784",
+      "path": "frontend/contributions/connections-route.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f8e70d99a69db1bbe03ef0bb298ce4bc86abb34965092965e22d98997327e9fe",
+      "path": "frontend/contributions/connections-settings.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:de54c4a93298f09a609c07da7e53a639caa5867593440c2377501747b52dbf22",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:a011c47573faf147dc79a7bb6ef9bb92f18a07eb27dc24b680055638302255db",
+      "path": "ui/app.js",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:754ae26aa606582d574f9993d49d10742358d6b344331443078db828e3bb41f0",
+      "path": "ui/index.html",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b9d378f1c75cd3ff6977660deb62c9de5bc23100968de08d91daf46a8a0ad3d2",
+      "path": "ui/style.css",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:558b55998c552e144a41038fec048ea8f43ea39a0c73d6e58c4c7d368ee11652"
+  },
+  "pack_id": "rumi_connector_settings_surface_pack",
+  "source_identity": "sha256:3f4e269d2fff172f009bd63a5ba019d8a09104eb00b762f56bfaaf573a634166"
+}

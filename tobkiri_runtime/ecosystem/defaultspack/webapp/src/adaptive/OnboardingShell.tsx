@@ -23,6 +23,7 @@ import type {
   AdaptiveOnboardingPreset,
   AdaptiveOnboardingState,
 } from "../lib/adaptiveApi";
+import { ErrorNotice } from "../components/ErrorNotice";
 import {
   adaptiveOnboardingActionIds,
   compileAdaptiveOnboardingAnswers,
@@ -217,7 +218,13 @@ function ResultPanel({
   return (
     <div className={adaptiveSectionClass} aria-live="polite">
       {error ? (
-        <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-xs leading-5 text-rose-100">{error}</div>
+        <ErrorNotice
+          className="rounded-md p-3 text-xs leading-5"
+          copyLabel="Copy onboarding operation error"
+          copyText={error}
+          errorIcon="onboarding-operation"
+          message={error}
+        />
       ) : null}
       {message ? (
         <div className="rounded-md border border-cyan-500/30 bg-cyan-500/10 p-3 text-xs leading-5 text-cyan-100">{message}</div>

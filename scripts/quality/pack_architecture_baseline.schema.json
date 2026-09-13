@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rumi.local/schemas/pack-architecture-baseline-v2.json",
+  "title": "Rumi pack architecture shrink-only baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "policy", "exceptions"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "policy": {"const": "shrink_only_exact_edges"},
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "identity", "rule", "violation_category", "path", "line", "fingerprint",
+          "source", "target", "owner", "reason", "introduced_at",
+          "fix_by_wave", "sunset_at"
+        ],
+        "properties": {
+          "identity": {"type": "string", "minLength": 1},
+          "rule": {"type": "string", "minLength": 1},
+          "violation_category": {"type": "string", "minLength": 1},
+          "path": {"type": "string", "minLength": 1},
+          "line": {"type": "integer", "minimum": 1},
+          "fingerprint": {"type": "string", "minLength": 1},
+          "source": {"type": "string", "minLength": 1},
+          "target": {"type": "string", "minLength": 1},
+          "owner": {"type": "string", "minLength": 1},
+          "reason": {"type": "string", "minLength": 1},
+          "introduced_at": {"type": "string", "format": "date"},
+          "fix_by_wave": {"type": "integer", "minimum": 1},
+          "sunset_at": {"type": "string", "format": "date"}
+        }
+      }
+    }
+  }
+}

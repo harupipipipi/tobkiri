@@ -1,0 +1,40 @@
+{
+  "authority_references": [],
+  "base": {
+    "artifact_digest": null,
+    "definition_revision": null,
+    "pack_id": "fixture-base",
+    "resolution": "verified_exact_artifact_required"
+  },
+  "catalog_revision": null,
+  "mode": "headless",
+  "packs": [
+    {"artifact_digest": null, "pack_id": "fixture_ai_pack", "role": "provider"}
+  ],
+  "profile_api_version": "io.tobkiri.profile.v5",
+  "profile_authority_snapshot_digest": null,
+  "profile_id": "fixture-primary",
+  "provenance": {
+    "evidence": [],
+    "generator": "fixture",
+    "generator_version": "1.0.0",
+    "normative": false,
+    "repository_commit": "working-tree",
+    "repository_tree": "0000000000000000000000000000000000000000000000000000000000000000",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "source_kind": "repository",
+    "source_path": "fixture"
+  },
+  "requested_edges": [
+    {
+      "caller_function_id": "fixture.shell",
+      "contract_id": "tobkiri.service.ai.generate.v1",
+      "operation_id": "fixture_ai_pack.generate",
+      "requested_scope_template": {},
+      "target_provider_id": "fixture_ai_pack.provider"
+    }
+  ],
+  "shell": null,
+  "state": "needs_resolution"
+}

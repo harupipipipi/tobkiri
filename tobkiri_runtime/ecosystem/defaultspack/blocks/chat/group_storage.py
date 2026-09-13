@@ -25,17 +25,12 @@ def run(input_data, context=None):
     except (OSError, ValueError) as exc:
         return error(str(exc), code="INVALID_INPUT")
 
-    rumi_data_path = root_path / ".rumiDP"
-    chat_path = rumi_data_path / "chat"
-    try:
-        (chat_path / "conversations").mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        return error(str(exc), code="GROUP_STORAGE_CREATE_FAILED")
-
     return ok(
         {
             "root_path": str(root_path),
-            "rumi_data_path": str(rumi_data_path),
-            "chat_store_path": str(chat_path / "conversations.json"),
+            "rumi_data_path": None,
+            "chat_store_path": None,
+            "conversation_contract": "rumi.resource.conversation.v1",
+            "authoritative_owner": "rumi_conversation_store_pack",
         }
     )

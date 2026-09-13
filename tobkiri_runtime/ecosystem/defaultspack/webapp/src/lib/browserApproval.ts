@@ -129,6 +129,39 @@ function requestIdFromCandidate(candidate: Record<string, unknown> | undefined):
   return String(candidate?.approval_request_id ?? candidate?.request_id ?? "").trim();
 }
 
+function matchingApprovalToolLog(
+  message: ChatUiMessage,
+  candidate: Record<string, unknown>,
+) {
+  const requestId = requestIdFromCandidate(candidate);
+  const logs = [...(message.toolLogs ?? [])].reverse();
+  const exact = requestId ? logs.find((log) => {
+    const result = isRecord(log.result) ? log.result : undefined;
+    const data = isRecord(result?.data) ? result.data : result;
+    const widget = isRecord(data?.widget) ? data.widget : undefined;
+    const logCandidate = (widget?.requires_approval || widget?.approval_required ? widget : data) as Record<string, unknown> | undefined;
+    return requestIdFromCandidate(logCandidate) === requestId;
+  }) : undefined;
+  if (exact) return exact;
+  return logs.find((log) => {
+    const name = String(log.tool_name ?? "").trim();
+    return Boolean(name && name !== "tool");
+  });
+}
+
+function matchingApprovalToolEvent(
+  message: ChatUiMessage,
+  candidate: Record<string, unknown>,
+) {
+  const runId = String(candidate.run_id ?? "").trim();
+  return [...(message.events ?? [])].reverse().find((event) => (
+    typeof event.tool_name === "string"
+    && event.tool_name.trim()
+    && (!runId || String(event.run_id ?? "").trim() === runId)
+    && (event.type === "tool_call_started" || event.phase === "tool_call_started")
+  ));
+}
+
 function runtimeApprovalFromCandidate(
   candidate: Record<string, unknown> | undefined,
   fallbackToolName = "tool",
@@ -142,7 +175,12 @@ function runtimeApprovalFromCandidate(
   if (isAuthorityApprovalCandidate(candidate)) return null;
   if (!candidate.requires_approval && !candidate.approval_required) return null;
   if (approvalExpired(candidate, observedAt, now)) return null;
-  const toolName = String(candidate.tool_name ?? fallbackToolName).trim() || fallbackToolName;
+  const candidateToolName = String(candidate.tool_name ?? "").trim();
+  const toolName = (
+    candidateToolName && candidateToolName !== "tool"
+      ? candidateToolName
+      : fallbackToolName
+  ).trim() || "tool";
   const payload = isRecord(candidate.payload)
     ? candidate.payload
     : isRecord(candidate.arguments)
@@ -273,22 +311,56 @@ export function pendingRuntimeApproval(messages: ChatUiMessage[], now = Date.now
     if (message.role === "user") return null;
     if (message.role !== "agent") continue;
     const metadataApproval = message.metadata?.pendingApproval;
+    const metadataMatchingLog = matchingApprovalToolLog(message, metadataApproval ?? {});
+    const metadataMatchingEvent = matchingApprovalToolEvent(message, metadataApproval ?? {});
     const metadataRuntimeApproval = runtimeApprovalFromCandidate(
       metadataApproval,
-      String(metadataApproval?.tool_name ?? "tool"),
-      typeof metadataApproval?.tool_call_id === "string" ? metadataApproval.tool_call_id : undefined,
-      undefined,
+      String(
+        (
+          typeof metadataApproval?.tool_name === "string"
+          && metadataApproval.tool_name.trim()
+          && metadataApproval.tool_name.trim() !== "tool"
+        )
+          ? metadataApproval.tool_name
+          : metadataMatchingLog?.tool_name ?? metadataMatchingEvent?.tool_name ?? "tool",
+      ),
+      typeof metadataApproval?.tool_call_id === "string"
+        ? metadataApproval.tool_call_id
+        : typeof metadataMatchingLog?.tool_call_id === "string"
+          ? metadataMatchingLog.tool_call_id
+          : typeof metadataMatchingEvent?.tool_call_id === "string"
+            ? metadataMatchingEvent.tool_call_id
+            : undefined,
+      metadataMatchingLog && isRecord(metadataMatchingLog.arguments)
+        ? metadataMatchingLog.arguments
+        : undefined,
       metadataApproval?.timestamp,
       now,
     );
     if (metadataRuntimeApproval) return metadataRuntimeApproval;
     for (const event of [...(message.events ?? [])].reverse()) {
       if (event.type !== "approval_requested" && event.phase !== "approval_requested") continue;
+      const matchingLog = matchingApprovalToolLog(message, event as Record<string, unknown>);
+      const matchingEvent = matchingApprovalToolEvent(message, event as Record<string, unknown>);
       const approval = runtimeApprovalFromCandidate(
         event as Record<string, unknown>,
-        String(event.tool_name ?? "tool"),
-        typeof event.tool_call_id === "string" ? event.tool_call_id : undefined,
-        undefined,
+        String(
+          (
+            typeof event.tool_name === "string"
+            && event.tool_name.trim()
+            && event.tool_name.trim() !== "tool"
+          )
+            ? event.tool_name
+            : matchingLog?.tool_name ?? matchingEvent?.tool_name ?? "tool",
+        ),
+        typeof event.tool_call_id === "string"
+          ? event.tool_call_id
+          : typeof matchingLog?.tool_call_id === "string"
+            ? matchingLog.tool_call_id
+            : typeof matchingEvent?.tool_call_id === "string"
+              ? matchingEvent.tool_call_id
+            : undefined,
+        matchingLog && isRecord(matchingLog.arguments) ? matchingLog.arguments : undefined,
         event.timestamp,
         now,
       );

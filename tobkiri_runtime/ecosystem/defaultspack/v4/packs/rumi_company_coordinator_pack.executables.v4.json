@@ -1,0 +1,111 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_company_coordinator_pack",
+  "source_identity": "sha256:76f9c14a45eb30c4908b6dc2d98f630f937cb14a6e7fa8c11388efa34dec6ad4",
+  "variants": [
+    {
+      "variant_id": "rumi_company_coordinator_pack.company.coordinator.python",
+      "function_id": "rumi_company_coordinator_pack.company.coordinator",
+      "implementation_path": "runtime/coordinator.py",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.company.coordinator.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:35210adcc5c145e82b9f0139c2438037291786d6b7277da638a284c1038ffee0",
+          "operation_id": "rumi_company_coordinator_pack.company-coordinator-control",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_company_coordinator_pack.company.runtime.python",
+      "function_id": "rumi_company_coordinator_pack.company.runtime",
+      "implementation_path": "runtime/coordinator.py",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.company.runtime.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:da063e0f6f1c9e42d56406159022ab1eb5e49f9771e9014510e8d9e34d783c33",
+          "operation_id": "rumi_company_coordinator_pack.company-runtime-resource",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor.python",
+      "function_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
+      "implementation_path": "runtime/coordinator.py",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "execution_kind": "pack_vm",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-pack-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "sandbox.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.job.adapter.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:c4488f4e1cde0fb205037f384949ded4ef8db28cbd88bbec6935ac0c08b72e79",
+          "operation_id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
+          "input_schema": {
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "read",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:507bdfe00311392f3a0b3018c50ea099c9c850a1de62f0025ad31396170df24a",
+  "catalog_digest": "sha256:cc0fdc4b1ae87c9cc99c8873340b0f01eef80cc81b950b5e0b3e944a1596e2bd"
+}

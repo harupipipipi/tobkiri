@@ -1,0 +1,41 @@
+{
+  "function_id": "coding_pack_approval_request",
+  "description": "Request approval for one exact Pack snapshot.",
+  "tags": [
+    "coding"
+  ],
+  "risk": "medium",
+  "requires": [
+    "coding.pack.approval.request"
+  ],
+  "caller_requires": [],
+  "host_execution": false,
+  "calling_convention": "subprocess",
+  "entrypoint": "main.py:run",
+  "vocab_aliases": [
+    "defaultspack.coding.pack_approval_request",
+    "defaultspack.coding.pack.approval.request"
+  ],
+  "input_schema": {
+    "type": "object",
+    "additionalProperties": true
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "string"
+      },
+      "data": {},
+      "error": {
+        "type": "object"
+      }
+    }
+  },
+  "extensions": {
+    "defaultspack": {
+      "block_module": "blocks.coding.pack_approval_request",
+      "default_args": {}
+    }
+  }
+}

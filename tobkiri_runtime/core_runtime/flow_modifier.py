@@ -15,22 +15,27 @@ import logging
 import threading
 from typing import Any, Dict, List, Optional, Tuple, Set
 
-logger = logging.getLogger(__name__)
-
-from .flow_loader import FlowDefinition, FlowStep, FlowLoadResult
-
-# --- Wave 13 T-048: re-export from sub-modules ---
-from .flow_modifier_models import (       # noqa: F401 — re-export
+from .flow_loader import FlowDefinition, FlowStep
+from .flow_modifier_models import (
     FlowModifierDef,
     ModifierRequires,
     ModifierLoadResult,
     ModifierApplyResult,
     ModifierSkipRecord,
 )
+from .flow_modifier_loader import FlowModifierLoader
 
-from .flow_modifier_loader import (       # noqa: F401 — re-export
-    FlowModifierLoader,
-)
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "FlowModifierApplier",
+    "FlowModifierDef",
+    "FlowModifierLoader",
+    "ModifierApplyResult",
+    "ModifierLoadResult",
+    "ModifierRequires",
+    "ModifierSkipRecord",
+]
 
 
 class FlowModifierApplier:

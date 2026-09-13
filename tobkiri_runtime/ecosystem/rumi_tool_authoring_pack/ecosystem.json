@@ -1,0 +1,69 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.tool.authoring.publish.v1",
+      "rumi.service.tool.authoring.validate.v1"
+    ],
+    "requires": [
+      "rumi.action.tool.definition.manage.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Definition-only validation and revision-guarded publication.",
+  "display_name": "Rumi Tool Authoring",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3b24f458f5c281843652aed4192cb82875fc4bb1d76c0adc33a6db2c88920f27",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:110aedd002865a99636ea79703f5ea62ea7fdd029c203db0265f2b35cbae1ecd"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:110aedd002865a99636ea79703f5ea62ea7fdd029c203db0265f2b35cbae1ecd"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "tool_definition_authoring"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "code_generation": false,
+      "execution": false
+    }
+  },
+  "pack_id": "rumi_tool_authoring_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_authoring_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_authoring_pack:1.0.0",
+    "content_hash": "sha256:c087e86dee58038320571e8422c4679cb49fd2650a0e058db4e4fa83adfc1f3a",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.authoring.publish",
+    "tool.authoring.validate"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

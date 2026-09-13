@@ -46,7 +46,7 @@ def test_model_evals_pack_required_docs_and_assets_exist():
         PACK_DIR / "specs" / "layered_eval_contract.yaml",
         PACK_DIR / "specs" / "metrics.schema.yaml",
         PACK_DIR / "specs" / "model_fit_matrix.schema.yaml",
-        PACK_DIR / "specs" / "defaultspack_promotion_gates.yaml",
+        PACK_DIR / "specs" / "base_pack_promotion_gates.yaml",
     ]
 
     missing = [str(path.relative_to(ROOT)) for path in required if not path.is_file()]
@@ -76,6 +76,7 @@ def test_model_evals_pack_json_and_yaml_parse():
 def test_model_evals_pack_setup_metadata_and_selector_discoverability():
     setup = json.loads(SETUP_PACK_JSON.read_text(encoding="utf-8"))
     ecosystem = json.loads((PACK_DIR / "ecosystem.json").read_text(encoding="utf-8"))
+    legacy_annotations = ecosystem["metadata"]["legacy_annotations"]
     capabilities = yaml.safe_load((PACK_DIR / "catalog" / "capabilities.yaml").read_text(encoding="utf-8"))
 
     assert setup["pack_id"] == PACK_ID
@@ -87,17 +88,14 @@ def test_model_evals_pack_setup_metadata_and_selector_discoverability():
     assert setup["overlap_policy"]["rumi_agent_services_pack"] == "feeds_service_routing_confidence"
     assert setup["overlap_policy"]["rumi_code_ide_pack"] == "feeds_coding_model_fit_and_smoke_results"
     assert setup["overlap_policy"]["rumi_data_analysis_pack"] == "feeds_analysis_model_fit_and_chart_or_sql_eval_results"
-    assert setup["defaultspack_promotion"]["eligible"] is False
-    assert "provider_smoke_success" in setup["defaultspack_promotion"]["gates"]
-    assert ecosystem["runtime"]["type"] == "declarative_pack"
+    assert setup["base_pack_promotion"]["eligible"] is False
+    assert "provider_smoke_success" in setup["base_pack_promotion"]["gates"]
+    assert legacy_annotations["runtime"]["type"] == "verified_hybrid_pack"
     assert "rumi.model_evals.fit_matrix_schema" in ecosystem["components"]["eval_specs"]["connectivity"]["provides"]
     assert "promotion_gate_review" not in capabilities["capabilities"]["model_fit_matrix"]["requires"]
 
     dependencies = {item["pack_id"]: item.get("version") for item in setup["depends_on"]}
-    assert dependencies == {
-        "defaultspack": ">=2.0.0",
-        "rumi_local_agent_pack": ">=1.0.0",
-    }
+    assert dependencies == {}
 
     selector = PackSelector(ROOT / "ecosystem" / "setup_pack")
     candidates = {candidate.pack_id: candidate for candidate in selector.scan_candidates()}
@@ -105,7 +103,7 @@ def test_model_evals_pack_setup_metadata_and_selector_discoverability():
 
     assert candidate.pack_identity == f"rumi:ecosystem/{PACK_ID}"
     assert candidate.overlap_policy["defaultspack_provider_catalog"] == "overlay_with_evidence_only"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
     assert candidate.marketplace["id"] == "rumi.model_evals_pack"
     assert candidate.signing["mode"] == "repository_reviewed"
 
@@ -134,14 +132,17 @@ def test_model_evals_profiles_and_presets_are_local_first_network_none():
         assert data["policy"]["network_default"] == "none"
 
 
-def test_model_evals_pack_contains_no_executable_code_or_secret_like_literals():
-    forbidden_suffixes = {".py", ".sh", ".js", ".ts", ".tsx", ".ipynb", ".sql"}
+def test_model_evals_pack_contains_only_declared_runtime_code_and_no_secret_like_literals():
+    executable_suffixes = {".py", ".sh", ".js", ".ts", ".tsx", ".ipynb", ".sql"}
     executable_files = [
-        str(path.relative_to(ROOT))
+        path.relative_to(PACK_DIR).as_posix()
         for path in PACK_DIR.glob("**/*")
-        if path.is_file() and path.suffix in forbidden_suffixes
+        if path.is_file() and path.suffix in executable_suffixes
     ]
-    assert executable_files == []
+    assert executable_files == [
+        "runtime/__init__.py",
+        "runtime/evaluator.py",
+    ]
 
     secret_patterns = [
         re.compile(pattern, re.IGNORECASE)

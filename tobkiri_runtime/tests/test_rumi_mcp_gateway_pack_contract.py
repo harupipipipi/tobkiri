@@ -57,7 +57,7 @@ def test_mcp_gateway_pack_required_docs_and_assets_exist() -> None:
     assert ecosystem["load_order"] == []
     assert ecosystem["metadata"]["required_secrets"] == []
     assert ecosystem["metadata"]["network_policy"] == "none_by_default"
-    assert ecosystem["metadata"]["executable_connector_code"] is False
+    assert ecosystem["metadata"]["executable_connector_code"] is True
 
 
 def test_mcp_gateway_setup_pack_is_discoverable_and_not_all_ok() -> None:
@@ -69,9 +69,9 @@ def test_mcp_gateway_setup_pack_is_discoverable_and_not_all_ok() -> None:
     assert setup["target_pack_id"] == PACK_ID
     assert setup["recommended"] is False
     assert setup["supports_all_ok"] is False
-    assert setup["risk_level"] == "medium"
+    assert setup["risk_level"] == "critical"
     assert setup["overlap_policy"]["defaultspack_tool_mcp"] == "do_not_override"
-    assert setup["defaultspack_promotion"]["eligible"] is False
+    assert setup["base_pack_promotion"]["eligible"] is False
 
     candidate = candidates[PACK_ID]
     assert candidate.pack_identity == f"rumi:ecosystem/{PACK_ID}"
@@ -140,7 +140,8 @@ def test_mcp_gateway_docs_explain_defaultspack_overlap_and_no_secrets() -> None:
         "approval",
         "Required Secrets",
         "None",
-        "No executable MCP client",
+        "No standalone MCP client",
+        "consumer-bound",
     ]:
         assert expected in docs
 

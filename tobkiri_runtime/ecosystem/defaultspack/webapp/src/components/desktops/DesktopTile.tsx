@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ClipboardEvent, type CompositionEvent
 import { cn } from "../../lib/cn";
 import type { DesktopInputAction, DesktopInstance } from "../../features/sandboxes/types";
 import { useDesktopFrame } from "../../features/sandboxes/useDesktopFrames";
+import { ErrorNotice } from "../ErrorNotice";
 import { pointerToDesktopCoordinates } from "./desktopCoordinates";
 import { DesktopControlSurface } from "./DesktopControlSurface";
 
@@ -383,9 +384,11 @@ export function DesktopTile({
           </div>
         )}
         {error && (
-          <div className="absolute inset-x-2 bottom-2 rounded-md border border-red-500/25 bg-red-950/80 px-2 py-1 text-[11px] text-red-100">
-            {error}
-          </div>
+          <ErrorNotice
+            className="absolute inset-x-2 bottom-2 bg-red-950/90 px-2 py-1 text-[11px]"
+            copyLabel="デスクトップ表示エラーをコピー"
+            message={error}
+          />
         )}
       </div>
 

@@ -47,7 +47,7 @@
       }
     }
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Research pack augments defaultspack with evidence declarations and must not become the default runtime pack."
   },

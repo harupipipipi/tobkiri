@@ -1,0 +1,173 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:16c371e506306d2dfc94224edb1526d410842f04d0599b7fa534eb8896b7e1dd",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:ee1dfc4d2c78d4bc65ebfe1b96bf1ee41d30bb63021f25d7a61e2f31de93f1a9",
+      "kind": "executable",
+      "path": "runtime/sessions.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.ide.session.v1",
+      "operations": [
+        "rumi_ide_bridge_service_pack.ide-control"
+      ],
+      "revision_digest": "sha256:bc8cfc837b579283a8ef34b7d5afc3622b7d237fc2f7fd7db55e8e70955ee66e"
+    },
+    {
+      "contract_id": "tobkiri.resource.ide.session.v1",
+      "operations": [
+        "rumi_ide_bridge_service_pack.ide-observe"
+      ],
+      "revision_digest": "sha256:2ccd5548eb1feeafb2d612f83280f65e5dce7c7848aadb082e847e471a3904b2"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:bc8cfc837b579283a8ef34b7d5afc3622b7d237fc2f7fd7db55e8e70955ee66e",
+      "id": "rumi_ide_bridge_service_pack.ide-bridge.control",
+      "implementation_digest": "sha256:ee1dfc4d2c78d4bc65ebfe1b96bf1ee41d30bb63021f25d7a61e2f31de93f1a9",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ide_bridge_service_pack.ide-control"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:2ccd5548eb1feeafb2d612f83280f65e5dce7c7848aadb082e847e471a3904b2",
+      "id": "rumi_ide_bridge_service_pack.ide-bridge.observe",
+      "implementation_digest": "sha256:ee1dfc4d2c78d4bc65ebfe1b96bf1ee41d30bb63021f25d7a61e2f31de93f1a9",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_ide_bridge_service_pack.ide-observe"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:cc3aa5148021c01da809dc02d3543e86dec3644d4e2bfbdf0930e0750204e793",
+    "artifact_set_digest": "sha256:c357c62ee4d83978723a68dca46777badb4f9696fd03ddae68d75dfb79c7e692",
+    "contract_catalog_digest": "sha256:f7508ef4800965c198f9c06f06ee0d2fa74e95bd47820e14af617b3de950cfdd"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.ide.session.v1",
+      "rumi.resource.ide.session.v1",
+      "rumi:ecosystem/rumi_ide_bridge_service_pack",
+      "rumi_ide_bridge_service_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_ide_bridge_service_pack.ide-control",
+      "owner": "rumi_ide_bridge_service_pack",
+      "contract_reference": "tobkiri.action.ide.session.v1",
+      "provider_id": "rumi_ide_bridge_service_pack.ide-bridge.control",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_ide_bridge_service_pack.ide-observe",
+      "owner": "rumi_ide_bridge_service_pack",
+      "contract_reference": "tobkiri.resource.ide.session.v1",
+      "provider_id": "rumi_ide_bridge_service_pack.ide-bridge.observe",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:4e2274744bb75921e7587282c92ad7ec110a1840d8eb6c019fcefe8dd70659d4",
+    "display_name": "Rumi IDE Bridge Service",
+    "id": "rumi_ide_bridge_service_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_ide_bridge_service_pack/pack.v4.json",
+    "source_digest": "sha256:cc3aa5148021c01da809dc02d3543e86dec3644d4e2bfbdf0930e0750204e793",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:718cced17a59ff9c33b9f1c7565b3d3d8c25a1b04864b6d3454a716e2d724a41",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:416548a6c6967fd90438d250d126663d5698d564c9957ed2fabb3b00d28bd075",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_ide_bridge_service_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:cc3aa5148021c01da809dc02d3543e86dec3644d4e2bfbdf0930e0750204e793"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_ide_bridge_service_pack.ide-bridge.control",
+      "owner": "rumi_ide_bridge_service_pack",
+      "contract_reference": "tobkiri.action.ide.session.v1",
+      "operations": [
+        "rumi_ide_bridge_service_pack.ide-control"
+      ]
+    },
+    {
+      "provider_id": "rumi_ide_bridge_service_pack.ide-bridge.observe",
+      "owner": "rumi_ide_bridge_service_pack",
+      "contract_reference": "tobkiri.resource.ide.session.v1",
+      "operations": [
+        "rumi_ide_bridge_service_pack.ide-observe"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "host.authority.consume",
+      "ide.session.control",
+      "ide.session.observe",
+      "workspace.metadata.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+      "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "workspace_brokered"
+  }
+}

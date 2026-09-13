@@ -41,7 +41,7 @@
       "runtime_tool_implementation"
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Optional operational overlay; defaultspack remains the runtime foundation.",
     "promotes": []

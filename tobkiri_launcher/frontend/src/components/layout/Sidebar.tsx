@@ -1,33 +1,49 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router';
 import { useAppStore } from '@/src/store';
 import { useT } from '@/src/lib/i18n';
 import { cn } from '@/src/lib/utils';
-import { panelRouteMeta, panelRoutes, viewerNavGroups, type PanelRouteKey } from '@/src/lib/routes';
+import { isPanelRouteActive, panelRouteMeta, viewerNavGroups, type PanelRouteKey } from '@/src/lib/routes';
 import { Avatar } from '@/src/components/ui/Avatar';
 import { LAUNCHER_DISPLAY_NAME } from '@/src/lib/launcherBrand';
-import { BrainCircuit, Folder, FolderCog, LayoutGrid, Network, Settings, PanelLeft, Home, GitBranch, Share2, Route, Rocket } from 'lucide-react';
+import { preloadPanelRoute } from '@/src/lib/routeModules';
+import { Popover, PopoverContent, PopoverTrigger } from '@/src/components/ui/Popover';
+import {
+  Folder,
+  FolderOpen,
+  GitBranch,
+  Home,
+  Network,
+  PanelLeft,
+  Route,
+  TextCursorInput,
+  Settings,
+  Share2,
+  UserRound,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
 
 type NavGroup = {
-  id: 'workspace' | 'advanced';
+  id: 'workspace' | 'preferences' | 'devtools';
   label: string;
-  items: { to: string; icon: typeof Home; label: string }[];
+  items: { to: string; icon: LucideIcon; label: string; route: PanelRouteKey }[];
 };
 
 const sidebarAnimation = 'duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]';
 
-const routeIcons: Record<PanelRouteKey, typeof Home> = {
+const routeIcons: Record<PanelRouteKey, LucideIcon> = {
   home: Home,
   setup: Home,
   packs: Folder,
-  nodes: Network,
-  graphEditor: GitBranch,
-  profileGraph: Share2,
-  aiInput: BrainCircuit,
-  apiMap: Route,
-  profileWorkspace: FolderCog,
-  startup: Rocket,
-  flows: LayoutGrid,
+  profile: UserRound,
   settings: Settings,
+  profileWiring: Share2,
+  profileFiles: FolderOpen,
+  flow: Workflow,
+  graph: GitBranch,
+  aiInput: TextCursorInput,
+  apiMap: Route,
+  nodeManager: Network,
 };
 
 export function Sidebar() {
@@ -36,8 +52,9 @@ export function Sidebar() {
   const profile = useAppStore(state => state.profile);
   const isSidebarOpen = useAppStore(state => state.isSidebarOpen);
   const setSidebarOpen = useAppStore(state => state.setSidebarOpen);
+  const devtoolsEnabled = useAppStore(state => state.devtoolsEnabled);
 
-  const navGroups: NavGroup[] = viewerNavGroups.map((group) => ({
+  const navGroups: NavGroup[] = viewerNavGroups(devtoolsEnabled).map((group) => ({
     id: group.id,
     label: t(group.labelKey),
     items: group.routes.map((route) => {
@@ -46,6 +63,7 @@ export function Sidebar() {
         to: meta.path,
         icon: routeIcons[route],
         label: t(meta.navKey || meta.titleKey),
+        route,
       };
     }),
   }));
@@ -68,9 +86,9 @@ export function Sidebar() {
       >
         <span
           className={cn(
-            "block min-w-0 overflow-hidden whitespace-nowrap text-base font-semibold tracking-tight text-text-main transition-[max-width,opacity,transform]",
+            "block min-w-0 truncate text-base font-semibold tracking-tight text-text-main transition-[max-width,opacity,transform]",
             sidebarAnimation,
-            isSidebarOpen ? "max-w-32 translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+            isSidebarOpen ? "max-w-full translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
           )}
           aria-hidden={!isSidebarOpen}
         >
@@ -106,7 +124,11 @@ export function Sidebar() {
           )}
         >
           {navGroups.map((group, groupIndex) => (
-            <li key={group.id} className="flex flex-col gap-1">
+            <li
+              key={group.id}
+              className="flex flex-col gap-1"
+              aria-labelledby={`sidebar-group-${group.id}`}
+            >
               {groupIndex > 0 && (
                 <div
                   className={cn(
@@ -118,17 +140,17 @@ export function Sidebar() {
                 />
               )}
               <div
+                id={`sidebar-group-${group.id}`}
                 className={cn(
-                  "overflow-hidden px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted/70 transition-[max-height,padding,opacity,transform,border-color]",
+                  "overflow-hidden px-3 text-xs font-medium text-text-muted transition-[max-height,padding,opacity,transform,border-color]",
                   sidebarAnimation,
                   groupIndex > 0 && "border-t border-border/60",
                   isSidebarOpen
                     ? cn("max-h-10 translate-x-0 pt-1 opacity-100", groupIndex > 0 && "pt-3")
                     : "max-h-0 -translate-x-1 pt-0 opacity-0 border-transparent",
                 )}
-                aria-hidden={!isSidebarOpen}
               >
-                {group.label}
+                <span className={isSidebarOpen ? undefined : 'sr-only'}>{group.label}</span>
               </div>
               <ul
                 className={cn(
@@ -138,9 +160,7 @@ export function Sidebar() {
                 )}
               >
                 {group.items.map((link) => {
-                  const isActive =
-                    location.pathname === link.to ||
-                    (link.to !== panelRoutes.home && location.pathname.startsWith(link.to));
+                  const isActive = isPanelRouteActive(location.pathname, link.to);
                   return (
                     <li key={link.to}>
                       <Link
@@ -148,6 +168,9 @@ export function Sidebar() {
                         title={!isSidebarOpen ? link.label : undefined}
                         aria-label={link.label}
                         aria-current={isActive ? 'page' : undefined}
+                        onFocus={() => { void preloadPanelRoute(link.route); }}
+                        onPointerEnter={() => { void preloadPanelRoute(link.route); }}
+                        onTouchStart={() => { void preloadPanelRoute(link.route); }}
                         className={cn(
                           "group relative flex items-center rounded-lg text-sm font-medium transition-[gap,padding,background-color,color]",
                           sidebarAnimation,
@@ -168,9 +191,9 @@ export function Sidebar() {
                         <link.icon className={cn("w-[18px] h-[18px] shrink-0", isActive ? "text-accent" : "text-text-muted group-hover:text-text-main")} />
                         <span
                           className={cn(
-                            "block min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform]",
+                            "block min-w-0 truncate transition-[max-width,opacity,transform]",
                             sidebarAnimation,
-                            isSidebarOpen ? "max-w-40 translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+                            isSidebarOpen ? "max-w-full translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
                           )}
                           aria-hidden={!isSidebarOpen}
                         >
@@ -194,29 +217,60 @@ export function Sidebar() {
             sidebarAnimation,
             isSidebarOpen ? "p-3" : "flex justify-center p-1.5",
           )}
-        >
-          <Link
-            to={panelRoutes.settings}
-            title={!isSidebarOpen ? profile.username : undefined}
-            aria-label={profile.username}
-            className={cn(
-              "flex items-center rounded-lg transition-[gap,padding,background-color] hover:bg-bg-hover",
-              sidebarAnimation,
-              isSidebarOpen ? "gap-3 p-2 w-full" : "justify-center gap-0 p-2"
-            )}
           >
-            <Avatar src={profile.avatar} username={profile.username} className="h-7 w-7 text-xs" />
-            <div
+          <Popover>
+            <PopoverTrigger
               className={cn(
-                "min-w-0 flex-1 overflow-hidden transition-[max-width,opacity,transform]",
+                "flex min-h-11 items-center rounded-lg text-left transition-[gap,padding,background-color] hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]",
                 sidebarAnimation,
-                isSidebarOpen ? "max-w-32 translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+                isSidebarOpen ? "w-full gap-3 p-2" : "justify-center gap-0 p-2",
               )}
-              aria-hidden={!isSidebarOpen}
+              aria-label={`${profile.username} profile and settings`}
+              aria-haspopup="dialog"
+              title={!isSidebarOpen ? `${profile.username} profile and settings` : undefined}
             >
-              <div className="truncate text-sm font-medium text-text-main">{profile.username}</div>
-            </div>
-          </Link>
+              <Avatar src={profile.avatar} username={profile.username} className="size-7 text-xs" />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 overflow-hidden transition-[max-width,opacity,transform]",
+                  sidebarAnimation,
+                  isSidebarOpen ? "max-w-full translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+                )}
+                aria-hidden={!isSidebarOpen}
+              >
+                <span className="block truncate text-sm font-medium text-text-main">{profile.username}</span>
+              </span>
+            </PopoverTrigger>
+            <PopoverContent align="right" className="w-64" role="dialog" aria-label="Profile menu">
+              <div className="border-b border-border px-3 py-2">
+                <p className="truncate text-sm font-semibold text-text-main">{profile.username}</p>
+                <p className="text-xs text-text-muted">Launcher-local profile</p>
+              </div>
+              <nav className="flex flex-col gap-1 p-1" aria-label="Profile and settings">
+                {(['profile', 'settings'] as const).map((route) => {
+                  const meta = panelRouteMeta[route];
+                  const Icon = routeIcons[route];
+                  const isActive = location.pathname === meta.path;
+                  return (
+                    <Link
+                      key={route}
+                      to={meta.path}
+                      aria-current={isActive ? 'page' : undefined}
+                      onFocus={() => { void preloadPanelRoute(route); }}
+                      onPointerEnter={() => { void preloadPanelRoute(route); }}
+                      className={cn(
+                        "flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]",
+                        isActive ? "bg-accent/8 text-accent" : "text-text-muted hover:bg-bg-hover hover:text-text-main",
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span>{t(meta.navKey || meta.titleKey)}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </aside>

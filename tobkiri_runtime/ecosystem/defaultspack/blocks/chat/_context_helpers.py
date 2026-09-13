@@ -14,6 +14,11 @@ import json
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.prompt.renderer import render as render_template
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import invoke_global_contract
+from core_runtime.resolved_profile_scope import active_resolved_profile
+
+CONTEXT_CONTRACT = "rumi.service.context.v1"
 
 
 # ---------------------------------------------------------------------------
@@ -183,12 +188,23 @@ def enrich_messages(standard_messages, system_prompt, conversation_id, user_text
             "memory_results":   生の検索結果リスト
             "enriched_prompt":  最終的なシステムプロンプト文字列
     """
+    materialized = _materialize_context(
+        conversation_id,
+        user_text,
+        system_prompt,
+    )
+    sections = {
+        str(section.get("kind") or ""): list(section.get("items") or [])
+        for section in materialized.get("sections") or []
+        if isinstance(section, dict)
+    }
+
     # 1. ナレッジ検索
-    knowledge_results = search_knowledge(user_text)
+    knowledge_results = sections.get("knowledge", [])
     knowledge_text = format_knowledge_results(knowledge_results)
 
     # 2. メモリ検索
-    memory_results = search_memory(user_text)
+    memory_results = sections.get("memory", [])
     memory_text = format_memory_results(memory_results)
 
     # 3. 会話ルール検索
@@ -253,4 +269,32 @@ def enrich_messages(standard_messages, system_prompt, conversation_id, user_text
         "memory_results": memory_results,
         "rule_results": rule_results,
         "enriched_prompt": enriched_prompt,
+        "materialized_context_digest": materialized.get("digest"),
     }
+
+
+def _materialize_context(conversation_id, user_text, system_prompt):
+    """Invoke the selected revision-bound context materializer."""
+    from domain.chat.store import ChatStore
+
+    conversation = ChatStore().get_conversation(str(conversation_id or ""))
+    if conversation is None:
+        raise KeyError("conversation is unknown")
+    registry = get_container().get_or_none("v4_dispatch_session")
+    plan = active_resolved_profile()
+    if registry is None or plan is None:
+        raise RuntimeError("global context runtime is unavailable")
+    return invoke_global_contract(
+        registry,
+        CONTEXT_CONTRACT,
+        "materialize",
+        {
+            "profile_id": plan.profile_id,
+            "conversation_id": conversation["id"],
+            "conversation_revision": conversation["conversation_revision"],
+            "query": str(user_text or ""),
+            "system_items": [system_prompt] if system_prompt else [],
+            "recall_limit": 5,
+            "token_budget": 131072,
+        },
+    )

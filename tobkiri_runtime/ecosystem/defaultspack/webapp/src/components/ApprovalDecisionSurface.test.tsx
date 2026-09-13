@@ -15,7 +15,7 @@ test("all approval sources render the same user-first contract", () => {
   ];
   for (const model of models) {
     const html = renderToStaticMarkup(createElement(ApprovalDecisionSurface, { approval: model }));
-    for (const label of ["Rumi が許可を求めています", "対象", "必要な理由", "影響とリスク", "許可範囲", "有効期間", "記録", "技術的な詳細"]) assert.match(html, new RegExp(label));
+    for (const label of ["Tobkiri が許可を求めています", "対象", "必要な理由", "影響とリスク", "許可範囲", "有効期間", "記録", "技術的な詳細"]) assert.match(html, new RegExp(label));
     assert.match(html, new RegExp(`data-approval-source="${model.source}"`));
   }
 });

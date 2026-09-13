@@ -1,0 +1,54 @@
+{
+  "id": "ollama",
+  "provider_id": "ollama",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Ollama Local",
+  "entrypoints": {
+    "adapter": "../ai_client/providers/openai_compatible_provider.py"
+  },
+  "security": {
+    "credential_required": false,
+    "local_endpoint": true
+  },
+  "provider_metadata": {
+    "display_name": "Ollama",
+    "kind": "local",
+    "env_vars": [],
+    "base_url_envs": [
+      "OLLAMA_BASE_URL",
+      "OLLAMA_HOST"
+    ],
+    "catalog_only": true,
+    "supports_invoke": false,
+    "default_model": "llama3.1:8b",
+    "default_base_url": "http://127.0.0.1:11434/v1",
+    "catalog_features": [
+      "chat",
+      "embedding",
+      "local",
+      "openai_compatible"
+    ]
+  },
+  "aliases": {
+    "provider_ids": [
+      "ollama",
+      "local"
+    ]
+  },
+  "compatibility": {
+    "legacy_ids": [
+      "ollama",
+      "local"
+    ]
+  },
+  "source_pack_id": "rumi_model_catalog_pack",
+  "catalog_features": [
+    "chat",
+    "embedding",
+    "local",
+    "openai_compatible"
+  ]
+}

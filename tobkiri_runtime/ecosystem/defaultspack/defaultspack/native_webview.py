@@ -6,7 +6,7 @@ from typing import Literal
 SurfaceResult = Literal["disabled", "browser", "webview", "webview_unavailable"]
 
 
-def open_desktop_surface(url: str, title: str = "Rumi Defaultspack") -> SurfaceResult:
+def open_desktop_surface(url: str, title: str = "Tobkiri") -> SurfaceResult:
     """Open the defaultspack shell without coupling the pack to one UI runtime."""
     if os.environ.get("RUMI_DEFAULTSPACK_OPEN_BROWSER", "1") == "0":
         return "disabled"

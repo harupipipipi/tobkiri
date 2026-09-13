@@ -1,0 +1,151 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.tool_intent.normalize.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ai_tool_bridge_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "ai-tool-bridge.normalize",
+        "required_capabilities": [
+          "ai.tool_intent.normalize"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0",
+      "contract_id": "rumi.service.ai.tool_intent.normalize.v1",
+      "id": "ai-tool-intent-normalize",
+      "loader": "python",
+      "module": "ecosystem.rumi_ai_tool_bridge_pack.runtime.bridge",
+      "symbol": "create_tool_intent_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.ai_tool_bridge.boundary": {
+      "authority_owner": false,
+      "executes_tools": false,
+      "tool_policy_owner": false,
+      "tool_registry_owner": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.ai.tool_intent.normalize.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Normalize AI tool calls without approving or executing them.",
+        "display_name": "Rumi AI Tool Bridge",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:748bda231eadaf01152e7062f339d3cafdd9021cd8505143a5558fd310c9bfdc",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:6ff34bed88d9d7d9c31c25676e7cfc4895eb5514b0da010b5094ca938ad390c4"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "ai_tool_intent_schema"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "approves_requests": false,
+            "executes_tools": false,
+            "grants_authority": false
+          }
+        },
+        "pack_id": "rumi_ai_tool_bridge_pack",
+        "pack_identity": "rumi:ecosystem/rumi_ai_tool_bridge_pack",
+        "provenance": {
+          "build_identity": "rumi_ai_tool_bridge_pack:1.0.0",
+          "content_hash": "sha256:926155d93570769e805cdc34dbbd1025e0da2a30bcccd0a3b0ca044588ba8a6a",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.tool_intent.normalize"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_ai_tool_bridge_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_ai_tool_bridge_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:6ff34bed88d9d7d9c31c25676e7cfc4895eb5514b0da010b5094ca938ad390c4"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.ai_client.tool_calls"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior intent normalizer and discard unexecuted descriptors.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Normalize AI tool calls without approving or executing them.",
+    "display_name": "Rumi AI Tool Bridge",
+    "id": "rumi.ai_tool_bridge",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.tool_intent.normalize"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_ai_tool_bridge_pack:1.0.0",
+    "content_hash": "sha256:926155d93570769e805cdc34dbbd1025e0da2a30bcccd0a3b0ca044588ba8a6a",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

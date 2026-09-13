@@ -1,0 +1,14 @@
+{
+  "code_identifier": "org.python.python",
+  "executable": "tobkiri-packaging-venv/bin/python3.13",
+  "install_root": "/Library/Frameworks/Python.framework/Versions/3.13",
+  "installer_sha256": "a909cb655af5db67d5a90b3603437a1d58bec3446d624e4034e278ac62023cc9",
+  "installer_signer": "Developer ID Installer: Python Software Foundation (BMM5U3QVKW)",
+  "installer_team_id": "BMM5U3QVKW",
+  "installer_url": "https://www.python.org/ftp/python/3.13.13/python-3.13.13-macos11.pkg",
+  "release_page": "https://www.python.org/downloads/release/python-31313/",
+  "requirements_path": "tobkiri_runtime/requirements.txt",
+  "requirements_sha256": "87b85dd41638f1c0c79cf0439933e1b1fa124863eea8e9ec9b232125143188f1",
+  "schema": "tobkiri.packaging-python-macos.v1",
+  "version": "3.13.13"
+}

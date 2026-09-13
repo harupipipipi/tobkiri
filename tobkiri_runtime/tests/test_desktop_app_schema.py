@@ -170,14 +170,23 @@ class TestDesktopAppSchemaValidation(unittest.TestCase):
         self.assertIsNotNone(parsed)
 
     def test_bundled_defaultspack_declares_desktop_app(self):
-        """Bundled defaultspack is a Rumi-provided desktop app pack."""
-        eco_path = _REPO_DIR / "ecosystem" / "defaultspack" / "ecosystem.json"
-        ok, msg, parsed = self._importer._validate_ecosystem_json(eco_path)
-        self.assertTrue(ok, f"Validation failed: {msg}")
-        self.assertIsNotNone(parsed)
-        desktop_app = parsed["desktop_app"]
-        self.assertEqual(desktop_app["command"], "python defaultspack/desktop_app.py")
-        self.assertIn("desktop_app.execute", desktop_app["capabilities"])
+        """The v4 shell contract replaces the removed ecosystem desktop field."""
+        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+
+        legacy_path = _REPO_DIR / "ecosystem" / "defaultspack" / "ecosystem.json"
+        self.assertFalse(legacy_path.exists())
+        catalog = BundledCatalog.load(legacy_path.parent / "v4")
+        self.assertIn("shell.tauri.default", catalog.packs)
+        shell_doc = json.loads(
+            (legacy_path.parent / "v4" / "shell.tauri.default.shell.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(shell_doc["pack_id"], "shell.tauri.default")
+        self.assertEqual(shell_doc["contract_id"], "app.shell.v1")
+        self.assertEqual(shell_doc["presentation"]["technology"], "tauri")
+        assert_profile_resolver_requires_authority_snapshot()
 
 
 if __name__ == "__main__":

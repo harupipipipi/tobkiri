@@ -194,7 +194,7 @@ def _invalid_override_diagnostic(
 
 
 def _diagnostic_to_dict(diagnostic: TemplateDiagnostic) -> dict[str, Any]:
-    result = {
+    result: dict[str, Any] = {
         "level": diagnostic.severity,
         "severity": diagnostic.severity,
         "code": diagnostic.code,

@@ -4,11 +4,11 @@ from domain.subagent_team.service import SubagentTeamService
 from ._helpers import company_id_from, denied, invalid, is_denied, missing_team, require_dict
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     if require_dict(input_data) is None:
         return invalid("input_data must be a dict")
     try:
-        service = SubagentTeamService()
+        service = SubagentTeamService(settings_owner=settings_owner)
         company_id = company_id_from(input_data)
         action = str(input_data.get("action") or "preview").lower()
         if action in {"get", "status", "read"}:

@@ -28,11 +28,7 @@ class PageComposer:
         imports: list[dict[str, Any]] = []
         for contract in plan.contracts():
             decision = accepted_decisions.get(contract.id)
-            accepted_candidate_id = (
-                decision.accepted_candidate_id
-                if hasattr(decision, "accepted_candidate_id")
-                else None
-            )
+            accepted_candidate_id = getattr(decision, "accepted_candidate_id", None)
             if not accepted_candidate_id:
                 raise ValueError(f"missing accepted bundle for {contract.id}")
             imports.append(

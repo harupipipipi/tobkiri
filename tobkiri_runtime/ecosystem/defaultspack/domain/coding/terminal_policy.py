@@ -161,7 +161,8 @@ def _path_arg_may_escape_workspace(value: Any) -> bool:
         return False
     normalized = text.replace("\\", "/")
     return (
-        os.path.isabs(os.path.expanduser(text))
+        normalized.startswith("/")
+        or os.path.isabs(os.path.expanduser(text))
         or ntpath.isabs(text)
         or normalized == ".."
         or normalized.startswith("../")
@@ -172,6 +173,8 @@ def _path_arg_may_escape_workspace(value: Any) -> bool:
 
 def _path_arg_inside_workspace(value: Any, cwd: str, workspace_root: str) -> bool:
     text = str(value or "")
+    if text.replace("\\", "/").startswith("/") and not os.path.isabs(text):
+        return False
     if ntpath.isabs(text) and not os.path.isabs(text):
         return False
     expanded = os.path.expanduser(text)

@@ -2,7 +2,7 @@ name: Flutter Mobile
 
 on:
   pull_request:
-    branches: [master, soon]
+    branches: [master, soon, codex/pack-architecture-program-soon]
     paths:
       - "tobkiri_mobile/**"
       - ".github/workflows/flutter-mobile.yml"

@@ -1,0 +1,754 @@
+{
+  "schema": "io.tobkiri.frontend-contract-map.v4",
+  "pack_id": "defaultspack",
+  "frontend": {
+    "default_entry_id": "chat",
+    "entries": [
+      {
+        "entry_id": "chat",
+        "route": "/chat",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.chat",
+        "implementation": "defaultspack.chat",
+        "label": "Chat"
+      },
+      {
+        "entry_id": "coding",
+        "route": "/coding",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.coding",
+        "implementation": "defaultspack.chat",
+        "label": "Coding"
+      },
+      {
+        "entry_id": "calendar",
+        "route": "/calendar",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.calendar",
+        "implementation": "defaultspack.chat",
+        "label": "Calendar"
+      },
+      {
+        "entry_id": "home",
+        "route": "/",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.home",
+        "implementation": "defaultspack.chat",
+        "label": "Tobkiri"
+      },
+      {
+        "entry_id": "defaultspack",
+        "route": "/defaultspack",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.defaultspack",
+        "implementation": "defaultspack.chat",
+        "label": "Tobkiri"
+      },
+      {
+        "entry_id": "pack-defaultspack",
+        "route": "/pack/defaultspack",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.pack-defaultspack",
+        "implementation": "defaultspack.chat",
+        "label": "Tobkiri"
+      },
+      {
+        "entry_id": "approval",
+        "route": "/approval",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.approval",
+        "implementation": "defaultspack.application",
+        "label": "Approval"
+      },
+      {
+        "entry_id": "ui-precision",
+        "route": "/ui-precision",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.ui-precision",
+        "implementation": "defaultspack.application",
+        "label": "UI precision"
+      },
+      {
+        "entry_id": "share",
+        "route": "/share",
+        "match": "subpath",
+        "contribution_id": "defaultspack.frontend.share",
+        "implementation": "defaultspack.application",
+        "label": "Shared conversation"
+      },
+      {
+        "entry_id": "ambient",
+        "route": "/ambient",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.ambient",
+        "implementation": "defaultspack.application",
+        "label": "Ambient"
+      },
+      {
+        "entry_id": "ambient-debug",
+        "route": "/ambient-debug",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.ambient-debug",
+        "implementation": "defaultspack.application",
+        "label": "Ambient diagnostics"
+      },
+      {
+        "entry_id": "finger-recording",
+        "route": "/finger-recording",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.finger-recording",
+        "implementation": "defaultspack.application",
+        "label": "Finger recording"
+      },
+      {
+        "entry_id": "console",
+        "route": "/console",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.console",
+        "implementation": "defaultspack.application",
+        "label": "Console"
+      },
+      {
+        "entry_id": "host-permissions",
+        "route": "/host-permissions",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.host-permissions",
+        "implementation": "defaultspack.application",
+        "label": "Host permissions"
+      },
+      {
+        "entry_id": "adaptive",
+        "route": "/adaptive",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.adaptive",
+        "implementation": "defaultspack.application",
+        "label": "Adaptive runtime"
+      },
+      {
+        "entry_id": "operating-profile",
+        "route": "/operating-profile",
+        "match": "exact",
+        "contribution_id": "defaultspack.frontend.operating-profile",
+        "implementation": "defaultspack.application",
+        "label": "Operating profile"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/tools/catalog",
+      "presentation": "tool_catalog",
+      "targets": [
+        {
+          "contribution_id": "defaults.tools.catalog",
+          "contract_id": "tobkiri.resource.tool.definition.v1",
+          "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+          "provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/turn/stop",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.stop",
+        "contract_id": "tobkiri.action.turn.stop.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-stop",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
+        "allowed_payload_keys": ["turn_id"]
+      }]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/provider-key",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.providers.configure",
+        "contract_id": "tobkiri.service.interactive-effect.v1",
+        "operation_id": "interactive_effect.manage",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "allowed_payload_keys": ["phase", "effect_kind", "request", "effect_id", "correlation_id"]
+      }]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/turn/reconcile",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.reconcile",
+        "contract_id": "tobkiri.action.turn.reconcile.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-reconcile",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "allowed_payload_keys": ["turn_id"]
+      }]
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat/turn",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.read",
+        "contract_id": "tobkiri.resource.turn.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-resource",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
+        "allowed_payload_keys": ["turn_id"]
+      }]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/turn",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.conversations.send",
+        "contract_id": "tobkiri.action.turn.saved.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-saved",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
+        "allowed_payload_keys": ["request"]
+      }]
+    },
+    {
+      "method": "GET",
+      "path": "/api/command-protocol/v1/catalog",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.commands.catalog.read",
+          "contract_id": "tobkiri.resource.command.catalog.v1",
+          "operation_id": "command.catalog.read",
+          "provider_id": "rumi_command_protocol_pack.catalog.read",
+          "function_id": "rumi_command_protocol_pack.catalog.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/full-catalog",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.catalog.read",
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "operation_id": "tobkiri_ui_settings_pack.catalog-read",
+          "provider_id": "tobkiri.ui.catalog.read",
+          "function_id": "tobkiri.ui.catalog.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/settings",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.settings.read",
+          "contract_id": "tobkiri.resource.ui.settings.v1",
+          "operation_id": "tobkiri_ui_settings_pack.settings-read",
+          "provider_id": "tobkiri.ui.settings.read",
+          "function_id": "tobkiri.ui.settings.read",
+          "allowed_payload_keys": [
+            "full"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/ui/settings",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.ui.preferences.write",
+        "contract_id": "tobkiri.action.ui.preferences.v1",
+        "operation_id": "tobkiri_ui_settings_pack.preferences-write",
+        "provider_id": "tobkiri.ui.preferences.write",
+        "function_id": "tobkiri.ui.preferences.write",
+        "allowed_payload_keys": ["changes", "expected_revision"]
+      }]
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat/conversations",
+      "presentation": "conversation_list",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.list",
+          "contract_id": "tobkiri.resource.conversation.v1",
+          "operation_id": "rumi_conversation_store_pack.conversation-resource",
+          "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/conversations",
+      "presentation": "conversation_created",
+      "targets": [{
+        "contribution_id": "defaults.conversations.create",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": ["id", "expected_revision", "model", "system_prompt_id", "agent_id", "tags", "parent_conversation_id", "conversation_kind", "group_id", "metadata"]
+      }]
+    },
+    {
+      "method": "GET", "path": "/api/chat/conversation", "presentation": "conversation_record",
+      "targets": [{
+        "contribution_id": "defaults.conversations.get",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-resource",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "function_id": "rumi_conversation_store_pack.conversation-store.resource",
+        "allowed_payload_keys": ["conversation_id"]
+      }]
+    },
+    {
+      "method": "PUT", "path": "/api/chat/conversation", "presentation": "conversation_record",
+      "targets": [{
+        "contribution_id": "defaults.conversations.update",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": ["conversation_id", "updates", "expected_conversation_revision"]
+      }]
+    },
+    {
+      "method": "DELETE", "path": "/api/chat/conversation", "presentation": "conversation_deleted",
+      "targets": [{
+        "contribution_id": "defaults.conversations.delete",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "operation_id": "rumi_conversation_store_pack.conversation-manage",
+        "provider_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "function_id": "rumi_conversation_store_pack.conversation-store.manage",
+        "allowed_payload_keys": ["conversation_id", "expected_conversation_revision"]
+      }]
+    },
+    {
+      "method": "GET",
+      "path": "/api/home/dashboard",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.home.dashboard",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "dashboard.read",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/pack-control/catalog",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.catalog",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "catalog.read",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/install",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.install",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.install",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/approval-candidate",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.approval-candidate",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.candidate",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/approval-approve",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.approval-approve",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.approve",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["candidate_id", "pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/approval-revoke",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.approval-revoke",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.revoke",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/enable",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.enable",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.enable",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/disable",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.disable",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.disable",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/restart",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.runtime.restart",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "runtime.restart",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/profile",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/profiles",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-catalog", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.catalog.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": []}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/operation-status",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.operation-status", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "operation.status.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["request_id"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/settings",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.settings", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "settings.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": []}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/topology/packs",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.packs", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "topology.packs.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/topology/contracts",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.contracts", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "topology.contracts.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/topology/operations",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.operations", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "topology.operations.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/topology/principals",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.principals", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "topology.principals.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-surface/profile-change/resolve",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-change.resolve", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.change.resolve", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["profile_id", "expected_profile_revision", "expected_plan_digest", "desired_pack_ids", "profile_definition_digest", "profile_catalog_digest", "bundle_lock_digest"]}]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-surface/profile-change/review",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-change.review", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.change.review", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["candidate_id", "candidate_digest"]}]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-surface/profile-change/approve",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-change.approve", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.change.approve", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["candidate_id", "candidate_digest"]}]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-surface/profile-change/activate",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-change.activate", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.change.activate", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["approval_id", "approval_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/catalog",
+      "presentation": "dynamic_pack_catalog",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.catalog",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "catalog.read",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/ai/profiles",
+      "presentation": "model_profile_list",
+      "targets": [
+        {
+          "contribution_id": "defaults.models.profiles.list",
+          "contract_id": "tobkiri.resource.ai.model.profile.v1",
+          "operation_id": "rumi_model_registry_pack.model-profile-resource",
+          "provider_id": "rumi_model_registry_pack.model-registry.profile",
+          "function_id": "rumi_model_registry_pack.model-registry.profile",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/profiles",
+      "presentation": "model_profile_saved",
+      "targets": [
+        {
+          "contribution_id": "defaults.models.profiles.save",
+          "contract_id": "tobkiri.action.ai.model.profile.manage.v1",
+          "operation_id": "rumi_model_registry_pack.model-profile-manage",
+          "provider_id": "rumi_model_registry_pack.model-registry.manage",
+          "function_id": "rumi_model_registry_pack.model-registry.manage",
+          "allowed_payload_keys": ["model_profile_id", "model_id", "provider_instance_id", "display_name", "expected_revision"]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/interactive-approval/v1/list",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.interactive-approval.list",
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "operation_id": "interactive_approval.list",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/interactive-approval/v1/get",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.interactive-approval.get",
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "operation_id": "interactive_approval.get",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "allowed_payload_keys": ["request_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/interactive-approval/v1/approve",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.interactive-approval.approve",
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "operation_id": "interactive_approval.approve",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "allowed_payload_keys": ["request_id", "confirmation_text", "ui_operator"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/interactive-approval/v1/deny",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.interactive-approval.deny",
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "operation_id": "interactive_approval.deny",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+          "allowed_payload_keys": ["request_id", "ui_operator"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/command-protocol/v1/high-risk",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.command-protocol.high-risk",
+          "contract_id": "tobkiri.service.command.high-risk.v1",
+          "operation_id": "high_risk_command.manage",
+          "provider_id": "rumi_command_protocol_pack.high-risk-command.service",
+          "function_id": "rumi_command_protocol_pack.high-risk-command.service",
+          "allowed_payload_keys": ["phase", "invocation_id", "command_ref", "arguments", "presentation"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/capability/invoke",
+      "presentation": "capability_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversation.complete",
+          "contract_id": "conversation.turn.v1",
+          "operation_id": "complete",
+          "provider_id": "defaultspack.conversation",
+          "function_id": "defaultspack.conversation",
+          "allowed_payload_keys": ["messages"]
+        },
+        {
+          "contribution_id": "defaults.pack.install",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.install",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.approval-candidate",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.candidate",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.approval-approve",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.approve",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["candidate_id", "pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.approval-revoke",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.revoke",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.enable",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.enable",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.status",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.status",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.disable",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.disable",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.profile.reload",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "profile.reload",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        },
+        {
+          "contribution_id": "defaults.runtime.restart",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "runtime.restart",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    }
+  ]
+}

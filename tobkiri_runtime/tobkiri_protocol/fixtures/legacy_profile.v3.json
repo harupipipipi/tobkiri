@@ -1,0 +1,16 @@
+{
+  "version": 3,
+  "profile_id": "coding-profile",
+  "name": "Legacy Coding",
+  "base_pack": "defaultspack",
+  "packs": ["defaultspack", "tool.workspace"],
+  "graph_id": "coding_workspace",
+  "permissions": {
+    "can_install_packs": true,
+    "can_create_profile": true
+  },
+  "launch": {
+    "kind": "desktop_app",
+    "command": ["cargo", "tauri", "dev"]
+  }
+}

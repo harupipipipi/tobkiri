@@ -5,6 +5,7 @@ from core_runtime.node_models import load_node_document
 from core_runtime.surface_launch_target import (
     extract_surface_launch_target,
     normalize_surface_launch_target,
+    surface_env,
     surface_launch_target_from_instance,
 )
 
@@ -99,3 +100,60 @@ def test_profile_surface_targets_re_resolve_startup_surface():
     assert normalized["surface"] == "browser"
     assert normalized["env"]["RUMI_PROFILE_SURFACE"] == "browser"
     assert normalized["env"]["FRONTENDPACK_SURFACE"] == "web"
+
+
+def test_surface_contribution_requires_matching_owner_and_target_pack():
+    profile = {
+        "surface_contributions": [
+            {
+                "schema": "io.tobkiri.surface-contribution.v1",
+                "kind": "surface_launch_target",
+                "owner_pack_id": "frontendpack",
+                "target": {
+                    "kind": "desktop_app",
+                    "pack_id": "frontendpack",
+                    "principal_id": "frontendpack",
+                    "surface_source": "profile",
+                    "env_by_surface": {
+                        "browser": {"FRONTENDPACK_SURFACE": "web"},
+                        "desktop": {"FRONTENDPACK_SURFACE": "native"},
+                    },
+                },
+            },
+            {
+                "schema": "io.tobkiri.surface-contribution.v1",
+                "kind": "surface_launch_target",
+                "owner_pack_id": "unrelatedpack",
+                "target": {
+                    "kind": "desktop_app",
+                    "pack_id": "otherpack",
+                    "principal_id": "otherpack",
+                },
+            },
+        ]
+    }
+
+    target = extract_surface_launch_target(
+        profile,
+        fallback_pack_id=None,
+        surfaces={"preferred": "desktop", "enabled": ["desktop"]},
+    )
+
+    assert target is not None
+    assert target["pack_id"] == "frontendpack"
+    assert target["surface"] == "desktop"
+    assert target["env"] == {
+        "RUMI_PROFILE_SURFACE": "desktop",
+        "FRONTENDPACK_SURFACE": "native",
+    }
+    assert (
+        extract_surface_launch_target(
+            {"surface_contributions": [profile["surface_contributions"][1]]},
+            fallback_pack_id=None,
+        )
+        is None
+    )
+
+
+def test_core_surface_environment_does_not_choose_a_pack_runtime():
+    assert surface_env("desktop") == {"RUMI_PROFILE_SURFACE": "desktop"}

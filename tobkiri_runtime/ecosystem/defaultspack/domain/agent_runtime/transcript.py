@@ -17,6 +17,15 @@ def default_transcript_dir() -> Path:
     runtime_dir = os.environ.get("RUMI_DEFAULTSPACK_AGENT_RUNTIME_DIR")
     if runtime_dir:
         return Path(runtime_dir) / "transcripts"
+    user_data = os.environ.get("RUMI_USER_DATA", "").strip()
+    if user_data:
+        return (
+            Path(user_data)
+            / "defaultspack"
+            / "shared"
+            / "agent_runtime"
+            / "transcripts"
+        )
     return Path(__file__).resolve().parents[2] / "user_data" / "shared" / "agent_runtime" / "transcripts"
 
 

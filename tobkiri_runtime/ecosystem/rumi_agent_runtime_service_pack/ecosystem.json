@@ -1,0 +1,91 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.agent.run.v1",
+      "rumi.action.job.adapter.v1",
+      "rumi.resource.agent.runtime.v1"
+    ],
+    "requires": [
+      "rumi.action.agent.state.v1",
+      "rumi.action.message.manage.v1",
+      "rumi.action.turn.lifecycle.v1",
+      "rumi.resource.agent.state.v1",
+      "rumi.resource.conversation.v1",
+      "rumi.resource.turn.v1",
+      "rumi.service.ai.generate.v1",
+      "rumi.service.context.v1",
+      "rumi.service.host.authorize.v1",
+      "rumi.service.tool.invoke.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_agent_state_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_ai_gateway_pack": ">=1.0.0,<2.0.0",
+    "rumi_context_runtime_pack": ">=1.0.0,<2.0.0",
+    "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_tool_broker_pack": ">=1.0.0,<2.0.0",
+    "rumi_turn_runtime_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Provider-neutral agent planning, tools, subagents, and lifecycle.",
+  "display_name": "Rumi Agent Runtime Service",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:260f14978dd057b5862e3c830e8152677958b575ad1dde73b2cf289fdc753ffa",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:4e8f2344aa2ef8c99d0b12fcde1c9e02dd3d0da87ce83c7cfbfb69ba9cf095bc"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:4e8f2344aa2ef8c99d0b12fcde1c9e02dd3d0da87ce83c7cfbfb69ba9cf095bc"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "agent_runtime_process_state"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_agent_runtime_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_agent_runtime_service_pack",
+  "provenance": {
+    "build_identity": "rumi_agent_runtime_service_pack:1.0.0",
+    "content_hash": "sha256:e0d97b9e55724486c67d2a9cb37ab64e78e5ad4c9f34563143355765b77490da",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "agent.run.control",
+    "agent.runtime.observe",
+    "agent.state.manage",
+    "agent.state.read",
+    "ai.gateway.generate",
+    "context.materialize",
+    "conversation.read",
+    "host.authority.consume",
+    "job.adapter.invoke",
+    "message.manage",
+    "tool.invoke",
+    "turn.manage",
+    "turn.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

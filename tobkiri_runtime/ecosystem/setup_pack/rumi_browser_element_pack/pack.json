@@ -29,7 +29,7 @@
     "browser_control": "prefer_explicit_pack_namespace",
     "generic_browser_use": "prefer_browser_companion_when_paired"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": true,
     "criteria": ["semantic_dom_v2", "extension_tests_pass", "local_bridge_only"]
   }

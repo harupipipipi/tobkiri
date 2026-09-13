@@ -1,0 +1,96 @@
+{
+  "id": "groq",
+  "provider_id": "groq",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Groq",
+  "entrypoints": {
+    "adapter": "../ai_client/providers/openai_compatible_provider.py",
+    "models": "models.json"
+  },
+  "security": {
+    "credential_required": true
+  },
+  "provider_metadata": {
+    "display_name": "Groq",
+    "kind": "cloud",
+    "env_vars": [
+      "GROQ_API_KEY"
+    ],
+    "base_url_envs": [
+      "GROQ_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "https://api.groq.com/openai/v1",
+    "default_model": "openai/gpt-oss-120b",
+    "default_model_for": {
+      "chat": "openai/gpt-oss-120b",
+      "reasoning": "openai/gpt-oss-120b",
+      "fast": "openai/gpt-oss-20b",
+      "general": "llama-3.3-70b-versatile",
+      "cheap": "llama-3.1-8b-instant",
+      "vision": "meta-llama/llama-4-scout-17b-16e-instruct"
+    },
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "tool_calls",
+      "reasoning",
+      "vision",
+      "openai_compatible"
+    ]
+  },
+  "provider_manifest": {
+    "id": "groq",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Groq",
+    "enabled": true,
+    "priority": 50,
+    "adapter": "openai_compatible",
+    "api_key_env": "GROQ_API_KEY",
+    "base_url_env": "GROQ_BASE_URL",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "https://api.groq.com/openai/v1",
+    "default_model": "openai/gpt-oss-120b",
+    "default_model_for": {
+      "chat": "openai/gpt-oss-120b",
+      "reasoning": "openai/gpt-oss-120b",
+      "fast": "openai/gpt-oss-20b",
+      "general": "llama-3.3-70b-versatile",
+      "cheap": "llama-3.1-8b-instant",
+      "vision": "meta-llama/llama-4-scout-17b-16e-instruct"
+    },
+    "config": {
+      "api_compatibility": "openai",
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600,
+      "hidden_provider_tool_models_excluded": true
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "groq"
+    ]
+  },
+  "compatibility": {
+    "legacy_ids": [
+      "groq"
+    ]
+  },
+  "source_pack_id": "rumi_model_catalog_pack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "tool_calls",
+    "reasoning",
+    "vision",
+    "openai_compatible"
+  ]
+}

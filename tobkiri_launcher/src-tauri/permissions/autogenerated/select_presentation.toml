@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-select-presentation"
+description = "Enables the select_presentation command without any pre-configured scope."
+commands.allow = ["select_presentation"]
+
+[[permission]]
+identifier = "deny-select-presentation"
+description = "Denies the select_presentation command without any pre-configured scope."
+commands.deny = ["select_presentation"]

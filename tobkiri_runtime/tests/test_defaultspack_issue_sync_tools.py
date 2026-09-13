@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
@@ -135,7 +137,27 @@ def test_linear_and_jira_sync_return_redacted_dry_run_payloads():
     assert jira["commands"][0][:4] == ["jira", "issue", "update", "OPS-9"]
 
 
-def test_issue_sync_manifests_load_with_connector_approval_policy():
+@pytest.fixture
+def defaultspack_tools_selected(monkeypatch):
+    """Opt these registry tests into the explicitly selected defaultspack owner."""
+
+    from core_runtime import resolved_profile_scope
+    from domain.components import registry as component_registry
+    from domain.tool import registry as tool_registry
+
+    selected = frozenset({"defaultspack", "rumi_default_tools_pack"})
+    monkeypatch.setattr(resolved_profile_scope, "effective_pack_ids", lambda: selected)
+    monkeypatch.setattr(tool_registry, "effective_pack_ids", lambda: selected)
+    monkeypatch.setattr(component_registry, "effective_pack_ids", lambda: selected)
+    component_registry.get_domain_component_registry(force_reload=True)
+    tool_registry.ToolRegistry._instance = None
+    yield
+    tool_registry.ToolRegistry._instance = None
+
+
+def test_issue_sync_manifests_load_with_connector_approval_policy(
+    defaultspack_tools_selected,
+):
     ToolRegistry._instance = None
     registry = ToolRegistry()
 
@@ -152,17 +174,33 @@ def test_issue_sync_manifests_load_with_connector_approval_policy():
     assert jira_tool["execution"]["handler"].endswith(":jira_issue_sync")
 
 
-def test_issue_sync_executor_requires_approval_then_returns_dry_run_when_approved():
+def test_issue_sync_executor_requires_approval_then_returns_dry_run_when_approved(
+    defaultspack_tools_selected,
+    defaultspack_capability_plan_context,
+):
     ToolRegistry._instance = None
 
-    approval = ToolExecutor().execute("github_issue_list", {"repo": "owner/repo"}, {})
+    approval = ToolExecutor().execute(
+        "github_issue_list",
+        {"repo": "owner/repo"},
+        defaultspack_capability_plan_context("github_issue_list"),
+    )
     assert approval["is_error"] is False
     assert approval["widget"]["approval_required"] is True
 
+    from domain.tool_policy.internal_context import mark_trusted_profile_policy_context
+
+    approved_context = mark_trusted_profile_policy_context(
+        {
+            **defaultspack_capability_plan_context("github_issue_list"),
+            "profile_policy": {"yolo_mode": True},
+            "pack_id": "defaultspack",
+        }
+    )
     executed = ToolExecutor().execute(
         "github_issue_list",
         {"repo": "owner/repo"},
-        {"profile_policy": {"yolo_mode": True}, "pack_id": "defaultspack"},
+        approved_context,
     )
     assert executed["is_error"] is False
     assert executed["widget"]["data"]["dry_run"] is True

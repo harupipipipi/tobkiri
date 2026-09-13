@@ -83,6 +83,23 @@ class BackgroundTypeDriver(MockDriver):
         )
 
 
+class AxCandidateDriver(BackgroundTypeDriver):
+    def __init__(self):
+        super().__init__("mac_accessibility", physical=False)
+
+    def safe_type_candidate_diagnostics(self, target):
+        return {
+            "pyobjc_ax_import_available": True,
+            "ax_process_trusted": True,
+            "ax_set_value_unsafe_app": False,
+            "target_app_present": bool(target.app),
+            "target_bundle_present": bool(target.bundle_id),
+            "target_pid_present": target.pid is not None,
+            "target_window_present": target.window_id is not None or bool(target.window_title),
+            "attempted": False,
+            "result_code": "AX_ELIGIBLE",
+        }
+
 class BackgroundKeyDriver(MockDriver):
     def __init__(self, name_: str):
         super().__init__(name_, succeed=True)
@@ -150,6 +167,31 @@ class PidEventDriver(MockDriver):
         return self._result("scroll", x=x, y=y, direction=direction, clicks=clicks, pid=target.pid)
 
 
+class SemanticProbeDriver(MockDriver):
+    def __init__(self, name_: str, *, ready: bool = False):
+        super().__init__(name_, succeed=True)
+        self.ready = ready
+        self.calls: list[tuple[ComputerTarget, dict[str, object]]] = []
+
+    def probe_text_control(self, target, selector=None):
+        self.calls.append((target, dict(selector or {})))
+        return ActionResult(
+            action="probe_text_control",
+            driver=self._name,
+            executed=True,
+            confidence="verified",
+            can_parallel_user_work=True,
+            requires_foreground=False,
+            uses_physical_input=False,
+            data={
+                "probe_completed": True,
+                "semantic_control_ready": self.ready,
+                "input_dispatched": False,
+                "mutation_attempted": False,
+            },
+        )
+
+
 def _make_service(drivers):
     reg = DriverRegistry()
     for d in drivers:
@@ -188,6 +230,45 @@ def test_type_text_success():
     assert result["executed"] is True
 
 
+def test_semantic_probe_uses_only_named_swift_driver_and_ready_false_is_valid():
+    native = SemanticProbeDriver("mac_swift_host", ready=False)
+    fallback = SemanticProbeDriver("fallback_probe", ready=True)
+    svc = _make_service([fallback, native])
+    selector = {"roles": ["AXTextField", "AXComboBox"]}
+
+    result = svc.probe_text_control(
+        {"app": "ChatGPT Atlas", "pid": 42, "window_id": 99},
+        selector=selector,
+    )
+
+    assert result["executed"] is True
+    assert result["driver"] == "mac_swift_host"
+    assert result["data"]["probe_completed"] is True
+    assert result["data"]["semantic_control_ready"] is False
+    assert result["data"]["input_dispatched"] is False
+    assert result["data"]["mutation_attempted"] is False
+    assert len(native.calls) == 1
+    assert native.calls[0][1] == selector
+    assert fallback.calls == []
+
+
+def test_semantic_probe_never_falls_back_when_swift_driver_is_missing():
+    fallback = SemanticProbeDriver("fallback_probe", ready=True)
+    svc = _make_service([fallback])
+
+    result = svc.probe_text_control(
+        {"app": "ChatGPT Atlas", "pid": 42, "window_id": 99},
+        selector={"roles": ["AXTextField", "AXComboBox"]},
+    )
+
+    assert result["executed"] is False
+    assert result["driver"] == "none"
+    assert result["data"]["error_code"] == "TYPE_SEMANTIC_PROBE_UNAVAILABLE"
+    assert result["data"]["input_dispatched"] is False
+    assert result["data"]["mutation_attempted"] is False
+    assert fallback.calls == []
+
+
 def test_background_action_skips_foreground_only_driver():
     foreground = BackgroundTypeDriver("mac_swift_host", physical=True)
     background = BackgroundTypeDriver("mac_cgevent_pid", physical=False)
@@ -199,6 +280,80 @@ def test_background_action_skips_foreground_only_driver():
     assert result["driver"] == "mac_cgevent_pid"
     assert foreground.called is False
     assert background.called is True
+
+
+def test_ax_candidate_posted_unverified_stops_replay_and_reports_safe_fixed_diagnostics():
+    driver = AxCandidateDriver()
+    fallback = BackgroundTypeDriver("later_background", physical=False)
+    svc = _make_service([driver, fallback])
+
+    result = svc.background_action(
+        "type_text",
+        {
+            "app": "Private App",
+            "bundle_id": "private.bundle",
+            "pid": 123,
+            "window_id": 456,
+            "window_title": "Private title",
+        },
+        {"text": "private typed text"},
+        verified_only=True,
+    )
+
+    assert result["executed"] is True
+    assert result["data"]["completion_verified"] is False
+    assert result["data"]["outcome"] == "posted_unverified"
+    assert result["data"]["verification_required"] == "screenshot"
+    assert driver.called is True
+    assert fallback.called is False
+    candidate = result["data"]["ax_candidate"]
+    assert candidate == {
+        "driver_registered": True,
+        "driver_available": True,
+        "background_type_capable": True,
+        "attempted": True,
+        "result_code": "AX_TYPE_POSTED_UNVERIFIED",
+        "pyobjc_ax_import_available": True,
+        "ax_process_trusted": True,
+        "ax_set_value_unsafe_app": False,
+        "target_app_present": True,
+        "target_bundle_present": True,
+        "target_pid_present": True,
+        "target_window_present": True,
+    }
+    serialized = str(candidate)
+    for private in ("Private App", "private.bundle", "123", "456", "Private title", "private typed text"):
+        assert private not in serialized
+
+
+def test_posted_key_is_terminal_and_does_not_fallback_to_second_driver():
+    first = BackgroundKeyDriver("first_post_only")
+    second = BackgroundKeyDriver("second_post_only")
+    svc = _make_service([first, second])
+
+    result = svc.background_action(
+        "key", {"app": "Test"}, {"key_combo": "return"}, verified_only=True
+    )
+
+    assert first.called is True
+    assert second.called is False
+    assert result["executed"] is True
+    assert result["data"]["input_dispatched"] is True
+    assert result["data"]["completion_verified"] is False
+    assert result["data"]["outcome"] == "posted_unverified"
+    assert result["data"]["verification_required"] == "focus_state"
+
+
+def test_registry_ax_candidate_diagnostics_reports_absence_without_import_guessing():
+    diagnostics = DriverRegistry().safe_ax_candidate_diagnostics(set())
+
+    assert diagnostics == {
+        "driver_registered": False,
+        "driver_available": False,
+        "background_type_capable": False,
+        "attempted": False,
+        "result_code": "AX_DRIVER_NOT_REGISTERED",
+    }
 
 
 @pytest.mark.parametrize("driver_name", ["mac_cgevent_pid", "windows_postmessage"])
@@ -299,6 +454,40 @@ def test_mac_accessibility_chromium_detection_uses_exact_names_and_bundles():
 
     assert all(MacAccessibilityDriver._target_avoids_ax_set_value(target) for target in positives)
     assert not any(MacAccessibilityDriver._target_avoids_ax_set_value(target) for target in negatives)
+
+
+def test_mac_accessibility_candidate_diagnostics_use_real_ax_readiness_and_redact_target(monkeypatch):
+    from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.computer.drivers.mac_accessibility import (
+        MacAccessibilityDriver,
+    )
+    from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.computer.mac import ax
+
+    monkeypatch.setattr(ax, "ax_import_available", lambda: True)
+    monkeypatch.setattr(ax, "ax_is_trusted", lambda: True)
+    diagnostics = MacAccessibilityDriver().safe_type_candidate_diagnostics(
+        ComputerTarget(
+            app="Vivaldi",
+            bundle_id="com.vivaldi.Vivaldi",
+            pid=123,
+            window_id=456,
+            window_title="Private title",
+        )
+    )
+
+    assert diagnostics == {
+        "pyobjc_ax_import_available": True,
+        "ax_process_trusted": True,
+        "ax_set_value_unsafe_app": True,
+        "target_app_present": True,
+        "target_bundle_present": True,
+        "target_pid_present": True,
+        "target_window_present": True,
+        "attempted": False,
+        "result_code": "AX_SET_VALUE_UNSAFE_APP",
+    }
+    serialized = str(diagnostics)
+    for private in ("Vivaldi", "com.vivaldi.Vivaldi", "123", "456", "Private title"):
+        assert private not in serialized
 
 
 def test_macos_cgevent_keycodes_and_modifier_validation():

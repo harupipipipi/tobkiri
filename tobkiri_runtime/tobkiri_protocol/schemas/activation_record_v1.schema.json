@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/activation-record.v1.schema.json",
+  "title": "Tobkiri activation record v1 (frozen)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["activation_api_version", "profile_id", "activation_id", "state", "state_generation", "plan_digest", "profile_authority_snapshot_digest", "security_epoch", "fencing_token", "created_at"],
+  "properties": {
+    "activation_api_version": {"const": "io.tobkiri.activation-record.v1"},
+    "profile_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+    "activation_id": {"type": "string", "pattern": "^activation:[a-z0-9][a-z0-9._-]{7,127}$"},
+    "state": {"enum": ["resolved", "prepared", "ready_without_authority", "committing", "active", "draining", "retired"]},
+    "state_generation": {"type": "integer", "minimum": 0},
+    "plan_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "profile_authority_snapshot_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "security_epoch": {"type": "integer", "minimum": 0},
+    "fencing_token": {"type": "integer", "minimum": 0},
+    "created_at": {"type": "string", "format": "date-time"},
+    "committed_at": {"type": "string", "format": "date-time"}
+  }
+}

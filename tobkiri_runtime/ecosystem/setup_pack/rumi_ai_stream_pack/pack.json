@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_ai_stream_pack",
+  "display_name": "Rumi AI Stream Pack",
+  "description": "Replaceable typed provider-neutral stream normalization.",
+  "target_pack_id": "rumi_ai_stream_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "medium",
+  "supports_all_ok": false,
+  "depends_on": [],
+  "required_permissions": ["ai.stream.normalize"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.ai_stream", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["No network or secrets.", "Unknown and post-terminal event types fail closed."]
+}
+

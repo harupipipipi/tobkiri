@@ -21,7 +21,7 @@ import json
 import logging
 import os
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -303,7 +303,7 @@ def get_shared_store_manager() -> SharedStoreManager:
     return _global_shared_store_manager
 
 
-def reset_shared_store_manager(index_path: str = None) -> SharedStoreManager:
+def reset_shared_store_manager(index_path: str | None = None) -> SharedStoreManager:
     """リセット（テスト用）"""
     global _global_shared_store_manager
     with _ssm_lock:

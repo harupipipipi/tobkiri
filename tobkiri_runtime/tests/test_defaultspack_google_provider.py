@@ -10,74 +10,86 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+pytestmark = pytest.mark.usefixtures("provider_model_catalog_selected")
+
 
 class TestDefaultspackGoogleProvider(unittest.TestCase):
     def test_detect_available_providers_accepts_gemini_api_key(self):
-        from domain.ai_client.providers import detect_available_providers
+        from tests.v4_provider_runtime_support import exercise_captured_provider_send
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-key"}, clear=True):
-            providers = detect_available_providers()
+        with tempfile.TemporaryDirectory() as tmpdir, pytest.MonkeyPatch.context() as monkeypatch:
+            sent = exercise_captured_provider_send(
+                Path(tmpdir),
+                monkeypatch,
+                "google",
+                endpoint="https://generativelanguage.googleapis.com/v1beta/openai",
+            )
 
-        self.assertIn("google", providers)
+        self.assertEqual(sent["captured"]["body"]["model"], "account-visible-model")
+        self.assertNotIn("credential-canary", json.dumps(sent["result"]))
 
     def test_detect_available_providers_keeps_google_with_manifest_provider(self):
-        from domain.ai_client.providers import detect_available_providers
+        from tests.v4_provider_runtime_support import exercise_captured_provider_send
 
-        with patch.dict(
-            os.environ,
-            {
-                "GEMINI_API_KEY": "test-google-key",
-                "XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY": "test-mimo-key",
-            },
-            clear=True,
-        ):
-            providers = detect_available_providers()
+        with tempfile.TemporaryDirectory() as tmpdir, pytest.MonkeyPatch.context() as monkeypatch:
+            google = exercise_captured_provider_send(
+                Path(tmpdir),
+                monkeypatch,
+                "google",
+                endpoint="https://generativelanguage.googleapis.com/v1beta/openai",
+            )
+            xiaomi = exercise_captured_provider_send(
+                Path(tmpdir),
+                monkeypatch,
+                "xiaomi-token-plan-sgp",
+                endpoint="https://token-plan-sgp.xiaomimimo.com/v1",
+            )
 
-        self.assertIn("xiaomi-token-plan-sgp", providers)
-        self.assertIn("google", providers)
+        self.assertNotEqual(
+            google["credential_digest"],
+            xiaomi["credential_digest"],
+        )
+        self.assertNotIn("xiaomi-token-plan-sgp", google["captured"]["url"])
+        self.assertNotIn("googleapis", xiaomi["captured"]["url"])
 
     def test_ai_client_resolves_google_when_manifest_provider_is_available(self):
-        from domain.ai_client.client import AIClient
+        from tests.v4_provider_runtime_support import exercise_captured_provider_send
 
-        AIClient._instance = None
-        try:
-            with patch.dict(
-                os.environ,
-                {
-                    "GEMINI_API_KEY": "test-google-key",
-                    "XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY": "test-mimo-key",
-                },
-                clear=True,
-            ):
-                client = AIClient()
-                provider, model_name = client.resolve_provider("google/gemma-4-31b-it")
+        with tempfile.TemporaryDirectory() as tmpdir, pytest.MonkeyPatch.context() as monkeypatch:
+            sent = exercise_captured_provider_send(
+                Path(tmpdir),
+                monkeypatch,
+                "google",
+                endpoint="https://generativelanguage.googleapis.com/v1beta/openai",
+                model_id="gemma-4-31b-it",
+            )
 
-            self.assertEqual(provider.__class__.__name__, "GoogleProvider")
-            self.assertEqual(model_name, "gemma-4-31b-it")
-        finally:
-            AIClient._instance = None
+        self.assertEqual(sent["captured"]["body"]["model"], "gemma-4-31b-it")
+        self.assertEqual(sent["result"]["output"], "ok")
 
     def test_google_provider_prefers_google_api_key_when_both_are_set(self):
-        from domain.ai_client.providers.google_provider import GoogleProvider
+        from tests.v4_provider_runtime_support import exercise_captured_provider_send
 
-        with patch.dict(
-            os.environ,
-            {"GOOGLE_API_KEY": "google-key", "GEMINI_API_KEY": "gemini-key"},
-            clear=True,
-        ):
-            provider = GoogleProvider()
+        with tempfile.TemporaryDirectory() as tmpdir, pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setenv("GEMINI_API_KEY", "ambient-attacker")
+            sent = exercise_captured_provider_send(
+                Path(tmpdir),
+                monkeypatch,
+                "google",
+                endpoint="https://generativelanguage.googleapis.com/v1beta/openai",
+            )
 
-        self.assertEqual(provider._api_key, "google-key")
-        self.assertEqual(
-            provider.BASE_URL,
-            "https://generativelanguage.googleapis.com/v1beta/openai",
-        )
+        self.assertTrue(sent["credential_bound"])
+        self.assertEqual(sent["provider_id"], "google")
+        self.assertNotIn("ambient-attacker", json.dumps(sent, sort_keys=True))
 
     def test_google_provider_prefers_browser_oauth_bearer_when_available(self):
         from domain.ai_client.providers.google_provider import GoogleProvider
@@ -95,8 +107,9 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         captured = {}
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-key"}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             provider = GoogleProvider()
+        provider._api_key = "gemini-key"
 
         def fake_request_json(path, body):
             captured["path"] = path
@@ -171,8 +184,9 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         calls = []
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-key"}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             provider = GoogleProvider()
+        provider._api_key = "gemini-key"
 
         def fake_urlopen(request, context=None, timeout=None):
             calls.append((request, context, timeout))
@@ -201,8 +215,9 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
         codes = [429, 502, 504]
         calls = []
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-key"}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             provider = GoogleProvider()
+        provider._api_key = "gemini-key"
 
         def fake_urlopen(request, context=None, timeout=None):
             calls.append((request, context, timeout))
@@ -231,8 +246,9 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         calls = []
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-key"}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             provider = GoogleProvider()
+        provider._api_key = "gemini-key"
 
         def fake_urlopen(request, context=None, timeout=None):
             calls.append((request, context, timeout))
@@ -254,8 +270,9 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         captured = {}
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-key"}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             provider = GoogleProvider()
+        provider._api_key = "gemini-key"
 
         class FakeResponse:
             def __enter__(self):
@@ -296,8 +313,9 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         calls = []
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-key"}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             provider = GoogleProvider()
+        provider._api_key = "gemini-key"
 
         class FakeResponse(io.BytesIO):
             def __enter__(self):
@@ -332,8 +350,9 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         calls = []
 
-        with patch.dict(os.environ, {"GEMINI_API_KEY": "gemini-key"}, clear=True):
+        with patch.dict(os.environ, {}, clear=True):
             provider = GoogleProvider()
+        provider._api_key = "gemini-key"
 
         class FakeResponse(io.BytesIO):
             def __enter__(self):
@@ -1180,10 +1199,10 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         self.assertIn("google/gemini-3-pro-preview", model_ids)
         self.assertIn("google/gemini-3-flash-preview", model_ids)
-        self.assertIn("google/gemini-2.5-flash-lite", model_ids)
-        self.assertNotIn("google/gemini-2.0-flash-lite", model_ids)
+        self.assertIn("google/gemini-2.0-flash-lite", model_ids)
+        self.assertNotIn("google/gemini-2.5-flash-lite", model_ids)
         self.assertIn("google/gemma-4-31b-it", model_ids)
-        self.assertIn("google/gemma-4-26b-a4b-it", model_ids)
+        self.assertNotIn("google/gemma-4-26b-a4b-it", model_ids)
         self.assertIn("google/gemma-3-27b-it", model_ids)
         self.assertIn("google/gemma-3n-e4b-it", model_ids)
 
@@ -1192,9 +1211,8 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         profiles = {item["id"]: item for item in GoogleProvider().list_models()}
 
-        self.assertNotIn("xhigh", profiles["google/gemini-2.5-pro"]["thinking_levels"])
-        self.assertEqual(profiles["google/gemini-3-pro-preview"]["thinking_levels"], ["low", "high"])
-        self.assertEqual(profiles["google/gemma-4-26b-a4b-it"]["thinking_levels"], ["minimal", "high"])
+        self.assertNotIn("xhigh", profiles["google/gemini-2.5-pro"].get("thinking_levels", []))
+        self.assertEqual(profiles["google/gemini-3-pro-preview"].get("thinking_levels", []), [])
         self.assertEqual(profiles["google/gemma-4-31b-it"]["thinking_levels"], ["minimal", "high"])
 
     def test_google_catalog_marks_gemma_4_as_tool_and_vision_capable(self):
@@ -1204,8 +1222,7 @@ class TestDefaultspackGoogleProvider(unittest.TestCase):
 
         self.assertIn("tool_calls", profiles["google/gemma-4-31b-it"]["capabilities"])
         self.assertIn("vision", profiles["google/gemma-4-31b-it"]["capabilities"])
-        self.assertIn("tool_calls", profiles["google/gemma-4-26b-a4b-it"]["capabilities"])
-        self.assertIn("vision", profiles["google/gemma-4-26b-a4b-it"]["capabilities"])
+        self.assertNotIn("google/gemma-4-26b-a4b-it", profiles)
 
 
 if __name__ == "__main__":

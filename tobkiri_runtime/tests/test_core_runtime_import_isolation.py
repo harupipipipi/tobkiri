@@ -1,74 +1,66 @@
 from __future__ import annotations
 
 import ast
-import importlib
-import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
 CORE_RUNTIME_ROOT = ROOT / "core_runtime"
-FOCUSED_CORE_MODULES = (
-    "core_runtime.prompt_builder",
-    "core_runtime.chat_session_manager",
-)
+DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 
-def _clear_modules(monkeypatch, *prefixes: str) -> None:
-    for name in list(sys.modules):
-        if any(name == prefix or name.startswith(f"{prefix}.") for prefix in prefixes):
-            monkeypatch.delitem(sys.modules, name, raising=False)
+def test_application_domain_modules_are_absent_from_core_runtime() -> None:
+    retired = {
+        "chat_session_manager.py",
+        "defaultspack_host_contract_adapter.py",
+        "frontend_host.py",
+        "prompt_builder.py",
+        "supervisor_dashboard.py",
+    }
+    core_names = {path.name for path in CORE_RUNTIME_ROOT.glob("*.py")}
+
+    assert retired.isdisjoint(core_names)
+    assert not any(name.startswith("ai_input_") for name in core_names)
 
 
-def test_focused_core_modules_import_without_domain_package(monkeypatch, tmp_path):
-    poison_domain = tmp_path / "domain"
-    poison_domain.mkdir()
-    (poison_domain / "__init__.py").write_text(
-        "raise RuntimeError('core_runtime must not import pack-local domain')\n",
-        encoding="utf-8",
-    )
-
-    monkeypatch.syspath_prepend(str(tmp_path))
-    _clear_modules(monkeypatch, "domain", *FOCUSED_CORE_MODULES)
-
-    for module_name in FOCUSED_CORE_MODULES:
-        importlib.import_module(module_name)
-
-
-def test_core_runtime_python_files_do_not_directly_import_domain():
+def test_core_runtime_python_files_do_not_directly_import_pack_domains() -> None:
     for module_path in sorted(CORE_RUNTIME_ROOT.rglob("*.py")):
         tree = ast.parse(module_path.read_text(encoding="utf-8"))
-
-        domain_imports = []
+        forbidden: list[str] = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
-                domain_imports.extend(
+                forbidden.extend(
                     alias.name
                     for alias in node.names
-                    if alias.name == "domain" or alias.name.startswith("domain.")
+                    if alias.name == "domain"
+                    or alias.name.startswith("domain.")
+                    or alias.name == "ecosystem.defaultspack"
+                    or alias.name.startswith("ecosystem.defaultspack.")
                 )
             elif isinstance(node, ast.ImportFrom):
                 module = node.module or ""
-                if module == "domain" or module.startswith("domain."):
-                    domain_imports.append(module)
+                if (
+                    module == "domain"
+                    or module.startswith("domain.")
+                    or module == "ecosystem.defaultspack"
+                    or module.startswith("ecosystem.defaultspack.")
+                ):
+                    forbidden.append(module)
 
-        assert domain_imports == [], str(module_path.relative_to(ROOT))
+        assert forbidden == [], str(module_path.relative_to(ROOT))
 
 
-def test_chat_session_manager_uses_injected_chat_store():
-    from core_runtime.chat_session_manager import SessionManager
+def test_prompt_and_chat_implementations_are_pack_owned() -> None:
+    prompt = (DEFAULTSPACK_ROOT / "domain" / "prompt" / "builder.py").read_text(
+        encoding="utf-8"
+    )
+    chat = (DEFAULTSPACK_ROOT / "domain" / "chat" / "session_manager.py").read_text(
+        encoding="utf-8"
+    )
 
-    class ChatStore:
-        def get_conversation(self, conversation_id):
-            if conversation_id == "conversation-1":
-                return {"id": conversation_id}
-            return None
-
-    BoundSessionManager = SessionManager.with_dependencies(chat_store_factory=ChatStore)
-    manager = BoundSessionManager()
-
-    session = manager.create_session("test")
-    updated = manager.add_conversation(session["id"], "conversation-1")
-
-    assert updated["conversation_ids"] == ["conversation-1"]
-    assert manager.list_conversations(session["id"]) == [{"id": "conversation-1"}]
+    assert "class PromptBuilder" in prompt
+    assert "def evaluate_condition" in prompt
+    assert "core_runtime.prompt_builder" not in prompt
+    assert "class SessionManager" in chat
+    assert "def create_session" in chat
+    assert "core_runtime.chat_session_manager" not in chat

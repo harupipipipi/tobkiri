@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AVATAR_OPTIONS, DEFAULT_AVATAR, isBundledAvatar, profileInitial } from './avatar';
-import { transformProfile } from './transforms';
 
 test('default viewer avatars are local deterministic values', () => {
   assert.equal(DEFAULT_AVATAR, '');
@@ -13,15 +12,8 @@ test('default viewer avatars are local deterministic values', () => {
   }
 });
 
-test('fresh profile transform falls back to initials instead of remote placeholders', () => {
-  const profile = transformProfile({
-    username: 'Haru',
-    language: 'en',
-    icon: '',
-    occupation: '',
-  });
-
-  assert.equal(profile.avatar, DEFAULT_AVATAR);
-  assert.equal(profileInitial(profile.username), 'H');
+test('profile initials fall back locally when no avatar is configured', () => {
+  assert.equal(DEFAULT_AVATAR, '');
+  assert.equal(profileInitial('Haru'), 'H');
   assert.equal(profileInitial(''), 'U');
 });

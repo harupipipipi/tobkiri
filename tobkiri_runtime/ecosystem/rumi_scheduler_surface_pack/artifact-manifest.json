@@ -1,0 +1,25 @@
+{
+  "artifacts": [
+    {
+      "path": "frontend/contributions/scheduler.json",
+      "role": "ui_contribution",
+      "sha256": "sha256:14c4747a79a9af491051c88dac2550298d074490f80e3370422884ecfcfe3449"
+    },
+    {
+      "path": "ui/app.js",
+      "role": "isolated_ui",
+      "sha256": "sha256:3b76e73bdfc0dd7670a05f4c65374dec68836cf0e4ba11352b177913946feb7d"
+    },
+    {
+      "path": "ui/index.html",
+      "role": "isolated_ui",
+      "sha256": "sha256:769e1cc433b606f914ef7120e9be8605b7fbd92d4f390d912e37e84be03565a8"
+    },
+    {
+      "path": "ui/style.css",
+      "role": "isolated_ui",
+      "sha256": "sha256:276fae893cbaa617e4593545b26bef24b3a4eaacc275a34538f2651c147ab632"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

@@ -88,14 +88,14 @@ def test_security_review_pack_setup_metadata_is_discoverable_and_review_only() -
     assert setup["conflicts_with"] == []
     assert setup["overlap_policy"]["defaultspack_grants"] == "review_only_do_not_override"
     assert setup["overlap_policy"]["approval_decisions"] == "defer_to_runtime_and_owner_pack"
-    assert setup["defaultspack_promotion"]["eligible"] is False
+    assert setup["base_pack_promotion"]["eligible"] is False
 
     candidate = candidates[PACK_ID]
     assert candidate.pack_identity == f"rumi:ecosystem/{PACK_ID}"
     assert candidate.all_ok_eligible is False
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.marketplace["id"] == "rumi.security_review_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
 
     issues = selector.validate_candidates(
         installed_packs={"defaultspack": {"version": "2.0.0"}},

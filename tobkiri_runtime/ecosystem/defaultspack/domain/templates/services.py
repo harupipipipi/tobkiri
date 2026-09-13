@@ -365,7 +365,7 @@ def _module_origin(module_name: str) -> Path | None:
         spec = importlib.util.find_spec(module_name)
     except (ImportError, AttributeError, ValueError):
         return None
-    if spec is None or spec.origin in (None, "built-in", "namespace"):
+    if spec is None or not isinstance(spec.origin, str) or spec.origin in ("built-in", "namespace"):
         return None
     return Path(spec.origin).resolve()
 

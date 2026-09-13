@@ -1,0 +1,94 @@
+{
+  "id": "nvidia",
+  "provider_id": "nvidia",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "NVIDIA NIM",
+  "entrypoints": {
+    "adapter": "../ai_client/providers/openai_compatible_provider.py",
+    "models": "models.json"
+  },
+  "security": {
+    "credential_required": true
+  },
+  "provider_metadata": {
+    "display_name": "NVIDIA NIM",
+    "kind": "cloud",
+    "env_vars": [
+      "NVIDIA_API_KEY",
+      "NGC_API_KEY"
+    ],
+    "base_url_envs": [
+      "NVIDIA_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "https://integrate.api.nvidia.com/v1",
+    "default_model": "nvidia/llama-3.3-nemotron-super-49b-v1",
+    "default_model_for": {
+      "chat": "nvidia/llama-3.3-nemotron-super-49b-v1",
+      "reasoning": "nvidia/llama-3.3-nemotron-super-49b-v1",
+      "general": "meta/llama-3.3-70b-instruct",
+      "fast": "nvidia/nvidia-nemotron-nano-9b-v2",
+      "coding": "qwen/qwen3-coder-480b-a35b-instruct"
+    },
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "tool_calls",
+      "reasoning",
+      "openai_compatible"
+    ]
+  },
+  "provider_manifest": {
+    "id": "nvidia",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "NVIDIA NIM",
+    "enabled": true,
+    "priority": 60,
+    "adapter": "openai_compatible",
+    "api_key_env": [
+      "NVIDIA_API_KEY",
+      "NGC_API_KEY"
+    ],
+    "base_url_env": "NVIDIA_BASE_URL",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "https://integrate.api.nvidia.com/v1",
+    "default_model": "nvidia/llama-3.3-nemotron-super-49b-v1",
+    "default_model_for": {
+      "chat": "nvidia/llama-3.3-nemotron-super-49b-v1",
+      "reasoning": "nvidia/llama-3.3-nemotron-super-49b-v1",
+      "general": "meta/llama-3.3-70b-instruct",
+      "fast": "nvidia/nvidia-nemotron-nano-9b-v2",
+      "coding": "qwen/qwen3-coder-480b-a35b-instruct"
+    },
+    "config": {
+      "api_compatibility": "openai",
+      "source_docs": "nvidia_nim_llm_apis",
+      "model_sync": "fixed_allowlist"
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "nvidia"
+    ]
+  },
+  "compatibility": {
+    "legacy_ids": [
+      "nvidia"
+    ]
+  },
+  "source_pack_id": "rumi_model_catalog_pack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "tool_calls",
+    "reasoning",
+    "openai_compatible"
+  ]
+}

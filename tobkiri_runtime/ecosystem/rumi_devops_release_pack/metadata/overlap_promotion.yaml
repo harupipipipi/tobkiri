@@ -1,7 +1,7 @@
 version: rumi.pack_overlap.v1
 pack_id: rumi_devops_release_pack
 
-defaultspack_promotion:
+base_pack_promotion:
   eligible: false
   reason: Optional DevOps and release overlay; defaultspack remains the runtime foundation.
   promoted_capabilities: []

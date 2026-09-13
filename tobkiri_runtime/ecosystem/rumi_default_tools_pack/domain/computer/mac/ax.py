@@ -72,6 +72,11 @@ class _StoredElement:
 _ELEMENT_STORE: dict[str, _StoredElement] = {}
 
 
+def ax_import_available() -> bool:
+    """Return whether the native pyobjc AX symbols imported successfully."""
+    return bool(_AX_AVAILABLE and sys.platform == "darwin")
+
+
 def ax_is_trusted() -> bool:
     """Check if the current process has Accessibility permission."""
     if not _native_ax_ready():

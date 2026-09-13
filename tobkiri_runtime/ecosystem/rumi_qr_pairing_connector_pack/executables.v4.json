@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:8c209b6a0286f4f86693a50680a0c32e3ee51027e0aba40fedc71d9b9601a335",
+  "pack_id": "rumi_qr_pairing_connector_pack",
+  "source_identity": "sha256:ad05a27dc86febc0c820750b855c359281a69e2cd2e8e37bdbc2f6104429328f",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_qr_pairing_connector_pack.connector.qr_pairing",
+      "implementation_digest": "sha256:d0df2f80a4ecc591507ba40b2864cfdcb1133d85ed76c1cc612ed89823b970d0",
+      "implementation_path": "runtime/adapter.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.connector.adapter.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_qr_pairing_connector_pack.qr-pairing-adapter",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:4ae4f5aebae13501d88b1c7aab9172e79147981842aea670ec65931e99d2e7f2",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_qr_pairing_connector_pack.connector.qr_pairing.python"
+    }
+  ]
+}

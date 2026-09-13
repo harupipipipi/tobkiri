@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from http.server import BaseHTTPRequestHandler as _HTTPHandlerBase
+else:
+    _HTTPHandlerBase = object
 from urllib.parse import parse_qs, urlparse
 
 from .api_response import APIResponse
@@ -12,7 +17,17 @@ from ..validation import MAX_REQUEST_BODY_BYTES
 logger = logging.getLogger(__name__)
 
 
-class RequestBodyMixin:
+class RequestBodyMixin(_HTTPHandlerBase):
+    _raw_body_bytes: bytes
+
+    if TYPE_CHECKING:
+        def _send_response(
+            self,
+            response: APIResponse,
+            status: int = 200,
+            extra_headers: list[tuple[str, str]] | None = None,
+        ) -> None: ...
+
     def _read_raw_body(self) -> Optional[bytes]:
         raw_cl = self.headers.get("Content-Length", "0")
         try:

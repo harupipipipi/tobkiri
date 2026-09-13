@@ -58,11 +58,14 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import os
 import re
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextvars import ContextVar
-from typing import Any, Dict, List, Optional, Set, Tuple
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Set, Tuple
 
 from .paths import BASE_DIR
 from .flow_context_security import sanitize_user_flow_context
@@ -71,6 +74,21 @@ from .logging_utils import get_structured_logger
 from .profiling import get_profiler
 from .metrics import get_metrics_collector
 from .kernel_facade import KernelFacade
+from .diagnostics import Diagnostics, Status
+
+
+class _InterfaceRegistryPort(Protocol):
+    def get(self, key: str, strategy: str = "first") -> Any: ...
+
+    def list(self) -> Dict[str, Any]: ...
+
+    def register(
+        self,
+        key: str,
+        value: Any,
+        *,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None: ...
 
 _logger = get_structured_logger("rumi.kernel.flow_execution")
 
@@ -94,6 +112,13 @@ _FLOW_AUTHORIZATION_SOURCE_METADATA = ContextVar(
     default=_FLOW_AUTHORIZATION_SOURCE_UNSET,
 )
 
+
+def _approval_check_allowed(value: object) -> bool:
+    """Normalize the verified approval result, including legacy test doubles."""
+    if isinstance(value, tuple):
+        return bool(value) and value[0] is True
+    return value is True
+
 class KernelFlowExecutionMixin:
     """
     Flow実行系 Mixin
@@ -116,6 +141,39 @@ class KernelFlowExecutionMixin:
     _startup_next_index: int
     _startup_executed_ids: Set[str]
     _startup_fail_soft_default: bool
+    diagnostics: Diagnostics
+    interface_registry: _InterfaceRegistryPort
+    _executor: ThreadPoolExecutor
+    _flow: Optional[Dict[str, Any]]
+
+    if TYPE_CHECKING:
+        def load_user_flows(self, path: Optional[str] = None) -> None: ...
+
+        def load_flow(self, path: Optional[str] = None) -> Dict[str, Any]: ...
+
+        def _build_kernel_context(self) -> Dict[str, Any]: ...
+
+        def _resolve_value(
+            self,
+            value: Any,
+            ctx: Dict[str, Any],
+            depth: int = 0,
+        ) -> Any: ...
+
+        def _resolve_handler(
+            self,
+            handler: str,
+            args: Optional[Dict[str, Any]] = None,
+        ) -> Any: ...
+
+        def _load_single_flow(self, flow_path: Path) -> Dict[str, Any]: ...
+
+        def _vocab_normalize_output(
+            self,
+            unwrapped: Any,
+            step: Dict[str, Any],
+            ctx: Dict[str, Any],
+        ) -> Any: ...
 
     # ------------------------------------------------------------------
     # Wave 10-C: depends_on チェック
@@ -355,7 +413,11 @@ class KernelFlowExecutionMixin:
     def run_startup_remaining(self) -> Dict[str, Any]:
         return self._run_prepared_startup()
 
-    def run_pipeline(self, pipeline_name: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+    def run_pipeline(
+        self,
+        pipeline_name: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         flow = self._flow or self.load_flow()
         defaults = flow.get("defaults", {}) if isinstance(flow, dict) else {}
         fail_soft_default = bool(defaults.get("fail_soft", True))
@@ -736,8 +798,12 @@ class KernelFlowExecutionMixin:
                     phase="flow",
                     step_id=f"{step.get('id', 'unknown')}.flow_control_abort",
                     handler=step.get("handler", "unknown"),
-                    status="aborted",
-                    meta={"reason": ctx["_flow_control_abort_reason"], "__flow_control": "abort"}
+                    status="failed",
+                    meta={
+                        "reason": ctx["_flow_control_abort_reason"],
+                        "__flow_control": "abort",
+                        "terminal_status": "aborted",
+                    },
                 )
                 return ctx, unwrapped
 
@@ -891,7 +957,10 @@ class KernelFlowExecutionMixin:
         """
         qualified_name = step.get("function")
         if not qualified_name:
-            _logger.warning("function step '%s': missing 'function' field", step.get("id"))
+            _logger.warning(
+                "function step is missing its function field",
+                step_id=step.get("id"),
+            )
             return ctx, None
 
         # フェイルクローズ: trusted flow principal が ctx に無い場合は実行拒否
@@ -980,6 +1049,7 @@ class KernelFlowExecutionMixin:
             right_val = right.strip('"\'')
 
             # 型変換
+            target: object
             if right_val.lower() == "true":
                 target = True
             elif right_val.lower() == "false":
@@ -1116,7 +1186,7 @@ class KernelFlowExecutionMixin:
                 elif step_id and result is not None:
                     ctx[f"_step_out.{step_id}"] = result
 
-                done_status = "success" if resp.success else "failed"
+                done_status: Status = "success" if resp.success else "failed"
                 self.diagnostics.record_step(
                     phase=phase, step_id=f"{step_id_str}.done",
                     handler=f"function:{function_name}", status=done_status,
@@ -1165,7 +1235,7 @@ class KernelFlowExecutionMixin:
             return False
         except Exception as e:
             action = str(on_error_action or ("continue" if ctx.get("_flow_defaults", {}).get("fail_soft", True) else "abort")).lower()
-            status = "disabled" if action == "disable_target" else "failed"
+            status: Status = "disabled" if action == "disable_target" else "failed"
             self.diagnostics.record_step(phase=phase, step_id=f"{step_id_str}.failed", handler=handler_str, status=status, error=e,
                                           meta={"on_error.action": action, "optional": optional})
             return action == "abort"
@@ -1181,12 +1251,13 @@ class KernelFlowExecutionMixin:
         ctx: dict,
     ) -> dict:
         """Execute a universal_call step (python / binary / command)."""
-        import asyncio, json, os, time
+        import asyncio
+        import json
+        import time
 
         owner_pack = step.get("owner_pack", "")
         uc_file = step.get("file", "")
         runtime = step.get("runtime", "python")
-        protocol = step.get("protocol", "stdio_json")
         docker_image = step.get("docker_image")
         input_data = step.get("input", {}) if isinstance(step.get("input"), dict) else {}
         timeout = min(
@@ -1213,10 +1284,8 @@ class KernelFlowExecutionMixin:
         try:
             from core_runtime.approval_manager import get_approval_manager
             am = get_approval_manager()
-            if hasattr(am, "is_pack_approved_and_verified"):
-                approved = am.is_pack_approved_and_verified(owner_pack)
-            else:
-                approved = am.is_pack_approved(owner_pack)
+            approval_check = am.is_pack_approved_and_verified(owner_pack)
+            approved = _approval_check_allowed(approval_check)
             if not approved:
                 return _err(
                     f"Pack '{owner_pack}' is not approved for universal_call",
@@ -1228,12 +1297,16 @@ class KernelFlowExecutionMixin:
         # ── path resolution & traversal protection ──
         try:
             from core_runtime.paths import ECOSYSTEM_DIR, is_path_within
-            pack_dir = os.path.join(ECOSYSTEM_DIR, owner_pack)
-            target = os.path.realpath(os.path.join(pack_dir, uc_file))
-            if not is_path_within(target, pack_dir):
+            pack_dir_path = Path(ECOSYSTEM_DIR) / owner_pack
+            target_path = Path(
+                os.path.realpath(os.path.join(str(pack_dir_path), uc_file))
+            )
+            if not is_path_within(target_path, pack_dir_path):
                 return _err(f"path traversal blocked: {uc_file}", "security_error")
-            if not os.path.isfile(target):
+            if not os.path.isfile(str(target_path)):
                 return _err(f"file not found: {uc_file}", "file_error")
+            pack_dir = str(pack_dir_path)
+            target = str(target_path)
         except ImportError:
             pack_dir = ""
             target = uc_file
@@ -1282,15 +1355,25 @@ class KernelFlowExecutionMixin:
     # ── python runtime ──────────────────────────────────────
     async def _uc_exec_python(self, owner_pack, target, input_data, timeout, docker_image, ctx):
         try:
-            from core_runtime.python_file_executor import PythonFileExecutor, ExecutionContext
+            from core_runtime.python_file_executor import ExecutionContext, PythonFileExecutor
             executor = PythonFileExecutor()
             exec_ctx = ExecutionContext(
-                pack_id=owner_pack,
-                file_path=target,
-                input_data=input_data,
+                flow_id=str(ctx.get("_flow_id") or "universal_call"),
+                step_id=str(ctx.get("_step_id") or "universal_call"),
+                phase="flow",
+                ts=str(ctx.get("_ts") or ""),
+                owner_pack=owner_pack,
+                inputs=dict(input_data) if isinstance(input_data, dict) else {},
+                principal_id=str(ctx.get("_flow_run_principal_id") or "") or None,
+            )
+            exec_result = await asyncio.to_thread(
+                executor.execute,
+                target,
+                owner_pack,
+                input_data,
+                exec_ctx,
                 timeout_seconds=timeout,
             )
-            exec_result = await executor.execute(exec_ctx)
             if hasattr(exec_result, "to_dict"):
                 return exec_result.to_dict()
             return {
@@ -1302,7 +1385,8 @@ class KernelFlowExecutionMixin:
 
     # ── binary runtime ──────────────────────────────────────
     async def _uc_exec_binary(self, target, input_data, timeout, docker_image, pack_dir):
-        import asyncio, json, os
+        import asyncio
+        import json
         if docker_image:
             return await self._uc_exec_in_container(
                 target, input_data, timeout, docker_image, pack_dir, runtime="binary",
@@ -1330,7 +1414,9 @@ class KernelFlowExecutionMixin:
 
     # ── command runtime ─────────────────────────────────────
     async def _uc_exec_command(self, target, input_data, timeout, docker_image, pack_dir):
-        import asyncio, json, os
+        import asyncio
+        import json
+        import os
         if docker_image:
             return await self._uc_exec_in_container(
                 target, input_data, timeout, docker_image, pack_dir, runtime="command",
@@ -1359,7 +1445,9 @@ class KernelFlowExecutionMixin:
 
     # ── Docker container execution ──────────────────────────
     async def _uc_exec_in_container(self, target, input_data, timeout, docker_image, pack_dir, runtime="binary"):
-        import asyncio, json, os
+        import asyncio
+        import json
+        import os
         try:
             from core_runtime.container_orchestrator import get_container_orchestrator
             orch = get_container_orchestrator()

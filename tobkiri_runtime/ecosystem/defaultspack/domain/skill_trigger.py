@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
 from domain.extensions.runtime import get_extension_registry
+from domain.mention import extract_mention_values
 
-_MENTION_RE = re.compile(r"(?:^|\s)@([^\s@]+)")
 _MAX_PROMPT_FILE_CHARS = 80_000
+_COMPOSITION_ORDER = {"safety": 0, "required": 1, "explicit": 2, "optional": 3}
 
 
 class RuntimeSkillTriggerService:
@@ -29,23 +29,35 @@ class RuntimeSkillTriggerService:
         text = str(user_text or "").casefold()
         tool_set = {str(name or "").strip() for name in (tool_names or []) if str(name or "").strip()}
         skills = self._list_skills()
-        forced = _resolve_skill_ids(
+        explicit = _resolve_skill_ids(
             [
-                *_as_list(context.get("skills") or context.get("skill_ids") or context.get("selected_skills")),
+                *_as_list(context.get("verified_explicit_skills")),
                 *_mentioned_skill_ids(user_text, skills),
             ],
             skills,
+        )
+        required = _resolve_skill_ids(
+            _as_list(context.get("required_skills")), skills
+        )
+        safety = _resolve_skill_ids(
+            _as_list(context.get("safety_skills")), skills
         )
         matched: list[dict[str, Any]] = []
         for skill in skills:
             skill_id = str(skill.get("id") or "").strip()
             if not skill_id:
                 continue
-            if forced and skill_id not in forced:
-                continue
             triggers = _as_list(skill.get("triggers") or skill.get("keywords"))
             applies_to = _as_list(skill.get("applies_to_tools") or skill.get("tool_ids"))
-            forced_hit = skill_id in forced
+            composition = (
+                skill.get("composition")
+                if isinstance(skill.get("composition"), dict)
+                else {}
+            )
+            declared_class = str(
+                composition.get("class") or "optional"
+            ).strip().lower()
+            forced_hit = skill_id in explicit or skill_id in required or skill_id in safety
             trigger_hit = forced_hit or not triggers or any(str(trigger).casefold() in text for trigger in triggers)
             tool_hit = forced_hit or not applies_to or bool(tool_set.intersection(applies_to))
             if not (trigger_hit and tool_hit):
@@ -53,6 +65,16 @@ class RuntimeSkillTriggerService:
             instruction = _instruction_text(skill)
             if not instruction:
                 continue
+            if skill_id in safety:
+                composition_class = "safety"
+            elif skill_id in required:
+                composition_class = "required"
+            elif skill_id in explicit:
+                composition_class = "explicit"
+            elif declared_class in _COMPOSITION_ORDER:
+                composition_class = declared_class
+            else:
+                composition_class = "optional"
             matched.append(
                 {
                     "id": skill_id,
@@ -60,15 +82,29 @@ class RuntimeSkillTriggerService:
                     "triggers": triggers,
                     "applies_to_tools": applies_to,
                     "instruction": instruction,
+                    "composition_class": composition_class,
+                    "priority": int(composition.get("priority", 0)),
                 }
             )
+        matched.sort(
+            key=lambda item: (
+                _COMPOSITION_ORDER.get(
+                    str(item.get("composition_class") or "optional"), 3
+                ),
+                -int(item.get("priority", 0)),
+                str(item.get("id") or ""),
+            )
+        )
         return {"matched": matched, "instructions": render_skill_instructions(matched)}
 
     def _list_skills(self) -> list[dict[str, Any]]:
         if self._skills is not None:
             return [skill for skill in self._skills if isinstance(skill, dict)]
         try:
-            return get_extension_registry().skills().list(enabled_only=True)
+            from domain.capability.skill_lifecycle import SkillLifecycleStore
+
+            skills = get_extension_registry().skills().list(enabled_only=True)
+            return SkillLifecycleStore().apply(skills)
         except Exception:
             return []
 
@@ -85,41 +121,56 @@ def render_skill_instructions(matched: list[dict[str, Any]]) -> str:
 
 
 def _instruction_text(skill: dict[str, Any]) -> str:
-    for key in ("instructions", "instruction", "system_prompt", "prompt"):
+    source_path = _skill_source_path(skill)
+    if source_path:
+        instructions = (
+            skill.get("instructions")
+            if isinstance(skill.get("instructions"), dict)
+            else {}
+        )
+        instruction = _instruction_file_text(skill)
+        if not instruction:
+            return ""
+        max_tokens = max(1, int(instructions.get("max_tokens", 1)))
+        return instruction[: max_tokens * 4].strip()
+    # Source-less definitions are trusted process-local records used by tests
+    # and programmatic composition. Persisted extensions must use SKILL.md.
+    for key in ("instructions", "instruction"):
         value = skill.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
-    metadata = skill.get("metadata") if isinstance(skill.get("metadata"), dict) else {}
-    config = skill.get("config") if isinstance(skill.get("config"), dict) else {}
-    for key in ("instructions", "instruction", "feedback"):
-        value = metadata.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    for container in (config, metadata, skill):
-        prompt_file = _instruction_file_text(container, skill)
-        if prompt_file:
-            return prompt_file
-    description = str(skill.get("description") or "").strip()
-    return description
-
-
-def _instruction_file_text(container: dict[str, Any], skill: dict[str, Any]) -> str:
-    for key in ("instructions_path", "instruction_path", "system_prompt_path", "prompt_path", "prompt_file"):
-        value = container.get(key)
-        if not isinstance(value, str) or not value.strip():
-            continue
-        path = Path(value).expanduser()
-        if not path.is_absolute():
-            metadata = skill.get("metadata") if isinstance(skill.get("metadata"), dict) else {}
-            source_path = str(skill.get("source_path") or metadata.get("manifest_path") or "").strip()
-            if source_path:
-                path = Path(source_path).expanduser().parent / path
-        try:
-            if path.is_file():
-                return path.read_text(encoding="utf-8", errors="ignore")[:_MAX_PROMPT_FILE_CHARS].strip()
-        except OSError:
-            continue
     return ""
+
+
+def _instruction_file_text(skill: dict[str, Any]) -> str:
+    source_path = _skill_source_path(skill)
+    if not source_path:
+        return ""
+    try:
+        manifest_path = Path(source_path).expanduser().resolve(strict=True)
+        skill_root = manifest_path.parent.resolve(strict=True)
+        skill_md_candidate = skill_root / "SKILL.md"
+        if skill_md_candidate.is_symlink():
+            return ""
+        skill_md = skill_md_candidate.resolve(strict=True)
+        if skill_md.parent != skill_root:
+            return ""
+        return skill_md.read_text(
+            encoding="utf-8", errors="ignore"
+        )[:_MAX_PROMPT_FILE_CHARS].strip()
+    except OSError:
+        return ""
+
+
+def _skill_source_path(skill: dict[str, Any]) -> str:
+    metadata = (
+        skill.get("metadata")
+        if isinstance(skill.get("metadata"), dict)
+        else {}
+    )
+    return str(
+        skill.get("source_path") or metadata.get("manifest_path") or ""
+    ).strip()
 
 
 def _as_list(value: Any) -> list[str]:
@@ -141,8 +192,10 @@ def _mentioned_skill_ids(text: str, skills: list[dict[str, Any]]) -> list[str]:
     aliases = _skill_alias_lookup(skills)
     ids: list[str] = []
     seen = set()
-    for match in _MENTION_RE.finditer(str(text or "")):
-        token = _normalize_mention_token(match.group(1))
+    for value in extract_mention_values(str(text or ""), aliases.keys()):
+        token = _normalize_mention_token(value)
+        if token.startswith("skill:"):
+            token = token.split(":", 1)[1]
         skill_id = aliases.get(token)
         if not skill_id or skill_id in seen:
             continue

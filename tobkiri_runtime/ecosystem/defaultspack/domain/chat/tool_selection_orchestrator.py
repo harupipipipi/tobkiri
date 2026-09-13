@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.ai_client.model_call import call_model
 from domain.chat.tool_recommender import recommend_tool_ids
@@ -21,6 +22,7 @@ class ToolSelectionOrchestrator:
         selected_model_capabilities: dict[str, Any] | None = None,
         settings: dict[str, Any] | None = None,
         prefilter: bool = True,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> dict[str, Any]:
         allowed_tools = [tool for tool in tools if _tool_id(tool)]
         always_tools, vector_tools = split_tools_by_loading(allowed_tools)
@@ -70,6 +72,7 @@ class ToolSelectionOrchestrator:
             },
             {"_model_call_depth": 0},
             call_handler=self._call_handler,
+            settings_owner=settings_owner,
         )
         output = model_call.get("output") if isinstance(model_call, dict) and isinstance(model_call.get("output"), dict) else {}
         selected_ids = _selected_ids(output, candidate_ids[:limit])

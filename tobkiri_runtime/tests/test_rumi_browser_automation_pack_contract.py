@@ -79,7 +79,7 @@ def test_browser_automation_setup_pack_is_discoverable_and_boundary_scoped() -> 
     ]
     assert candidate.overlap_policy["browser_execution"] == "do_not_override_rumi_default_tools_pack"
     assert candidate.overlap_policy["semantic_dom"] == "prefer_rumi_browser_element_pack_when_installed"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
 
 
 def test_browser_automation_docs_have_overlap_notes_and_no_secret_literals() -> None:

@@ -99,15 +99,15 @@ def test_rumi_memory_knowledge_pack_is_discoverable_by_setup_selector() -> None:
     assert [issue for issue in issues if issue["pack_id"] == PACK_ID] == []
 
 
-def test_rumi_memory_knowledge_pack_overlap_and_defaultspack_promotion_metadata() -> None:
+def test_rumi_memory_knowledge_pack_overlap_and_base_pack_promotion_metadata() -> None:
     repo_root = _repo_root()
     selector = PackSelector(repo_root / "ecosystem")
     candidate = {
         candidate.pack_id: candidate for candidate in selector.scan_candidates()
     }[PACK_ID]
 
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "must not become the default runtime pack" in candidate.defaultspack_promotion["reason"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "must not become the default runtime pack" in candidate.base_pack_promotion["reason"]
     assert candidate.overlap_policy["runtime_memory_writes"] == "forbidden_by_this_pack"
 
     pack_notes = candidate.overlap_policy["pack_notes"]

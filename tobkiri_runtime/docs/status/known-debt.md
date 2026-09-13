@@ -1,21 +1,25 @@
 # Known Debt
 
-Last updated: 2026-06-22
+Last updated: 2026-08-10
 
 ## P0
 
-- keep pack function execution gates consistent across `function_id` routes, `function.call`, and permission-based execution paths
-- continue reducing remaining handwritten API route branches in `pack_api_server.py`
+- complete exact packaged Launcher UI evidence on the final PR artifact
+- run a real isolated PackVM guest operation when host capacity meets the typed
+  provisioning plan; never weaken the capacity guard or use Host fallback
 
 ## P1
 
-- replace allowlisted legacy defaultspack HTTP block routes with direct function boundaries
-- retire `defaults.*` compatibility aliases where downstream callers no longer need them
-- tighten defaultspack domain boundary policy from baseline capture toward intentional architecture limits
+- keep PackVM base-image pins and CVE response policy current through reviewed
+  digest updates
+- expand installer signing/notarization from the current deterministic ad-hoc
+  verification when release credentials and policy are available
+- continue narrowing compatibility vocabulary where doing so does not break
+  stable storage, audit, or offline migration contracts
 
 ## P2
 
-- continue clarifying unit execution isolation modes, especially container/sandbox boundaries
+- continue measuring PackVM boot, disk growth, and cleanup bounds on supported hosts
 - keep update/apply flows moving toward explicit capability ownership
 - trim residual transport/runtime compatibility shims once replacement paths are stable
 - continue splitting `AmbientTriggerPanel.tsx` state/effects into smaller ambient hooks after the hand-tracker, routing, storage, and bridge seams are stable

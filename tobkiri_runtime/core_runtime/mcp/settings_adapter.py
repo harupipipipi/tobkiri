@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from core_runtime.settings.models import SettingContribution, SettingSectionId
+from core_runtime.settings.models import (
+    SettingContribution,
+    SettingSectionId,
+    SettingStatus,
+)
 
 from .models import MCPServerDefinition, MCPToolDefinition
 
 
 def mcp_server_to_setting(server: MCPServerDefinition, discovered_tools: list[MCPToolDefinition]) -> SettingContribution:
-    status = "configured"
+    status: SettingStatus = "configured"
     if not server.enabled:
         status = "disabled"
     elif server.required_provider_id and not server.required_connection_id:

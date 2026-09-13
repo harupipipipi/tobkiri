@@ -1,0 +1,9 @@
+{
+  "artifacts": [
+    {
+      "path": "runtime/normalizer.py",
+      "sha256": "sha256:7e775a9fe3ccf67c44b375c95e057d2e7fb8e5a6c3bd6347979042979f6af6a0"
+    }
+  ],
+  "version": "rumi.pack-artifacts.v1"
+}

@@ -1,0 +1,29 @@
+{
+  "version": "rumi.ui.contribution.v1",
+  "id": "rumi.prompt_studio.route",
+  "kind": "route",
+  "mode": "isolated",
+  "label": "Prompt Studio",
+  "description": "Author, lint, test, version, and roll back profile prompts.",
+  "priority": 100,
+  "route": "/prompts",
+  "view": {"type": "isolated_application"},
+  "isolated": {
+    "path": "/isolated/packs/rumi_prompt_studio_pack/index.html",
+    "rpc_contracts": [
+      "rumi.resource.prompt.studio.v1",
+      "rumi.action.prompt.author.v1",
+      "rumi.action.prompt.version.v1",
+      "rumi.action.prompt.test.v1"
+    ]
+  },
+  "localization": {
+    "en": "Prompt Studio",
+    "ja": "プロンプトスタジオ"
+  },
+  "accessibility": {
+    "name": "Prompt Studio",
+    "keyboard": true,
+    "live": "polite"
+  }
+}

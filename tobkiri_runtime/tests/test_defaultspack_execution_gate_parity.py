@@ -55,8 +55,9 @@ def _exercise_denial_contract(
 
 
 def _file_write_payload(tmp_path: Path) -> dict[str, Any]:
+    del tmp_path
     return {
-        "workspace_root": str(tmp_path),
+        "workspace_id": "trusted",
         "path": "notes.txt",
         "content": "after\n",
     }
@@ -82,9 +83,13 @@ def _http_server_without_starting_listener(facade: object | None = None):
 
 def test_coding_file_write_denial_parity_across_direct_and_function_entrypoints(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from blocks.coding.file_write import run as block_file_write
     from domain.function_runtime.dispatcher import run_defaultspack_function
+    from tests._coding_contract_fixture import bind_verified_coding_contracts
+
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
     cases: list[Entrypoint] = [
         lambda payload, context: block_file_write(payload, context),
@@ -104,7 +109,7 @@ def test_coding_file_write_denial_parity_across_direct_and_function_entrypoints(
         )
 
 
-def test_tool_create_denial_parity_across_direct_and_function_entrypoints(
+def test_tool_create_is_retired_across_direct_and_function_entrypoints(
     tmp_path: Path,
 ) -> None:
     from blocks.tool.create import run as block_tool_create
@@ -120,17 +125,19 @@ def test_tool_create_denial_parity_across_direct_and_function_entrypoints(
     ]
 
     for entrypoint in cases:
-        _exercise_denial_contract(
-            tmp_path,
-            entrypoint,
-            _tool_create_payload,
-            "tool.create",
-        )
+        result = entrypoint(_tool_create_payload(tmp_path), {})
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "MIGRATION_REQUIRED"
+        assert result["error"]["details"]["migration_required"] is True
 
 
 def test_legacy_http_fallback_denies_forged_coding_write_approval(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from tests._coding_contract_fixture import bind_verified_coding_contracts
+
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     server = _http_server_without_starting_listener(facade=None)
 
     def entrypoint(payload: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
@@ -153,43 +160,12 @@ def test_http_function_route_adapter_preserves_function_denial_contract(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from domain.function_runtime import dispatcher
+    del monkeypatch
+    from tests.legacy_authority_contracts import assert_retired_module_absent
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
 
-    server = _http_server_without_starting_listener(facade=object())
-
-    def fake_invoke_function(
-        function_name: str,
-        payload: dict[str, Any],
-        context: dict[str, Any],
-        **_: Any,
-    ) -> dict[str, Any]:
-        assert function_name == "defaultspack:coding_file_write"
-        return dispatcher.run_defaultspack_function(
-            "coding_file_write",
-            payload,
-            context,
-        )
-
-    monkeypatch.setattr(
-        "domain.function_runtime.bridge.invoke_function",
-        fake_invoke_function,
-    )
-
-    def entrypoint(payload: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
-        del context
-        return server._invoke_function_route(
-            "defaultspack:coding_file_write",
-            payload,
-            {},
-            fallback_block_module="blocks.coding.file_write",
-        )
-
-    _exercise_denial_contract(
-        tmp_path,
-        entrypoint,
-        _file_write_payload,
-        "file.write",
-    )
+    assert_retired_module_absent("domain.function_runtime.bridge")
+    assert_payload_mutations_denied(harness(tmp_path))
 
 
 def test_issue665_first_slice_documents_remaining_execution_route_gaps() -> None:
@@ -205,3 +181,15 @@ def test_issue665_first_slice_documents_remaining_execution_route_gaps() -> None
     # - bootstrap routes: need explicit route-by-route classification so safe
     #   idempotent bootstrap is not conflated with host execution.
     assert True
+
+
+def test_legacy_tool_invoke_requires_a_capability_plan() -> None:
+    from blocks.tool.invoke import run as invoke_tool
+
+    result = invoke_tool(
+        {"tool_name": "calculator", "arguments": {"expression": "1 + 1"}},
+        {},
+    )
+
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "CAPABILITY_PLAN_REQUIRED"

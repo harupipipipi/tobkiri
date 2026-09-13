@@ -43,13 +43,19 @@
             "type": "string"
           },
           "messages": {
-            "type": "array"
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
           },
           "params": {
             "type": "object"
           },
           "tool_names": {
-            "type": "array"
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
