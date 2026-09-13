@@ -668,7 +668,7 @@
   ],
   "source_manifest_digests": {
     "defaults-basepack": "sha256:0bba6dad19637b2dd8b2a149093715e8641f10894dd93c48b5b33fea588da0d7",
-    "defaultspack": "sha256:e8244e10721ee6f39ff8c97a6f585517d1d978beb79b00ddda975ab2ecb02710",
+    "defaultspack": "sha256:cce4577d8b74e3509348c77ad49790c21919818dc879a7d02f3e45419927a6c7",
     "rumi_ai_gateway_pack": "sha256:517c09d6e38d8301c1bf55480d55a3aa1241e8d3cee10efd42302db989bb368f",
     "rumi_ai_pipeline_pack": "sha256:c2c8619f8f8ec7384d9200968930c11dc1b37afaa91db6d66ed2c67e85fbcd4a",
     "rumi_ai_routing_pack": "sha256:7c7b69cc6154ae74865d677f9adf666535a76b75e5c4f71b04af710aa21ef95c",

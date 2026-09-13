@@ -412,7 +412,7 @@
             {
               "entrypoint_id": "defaultspack.presentation.read",
               "id": "defaultspack.presentation.read",
-              "implementation_digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a"
+              "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2"
             }
           ],
           "owner": "defaultspack",
@@ -594,7 +594,7 @@
           "path": "runtime/conversation.py"
         },
         {
-          "digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+          "digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
           "kind": "executable",
           "path": "runtime/application_presentation.py"
         },

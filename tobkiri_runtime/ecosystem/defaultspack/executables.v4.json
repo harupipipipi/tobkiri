@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:c01a4ea3ee33d0118c973cfe41695e6a02936e635320ecddbf08166ce8e6b854",
+  "catalog_digest": "sha256:e80ac906e940c64c1ed71109ce3236449dd965712f8fc7e8a57375014724fd50",
   "pack_id": "defaultspack",
-  "source_identity": "sha256:d7cc4dd4f138da29d903a27836636666ef369fc188cb0c5164f60b2884c9fc80",
+  "source_identity": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "sandbox.default.v1",
       "execution_kind": "pack_vm",
       "function_id": "defaultspack.application-presentation",
-      "implementation_digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+      "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
       "implementation_path": "runtime/application_presentation.py",
       "materialization_mode": "on_demand",
       "operations": [

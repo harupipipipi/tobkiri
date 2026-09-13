@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:b318b087eb9cc0f79eb2a61262413deac11cc4649249c00b863a74f770d7b84f",
+      "digest": "sha256:87964530fd144080acf52db9d1b847c0219bb179bd7e923d2af0260fb004c142",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -21,7 +21,7 @@
       "path": "host_contract_contributions.v1.json"
     },
     {
-      "digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+      "digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
       "kind": "executable",
       "path": "runtime/application_presentation.py"
     },
@@ -653,7 +653,7 @@
     {
       "contract_revision_digest": "sha256:d6e1d7af7ba7009863707c15c253dfe43728453b901c6db7c1d33e0861357967",
       "id": "defaultspack.application-presentation",
-      "implementation_digest": "sha256:da1066f9f2a22d46a52b50e73b9901e2006cc91e9be394a9a2ea89ff1495508a",
+      "implementation_digest": "sha256:712e2540875dc130c3d393c85a104c99b37f8d5d0248201b09c6e84c748157f2",
       "isolation": "pack_vm",
       "operations": [
         "defaultspack.presentation.read"
@@ -682,9 +682,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:cc9457705ce820fe959de2cc8fc6af738891c908e391292cc672924073294dc2",
-    "contract_catalog_digest": "sha256:04dfa31aa7e1a466728092e26061f0fcdfff475f36783b6a2570850582dc5394",
-    "source_identity": "sha256:d7cc4dd4f138da29d903a27836636666ef369fc188cb0c5164f60b2884c9fc80"
+    "artifact_set_digest": "sha256:d9ad37600a3abbdac9de678af27b5d6b4c0178dace2accdca527893fd063d3e6",
+    "contract_catalog_digest": "sha256:55413561ab24dc3b929e09497b82ef5f820803781b7b716d7445dc1f6227c2e0",
+    "source_identity": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328"
   },
   "migration": {
     "compatibility": "none",
@@ -719,7 +719,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:cc9457705ce820fe959de2cc8fc6af738891c908e391292cc672924073294dc2",
+    "artifact_digest": "sha256:d9ad37600a3abbdac9de678af27b5d6b4c0178dace2accdca527893fd063d3e6",
     "display_name": "Tobkiri Defaults Providers",
     "id": "defaultspack",
     "kind": "normal_sandbox",
@@ -729,7 +729,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:d7cc4dd4f138da29d903a27836636666ef369fc188cb0c5164f60b2884c9fc80",
+        "digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -740,7 +740,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:d7cc4dd4f138da29d903a27836636666ef369fc188cb0c5164f60b2884c9fc80",
+    "source_digest": "sha256:b91fbca49f3b97fe5d2aeea40666d688b750b831862606d97b58ddc7311fb328",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/defaultspack"
   },

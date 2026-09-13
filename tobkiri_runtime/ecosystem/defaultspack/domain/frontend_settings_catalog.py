@@ -881,7 +881,10 @@ class SettingsSections:
                         "id": "vector_threshold",
                         "label": "Vector Threshold",
                         "type": "number",
-                        "default": 0.1,
+                        # Decimal UI values cross the strict PackVM JSON ABI as
+                        # exact strings. The frontend number control converts
+                        # them to numbers only for display and user input.
+                        "default": "0.1",
                         "min": 0,
                         "max": 1,
                         "help": "vector mode の発火候補スコアしきい値です。外部返信の既定動作は維持します。",
@@ -1032,9 +1035,9 @@ class SettingsSections:
                         "id": "opacity",
                         "label": "Opacity",
                         "type": "number",
-                        "default": 0.36,
-                        "min": 0.05,
-                        "max": 0.9,
+                        "default": "0.36",
+                        "min": "0.05",
+                        "max": "0.9",
                     },
                     {
                         "id": "edge_width",
@@ -1050,7 +1053,7 @@ class SettingsSections:
                         "label": "Animation Speed",
                         "type": "number",
                         "default": 1,
-                        "min": 0.1,
+                        "min": "0.1",
                         "max": 4,
                         "advanced": True,
                     },

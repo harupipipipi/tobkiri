@@ -9,6 +9,7 @@ import sys
 import pytest
 
 from scripts.generate_application_presentation import OUTPUT, _portable_module, render
+from tobkiri_protocol.canonical import strict_loads
 
 OPERATION = "defaultspack.presentation.read"
 
@@ -50,6 +51,10 @@ print(json.dumps(module.tobkiri_packvm_invoke(sys.argv[2], {'kind':'ui', 'model_
         timeout=20,
     )
     value = json.loads(result.stdout)
+    # PackVM applies the strict parser after the isolated child exits. Keep
+    # decimal UI metadata in its exact string representation so a successful
+    # child cannot become an authenticated EXECUTION_FAILED response.
+    assert strict_loads(result.stdout) == value
     assert value["sections"]
     assert value["definitions"]["shell"]
     assert "selected" in result.stdout
