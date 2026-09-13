@@ -12,6 +12,7 @@ type Props = {
   readonly activationCommitted?: boolean;
   readonly error: string | null;
   readonly reconfirmationRequired?: boolean;
+  readonly activationAllowed?: boolean;
   readonly onRecover?: () => void;
   readonly onReviewedChange: (reviewed: boolean) => void;
   readonly onActivate: () => void;
@@ -24,11 +25,14 @@ export function DefaultsReview({
   activationCommitted = false,
   error,
   reconfirmationRequired = false,
+  activationAllowed = true,
   onRecover = () => undefined,
   onReviewedChange,
   onActivate,
 }: Props) {
-  const canActivate = setup?.state === 'review_required' && !activationCommitted;
+  const canActivate = setup?.state === 'review_required'
+    && !activationCommitted
+    && activationAllowed;
   return <section className="rounded-[18px] border border-border bg-bg-card p-7 shadow-lg" aria-labelledby="defaults-review-title">
     <p className="text-xs font-medium text-text-muted">Defaults v4 bootstrap</p>
     <h1 id="defaults-review-title" className="mt-3 text-2xl font-semibold text-text-main">
@@ -72,6 +76,9 @@ export function DefaultsReview({
         </p>
       </div>
       <DefaultsConfirmationDetails confirmation={setup.recommended_default_profile.confirmation} />
+      {!activationAllowed && <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
+        Select “Include new bundled Profile Packs and operation bindings” above to review a complete successor before activation.
+      </p>}
       <label className="flex items-start gap-3 rounded-lg border border-border p-4 text-text-main">
         <input
           type="checkbox"

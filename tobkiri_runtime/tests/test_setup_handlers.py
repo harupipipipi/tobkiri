@@ -79,6 +79,57 @@ def test_setup_forwards_same_additive_candidate_to_activation(via_lifecycle: boo
             capture.assert_called_once_with(confirmation=_request()["confirmation"], include_source_additions=True)
 
 
+def test_reconfirmation_cannot_reactivate_an_incomplete_retained_profile() -> None:
+    handler = _Handler()
+    handler.path = "/api/setup/packs/install"
+    handler._dispatch_session = SimpleNamespace(session_kind="host_profile_control")
+    with (
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()),
+        patch.object(profile_capture, "active_profile_exists", return_value=True),
+        patch.object(profile_capture, "capture_bootstrap_profile") as capture,
+    ):
+        result = handler._setup_install_pack(_request())
+
+    assert result == {
+        "error": (
+            "Profile reconfirmation requires explicit review of new bundled "
+            "Profile Packs and operation bindings"
+        ),
+        "status_code": 409,
+        "state": "activation_denied",
+        "write_set": [],
+    }
+    capture.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("active_profile", "session_kind"),
+    [(False, "host_profile_control"), (True, "production")],
+)
+def test_reconfirmation_guard_preserves_fresh_and_application_activation(
+    active_profile: bool,
+    session_kind: str,
+) -> None:
+    handler = _Handler()
+    handler.path = "/api/setup/packs/install"
+    handler._dispatch_session = SimpleNamespace(session_kind=session_kind)
+    with (
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()),
+        patch.object(
+            profile_capture, "active_profile_exists", return_value=active_profile
+        ),
+        patch.object(
+            profile_capture,
+            "capture_bootstrap_profile",
+            side_effect=ProfileResolutionDenied("test denial"),
+        ) as capture,
+    ):
+        result = handler._setup_install_pack(_request())
+
+    assert result["state"] == "activation_rejected"
+    capture.assert_called_once_with(confirmation=_request()["confirmation"])
+
+
 def test_additive_setup_listing_uses_requested_candidate() -> None:
     handler = _Handler()
     handler.path = "/api/setup/packs?include_source_additions=true"

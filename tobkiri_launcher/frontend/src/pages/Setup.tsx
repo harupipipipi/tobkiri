@@ -342,6 +342,7 @@ export function Setup() {
       activationCommitted={activationCommitted}
       error={setupError}
       reconfirmationRequired={profileReconfirmationRequired}
+      activationAllowed={!profileReconfirmationRequired || includeSourceAdditions}
       onRecover={() => void recoverActivation()}
       onReviewedChange={setReviewed}
       onActivate={() => void activate()}

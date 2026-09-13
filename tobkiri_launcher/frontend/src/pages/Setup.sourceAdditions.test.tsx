@@ -43,8 +43,8 @@ test('changing the additive proposal clears consent and never retains a failed c
   try {
     await act(async () => { root.render(<MemoryRouter><Setup /></MemoryRouter>); });
     assert.equal(boxes().length, 2);
-    await act(async () => { boxes()[1].click(); });
-    assert.equal(boxes()[1].checked, true);
+    assert.equal(boxes()[1].disabled, true, 'an incomplete retained Profile cannot be confirmed');
+    assert.match(container.textContent ?? '', /review a complete successor before activation/);
     await act(async () => { boxes()[0].click(); });
     assert.equal(requests.at(-1), '/api/setup/packs?include_source_additions=true');
     assert.equal(boxes().length, 1, 'old confirmation is removed during review');
@@ -52,6 +52,9 @@ test('changing the additive proposal clears consent and never retains a failed c
     await act(async () => { pending!(response()); });
     assert.equal(boxes().length, 2);
     assert.equal(boxes()[1].checked, false, 'new proposal needs new consent');
+    assert.equal(boxes()[1].disabled, false);
+    await act(async () => { boxes()[1].click(); });
+    assert.equal(boxes()[1].checked, true);
     await act(async () => { boxes()[0].click(); });
     assert.equal(requests.at(-1), '/api/setup/packs');
     await act(async () => {
@@ -93,12 +96,12 @@ test('activation verification keeps an indeterminate submission locked after a f
     value: async (url: string, init?: RequestInit) => {
       requestNumber += 1;
       requests.push({url: String(url), method: init?.method ?? 'GET'});
-      if (requestNumber === 1) {
+      if (requestNumber <= 2) {
         return new Response(JSON.stringify({success: true, data: fixture}), {
           headers: {'Content-Type': 'application/json'},
         });
       }
-      if (requestNumber === 2) throw new TypeError('activation response was lost');
+      if (requestNumber === 3) throw new TypeError('activation response was lost');
       return new Response(JSON.stringify({success: false, error: 'verification unavailable'}), {
         status: 503,
         headers: {'Content-Type': 'application/json'},
@@ -112,6 +115,9 @@ test('activation verification keeps an indeterminate submission locked after a f
   const root = createRoot(container);
   try {
     await act(async () => { root.render(<MemoryRouter><Setup /></MemoryRouter>); });
+    const sourceAdditions = container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    assert.ok(sourceAdditions);
+    await act(async () => { sourceAdditions.click(); });
     const confirmation = [...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].at(-1);
     assert.ok(confirmation);
     await act(async () => { confirmation.click(); });

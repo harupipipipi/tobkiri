@@ -137,6 +137,23 @@ class SetupHandlersMixin:
         decision = runtime.setup_activation_decision(body, listing)
         if decision.response is not None:
             return dict(decision.response)
+        from ..bootstrap.profile_capture import active_profile_exists
+
+        if (
+            not review_options.get("include_source_additions", False)
+            and active_profile_exists()
+            and getattr(getattr(self, "_dispatch_session", None), "session_kind", None)
+            == "host_profile_control"
+        ):
+            return {
+                "error": (
+                    "Profile reconfirmation requires explicit review of new bundled "
+                    "Profile Packs and operation bindings"
+                ),
+                "status_code": 409,
+                "state": "activation_denied",
+                "write_set": [],
+            }
         confirmation = decision.confirmation
         if confirmation is None:
             raise RuntimeError("application setup decision has no activation input")
