@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:cc2fb99cc81a372319ed26837f20299264391a7ca4471edc637c3d5e8e5258fd
+// Raw source digest: sha256:09b267370dfde74a002321cf77af0140bec0059413eebb8d87b2066178831645
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:cc2fb99cc81a372319ed26837f20299264391a7ca4471edc637c3d5e8e5258fd" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:09b267370dfde74a002321cf77af0140bec0059413eebb8d87b2066178831645" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:cc2fb99cc81a372319ed26837f20299264391a7ca4471edc637c3d5e8e5258fd",
+  "artifact_digest": "sha256:09b267370dfde74a002321cf77af0140bec0059413eebb8d87b2066178831645",
   "routes": [
     {
       "method": "GET",
@@ -708,7 +708,8 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
             "model_id",
             "provider_instance_id",
             "display_name",
-            "expected_revision"
+            "expected_revision",
+            "provider_registry_revision"
           ]
         }
       ]
@@ -903,6 +904,14 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "operation_id": "runtime.restart",
           "provider_id": "tobkiri.host.pack-control",
           "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        },
+        {
+          "contribution_id": "defaults.providers.connections.read",
+          "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
+          "provider_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "function_id": "rumi_provider_registry_pack.provider-registry.resource",
           "allowed_payload_keys": []
         }
       ]
@@ -1505,7 +1514,8 @@ const EXPECTED_ROUTES = {
           "model_id",
           "provider_instance_id",
           "display_name",
-          "expected_revision"
+          "expected_revision",
+          "provider_registry_revision"
         ]
       }
     ]
@@ -1688,6 +1698,14 @@ const EXPECTED_ROUTES = {
         "operation_id": "runtime.restart",
         "provider_id": "tobkiri.host.pack-control",
         "function_id": "tobkiri.host.pack-control",
+        "allowed_payload_keys": []
+      },
+      {
+        "contribution_id": "defaults.providers.connections.read",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
+        "provider_id": "rumi_provider_registry_pack.provider-registry.resource",
+        "function_id": "rumi_provider_registry_pack.provider-registry.resource",
         "allowed_payload_keys": []
       }
     ]

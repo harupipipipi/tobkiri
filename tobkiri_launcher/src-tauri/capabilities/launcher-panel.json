@@ -15,7 +15,9 @@
   "permissions": [
     "allow-get-background-control-status",
     "allow-get-desktop-system-info",
+    "allow-check-launcher-update",
     "allow-launch-defaultspack-desktop",
+    "allow-open-launcher-update-release",
     "allow-open-external-url",
     "allow-send-to-background",
     "allow-show-app-window"

@@ -87,6 +87,7 @@ _SUPERVISOR_PROTOCOL = "io.tobkiri.macos-vz-supervisor.v1"
 _BRIDGE_PROTOCOL = "io.tobkiri.packvm.bridge.v1"
 _GUEST_RESPONSE_KIND = "tobkiri.packvm.guest.response.v1"
 _GUEST_RESPONSE_PROTOCOL = "io.tobkiri.macos-vz-supervisor.v1"
+_PACKVM_GUEST_RUNNER_PROTOCOL = "io.tobkiri.packvm-supervisor.v1"
 _HOST_NONCE = re.compile(r"^[a-f0-9]{64}$")
 _GUEST_NONCE = re.compile(r"^[a-f0-9]{48}$")
 _BRIDGE_ERROR_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -876,12 +877,13 @@ class MacOSVZSupervisorDriver:
             guest_challenge=guest_challenge,
             public_key=session.allocation.guest_public_key,
         )
-        if (
-            set(payload) != {"state", "request_id", "signals"}
-            or payload.get("state") != "cancelled"
-            or payload.get("request_id") != request_id
-            or payload.get("signals") not in ([], ["TERM"], ["TERM", "KILL"])
-        ):
+        try:
+            _project_cancellation_ack(
+                payload,
+                request_id=request_id,
+                domain_id=active.domain_id,
+            )
+        except ValueError:
             self._compromise("macOS VZ cancellation acknowledgement is invalid")
             raise BackendUnavailableError("macOS VZ cancellation acknowledgement is invalid")
 
@@ -1616,6 +1618,59 @@ def _validated_invoke_outcome(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     except Exception as exc:
         raise BackendUnavailableError("macOS VZ invocation outcome is invalid") from exc
     return dict(outcome)
+
+
+def _project_cancellation_ack(
+    payload: Mapping[str, Any],
+    *,
+    request_id: str,
+    domain_id: str,
+) -> dict[str, Any]:
+    """Project a verified PackVM cancel reply onto the Host cancel ABI.
+
+    Runner bookkeeping remains in the guest-signed envelope until the caller
+    has verified that signature. Only then may the VZ Host adapt the exact
+    full runner acknowledgement to its three-field cancellation ABI. The
+    legacy exact response remains accepted for already-pinned guest images.
+    """
+    legacy_fields = {"state", "request_id", "signals"}
+    runner_fields = {
+        "ok",
+        "protocol",
+        "operation",
+        "request_id",
+        "target_domain",
+        "state",
+        "signals",
+        "pending_bridge_cancelled",
+    }
+    fields = set(payload)
+    if fields == legacy_fields:
+        candidate = payload
+    elif fields == runner_fields:
+        if (
+            payload.get("ok") is not True
+            or payload.get("protocol") != _PACKVM_GUEST_RUNNER_PROTOCOL
+            or payload.get("operation") != "cancel"
+            or payload.get("target_domain") != domain_id
+            or not isinstance(payload.get("pending_bridge_cancelled"), bool)
+        ):
+            raise ValueError("invalid full PackVM cancellation acknowledgement")
+        candidate = payload
+    else:
+        raise ValueError("invalid PackVM cancellation acknowledgement fields")
+
+    if (
+        candidate.get("state") != "cancelled"
+        or candidate.get("request_id") != request_id
+        or candidate.get("signals") not in ([], ["TERM"], ["TERM", "KILL"])
+    ):
+        raise ValueError("invalid PackVM cancellation acknowledgement values")
+    return {
+        "state": "cancelled",
+        "request_id": request_id,
+        "signals": list(candidate["signals"]),
+    }
 
 
 def _validate_bridge_request(value: Mapping[str, Any]) -> dict[str, Any]:

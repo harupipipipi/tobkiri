@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {AlertTriangle, ArrowRight, CheckCircle2, LockKeyhole, PackagePlus, ShieldCheck, XCircle} from 'lucide-react';
+import {AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, LockKeyhole, PackagePlus, ShieldCheck, XCircle} from 'lucide-react';
 
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
@@ -834,11 +834,13 @@ export function ProfileCeremonyPanel({
 
         {ceremonyState === 'result_unknown' && unknownMutation ? (
           <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm dark:border-amber-800/60 dark:bg-amber-950/20" role="alert">
+            <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="profile-ceremony-result-unknown" />
             <div className="min-w-0 flex-1">
               <p className="font-medium text-text-main">Profile ceremony result is unknown</p>
               <p className="mt-1 text-text-muted">{MUTATION_UNKNOWN_MESSAGE}</p>
               <p className="mt-1 break-all font-mono text-xs text-text-muted">Request identity: {unknownMutation.requestId}</p>
             </div>
+            <CopyErrorButton label="Copy unknown Profile ceremony result" text={`Profile ceremony result is unknown\n${MUTATION_UNKNOWN_MESSAGE}\nRequest identity: ${unknownMutation.requestId}`} />
             <Button
               type="button"
               variant="outline"

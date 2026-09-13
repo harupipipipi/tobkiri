@@ -305,6 +305,15 @@ export interface RuntimeFlowDescriptor {
   label?: string;
   state: string;
   operation_ids: string[];
+  edges: RuntimeFlowEdgeDescriptor[];
+}
+
+/** One exact Profile edge admitted by a Flow composition. */
+export interface RuntimeFlowEdgeDescriptor {
+  caller_function_id: string;
+  target_provider_id: string;
+  contract_id: string;
+  operation_id: string;
 }
 
 export interface RuntimeArtifactEntry {
@@ -1686,22 +1695,70 @@ export function extractExactRouteDescriptors(value: unknown): RuntimeRouteDescri
 
 /** Flow rows must be declared composition records, never Pack-name matches. */
 export function extractExactFlowDescriptors(value: unknown): RuntimeFlowDescriptor[] {
-  return extractExactArray(value, 'flows').flatMap((candidate) => {
+  if (!isRecord(value) || !Array.isArray(value.flows) || !value.flows.every(isRecord)) {
+    return [];
+  }
+  const flows = value.flows.map((candidate): RuntimeFlowDescriptor | null => {
     const operationIds = candidate.operation_ids;
+    const edges = candidate.edges;
+    const state = candidate.state;
     if (
       !validString(candidate.flow_id)
-      || !validString(candidate.state)
+      || !validString(state)
+      || !['ready', 'browsing', 'unavailable'].includes(state)
       || !isStringArray(operationIds)
+      || !Array.isArray(edges)
+      || edges.length === 0
     ) {
-      return [];
+      return null;
     }
-    return [{
+    const exactEdges = edges.map((edge): RuntimeFlowEdgeDescriptor | null => {
+      if (
+        !isRecord(edge)
+        || edge.caller_function_id !== candidate.flow_id
+        || !validString(edge.caller_function_id)
+        || !validString(edge.target_provider_id)
+        || !validString(edge.contract_id)
+        || !validString(edge.operation_id)
+      ) {
+        return null;
+      }
+      return {
+        caller_function_id: edge.caller_function_id,
+        target_provider_id: edge.target_provider_id,
+        contract_id: edge.contract_id,
+        operation_id: edge.operation_id,
+      };
+    });
+    if (exactEdges.some((edge) => edge === null)) return null;
+    const declaredEdges = exactEdges as RuntimeFlowEdgeDescriptor[];
+    const edgeKeys = new Set(declaredEdges.map((edge) => JSON.stringify([
+      edge.caller_function_id,
+      edge.target_provider_id,
+      edge.contract_id,
+      edge.operation_id,
+    ])));
+    if (
+      edgeKeys.size !== declaredEdges.length
+      || new Set(operationIds).size !== operationIds.length
+      || operationIds.some((operationId) => !declaredEdges.some((edge) => edge.operation_id === operationId))
+      || new Set(declaredEdges.map((edge) => edge.operation_id)).size !== operationIds.length
+    ) {
+      return null;
+    }
+    return {
       flow_id: candidate.flow_id,
-      state: candidate.state,
+      state,
       operation_ids: operationIds,
+      edges: declaredEdges,
       ...(validString(candidate.label) ? {label: candidate.label} : {}),
-    }];
+    };
   });
+  if (flows.some((flow) => flow === null)) return [];
+  const descriptors = flows as RuntimeFlowDescriptor[];
+  return new Set(descriptors.map((flow) => flow.flow_id)).size === descriptors.length
+    ? descriptors
+    : [];
 }
 
 function isSafeRelativeArtifactPath(value: unknown): value is string {

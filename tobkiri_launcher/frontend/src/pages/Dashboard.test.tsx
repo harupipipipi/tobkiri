@@ -738,3 +738,91 @@ test('Home keeps a verified catalog writable after a rejected Profile mutation',
     useAppStore.setState(previousState, true);
   }
 });
+
+test('Home blocks reentrant Profile mutations and releases only the matching busy operation', async () => {
+  const previousState = useAppStore.getState();
+  const previousFetch = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
+  const previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
+  let updateRequests = 0;
+  let releaseUpdate!: (response: Response) => void;
+  const pendingUpdate = new Promise<Response>((resolve) => { releaseUpdate = resolve; });
+
+  try {
+    globalThis.fetch = (async (input, init) => {
+      const path = new URL(String(input), 'http://localhost').pathname;
+      if (path === '/api/v4/profiles') return jsonResponse(profileRegistry());
+      assert.equal(path, '/api/v4/profiles/update');
+      assert.equal(init?.method, 'POST');
+      updateRequests += 1;
+      return pendingUpdate;
+    }) as typeof fetch;
+    useAppStore.setState({
+      isSetupDone: true,
+      runtimeReady: false,
+      runtimeStatus: 'starting',
+      runtimeError: null,
+      runtimeDisconnected: false,
+      lastRuntimeHealthyAt: null,
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      activeProfileReady: false,
+      launchReady: false,
+    });
+    const {dom, container, root} = createDashboardDom();
+    try {
+      await act(async () => {
+        root.render(<MemoryRouter><Dashboard /></MemoryRouter>);
+      });
+      await settle();
+      await act(async () => { buttonByLabel(container, 'Open actions for Research Profile').click(); });
+      await act(async () => { menuItemByText('Edit').click(); });
+
+      const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="Display name for research"]');
+      assert.ok(nameInput);
+      await act(async () => {
+        changeControlValue(dom, nameInput, 'Research Renamed');
+      });
+      const form = nameInput.closest('form');
+      assert.ok(form);
+      await act(async () => {
+        form.dispatchEvent(new dom.window.Event('submit', {bubbles: true, cancelable: true}));
+        form.dispatchEvent(new dom.window.Event('submit', {bubbles: true, cancelable: true}));
+        await Promise.resolve();
+      });
+
+      assert.equal(updateRequests, 1, 'only the first mutation may reach the Host');
+      assert.equal(buttonByLabel(container, 'Add Profile').disabled, true);
+      await act(async () => { buttonByLabel(container, 'Open actions for Defaults Profile').click(); });
+      assert.equal((menuItemByText('Duplicate') as HTMLButtonElement).disabled, true);
+
+      const updated = profileRegistry();
+      updated.generation = 2;
+      updated.profiles[1] = profileRecord('research', 'Research Renamed', digest('b'));
+      await act(async () => {
+        releaseUpdate(jsonResponse(updated));
+        await pendingUpdate;
+      });
+      await settle();
+
+      assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
+      assert.match(container.textContent ?? '', /Research Renamed/);
+    } finally {
+      await act(async () => root.unmount());
+      dom.window.close();
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+      localStorage: {value: previousLocalStorage, configurable: true},
+      sessionStorage: {value: previousSessionStorage, configurable: true},
+    });
+    useAppStore.setState(previousState, true);
+  }
+});

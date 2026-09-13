@@ -120,6 +120,8 @@ function configureStore(currentPack: Pack, currentCatalog = catalog): void {
     packVmDoctorLoading: false,
     refreshPackVMDoctor: async () => healthyDoctor,
     packOperationPending: {},
+    packMutationUnknown: {},
+    packOperationUnknown: {},
     loadPacks: async () => {},
     loadFrontendCatalog: async () => {},
     invokePackOperation: async () => ({ok: true}),
@@ -213,6 +215,38 @@ test('PackDetail exposes required Profile Packs without revoke or toggle actions
     assert.match(container.textContent ?? '', /Host-global artifact inventory and install state/);
     assert.equal(container.querySelector('[role="switch"]'), null);
     assert.equal(container.querySelector('[aria-label^="Revoke approval"]'), null);
+  } finally {
+    act(() => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
+test('PackDetail exposes unknown mutation results with a separate status icon and copy action', async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  configureStore(pack);
+  useAppStore.setState({
+    packMutationUnknown: {
+      'pack:toggle:rumi_file_inspect_pack:disable': {
+        key: 'pack:toggle:rumi_file_inspect_pack:disable',
+        requestId: 'b461a9e3-ae97-4c0e-bc2e-818e23554631',
+        state: 'unknown',
+        createdAt: 1,
+        metadata: {kind: 'pack.toggle', pack_id: pack.id},
+      },
+    },
+  });
+
+  try {
+    await renderDetail(root);
+    assert.match(container.textContent ?? '', /The result of a Pack mutation is unknown/);
+    assert.ok(container.querySelector('[data-error-icon="pack-mutation-unknown"]'));
+    const copy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy unknown Pack mutation result"]',
+    );
+    assert.ok(copy);
+    assert.ok(copy.querySelector('svg.lucide-copy'));
   } finally {
     act(() => root.unmount());
     useAppStore.setState(previousState, true);

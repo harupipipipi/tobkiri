@@ -8,7 +8,7 @@ Nonauthoritative, read-only facts. This report never grants runtime admission.
 - Operations: 203
 - Tracked Profiles: 1
 - Tracked-Profile-reachable packs: 28
-- Tracked-Profile-reachable operations: 88
+- Tracked-Profile-reachable operations: 89
 - AI Runtime signals: 14
 - Tool Runtime signals: 17
 - No AI/Tool Runtime signal: 34
@@ -19,7 +19,7 @@ Nonauthoritative, read-only facts. This report never grants runtime admission.
 
 | Profile | Authority | Schema | Packs | Edges | Source |
 |---|---|---|---:|---:|---|
-| `defaults` | authoritative_intent | valid | 30 | 121 | `ecosystem/defaultspack/v4/defaults.profile.intent.v1.json` |
+| `defaults` | authoritative_intent | valid | 30 | 126 | `ecosystem/defaultspack/v4/defaults.profile.intent.v1.json` |
 
 ## Pack facts
 
@@ -63,7 +63,7 @@ Nonauthoritative, read-only facts. This report never grants runtime admission.
 | `rumi_p2p_connector_pack` | 1 | none | 0 | valid | - |
 | `rumi_prompt_studio_pack` | 5 | none | 1 | valid | - |
 | `rumi_provider_adapters_pack` | 4 | ai_runtime_signal | 2 | valid | runtime_signal_requires_human_review |
-| `rumi_provider_registry_pack` | 9 | ai_runtime_signal | 6 | valid | runtime_signal_requires_human_review |
+| `rumi_provider_registry_pack` | 9 | ai_runtime_signal | 7 | valid | runtime_signal_requires_human_review |
 | `rumi_repository_context_pack` | 4 | ai_runtime_signal | 0 | valid | no_tracked_profile_reachable_operation, runtime_signal_requires_human_review |
 | `rumi_shell_execute_pack` | 2 | none | 2 | valid | - |
 | `rumi_slack_connector_pack` | 2 | none | 0 | valid | - |

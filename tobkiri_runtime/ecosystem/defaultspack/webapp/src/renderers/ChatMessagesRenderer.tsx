@@ -398,6 +398,10 @@ function SafeChatLink({ href, children }: { href?: string; children: ReactNode }
     if (decision.kind === "internal" && decision.allowed && !decision.textMismatch) open();
     else setReviewing(true);
   };
+  const statusIsError = /could not|blocked|failed/i.test(status);
+  // Retrying a clipboard operation by copying the failure message would be
+  // recursive. The reviewed destination remains visible for manual selection.
+  const clipboardCopyFailed = status.startsWith("Copy failed.");
 
   return (
     <span className="inline-flex max-w-full flex-col align-baseline">
@@ -411,12 +415,25 @@ function SafeChatLink({ href, children }: { href?: string; children: ReactNode }
           <span>{decision.reason || (decision.kind === "web" ? "External web page" : decision.kind)}</span>
           <span className="flex flex-wrap gap-2">
             <button type="button" disabled={!decision.allowed} onClick={open} className="rounded-md bg-sky-500/20 px-3 py-1.5 font-semibold text-sky-100 disabled:cursor-not-allowed disabled:opacity-40">{decision.requiresStrongConfirmation ? "Open after review" : "Open"}</button>
-            <button type="button" onClick={() => void navigator.clipboard?.writeText(decision.normalizedUrl || href || "").then(() => setStatus("Link copied.")).catch(() => setStatus("Copy failed. Select the destination text instead."))} className="rounded-md border border-zinc-700 px-3 py-1.5">Copy link</button>
+            <button type="button" onClick={() => void copyTextWithFallback(decision.normalizedUrl || href || "").then((copied) => setStatus(copied ? "Link copied." : "Copy failed. Select the destination text instead."))} className="rounded-md border border-zinc-700 px-3 py-1.5">Copy link</button>
             <button autoFocus type="button" onClick={() => { setReviewing(false); setStatus("Cancelled. Your chat and draft are unchanged."); }} className="rounded-md border border-zinc-700 px-3 py-1.5">Cancel</button>
           </span>
         </span>
       )}
-      {status && <span role={/could not|blocked|failed/i.test(status) ? "alert" : "status"} className="mt-1 text-[11px] text-zinc-400">{status}</span>}
+      {status && (
+        <span role={statusIsError ? "alert" : "status"} className="mt-1 flex items-start gap-1.5 text-[11px] text-zinc-400">
+          {statusIsError ? <CircleAlert aria-hidden="true" className="mt-0.5 size-3 shrink-0 text-red-300" data-error-icon="chat-link-status" /> : null}
+          <span className="min-w-0 flex-1">{status}</span>
+          {statusIsError && !clipboardCopyFailed ? (
+            <ErrorCopyAction copyText={status} label="リンクエラーをコピー" />
+          ) : null}
+          {clipboardCopyFailed ? (
+            <span className="sr-only" data-copy-retry-unavailable="clipboard-failed">
+              Clipboard access failed, so select the reviewed destination text to copy it manually.
+            </span>
+          ) : null}
+        </span>
+      )}
     </span>
   );
 }

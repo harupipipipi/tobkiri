@@ -47,6 +47,10 @@ test('the setup component exposes verification instead of replay after an ambigu
   assert.match(html, /Activation was submitted; verification is required/);
   assert.match(html, /previous confirmation will not be submitted again/);
   assert.match(html, /Verify activation/);
+  assert.match(html, /data-error-icon="activation-verification-required"/);
+  assert.match(html, /lucide-clock-3/);
+  assert.match(html, /aria-label="Copy activation verification status"/);
+  assert.match(html, /lucide-copy/);
 });
 
 test('setup activation is explicit and followed by selected presentation materialization', () => {
@@ -76,6 +80,7 @@ test('setup activation is explicit and followed by selected presentation materia
   assert.match(setupSource, /activateDefaultsWithRecovery/);
   assert.match(setupSource, /recoverDefaultsActivation/);
   assert.match(setupSource, /fetchAuthoritativeSetup: \(\) => fetchDefaultsSetupState\(\{waitForRestart: true\}\)/);
+  assert.match(setupSource, /\{committedActivation: activationCommitted\}/);
 });
 
 test('activation denial remains visible and disables confirmation controls', () => {
@@ -99,6 +104,14 @@ test('activation denial remains visible and disables confirmation controls', () 
   assert.match(html, /lucide-shield-alert/);
   assert.match(html, /lucide-copy/);
   assert.match(html, /disabled=""/);
+});
+
+test('presentation load failures have one reachable diagnostic with an icon and copy action', () => {
+  assert.match(setupSource, /presentationError \? <div role="alert"/);
+  assert.match(setupSource, /data-error-icon="presentation"/);
+  assert.match(setupSource, /CopyErrorButton label="Copy presentation error" text=\{presentationError\}/);
+  assert.doesNotMatch(setupSource, /role=\{presentationError \? 'alert' : 'status'\}/);
+  assert.doesNotMatch(setupSource, /\{presentationError \? <AlertCircle/);
 });
 
 test('reconfirmation setup copy exposes only the Host-owned bootstrap ceremony', () => {

@@ -240,6 +240,8 @@ fn main() {
             "restart_kernel",
             "reauthorize_panel_session",
             "open_external_url",
+            "check_launcher_update",
+            "open_launcher_update_release",
             "close_current_window",
             "open_authority_approval_window",
             "open_ambient_trigger_window",

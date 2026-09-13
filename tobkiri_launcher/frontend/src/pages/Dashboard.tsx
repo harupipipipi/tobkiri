@@ -1,5 +1,5 @@
 import type {FormEvent} from 'react';
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {Link, useSearchParams, useOutletContext} from 'react-router';
 import {
   AlertCircle,
@@ -107,6 +107,7 @@ export function Dashboard() {
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const [profileActionError, setProfileActionError] = useState<string | null>(null);
   const [profileBusy, setProfileBusy] = useState<string | null>(null);
+  const profileOperationKeyRef = useRef<string | null>(null);
   const [newProfileId, setNewProfileId] = useState('');
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileSourceId, setNewProfileSourceId] = useState('');
@@ -191,6 +192,19 @@ export function Dashboard() {
     })
   ), [registry]);
 
+  const beginProfileOperation = (key: string): boolean => {
+    if (profileOperationKeyRef.current !== null) return false;
+    profileOperationKeyRef.current = key;
+    setProfileBusy(key);
+    return true;
+  };
+
+  const finishProfileOperation = (key: string): void => {
+    if (profileOperationKeyRef.current !== key) return;
+    profileOperationKeyRef.current = null;
+    setProfileBusy((current) => current === key ? null : current);
+  };
+
   const commitProfileMutation = async (
     key: string,
     operation: () => Promise<NamedProfileRegistry>,
@@ -203,7 +217,7 @@ export function Dashboard() {
       addToast(message, 'error');
       return false;
     }
-    setProfileBusy(key);
+    if (!beginProfileOperation(key)) return false;
     try {
       setRegistry(await operation());
       setProfileActionError(null);
@@ -215,7 +229,7 @@ export function Dashboard() {
       if (throwOnError) throw error;
       return false;
     } finally {
-      setProfileBusy(null);
+      finishProfileOperation(key);
     }
     return true;
   };
@@ -336,7 +350,8 @@ export function Dashboard() {
       || profileView.status !== 'ready'
     ) return;
 
-    setProfileBusy(`launch:${entry.profile_id}`);
+    const key = `launch:${entry.profile_id}`;
+    if (!beginProfileOperation(key)) return;
     try {
       const result = await launchSelectedPresentation();
       addToast(result.message || `${namedProfileDisplayName(entry)} launched.`, 'success');
@@ -344,7 +359,7 @@ export function Dashboard() {
       const message = error instanceof Error ? error.message : 'Profile launch was rejected.';
       addToast(message, 'error');
     } finally {
-      setProfileBusy(null);
+      finishProfileOperation(key);
     }
   };
 
@@ -365,7 +380,7 @@ export function Dashboard() {
               aria-label="Add Profile"
               aria-controls="add-profile-form"
               aria-expanded={showAddProfile}
-              disabled={!profileCatalogVerified}
+              disabled={!profileCatalogVerified || profileBusy !== null}
               onClick={() => setShowAddProfile((shown) => !shown)}
               title={profileCatalogVerified ? 'Add a new named Profile' : 'Profile catalog verification is unavailable'}
               type="button"
@@ -519,7 +534,7 @@ export function Dashboard() {
               <div className="flex flex-col gap-2">
                 <span className="sr-only" id="add-profile-help">Create a named Profile by explicitly choosing an existing source Profile.</span>
                 <Button
-                  disabled={!profileCatalogVerified || !newProfileSourceId || profileBusy === 'create'}
+                  disabled={!profileCatalogVerified || !newProfileSourceId || profileBusy !== null}
                   size="sm"
                   type="submit"
                 >
@@ -567,7 +582,7 @@ export function Dashboard() {
                 <Button
                   aria-label="Create Profile"
                   className="mt-4"
-                  disabled={!profileCatalogVerified}
+                  disabled={!profileCatalogVerified || profileBusy !== null}
                   onClick={() => setShowAddProfile(true)}
                   type="button"
                 >

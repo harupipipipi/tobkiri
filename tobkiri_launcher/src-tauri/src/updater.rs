@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Information about an available update.
 #[derive(Debug, Clone)]
@@ -17,6 +17,17 @@ pub struct UpdateInfo {
     pub release_url: String,
     /// The currently running version, e.g. "0.1.0".
     pub current_version: String,
+}
+
+/// Stable Launcher-facing result for an explicit update check.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LauncherUpdateStatus {
+    /// `available` when a newer release exists, otherwise `up_to_date`.
+    pub state: &'static str,
+    /// The currently running Launcher version.
+    pub current_version: String,
+    /// The newer release version, when one exists.
+    pub latest_version: Option<String>,
 }
 
 /// Partial GitHub Releases API response.
@@ -58,8 +69,28 @@ pub fn check_for_update() -> Result<Option<UpdateInfo>> {
     }
 }
 
+/// Check the official Launcher release channel and return a UI-safe status.
+pub fn check_for_update_status() -> Result<LauncherUpdateStatus> {
+    let current_version = parse_version(env!("CARGO_PKG_VERSION"))
+        .context("failed to parse current version")?
+        .to_string();
+    match check_for_update()? {
+        Some(info) => Ok(LauncherUpdateStatus {
+            state: "available",
+            current_version: info.current_version,
+            latest_version: Some(info.latest_version),
+        }),
+        None => Ok(LauncherUpdateStatus {
+            state: "up_to_date",
+            current_version,
+            latest_version: None,
+        }),
+    }
+}
+
 /// Open the release page in the user's default browser.
 pub fn open_release_page(info: &UpdateInfo) -> Result<()> {
+    validate_release_url(&info.release_url)?;
     open::that_detached(&info.release_url).context("failed to open release page in browser")?;
     Ok(())
 }
@@ -97,6 +128,18 @@ fn fetch_latest_release() -> Result<GitHubRelease> {
 fn parse_version(tag: &str) -> Result<semver::Version> {
     let cleaned = tag.strip_prefix('v').unwrap_or(tag);
     semver::Version::parse(cleaned).with_context(|| format!("invalid semver: {tag}"))
+}
+
+fn validate_release_url(release_url: &str) -> Result<()> {
+    let url = reqwest::Url::parse(release_url).context("release URL is invalid")?;
+    let expected_path = format!("/{RELEASE_REPOSITORY}/releases/");
+    if url.scheme() != "https"
+        || url.host_str() != Some("github.com")
+        || !url.path().starts_with(&expected_path)
+    {
+        bail!("release URL is outside the official Tobkiri release channel");
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -146,5 +189,42 @@ mod tests {
             "https://api.github.com/repos/harupipipipi/tobkiri/releases/latest"
         );
         assert!(!RELEASE_REPOSITORY.contains("rumiai"));
+    }
+
+    #[test]
+    fn release_page_is_bound_to_the_official_https_release_path() {
+        assert!(validate_release_url(
+            "https://github.com/harupipipipi/tobkiri/releases/tag/v1.2.3"
+        )
+        .is_ok());
+        assert!(
+            validate_release_url("http://github.com/harupipipipi/tobkiri/releases/tag/v1.2.3")
+                .is_err()
+        );
+        assert!(
+            validate_release_url("https://github.com/harupipipipi/other/releases/tag/v1.2.3")
+                .is_err()
+        );
+        assert!(validate_release_url(
+            "https://github.com.evil.example/harupipipipi/tobkiri/releases/tag/v1.2.3"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn launcher_update_status_serializes_with_a_stable_frontend_shape() {
+        let status = LauncherUpdateStatus {
+            state: "available",
+            current_version: "1.0.0".into(),
+            latest_version: Some("1.1.0".into()),
+        };
+        assert_eq!(
+            serde_json::to_value(status).unwrap(),
+            serde_json::json!({
+                "state": "available",
+                "current_version": "1.0.0",
+                "latest_version": "1.1.0",
+            })
+        );
     }
 }

@@ -28,13 +28,13 @@ export function resolveSetupVerificationState(
   input: SetupVerificationInput,
 ): SetupVerificationState {
   if (input.runtimeDisconnected) return 'denied';
+  if (input.runtimeStatus === 'error') return 'denied';
   if (input.defaultsBootstrapRequired) return 'needs_setup';
+  if (input.runtimeStatus === 'profile_reconfirmation_required') return 'needs_reconfirm';
   if (input.hostCatalogVerified && input.profileCeremonyAvailable) {
     return 'verified';
   }
   if (!input.isSetupDone) return 'needs_setup';
-  if (input.runtimeStatus === 'profile_reconfirmation_required') return 'needs_reconfirm';
-  if (input.runtimeStatus === 'error') return 'denied';
   if (input.runtimeReady && input.runtimeStatus === 'runtime_ready') return 'verified';
   return 'checking';
 }

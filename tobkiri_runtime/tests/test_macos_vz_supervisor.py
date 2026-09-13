@@ -288,6 +288,7 @@ class _Transport:
         self.guest_rejection = False
         self.guest_rejection_code = "GUEST_DENIED"
         self.pending_bridge = False
+        self.full_cancel_ack = False
         self.helper_failure: str | None = None
         self.replay_host_nonce: str | None = None
         self.closed = False
@@ -446,11 +447,27 @@ class _Transport:
                 data={"kind": "tobkiri.packvm.invoke.result.v1", "outcome": {"text": "bridged"}},
             )
         elif operation == "cancel":
+            cancel_data: dict[str, Any] = {
+                "state": "cancelled",
+                "request_id": request["request_id"],
+                "signals": ["TERM"],
+            }
+            if self.full_cancel_ack:
+                cancel_data = {
+                    "ok": True,
+                    "protocol": "io.tobkiri.packvm-supervisor.v1",
+                    "operation": "cancel",
+                    "request_id": request["request_id"],
+                    "target_domain": self.allocation.domain_id,
+                    "state": "cancelled",
+                    "signals": ["TERM"],
+                    "pending_bridge_cancelled": True,
+                }
             payload = self._guest(
                 request,
                 operation="cancel",
                 request_id=request["request_id"],
-                data={"state": "cancelled", "request_id": request["request_id"], "signals": ["TERM"]},
+                data=cancel_data,
             )
         elif operation == "terminate":
             payload = {
@@ -739,6 +756,63 @@ def test_cancel_during_host_callback_fences_late_result(
     with pytest.raises(BackendUnavailableError, match="cancellation was requested"):
         driver.invoke(_request("domain.provider.conversation"))
     assert not any(item["operation"] == "bridge_result" for item in transport.requests)
+
+
+def test_cancel_ack_projection_requires_the_exact_runner_schema() -> None:
+    """Runner bookkeeping is projected only from its versioned full schema."""
+    runner_ack = {
+        "ok": True,
+        "protocol": "io.tobkiri.packvm-supervisor.v1",
+        "operation": "cancel",
+        "request_id": "request-1",
+        "target_domain": "domain.provider.conversation",
+        "state": "cancelled",
+        "signals": ["TERM"],
+        "pending_bridge_cancelled": True,
+    }
+    assert macos_vz_supervisor._project_cancellation_ack(
+        runner_ack,
+        request_id="request-1",
+        domain_id="domain.provider.conversation",
+    ) == {
+        "state": "cancelled",
+        "request_id": "request-1",
+        "signals": ["TERM"],
+    }
+
+    invalid_ack = {**runner_ack, "pending_bridge_cancelled": "true"}
+    with pytest.raises(ValueError, match="invalid full PackVM"):
+        macos_vz_supervisor._project_cancellation_ack(
+            invalid_ack,
+            request_id="request-1",
+            domain_id="domain.provider.conversation",
+        )
+
+
+def test_cancel_projects_verified_full_guest_runner_ack_for_host_contract(
+    tmp_path: Path,
+) -> None:
+    """A signed runner ACK is normalized only after Host verification."""
+    driver, allocator = _driver(tmp_path)
+
+    def callback(outer_request: object, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        driver.cancel("request-1")
+        assert getattr(outer_request, "cancellation_requested").is_set()
+        return _bridge_result(request)
+
+    driver.bind_capability_bridge(callback)
+    _launch(driver)
+    transport = allocator.transports["domain.provider.conversation"]
+    transport.pending_bridge = True
+    # `_guest()` signs this full payload. The Host must verify those original
+    # bytes before projecting the runner bookkeeping fields away.
+    transport.full_cancel_ack = True
+
+    with pytest.raises(BackendUnavailableError, match="cancellation was requested"):
+        driver.invoke(_request("domain.provider.conversation"))
+
+    assert any(item["operation"] == "cancel" for item in transport.requests)
+    assert driver.capability()[0] is True
 
 
 def test_signed_pending_bridge_uses_host_callback_and_resumes_once(tmp_path: Path) -> None:

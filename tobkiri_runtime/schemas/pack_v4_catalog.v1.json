@@ -193,42 +193,54 @@
           "provider_id": "defaultspack.conversation.saved",
           "required_capabilities": [],
           "schemas": {
-            "input": {
-              "$schema": "https://json-schema.org/draft/2020-12/schema",
-              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
-              "title": "Saved conversation initial input",
-              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
-              "type": "object",
+            "error": {
               "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
               "required": [
-                "request"
+                "code",
+                "message"
               ],
+              "type": "object"
+            },
+            "input": {
+              "$defs": {
+                "identifier": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  },
+                  "pattern": "^[A-Za-z0-9]",
+                  "type": "string"
+                }
+              },
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "additionalProperties": false,
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
               "properties": {
                 "request": {
-                  "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "turn_id",
-                    "conversation_id",
-                    "conversation_revision",
-                    "content"
-                  ],
                   "properties": {
-                    "turn_id": {
-                      "$ref": "#/$defs/identifier"
+                    "content": {
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "type": "string"
                     },
                     "conversation_id": {
                       "$ref": "#/$defs/identifier"
                     },
                     "conversation_revision": {
-                      "type": "integer",
+                      "maximum": 9007199254740991,
                       "minimum": 1,
-                      "maximum": 9007199254740991
-                    },
-                    "content": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "\\S"
+                      "type": "integer"
                     },
                     "tool_selection": {
                       "additionalProperties": false,
@@ -359,40 +371,28 @@
                         "mode"
                       ],
                       "type": "object"
+                    },
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
                     }
-                  }
+                  },
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "type": "object"
                 }
               },
-              "$defs": {
-                "identifier": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9]",
-                  "not": {
-                    "pattern": "[^A-Za-z0-9._:-]"
-                  }
-                }
-              }
+              "required": [
+                "request"
+              ],
+              "title": "Saved conversation initial input",
+              "type": "object"
             },
             "output": {
               "type": "object"
-            },
-            "error": {
-              "type": "object",
-              "required": [
-                "code",
-                "message"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false
             }
           },
           "security": "restricted",
@@ -402,7 +402,6 @@
           "cardinality": "one",
           "contract_id": "tobkiri.resource.application.presentation.v1",
           "failure": "fail_closed",
-          "security": "sensitive",
           "isolation": "sandbox",
           "lifecycle": {
             "deprecated": false,
@@ -419,60 +418,8 @@
           "provider_id": "defaultspack.application-presentation",
           "required_capabilities": [],
           "schemas": {
-            "input": {
-              "type": "object",
-              "required": [
-                "kind"
-              ],
-              "properties": {
-                "kind": {
-                  "enum": [
-                    "ui",
-                    "commands"
-                  ]
-                },
-                "model_options": {
-                  "type": "array",
-                  "maxItems": 256,
-                  "items": {
-                    "type": "object",
-                    "required": [
-                      "value",
-                      "label"
-                    ],
-                    "properties": {
-                      "value": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 4096
-                      },
-                      "label": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 4096
-                      }
-                    },
-                    "additionalProperties": false
-                  }
-                },
-                "profile_id": {
-                  "type": "string"
-                },
-                "_session_id": {
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false
-            },
-            "output": {
-              "type": "object"
-            },
             "error": {
-              "type": "object",
-              "required": [
-                "code",
-                "message"
-              ],
+              "additionalProperties": false,
               "properties": {
                 "code": {
                   "type": "string"
@@ -481,9 +428,62 @@
                   "type": "string"
                 }
               },
-              "additionalProperties": false
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "_session_id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "ui",
+                    "commands"
+                  ]
+                },
+                "model_options": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "label": {
+                        "maxLength": 4096,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "value": {
+                        "maxLength": 4096,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "label"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 256,
+                  "type": "array"
+                },
+                "profile_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
             }
           },
+          "security": "sensitive",
           "version": "1.0.0"
         },
         {
@@ -616,718 +616,718 @@
           "path": "update_metadata.v1.json"
         },
         {
-          "path": "tools/artifact_export/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/artifact_export/manifest.json"
         },
         {
-          "path": "tools/artifact_file_delete/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:ecb43e92268971bd540a46bcc2f1f5180e53dced7490fcbd2ee3d1712c51ac70",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/artifact_file_delete/manifest.json"
         },
         {
-          "path": "tools/artifact_file_list/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:dd62382bc82f95d2edc5235f1dc152a1ccf1e9994d3621999085437755a6d3a9",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/artifact_file_list/manifest.json"
         },
         {
-          "path": "tools/artifact_file_patch/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:250122f96b6805d51863fde10f2cffafc40d98faecffdf72d9e9dffa513bdf59",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/artifact_file_patch/manifest.json"
         },
         {
-          "path": "tools/artifact_file_read/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:2ae379bf7ae987b793b79222192252b48956c2ff08c85056177db2baf50a110e",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/artifact_file_read/manifest.json"
         },
         {
-          "path": "tools/artifact_file_write/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:b57fb2e3882a07574c1663aa869b6145d5e54eaaf933da03cfe844b64d61ad96",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/artifact_file_write/manifest.json"
         },
         {
-          "path": "tools/artifact_preview/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:abb476014c85b37553d0a15189f93aea579831f545c44c7b6c6ca5656c484f1c",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/artifact_preview/manifest.json"
         },
         {
-          "path": "tools/artifact_zip/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:60059ecb5fc3cd66f73cbc36716e1e9c16d06ebdf6b02a1273ecb2a1af03eaaf",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/artifact_zip/manifest.json"
         },
         {
-          "path": "tools/audio_transcribe/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:9ef3e19e8c30dcd038a942d7095c82f63769611e9b956cb0251cbea7c2040ec7",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/audio_transcribe/manifest.json"
         },
         {
-          "path": "tools/audio_transcribe_local/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:f5ae159e58c886bfd4b71a75f4e897c52550bd55f13bf8cc0174ea4f518e7696",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/audio_transcribe_local/manifest.json"
         },
         {
-          "path": "tools/browser_download_collect/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:a78ece887cef2bf945972333b5641bb07a3991645261f6e808c72404ee05f6e2",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/browser_download_collect/manifest.json"
         },
         {
-          "path": "tools/browser_extract_table/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:353ca7439ccaa42f704a0b3218f4ef0a55f9762f859c8714600f763a8bb63718",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/browser_extract_table/manifest.json"
         },
         {
-          "path": "tools/browser_save_page/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:c9eac8b6f4dd81830ece8447a8d917fa58cd7137241f513987e7180da97817cc",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/browser_save_page/manifest.json"
         },
         {
-          "path": "tools/browser_upload_file/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:c0e3194557c0bc093965411104f11c8d365e734882de6308142da6e569489204",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/browser_upload_file/manifest.json"
         },
         {
-          "path": "tools/calendar_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:159b665b36e5da95d8cf73ca6b8423c6e10dad3b9f1631ceeb0232bb29d2c6e5",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/calendar_create/manifest.json"
         },
         {
-          "path": "tools/chart_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:d293cd2511b356b9986f2d1ea181a40f3dbdef4f2c38251d6c263f67cbe49f4c",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/chart_create/manifest.json"
         },
         {
-          "path": "tools/desktop_access_grant/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:14bf8ef957d7df523dbb7f4d4870eafd997eb7f345177632b96f13e651c83c9b",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_access_grant/manifest.json"
         },
         {
-          "path": "tools/desktop_access_request/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:349e1ce836ed330ecc79342cec9095f88cdfc81b0e3611168401521528686907",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_access_request/manifest.json"
         },
         {
-          "path": "tools/desktop_control_acquire/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:a6c302474745b2bb37265bd218732ee57cd322ba5dcf2f13447d00fb10043471",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_control_acquire/manifest.json"
         },
         {
-          "path": "tools/desktop_control_release/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:a74e45fe373a1f4ac0be2fafc88e105d8dc9f9cd979a7feb730f5de960af2301",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_control_release/manifest.json"
         },
         {
-          "path": "tools/desktop_control_renew/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:464597aeaa1cbf471b808a5810d18faf6582c6e538faf7f0c1dd557189a0791a",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_control_renew/manifest.json"
         },
         {
-          "path": "tools/desktop_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:8b4f135c150ebe7c46de8205b757e0c76bc4f17e804a62e2c540476368b9a076",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_create/manifest.json"
         },
         {
-          "path": "tools/desktop_frame/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:ee78e05f215a858f09b00468b0908f3115133ac5489e74d04dffee5de1e70bfd",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_frame/manifest.json"
         },
         {
-          "path": "tools/desktop_input/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:fe52b8b9fe6335bdaa6b5f29a5162a34a735ee09f4bce2ce2344335190823b34",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_input/manifest.json"
         },
         {
-          "path": "tools/desktop_list/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:d09e9967fb36a862595961c8a8f3cabd7b6e9f1e49cb90a1961cd1c986c3c793",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_list/manifest.json"
         },
         {
-          "path": "tools/desktop_rules_update/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:5354be425fa1f56b6b7d406742b18c6d201f8e359c82fc3f2fe1b07b21e9c6f8",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/desktop_rules_update/manifest.json"
         },
         {
-          "path": "tools/discord_send/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:d6bbf71c4d4e974a1c8eb2eb0030ac5fb4455ceec24079432b24dadccdf68cfd",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/discord_send/manifest.json"
         },
         {
-          "path": "tools/doc_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:0857ef9e1b892728dfee04fde01b1f7a4eeb8740bc4c80e98a73cf656d258d0c",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/doc_create/manifest.json"
         },
         {
-          "path": "tools/doc_export/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:7536ea42d3152a08727a2048b2782e47db7d225839be0135ad0c81d069f6177a",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/doc_export/manifest.json"
         },
         {
-          "path": "tools/doc_to_pdf/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:8cf8adea65b8ec688e05c084a6b7161abf1b1d40a42cd15a8f98a888b0eee7ee",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/doc_to_pdf/manifest.json"
         },
         {
-          "path": "tools/doc_update/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:0adf29db977b9d1894948f16b8d2eaf2f54184fd121d79baad75878e9c45e1a3",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/doc_update/manifest.json"
         },
         {
-          "path": "tools/drive_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:0dd24b72b6dace7c9f299e7a0a028f11f6f488a4f2c82ea55c60425849a952c7",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/drive_create/manifest.json"
         },
         {
-          "path": "tools/drive_export/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:e15a533667298d0103f78b3eaa4e3fe87cd536a649f25670b4e820cb887c52b1",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/drive_export/manifest.json"
         },
         {
-          "path": "tools/external_send/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:b744ba6aa6c689548044af0199de519302b506044013b9d4b9f6e5248f0ca24e",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/external_send/manifest.json"
         },
         {
-          "path": "tools/github_issue_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:13fb0e4fdcb024abeca4ab4dcc222e148d6f6ee97a67598dd9c3d3983df5ddac",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/github_issue_create/manifest.json"
         },
         {
-          "path": "tools/github_issue_list/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:4d091127dc4686ecdde0c63101b100a962e7a37e09aed3ffac65078d944945a2",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/github_issue_list/manifest.json"
         },
         {
-          "path": "tools/github_issue_update/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:b77f49f70b8019e4ef7a31317c141ac71b4a255894da1cfaaf8cbe3bf0b04c7f",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/github_issue_update/manifest.json"
         },
         {
-          "path": "tools/github_pr_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:acbd598c9c354964daf67c256d4ee62431ad53db382efec15763bc1476222c50",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/github_pr_create/manifest.json"
         },
         {
-          "path": "tools/github_search/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:4b20e11f0558dad62d6c1bb3984cdfabaa15907dcc57c28ac523d1acbb258cea",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/github_search/manifest.json"
         },
         {
-          "path": "tools/gmail_draft/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:82710d702fdb2b694abc2dc1f635bc27209373e964ba6b15710950a8c7875651",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/gmail_draft/manifest.json"
         },
         {
-          "path": "tools/gmail_search/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:ebafadb37b0bed32190570902599bbd1bbff1fd67606e61a3b51b25a7312053c",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/gmail_search/manifest.json"
         },
         {
-          "path": "tools/html_preview/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:145862a82bce5bc8b2a4e5fbe0e1f10a33ced10fa2dff4eb7133c585072c0e36",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/html_preview/manifest.json"
         },
         {
-          "path": "tools/human_operator_canvas_open/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:d5b42f3e77afe2a7a7e20bb8666be49609649e84105c7680f0ec02a881e4dbbd",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/human_operator_canvas_open/manifest.json"
         },
         {
-          "path": "tools/image_convert/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:a9270c5b2694f81a8c40c31fd522b9973e1dce0ac4adae4417eb5cadde415fe0",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/image_convert/manifest.json"
         },
         {
-          "path": "tools/image_generate_local_or_provider/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:9aa6e032a376d92e40edc5c0af01a245378ea4794ecd1238feca97b2f15f68a7",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/image_generate_local_or_provider/manifest.json"
         },
         {
-          "path": "tools/image_render/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:9c5a0f04b316ab236e4c2eca9152da87a2c1cafbb12a5499978293fc5730d33c",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/image_render/manifest.json"
         },
         {
-          "path": "tools/image_resize/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:3c9b0cea637cab5732013d252a72e3bebb5427331c40f57c0bb5692292b1f1df",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/image_resize/manifest.json"
         },
         {
-          "path": "tools/jira_issue_sync/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:62d7ea6f57aa8e0a15c5120663f9584b31895c858966cc88a1478a93408d5418",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/jira_issue_sync/manifest.json"
         },
         {
-          "path": "tools/job_artifacts/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:b90b5e7e8bdedf2a1d84abff8c86920944ee3fc6f78b739b26c0e3ae89e84407",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/job_artifacts/manifest.json"
         },
         {
-          "path": "tools/job_cancel/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:7df7de369ff7ef2db2ed6ba5518905d37dc17c50ddbce8d3529077ed147c56c0",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/job_cancel/manifest.json"
         },
         {
-          "path": "tools/job_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:6ddf1347b47f1361e4d66f600d3ae6c7d8b9cd61cca505f4ae821c5bc239d567",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/job_create/manifest.json"
         },
         {
-          "path": "tools/job_history/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:f47d9989f25edad7c4c5fc7a70a5ddf0a7d049f96ef518d17f29a049d91951c9",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/job_history/manifest.json"
         },
         {
-          "path": "tools/job_resume/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:6f42339b4005a6216da7cf1a9a386e0bd18691132ce4d60f261e400d5f3a4392",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/job_resume/manifest.json"
         },
         {
-          "path": "tools/job_status/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:691fc0a17fb09bb7cf8d7a32a31ba9ebb77df22fcc59b47f885a004eb7a0bbd0",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/job_status/manifest.json"
         },
         {
-          "path": "tools/line_push/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:2cc7c0bafbbd23255641f661923f0c507502665e6500b5840c787b89702c545e",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/line_push/manifest.json"
         },
         {
-          "path": "tools/linear_issue_sync/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:783bab82ea2c76d14c7051a953446b55239d118644f66f9b53096bde26f253f2",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/linear_issue_sync/manifest.json"
         },
         {
-          "path": "tools/node_exec/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:b3d3f4351b00a0a5fd2f29a334206546b9132cbe332ebe86f7468c5331c28ebc",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/node_exec/manifest.json"
         },
         {
-          "path": "tools/ocr_extract/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:ad8ada4efd788d9465f4039ee261b2bf84b7c08374bcd42bb7f5f5d18deda4d0",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/ocr_extract/manifest.json"
         },
         {
-          "path": "tools/package_install_plan/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:6abb602f93637c762713de1b71ecaebe31eeb67c459da759acfa5cbb81f26b66",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/package_install_plan/manifest.json"
         },
         {
-          "path": "tools/pdf_export/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:2ef870cd4a062c3a9e612ec13da14509e24e6ae85af2608e748b08b3cd8ee570",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/pdf_export/manifest.json"
         },
         {
-          "path": "tools/pdf_extract/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:cdefeb2b4b0e11e9f8f6deca2d9813e9517f47b8cd8c7c3f64ac9a4789874aac",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/pdf_extract/manifest.json"
         },
         {
-          "path": "tools/pdf_extract_tables/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:af6f3c37b24b7033fa963b416f6a107a04b623abc6ffbe7c3243a1003a81cc13",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/pdf_extract_tables/manifest.json"
         },
         {
-          "path": "tools/pdf_preview/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:bf79b85a5ab4d6b4352831e8b39318f47f5688a34e96d956780e8b9bc3f7e038",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/pdf_preview/manifest.json"
         },
         {
-          "path": "tools/project_scaffold/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:9b3b341e31e0d8f88071e2d8d535e5b984d2dec73e20f9bb82f79e98046f9901",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/project_scaffold/manifest.json"
         },
         {
-          "path": "tools/python_exec/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:9edde2db4dcd713aa5314c58679f7b4e03f063dce89e16ad7ff799e0df31525e",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/python_exec/manifest.json"
         },
         {
-          "path": "tools/research_report_export/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:2cb232170261ee13388995e07bdc0e8ef7bf7944d9e3393215d44e905842d6f4",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/research_report_export/manifest.json"
         },
         {
-          "path": "tools/sandbox_exec/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:5e7cb9e8c3ab28465ce748dff3e99fb80401380cd930754bcb1962019f5c84a3",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sandbox_exec/manifest.json"
         },
         {
-          "path": "tools/sandbox_files_apply_patch/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:803d0a46957ff80bc7e1862389dfa9b87c6679c9fc98cd6cb542aecbe2470f2f",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sandbox_files_apply_patch/manifest.json"
         },
         {
-          "path": "tools/sandbox_files_read/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:b1fd3bfe874eb3c6f0b575034c2732f4ce0b6822cdde2bc7797ee7a8550d0cdb",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sandbox_files_read/manifest.json"
         },
         {
-          "path": "tools/sandbox_port_expose/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:c623d0744e89e3edf4be3dfae055d91a773cd59140be08ed82d8fd37b13ef048",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sandbox_port_expose/manifest.json"
         },
         {
-          "path": "tools/sheet_analyze/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:dd1fff081a7c7f096d2abace3432ef2378aab6e9eec62c914b6bddc8077266df",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sheet_analyze/manifest.json"
         },
         {
-          "path": "tools/sheet_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:b85f022e055ef542bea962ef5b10e01f34a362d34ef314eb87939225b61ae2ee",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sheet_create/manifest.json"
         },
         {
-          "path": "tools/sheet_export/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:e9bc8384c891ab6fa775228e19c7f7bd07858e8b2c7be71c6f29deaea87569ba",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sheet_export/manifest.json"
         },
         {
-          "path": "tools/sheet_read/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:85806ee62be6f990813d35f5867c9331ca6db7df82b569106a296abe5e83dd7b",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sheet_read/manifest.json"
         },
         {
-          "path": "tools/sheet_update/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:133bfae7c54e89e8237c86d1701c47ae6f8404433f758076c2c1d590ea1eed75",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/sheet_update/manifest.json"
         },
         {
-          "path": "tools/slack_send/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:cd09b7f0fd1b3a193ce296bc8ecb2e4b195a24d4af2ae25b0d2a3f5f6f148d31",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/slack_send/manifest.json"
         },
         {
-          "path": "tools/slides_create/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:107fff4bf6bcd7e9a05341bb5fec773f165989cc34b226379e10589ca7e61890",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/slides_create/manifest.json"
         },
         {
-          "path": "tools/slides_export/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:ef1e8c78609602d74c77608b145d3a6f9225a8a6c66223b3ab6027b0481d4bc4",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/slides_export/manifest.json"
         },
         {
-          "path": "tools/slides_from_markdown/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:a66f67c981f747faa71343e8845e1aa56fb9a21b3e694d6998c36283ce7f7f2e",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/slides_from_markdown/manifest.json"
         },
         {
-          "path": "tools/slides_update/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:08760fe6152b00b002b1d0c28f0ff17818e1eff3a0d1f4a10a565fb1b003b1bd",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/slides_update/manifest.json"
         },
         {
-          "path": "tools/source_extract/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:c1a3d951a7d132bfde3a4ad7f69e9dc06b4f14a2869a9164a317e2d2e1ff9cbe",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/source_extract/manifest.json"
         },
         {
-          "path": "tools/source_rank/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:2132368e36e351cf994f6d921567ca820657ae0e32a071a05e851a33c3e710fc",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/source_rank/manifest.json"
         },
         {
-          "path": "tools/static_site_export/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:d889c07fd06c6052ea3a1e04127f7bada7836decb232c5953d2c0b34946d1144",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/static_site_export/manifest.json"
         },
         {
-          "path": "tools/tool_names/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:6bfd31cfd1b5d56ea107a538fcfc642b6910d4eec4bb5bac81af230614830f90",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_names/manifest.json"
         },
         {
-          "path": "tools/tool_search/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:b29acd14a290b37933d34e39f80c43ac16dfaf771fba00a789b90a0b4a4dec20",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_search/manifest.json"
         },
         {
-          "path": "tools/tool_task_board/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:79427ba0cc2f5ea776a6f97445b2387033d6f9d4ffb6b606afdc22ebda6fac89",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_task_board/manifest.json"
         },
         {
-          "path": "tools/tool_task_board_agent_session/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:25361ace0070f54669e6332814f1b5f63bc15de5f2c6c08399c360934c9ce14d",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_task_board_agent_session/manifest.json"
         },
         {
-          "path": "tools/tool_ui_build_recursive/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:56ac4bb2053997f8bb49c6f8f9d950640c05af6782bf1a2369f388def74f3a22",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_build_recursive/manifest.json"
         },
         {
-          "path": "tools/tool_ui_commit_plan/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:48e3d22ad8f83b7b4a70a24bebba906fe479b8b429002084d99ecb7cd59848d7",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_commit_plan/manifest.json"
         },
         {
-          "path": "tools/tool_ui_compile_plan/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:86eca5b318611a5f0bf80bd49192810592b57eb6701d6af1f1e32785a9bd511a",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_compile_plan/manifest.json"
         },
         {
-          "path": "tools/tool_ui_compose_page/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:499ac42f6285f3e8faca687d80ad2ee0fd0bad3039fa4505fd56f89b2ee2eaa5",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_compose_page/manifest.json"
         },
         {
-          "path": "tools/tool_ui_generate_candidates/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:dd4551c053303aae48aef5ccb0c6152689b233174f91947e2853f9ecd0e3d0f8",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_generate_candidates/manifest.json"
         },
         {
-          "path": "tools/tool_ui_generate_foundation/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:f2d199aa9e0005ca135f845f76676c639dda59b6f53053a85c22a2089277fa5b",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_generate_foundation/manifest.json"
         },
         {
-          "path": "tools/tool_ui_inspect_compression/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:585f7daba94cf8d1ce6ed72f8689d6b2ec3d12be2d66536d9cb1d9febf913d90",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_inspect_compression/manifest.json"
         },
         {
-          "path": "tools/tool_ui_render_matrix/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:05e3600dbcd9158bac780a4696e5ef434c309b5341f751855e2aca00b1810a47",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_render_matrix/manifest.json"
         },
         {
-          "path": "tools/tool_ui_select_candidates/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:955fd354b396563fed1b1abe5859cf426831a3065ad612bd7b60528514826053",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_select_candidates/manifest.json"
         },
         {
-          "path": "tools/tool_ui_verify_recursive_build/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:958fe0be1b44a61f4e70dad420977f83bf9812a44f979a6273cc982fd0184ff2",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tool_ui_verify_recursive_build/manifest.json"
         },
         {
-          "path": "tools/tts_generate/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:439ce53127ca10a95fa64e126faeefc751be5f38c224719f620335011dc5983b",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tts_generate/manifest.json"
         },
         {
-          "path": "tools/tts_generate_local/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:f03103076d6a699ced0ba1905567b02503aad16293e540e6833ba5dab843a979",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/tts_generate_local/manifest.json"
         },
         {
-          "path": "tools/webapp_build/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:5a096e9b0e4f24d30cbe7544d862886d118023026c2e4187f3b14cf4f2314589",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/webapp_build/manifest.json"
         },
         {
-          "path": "tools/webapp_export_static/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:a08cc56ca71bc212ebccd21f25a9640bd12576fe877aac3a3925dbacc5c98145",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/webapp_export_static/manifest.json"
         },
         {
-          "path": "tools/webapp_lint/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:82b1b73c85d2f2ff925ee17ed885ead1971e910a6a05b847f0582d523ca0329f",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/webapp_lint/manifest.json"
         },
         {
-          "path": "tools/webapp_preview/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:be36c3d8118b4f5afd90d143ffbb6a22c8082a03a13d87ef4c466d6f15d9ee63",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/webapp_preview/manifest.json"
         },
         {
-          "path": "tools/wide_research/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:7a66d93b0fe1bf7bb4c79a0f78c64d8e21aac48b5214e04561d18b195c9a7f0f",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/wide_research/manifest.json"
         },
         {
-          "path": "tools/workflow_cancel/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:536a760efd88f0e6d64d5453d1ae08ed4c2eedf0d3711e7446b15a289d5be957",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/workflow_cancel/manifest.json"
         },
         {
-          "path": "tools/workflow_define/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:53d04be10116abf8beef3da8d2a782f57acb8b0c7d496f481c85ac803a9d9e09",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/workflow_define/manifest.json"
         },
         {
-          "path": "tools/workflow_retry/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:ed9d29a4fdff2e3b78e371dcf7a91254edd7be53fc866a2601b455ad5d47b340",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/workflow_retry/manifest.json"
         },
         {
-          "path": "tools/workflow_run/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:e45139d87ec0cf1c994f093a0c8870f506108f74b915abd7a33cab53cc199781",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/workflow_run/manifest.json"
         },
         {
-          "path": "tools/workflow_status/manifest.json",
-          "kind": "sidecar",
           "digest": "sha256:29c29d561afc578369c44158904e9dda619b7414cf86cfeefb4b785f71159fa5",
-          "index_role": "sidecar"
+          "index_role": "sidecar",
+          "kind": "sidecar",
+          "path": "tools/workflow_status/manifest.json"
         },
         {
-          "path": "tools/memo_create_note/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:36d13ec0256b0f0b0ab27d97a62d1b2c411997d898f9b9e0e9332efb6817f041",
           "index_role": "sidecar",
-          "digest": "sha256:36d13ec0256b0f0b0ab27d97a62d1b2c411997d898f9b9e0e9332efb6817f041"
+          "kind": "sidecar",
+          "path": "tools/memo_create_note/manifest.json"
         },
         {
-          "path": "tools/memo_folder_upsert/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:402816166aaa8c52a8899fcfd17bf1bb7c0e105043f7393c6d2ef09f736701b3",
           "index_role": "sidecar",
-          "digest": "sha256:402816166aaa8c52a8899fcfd17bf1bb7c0e105043f7393c6d2ef09f736701b3"
+          "kind": "sidecar",
+          "path": "tools/memo_folder_upsert/manifest.json"
         },
         {
-          "path": "tools/memo_get/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:8071ce95d1837d43128a968281e5911cc6a31bdef8e9131065f5e324e10f55af",
           "index_role": "sidecar",
-          "digest": "sha256:8071ce95d1837d43128a968281e5911cc6a31bdef8e9131065f5e324e10f55af"
+          "kind": "sidecar",
+          "path": "tools/memo_get/manifest.json"
         },
         {
-          "path": "tools/memo_list/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:4e38687a7517672993da4eae1fdafc5083fa01ed91f164e8ca1cf1bc2e28510d",
           "index_role": "sidecar",
-          "digest": "sha256:4e38687a7517672993da4eae1fdafc5083fa01ed91f164e8ca1cf1bc2e28510d"
+          "kind": "sidecar",
+          "path": "tools/memo_list/manifest.json"
         },
         {
-          "path": "tools/memo_list_notes/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:7c38ac2cb1bbe6b68824f0424ebc3d95b4f38299fad9532b356010e036d498c0",
           "index_role": "sidecar",
-          "digest": "sha256:7c38ac2cb1bbe6b68824f0424ebc3d95b4f38299fad9532b356010e036d498c0"
+          "kind": "sidecar",
+          "path": "tools/memo_list_notes/manifest.json"
         },
         {
-          "path": "tools/memo_note_upsert/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:8c51209d55afff34e5c76525097c87b5a5b03914aa002908f77d90bc42f86b4b",
           "index_role": "sidecar",
-          "digest": "sha256:8c51209d55afff34e5c76525097c87b5a5b03914aa002908f77d90bc42f86b4b"
+          "kind": "sidecar",
+          "path": "tools/memo_note_upsert/manifest.json"
         },
         {
-          "path": "tools/memo_search/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:bfee590d26ba44427df028d9b0f0eadd347bfdbf3d56dfc9b1b1129306b85eda",
           "index_role": "sidecar",
-          "digest": "sha256:bfee590d26ba44427df028d9b0f0eadd347bfdbf3d56dfc9b1b1129306b85eda"
+          "kind": "sidecar",
+          "path": "tools/memo_search/manifest.json"
         },
         {
-          "path": "tools/memo_search_notes/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:b2d3df80d4fda31b02464014e4a90c606a22f88ef2ecaea0818e5283fcc05e30",
           "index_role": "sidecar",
-          "digest": "sha256:b2d3df80d4fda31b02464014e4a90c606a22f88ef2ecaea0818e5283fcc05e30"
+          "kind": "sidecar",
+          "path": "tools/memo_search_notes/manifest.json"
         },
         {
-          "path": "extensions/tools/settings_inspect/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:7df1bd0c10f60f04d732411797dc28083e5e699f13e3c34601624d64fa49b638",
           "index_role": "sidecar",
-          "digest": "sha256:7df1bd0c10f60f04d732411797dc28083e5e699f13e3c34601624d64fa49b638"
+          "kind": "sidecar",
+          "path": "extensions/tools/settings_inspect/manifest.json"
         },
         {
-          "path": "extensions/tools/settings_update/manifest.json",
-          "kind": "sidecar",
+          "digest": "sha256:8bfa44dac8697c39742fe51a20bec22ff6acf6e80f9b1cc049d2efbbac079591",
           "index_role": "sidecar",
-          "digest": "sha256:8bfa44dac8697c39742fe51a20bec22ff6acf6e80f9b1cc049d2efbbac079591"
+          "kind": "sidecar",
+          "path": "extensions/tools/settings_update/manifest.json"
         }
       ],
       "secrets": [],
@@ -1925,7 +1925,7 @@
             {
               "entrypoint_id": "ai-gateway-preflight",
               "id": "rumi_ai_gateway_pack.ai-gateway.preflight",
-              "implementation_digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d"
+              "implementation_digest": "sha256:5f3326f55e4badaf86d0624000c29455830431586ee56e4432ed11dc5c2e1169"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -1935,51 +1935,67 @@
           ],
           "schemas": {
             "input": {
-              "type": "object",
               "additionalProperties": false,
-              "required": [
-                "model_profile_id",
-                "messages"
-              ],
               "properties": {
-                "model_profile_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256
-                },
                 "messages": {
-                  "type": "array",
-                  "minItems": 1,
-                  "maxItems": 2048,
                   "items": {
-                    "type": "object",
                     "additionalProperties": false,
-                    "required": [
-                      "role",
-                      "content"
-                    ],
                     "properties": {
+                      "content": {
+                        "type": "string"
+                      },
                       "role": {
                         "enum": [
                           "system",
                           "user",
                           "assistant"
                         ]
-                      },
-                      "content": {
-                        "type": "string"
                       }
-                    }
-                  }
+                    },
+                    "required": [
+                      "role",
+                      "content"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 2048,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "model_profile_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
                 },
                 "tool_calling": {
                   "type": "boolean"
                 }
-              }
+              },
+              "required": [
+                "model_profile_id",
+                "messages"
+              ],
+              "type": "object"
             },
             "output": {
-              "type": "object",
               "additionalProperties": false,
+              "properties": {
+                "catalog_revision": {
+                  "type": "string"
+                },
+                "model_id": {
+                  "type": "string"
+                },
+                "model_profile_id": {
+                  "type": "string"
+                },
+                "provider_instance_id": {
+                  "type": "string"
+                },
+                "ready": {
+                  "const": true
+                }
+              },
               "required": [
                 "ready",
                 "model_profile_id",
@@ -1987,23 +2003,7 @@
                 "provider_instance_id",
                 "catalog_revision"
               ],
-              "properties": {
-                "ready": {
-                  "const": true
-                },
-                "model_profile_id": {
-                  "type": "string"
-                },
-                "model_id": {
-                  "type": "string"
-                },
-                "provider_instance_id": {
-                  "type": "string"
-                },
-                "catalog_revision": {
-                  "type": "string"
-                }
-              }
+              "type": "object"
             }
           },
           "security": "sensitive",
@@ -2023,7 +2023,7 @@
             {
               "entrypoint_id": "ai-gateway-routing-diagnostics",
               "id": "rumi_ai_gateway_pack.ai-gateway-routing-diagnostics",
-              "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1"
+              "implementation_digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2056,7 +2056,7 @@
             {
               "entrypoint_id": "ai-gateway-generate",
               "id": "rumi_ai_gateway_pack.ai-gateway.generate",
-              "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1"
+              "implementation_digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2089,7 +2089,7 @@
             {
               "entrypoint_id": "ai-gateway-stream",
               "id": "rumi_ai_gateway_pack.ai-gateway.stream",
-              "implementation_digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1"
+              "implementation_digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f"
             }
           ],
           "owner": "rumi_ai_gateway_pack",
@@ -2184,12 +2184,12 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:3b7e3b547e3eda68b6ad65d8bf5509ef4a5fd6ac6e56ab08a575733cafa54aa1",
+          "digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f",
           "kind": "executable",
           "path": "runtime/gateway.py"
         },
         {
-          "digest": "sha256:07d5d4d3662975870d8ce77914ec8425ccf1d83054d3deeb7d27e112207ecb5d",
+          "digest": "sha256:5f3326f55e4badaf86d0624000c29455830431586ee56e4432ed11dc5c2e1169",
           "kind": "executable",
           "path": "runtime/preflight.py"
         }
@@ -8905,14 +8905,14 @@
             "input": {
               "additionalProperties": false,
               "properties": {
+                "correlation_id": {
+                  "maxLength": 36,
+                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                  "type": "string"
+                },
                 "effect_id": {
                   "maxLength": 255,
                   "type": "string"
-                },
-                "correlation_id": {
-                  "type": "string",
-                  "maxLength": 36,
-                  "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
                 },
                 "effect_kind": {
                   "enum": [
@@ -10360,8 +10360,8 @@
       ],
       "required_contracts": [
         {
-          "contract_id": "tobkiri.service.mcp.connection.v1",
           "cardinality": "one",
+          "contract_id": "tobkiri.service.mcp.connection.v1",
           "optional": false,
           "version_range": "^1.0.0"
         }
@@ -11638,7 +11638,7 @@
             {
               "entrypoint_id": "model-profile-manage",
               "id": "rumi_model_registry_pack.model-profile-manage",
-              "implementation_digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669"
+              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -11673,7 +11673,7 @@
             {
               "entrypoint_id": "model-registry-migrate",
               "id": "rumi_model_registry_pack.model-registry-migrate",
-              "implementation_digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669"
+              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -11708,17 +11708,17 @@
             {
               "entrypoint_id": "model-profile-resource",
               "id": "rumi_model_registry_pack.model-profile-resource",
-              "implementation_digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669"
+              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
             },
             {
               "entrypoint_id": "model-profile-resource.generate",
               "id": "rumi_model_registry_pack.model-profile-resource.generate",
-              "implementation_digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669"
+              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
             },
             {
               "entrypoint_id": "model-profile-resource.stream",
               "id": "rumi_model_registry_pack.model-profile-resource.stream",
-              "implementation_digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669"
+              "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07"
             }
           ],
           "owner": "rumi_model_registry_pack",
@@ -11746,12 +11746,12 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669",
+          "digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
           "kind": "executable",
           "path": "runtime/process.py"
         },
         {
-          "digest": "sha256:4dab365a2e174fe6437c4f987d48d96f3466b56bd92898c3c6f96027c5635f76",
+          "digest": "sha256:e35a376f5bb191e8524da6e1e261c2d0e288eb14cc00b64639198a398e241d6a",
           "kind": "executable",
           "path": "runtime/registry.py"
         },
@@ -12459,9 +12459,9 @@
           "path": "ui/style.css"
         },
         {
+          "digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c",
           "kind": "executable",
-          "path": "runtime/resource_host.py",
-          "digest": "sha256:59ffc5cca912ad719cdec4accc0f7822baa7c0d5d639338c9c4474071865480c"
+          "path": "runtime/resource_host.py"
         }
       ],
       "secrets": [],
@@ -12533,7 +12533,7 @@
             {
               "entrypoint_id": "provider-embedding",
               "id": "rumi_provider_adapters_pack.provider-embedding",
-              "implementation_digest": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e"
+              "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -12569,7 +12569,7 @@
             {
               "entrypoint_id": "provider-generate",
               "id": "rumi_provider_adapters_pack.provider-generate",
-              "implementation_digest": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e"
+              "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -12605,7 +12605,7 @@
             {
               "entrypoint_id": "provider-image",
               "id": "rumi_provider_adapters_pack.provider-image",
-              "implementation_digest": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e"
+              "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf"
             }
           ],
           "owner": "rumi_provider_adapters_pack",
@@ -12641,7 +12641,7 @@
             {
               "entrypoint_id": "provider-stream",
               "id": "rumi_provider_adapters_pack.provider-stream",
-              "implementation_digest": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e"
+              "implementation_digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf"
             }
           ],
           "owner": "rumi_human_operator_provider_pack",
@@ -12679,7 +12679,7 @@
           "path": "runtime/__init__.py"
         },
         {
-          "digest": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e",
+          "digest": "sha256:0b85cf3e612d9dc3f192ecc815b1804ed69d5fe122a22fd44e3112a905ec8ecf",
           "kind": "executable",
           "path": "runtime/adapter.py"
         }
@@ -12717,53 +12717,53 @@
       "dependencies": {},
       "description": "Provider-neutral connection state, migration, rollback, and verified health evidence.",
       "display_name": "Rumi Provider Registry",
+      "execution_boundary": "host_brokered",
       "functions": [
         {
-          "function_id": "rumi_provider_registry_pack.provider-registry.manage",
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "function_id": "rumi_provider_registry_pack.provider-registry.manage",
+          "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-manage"
-          ],
-          "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+          ]
         },
         {
-          "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
+          "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-configure-prepare"
-          ],
-          "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+          ]
         },
         {
-          "function_id": "rumi_provider_registry_pack.provider-configure.execute",
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
+          "function_id": "rumi_provider_registry_pack.provider-configure.execute",
+          "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-configure"
-          ],
-          "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+          ]
         },
         {
-          "function_id": "rumi_provider_registry_pack.provider-registry.resource",
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+          "function_id": "rumi_provider_registry_pack.provider-registry.resource",
+          "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-resource",
             "rumi_provider_registry_pack.provider-registry-resource.generate",
             "rumi_provider_registry_pack.provider-registry-resource.stream"
-          ],
-          "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+          ]
         },
         {
-          "function_id": "rumi_provider_registry_pack.provider-registry.health",
           "contract_id": "tobkiri.resource.ai.provider.health.v1",
+          "function_id": "rumi_provider_registry_pack.provider-registry.health",
+          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-health",
             "rumi_provider_registry_pack.provider-registry-health.generate",
             "rumi_provider_registry_pack.provider-registry-health.stream"
-          ],
-          "implementation_digest": "sha256:b64d6d5cdb68df928747cfac0ac3f0bcd44cf06f4c2b8f87e64af540eff7cf3c"
+          ]
         }
       ],
-      "execution_boundary": "host_brokered",
       "kind": "host_extension",
       "legacy_ids": [
         "rumi.action.ai.provider.registry.manage.v1",
@@ -12799,17 +12799,17 @@
             {
               "entrypoint_id": "provider-registry-manage",
               "id": "rumi_provider_registry_pack.provider-registry-manage",
-              "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
             },
             {
               "entrypoint_id": "provider-configure-prepare",
               "id": "rumi_provider_registry_pack.provider-configure-prepare",
-              "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
             },
             {
               "entrypoint_id": "provider-configure",
               "id": "rumi_provider_registry_pack.provider-configure",
-              "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -12887,17 +12887,17 @@
             {
               "entrypoint_id": "provider-registry-resource",
               "id": "rumi_provider_registry_pack.provider-registry-resource",
-              "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
             },
             {
               "entrypoint_id": "provider-registry-resource.generate",
               "id": "rumi_provider_registry_pack.provider-registry-resource.generate",
-              "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
             },
             {
               "entrypoint_id": "provider-registry-resource.stream",
               "id": "rumi_provider_registry_pack.provider-registry-resource.stream",
-              "implementation_digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598"
+              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -12937,7 +12937,7 @@
           "path": "runtime/health_process.py"
         },
         {
-          "digest": "sha256:b6ebc88848e65432402f4ad2a892b7d56f7d6edb590ce14dc7df96fdf9079598",
+          "digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
           "kind": "executable",
           "path": "runtime/process.py"
         },
@@ -13924,6 +13924,26 @@
       "description": "Scheduler tool definitions and receipt-aware contract projections.",
       "display_name": "Rumi Scheduler Tool Adapter",
       "execution_boundary": "sandbox",
+      "functions": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "function_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
+          "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+          "isolation": "pack_vm",
+          "operation_ids": [
+            "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
+          "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+          "implementation_digest": "sha256:13e5031b5327950835112ef8481c97e2bb6040358083334c8ed6cd2bd8a9287f",
+          "isolation": "wasm_component",
+          "operation_ids": [
+            "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
+          ]
+        }
+      ],
       "kind": "normal_sandbox",
       "legacy_ids": [
         "rumi.resource.tool.definition.contribution.v1",
@@ -14071,27 +14091,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "pack_local",
-      "functions": [
-        {
-          "function_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
-          "contract_id": "tobkiri.service.tool.local.operation.v1",
-          "operation_ids": [
-            "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation"
-          ],
-          "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
-          "isolation": "pack_vm"
-        },
-        {
-          "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
-          "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
-          "operation_ids": [
-            "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions"
-          ],
-          "implementation_digest": "sha256:13e5031b5327950835112ef8481c97e2bb6040358083334c8ed6cd2bd8a9287f",
-          "isolation": "wasm_component"
-        }
-      ]
+      "workspace_boundary": "pack_local"
     },
     {
       "approval_policy": "none",
@@ -16237,6 +16237,32 @@
       "description": "Authoritative provider-neutral tool definitions and aliases.",
       "display_name": "Tobkiri Tool Registry",
       "execution_boundary": "host_brokered",
+      "functions": [
+        {
+          "contract_id": "tobkiri.action.tool.definition.manage.v1",
+          "function_id": "rumi_tool_registry_pack.tool-registry.manage",
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-manage"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.tool.definition.migrate.v1",
+          "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-migrate"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.tool.definition.v1",
+          "function_id": "rumi_tool_registry_pack.tool-registry.definition",
+          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+          "operation_ids": [
+            "rumi_tool_registry_pack.tool-definition-resource"
+          ]
+        }
+      ],
       "kind": "host_extension",
       "legacy_ids": [
         "rumi.action.tool.definition.manage.v1",
@@ -16268,13 +16294,13 @@
           },
           "operations": [
             {
-              "entrypoint_id": "tool-definition-manage",
-              "id": "rumi_tool_registry_pack.tool-definition-manage",
-              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.manage"
-              ]
+              ],
+              "entrypoint_id": "tool-definition-manage",
+              "id": "rumi_tool_registry_pack.tool-definition-manage",
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -16307,13 +16333,13 @@
           },
           "operations": [
             {
-              "entrypoint_id": "tool-definition-migrate",
-              "id": "rumi_tool_registry_pack.tool-definition-migrate",
-              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.migrate"
-              ]
+              ],
+              "entrypoint_id": "tool-definition-migrate",
+              "id": "rumi_tool_registry_pack.tool-definition-migrate",
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -16344,13 +16370,13 @@
           },
           "operations": [
             {
-              "entrypoint_id": "tool-definition-resource",
-              "id": "rumi_tool_registry_pack.tool-definition-resource",
-              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
               "effect_ceiling": [
                 "host:brokered-execution",
                 "capability:tool.definition.read"
-              ]
+              ],
+              "entrypoint_id": "tool-definition-resource",
+              "id": "rumi_tool_registry_pack.tool-definition-resource",
+              "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
             }
           ],
           "owner": "rumi_tool_registry_pack",
@@ -16408,14 +16434,14 @@
           "path": "runtime/registry.py"
         },
         {
+          "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
           "kind": "executable",
-          "path": "runtime/host.py",
-          "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
+          "path": "runtime/host.py"
         },
         {
+          "digest": "sha256:3a3e843263f6f30bbd554424a2afdc58024271a136e25cee57901f0371b81ae6",
           "kind": "executable",
-          "path": "runtime/pack_data.py",
-          "digest": "sha256:3a3e843263f6f30bbd554424a2afdc58024271a136e25cee57901f0371b81ae6"
+          "path": "runtime/pack_data.py"
         },
         {
           "digest": "sha256:d2903c083ee91411637658c93b388a50dd6fb2d53a149c9560044c85dc89708e",
@@ -16443,33 +16469,7 @@
         "source_format": "rumi.pack.v3.json"
       },
       "version": "1.0.0",
-      "workspace_boundary": "host_brokered",
-      "functions": [
-        {
-          "function_id": "rumi_tool_registry_pack.tool-registry.manage",
-          "contract_id": "tobkiri.action.tool.definition.manage.v1",
-          "operation_ids": [
-            "rumi_tool_registry_pack.tool-definition-manage"
-          ],
-          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
-        },
-        {
-          "function_id": "rumi_tool_registry_pack.tool-registry.migrate",
-          "contract_id": "tobkiri.action.tool.definition.migrate.v1",
-          "operation_ids": [
-            "rumi_tool_registry_pack.tool-definition-migrate"
-          ],
-          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
-        },
-        {
-          "function_id": "rumi_tool_registry_pack.tool-registry.definition",
-          "contract_id": "tobkiri.resource.tool.definition.v1",
-          "operation_ids": [
-            "rumi_tool_registry_pack.tool-definition-resource"
-          ],
-          "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a"
-        }
-      ]
+      "workspace_boundary": "host_brokered"
     },
     {
       "approval_policy": "none",
@@ -16859,8 +16859,8 @@
         "turn.stop"
       ],
       "dependencies": {
-        "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
-        "defaultspack": ">=4.0.0,<5.0.0"
+        "defaultspack": ">=4.0.0,<5.0.0",
+        "rumi_conversation_store_pack": ">=1.0.0,<2.0.0"
       },
       "description": "Durable revision-bound turn lifecycle and saved execution owner.",
       "display_name": "Tobkiri Turn Runtime",
@@ -17006,46 +17006,42 @@
             "turn.stop"
           ],
           "schemas": {
-            "input": {
-              "type": "object",
+            "error": {
               "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  },
+                  "pattern": "^[A-Za-z0-9]",
+                  "type": "string"
+                }
+              },
               "required": [
                 "turn_id"
               ],
-              "properties": {
-                "turn_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9]",
-                  "not": {
-                    "pattern": "[^A-Za-z0-9._:-]"
-                  }
-                }
-              }
+              "type": "object"
             },
             "output": {
-              "type": "object",
               "additionalProperties": false,
-              "required": [
-                "status",
-                "turn_id",
-                "stopped"
-              ],
-              "properties": {
-                "status": {
-                  "enum": [
-                    "cancellation_requested",
-                    "stopped_confirmed"
-                  ]
-                },
-                "turn_id": {
-                  "type": "string"
-                },
-                "stopped": {
-                  "type": "boolean"
-                }
-              },
               "oneOf": [
                 {
                   "properties": {
@@ -17067,23 +17063,27 @@
                     }
                   }
                 }
-              ]
-            },
-            "error": {
-              "type": "object",
-              "required": [
-                "code",
-                "message"
               ],
               "properties": {
-                "code": {
-                  "type": "string"
+                "status": {
+                  "enum": [
+                    "cancellation_requested",
+                    "stopped_confirmed"
+                  ]
                 },
-                "message": {
+                "stopped": {
+                  "type": "boolean"
+                },
+                "turn_id": {
                   "type": "string"
                 }
               },
-              "additionalProperties": false
+              "required": [
+                "status",
+                "turn_id",
+                "stopped"
+              ],
+              "type": "object"
             }
           },
           "security": "restricted",
@@ -17112,33 +17112,8 @@
             "turn.reconcile"
           ],
           "schemas": {
-            "input": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": [
-                "turn_id"
-              ],
-              "properties": {
-                "turn_id": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9]",
-                  "not": {
-                    "pattern": "[^A-Za-z0-9._:-]"
-                  }
-                }
-              }
-            },
-            "output": {
-              "type": "object"
-            },
             "error": {
-              "type": "object",
-              "required": [
-                "code",
-                "message"
-              ],
+              "additionalProperties": false,
               "properties": {
                 "code": {
                   "type": "string"
@@ -17147,7 +17122,32 @@
                   "type": "string"
                 }
               },
-              "additionalProperties": false
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "turn_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  },
+                  "pattern": "^[A-Za-z0-9]",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "turn_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
             }
           },
           "security": "restricted",
@@ -17176,42 +17176,54 @@
             "turn.execute"
           ],
           "schemas": {
-            "input": {
-              "$schema": "https://json-schema.org/draft/2020-12/schema",
-              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
-              "title": "Saved conversation initial input",
-              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
-              "type": "object",
+            "error": {
               "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
               "required": [
-                "request"
+                "code",
+                "message"
               ],
+              "type": "object"
+            },
+            "input": {
+              "$defs": {
+                "identifier": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "not": {
+                    "pattern": "[^A-Za-z0-9._:-]"
+                  },
+                  "pattern": "^[A-Za-z0-9]",
+                  "type": "string"
+                }
+              },
+              "$id": "https://tobkiri.dev/schemas/saved_conversation_input_v1.schema.json",
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "additionalProperties": false,
+              "description": "Initial saved_complete input only. Resume state is guest-root owned and is never accepted by this external input contract. The 60 KiB encoded input budget is enforced separately.",
               "properties": {
                 "request": {
-                  "type": "object",
                   "additionalProperties": false,
-                  "required": [
-                    "turn_id",
-                    "conversation_id",
-                    "conversation_revision",
-                    "content"
-                  ],
                   "properties": {
-                    "turn_id": {
-                      "$ref": "#/$defs/identifier"
+                    "content": {
+                      "minLength": 1,
+                      "pattern": "\\S",
+                      "type": "string"
                     },
                     "conversation_id": {
                       "$ref": "#/$defs/identifier"
                     },
                     "conversation_revision": {
-                      "type": "integer",
+                      "maximum": 9007199254740991,
                       "minimum": 1,
-                      "maximum": 9007199254740991
-                    },
-                    "content": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "\\S"
+                      "type": "integer"
                     },
                     "tool_selection": {
                       "additionalProperties": false,
@@ -17342,40 +17354,28 @@
                         "mode"
                       ],
                       "type": "object"
+                    },
+                    "turn_id": {
+                      "$ref": "#/$defs/identifier"
                     }
-                  }
+                  },
+                  "required": [
+                    "turn_id",
+                    "conversation_id",
+                    "conversation_revision",
+                    "content"
+                  ],
+                  "type": "object"
                 }
               },
-              "$defs": {
-                "identifier": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9]",
-                  "not": {
-                    "pattern": "[^A-Za-z0-9._:-]"
-                  }
-                }
-              }
+              "required": [
+                "request"
+              ],
+              "title": "Saved conversation initial input",
+              "type": "object"
             },
             "output": {
               "type": "object"
-            },
-            "error": {
-              "type": "object",
-              "required": [
-                "code",
-                "message"
-              ],
-              "properties": {
-                "code": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false
             }
           },
           "security": "restricted",
@@ -18517,28 +18517,28 @@
           "failure": "fail_closed",
           "isolation": "in_process",
           "lifecycle": {
+            "data_owner": "captured-host-mcp-connections",
             "deprecated": false,
-            "introduced": "1.0.0",
-            "data_owner": "captured-host-mcp-connections"
+            "introduced": "1.0.0"
           },
           "operations": [
             {
-              "entrypoint_id": "mcp.connection.prepare",
-              "id": "mcp.connection.prepare",
-              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
               "effect_ceiling": [
                 "capability:mcp.connection.prepare",
                 "host:brokered-execution"
-              ]
+              ],
+              "entrypoint_id": "mcp.connection.prepare",
+              "id": "mcp.connection.prepare",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f"
             },
             {
-              "entrypoint_id": "mcp.connection.connect",
-              "id": "mcp.connection.connect",
-              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f",
               "effect_ceiling": [
                 "capability:mcp.connection.connect",
                 "host:brokered-execution"
-              ]
+              ],
+              "entrypoint_id": "mcp.connection.connect",
+              "id": "mcp.connection.connect",
+              "implementation_digest": "sha256:a1fab9e71a60fa3b3b2befeaec6f7080ac3294bb8844272055390edf37443a9f"
             },
             {
               "effect_ceiling": [
@@ -18578,6 +18578,9 @@
             "mcp.connection.read"
           ],
           "schemas": {
+            "error": {
+              "type": "object"
+            },
             "input": {
               "oneOf": [
                 {
@@ -18772,9 +18775,6 @@
               ]
             },
             "output": {
-              "type": "object"
-            },
-            "error": {
               "type": "object"
             }
           },

@@ -355,6 +355,12 @@ export interface DesktopSystemInfo {
   permissions: DesktopPermissionStatus[];
 }
 
+export interface LauncherUpdateStatus {
+  state: 'available' | 'up_to_date';
+  current_version: string;
+  latest_version: string | null;
+}
+
 export type DebugApprovalState =
   | 'disabled'
   | 'pending'

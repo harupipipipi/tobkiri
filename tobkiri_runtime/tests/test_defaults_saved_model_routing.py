@@ -21,10 +21,14 @@ class SettingsRouteClient(FakeContractClient):
 
     def __init__(self, model_id: str) -> None:
         super().__init__()
+        self.connection_id = "connection/openai:main"
+        self.connection_enabled = True
+        self.duplicate_connection = False
         self.record = normalize_model_profile_save({
             "model_profile_id": "daily", "model_id": model_id,
-            "provider_instance_id": "provider.deepseek.main",
+            "provider_instance_id": self.connection_id,
             "display_name": "Daily", "expected_revision": 0,
+            "provider_registry_revision": 1,
         })["record"]
         self.provider_requests: list[dict[str, Any]] = []
 
@@ -43,6 +47,17 @@ class SettingsRouteClient(FakeContractClient):
                     else gateway.GENERATE_PROVIDER_OPERATION
                 ),
             },)
+        if contract_id == gateway.PROVIDER_REGISTRY_CONTRACT:
+            return (
+                {
+                    "provider_instance_id": "provider-registry-resource-generate",
+                    "operation_id": gateway.PROVIDER_REGISTRY_GENERATE_OPERATION,
+                },
+                {
+                    "provider_instance_id": "provider-registry-resource-stream",
+                    "operation_id": gateway.PROVIDER_REGISTRY_STREAM_OPERATION,
+                },
+            )
         return super().providers(contract_id)
 
     def invoke(
@@ -51,6 +66,22 @@ class SettingsRouteClient(FakeContractClient):
     ) -> dict[str, Any]:
         if contract_id == gateway.MODEL_PROFILE_CONTRACT:
             return {"profile": self.record, "resolved_profile_id": "daily"}
+        if contract_id == gateway.PROVIDER_REGISTRY_CONTRACT:
+            providers = [{
+                "provider_instance_id": self.connection_id,
+                "display_name": "OpenAI main",
+                "enabled": self.connection_enabled,
+            }]
+            if self.duplicate_connection:
+                providers.append({
+                    "provider_instance_id": self.connection_id,
+                    "display_name": "Duplicate",
+                    "enabled": False,
+                })
+            return {
+                "revision": 1,
+                "providers": providers,
+            }
         if contract_id == gateway.CATALOG_CONTRACT:
             return create_model_catalog_operation(None)(operation, payload)
         if contract_id in {
@@ -59,12 +90,11 @@ class SettingsRouteClient(FakeContractClient):
             self.provider_requests.append(dict(payload))
             # Match the real adapter's registry lookup, not a fabricated route.
             owner = type("Registry", (), {"invoke": lambda *args: {
-                "providers": [{"provider_instance_id": "provider.deepseek.main",
-                               "enabled": True}]
+                "providers": [{"provider_instance_id": self.connection_id,
+                               "enabled": self.connection_enabled}]
             }})()
-            assert _connection(owner, payload)["provider_instance_id"] == (
-                "provider.deepseek.main"
-            )
+            assert payload["provider_connection_id"] == self.connection_id
+            assert _connection(owner, payload)["provider_instance_id"] == self.connection_id
         return super().invoke(contract_id, operation, payload, **kwargs)
 
 
@@ -82,7 +112,55 @@ def test_settings_model_routes_to_its_connection(
     })
     assert len(client.provider_requests) == 1
     assert client.provider_requests[0]["model_id"] == model_id
-    assert client.provider_requests[0]["provider_id"] == "deepseek.main"
+    assert client.provider_requests[0]["provider_connection_id"] == (
+        "connection/openai:main"
+    )
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_saved_opaque_connection_is_rejected_after_its_owner_disables_it(
+    streaming: bool,
+) -> None:
+    """A stored route cannot outlive the exact owner-side enabled snapshot."""
+    client = SettingsRouteClient("account-visible-model")
+    client.connection_enabled = False
+    create = (
+        gateway.create_stream_operation if streaming
+        else gateway.create_generate_operation
+    )
+
+    with pytest.raises(
+        GlobalContractInvocationError,
+        match="saved Provider connection is unavailable",
+    ):
+        create(client)(
+            "stream" if streaming else "generate",
+            {
+                "model_reference": "daily",
+                "messages": [],
+                "requirements": {"request_surface": "conversation.saved"},
+            },
+        )
+
+    assert not client.provider_requests
+
+
+def test_saved_opaque_connection_requires_one_unique_owner_record() -> None:
+    """An enabled duplicate cannot hide registry identity corruption."""
+    client = SettingsRouteClient("account-visible-model")
+    client.duplicate_connection = True
+
+    with pytest.raises(
+        GlobalContractInvocationError,
+        match="saved Provider connection is unavailable",
+    ):
+        gateway.create_generate_operation(client)("generate", {
+            "model_reference": "daily",
+            "messages": [],
+            "requirements": {"request_surface": "conversation.saved"},
+        })
+
+    assert not client.provider_requests
 
 
 def test_settings_route_does_not_invent_tool_capability() -> None:

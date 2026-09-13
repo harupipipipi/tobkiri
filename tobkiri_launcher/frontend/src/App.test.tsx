@@ -1,14 +1,21 @@
 import assert from 'node:assert/strict';
-import {act, type ComponentProps, type ReactNode} from 'react';
+import {act, useEffect, type ComponentProps, type ReactNode} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import test from 'node:test';
-import {MemoryRouter, Route, Routes, useOutletContext} from 'react-router';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useNavigate,
+  useOutletContext,
+} from 'react-router';
 import {renderToStaticMarkup} from 'react-dom/server';
 
 import {
   DevtoolsRouteGate,
   HomeRoute,
+  RouteTree,
   SetupVerificationBanner,
   SetupVerificationGate,
 } from './App';
@@ -37,6 +44,16 @@ function createDom(): {dom: JSDOM; container: HTMLElement; root: Root} {
   const container = dom.window.document.querySelector<HTMLElement>('#root');
   assert.ok(container);
   return {dom, container, root: createRoot(container)};
+}
+
+function NavigateToSettingsOnMount() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    navigate('/settings');
+  }, [navigate]);
+
+  return null;
 }
 
 test('verification gate hides runtime children while health is unresolved', () => {
@@ -302,6 +319,80 @@ test('verified health renders the selected route and retry action is interactive
     });
     assert.match(container.textContent ?? '', /verified runtime page/);
     assert.equal(container.querySelector('[data-testid="setup-verification-gate"]'), null);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+    });
+  }
+});
+
+test('a pending lazy route renders the RouteBoundary loading page', () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+
+  try {
+    act(() => {
+      root.render(
+        <MemoryRouter initialEntries={['/settings']}>
+          <RouteTree
+            isSetupDone
+            runtimeReady
+            runtimeStatus="runtime_ready"
+            runtimeDisconnected={false}
+            defaultsBootstrapRequired={false}
+            onRetryRuntimeHealth={async () => undefined}
+          />
+        </MemoryRouter>,
+      );
+    });
+
+    assert.ok(container.querySelector('[aria-label="Loading page"]'));
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+    });
+  }
+});
+
+test('Home to Settings renders the current route instead of stale Home content', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+
+  try {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/']}>
+          <NavigateToSettingsOnMount />
+          <RouteTree
+            isSetupDone
+            runtimeReady
+            runtimeStatus="runtime_ready"
+            runtimeDisconnected={false}
+            defaultsBootstrapRequired={false}
+            onRetryRuntimeHealth={async () => undefined}
+          />
+        </MemoryRouter>,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.match(container.textContent ?? '', /Appearance/);
+    assert.doesNotMatch(container.textContent ?? '', /Loading Tobkiri home/);
+    assert.equal(container.querySelector('[aria-label="Opening page"]'), null);
   } finally {
     act(() => root.unmount());
     dom.window.close();

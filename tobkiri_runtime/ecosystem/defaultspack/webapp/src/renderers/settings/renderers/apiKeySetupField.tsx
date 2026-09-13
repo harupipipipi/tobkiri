@@ -116,6 +116,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
       setQuotaLabel("");
       setNotes("");
       setSaveState("saved");
+      window.dispatchEvent(new Event("tobkiri-provider-connections-changed"));
     } catch (saveErrorValue) {
       setSaveState("idle");
       setSaveError(saveErrorValue instanceof Error ? saveErrorValue.message : "API key save failed.");

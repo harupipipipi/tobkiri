@@ -53,6 +53,13 @@ _CONVERSATION_TARGET = (
     "defaultspack.conversation",
     "defaultspack.conversation",
 )
+_STARTUP_OPERATION_REQUIREMENTS = (
+    ("conversation.turn.v1", "complete"),
+    (
+        "tobkiri.resource.application.presentation.v1",
+        "defaultspack.presentation.read",
+    ),
+)
 _CAPABILITY_REQUEST_FIELDS = frozenset(
     {
         "request_id",
@@ -336,6 +343,16 @@ class DefaultspackHTTPPresentation:
         """
 
         return not _is_conversation(target)
+
+    def startup_operation_requirements(self) -> tuple[tuple[str, str], ...]:
+        """Declare the finite dependencies used by chat, commands, and settings.
+
+        These operations are exact active-Profile selections, not client input.
+        The Host checks them before the desktop chat opens without invoking the
+        operations or changing approval or PackVM state.
+        """
+
+        return _STARTUP_OPERATION_REQUIREMENTS
 
     def present_result(
         self,

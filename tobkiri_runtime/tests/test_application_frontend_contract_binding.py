@@ -25,6 +25,9 @@ from ecosystem.defaultspack.defaultspack.frontend_contract_loader import (
     load_frontend_contract_bindings,
     resolve_frontend_contract_map_path,
 )
+from ecosystem.defaultspack.defaultspack.http_dynamic_targets import (
+    defaultspack_dynamic_capability_targets,
+)
 from tobkiri_protocol.canonical import canonical_digest
 
 
@@ -140,6 +143,60 @@ def test_application_b_map_path_identity_and_route_are_selected_generically(
     resolved = resolve_contract_route(Server(), "GET", operation)
     assert resolved is not None
     assert resolved.path == "/api/application/health"
+
+
+def test_workflow_authoring_dynamic_targets_admit_only_the_finite_v4_payloads() -> None:
+    """The generic bridge exposes authoring inputs without reviving legacy routes."""
+
+    binding = FrontendContractBinding(
+        method="POST",
+        path="/api/ui/capability/invoke",
+        presentation="capability_result",
+        targets=(),
+    )
+    operation_ids = (
+        "definition.list",
+        "definition.get",
+        "definition.create",
+        "definition.update",
+        "definition.delete",
+        "definition.validate",
+        "definition.publish",
+        "operation.palette",
+        "run.create",
+    )
+    catalog = {
+        "packs": [{
+            "pack_id": "tobkiri_workflow_pack",
+            "artifact_digest": "sha256:" + "a" * 64,
+            "enabled": True,
+            "approved": True,
+            "operations": [{
+                "invokable": True,
+                "contract_id": "tobkiri.workflow.v4",
+                "operation_id": operation_id,
+                "provider_id": "tobkiri.workflow.provider",
+                "function_id": "tobkiri.workflow.provider",
+            } for operation_id in operation_ids],
+        }],
+    }
+
+    targets = defaultspack_dynamic_capability_targets(binding, catalog=catalog)
+    allowed = {target.operation_id: target.allowed_payload_keys for target in targets}
+
+    assert allowed == {
+        "definition.list": frozenset(),
+        "definition.get": frozenset({"definition_id"}),
+        "definition.create": frozenset({"definition_id", "document"}),
+        "definition.update": frozenset({"definition_id", "document", "if_match"}),
+        "definition.delete": frozenset({"definition_id", "if_match"}),
+        "definition.validate": frozenset({"document"}),
+        "definition.publish": frozenset({"definition_id", "if_match"}),
+        "operation.palette": frozenset(),
+        # A catalog declaration alone cannot turn a run operation into this UI.
+        "run.create": frozenset(),
+    }
+    assert all(target.contribution_id.startswith("pack.tobkiri_workflow_pack.") for target in targets)
 
 
 def test_desktop_resolver_selects_the_application_from_the_verified_plan() -> None:

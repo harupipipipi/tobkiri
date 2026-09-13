@@ -335,6 +335,9 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
             def issue_panel_login_code(self):
                 return {"code": "test-panel-login-code"}
 
+            def assert_runtime_startup_ready(self):
+                return None
+
         fake_server = FakeServer()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -362,6 +365,96 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertTrue(fake_server.started)
         self.assertTrue(fake_server.stopped)
+
+    def test_desktop_app_does_not_open_chat_when_packvm_startup_is_unavailable(self):
+        """A missing authenticated PackVM is a bounded startup failure, not chat."""
+
+        from core_runtime.app_lifecycle_manager import (
+            get_runtime_readiness,
+            reset_runtime_readiness,
+        )
+        from defaultspack import desktop_app
+        from tobkiri_host.errors import BackendUnavailableError
+
+        events: list[tuple[str, dict[str, object]]] = []
+
+        class FakeServer:
+            def __init__(self, *_args, **_kwargs):
+                self.started = False
+                self.stopped = False
+
+            def start(self):
+                self.started = True
+
+            def stop(self):
+                self.stopped = True
+
+            def assert_runtime_startup_ready(self):
+                raise BackendUnavailableError("stale helper identity")
+
+        fake_server = FakeServer()
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            reset_runtime_readiness()
+            env = {
+                "RUMI_DEFAULTSPACK_OPEN_BROWSER": "1",
+                "RUMI_DEFAULTSPACK_SURFACE": "webview",
+                "TOBKIRI_USER_DATA": str(user_data),
+                "RUMI_USER_DATA": str(user_data),
+            }
+            with patch.dict(os.environ, env, clear=True):
+                with patch.object(
+                    desktop_app,
+                    "_restore_active_profile_contracts",
+                    return_value=(object(), ()),
+                ):
+                    with patch.object(
+                        desktop_app,
+                        "_capture_launch_host_contract",
+                        return_value={},
+                    ):
+                        with patch.object(
+                            desktop_app,
+                            "_require_host_panel_auth_manager",
+                            return_value=object(),
+                        ):
+                            with patch(
+                                "core_runtime.pack_api_server.PackAPIServer",
+                                return_value=fake_server,
+                            ):
+                                with patch.object(
+                                    desktop_app,
+                                    "_write_launch_event",
+                                    side_effect=lambda event, **fields: events.append((event, fields)),
+                                ):
+                                    with patch.object(
+                                        desktop_app,
+                                        "_wait_until_ready",
+                                        side_effect=AssertionError(
+                                            "chat readiness must not be polled"
+                                        ),
+                                    ):
+                                        with patch(
+                                            "defaultspack.native_webview.open_desktop_surface"
+                                        ) as open_surface:
+                                            self.assertEqual(desktop_app.main(), 1)
+
+        self.assertTrue(fake_server.started)
+        self.assertTrue(fake_server.stopped)
+        open_surface.assert_not_called()
+        self.assertEqual(get_runtime_readiness(), {
+            "panel_ready": True,
+            "runtime_ready": False,
+            "runtime_status": "error",
+            "runtime_error": "required runtime backend is unavailable",
+        })
+        unavailable = next(item for item in events if item[0] == "runtime_unavailable")
+        self.assertEqual(unavailable[1]["code"], "API_FAILURE")
+        self.assertEqual(
+            unavailable[1]["recovery_action"],
+            "Open Tobkiri Launcher > Packs to prepare PackVM.",
+        )
+        self.assertNotIn("stale helper identity", str(unavailable[1]))
 
     def test_valid_stale_profile_does_not_open_authenticated_surface(self):
         from core_runtime.app_lifecycle_manager import (
@@ -555,6 +648,9 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
 
             def __exit__(self, exc_type, exc, traceback):
                 return False
+
+            def read(self, *_args):
+                return b'{"data":{"runtime_ready":true,"runtime_status":"runtime_ready"}}'
 
         with patch.object(
             desktop_app.urllib.request,

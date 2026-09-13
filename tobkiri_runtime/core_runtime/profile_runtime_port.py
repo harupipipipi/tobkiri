@@ -145,6 +145,9 @@ class ProfileRuntimePort(Protocol):
     def is_resolution_denied(self, error: BaseException) -> bool:
         """Identify an application Profile resolution denial."""
 
+    def is_activation_lock_timeout(self, error: BaseException) -> bool:
+        """Identify a transient wait for another activation reader or writer."""
+
     def active_profile(self, resolved: Any, activation: Mapping[str, Any]) -> Any:
         """Reconstruct one concrete active Profile envelope for cache binding."""
 

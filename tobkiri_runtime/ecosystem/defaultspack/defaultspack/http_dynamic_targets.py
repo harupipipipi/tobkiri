@@ -56,7 +56,7 @@ def defaultspack_dynamic_capability_targets(
                     operation_id=operation_id,
                     provider_id=provider_id,
                     function_id=function_id,
-                    allowed_payload_keys=_payload_keys(contract_id),
+                    allowed_payload_keys=_payload_keys(contract_id, operation_id),
                     owner_pack_id=pack_id,
                     artifact_digest=artifact_digest,
                 )
@@ -73,11 +73,27 @@ def defaultspack_dynamic_capability_targets(
     )
 
 
-def _payload_keys(contract_id: str) -> frozenset[str]:
+def _payload_keys(contract_id: str, operation_id: str) -> frozenset[str]:
+    """Return the finite payload schema admitted by the generic UI bridge."""
+
     if contract_id == "tobkiri.service.media.inspect.v1":
         return frozenset(
             {"name", "path", "encoding", "max_bytes", "start_line", "end_line"}
         )
+    if contract_id == "tobkiri.workflow.v4":
+        workflow_payloads = {
+            "definition.list": frozenset(),
+            "definition.get": frozenset({"definition_id"}),
+            "definition.create": frozenset({"definition_id", "document"}),
+            "definition.update": frozenset(
+                {"definition_id", "document", "if_match"}
+            ),
+            "definition.delete": frozenset({"definition_id", "if_match"}),
+            "definition.validate": frozenset({"document"}),
+            "definition.publish": frozenset({"definition_id", "if_match"}),
+            "operation.palette": frozenset(),
+        }
+        return workflow_payloads.get(operation_id, frozenset())
     return frozenset()
 
 

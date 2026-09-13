@@ -850,6 +850,8 @@ def resolve_default_profile(
         if reference not in references:
             references.append(reference)
         manifest, function, contract = candidates[0]
+        # ``candidates`` was filtered by ``target_provider_id`` above, so the
+        # captured Function principal is the exact target of this Profile edge.
         try:
             edge["requested_scope_template"] = normalize_requested_scope_template(
                 edge["requested_scope_template"],

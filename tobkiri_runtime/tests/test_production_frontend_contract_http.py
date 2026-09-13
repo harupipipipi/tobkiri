@@ -1458,16 +1458,30 @@ def test_model_profile_save_http_rejects_authority_and_stale_revision(
 ) -> None:
     """Save a selectable model through the signed Defaults edge and real owner."""
     from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
 
     server, _session, _authority = production_server
     cookie, csrf, origin = _authenticate(server)
     registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
+    provider_registry = ProviderRegistry(
+        "defaults", user_data_root=tmp_path / "user-data"
+    )
+    provider_registry.save(
+        {
+            "provider_instance_id": "provider.fixture",
+            "adapter_id": "openai-compatible",
+            "endpoint": "https://provider.example/v1",
+            "enabled": True,
+        },
+        expected_revision=0,
+    )
     payload = {
         "model_profile_id": "daily",
         "model_id": "provider-model",
         "provider_instance_id": "provider.fixture",
         "display_name": "Daily",
         "expected_revision": 0,
+        "provider_registry_revision": 1,
     }
 
     def post(body):
@@ -1909,6 +1923,7 @@ def test_saved_settings_reach_host_credential_transport(
                 "provider_instance_id": "provider.fixture",
                 "display_name": "Daily",
                 "expected_revision": 0,
+                "provider_registry_revision": 1,
             },
         )
         assert status == 200, result

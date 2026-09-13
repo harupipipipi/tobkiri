@@ -266,9 +266,17 @@ function TreePreview({
             <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded bg-zinc-900/55 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-zinc-300">
               {preview.content}
             </pre>
+          ) : preview.error ? (
+            <ErrorNotice
+              announce={false}
+              className="px-2 py-1.5 text-[10px]"
+              copyLabel="Copy channel preview error"
+              errorIcon="channel-preview"
+              message={preview.error}
+            />
           ) : (
             <p className="rounded bg-zinc-900/55 px-2 py-1.5 text-[10px] text-zinc-500">
-              {preview.error || "No preview content"}
+              No preview content
             </p>
           )}
         </div>

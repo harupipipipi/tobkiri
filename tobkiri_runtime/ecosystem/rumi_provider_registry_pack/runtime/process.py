@@ -124,7 +124,12 @@ class ProviderRegistryHostFactoryV4:
             if self.readonly:
                 if set(payload) - {"profile_id"}:
                     raise PermissionError("provider registry read payload is invalid")
-                return service.invoke("list", {"profile_id": context.profile_id})
+                snapshot = service.invoke("list", {"profile_id": context.profile_id})
+                if operation_id == (
+                    "rumi_provider_registry_pack.provider-registry-resource"
+                ):
+                    return _provider_connection_snapshot(snapshot)
+                return snapshot
             action = payload.get("operation")
             if action == "save":
                 fields = {"operation", "profile_id", "record", "expected_revision"}
@@ -175,6 +180,37 @@ class ProviderRegistryHostFactoryV4:
                 )
             )
         return CapturedHostProviderV4(tuple(contributions), lambda: None)
+
+
+def _provider_connection_snapshot(
+    snapshot: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project UI-safe Provider connection identities from an owner snapshot."""
+    revision = snapshot.get("revision")
+    providers = snapshot.get("providers")
+    if type(revision) is not int or revision < 0 or not isinstance(providers, list):
+        raise ValueError("provider registry snapshot is invalid")
+    projected: list[dict[str, Any]] = []
+    for item in providers:
+        if not isinstance(item, Mapping):
+            raise ValueError("provider registry record is invalid")
+        provider_instance_id = item.get("provider_instance_id")
+        display_name = item.get("display_name")
+        enabled = item.get("enabled")
+        if (
+            not isinstance(provider_instance_id, str)
+            or not provider_instance_id
+            or not isinstance(display_name, str)
+            or not display_name
+            or not isinstance(enabled, bool)
+        ):
+            raise ValueError("provider registry record is invalid")
+        projected.append({
+            "provider_instance_id": provider_instance_id,
+            "display_name": display_name,
+            "enabled": enabled,
+        })
+    return {"revision": revision, "providers": projected}
 
 
 HOST_PROVIDER_FACTORY = {

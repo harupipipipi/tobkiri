@@ -1,5 +1,4 @@
 import {
-  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -119,7 +118,7 @@ export default function App() {
 
   return (
     <BrowserRouter basename="/panel">
-      <DeferredRouteTree
+      <RouteTree
         isSetupDone={isSetupDone}
         runtimeReady={runtimeReady}
         runtimeStatus={runtimeStatus}
@@ -461,7 +460,7 @@ export function SetupVerificationGate({
   );
 }
 
-function DeferredRouteTree({
+export function RouteTree({
   isSetupDone,
   runtimeReady,
   runtimeStatus,
@@ -477,11 +476,6 @@ function DeferredRouteTree({
   onRetryRuntimeHealth: () => Promise<void>;
 }) {
   const location = useLocation();
-  const deferredLocation = useDeferredValue(location);
-  const routePending =
-    deferredLocation.pathname !== location.pathname ||
-    deferredLocation.search !== location.search ||
-    deferredLocation.hash !== location.hash;
 
   const verificationBanner = (
     <SetupVerificationBanner
@@ -512,8 +506,8 @@ function DeferredRouteTree({
 
   return (
     <>
-      <RouteAnnouncer pathname={deferredLocation.pathname} />
-      <Routes location={deferredLocation}>
+      <RouteAnnouncer pathname={location.pathname} />
+      <Routes>
         <Route path={panelRoutes.setup} element={<Setup />} />
 
         <Route
@@ -534,15 +528,6 @@ function DeferredRouteTree({
           <Route path={panelRoutes.nodeManager.slice(1)} element={gateDevtoolsRoute(<LazyNodeManager />)} />
         </Route>
       </Routes>
-      {routePending && (
-        <div
-          role="status"
-          aria-label="Opening page"
-          className="pointer-events-none fixed inset-x-0 top-0 z-[100] h-0.5 overflow-hidden bg-accent/15"
-        >
-          <div className="h-full w-full origin-left animate-pulse bg-accent" />
-        </div>
-      )}
     </>
   );
 }

@@ -129,11 +129,17 @@ def test_v4_defaultspack_catalog_pins_the_real_conversation_implementation():
 
     assert pack["pack"]["id"] == "defaultspack"
     assert [item["id"] for item in pack["functions"]] == [
-        "defaultspack.conversation"
+        "defaultspack.application-presentation",
+        "defaultspack.conversation",
+        "defaultspack.conversation.saved",
     ]
-    assert executable["variants"][0]["function_id"] == "defaultspack.conversation"
-    assert executable["variants"][0]["implementation_path"] == "runtime/conversation.py"
-    assert executable["variants"][0]["implementation_digest"] == expected_digest
+    variant = next(
+        item
+        for item in executable["variants"]
+        if item["function_id"] == "defaultspack.conversation"
+    )
+    assert variant["implementation_path"] == "runtime/conversation.py"
+    assert variant["implementation_digest"] == expected_digest
 
 
 def test_browser_screenshot_alias_uses_implemented_screenshot_action():

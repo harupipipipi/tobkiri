@@ -1,12 +1,13 @@
 import {useEffect} from 'react';
 import {Link} from 'react-router';
-import {Network, ShieldAlert, ShieldCheck} from 'lucide-react';
+import {CircleHelp, Network, ShieldAlert, ShieldCheck} from 'lucide-react';
 
 import {AdvancedSurfaceFrame, EmptySurfacePanel} from '@/src/components/advanced/AdvancedSurfaceFrame';
 import {RuntimeEvidenceCard} from '@/src/components/advanced/RuntimeEvidenceCard';
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
 import {Card, CardContent, CardHeader, CardTitle} from '@/src/components/ui/Card';
+import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
 import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
 import {extractExactPackDescriptors, type RuntimePackDescriptor} from '@/src/lib/runtimeSurface';
@@ -121,7 +122,13 @@ export function NodeManager() {
                     <p className="mt-1 break-all font-mono text-xs text-text-muted">{pack.id} · v{pack.version}</p>
                     <p className="mt-1 break-all font-mono text-xs text-text-muted">{shownDigest}</p>
                     {joinWarning ? <p className="mt-2 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300"><ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{joinWarning}</p> : null}
-                    {mutationResultUnknown ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300" role="alert">A mutation result is unknown. Refresh the authoritative catalog before trying again.</p> : null}
+                    {mutationResultUnknown ? (
+                      <div className="mt-2 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300" role="alert">
+                        <CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" data-error-icon="node-manager-mutation-unknown" />
+                        <p className="min-w-0 flex-1">A mutation result is unknown. Refresh the authoritative catalog before trying again.</p>
+                        <CopyErrorButton label="Copy unknown Pack mutation result" text="A mutation result is unknown. Refresh the authoritative catalog before trying again." />
+                      </div>
+                    ) : null}
                     {activeRow ? <p className="mt-2 text-xs text-text-muted">{activeRow.invokable_operations.length} exact invokable operation binding(s) in the active snapshot.</p> : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">

@@ -461,6 +461,15 @@ class DefaultspackProfileRuntime:
 
         return isinstance(error, ProfileResolutionDenied)
 
+    def is_activation_lock_timeout(self, error: BaseException) -> bool:
+        """Classify a bounded cross-process activation-lock collision."""
+
+        from ecosystem.defaultspack.domain.runtime_v4.service import (
+            ActivationLockTimeout,
+        )
+
+        return isinstance(error, ActivationLockTimeout)
+
     def active_profile(
         self,
         resolved: Any,

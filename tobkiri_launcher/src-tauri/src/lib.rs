@@ -65,7 +65,6 @@ pub struct AllowedNavigationPorts(pub Arc<Mutex<Vec<u16>>>);
 
 const PRIMARY_WINDOW_LABELS: [&str; 2] = ["panel", "main"];
 const DEFAULTSPACK_RESERVED_PORT: u16 = 8766;
-#[cfg(test)]
 const DEFAULTSPACK_MAIN_WINDOW_LABEL: &str = "defaultspack-main";
 const AUTHORITY_APPROVAL_WINDOW_LABEL: &str = "authority-approval";
 const AUTHORITY_APPROVAL_WINDOW_TITLE: &str = "Tobkiriの許可";
@@ -272,9 +271,14 @@ fn debug_approval_status(
     state.status()
 }
 
-fn validate_debug_approval_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+fn validate_launcher_main_window(
+    window: &tauri::WebviewWindow,
+    operation: &str,
+) -> Result<(), String> {
     if window.label() != "main" {
-        return Err("debug approval can only be changed from the Launcher main window".into());
+        return Err(format!(
+            "{operation} is only available from the Launcher main window"
+        ));
     }
     let url = window
         .url()
@@ -285,9 +289,15 @@ fn validate_debug_approval_window(window: &tauri::WebviewWindow) -> Result<(), S
             "localhost" | "127.0.0.1" | "tauri.localhost"
         );
     if !local_launcher || url.path() == "/approval" {
-        return Err("debug approval is unavailable from this Launcher route".into());
+        return Err(format!(
+            "{operation} is unavailable from this Launcher route"
+        ));
     }
     Ok(())
+}
+
+fn validate_debug_approval_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    validate_launcher_main_window(window, "debug approval")
 }
 
 #[tauri::command]
@@ -375,6 +385,30 @@ fn open_external_url(url: String) -> Result<(), String> {
     }
 
     open::that_detached(url).map_err(|error| format!("failed to open external url: {error}"))
+}
+
+#[tauri::command]
+async fn check_launcher_update(
+    window: tauri::WebviewWindow,
+) -> Result<updater::LauncherUpdateStatus, String> {
+    validate_launcher_main_window(&window, "Launcher update check")?;
+    tauri::async_runtime::spawn_blocking(updater::check_for_update_status)
+        .await
+        .map_err(|error| format!("Launcher update check task failed: {error}"))?
+        .map_err(|error| format!("Launcher update check failed: {error:#}"))
+}
+
+#[tauri::command]
+async fn open_launcher_update_release(window: tauri::WebviewWindow) -> Result<(), String> {
+    validate_launcher_main_window(&window, "Launcher update release")?;
+    tauri::async_runtime::spawn_blocking(|| {
+        let info = updater::check_for_update()?
+            .ok_or_else(|| anyhow!("Tobkiri Launcher is already up to date"))?;
+        updater::open_release_page(&info)
+    })
+    .await
+    .map_err(|error| format!("Launcher update release task failed: {error}"))?
+    .map_err(|error| format!("Launcher update release failed: {error:#}"))
 }
 
 #[tauri::command]
@@ -513,6 +547,8 @@ fn validate_authority_approval_open_caller(
     focused: bool,
     current_url: &Url,
     expected_port: u16,
+    active_profile_id: Option<&str>,
+    active_frontend_route: Option<&str>,
 ) -> Result<(), String> {
     if !focused {
         return Err("opening an approval window requires the focused caller window".into());
@@ -526,6 +562,21 @@ fn validate_authority_approval_open_caller(
         return Err("approval window is unavailable from this caller origin".into());
     }
     let path_allowed = match window_label {
+        DEFAULTSPACK_MAIN_WINDOW_LABEL => {
+            let active_profile_id = active_profile_id
+                .ok_or_else(|| "approval window requires an active Profile".to_string())?;
+            let active_frontend_route = active_frontend_route.ok_or_else(|| {
+                "approval window requires an active Application frontend entry".to_string()
+            })?;
+            crate::health_check::validate_application_route(active_frontend_route)
+                .map_err(|_| "approval window requires a valid frontend route".to_string())?;
+            let encoded_profile =
+                crate::health_check::encode_profile_path_segment(active_profile_id)
+                    .map_err(|_| "approval window requires a valid active Profile".to_string())?;
+            current_url.query().is_none()
+                && current_url.fragment().is_none()
+                && current_url.path() == format!("/p/{encoded_profile}{active_frontend_route}")
+        }
         AMBIENT_TRIGGER_WINDOW_LABEL => current_url.path() == "/ambient",
         FINGER_RECORDING_WINDOW_LABEL => current_url.path() == "/finger-recording",
         _ => false,
@@ -534,6 +585,18 @@ fn validate_authority_approval_open_caller(
         return Err("approval window is unavailable from this caller route".into());
     }
     Ok(())
+}
+
+fn active_authority_binding_for_approval(config: &AppConfig) -> Result<(String, String), String> {
+    let authority = crate::defaultspack_authority::resolve(config)
+        .map_err(|_| "approval window requires an active verified Profile".to_string())?;
+    let identity = authority
+        .execution_identity()
+        .map_err(|_| "approval window requires an active verified Profile".to_string())?;
+    Ok((
+        identity.profile_id,
+        authority.launch.frontend_entry.entry.route,
+    ))
 }
 
 fn validate_auxiliary_presentation_launch_caller(
@@ -577,11 +640,18 @@ async fn open_authority_approval_window(
     let current_url = window
         .url()
         .map_err(|error| format!("failed to inspect approval caller URL: {error}"))?;
+    let active_binding = if window.label() == DEFAULTSPACK_MAIN_WINDOW_LABEL {
+        Some(active_authority_binding_for_approval(config.inner())?)
+    } else {
+        None
+    };
     validate_authority_approval_open_caller(
         window.label(),
         focused,
         &current_url,
         active_defaultspack_http_port(),
+        active_binding.as_ref().map(|binding| binding.0.as_str()),
+        active_binding.as_ref().map(|binding| binding.1.as_str()),
     )?;
     open_authority_approval_window_for_app(&app, config.inner(), &request_id)
 }
@@ -3049,6 +3119,8 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             restart_kernel,
             reauthorize_panel_session,
             open_external_url,
+            check_launcher_update,
+            open_launcher_update_release,
             close_current_window,
             open_authority_approval_window,
             open_ambient_trigger_window,
@@ -3661,6 +3733,7 @@ mod tests {
 
     #[test]
     fn authority_approval_open_requires_focused_exact_launcher_route() {
+        let active_profile_id = "profile-a";
         for (label, route) in [
             (AMBIENT_TRIGGER_WINDOW_LABEL, "/ambient"),
             (FINGER_RECORDING_WINDOW_LABEL, "/finger-recording"),
@@ -3670,9 +3743,44 @@ mod tests {
                 true,
                 &Url::parse(&format!("http://127.0.0.1:18771{route}")).unwrap(),
                 18771,
+                None,
+                None,
             )
             .unwrap();
         }
+
+        // A bootstrap-complete Shell is the only Defaultspack caller that can
+        // open this high-risk window: no query or fragment may survive on the
+        // exact selected frontend route for the verified active Profile.
+        validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            true,
+            &Url::parse("http://127.0.0.1:18771/p/profile-a/chat").unwrap(),
+            18771,
+            Some(active_profile_id),
+            Some("/chat"),
+        )
+        .unwrap();
+
+        validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            true,
+            &Url::parse("http://127.0.0.1:18771/p/profile-a/coding").unwrap(),
+            18771,
+            Some(active_profile_id),
+            Some("/coding"),
+        )
+        .unwrap();
+
+        assert!(validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            false,
+            &Url::parse("http://127.0.0.1:18771/p/profile-a/chat").unwrap(),
+            18771,
+            Some(active_profile_id),
+            Some("/chat"),
+        )
+        .is_err());
 
         let main_url = Url::parse("http://127.0.0.1:18771/ambient").unwrap();
         assert!(validate_authority_approval_open_caller(
@@ -3680,29 +3788,50 @@ mod tests {
             false,
             &main_url,
             18771,
+            None,
+            None,
         )
         .is_err());
         for (label, rejected) in [
-            (DEFAULTSPACK_MAIN_WINDOW_LABEL, "http://127.0.0.1:8766/chat"),
             (
                 DEFAULTSPACK_MAIN_WINDOW_LABEL,
-                "https://127.0.0.1:18771/chat",
+                "http://127.0.0.1:8766/p/profile-a/chat",
             ),
             (
                 DEFAULTSPACK_MAIN_WINDOW_LABEL,
-                "http://example.invalid:18771/chat",
+                "https://127.0.0.1:18771/p/profile-a/chat",
             ),
             (
                 DEFAULTSPACK_MAIN_WINDOW_LABEL,
-                "http://localhost:18771/chat",
+                "http://example.invalid:18771/p/profile-a/chat",
             ),
             (
                 DEFAULTSPACK_MAIN_WINDOW_LABEL,
-                "http://user@127.0.0.1:18771/chat",
+                "http://localhost:18771/p/profile-a/chat",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://user@127.0.0.1:18771/p/profile-a/chat",
             ),
             (
                 DEFAULTSPACK_MAIN_WINDOW_LABEL,
                 "http://127.0.0.1:18771/approval",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://127.0.0.1:18771/p/other-profile/chat",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://127.0.0.1:18771/p/profile-a/coding",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://127.0.0.1:18771/p/profile-a/chat?code=one-time",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://127.0.0.1:18771/p/profile-a/chat#rumi_local_auth=token",
             ),
             (
                 AMBIENT_TRIGGER_WINDOW_LABEL,
@@ -3719,9 +3848,63 @@ mod tests {
                 true,
                 &Url::parse(rejected).unwrap(),
                 18771,
+                Some(active_profile_id),
+                Some("/chat"),
             )
             .is_err());
         }
+
+        assert!(validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            true,
+            &Url::parse("http://127.0.0.1:18771/p/profile-a/chat").unwrap(),
+            18771,
+            None,
+            Some("/chat"),
+        )
+        .is_err());
+
+        assert!(validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            true,
+            &Url::parse("http://127.0.0.1:18771/p/profile-a/chat").unwrap(),
+            18771,
+            Some(active_profile_id),
+            None,
+        )
+        .is_err());
+
+        let unicode_profile_id = "利用者";
+        let encoded_unicode_profile =
+            crate::health_check::encode_profile_path_segment(unicode_profile_id).unwrap();
+        let canonical_unicode_url = Url::parse(&format!(
+            "http://127.0.0.1:18771/p/{encoded_unicode_profile}/chat"
+        ))
+        .unwrap();
+        validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            true,
+            &canonical_unicode_url,
+            18771,
+            Some(unicode_profile_id),
+            Some("/chat"),
+        )
+        .unwrap();
+
+        let noncanonical_unicode_url = Url::parse(&format!(
+            "http://127.0.0.1:18771/p/{}/chat",
+            encoded_unicode_profile.to_ascii_lowercase()
+        ))
+        .unwrap();
+        assert!(validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            true,
+            &noncanonical_unicode_url,
+            18771,
+            Some(unicode_profile_id),
+            Some("/chat"),
+        )
+        .is_err());
     }
 
     #[test]
@@ -3837,7 +4020,7 @@ mod tests {
                 .unwrap();
         assert_eq!(
             open["windows"],
-            serde_json::json!(["ambient-trigger", "finger-recording"])
+            serde_json::json!(["defaultspack-main", "ambient-trigger", "finger-recording"])
         );
         assert_eq!(
             open["remote"]["urls"],

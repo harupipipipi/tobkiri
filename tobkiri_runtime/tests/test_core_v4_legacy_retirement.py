@@ -65,14 +65,14 @@ def test_manifest_authority_catalog_classifies_all_direct_pack_roots() -> None:
         (RUNTIME / "schemas" / "manifest_authority.v1.json").read_text(encoding="utf-8")
     )["packs"]
     assert set(catalog) == roots
-    assert len(catalog) == 140
+    assert len(catalog) == 141
     assert set(catalog.values()) == {"v4-authoritative"}
-    assert catalog["defaults"] == "v4-authoritative"
     assert catalog["defaultspack"] == "v4-authoritative"
+    assert catalog["tobkiri_workflow_pack"] == "v4-authoritative"
     assert all((ecosystem / pack_id / "pack.v4.json").is_file() for pack_id in roots)
     assert not any(
         (ecosystem / pack_id / legacy_name).exists()
-        for pack_id in ("defaults", "defaultspack")
+        for pack_id in ("defaultspack",)
         for legacy_name in ("ecosystem.json", "rumi.pack.v3.json")
     )
     from backend_core.ecosystem.registry import (

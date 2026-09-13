@@ -399,6 +399,9 @@ class HTTPApplicationPresentation(Protocol):
     def requires_operation_ready(self, target: HTTPContractTarget) -> bool:
         """Return whether this UI target must be backend-ready at bind time."""
 
+    def startup_operation_requirements(self) -> tuple[tuple[str, str], ...]:
+        """Return exact additional operations required before chat opens."""
+
     def present_result(
         self,
         binding: HTTPContractBinding,
@@ -2522,6 +2525,56 @@ class PackAPIServer:
             self._dispatch_session,
             self._contract_routes,
         )
+
+    def assert_runtime_startup_ready(self) -> None:
+        """Require all captured runtime dependencies before declaring chat ready.
+
+        Application presentations may deliberately leave a route bindable while
+        its backend is unavailable, so its UI can render a recovery state. A
+        full runtime-ready transition is stricter: it must also prove the
+        presentation's declared route targets and finite exact requirements
+        can select their production backend. ``assert_operation_ready`` is a
+        read-only selection check; it neither invokes an operation nor
+        requests, grants, or provisions authority.
+        """
+
+        with self._lifecycle_lock:
+            session = self._dispatch_session
+            routes = dict(self._contract_routes)
+        self._validate_contract_capture(session, routes)
+        self._validate_startup_operations(session)
+
+    def _validate_startup_operations(
+        self,
+        session: DispatchSession | None,
+    ) -> None:
+        """Validate finite application startup dependencies without side effects."""
+
+        presentation = self._application_presentation
+        exact_requirements = getattr(
+            presentation,
+            "startup_operation_requirements",
+            None,
+        )
+        if not callable(exact_requirements):
+            return
+        if session is None:
+            raise RuntimeError("frontend contracts require a captured v4 session")
+        session.assert_current()
+        requirements = exact_requirements()
+        if not isinstance(requirements, tuple) or len(set(requirements)) != len(
+            requirements
+        ):
+            raise RuntimeError("startup operation requirements are invalid")
+        for requirement in requirements:
+            if (
+                not isinstance(requirement, tuple)
+                or len(requirement) != 2
+                or not all(isinstance(value, str) and value for value in requirement)
+            ):
+                raise RuntimeError("startup operation requirement is invalid")
+        for contract_id, operation_id in requirements:
+            session.assert_operation_ready(contract_id, operation_id)
 
     def _validate_contract_capture(
         self,

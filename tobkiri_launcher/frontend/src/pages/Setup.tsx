@@ -222,13 +222,13 @@ export function Setup() {
       const result = await recoverDefaultsActivation({
         fetchAuthoritativeSetup: () => fetchDefaultsSetupState({waitForRestart: true}),
         reconcileActiveRuntime,
-      });
+      }, {committedActivation: activationCommitted});
       await applyRecoveryResult(result);
     } finally {
       activationInFlightRef.current = false;
       setActivating(false);
     }
-  }, [applyRecoveryResult, reconcileActiveRuntime]);
+  }, [activationCommitted, applyRecoveryResult, reconcileActiveRuntime]);
 
   const activate = async () => {
     if (activationCommitted || !setup || setup.state !== 'review_required' || !reviewed) return;
@@ -241,6 +241,7 @@ export function Setup() {
         submitActivation: () => activateDefaultsProfile(
           setup.recommended_default_profile.confirmation, {includeSourceAdditions},
         ),
+        onActivationCommitted: () => setActivationCommitted(true),
         fetchAuthoritativeSetup: () => fetchDefaultsSetupState({waitForRestart: true}),
         reconcileActiveRuntime,
       });
@@ -304,7 +305,11 @@ export function Setup() {
         <TobkiriLoadingMark />
         Loading selected presentation…
       </div> : presentationError ? <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 text-sm text-destructive">
-        <p>{presentationError}</p>
+        <div className="flex items-start gap-2">
+          <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="presentation" />
+          <p className="min-w-0 flex-1 break-words">{presentationError}</p>
+          <CopyErrorButton label="Copy presentation error" text={presentationError} />
+        </div>
         <div className="mt-4"><Button variant="outline" onClick={() => void loadPresentation()}>Retry</Button></div>
       </div> : presentation ? <PresentationSelector
         state={presentation}
@@ -315,13 +320,9 @@ export function Setup() {
         onSelectionChange={setSelection}
         onSave={savePresentation}
         onLaunch={launchPresentation}
-      /> : <div role={presentationError ? 'alert' : 'status'} className="rounded-xl border border-border bg-bg-card p-6 text-sm text-text-muted">
-        <div className="flex items-start gap-2">
-          {presentationError ? <AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-destructive" /> : null}
-          <span className="min-w-0 flex-1 break-words">{presentationError ?? 'Loading selected presentation…'}</span>
-          {presentationError ? <CopyErrorButton label="Copy presentation error" text={presentationError} /> : null}
-        </div>
-        {presentationError && <div className="mt-4"><Button variant="outline" onClick={() => void loadPresentation()} loading={presentationLoading}>Retry</Button></div>}
+      /> : <div role="status" className="flex items-center gap-2 rounded-xl border border-border bg-bg-card p-6 text-sm text-text-muted">
+        <TobkiriLoadingMark />
+        Loading selected presentation…
       </div>}
     </div></div>;
   }

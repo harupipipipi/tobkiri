@@ -35,10 +35,13 @@ duplicate calls return the existing snapshot without changing a live executor's
 state. A validated acknowledgement records message references and an outcome
 digest, not transcript content. Lost, invalid or late outcomes require
 reconciliation, and a stale completion never overwrites a concurrent mutation.
-This helper is not yet a registered captured Host Function or HTTP route.
-Per-stage journaling, owner reconciliation, authenticated stop and production
-capture wiring remain incomplete. Tests use real stores with dispatch/AI
-adapters; they are not native, real-Broker coordinator or Provider acceptance.
+The saved coordinator and owner-scoped stop operation are registered captured
+Host Functions and are exposed through the generated Defaultspack HTTP contract
+map. Integration tests exercise the real HTTP, Host, and Broker cancellation
+path while keeping external AI and guest execution as explicit adapters.
+Per-stage journaling and restart-resumable nested Provider termination remain
+incomplete; a stop acknowledgement therefore reports cancellation requested,
+not termination confirmed, until every nested execution layer can prove drain.
 
 Durability is not execution recovery: a restored running state does not authorize
 another AI invocation or uncertain write. Reconciliation, provider cancellation,

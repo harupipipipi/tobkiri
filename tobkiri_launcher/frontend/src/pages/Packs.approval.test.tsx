@@ -181,6 +181,40 @@ test('successful Pack approval revocation refreshes state and removes enablement
   }
 });
 
+test('unknown Pack mutations expose a distinct status icon and stable error-copy action', serialTestOptions, async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  useAppStore.setState({
+    packs: [samplePack],
+    packCatalogBinding: activePackBinding,
+    packMutationUnknown: {
+      'pack:toggle:research-pack:disable': {
+        key: 'pack:toggle:research-pack:disable',
+        requestId: 'e9e7f7fb-e8db-4f21-bb5a-81b8f0f6ae01',
+        state: 'unknown',
+        createdAt: 1,
+        metadata: {kind: 'pack.toggle', pack_id: samplePack.id},
+      },
+    },
+    loadPacks: async () => {},
+  });
+
+  try {
+    await renderSurface(root);
+    assert.match(container.textContent ?? '', /The result of a Pack mutation is unknown/);
+    assert.ok(container.querySelector('[data-error-icon="pack-mutation-unknown"]'));
+    const copy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy unknown Pack mutation result"]',
+    );
+    assert.ok(copy);
+    assert.ok(copy.querySelector('svg.lucide-copy'));
+  } finally {
+    await act(async () => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
 test('failed Pack approval revocation stays approved and surfaces the typed failure', serialTestOptions, async () => {
   const previousState = useAppStore.getState();
   const {dom, container, root} = createSurface();

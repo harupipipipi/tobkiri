@@ -75,15 +75,15 @@ def test_repository_authority_catalog_is_exact_and_has_no_loader_gaps() -> None:
     catalog = authority.load_manifest_authority_catalog()
 
     assert len(locations) == 137
-    assert len(catalog) == 140
+    assert len(catalog) == 141
     assert set(catalog) == direct_pack_ids
     assert set(catalog.values()) == {"v4-authoritative"}
-    assert catalog["defaults"] == "v4-authoritative"
     assert catalog["defaultspack"] == "v4-authoritative"
     assert direct_pack_ids - {location.pack_id for location in locations} == {
-        "defaults",
         "defaultspack",
         "rumi_command_protocol_pack",
+        "tobkiri_mcp_connection_pack",
+        "tobkiri_ui_settings_pack",
     }
 
     for location in locations:

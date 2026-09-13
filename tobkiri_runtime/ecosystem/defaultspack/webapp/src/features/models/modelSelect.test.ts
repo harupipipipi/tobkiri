@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { userFacingModelProfiles, profileNeedsApiKey } from "../../App";
+import { ModelRouteErrorNotices, ModelRouteSetup } from "./ModelRouteSetup";
 
 import {
   buildVisibleModelOptions,
@@ -26,6 +29,31 @@ test("saved canonical routes remain selectable without claiming Provider health"
   assert.equal("availability" in route, false);
   assert.deepEqual(userFacingModelProfiles([{ ...route, route_configured: false }], "stub/default"), []);
   assert.deepEqual(userFacingModelProfiles([{ ...route, type: "embedding" }], "stub/default"), []);
+});
+
+test("model route setup never offers a free-form provider connection ID", () => {
+  const html = renderToStaticMarkup(createElement(ModelRouteSetup));
+
+  assert.match(html, /Provider接続ID（登録済みのみ）/);
+  assert.match(html, /aria-label="Provider connection ID"/);
+  assert.match(html, /<select/);
+  assert.match(html, /登録済みの接続がありません/);
+  assert.doesNotMatch(html, /provider\.deepseek\.main/);
+});
+
+test("model route setup errors keep severity icons separate from stable copy actions", () => {
+  const html = renderToStaticMarkup(createElement(ModelRouteErrorNotices, {
+    connectionsError: "接続一覧を取得できませんでした。",
+    saveError: "保存時に接続が更新されました。",
+  }));
+
+  assert.match(html, /data-error-notice="model-route-provider-connections"/);
+  assert.match(html, /data-error-icon="model-route-provider-connections"/);
+  assert.match(html, /aria-label="Provider接続一覧エラーをコピー"/);
+  assert.match(html, /data-error-notice="model-route-save"/);
+  assert.match(html, /data-error-icon="model-route-save"/);
+  assert.match(html, /aria-label="モデルルート保存エラーをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
 });
 
 function makeModelOption(index: number): ModelSelectOption {

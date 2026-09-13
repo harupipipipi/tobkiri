@@ -7,8 +7,9 @@ import { Badge } from '@/src/components/ui/Badge';
 import { Switch } from '@/src/components/ui/Switch';
 import { Card } from '@/src/components/ui/Card';
 import { panelRoutes } from '@/src/lib/routes';
-import { AlertTriangle, Search, Package, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CircleHelp, Search, Package, ShieldCheck } from 'lucide-react';
 import { Button } from '@/src/components/ui/Button';
+import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 import { PackScopeSummary } from '@/src/components/packs/PackScopeSummary';
 import { isPackInCatalogScope } from '@/src/lib/packScope';
@@ -189,7 +190,9 @@ export function Packs() {
               <Card key={pack.id} className="transition-all hover:shadow-[var(--shadow-md)] focus-within:shadow-[var(--shadow-md)]">
                 {Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id) ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-300/60 bg-amber-50/60 px-5 py-3 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
-                    <span>The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.</span>
+                    <CircleHelp className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="pack-mutation-unknown" />
+                    <span className="min-w-0 flex-1">The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.</span>
+                    <CopyErrorButton label="Copy unknown Pack mutation result" text="The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again." />
                     <Button type="button" size="sm" variant="outline" onClick={() => void loadPacks(true)}>Refresh catalog</Button>
                   </div>
                 ) : null}

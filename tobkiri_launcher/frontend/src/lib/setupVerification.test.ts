@@ -78,16 +78,22 @@ test('reconfirmation, errors, disconnects, and incomplete setup fail closed', ()
   assert.equal(resolveSetupVerificationState({
     ...healthy,
     runtimeStatus: 'profile_reconfirmation_required',
+    hostCatalogVerified: true,
+    profileCeremonyAvailable: true,
   }), 'needs_reconfirm');
   assert.equal(resolveSetupVerificationState({
     ...healthy,
     runtimeStatus: 'error',
+    hostCatalogVerified: true,
+    profileCeremonyAvailable: true,
   }), 'denied');
   assert.equal(resolveSetupVerificationState({
     ...healthy,
     runtimeReady: true,
     runtimeStatus: 'runtime_ready',
     runtimeDisconnected: true,
+    hostCatalogVerified: true,
+    profileCeremonyAvailable: true,
   }), 'denied');
   assert.equal(resolveSetupVerificationState({
     ...healthy,

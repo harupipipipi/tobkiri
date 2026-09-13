@@ -25,12 +25,22 @@ MODEL_PROFILE_SAVE_TARGET = (
 
 def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, object]:
     """Accept model routing data, never credentials, authority or migration input."""
-    fields = {"model_profile_id", "model_id", "provider_instance_id", "display_name", "expected_revision"}
+    fields = {
+        "model_profile_id",
+        "model_id",
+        "provider_instance_id",
+        "display_name",
+        "expected_revision",
+        "provider_registry_revision",
+    }
     if set(payload) != fields:
         raise ValueError("model configuration fields are invalid")
     revision = payload["expected_revision"]
     if type(revision) is not int or revision < 0:
         raise ValueError("model configuration revision is invalid")
+    provider_registry_revision = payload["provider_registry_revision"]
+    if type(provider_registry_revision) is not int or provider_registry_revision < 0:
+        raise ValueError("provider registry revision is invalid")
     for key in ("model_profile_id", "model_id", "provider_instance_id"):
         value = payload[key]
         if not isinstance(value, str) or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", value) is None:
@@ -39,7 +49,9 @@ def normalize_model_profile_save(payload: Mapping[str, object]) -> dict[str, obj
     if not isinstance(name, str) or not name.strip() or len(name) > 200:
         raise ValueError("model configuration name is invalid")
     return {
-        "operation": "save", "expected_revision": revision,
+        "operation": "save",
+        "expected_revision": revision,
+        "provider_registry_revision": provider_registry_revision,
         "record": {
             "model_profile_id": payload["model_profile_id"],
             "model_id": payload["model_id"], "display_name": name,

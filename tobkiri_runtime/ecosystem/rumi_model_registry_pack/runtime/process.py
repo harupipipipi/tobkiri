@@ -28,6 +28,10 @@ _PROFILE_OPERATION = "rumi_model_registry_pack.model-profile-resource"
 _PROFILE_GENERATE_OPERATION = f"{_PROFILE_OPERATION}.generate"
 _PROFILE_STREAM_OPERATION = f"{_PROFILE_OPERATION}.stream"
 _MANAGE_OPERATION = "rumi_model_registry_pack.model-profile-manage"
+_PROVIDER_REGISTRY_CONTRACT = "tobkiri.resource.ai.provider.registry.v1"
+_PROVIDER_REGISTRY_OPERATION = (
+    "rumi_provider_registry_pack.provider-registry-resource"
+)
 _MIGRATE_OPERATION = "rumi_model_registry_pack.model-registry-migrate"
 _MANAGE_SERVICE_OPERATIONS = frozenset({"save", "delete", "alias.set"})
 _MIGRATE_SERVICE_OPERATIONS = frozenset(
@@ -39,9 +43,10 @@ _PROFILE_SERVICE_OPERATIONS = frozenset({"list", "get", "resolve"})
 class ModelRegistryHostFactoryV4:
     """Capture one verified model-registry Host extension function.
 
-    The registry owns no cross-pack dependencies. It still creates the
-    invocation-bound contract client with an empty allow-list so its local
-    service cannot accidentally acquire an ambient Host capability.
+    A model route is accepted only when its Provider connection is present in
+    the Profile-captured provider registry at the exact revision displayed to
+    the user. The read is an explicit contract dependency; credentials remain
+    unavailable to this owner.
     """
 
     def __init__(self, function_id: str) -> None:
@@ -85,7 +90,11 @@ class ModelRegistryHostFactoryV4:
                 "resolve": {"identifier"},
                 _PROFILE_GENERATE_OPERATION: {"identifier"},
                 _PROFILE_STREAM_OPERATION: {"identifier"},
-                "save": {"record", "expected_revision"},
+                "save": {
+                    "record",
+                    "expected_revision",
+                    "provider_registry_revision",
+                },
                 "delete": {"model_profile_id", "expected_revision"},
                 "alias.set": {"alias", "target_profile_id", "expected_revision"},
                 "migration.apply": {"profiles", "aliases", "expected_source_hash"},
@@ -97,11 +106,15 @@ class ModelRegistryHostFactoryV4:
                 revision = payload.get("expected_revision")
                 if type(revision) is not int or revision < 0:
                     raise PermissionError("model registry revision is invalid")
-            client = invocation.contract_client(
-                allowed_contract_ids=frozenset(),
-                consumer_pack_id=_PACK_ID,
-            )
-            del client
+            if operation == "save":
+                client = invocation.contract_client(
+                    allowed_contract_ids=frozenset({_PROVIDER_REGISTRY_CONTRACT}),
+                    consumer_pack_id=_PACK_ID,
+                    include_credentials=False,
+                )
+                invocation.assert_current()
+                _validate_provider_connection(client, payload)
+                invocation.assert_current()
             return service.invoke(
                 operation,
                 {**payload, "profile_id": context.profile_id},
@@ -111,6 +124,51 @@ class ModelRegistryHostFactoryV4:
             tuple(_contributions(context, invoke)),
             lambda: None,
         )
+
+
+def _validate_provider_connection(
+    client: Any,
+    payload: Mapping[str, Any],
+) -> None:
+    """Reject a route whose selected provider connection changed or vanished."""
+    expected_revision = payload.get("provider_registry_revision")
+    record = payload.get("record")
+    if (
+        type(expected_revision) is not int
+        or expected_revision < 0
+        or not isinstance(record, Mapping)
+    ):
+        raise PermissionError("model route provider binding is invalid")
+    metadata = record.get("metadata")
+    provider_instance_id = (
+        metadata.get("provider_connection_id")
+        if isinstance(metadata, Mapping)
+        else None
+    )
+    if not isinstance(provider_instance_id, str) or not provider_instance_id:
+        raise PermissionError("model route provider connection is invalid")
+    snapshot = client.invoke(
+        _PROVIDER_REGISTRY_CONTRACT,
+        _PROVIDER_REGISTRY_OPERATION,
+        {},
+    )
+    if (
+        not isinstance(snapshot, Mapping)
+        or snapshot.get("revision") != expected_revision
+    ):
+        raise PermissionError("model route provider connection changed")
+    providers = snapshot.get("providers")
+    if not isinstance(providers, list):
+        raise PermissionError("model route provider registry is invalid")
+    matches = [
+        item
+        for item in providers
+        if isinstance(item, Mapping)
+        and item.get("provider_instance_id") == provider_instance_id
+        and item.get("enabled") is True
+    ]
+    if len(matches) != 1:
+        raise PermissionError("model route provider connection is unavailable")
 
 
 def _service_operation(operation_id: str, payload: Mapping[str, Any]) -> str:

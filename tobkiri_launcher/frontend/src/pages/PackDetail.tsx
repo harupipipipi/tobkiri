@@ -8,7 +8,7 @@ import { Badge } from '@/src/components/ui/Badge';
 import { Switch } from '@/src/components/ui/Switch';
 import { Card, CardHeader, CardTitle, CardContent } from '@/src/components/ui/Card';
 import { panelRoutes } from '@/src/lib/routes';
-import {AlertCircle, ArrowLeft} from 'lucide-react';
+import {AlertCircle, ArrowLeft, CircleHelp} from 'lucide-react';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 import { FileInspectOperation } from '@/src/components/packs/FileInspectOperation';
 import { PackDiagnostics } from '@/src/components/packs/PackDiagnostics';
@@ -268,7 +268,9 @@ export function PackDetail() {
         <PackScopeSummary binding={packCatalogBinding} pack={pack} stale={Boolean(packsError)} />
         {mutationResultUnknown ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
-            <span>The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.</span>
+            <CircleHelp className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="pack-mutation-unknown" />
+            <span className="min-w-0 flex-1">The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.</span>
+            <CopyErrorButton label="Copy unknown Pack mutation result" text="The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again." />
             <Button type="button" variant="outline" size="sm" onClick={() => void loadPacks(true)}>Refresh catalog</Button>
           </div>
         ) : null}

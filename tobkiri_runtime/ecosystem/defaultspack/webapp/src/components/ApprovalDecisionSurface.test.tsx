@@ -40,6 +40,20 @@ test("settled and expired approvals expose status without decision actions", () 
   }
 });
 
+test("approval errors expose a dedicated severity icon and stable copy action", () => {
+  const model = {
+    ...codingApprovalViewModel({ request_id: "failed", operation: "file.write", risk_level: "medium", status: "pending", details: { path: "/tmp/note" } }),
+    status: "error" as const,
+  };
+  const html = renderToStaticMarkup(createElement(ApprovalDecisionSurface, { approval: model }));
+
+  assert.match(html, /role="alert"/);
+  assert.match(html, /data-error-icon="approval-decision"/);
+  assert.match(html, /aria-label="承認エラーをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
+  assert.match(html, /再試行が必要です/);
+});
+
 test("numeric shortcuts are explained when explicitly configured", () => {
   const model = codingApprovalViewModel({ request_id: "keys", operation: "terminal.exec", risk_level: "medium", status: "pending" });
   const html = renderToStaticMarkup(createElement(ApprovalDecisionSurface, { approval: model, onApprove: () => undefined, onDeny: () => undefined, keyboardShortcuts: { deny: "2", approve: "3" } }));

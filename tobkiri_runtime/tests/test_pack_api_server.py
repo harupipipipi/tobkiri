@@ -16,6 +16,7 @@ import pytest
 from core_runtime.control_reconciliation_v4 import ControlReconciliationStore
 from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPContractBinding as FrontendContractBinding,
+    HTTPContractTarget,
 )
 from core_runtime.pack_api_server import (
     MAX_CONCURRENT_REQUESTS,
@@ -32,7 +33,10 @@ from core_runtime.pack_control_v4 import (
     PackControlUnapproved,
 )
 from core_runtime.panel_auth import PanelAuthManager
-from tobkiri_host.errors import ProviderExecutionError
+from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
+    DefaultspackHTTPPresentation,
+)
+from tobkiri_host.errors import BackendUnavailableError, ProviderExecutionError
 from tobkiri_protocol.canonical import canonical_digest
 
 
@@ -58,6 +62,149 @@ class _Dispatch:
     ) -> Mapping[str, object]:
         self.calls.append((contract_id, operation_id, dict(payload)))
         return {"contract_id": contract_id, "operation_id": operation_id}
+
+
+class _StartupReadinessDispatch:
+    """Record readiness checks without exposing an invocation path."""
+
+    def __init__(
+        self,
+        *,
+        unavailable_requirement: tuple[str, str] | None = None,
+    ) -> None:
+        self.unavailable_requirement = unavailable_requirement
+        self.current_checks = 0
+        self.ready_checks: list[tuple[str, str]] = []
+        self.invocations = 0
+        self.approvals = 0
+        self.provisions = 0
+
+    def assert_current(self) -> None:
+        self.current_checks += 1
+
+    def assert_operation_ready(self, contract_id: str, operation_id: str) -> None:
+        requirement = (contract_id, operation_id)
+        self.ready_checks.append(requirement)
+        if requirement == self.unavailable_requirement:
+            raise BackendUnavailableError("stale helper identity")
+
+    def invoke(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        self.invocations += 1
+        raise AssertionError("startup readiness must not invoke a Pack operation")
+
+    def request_approval(self) -> None:
+        self.approvals += 1
+        raise AssertionError("startup readiness must not request approval")
+
+    def provision(self) -> None:
+        self.provisions += 1
+        raise AssertionError("startup readiness must not provision PackVM")
+
+
+def _startup_readiness_routes() -> dict[tuple[str, str], FrontendContractBinding]:
+    """Return one deferred PackVM target and one normal UI target."""
+
+    return {
+        (
+            "POST",
+            "/api/ui/capability/invoke",
+        ): FrontendContractBinding(
+            method="POST",
+            path="/api/ui/capability/invoke",
+            presentation="defaultspack",
+            targets=(
+                HTTPContractTarget(
+                    contribution_id="defaults.conversation.complete",
+                    contract_id="conversation.turn.v1",
+                    operation_id="complete",
+                    provider_id="defaultspack.conversation",
+                    function_id="defaultspack.conversation",
+                ),
+                HTTPContractTarget(
+                    contribution_id="defaults.dashboard.read",
+                    contract_id="defaults.dashboard.v1",
+                    operation_id="read",
+                    provider_id="defaultspack.dashboard",
+                    function_id="defaultspack.dashboard",
+                ),
+            ),
+        )
+    }
+
+
+def test_runtime_startup_readiness_checks_deferred_packvm_without_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chat readiness selects the deferred backend without invoking it."""
+
+    dispatch = _StartupReadinessDispatch()
+    server = PackAPIServer(
+        port=0,
+        dispatch_session=dispatch,  # type: ignore[arg-type]
+        application_presentation=DefaultspackHTTPPresentation(),
+    )
+    server._contract_routes = _startup_readiness_routes()
+    validated: list[object] = []
+    monkeypatch.setattr(
+        server,
+        "_validate_contract_capture",
+        lambda *args, **kwargs: validated.append((args, kwargs)),
+    )
+
+    server.assert_runtime_startup_ready()
+
+    assert len(validated) == 1
+    assert dispatch.current_checks == 1
+    assert dispatch.ready_checks == [
+        ("conversation.turn.v1", "complete"),
+        (
+            "tobkiri.resource.application.presentation.v1",
+            "defaultspack.presentation.read",
+        ),
+    ]
+    assert dispatch.invocations == 0
+    assert dispatch.approvals == 0
+    assert dispatch.provisions == 0
+
+
+def test_runtime_startup_readiness_fails_closed_for_presentation_requirement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing presentation backend blocks chat without side effects."""
+
+    dispatch = _StartupReadinessDispatch(
+        unavailable_requirement=(
+            "tobkiri.resource.application.presentation.v1",
+            "defaultspack.presentation.read",
+        )
+    )
+    server = PackAPIServer(
+        port=0,
+        dispatch_session=dispatch,  # type: ignore[arg-type]
+        application_presentation=DefaultspackHTTPPresentation(),
+    )
+    server._contract_routes = _startup_readiness_routes()
+    monkeypatch.setattr(
+        server,
+        "_validate_contract_capture",
+        lambda *args, **kwargs: None,
+    )
+
+    with pytest.raises(BackendUnavailableError, match="stale helper identity"):
+        server.assert_runtime_startup_ready()
+
+    assert dispatch.current_checks == 1
+    assert dispatch.ready_checks == [
+        ("conversation.turn.v1", "complete"),
+        (
+            "tobkiri.resource.application.presentation.v1",
+            "defaultspack.presentation.read",
+        ),
+    ]
+    assert dispatch.invocations == 0
+    assert dispatch.approvals == 0
+    assert dispatch.provisions == 0
 
 
 def test_active_profile_registry_store_reuses_only_a_current_capture(

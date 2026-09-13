@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from functools import partial
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -23,6 +24,10 @@ if TYPE_CHECKING:
     from tobkiri_host.backends import ExecutionBackend
 
 from tobkiri_host.credential_store import host_credential_store_factory
+
+logger = logging.getLogger(__name__)
+
+_PACKVM_RECOVERY_ACTION = "Open Tobkiri Launcher > Packs to prepare PackVM."
 
 _DIAGNOSTIC_ENV_KEYS = (
     "DEFAULTS_HTTP_HOST",
@@ -605,8 +610,23 @@ def _wait_until_ready(url: str, timeout: float = 30.0) -> bool:
             # one verification finish instead of abandoning it and starting
             # more handler threads against the same activation lock.
             with urllib.request.urlopen(health_url, timeout=remaining) as response:
-                return 200 <= response.status < 300
-        except (OSError, urllib.error.URLError):
+                if not 200 <= response.status < 300:
+                    return False
+                payload = json.load(response)
+                data = payload.get("data") if isinstance(payload, Mapping) else None
+                if not isinstance(data, Mapping):
+                    return False
+                if (
+                    data.get("runtime_ready") is True
+                    and data.get("runtime_status") == "runtime_ready"
+                ):
+                    return True
+                if data.get("runtime_status") in {
+                    "error",
+                    "profile_reconfirmation_required",
+                }:
+                    return False
+        except (OSError, urllib.error.URLError, ValueError):
             if time.time() < deadline:
                 time.sleep(0.2)
     return False
@@ -698,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
         AppLifecycleManager,
         mark_panel_ready,
         mark_profile_reconfirmation_required,
+        mark_runtime_failed,
+        mark_runtime_ready,
     )
     from ecosystem.defaultspack.domain.runtime_v4 import (
         ProfileReconfirmationRequired,
@@ -789,13 +811,40 @@ def main(argv: list[str] | None = None) -> int:
         )
         raise
     _write_launch_event("server_started", port=port, url=url)
+    chat_launch_blocked = False
     if reconfirmation_error is None:
         mark_panel_ready()
+        try:
+            server.assert_runtime_startup_ready()
+        except Exception:
+            # A readiness check is a backend selection only.  It never starts
+            # PackVM, requests approval, or mints authority.  Do not launch
+            # the chat page against a known-missing backend; return a bounded
+            # failure so the Launcher can enter its explicit repair flow.
+            mark_runtime_failed("required runtime backend is unavailable")
+            _write_launch_event(
+                "runtime_unavailable",
+                code="API_FAILURE",
+                recovery_action=_PACKVM_RECOVERY_ACTION,
+                port=port,
+                url=url,
+            )
+            logger.warning(
+                "runtime startup dependency is unavailable: API_FAILURE. %s",
+                _PACKVM_RECOVERY_ACTION,
+            )
+            chat_launch_blocked = True
+        else:
+            mark_runtime_ready()
     else:
         mark_profile_reconfirmation_required(reconfirmation_error)
 
-    health_ready = _wait_until_ready(url)
-    chat_ready = _wait_until_chat_ready(url)
+    if chat_launch_blocked:
+        health_ready = False
+        chat_ready = False
+    else:
+        health_ready = _wait_until_ready(url)
+        chat_ready = health_ready and _wait_until_chat_ready(url)
     _write_launch_event(
         "readiness_complete",
         chat_ready=chat_ready,
@@ -803,6 +852,16 @@ def main(argv: list[str] | None = None) -> int:
         port=port,
         url=url,
     )
+    if not chat_ready:
+        server.stop()
+        _write_launch_event(
+            "chat_launch_blocked",
+            code="API_FAILURE",
+            recovery_action=_PACKVM_RECOVERY_ACTION,
+            port=port,
+            url=url,
+        )
+        return 1
 
     from defaultspack.native_webview import open_desktop_surface
 

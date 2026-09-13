@@ -1,6 +1,6 @@
 import type {
   ApiPresentationSelection, ApiPresentationState, BackgroundControlStatus,
-  DebugApprovalDuration, DebugApprovalStatus, DesktopSystemInfo,
+  DebugApprovalDuration, DebugApprovalStatus, DesktopSystemInfo, LauncherUpdateStatus,
   PresentationLaunchResponse,
 } from './apiTypes';
 
@@ -77,6 +77,16 @@ export async function fetchBackgroundControlStatus(): Promise<BackgroundControlS
 export async function fetchDesktopSystemInfo(): Promise<DesktopSystemInfo | null> {
   const invoke = await loadTauriInvoke();
   return invoke ? invoke<DesktopSystemInfo>('get_desktop_system_info') : null;
+}
+
+export async function checkLauncherUpdate(): Promise<LauncherUpdateStatus> {
+  const invoke = await requireTauriInvoke('Launcher update check');
+  return invoke<LauncherUpdateStatus>('check_launcher_update');
+}
+
+export async function openLauncherUpdateRelease(): Promise<void> {
+  const invoke = await requireTauriInvoke('Launcher update release');
+  await invoke<void>('open_launcher_update_release');
 }
 
 export async function fetchDebugApprovalStatus(): Promise<DebugApprovalStatus | null> {

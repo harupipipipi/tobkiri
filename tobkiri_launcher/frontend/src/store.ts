@@ -679,6 +679,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         runtimeStatus: 'error',
         runtimeError: 'Runtime health response failed validation.',
         runtimeDisconnected: state.lastRuntimeHealthyAt !== null,
+        hostCatalogVerified: false,
+        profileCeremonyAvailable: false,
       }));
       throw error;
     }
@@ -688,8 +690,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       runtimeStatus: parsedHealth.runtime_status,
       runtimeError: parsedHealth.runtime_error,
       runtimeDisconnected: false,
-      hostCatalogVerified: parsedHealth.host_catalog_verified,
-      profileCeremonyAvailable: parsedHealth.profile_ceremony_available,
+      hostCatalogVerified: parsedHealth.runtime_status !== 'error'
+        && parsedHealth.host_catalog_verified,
+      profileCeremonyAvailable: parsedHealth.runtime_status !== 'error'
+        && parsedHealth.profile_ceremony_available,
       defaultsBootstrapRequired: parsedHealth.defaults_bootstrap_required,
       activeProfileReady: parsedHealth.active_profile_ready,
       launchReady: parsedHealth.launch_ready,
@@ -708,6 +712,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         runtimeStatus: 'error',
         runtimeError: message,
         runtimeDisconnected: state.lastRuntimeHealthyAt !== null,
+        hostCatalogVerified: false,
+        profileCeremonyAvailable: false,
       }));
     }
   },

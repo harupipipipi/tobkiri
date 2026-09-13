@@ -114,3 +114,12 @@ test("copy feedback keeps the Copy glyph instead of swapping to a status icon", 
   assert.match(source, /copyText \?\? errorNoticeCopyText\(title, message\)/);
   assert.doesNotMatch(source, /<Check\b|<X\b/);
 });
+
+test("the top-level unavailable route uses the shared error surface", async () => {
+  const source = await readFile(new URL("../App.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /errorIcon="screen-unavailable"/);
+  assert.match(source, /copyLabel="Copy unavailable screen error"/);
+  assert.match(source, /message="This screen is not available in Tobkiri\."/);
+  assert.doesNotMatch(source, /<main role="alert">This screen is not available in Tobkiri\.<\/main>/);
+});

@@ -1203,6 +1203,8 @@ class RuntimeSurfaceService:
                 selected_profile_id,
             )
             data = {normalized: browsing[normalized]}
+            if normalized == "operations":
+                data["flows"] = browsing["flows"]
             if normalized == "contracts":
                 data["routes"] = browsing["routes"]
             deadline.checkpoint()
@@ -1229,6 +1231,7 @@ class RuntimeSurfaceService:
                 pack for pack in advanced["packs"]
                 if pack["enabled"] and pack["approved"]
             ]
+            data["flows"] = advanced["flows"]
         if normalized == "contracts":
             data["routes"] = advanced["routes"]
         return self._read_envelope(snapshot, surface=normalized, data=data)
@@ -1712,6 +1715,7 @@ class RuntimeSurfaceService:
                 principals,
                 key=lambda item: str(item["function_id"]),
             ),
+            "flows": _flow_composition_projection(definition),
             "routes": [],
         }
 
@@ -1992,6 +1996,12 @@ class RuntimeSurfaceService:
             "principals": sorted(
                 principals,
                 key=lambda item: (item["function_id"], item["operation_id"]),
+            ),
+            "flows": _flow_composition_projection(
+                active.resolved.profile,
+                admitted_edges=_resolved_profile_edge_keys(
+                    active.resolved.plan["bindings"]
+                ),
             ),
             "routes": routes,
         }
@@ -2337,6 +2347,131 @@ def _artifact_projection(
         "kind": str(artifact["kind"]),
         "artifact_digest": digest,
     }
+
+
+def _resolved_profile_edge_keys(
+    bindings: object,
+) -> set[tuple[str, str, str, str]]:
+    """Return the exact Profile edge identities admitted by the ResolvedPlan."""
+
+    if not isinstance(bindings, list):
+        raise RuntimeSurfaceError(
+            RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+            "ResolvedPlan bindings are unavailable for Flow projection",
+        )
+    resolved = {_flow_edge_identity(binding, binding=True) for binding in bindings}
+    if len(resolved) != len(bindings):
+        raise RuntimeSurfaceError(
+            RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+            "ResolvedPlan has duplicate Flow operation bindings",
+        )
+    return resolved
+
+
+def _flow_composition_projection(
+    profile: Mapping[str, Any],
+    *,
+    admitted_edges: set[tuple[str, str, str, str]] | None = None,
+) -> list[dict[str, object]]:
+    """Project Profile-declared caller compositions without inventing Flows.
+
+    The Profile's requested edges are the canonical declaration of which
+    Contract operations a caller Function composes.  An active projection is
+    ``ready`` only when every member has an exact ResolvedPlan binding.  A
+    browsed Profile has no active plan, so it remains inspectable but cannot
+    provide an invocation-capable composition.
+    """
+
+    requested_edges = profile.get("requested_edges")
+    if not isinstance(requested_edges, list):
+        raise RuntimeSurfaceError(
+            RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+            "Profile requested edges are unavailable for Flow projection",
+        )
+    identities = [_flow_edge_identity(edge) for edge in requested_edges]
+    if len(set(identities)) != len(identities):
+        raise RuntimeSurfaceError(
+            RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+            "Profile has duplicate Flow operation edges",
+        )
+    compositions: dict[str, list[tuple[str, str, str, str]]] = {}
+    for identity in identities:
+        caller_id = identity[0]
+        compositions.setdefault(caller_id, []).append(identity)
+
+    declared_edges = {
+        member for members in compositions.values() for member in members
+    }
+    if admitted_edges is not None and not admitted_edges.issubset(declared_edges):
+        raise RuntimeSurfaceError(
+            RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+            "ResolvedPlan has an undeclared Flow operation binding",
+        )
+
+    projection: list[dict[str, object]] = []
+    for caller_id, members in sorted(compositions.items()):
+        ready = admitted_edges is not None and all(
+            member in admitted_edges for member in members
+        )
+        operation_ids = sorted({operation_id for *_prefix, operation_id in members})
+        projection.append(
+            {
+                "flow_id": caller_id,
+                "state": (
+                    "ready"
+                    if ready
+                    else "browsing" if admitted_edges is None else "unavailable"
+                ),
+                "operation_ids": operation_ids,
+                "edges": [
+                    {
+                        "caller_function_id": source_id,
+                        "target_provider_id": provider_id,
+                        "contract_id": contract_id,
+                        "operation_id": operation_id,
+                    }
+                    for source_id, provider_id, contract_id, operation_id in sorted(
+                        members
+                    )
+                ],
+            }
+        )
+    return projection
+
+
+def _flow_edge_identity(
+    value: object,
+    *,
+    binding: bool = False,
+) -> tuple[str, str, str, str]:
+    """Validate one Profile edge or ResolvedPlan binding for Flow projection."""
+
+    if not isinstance(value, Mapping):
+        raise RuntimeSurfaceError(
+            RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+            "Flow edge record is invalid",
+        )
+    target_provider_id: object = value.get("target_provider_id")
+    if binding:
+        principal = value.get("function_principal")
+        if not isinstance(principal, Mapping):
+            raise RuntimeSurfaceError(
+                RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+                "ResolvedPlan Flow principal is invalid",
+            )
+        target_provider_id = principal.get("function_id")
+    identity = (
+        value.get("caller_function_id"),
+        target_provider_id,
+        value.get("contract_id"),
+        value.get("operation_id"),
+    )
+    if any(not isinstance(item, str) or not item for item in identity):
+        raise RuntimeSurfaceError(
+            RuntimeSurfaceErrorCode.DIGEST_MISMATCH,
+            "Flow edge identity is incomplete",
+        )
+    return cast(tuple[str, str, str, str], identity)
 
 
 def _normalized_plan_bindings(

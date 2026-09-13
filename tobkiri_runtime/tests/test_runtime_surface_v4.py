@@ -322,6 +322,247 @@ def test_operation_and_principal_views_are_resolved_plan_derived(active_runtime)
     )
 
 
+def test_operations_publish_exact_profile_declared_flow_compositions(
+    active_runtime,
+) -> None:
+    """The Flow route gets the same canonical composition as the operations view."""
+
+    data = _service(active_runtime).read_advanced("operations")["data"]
+    flows = data["flows"]
+    assert isinstance(flows, list)
+    assert flows
+    expected: dict[str, set[tuple[str, str, str, str]]] = {}
+    for edge in active_runtime.resolved.profile["requested_edges"]:
+        expected.setdefault(str(edge["caller_function_id"]), set()).add(
+            (
+                str(edge["caller_function_id"]),
+                str(edge["target_provider_id"]),
+                str(edge["contract_id"]),
+                str(edge["operation_id"]),
+            )
+        )
+    assert {
+        str(flow["flow_id"]): {
+            (
+                str(edge["caller_function_id"]),
+                str(edge["target_provider_id"]),
+                str(edge["contract_id"]),
+                str(edge["operation_id"]),
+            )
+            for edge in flow["edges"]
+        }
+        for flow in flows
+    } == expected
+    operation_edges = {
+        (
+            str(operation["caller_function_id"]),
+            str(operation["target_provider_id"]),
+            str(operation["contract_id"]),
+            str(operation["operation_id"]),
+        )
+        for operation in data["operations"]
+    }
+    assert all(
+        {
+            (
+                str(edge["caller_function_id"]),
+                str(edge["target_provider_id"]),
+                str(edge["contract_id"]),
+                str(edge["operation_id"]),
+            )
+            for edge in flow["edges"]
+        }.issubset(operation_edges)
+        for flow in flows
+    )
+    assert all(flow["state"] == "ready" for flow in flows)
+    assert all(
+        flow["operation_ids"]
+        == sorted({edge["operation_id"] for edge in flow["edges"]})
+        for flow in flows
+    )
+
+
+def test_resolved_plan_bindings_keep_the_profile_target_provider(
+    active_runtime,
+) -> None:
+    expected = {
+        (
+            str(edge["caller_function_id"]),
+            str(edge["target_provider_id"]),
+            str(edge["contract_id"]),
+            str(edge["operation_id"]),
+        )
+        for edge in active_runtime.resolved.profile["requested_edges"]
+    }
+
+    assert runtime_surface._resolved_profile_edge_keys(
+        active_runtime.resolved.plan["bindings"]
+    ) == expected
+
+
+def test_flow_composition_is_unavailable_when_a_profile_edge_is_not_admitted(
+    active_runtime,
+) -> None:
+    admitted = runtime_surface._resolved_profile_edge_keys(
+        active_runtime.resolved.plan["bindings"]
+    )
+    missing = next(iter(admitted))
+    flows = runtime_surface._flow_composition_projection(
+        active_runtime.resolved.profile,
+        admitted_edges=admitted - {missing},
+    )
+
+    assert any(
+        flow["flow_id"] == missing[0] and flow["state"] == "unavailable"
+        for flow in flows
+    )
+
+
+def test_flow_projection_keeps_same_operation_id_across_contracts() -> None:
+    profile = {
+        "requested_edges": [
+            {
+                "caller_function_id": "caller.one",
+                "target_provider_id": "provider.one",
+                "contract_id": "contract.one",
+                "operation_id": "operation.shared",
+            },
+            {
+                "caller_function_id": "caller.two",
+                "target_provider_id": "provider.two",
+                "contract_id": "contract.two",
+                "operation_id": "operation.shared",
+            },
+        ]
+    }
+
+    flows = runtime_surface._flow_composition_projection(profile)
+
+    assert [flow["flow_id"] for flow in flows] == ["caller.one", "caller.two"]
+    assert [flow["operation_ids"] for flow in flows] == [
+        ["operation.shared"],
+        ["operation.shared"],
+    ]
+    assert [flow["state"] for flow in flows] == ["browsing", "browsing"]
+
+
+def test_flow_projection_keeps_same_operation_id_on_distinct_full_edges() -> None:
+    profile = {
+        "requested_edges": [
+            {
+                "caller_function_id": "caller.one",
+                "target_provider_id": "provider.one",
+                "contract_id": "contract.shared",
+                "operation_id": "operation.shared",
+            },
+            {
+                "caller_function_id": "caller.two",
+                "target_provider_id": "provider.two",
+                "contract_id": "contract.shared",
+                "operation_id": "operation.shared",
+            },
+        ]
+    }
+    admitted = {
+        (
+            str(edge["caller_function_id"]),
+            str(edge["target_provider_id"]),
+            str(edge["contract_id"]),
+            str(edge["operation_id"]),
+        )
+        for edge in profile["requested_edges"]
+    }
+
+    flows = runtime_surface._flow_composition_projection(
+        profile,
+        admitted_edges=admitted,
+    )
+
+    assert [flow["operation_ids"] for flow in flows] == [
+        ["operation.shared"],
+        ["operation.shared"],
+    ]
+    assert [flow["edges"] for flow in flows] == [
+        [{
+            "caller_function_id": "caller.one",
+            "target_provider_id": "provider.one",
+            "contract_id": "contract.shared",
+            "operation_id": "operation.shared",
+        }],
+        [{
+            "caller_function_id": "caller.two",
+            "target_provider_id": "provider.two",
+            "contract_id": "contract.shared",
+            "operation_id": "operation.shared",
+        }],
+    ]
+    assert all(flow["state"] == "ready" for flow in flows)
+
+
+def test_flow_projection_rejects_a_resolved_binding_not_declared_by_profile() -> None:
+    profile = {
+        "requested_edges": [
+            {
+                "caller_function_id": "caller.one",
+                "target_provider_id": "provider.one",
+                "contract_id": "contract.one",
+                "operation_id": "operation.one",
+            }
+        ]
+    }
+    admitted = {
+        ("caller.one", "provider.one", "contract.one", "operation.one"),
+        ("caller.two", "provider.two", "contract.two", "operation.two"),
+    }
+
+    with pytest.raises(RuntimeSurfaceError) as caught:
+        runtime_surface._flow_composition_projection(
+            profile,
+            admitted_edges=admitted,
+        )
+    assert caught.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+@pytest.mark.parametrize(
+    "bindings",
+    [
+        {},
+        [None],
+        [{"function_principal": {"function_id": "provider"}}],
+        [{
+            "caller_function_id": "caller",
+            "function_principal": {"function_id": 1},
+            "contract_id": "contract",
+            "operation_id": "operation",
+        }],
+    ],
+)
+def test_flow_projection_rejects_malformed_resolved_plan_bindings(bindings) -> None:
+    with pytest.raises(RuntimeSurfaceError) as caught:
+        runtime_surface._resolved_profile_edge_keys(bindings)
+    assert caught.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        {},
+        {"requested_edges": [None]},
+        {"requested_edges": [{"caller_function_id": "caller"}]},
+        {"requested_edges": [{
+            "caller_function_id": "caller",
+            "target_provider_id": "provider",
+            "contract_id": "contract",
+            "operation_id": 1,
+        }]},
+    ],
+)
+def test_flow_projection_rejects_malformed_profile_edge(profile) -> None:
+    with pytest.raises(RuntimeSurfaceError) as caught:
+        runtime_surface._flow_composition_projection(profile)
+    assert caught.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
 def test_operations_include_only_approved_enabled_pack_evidence(
     active_runtime, monkeypatch: pytest.MonkeyPatch
 ) -> None:

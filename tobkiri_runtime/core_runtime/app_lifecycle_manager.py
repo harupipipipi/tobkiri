@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping
@@ -15,6 +16,9 @@ from typing import Any, Dict, Mapping
 from .pack_api_server import RuntimeCaptureFactory
 
 logger = logging.getLogger(__name__)
+
+_PROFILE_CAPTURE_ATTEMPTS = 3
+_PROFILE_CAPTURE_RETRY_DELAY_SECONDS = 0.05
 
 
 _RUNTIME_READINESS_LOCK = threading.Lock()
@@ -167,51 +171,62 @@ class AppLifecycleManager:
             }
             result.update(get_runtime_readiness())
             return result
-        try:
-            active = capture_active_profile(base_dir=self.base_dir)
-            result = {
-                "needs_setup": False,
-                "reason": "canonical_v4_profile_captured",
-                "setup_state": "complete",
-                "profile_id": active.resolved.profile["profile_id"],
-                "plan_digest": active.resolved.plan["plan_digest"],
-                "activation_id": active.activation["activation_id"],
-                "host_catalog_verified": True,
-                "profile_ceremony_available": True,
-                "active_profile_ready": True,
-                "launch_ready": True,
-                "defaults_bootstrap_required": False,
-            }
-        except Exception as error:
-            from .profile_runtime_port import require_profile_runtime
+        from .profile_runtime_port import require_profile_runtime
 
-            logger.error("canonical v4 setup status failed: %s", error)
-            if require_profile_runtime().is_reconfirmation_required(error):
+        profile_runtime = require_profile_runtime()
+        for attempt in range(_PROFILE_CAPTURE_ATTEMPTS):
+            try:
+                active = capture_active_profile(base_dir=self.base_dir)
                 result = {
-                    "needs_setup": True,
-                    "reason": "profile_reconfirmation_required",
-                    "setup_state": "profile_reconfirmation_required",
-                    "error_type": type(error).__name__,
-                    "denial_diagnostic": str(error),
+                    "needs_setup": False,
+                    "reason": "canonical_v4_profile_captured",
+                    "setup_state": "complete",
+                    "profile_id": active.resolved.profile["profile_id"],
+                    "plan_digest": active.resolved.plan["plan_digest"],
+                    "activation_id": active.activation["activation_id"],
                     "host_catalog_verified": True,
                     "profile_ceremony_available": True,
-                    "active_profile_ready": False,
-                    "launch_ready": False,
+                    "active_profile_ready": True,
+                    "launch_ready": True,
                     "defaults_bootstrap_required": False,
                 }
-            else:
-                result = {
-                    "needs_setup": True,
-                    "reason": "canonical_v4_profile_unavailable",
-                    "setup_state": "profile_transaction_required",
-                    "error_type": type(error).__name__,
-                    "denial_diagnostic": str(error),
-                    "host_catalog_verified": False,
-                    "profile_ceremony_available": False,
-                    "active_profile_ready": False,
-                    "launch_ready": False,
-                    "defaults_bootstrap_required": False,
-                }
+                break
+            except Exception as error:
+                if (
+                    profile_runtime.is_activation_lock_timeout(error)
+                    and attempt + 1 < _PROFILE_CAPTURE_ATTEMPTS
+                ):
+                    time.sleep(_PROFILE_CAPTURE_RETRY_DELAY_SECONDS)
+                    continue
+
+                logger.error("canonical v4 setup status failed: %s", error)
+                if profile_runtime.is_reconfirmation_required(error):
+                    result = {
+                        "needs_setup": True,
+                        "reason": "profile_reconfirmation_required",
+                        "setup_state": "profile_reconfirmation_required",
+                        "error_type": type(error).__name__,
+                        "denial_diagnostic": str(error),
+                        "host_catalog_verified": True,
+                        "profile_ceremony_available": True,
+                        "active_profile_ready": False,
+                        "launch_ready": False,
+                        "defaults_bootstrap_required": False,
+                    }
+                else:
+                    result = {
+                        "needs_setup": True,
+                        "reason": "canonical_v4_profile_unavailable",
+                        "setup_state": "profile_transaction_required",
+                        "error_type": type(error).__name__,
+                        "denial_diagnostic": str(error),
+                        "host_catalog_verified": False,
+                        "profile_ceremony_available": False,
+                        "active_profile_ready": False,
+                        "launch_ready": False,
+                        "defaults_bootstrap_required": False,
+                    }
+                break
 
         result.update(get_runtime_readiness())
         return result

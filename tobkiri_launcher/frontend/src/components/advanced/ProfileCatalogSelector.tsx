@@ -302,6 +302,7 @@ export function ProfileCatalogSelector({
   const [query, setQuery] = useState('');
   const [showAddProfileHelp, setShowAddProfileHelp] = useState(false);
   const previousPackFingerprint = useRef<string | null>(null);
+  const previousInitialSelectedProfileId = useRef<string | null | undefined>(undefined);
 
   const catalogProjection = useMemo(
     () => catalogSurface.data ? extractExactProfileCatalog(catalogSurface.data.data) : null,
@@ -334,12 +335,17 @@ export function ProfileCatalogSelector({
 
   useEffect(() => {
     if (!catalogProjection) return;
+    const initialSelectionChanged = (
+      previousInitialSelectedProfileId.current !== initialSelectedProfileId
+    );
+    previousInitialSelectedProfileId.current = initialSelectedProfileId;
     setSelectedProfileId((current) => (
-      current && catalogProjection.profiles.some((entry) => entry.profile_id === current)
-        ? current
-        : initialSelectedProfileId
-          && catalogProjection.profiles.some((entry) => entry.profile_id === initialSelectedProfileId)
-          ? initialSelectedProfileId
+      initialSelectionChanged
+      && initialSelectedProfileId
+      && catalogProjection.profiles.some((entry) => entry.profile_id === initialSelectedProfileId)
+        ? initialSelectedProfileId
+        : current && catalogProjection.profiles.some((entry) => entry.profile_id === current)
+          ? current
           : catalogProjection.active_profile_id
     ));
   }, [catalogProjection, initialSelectedProfileId]);
@@ -391,17 +397,25 @@ export function ProfileCatalogSelector({
               </Button>
             </div>
           </div>
-          <CardDescription>Profiles are owned by Tobkiri's Host registry and projected through the Broker-backed Protocol v4 catalog. Selection here only changes the Profile being inspected; use Home for definition CRUD.</CardDescription>
+          <CardDescription>Profiles are owned by Tobkiri's Host registry and projected through the Broker-backed Protocol v4 catalog. Selection here only changes the Profile being inspected; use Home to create, rename, duplicate, or delete named Profiles.</CardDescription>
         </CardHeader>
         <CardContent>
           {showAddProfileHelp ? (
             <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 px-4 py-4" role="note">
-              <p className="text-sm font-semibold text-text-main">Add a verified Profile</p>
-              <p className="mt-1 text-sm leading-6 text-text-muted">New Profiles come from a signed Profile bundle published to the runtime catalog. This runtime does not currently expose a Profile-authoring operation, so Launcher will not create an unverified local substitute. Install or publish the bundle, then refresh this list.</p>
-              <Button type="button" className="mt-3" size="sm" variant="outline" onClick={() => void catalogSurface.refresh(true)} disabled={catalogSurface.status === 'loading'}>
-                <RefreshCw className={catalogSurface.status === 'loading' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} aria-hidden="true" />
-                Refresh Profiles
-              </Button>
+              <p className="text-sm font-semibold text-text-main">Add a named Profile</p>
+              <p className="mt-1 text-sm leading-6 text-text-muted">Use Home to create a named Profile from an existing source Profile. The Host validates the change and publishes the updated catalog; return here to inspect or activate it.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  className="inline-flex min-h-9 items-center justify-center rounded-md bg-accent px-3 text-sm font-medium text-accent-fg transition-colors hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+                  to={panelRoutes.home}
+                >
+                  Open Home Profile management
+                </Link>
+                <Button type="button" size="sm" variant="outline" onClick={() => void catalogSurface.refresh(true)} disabled={catalogSurface.status === 'loading'}>
+                  <RefreshCw className={catalogSurface.status === 'loading' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} aria-hidden="true" />
+                  Refresh Profiles
+                </Button>
+              </div>
             </div>
           ) : null}
           {showLoading ? (

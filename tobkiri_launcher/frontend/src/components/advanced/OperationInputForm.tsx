@@ -197,7 +197,12 @@ export function OperationInputForm({
                     className="min-h-11 w-full rounded-lg border border-border bg-bg-main px-3 py-2 text-sm text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
                     value={enumValueToken(value, schema.enum)}
                     onChange={(event) => {
-                      const index = Number(event.target.value);
+                      const token = event.target.value;
+                      if (token === '') {
+                        updateValue(name, undefined);
+                        return;
+                      }
+                      const index = Number(token);
                       updateValue(name, Number.isInteger(index) && index >= 0 ? schema.enum?.[index] : undefined);
                     }}
                     aria-label={label}
@@ -251,6 +256,7 @@ export function OperationInputForm({
                 helperText={helper}
                 required={required.has(name)}
                 type={schema.type === 'number' || schema.type === 'integer' ? 'number' : 'text'}
+                step={schema.type === 'number' ? 'any' : schema.type === 'integer' ? 1 : undefined}
                 value={displayValue(value, schema)}
                 onChange={(event) => updateValue(name, event.target.value)}
                 disabled={formBusy}

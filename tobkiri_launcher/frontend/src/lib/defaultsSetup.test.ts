@@ -45,7 +45,7 @@ function realActivationFixture(): {
       plan_digest: confirmation.plan_digest,
       profile_id: 'defaults',
       profile_revision: confirmation.profile_revision,
-      restart_required: false,
+      restart_required: true,
       security_epoch: 1,
       setup_api_version: 'io.tobkiri.setup-state.v4',
       state: 'active',
@@ -243,6 +243,16 @@ test('preserved packaged activation success is bound to the submitted confirmati
   assert.equal(parsed.activation_id, 'activation:defaults-8c02ac80815e6189');
   assert.equal(parsed.audit_receipt.reservation_id, 'activation-reservation:oJfXu2HtwTfNe-aRjwbgL19agiZWQHuk');
   assert.equal(parsed.security_epoch, fixture.confirmation.security_epoch);
+  assert.equal(parsed.restart_required, true);
+});
+
+test('activation success requires the Host cold-restart handoff contract', () => {
+  const fixture = realActivationFixture();
+  fixture.response.restart_required = false;
+  assert.throws(
+    () => parseDefaultsActivationResponse(fixture.response, fixture.confirmation),
+    /Unexpected Defaults restart contract/,
+  );
 });
 
 test('activation evidence rejects every digest, epoch, token, and identity tamper', () => {

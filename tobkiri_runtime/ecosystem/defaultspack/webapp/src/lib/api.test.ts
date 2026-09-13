@@ -1872,7 +1872,13 @@ test("searchConversations serializes spotlight search filters", async () => {
 test("createModelProfile uses revisioned model writes and reconciles existing identity", async () => {
   const originalFetch = globalThis.fetch;
   const bodies: Record<string, unknown>[] = [];
-  const input = { model_profile_id: "daily", model_id: "model-1", provider_instance_id: "provider.fixture", display_name: "Daily" };
+  const input = {
+    model_profile_id: "daily",
+    model_id: "model-1",
+    provider_instance_id: "provider.fixture",
+    display_name: "Daily",
+    provider_registry_revision: 4,
+  };
   const profile = { profile_id: "daily", model_id: "model-1", provider_id: "provider.fixture", display_name: "Daily" };
   let saved = false;
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -1888,8 +1894,101 @@ test("createModelProfile uses revisioned model writes and reconciles existing id
     assert.deepEqual(await api.createModelProfile(input), profile);
     assert.deepEqual(await api.createModelProfile(input), profile);
     await assert.rejects(api.createModelProfile({ ...input, model_id: "different" }), /既に存在/);
-    assert.deepEqual(bodies, [{ ...input, expected_revision: 0 }]);
+    assert.deepEqual(bodies, [
+      { ...input, expected_revision: 0 },
+      { ...input, expected_revision: 1 },
+    ]);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test("listProviderConnections uses the captured registry's exact opaque connection IDs", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ target: string; body?: Record<string, unknown> }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const target = requestTarget(input);
+    calls.push({
+      target,
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    const data = target === routeKey("api/ui/catalog")
+      ? { dynamic_host: {
+        profile_id: "defaults",
+        profile_revision: "revision-1",
+        activation_id: "activation:fixture-1",
+        plan_hash: "plan-1",
+        catalog_hash: "catalog-1",
+      } }
+      : {
+        revision: 7,
+        providers: [
+          {
+            provider_instance_id: "connection/openai:main",
+            display_name: "OpenAI main",
+            enabled: true,
+          },
+          {
+            provider_instance_id: "disabled/connection",
+            display_name: "Disabled connection",
+            enabled: false,
+          },
+        ],
+      };
+    return new Response(JSON.stringify({ success: true, data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    assert.deepEqual(await api.listProviderConnections(), {
+      registry_revision: 7,
+      connections: [{
+        provider_instance_id: "connection/openai:main",
+        display_name: "OpenAI main",
+      }],
+    });
+    assert.equal(calls[0]?.target, routeKey("api/ui/catalog"));
+    assert.equal(calls[1]?.target, routeKey("api/ui/capability/invoke"));
+    assert.equal(calls[1]?.body?.contribution_id, "defaults.providers.connections.read");
+    assert.equal(calls[1]?.body?.contract_id, "tobkiri.resource.ai.provider.registry.v1");
+    assert.equal(calls[1]?.body?.owner_pack_id, "runtime.tauri.application.default");
+    assert.deepEqual(calls[1]?.body?.payload, {});
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("listProviderConnections rejects a provider response that carries undeclared fields", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    const data = calls === 1
+      ? { dynamic_host: {
+        profile_id: "defaults",
+        profile_revision: "revision-1",
+        activation_id: "activation:fixture-1",
+        plan_hash: "plan-1",
+        catalog_hash: "catalog-1",
+      } }
+      : {
+        revision: 7,
+        providers: [{
+          provider_instance_id: "connection/openai:main",
+          display_name: "OpenAI main",
+          enabled: true,
+          credential_handle: "credential:must-not-reach-ui",
+        }],
+      };
+    return new Response(JSON.stringify({ success: true, data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(api.listProviderConnections(), /invalid Pack v4 response/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("saveProviderApiKey rejects unsupported metadata before sending a key", async () => {

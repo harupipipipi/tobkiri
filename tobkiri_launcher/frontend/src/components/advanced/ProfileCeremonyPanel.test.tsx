@@ -5,6 +5,7 @@ import {JSDOM} from 'jsdom';
 import test from 'node:test';
 
 import {ProfileCeremonyPanel} from './ProfileCeremonyPanel';
+import {MutationResultUnknownError} from '@/src/lib/mutationJournal';
 import type {
   ProfileActivateResult,
   ProfileApproveResult,
@@ -326,6 +327,54 @@ test('Profile ceremony does not offer an error-copy action while its catalog is 
       container.querySelector('button[aria-label="Copy Profile catalog warning"]'),
       null,
     );
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('Profile ceremony exposes an unknown mutation result with a status icon and stable copy action', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  const surface = surfaceState();
+  const selection = authoritativeSelection(catalogEntry(['provider-pack']));
+  const client: ProfileCeremonyClient = {
+    resolve: async () => {
+      throw new MutationResultUnknownError('profile:resolve:test', 'test-request');
+    },
+    review: async () => { throw new Error('review must not run'); },
+    approve: async () => { throw new Error('approve must not run'); },
+    activate: async () => { throw new Error('activate must not run'); },
+  };
+
+  try {
+    await act(async () => {
+      root.render(
+        <ProfileCeremonyPanel
+          surface={surface.state}
+          packs={[pack('provider-pack')]}
+          loadPacks={async () => undefined}
+          client={client}
+          authoritativeSelection={selection}
+          catalogSurface={catalogSurfaceState(selection.entry)}
+        />,
+      );
+    });
+    await act(async () => {
+      buttonContaining(container, 'Resolve candidate').click();
+      await Promise.resolve();
+    });
+
+    assert.match(container.textContent ?? '', /Profile ceremony result is unknown/);
+    assert.ok(container.querySelector('[data-error-icon="profile-ceremony-result-unknown"]'));
+    const copy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy unknown Profile ceremony result"]',
+    );
+    assert.ok(copy);
+    assert.ok(copy.querySelector('svg.lucide-copy'));
   } finally {
     act(() => root.unmount());
     dom.window.close();

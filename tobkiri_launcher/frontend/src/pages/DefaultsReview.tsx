@@ -1,4 +1,4 @@
-import {AlertCircle, ShieldAlert} from 'lucide-react';
+import {AlertCircle, Clock3, ShieldAlert} from 'lucide-react';
 
 import {Button} from '@/src/components/ui/Button';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
@@ -39,10 +39,14 @@ export function DefaultsReview({
         ? 'The Host has withheld the verified dispatch map. Review the exact Defaults v4 transaction below to restore local operations.'
         : 'Review the finite local composition. Activation occurs only after this exact confirmation.'}
     </p>
-    {activationCommitted && setup?.state !== 'active' && <div role="alert" className="mt-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
-      <p className="font-medium">Activation was submitted; verification is required.</p>
-      <p className="mt-2 text-text-muted">Tobkiri will re-read the Host-owned Setup state. The previous confirmation will not be submitted again.</p>
-      <div className="mt-4"><Button variant="outline" onClick={onRecover} loading={activating}>Verify activation</Button></div>
+    {activationCommitted && setup?.state !== 'active' && <div role="alert" className="mt-6 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-text-main">
+      <Clock3 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" data-error-icon="activation-verification-required" />
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">Activation was submitted; verification is required.</p>
+        <p className="mt-2 text-text-muted">Tobkiri will re-read the Host-owned Setup state. The previous confirmation will not be submitted again.</p>
+        <div className="mt-4"><Button variant="outline" onClick={onRecover} loading={activating}>Verify activation</Button></div>
+      </div>
+      <CopyErrorButton label="Copy activation verification status" text={'Activation was submitted; verification is required.\nTobkiri will re-read the Host-owned Setup state. The previous confirmation will not be submitted again.'} />
     </div>}
     {!setup && !error && <p role="status" className="mt-6 text-sm text-text-muted">Loading verified catalog…</p>}
     {setup?.state === 'activation_denied' && <div role="alert" className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">

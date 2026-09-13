@@ -68,6 +68,62 @@ def test_provider_adapter_rejects_caller_credential_handle_override():
     ]
 
 
+def test_provider_adapter_preserves_an_exact_opaque_saved_connection_id():
+    """An explicit saved connection is not rewritten as ``provider.<id>``."""
+    from ecosystem.rumi_provider_adapters_pack.runtime.adapter import _connection
+
+    calls = []
+
+    class HostClient:
+        def invoke(self, contract_id, operation, payload):
+            calls.append((contract_id, operation, dict(payload)))
+            return {
+                "providers": [
+                    {
+                        "provider_instance_id": "connection/openai:main",
+                        "enabled": True,
+                    },
+                    {
+                        "provider_instance_id": "provider.connection/openai:main",
+                        "enabled": True,
+                    },
+                ]
+            }
+
+    selected = _connection(
+        HostClient(),
+        {
+            "profile_id": "defaults",
+            "provider_connection_id": "connection/openai:main",
+            "provider_id": "connection/openai:main",
+        },
+    )
+
+    assert selected["provider_instance_id"] == "connection/openai:main"
+    assert calls[0][2] == {"profile_id": "defaults"}
+
+
+def test_provider_adapter_rejects_a_disabled_exact_saved_connection_id():
+    """Saved connection identity is not enough without current owner enablement."""
+    from core_runtime.global_contract_dispatch import GlobalContractInvocationError
+    from ecosystem.rumi_provider_adapters_pack.runtime.adapter import _connection
+
+    class HostClient:
+        def invoke(self, _contract_id, _operation, _payload):
+            return {
+                "providers": [{
+                    "provider_instance_id": "connection/openai:main",
+                    "enabled": False,
+                }]
+            }
+
+    with pytest.raises(GlobalContractInvocationError, match="not configured"):
+        _connection(
+            HostClient(),
+            {"provider_connection_id": "connection/openai:main"},
+        )
+
+
 class TestDefaultspackProviderCatalog(unittest.TestCase):
     def test_provider_catalog_contains_major_and_local_entries(self):
         from ecosystem.defaultspack.domain.ai_client.providers import (

@@ -87,6 +87,19 @@ def test_captured_configuration_save_read_delete_and_revision_conflict(
     assert saved["store_revision"] == 1
     for reader in _capture(tmp_path, readonly=True):
         result = reader.invoke(reader.operation_id, {}, None)
+        if reader.operation_id == (
+            "rumi_provider_registry_pack.provider-registry-resource"
+        ):
+            assert result == {
+                "revision": 1,
+                "providers": [{
+                    "provider_instance_id": "provider.fixture",
+                    "display_name": "provider.fixture",
+                    "enabled": True,
+                }],
+            }
+            assert "credential_handle" not in str(result)
+            continue
         assert result["profile_id"] == "defaults"
         assert result["providers"][0] == saved["provider"]
         assert result["providers"][0]["health_evidence"]["verified"] is False

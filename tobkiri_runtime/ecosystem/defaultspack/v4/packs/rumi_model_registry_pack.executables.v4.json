@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_model_registry_pack",
-  "source_identity": "sha256:659286e01e4d23a9a25024935ab4b4b89ec9995d8a311645c767df1a8dc8dbe7",
+  "source_identity": "sha256:d2127a64cdbbe47ddc63b63ed2ce3a5fb6842a0409b49bd3277b9d995fcc5857",
   "variants": [
     {
       "variant_id": "rumi_model_registry_pack.model-registry.manage.python",
       "function_id": "rumi_model_registry_pack.model-registry.manage",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669",
+      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -41,7 +41,7 @@
       "variant_id": "rumi_model_registry_pack.model-registry.migrate.python",
       "function_id": "rumi_model_registry_pack.model-registry.migrate",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669",
+      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -75,7 +75,7 @@
       "variant_id": "rumi_model_registry_pack.model-registry.profile.python",
       "function_id": "rumi_model_registry_pack.model-registry.profile",
       "implementation_path": "runtime/process.py",
-      "implementation_digest": "sha256:0c52511f8abb4a4ea0ffd33e2391780219c65232b5b7896b0c3a1f3f62293669",
+      "implementation_digest": "sha256:896d29ac48a395f70309bf5acd5083ae774933932c53bbed3ddf5a694f01ca07",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -144,6 +144,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:64b67caf5295751b528323a42525a6475e2e9bac3e6d892b6d9bea59a04946cc",
-  "catalog_digest": "sha256:d5342aab2ccdf845278dd4d294b34bc08a2247b9dbf156747cf637e935e7dbcc"
+  "materialization_catalog_digest": "sha256:36e8a5af603a19bb7f22e9317047220dcec00e8d50c5267d04d78d5d562fac4e",
+  "catalog_digest": "sha256:5f7adc78723450a4783a9e59cc31a77a35fdc034d0815a8ff1298ee9d9940077"
 }

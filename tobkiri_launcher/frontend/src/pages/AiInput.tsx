@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {BrainCircuit, ShieldAlert} from 'lucide-react';
+import {BrainCircuit, CircleHelp, ShieldAlert} from 'lucide-react';
 
 import {AdvancedSurfaceFrame, EmptySurfacePanel} from '@/src/components/advanced/AdvancedSurfaceFrame';
 import {OperationInputForm} from '@/src/components/advanced/OperationInputForm';
@@ -107,8 +107,10 @@ export function AiInput() {
                 </div>
               ) : null}
               {invocation.state === 'unknown' ? (
-                <div className="mb-4 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
-                  The AI Input operation result is unknown. Refresh the authoritative operations surface before trying again; no replacement request will be sent.
+                <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
+                  <CircleHelp className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="ai-input-result-unknown" />
+                  <span className="min-w-0 flex-1 break-words">The AI Input operation result is unknown. Refresh the authoritative operations surface before trying again; no replacement request will be sent.</span>
+                  <CopyErrorButton label="Copy unknown AI Input operation result" text="The AI Input operation result is unknown. Refresh the authoritative operations surface before trying again; no replacement request will be sent." />
                 </div>
               ) : null}
               {invocation.state === 'succeeded' ? <p className="mb-4 text-sm text-emerald-700 dark:text-emerald-300" role="status">Operation accepted by the canonical Broker path.</p> : null}

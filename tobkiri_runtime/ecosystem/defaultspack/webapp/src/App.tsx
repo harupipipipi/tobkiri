@@ -7681,5 +7681,14 @@ export default function App() {
   if (pathname === "/defaultspack" || pathname === "/pack/defaultspack" || pathname === "/chat" || pathname === "/calendar" || pathname === "/coding") {
     return <ChatApp />;
   }
-  return <main role="alert">This screen is not available in Tobkiri.</main>;
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#09090b] px-6 py-10">
+      <ErrorNotice
+        className="w-full max-w-xl"
+        copyLabel="Copy unavailable screen error"
+        errorIcon="screen-unavailable"
+        message="This screen is not available in Tobkiri."
+      />
+    </main>
+  );
 }

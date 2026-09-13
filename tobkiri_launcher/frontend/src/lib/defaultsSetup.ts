@@ -105,7 +105,11 @@ export type DefaultsActivation = {
     readonly activation_id: string;
     readonly fencing_token: number;
   };
-  readonly restart_required: false;
+  /**
+   * The Host has durably committed the activation, then deliberately hands
+   * off to a cold process before it exposes the new runtime tuple.
+   */
+  readonly restart_required: true;
 };
 
 function object(value: unknown, label: string): Record<string, unknown> {
@@ -431,7 +435,7 @@ export function parseDefaultsActivationResponse(
   if (audit.activation_id !== activation || audit.fencing_token !== fencingToken) {
     throw new Error('Defaults activation audit binding is invalid');
   }
-  if (response.restart_required !== false) throw new Error('Unexpected Defaults restart contract');
+  if (response.restart_required !== true) throw new Error('Unexpected Defaults restart contract');
   return {
     setup_api_version: response.setup_api_version as 'io.tobkiri.setup-state.v4',
     state: response.state as 'active',
@@ -448,7 +452,7 @@ export function parseDefaultsActivationResponse(
       activation_id: activation,
       fencing_token: fencingToken,
     },
-    restart_required: false,
+    restart_required: true,
   };
 }
 

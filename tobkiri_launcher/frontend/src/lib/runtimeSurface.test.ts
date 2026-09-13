@@ -555,6 +555,37 @@ test('regex labels cannot classify a Pack as Flow or AI Input', () => {
   assert.deepEqual(extractExactOperationDescriptors({operations: [{label: 'AI Input', operation_id: 'operation.one'}]}), []);
 });
 
+test('Flow descriptors require exact caller/provider Contract edges', () => {
+  const flow = {
+    flow_id: 'caller.one',
+    state: 'ready',
+    operation_ids: ['operation.one'],
+    edges: [{
+      caller_function_id: 'caller.one',
+      target_provider_id: 'provider.one',
+      contract_id: 'contract.one',
+      operation_id: 'operation.one',
+    }],
+  };
+  assert.deepEqual(extractExactFlowDescriptors({flows: [flow]}), [flow]);
+  assert.deepEqual(
+    extractExactFlowDescriptors({flows: [{...flow, edges: [{...flow.edges[0], caller_function_id: 'caller.two'}]}]}),
+    [],
+  );
+  assert.deepEqual(
+    extractExactFlowDescriptors({flows: [{...flow, operation_ids: ['operation.other']}]}),
+    [],
+  );
+  assert.deepEqual(
+    extractExactFlowDescriptors({flows: [flow, {...flow, edges: [{...flow.edges[0], operation_id: 'operation.two'}]}]}),
+    [],
+  );
+  assert.deepEqual(
+    extractExactFlowDescriptors({flows: [{...flow, state: 'unexpected'}]}),
+    [],
+  );
+});
+
 test('Pack projection rejects artifact-reference drift and duplicate Pack identities', () => {
   const pack = {
     pack_id: 'provider-pack',

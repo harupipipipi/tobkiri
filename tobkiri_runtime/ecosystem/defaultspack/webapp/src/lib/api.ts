@@ -1439,6 +1439,16 @@ export type ModelProfile = {
   local?: boolean;
 };
 
+export type RegisteredProviderConnection = {
+  provider_instance_id: string;
+  display_name: string;
+};
+
+export type ProviderConnectionSnapshot = {
+  registry_revision: number;
+  connections: RegisteredProviderConnection[];
+};
+
 export type ModelCandidate = {
   provider_id: string;
   model_id: string;
@@ -2405,6 +2415,63 @@ export function isModelProfilesResponse(
     && Number.isInteger(record.count)
     && record.count >= 0
   );
+}
+
+type ProviderConnectionCapabilityCatalog = {
+  dynamic_host: {
+    profile_id: string;
+    profile_revision: string;
+    activation_id: string;
+    plan_hash: string;
+    catalog_hash: string;
+  };
+};
+
+function isProviderConnectionCapabilityCatalog(
+  value: unknown,
+): value is ProviderConnectionCapabilityCatalog {
+  const record = objectRecord(value);
+  const dynamicHost = record && objectRecord(record.dynamic_host);
+  return Boolean(
+    dynamicHost
+    && hasNonEmptyString(dynamicHost, "profile_id")
+    && hasNonEmptyString(dynamicHost, "profile_revision")
+    && hasNonEmptyString(dynamicHost, "activation_id")
+    && hasNonEmptyString(dynamicHost, "plan_hash")
+    && hasNonEmptyString(dynamicHost, "catalog_hash"),
+  );
+}
+
+function isProviderConnectionSnapshot(
+  value: unknown,
+): value is {
+  revision: number;
+  providers: Array<{
+    provider_instance_id: string;
+    display_name: string;
+    enabled: boolean;
+  }>;
+} {
+  const record = objectRecord(value);
+  if (
+    !record
+    || Object.keys(record).length !== 2
+    || !Number.isSafeInteger(record.revision)
+    || Number(record.revision) < 0
+    || !Array.isArray(record.providers)
+  ) {
+    return false;
+  }
+  return record.providers.every((provider) => {
+    const item = objectRecord(provider);
+    return Boolean(
+      item
+      && Object.keys(item).length === 3
+      && hasNonEmptyString(item, "provider_instance_id")
+      && hasNonEmptyString(item, "display_name")
+      && typeof item.enabled === "boolean",
+    );
+  });
 }
 
 function nonEmptyString(value: unknown): string {
@@ -3740,8 +3807,57 @@ export const api = {
     }, isModelProfilesResponse);
   },
 
+  async listProviderConnections(): Promise<ProviderConnectionSnapshot> {
+    const catalog = await request<ProviderConnectionCapabilityCatalog>(
+      defaultspackContractRoute("api/ui/catalog"),
+      {
+        cache: "no-store",
+      },
+      isProviderConnectionCapabilityCatalog,
+    );
+    const dynamicHost = catalog.dynamic_host;
+    const snapshot = await request<{
+      revision: number;
+      providers: Array<{
+        provider_instance_id: string;
+        display_name: string;
+        enabled: boolean;
+      }>;
+    }>(defaultspackContractRoute("api/ui/capability/invoke"), {
+      method: "POST",
+      cache: "no-store",
+      body: JSON.stringify({
+        request_id: crypto.randomUUID(),
+        expires_at: Date.now() / 1000 + 30,
+        profile_id: dynamicHost.profile_id,
+        profile_revision: dynamicHost.profile_revision,
+        activation_id: dynamicHost.activation_id,
+        plan_hash: dynamicHost.plan_hash,
+        catalog_hash: dynamicHost.catalog_hash,
+        contribution_id: "defaults.providers.connections.read",
+        owner_pack_id: "runtime.tauri.application.default",
+        contract_id: "tobkiri.resource.ai.provider.registry.v1",
+        payload: {},
+      }),
+    }, isProviderConnectionSnapshot);
+    return {
+      registry_revision: snapshot.revision,
+      connections: snapshot.providers.flatMap((provider) => {
+        if (!provider.enabled) return [];
+        return [{
+          provider_instance_id: provider.provider_instance_id,
+          display_name: provider.display_name,
+        }];
+      }),
+    };
+  },
+
   async createModelProfile(input: {
-    model_profile_id: string; model_id: string; provider_instance_id: string; display_name: string;
+    model_profile_id: string;
+    model_id: string;
+    provider_instance_id: string;
+    display_name: string;
+    provider_registry_revision: number;
   }) {
     const current = await api.listModelProfiles();
     const matches = (profile: ModelProfile) => profile.profile_id === input.model_profile_id
@@ -3749,8 +3865,9 @@ export const api = {
       && profile.display_name === input.display_name;
     const existing = current.profiles.find((profile) => profile.profile_id === input.model_profile_id);
     if (existing) {
-      if (matches(existing)) return existing;
-      throw new Error("同じモデル設定IDが既に存在します。別のIDを指定してください。");
+      if (!matches(existing)) {
+        throw new Error("同じモデル設定IDが既に存在します。別のIDを指定してください。");
+      }
     }
     if (!Number.isInteger(current.registry_revision) || current.registry_revision! < 0) {
       throw new Error("モデル設定のrevisionを確認できません。");

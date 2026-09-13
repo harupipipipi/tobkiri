@@ -22,6 +22,8 @@ from ecosystem.rumi_ai_gateway_pack.runtime.gateway import (
     HEALTH_CONTRACT,
     HOST_PROVIDER_FACTORY,
     MODEL_PROFILE_CONTRACT,
+    PROVIDER_REGISTRY_CONTRACT,
+    PROVIDER_REGISTRY_GENERATE_OPERATION,
     REQUEST_PREPARE_CONTRACT,
     ROUTING_CONTRACT,
     TOOL_BRIDGE_CONTRACT,
@@ -195,6 +197,56 @@ class _PreflightDispatch(_CapturedDispatch):
         return result
 
 
+class _SavedConnectionPreflightDispatch(_PreflightDispatch):
+    """Preflight fixture for one registry-owned opaque saved connection."""
+
+    connection_id = "connection/openai:main"
+
+    def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
+        if contract_id == PROVIDER_REGISTRY_CONTRACT:
+            return ({
+                "provider_instance_id": "registry.resource.generate",
+                "operation_id": PROVIDER_REGISTRY_GENERATE_OPERATION,
+            },)
+        return super().provider_metadata(contract_id)
+
+    def invoke(
+        self,
+        contract_id: str,
+        operation_id: str,
+        payload: Mapping[str, Any],
+        *,
+        version_range: str | None = None,
+    ) -> Mapping[str, Any]:
+        if contract_id == MODEL_PROFILE_CONTRACT:
+            self.calls.append((contract_id, operation_id, dict(payload)))
+            return {
+                "profile": {
+                    "model_id": "fixture/model",
+                    "metadata": {
+                        "provider_connection_id": self.connection_id,
+                    },
+                },
+            }
+        if contract_id == PROVIDER_REGISTRY_CONTRACT:
+            self.calls.append((contract_id, operation_id, dict(payload)))
+            assert operation_id == PROVIDER_REGISTRY_GENERATE_OPERATION
+            return {
+                "revision": 7,
+                "providers": [{
+                    "provider_instance_id": self.connection_id,
+                    "display_name": "OpenAI main",
+                    "enabled": True,
+                }],
+            }
+        return super().invoke(
+            contract_id,
+            operation_id,
+            payload,
+            version_range=version_range,
+        )
+
+
 def test_preflight_captured_operation_resolves_without_generation_or_billing() -> None:
     from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
     contribution, _ = _captured_provider(preflight=True)
@@ -209,6 +261,26 @@ def test_preflight_captured_operation_resolves_without_generation_or_billing() -
         REQUEST_PREPARE_CONTRACT, MODEL_PROFILE_CONTRACT, ROUTING_CONTRACT,
     ]
     assert "private-handle" not in repr(result)
+
+
+def test_preflight_rechecks_the_exact_opaque_saved_connection() -> None:
+    """Readiness requires the saved owner ID to remain enabled now."""
+    from ecosystem.rumi_ai_gateway_pack.runtime.preflight import FUNCTION_ID
+    contribution, _ = _captured_provider(preflight=True)
+    dispatch = _SavedConnectionPreflightDispatch(configured_provider=True)
+    result = contribution.invoke(FUNCTION_ID, {
+        "model_profile_id": "model-profile", "messages": [{"role": "user", "content": "Hello"}],
+    }, _Invocation(dispatch))
+
+    assert result["ready"] is True
+    assert result["provider_instance_id"] == "provider.fixture"
+    assert [contract for contract, _, _ in dispatch.calls] == [
+        REQUEST_PREPARE_CONTRACT,
+        MODEL_PROFILE_CONTRACT,
+        PROVIDER_REGISTRY_CONTRACT,
+        ROUTING_CONTRACT,
+    ]
+    assert "connection/openai:main" not in repr(result)
 
 
 @pytest.mark.parametrize("extra", ["resolve_only", "credential_handle", "provider_instance_id", "_session_id"])
@@ -288,6 +360,7 @@ def test_gateway_host_factory_dispatches_only_through_the_captured_client() -> N
                     REQUEST_PREPARE_CONTRACT,
                     FAILOVER_CONTRACT,
                     MODEL_PROFILE_CONTRACT,
+                    PROVIDER_REGISTRY_CONTRACT,
                 }
             ),
             "rumi_ai_gateway_pack",
