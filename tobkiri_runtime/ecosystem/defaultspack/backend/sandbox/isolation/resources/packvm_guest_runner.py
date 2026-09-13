@@ -52,6 +52,8 @@ MAX_ARTIFACT_SEED_BYTES = (
 MAX_RESULT_BYTES = 16 * 1024 * 1024
 MAX_CHILD_STDERR_BYTES = 64 * 1024
 CANCEL_GRACE_SECONDS = 0.25
+CANCEL_KILL_CONFIRM_SECONDS = 0.25
+CANCEL_POLL_INTERVAL_SECONDS = 0.01
 PACK_UID = 65534
 PACK_GID = 65534
 PACKVM_BRIDGE_PROTOCOL = "io.tobkiri.packvm.bridge.v1"
@@ -2096,19 +2098,31 @@ def _terminate_process_group(process_group: int) -> list[str]:
         signals.append("TERM")
     except ProcessLookupError:
         return signals
-    deadline = time.monotonic() + CANCEL_GRACE_SECONDS
-    while time.monotonic() < deadline:
-        try:
-            os.killpg(process_group, 0)
-        except ProcessLookupError:
-            return signals
-        time.sleep(0.01)
+    if _wait_for_process_group_exit(process_group, CANCEL_GRACE_SECONDS):
+        return signals
     try:
         os.killpg(process_group, signal.SIGKILL)
         signals.append("KILL")
     except ProcessLookupError:
-        pass
+        return signals
+    if not _wait_for_process_group_exit(process_group, CANCEL_KILL_CONFIRM_SECONDS):
+        raise TimeoutError("PackVM cancellation process group survived SIGKILL")
     return signals
+
+
+def _wait_for_process_group_exit(process_group: int, timeout: float) -> bool:
+    """Wait a bounded interval for a cancelled process group to disappear."""
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.killpg(process_group, 0)
+        except ProcessLookupError:
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(CANCEL_POLL_INTERVAL_SECONDS, remaining))
 
 
 def _materialize(request: dict[str, object]) -> dict[str, object]:

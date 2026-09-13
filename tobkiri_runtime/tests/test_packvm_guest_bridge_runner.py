@@ -717,6 +717,50 @@ def test_cancel_fences_a_bridge_that_finishes_racing_with_its_cancel() -> None:
         )
 
 
+def test_guest_agent_never_signs_cancel_success_when_reap_confirmation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A surviving process group becomes a signed failure, never a stop ACK."""
+    config = _config()
+    signer = _FakeSigner()
+    ledger = runner._PendingBridgeLedger()
+    now = [0.0]
+    record = {
+        "request_id": "request-cancel",
+        "target_domain": config.domain_id,
+        "guest_artifact_identity": "sha256:" + "a" * 64,
+        "cancel_token": "b" * 64,
+        "process_group": 1234,
+    }
+
+    def persistent_group(process_group: int, _signal: int) -> None:
+        assert process_group == 1234
+
+    monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(runner, "_read_request", lambda _path: record)
+    monkeypatch.setattr(runner.os, "killpg", persistent_group)
+    monkeypatch.setattr(runner.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        runner.time,
+        "sleep",
+        lambda duration: now.__setitem__(0, now[0] + duration),
+    )
+    response = _roundtrip(
+        _envelope(config, "cancel", "request-cancel", "f" * 64),
+        config,
+        ledger,
+        signer,
+    )
+
+    assert response["success"] is False
+    assert response["error"] == {
+        "code": "CAPABILITY_UNAVAILABLE",
+        "message": "The authenticated PackVM operation was rejected.",
+    }
+    assert len(signer.payloads) == 1
+    assert b'"state":"cancelled"' not in signer.payloads[0]
+
+
 def test_guest_agent_rejects_noncanonical_input_and_never_signs_it() -> None:
     """Ambiguous JSON and raw errors cannot cross the helper trust boundary."""
 

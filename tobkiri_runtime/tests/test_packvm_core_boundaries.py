@@ -311,6 +311,64 @@ def test_guest_cancel_requires_exact_owned_identity_and_token(
     }
 
 
+def test_guest_cancel_confirms_delayed_process_group_exit_after_sigkill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful cancellation ACK waits for the post-KILL group absence."""
+    now = [0.0]
+    signals: list[int] = []
+    killed = [False]
+    post_kill_probes = [0]
+
+    def killpg(process_group: int, value: int) -> None:
+        assert process_group == 1234
+        signals.append(value)
+        if value == packvm_guest_runner.signal.SIGKILL:
+            killed[0] = True
+        elif value == 0 and killed[0]:
+            post_kill_probes[0] += 1
+            if post_kill_probes[0] >= 2:
+                raise ProcessLookupError
+
+    monkeypatch.setattr(packvm_guest_runner.os, "killpg", killpg)
+    monkeypatch.setattr(packvm_guest_runner.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        packvm_guest_runner.time,
+        "sleep",
+        lambda duration: now.__setitem__(0, now[0] + duration),
+    )
+
+    assert packvm_guest_runner._terminate_process_group(1234) == ["TERM", "KILL"]
+    assert signals[0] == packvm_guest_runner.signal.SIGTERM
+    assert packvm_guest_runner.signal.SIGKILL in signals
+    assert post_kill_probes[0] == 2
+
+
+def test_guest_cancel_refuses_ack_when_process_group_survives_sigkill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A persistent process group cannot receive a cancelled acknowledgement."""
+    now = [0.0]
+    signals: list[int] = []
+
+    def killpg(process_group: int, value: int) -> None:
+        assert process_group == 1234
+        signals.append(value)
+
+    monkeypatch.setattr(packvm_guest_runner.os, "killpg", killpg)
+    monkeypatch.setattr(packvm_guest_runner.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(
+        packvm_guest_runner.time,
+        "sleep",
+        lambda duration: now.__setitem__(0, now[0] + duration),
+    )
+
+    with pytest.raises(TimeoutError, match="survived SIGKILL"):
+        packvm_guest_runner._terminate_process_group(1234)
+    assert signals[0] == packvm_guest_runner.signal.SIGTERM
+    assert packvm_guest_runner.signal.SIGKILL in signals
+
+
 def test_existing_challenge_and_authenticated_cancel_share_guest_protocol(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
