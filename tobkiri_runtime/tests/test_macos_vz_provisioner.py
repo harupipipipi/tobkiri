@@ -236,7 +236,9 @@ def test_cloud_bootstrap_starts_guest_service_without_multi_user_cycle() -> None
     assert "systemctl start tobkiri-packvm-guest.service" in template
 
 
-def test_cloud_bootstrap_runner_is_readable_to_the_unprivileged_pack_child() -> None:
+def test_cloud_bootstrap_runner_is_readable_to_the_unprivileged_pack_child(
+    tmp_path: Path,
+) -> None:
     """The bwrap child must read its separately bound runner after dropping UID."""
 
     workspace = Path(__file__).resolve().parents[2]
