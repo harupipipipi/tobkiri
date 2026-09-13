@@ -60,6 +60,74 @@ class _Dispatch:
         return {"contract_id": contract_id, "operation_id": operation_id}
 
 
+def test_active_profile_registry_store_reuses_only_a_current_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An active registry read must fence its capture without redoing bootstrap."""
+
+    from core_runtime.bootstrap import profile_capture
+
+    calls: list[str] = []
+    dispatch = _Dispatch()
+
+    def assert_current() -> None:
+        calls.append("assert_current")
+
+    def unexpected_catalog_reload() -> None:
+        raise AssertionError("an active handler reloaded the bootstrap catalog")
+
+    monkeypatch.setattr(dispatch, "assert_current", assert_current)
+    monkeypatch.setattr(PackAPIHandler, "_dispatch_session", dispatch)
+    monkeypatch.setattr(
+        profile_capture,
+        "host_profile_catalog",
+        unexpected_catalog_reload,
+    )
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path))
+
+    store = PackAPIHandler._profile_registry_store()
+
+    assert store.user_data_root == tmp_path
+    assert calls == ["assert_current"]
+
+
+def test_profile_registry_store_keeps_control_preparation_and_rejects_stale_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """First-run preparation remains intact and an active stale capture fails closed."""
+
+    from core_runtime.bootstrap import profile_capture
+
+    catalog_calls: list[str] = []
+
+    class ControlDispatch(_Dispatch):
+        session_kind = "host_profile_control"
+
+        def assert_current(self) -> None:
+            raise AssertionError("control preparation bypassed the catalog")
+
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path))
+    monkeypatch.setattr(
+        profile_capture,
+        "host_profile_catalog",
+        lambda: catalog_calls.append("host_profile_catalog"),
+    )
+    monkeypatch.setattr(PackAPIHandler, "_dispatch_session", ControlDispatch())
+    PackAPIHandler._profile_registry_store()
+    assert catalog_calls == ["host_profile_catalog"]
+
+    class StaleDispatch(_Dispatch):
+        def assert_current(self) -> None:
+            raise RuntimeError("stale active capture")
+
+    monkeypatch.setattr(PackAPIHandler, "_dispatch_session", StaleDispatch())
+    with pytest.raises(RuntimeError, match="stale active capture"):
+        PackAPIHandler._profile_registry_store()
+    assert catalog_calls == ["host_profile_catalog"]
+
+
 class _RefreshDispatch(_Dispatch):
     def __init__(self, name: str) -> None:
         super().__init__()

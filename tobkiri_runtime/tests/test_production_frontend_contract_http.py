@@ -2394,6 +2394,39 @@ def test_named_profile_registry_crud_http_preserves_active_pointer_and_history(
     assert stale["success"] is False
 
 
+def test_active_profile_registry_http_does_not_repeat_catalog_preparation(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Serve the verified registry from the current active Host capture."""
+
+    server, _session, _authority = production_server
+    cookie, _csrf, _origin = _authenticate(server)
+    original_catalog = profile_capture.host_profile_catalog
+    catalog_calls: list[None] = []
+
+    def counted_catalog(*args: object, **kwargs: object):
+        catalog_calls.append(None)
+        return original_catalog(*args, **kwargs)
+
+    monkeypatch.setattr(
+        profile_capture,
+        "host_profile_catalog",
+        counted_catalog,
+    )
+    status, payload, _headers = _request(
+        server,
+        "GET",
+        "/api/v4/profiles",
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+
+    assert status == 200, payload
+    assert payload["data"]["active_profile_id"] == "defaults"
+    assert payload["data"]["active_profile_revision"]
+    assert catalog_calls == [None]
+
+
 def test_home_and_pack_workflow_use_only_real_broker_contracts(
     production_server,
 ) -> None:

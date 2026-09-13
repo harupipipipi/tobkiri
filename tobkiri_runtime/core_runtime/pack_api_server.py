@@ -1757,7 +1757,10 @@ class PackAPIHandler(
         """Project only a current non-bootstrap execution capture on health."""
 
         session = cls._dispatch_session
-        if session is None or getattr(session, "session_kind", None) == "host_profile_control":
+        if (
+            session is None
+            or getattr(session, "session_kind", None) == "host_profile_control"
+        ):
             return None
         try:
             session.assert_current()
@@ -1955,9 +1958,19 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
             return target
         return None
 
-    @staticmethod
-    def _profile_registry_store() -> Any:
-        """Return the Host-owned Named Profile registry for this process."""
+    @classmethod
+    def _profile_registry_store(cls) -> Any:
+        """Return the Host-owned Named Profile registry for this process.
+
+        An active handler is created only after the Host has loaded the sealed
+        catalog, applied Profile migrations, and captured one exact activation.
+        Repeating that work for every registry projection delays the first
+        authenticated panel reads and can race the same cold-start checks.
+        Keep first-run/control handlers on the full preparation path, while an
+        active handler reuses only a capture that still passes its freshness
+        fence.  The registry and active pointer are independently verified by
+        the callers below.
+        """
 
         from .bootstrap.profile_capture import (
             host_profile_catalog,
@@ -1965,7 +1978,11 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
         )
         from .profile_definition_store_v4 import ProfileDefinitionStore
 
-        host_profile_catalog()
+        session = cls._dispatch_session
+        if session is None or getattr(session, "session_kind", None) == "host_profile_control":
+            host_profile_catalog()
+        else:
+            session.assert_current()
         return ProfileDefinitionStore(runtime_user_data_root())
 
     def _profile_registry_payload(self) -> dict[str, object]:
@@ -2186,7 +2203,13 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
             self._send_mapping_result(self._setup_get_migration_status())
             return
         if path == "/api/v4/profiles":
-            self._handle_profile_registry_read(path)
+            from .bootstrap.profile_capture import profile_capture_scope
+
+            # Authentication and the registry projection both fence the same
+            # active session.  Share only this request's verified capture so a
+            # cold panel read does not repeat sealed catalog preparation.
+            with profile_capture_scope():
+                self._handle_profile_registry_read(path)
             return
         mount = self._match_web_mount(path)
         if mount is not None:
@@ -2286,7 +2309,10 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
         if profile_action is not None:
             body = self._parse_object_body()
             if body is not None:
-                self._handle_profile_registry_mutation(path, profile_action, body)
+                from .bootstrap.profile_capture import profile_capture_scope
+
+                with profile_capture_scope():
+                    self._handle_profile_registry_mutation(path, profile_action, body)
             return
         if path == "/api/v4/dispatch":
             self._discard_request_body()
