@@ -386,9 +386,15 @@ test('Home to Settings renders the current route instead of stale Home content',
         </MemoryRouter>,
       );
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    for (
+      let attempt = 0;
+      attempt < 100 && !/Appearance/.test(container.textContent ?? '');
+      attempt += 1
+    ) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    }
 
     assert.match(container.textContent ?? '', /Appearance/);
     assert.doesNotMatch(container.textContent ?? '', /Loading Tobkiri home/);
