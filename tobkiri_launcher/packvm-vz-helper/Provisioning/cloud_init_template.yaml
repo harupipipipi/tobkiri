@@ -53,6 +53,10 @@ write_files:
           data = source.read_bytes()
           descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
           try:
+              # The bootstrap runs under umask 077.  Preserve that default for
+              # secret inputs, but apply the explicitly selected mode so the
+              # code-only runner remains readable after bwrap drops PACK_UID.
+              os.fchmod(descriptor, mode)
               offset = 0
               while offset < len(data):
                   written = os.write(descriptor, data[offset:])

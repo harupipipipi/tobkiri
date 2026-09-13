@@ -256,6 +256,35 @@ def test_cloud_bootstrap_runner_is_readable_to_the_unprivileged_pack_child() -> 
     assert 'copy_private(agent_config, runtime_dir / "agent-config.json", 0o600)' in template
     assert 'copy_private(agent_key, runtime_dir / "agent-ed25519.pem", 0o600)' in template
 
+    embedded = textwrap.dedent(template.split("<<'PY'\n", 1)[1].split("\n      PY", 1)[0])
+    module = ast.parse(embedded)
+    bootstrap_copy = ast.Module(
+        body=[
+            node
+            for node in module.body
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+            or isinstance(node, ast.FunctionDef)
+            and node.name in {"regular", "copy_private"}
+        ],
+        type_ignores=[],
+    )
+    namespace: dict[str, object] = {}
+    exec(compile(bootstrap_copy, str(template), "exec"), namespace)
+    source = tmp_path / "runner.py"
+    source.write_bytes(b"runner")
+    source.chmod(0o600)
+    private_parent = tmp_path / "private"
+    private_parent.mkdir(mode=0o700)
+    installed = private_parent / "packvm_guest_runner.py"
+    previous_umask = os.umask(0o077)
+    try:
+        namespace["copy_private"](source, installed, 0o755)  # type: ignore[operator]
+    finally:
+        os.umask(previous_umask)
+
+    assert private_parent.stat().st_mode & 0o777 == 0o700
+    assert installed.stat().st_mode & 0o777 == 0o755
+
 
 def test_cloud_bootstrap_completes_dpkg_triggers_before_auditing() -> None:
     """The offline package install must not manufacture a pending trigger."""
