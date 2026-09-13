@@ -10109,7 +10109,7 @@
         "rule_id": "legacy_direct_pack_route"
       },
       {
-        "evidence_digest": "sha256:2804797c3f597bfbe32ad70b065b566238a12dd6e9f6c1c8d2e8f23595ca2bbf",
+        "evidence_digest": "sha256:c32276739dbb9eacd20e3a98137a30b0816f7b5d91dde44269fa34302b805fb1",
         "line": 778,
         "path": "tobkiri_runtime/ecosystem/defaultspack/defaultspack/desktop_app.py",
         "rule_id": "legacy_direct_pack_route"
@@ -18411,7 +18411,7 @@
     ]
   },
   "repository": {
-    "commit": "22c752957a0a18b6a7be697469ecb1ddf0a02554",
+    "commit": "0545230318880fc348d9f78b6f287b172276ace3",
     "tree_digest": "2cd47f1489452b4ca11997b348912a064bfc45555f2290cc1782ca3cb617950c"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",

@@ -853,7 +853,6 @@ def main(argv: list[str] | None = None) -> int:
         url=url,
     )
     if not chat_ready:
-        server.stop()
         _write_launch_event(
             "chat_launch_blocked",
             code="API_FAILURE",
@@ -861,7 +860,9 @@ def main(argv: list[str] | None = None) -> int:
             port=port,
             url=url,
         )
-        return 1
+        if not chat_launch_blocked:
+            server.stop()
+            return 1
 
     from defaultspack.native_webview import open_desktop_surface
 

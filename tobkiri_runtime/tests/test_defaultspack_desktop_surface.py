@@ -366,8 +366,8 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
         self.assertTrue(fake_server.started)
         self.assertTrue(fake_server.stopped)
 
-    def test_desktop_app_does_not_open_chat_when_packvm_startup_is_unavailable(self):
-        """A missing authenticated PackVM is a bounded startup failure, not chat."""
+    def test_desktop_app_opens_recovery_panel_when_packvm_startup_is_unavailable(self):
+        """A missing PackVM keeps the authenticated recovery panel available."""
 
         from core_runtime.app_lifecycle_manager import (
             get_runtime_readiness,
@@ -391,6 +391,9 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
 
             def assert_runtime_startup_ready(self):
                 raise BackendUnavailableError("stale helper identity")
+
+            def issue_panel_login_code(self):
+                return {"code": "test-panel-login-code"}
 
         fake_server = FakeServer()
         with tempfile.TemporaryDirectory() as tmp:
@@ -435,13 +438,14 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                                         ),
                                     ):
                                         with patch(
-                                            "defaultspack.native_webview.open_desktop_surface"
+                                            "defaultspack.native_webview.open_desktop_surface",
+                                            return_value="webview",
                                         ) as open_surface:
-                                            self.assertEqual(desktop_app.main(), 1)
+                                            self.assertEqual(desktop_app.main(), 0)
 
         self.assertTrue(fake_server.started)
         self.assertTrue(fake_server.stopped)
-        open_surface.assert_not_called()
+        open_surface.assert_called_once()
         self.assertEqual(get_runtime_readiness(), {
             "panel_ready": True,
             "runtime_ready": False,
