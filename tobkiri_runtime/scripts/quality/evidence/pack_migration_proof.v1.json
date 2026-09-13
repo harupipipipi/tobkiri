@@ -11482,18 +11482,18 @@
       "target": {
         "artifact_verification": {
           "artifact_count": 4,
-          "artifact_index_digest": "sha256:bf5eab39831acd170b1308780c486167e0006341419416a9f7804f1a3b713e39",
-          "artifact_set_digest": "sha256:435ac2a2610831d40f306b334c88ad260672b687e0f58c318bfc0e89ff8b32ff",
-          "executable_catalog_digest": "sha256:b82817235194e28d4a215e4f26f111e406a15aeafd35cc87a89885d38ac471ad",
+          "artifact_index_digest": "sha256:34ca7f69b9de89c2e5aa25b7446d3e1e9b14748ae8a8a9c0de302fde911f7880",
+          "artifact_set_digest": "sha256:32436550e1351fa2d6e61ac31f92acf38a6adbbc3023e9b8296abe5ad91d0d57",
+          "executable_catalog_digest": "sha256:c0caa4fecdface5273c008aadcdc8e6b6d0df36d58b13982de313865cd020f52",
           "pack_id": "tobkiri_host_pack_control",
           "quartet": {
-            "artifact-index.v4.json": "sha256:bf5eab39831acd170b1308780c486167e0006341419416a9f7804f1a3b713e39",
+            "artifact-index.v4.json": "sha256:34ca7f69b9de89c2e5aa25b7446d3e1e9b14748ae8a8a9c0de302fde911f7880",
             "contracts.v4.json": "sha256:8350e441715c285a876c02e111ab32d8511b9d24a08eef8f1fdbf0350fe4f9b1",
-            "executables.v4.json": "sha256:6b05af059ea18ac951e24b2fb301e41ed8f65bb1d26056c358389d23f1cb68ac",
-            "pack.v4.json": "sha256:0cddafd92ed8a54c8b24871a49924918f6044f22e9798d84584cb3c61017b95f"
+            "executables.v4.json": "sha256:4261167de6d5dc7041de18cd0a0f8efb076d60cf0b2628bbd35df1e141ba49f3",
+            "pack.v4.json": "sha256:5b56ceaf93e1196b4435f9c21d86db780f55df8577dc5acac08c6bd5c34f127f"
           }
         },
-        "digest": "sha256:435ac2a2610831d40f306b334c88ad260672b687e0f58c318bfc0e89ff8b32ff",
+        "digest": "sha256:32436550e1351fa2d6e61ac31f92acf38a6adbbc3023e9b8296abe5ad91d0d57",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "tobkiri_host_pack_control",
         "status": "artifact-integrity-verified"
@@ -11666,7 +11666,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:bf759d96f8205b020f80c2c5085306ff38af6c516bc7f582d8906cfe6c7f28ce",
+    "content_digest": "sha256:9eba3f14cb1904987420a4c3ee82adcb87df295a3fa21afe43c38a6a15b2335a",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 39,
@@ -11908,7 +11908,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:81dd74c730fe63b6d3f5f2606bbac1a8c3ac77a0b1a3571de5cd81801c5dbb61",
+    "input_digest": "sha256:0449284c50810d47b184565107e8a127560b3e74b06b33841e81fcde8318ca34",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -18529,7 +18529,7 @@
         "path": "tobkiri_runtime/ecosystem/search_home_pack/pack.v4.json"
       },
       {
-        "digest": "sha256:bf5eab39831acd170b1308780c486167e0006341419416a9f7804f1a3b713e39",
+        "digest": "sha256:34ca7f69b9de89c2e5aa25b7446d3e1e9b14748ae8a8a9c0de302fde911f7880",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/artifact-index.v4.json"
       },
@@ -18539,12 +18539,12 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/contracts.v4.json"
       },
       {
-        "digest": "sha256:6b05af059ea18ac951e24b2fb301e41ed8f65bb1d26056c358389d23f1cb68ac",
+        "digest": "sha256:4261167de6d5dc7041de18cd0a0f8efb076d60cf0b2628bbd35df1e141ba49f3",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/executables.v4.json"
       },
       {
-        "digest": "sha256:0cddafd92ed8a54c8b24871a49924918f6044f22e9798d84584cb3c61017b95f",
+        "digest": "sha256:5b56ceaf93e1196b4435f9c21d86db780f55df8577dc5acac08c6bd5c34f127f",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_host_pack_control/pack.v4.json"
       },
@@ -18735,7 +18735,7 @@
       "release-verified": 0,
       "semantically-reviewed": 39
     },
-    "observed_head_sha": "7b8dd66e46afe0b9f5725d4e6728c5c5391f7a57",
+    "observed_head_sha": "c26b507acfe7a0831507ae9ae04d8825fda4b15b",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {

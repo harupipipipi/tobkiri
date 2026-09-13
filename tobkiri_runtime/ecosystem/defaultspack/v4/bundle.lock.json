@@ -1399,12 +1399,12 @@
     {
       "path": "packs/tobkiri-host-pack-control.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:6a677bab243a30ad8a6923f2890ef220cf120b30861dbacb4a90e53e5bcdf65f"
+      "digest": "sha256:b1c19e075016604cbbd2da5731594d67bddb18edf3edd403c5cdc409a56a03e8"
     },
     {
       "path": "packs/tobkiri_host_pack_control.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:e4fa4f1d441e204d3ac666c249a915474fbb62da74a08152c2bdcab9754edf63"
+      "digest": "sha256:4724ec456e243452e723ea52e12089476f9ea563ea990ab56239b0f61118329f"
     },
     {
       "path": "packs/tobkiri_mcp_connection_pack.executables.v4.json",

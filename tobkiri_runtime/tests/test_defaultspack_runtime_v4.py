@@ -237,18 +237,28 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_ai_stream_pack",
         "rumi_ai_tool_bridge_pack",
         "rumi_ai_usage_pack",
+        "rumi_browser_host_service_pack",
+        "rumi_clipboard_host_service_pack",
         "rumi_command_protocol_pack",
         "rumi_file_inspect_pack",
         "rumi_git_publish_pack",
         "rumi_git_read_pack",
         "rumi_git_write_pack",
+        "rumi_default_tools_pack",
+        "rumi_desktop_host_service_pack",
         "rumi_host_authority_bridge_pack",
         "rumi_model_catalog_pack",
         "rumi_model_registry_pack",
+        "rumi_prompt_studio_pack",
         "rumi_provider_adapters_pack",
         "rumi_provider_registry_pack",
         "rumi_shell_execute_pack",
         "rumi_shell_policy_pack",
+        "rumi_tool_broker_pack",
+        "rumi_tool_local_executor_pack",
+        "rumi_tool_registry_pack",
+        "rumi_tool_result_pack",
+        "rumi_tool_validation_pack",
         "rumi_workspace_mount_pack",
         "runtime.tauri.application.default",
         "dev.tauri.toolchain.default",
@@ -275,7 +285,11 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_ai_stream_pack",
         "rumi_ai_tool_bridge_pack",
         "rumi_ai_usage_pack",
+        "rumi_browser_host_service_pack",
+        "rumi_clipboard_host_service_pack",
         "rumi_command_protocol_pack",
+        "rumi_default_tools_pack",
+        "rumi_desktop_host_service_pack",
         "rumi_file_inspect_pack",
         "rumi_git_publish_pack",
         "rumi_git_read_pack",
@@ -283,10 +297,16 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_host_authority_bridge_pack",
         "rumi_model_catalog_pack",
         "rumi_model_registry_pack",
+        "rumi_prompt_studio_pack",
         "rumi_provider_adapters_pack",
         "rumi_provider_registry_pack",
         "rumi_shell_execute_pack",
         "rumi_shell_policy_pack",
+        "rumi_tool_broker_pack",
+        "rumi_tool_local_executor_pack",
+        "rumi_tool_registry_pack",
+        "rumi_tool_result_pack",
+        "rumi_tool_validation_pack",
         "rumi_workspace_mount_pack",
         "runtime.tauri.application.default",
         "tobkiri_host_pack_control",
@@ -299,16 +319,19 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     assert [
         item["function_principal"]["function_id"] for item in resolved.plan["bindings"]
     ] == [
+        "rumi_tool_registry_pack.tool-registry.definition",
         "rumi_model_registry_pack.model-registry.manage",
         "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
         "rumi_provider_registry_pack.provider-configure.prepare",
         "rumi_provider_registry_pack.provider-configure.execute",
         "rumi_credential_broker_pack.credential-broker.manage",
+        "rumi_turn_runtime_pack.turn-runtime.stop",
         "rumi_turn_runtime_pack.turn-runtime.reconcile",
         "rumi_conversation_store_pack.conversation-store.resource",
         "rumi_ai_routing_pack.ai-routing.default",
         "rumi_turn_runtime_pack.turn-runtime.saved",
         "rumi_turn_runtime_pack.turn-runtime.resource",
+        "rumi_turn_runtime_pack.turn-runtime.lifecycle",
         "rumi_conversation_store_pack.conversation-store.resource",
         "defaultspack.conversation.saved",
         "rumi_conversation_store_pack.conversation-store.resource",
@@ -407,6 +430,16 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_workspace_mount_pack.workspace-mount.resource",
         "rumi_workspace_mount_pack.workspace-mount.resource",
         "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_tool_registry_pack.tool-registry.definition",
+        "rumi_tool_registry_pack.tool-registry.definition",
+        "rumi_tool_registry_pack.tool-registry.definition",
+        "rumi_tool_broker_pack.tool-broker.invoke",
+        "rumi_tool_validation_pack.tool-validation.arguments",
+        "rumi_tool_result_pack.tool-result.normalize",
+        "rumi_tool_local_executor_pack.tool-executor.local",
+        "rumi_default_tools_pack.calculator",
+        "rumi_prompt_studio_pack.prompt-studio.resource",
+        "rumi_prompt_studio_pack.prompt-studio.resource",
     ]
     assert resolved.lock["plan_digest"] == resolved.plan["plan_digest"]
 
@@ -807,12 +840,7 @@ def test_duplicate_pack_and_legacy_route_authorities_are_absent() -> None:
 
     defaultspack_root = ROOT / "ecosystem" / "defaultspack"
     defaults_root = ROOT / "ecosystem" / "defaults"
-    assert {path.name for path in defaults_root.iterdir()} == {
-        "artifact-index.v4.json",
-        "contracts.v4.json",
-        "executables.v4.json",
-        "pack.v4.json",
-    }
+    assert not defaults_root.exists()
     assert not (defaultspack_root / "ecosystem.json").exists()
     assert not (defaultspack_root / "permissions.json").exists()
     assert not (defaultspack_root / "routes.json").exists()
@@ -1470,6 +1498,7 @@ def test_slow_artifact_verification_does_not_hold_activation_lock(
     )
     verification_started = threading.Event()
     release_verification = threading.Event()
+    results: list[str] = []
     errors: list[BaseException] = []
 
     def slow_verification(*_args: object, **_kwargs: object) -> None:
@@ -1479,25 +1508,41 @@ def test_slow_artifact_verification_does_not_hold_activation_lock(
 
     monkeypatch.setattr(first, "_verify_selected_artifact", slow_verification)
 
-    def load_first() -> None:
+    def load(store: ActivationStore) -> None:
         try:
-            first.load_active_snapshot()
+            results.append(store.load_active_snapshot().activation["activation_id"])
         except BaseException as error:  # pragma: no cover - asserted below
             errors.append(error)
 
-    worker = threading.Thread(target=load_first)
-    worker.start()
+    first_worker = threading.Thread(target=load, args=(first,))
+    first_worker.start()
     assert verification_started.wait(timeout=2)
+    second_worker = threading.Thread(target=load, args=(second,))
+    second_worker.start()
     try:
-        assert second.load_active_snapshot().activation["activation_id"] == (
-            "activation:defaults-slow-verification"
-        )
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            with runtime_service._ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+                flights = tuple(runtime_service._ARTIFACT_VERIFICATION_FLIGHTS.values())
+                if len(flights) == 1 and flights[0].waiters == 1:
+                    break
+            time.sleep(0.001)
+        else:
+            raise AssertionError("concurrent artifact verifier did not join flight")
+        with second._activation_lock():
+            pass
     finally:
         release_verification.set()
-        worker.join(timeout=5)
+        first_worker.join(timeout=5)
+        second_worker.join(timeout=5)
         authority.close()
-    assert not worker.is_alive()
+    assert not first_worker.is_alive()
+    assert not second_worker.is_alive()
     assert errors == []
+    assert results == [
+        "activation:defaults-slow-verification",
+        "activation:defaults-slow-verification",
+    ]
 
 
 def test_artifact_verification_is_fenced_by_activation_reread(
@@ -1538,6 +1583,74 @@ def test_artifact_verification_is_fenced_by_activation_reread(
         "activation:defaults-during-verification"
     )
     authority.close()
+
+
+def test_concurrent_artifact_verification_error_is_not_shared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A waiter retries verification and receives its own outcome after an error."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+    leader = ActivationStore(state, workspace, profile_id="defaults", authority=authority)
+    waiter = ActivationStore(state, workspace, profile_id="defaults", authority=authority)
+    leader.activate(
+        _resolve(),
+        activation_id="activation:defaults-verification-retry",
+        created_at="2026-08-10T00:00:00Z",
+    )
+    verification_started = threading.Event()
+    release_verification = threading.Event()
+    waiter_verifications: list[bool] = []
+    results: list[str] = []
+    errors: list[BaseException] = []
+
+    def fail_verification(*_args: object, **_kwargs: object) -> None:
+        verification_started.set()
+        assert release_verification.wait(timeout=5)
+        raise ProfileResolutionDenied("transient verifier failure")
+
+    def pass_verification(*_args: object, **_kwargs: object) -> None:
+        waiter_verifications.append(True)
+
+    def load(store: ActivationStore) -> None:
+        try:
+            results.append(store.load_active_snapshot().activation["activation_id"])
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr(leader, "_verify_selected_artifact", fail_verification)
+    monkeypatch.setattr(waiter, "_verify_selected_artifact", pass_verification)
+    leader_worker = threading.Thread(target=load, args=(leader,))
+    waiter_worker = threading.Thread(target=load, args=(waiter,))
+    leader_worker.start()
+    assert verification_started.wait(timeout=2)
+    waiter_worker.start()
+    try:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            with runtime_service._ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+                flights = tuple(runtime_service._ARTIFACT_VERIFICATION_FLIGHTS.values())
+                if len(flights) == 1 and flights[0].waiters == 1:
+                    break
+            time.sleep(0.001)
+        else:
+            raise AssertionError("concurrent artifact verifier did not join flight")
+    finally:
+        release_verification.set()
+        leader_worker.join(timeout=5)
+        waiter_worker.join(timeout=5)
+        authority.close()
+
+    assert not leader_worker.is_alive()
+    assert not waiter_worker.is_alive()
+    assert len(errors) == 1
+    assert "transient verifier failure" in str(errors[0])
+    assert results == ["activation:defaults-verification-retry"]
+    assert waiter_verifications == [True]
+    assert runtime_service._ARTIFACT_VERIFICATION_FLIGHTS == {}
 
 
 def test_windows_activation_lock_adapter_uses_nonblocking_retry(

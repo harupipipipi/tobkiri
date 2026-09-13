@@ -13,6 +13,7 @@ import importlib
 import errno
 import os
 import re
+import threading
 import time
 from contextlib import contextmanager
 from copy import deepcopy
@@ -144,6 +145,24 @@ class ActiveDefaultProfile:
 
     resolved: ResolvedDefaultProfile
     activation: Mapping[str, Any]
+
+
+@dataclass
+class _ArtifactVerificationFlight:
+    """One in-progress verification of an exact activation's artifact bytes."""
+
+    complete: threading.Event
+    error: BaseException | None = None
+    waiters: int = 0
+
+
+_ARTIFACT_VERIFICATION_FLIGHTS_LOCK = threading.Lock()
+_ARTIFACT_VERIFICATION_FLIGHTS: dict[
+    tuple[Path, Path, str, str, str, str, str],
+    _ArtifactVerificationFlight,
+] = {}
+_ACTIVATION_READ_GATES_LOCK = threading.Lock()
+_ACTIVATION_READ_GATES: dict[Path, threading.Lock] = {}
 
 
 def _application_launch_identity(
@@ -1689,13 +1708,13 @@ class ActivationStore:
         # deliberately outside the activation publication lock.  Keeping that
         # expensive read under the cross-process lock lets concurrent health
         # and setup reads exhaust their bounded lock wait during a cold start.
-        with self._activation_lock():
-            active = self._load_active_snapshot_locked(verify_selected_artifact=False)
+        with self._activation_read_gate():
+            with self._activation_lock():
+                active = self._load_active_snapshot_locked(
+                    verify_selected_artifact=False
+                )
         try:
-            self._verify_selected_artifact(
-                active.resolved.profile,
-                allow_verified_successor_reconfirmation=True,
-            )
+            self._verify_selected_artifact_coalesced(active)
         except ProfileReconfirmationRequired as error:
             # Preserve the verified predecessor identity used by the explicit
             # reconfirmation ceremony even though hashing runs outside the lock.
@@ -1714,15 +1733,80 @@ class ActivationStore:
         # Re-read the authenticated record graph after verifying its selected
         # bytes.  A concurrent activation must never turn a valid check of the
         # predecessor into authority for its successor.
-        with self._activation_lock():
-            current = self._load_active_snapshot_locked(
-                verify_selected_artifact=False
-            )
+        with self._activation_read_gate():
+            with self._activation_lock():
+                current = self._load_active_snapshot_locked(
+                    verify_selected_artifact=False
+                )
         if current != active:
             raise ProfileResolutionDenied(
                 "active Profile changed during artifact verification"
             )
         return active
+
+    def _activation_read_gate(self) -> threading.Lock:
+        """Queue same-process readers before their bounded process-lock wait."""
+
+        with _ACTIVATION_READ_GATES_LOCK:
+            gate = _ACTIVATION_READ_GATES.get(self.state_root)
+            if gate is None:
+                gate = threading.Lock()
+                _ACTIVATION_READ_GATES[self.state_root] = gate
+            return gate
+
+    def _verify_selected_artifact_coalesced(
+        self,
+        active: ActiveDefaultProfile,
+    ) -> None:
+        """Share only an in-progress hash of one immutable activation input.
+
+        Every caller still validates its own Authority-backed activation graph
+        under the publication lock before and after this pure byte check.
+        Failed verification is not shared: each waiter retries and receives its
+        own typed error, while later requests always start a fresh verification.
+        """
+
+        plan = active.resolved.plan
+        key = (
+            self.state_root,
+            self.workspace_root,
+            self.profile_id,
+            str(plan["profile_revision"]),
+            str(active.activation["activation_id"]),
+            str(plan["plan_digest"]),
+            str(active.resolved.lock["lock_digest"]),
+        )
+        with _ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+            flight = _ARTIFACT_VERIFICATION_FLIGHTS.get(key)
+            leader = flight is None
+            if flight is None:
+                flight = _ArtifactVerificationFlight(complete=threading.Event())
+                _ARTIFACT_VERIFICATION_FLIGHTS[key] = flight
+            else:
+                flight.waiters += 1
+
+        if leader:
+            try:
+                self._verify_selected_artifact(
+                    active.resolved.profile,
+                    allow_verified_successor_reconfirmation=True,
+                )
+            except BaseException as error:
+                flight.error = error
+                raise
+            finally:
+                with _ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+                    if _ARTIFACT_VERIFICATION_FLIGHTS.get(key) is flight:
+                        del _ARTIFACT_VERIFICATION_FLIGHTS[key]
+                flight.complete.set()
+            return
+
+        flight.complete.wait()
+        if flight.error is not None:
+            self._verify_selected_artifact(
+                active.resolved.profile,
+                allow_verified_successor_reconfirmation=True,
+            )
 
     def reconcile_active(
         self,

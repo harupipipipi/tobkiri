@@ -255,11 +255,19 @@ def test_registration_failure_stops_child_without_unbounded_pipe_drain(
         stopped = _local_stop(monkeypatch, process)
         monkeypatch.setattr(runner, "_spawn_staged_implementation", lambda *args: process)
         monkeypatch.setattr(process, "communicate", no_drain)
-        with pytest.raises(failure, match="registration interrupted"):
+        expected_failure = runner._GuestOperationError if failure is OSError else failure
+        expected_message = (
+            "authenticated PackVM operation was rejected"
+            if failure is OSError
+            else "registration interrupted"
+        )
+        with pytest.raises(expected_failure, match=expected_message) as error:
             if resuming:
                 runner._resume_bridge_invocation(request, {"continuation": {}}, {})
             else:
                 runner._invoke(request)
+        if failure is OSError:
+            assert isinstance(error.value.__cause__, OSError)
         assert stopped == [process.pid]
         assert process.returncode is not None
         assert all(stream.closed for stream in (process.stdin, process.stdout, process.stderr))

@@ -58,6 +58,22 @@ _LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
         "defaultspack.application-presentation",
         "defaultspack.presentation.read",
     ): 120_000,
+    **{
+        (
+            "tobkiri_host_pack_control",
+            "tobkiri.host.control-presentation",
+            operation_id,
+        ): 120_000
+        for operation_id in (
+            "profile.catalog.read",
+            "profile.read",
+            "settings.read",
+            "topology.contracts.read",
+            "topology.operations.read",
+            "topology.packs.read",
+            "topology.principals.read",
+        )
+    },
     (
         "defaultspack",
         "defaultspack.conversation",

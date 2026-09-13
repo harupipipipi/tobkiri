@@ -60,7 +60,7 @@ from typing import Any, Callable, Mapping, Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
+from tobkiri_protocol.canonical import canonical_digest, canonical_json
 from tobkiri_protocol.saved_conversation import validate_saved_conversation_input
 
 from .continuation_chain import ChainIdentity, ContinuationChains

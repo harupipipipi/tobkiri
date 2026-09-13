@@ -101,6 +101,22 @@ def test_ai_conversation_chain_outlives_provider_transport_deadline(
             "defaultspack.application-presentation",
             "defaultspack.presentation.read",
         ),
+        *(
+            (
+                "tobkiri_host_pack_control",
+                "tobkiri.host.control-presentation",
+                operation_id,
+            )
+            for operation_id in (
+                "profile.catalog.read",
+                "profile.read",
+                "settings.read",
+                "topology.contracts.read",
+                "topology.operations.read",
+                "topology.packs.read",
+                "topology.principals.read",
+            )
+        ),
     ),
 )
 def test_native_startup_reads_outlive_cold_packvm_start(

@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:6b05af059ea18ac951e24b2fb301e41ed8f65bb1d26056c358389d23f1cb68ac",
+      "digest": "sha256:4261167de6d5dc7041de18cd0a0f8efb076d60cf0b2628bbd35df1e141ba49f3",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -92,7 +92,7 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:435ac2a2610831d40f306b334c88ad260672b687e0f58c318bfc0e89ff8b32ff",
+    "artifact_set_digest": "sha256:32436550e1351fa2d6e61ac31f92acf38a6adbbc3023e9b8296abe5ad91d0d57",
     "contract_catalog_digest": "sha256:8350e441715c285a876c02e111ab32d8511b9d24a08eef8f1fdbf0350fe4f9b1",
     "source_identity": "sha256:8f1b98e5e5a1dcd37f6011741dc25430ca83b1a8675d511f9413186abeaeab1a"
   },
@@ -468,7 +468,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:435ac2a2610831d40f306b334c88ad260672b687e0f58c318bfc0e89ff8b32ff",
+    "artifact_digest": "sha256:32436550e1351fa2d6e61ac31f92acf38a6adbbc3023e9b8296abe5ad91d0d57",
     "display_name": "Tobkiri Host Pack Control",
     "id": "tobkiri_host_pack_control",
     "kind": "host_extension",

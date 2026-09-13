@@ -1,6 +1,6 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:b82817235194e28d4a215e4f26f111e406a15aeafd35cc87a89885d38ac471ad",
+  "catalog_digest": "sha256:c0caa4fecdface5273c008aadcdc8e6b6d0df36d58b13982de313865cd020f52",
   "pack_id": "tobkiri_host_pack_control",
   "source_identity": "sha256:8f1b98e5e5a1dcd37f6011741dc25430ca83b1a8675d511f9413186abeaeab1a",
   "variants": [
@@ -1906,7 +1906,7 @@
             ]
           },
           "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         },
         {
@@ -2664,7 +2664,7 @@
             ]
           },
           "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         },
         {
@@ -3043,7 +3043,7 @@
             ]
           },
           "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         },
         {
@@ -3422,7 +3422,7 @@
             ]
           },
           "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         },
         {
@@ -3801,7 +3801,7 @@
             ]
           },
           "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         },
         {
@@ -4180,7 +4180,7 @@
             ]
           },
           "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         },
         {
@@ -4559,7 +4559,7 @@
             ]
           },
           "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
-          "timeout_default_ms": 30000,
+          "timeout_default_ms": 120000,
           "timeout_hard_max_ms": 300000
         }
       ],
