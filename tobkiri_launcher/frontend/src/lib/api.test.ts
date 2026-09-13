@@ -764,6 +764,43 @@ test('activation verification waits through a slow restart without submitting an
   assert.equal(reads, 1);
 });
 
+test('Defaults activation allows the bounded cold start and still has a hard deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json', import.meta.url,
+  ), 'utf8'));
+  let posts = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/setup/packs/install');
+    assert.equal(init?.method, 'POST');
+    posts += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: {}})),
+    ), 20_000));
+  };
+  const slow = assert.rejects(
+    activateDefaultsProfile(fixture.recommended_default_profile.confirmation),
+    /Activated profile revision is invalid/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(20_000);
+  await slow;
+  assert.equal(posts, 1);
+
+  fetchHandler = async () => {
+    posts += 1;
+    return new Promise<Response>(() => {});
+  };
+  const bounded = assert.rejects(
+    activateDefaultsProfile(fixture.recommended_default_profile.confirmation),
+    /POST request timed out after 120000ms: \/api\/setup\/packs\/install/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(120_000);
+  await bounded;
+  assert.equal(posts, 2);
+});
+
 test('Setup reconnects after Kernel connection resets without replaying activation', async (context) => {
   context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
   const fixture = JSON.parse(readFileSync(new URL(

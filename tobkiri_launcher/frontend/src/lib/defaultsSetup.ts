@@ -466,7 +466,7 @@ export async function activateDefaultsProfile(
         confirmed: true,
         confirmation,
       }),
-    }),
+    }, {timeoutMs: 120_000}),
     confirmation,
   );
 }
