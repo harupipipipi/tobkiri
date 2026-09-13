@@ -6,6 +6,7 @@ import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 
 import {
+  exactWorkflowStepFromPaletteOperation,
   flowOperationSelectionKey,
   operationMatchesFlowEdge,
   readyFlowCompositions,
@@ -16,6 +17,7 @@ import type {ApiDynamicFrontendCatalog} from '@/src/lib/apiTypes';
 import {
   createWorkflowDefinition,
   hasUnknownWorkflowMutation,
+  type WorkflowPaletteOperation,
   type WorkflowAuthoringDependencies,
 } from '@/src/lib/workflowAuthoring';
 import {MutationResultUnknownError} from '@/src/lib/mutationJournal';
@@ -62,12 +64,11 @@ function createDom(): {dom: JSDOM; container: HTMLElement; root: Root} {
   return {dom, container, root: createRoot(container)};
 }
 
-function workflowCatalog(): ApiDynamicFrontendCatalog {
-  const operations = [
+function workflowCatalog(operations = [
     'definition.list',
     'definition.create',
     'operation.palette',
-  ];
+]): ApiDynamicFrontendCatalog {
   return {
     version: 'rumi.ui.contribution.v1',
     profile_id: 'defaults',
@@ -113,6 +114,16 @@ function workflowDefinition(definitionId: string): Record<string, unknown> {
     updated_at: 1,
   };
 }
+
+const paletteOperation = (): WorkflowPaletteOperation => ({
+  contract_id: 'example.echo.v1',
+  contract_revision_digest: digest('b'),
+  operation_id: 'echo',
+  function_principal_id: 'example.echo.provider',
+  provider_id: 'example.echo',
+  input_schema_digest: digest('c'),
+  effect_ceiling: ['capability:echo'],
+});
 
 function succeededStatus(requestId: string): Record<string, unknown> {
   const result = {ok: true};
@@ -169,6 +180,145 @@ test('Flow selection keeps a shared operation id bound to its full caller/provid
     flowOperationSelectionKey(selected),
     flowOperationSelectionKey(sameOperationIdElsewhere),
   );
+});
+
+test('Workflow authoring inserts an exact palette-bound step without schema bypasses', () => {
+  const operation = paletteOperation();
+  const first = exactWorkflowStepFromPaletteOperation(operation, []);
+  const second = exactWorkflowStepFromPaletteOperation(operation, [first]);
+
+  assert.deepEqual(first, {
+    id: 'step-1',
+    request: {
+      contract_id: operation.contract_id,
+      contract_revision_digest: operation.contract_revision_digest,
+      operation_id: operation.operation_id,
+      function_principal_id: operation.function_principal_id,
+      input: {},
+    },
+  });
+  assert.equal(second.id, 'step-2');
+  assert.equal('provider_id' in (first.request as Record<string, unknown>), false);
+  assert.equal('input_schema_digest' in (first.request as Record<string, unknown>), false);
+});
+
+test('Workflow authoring palette is usable from a fresh draft and selection reloads the exact Definition', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+  const operation = paletteOperation();
+  const authoritativeDocument = {
+    workflow_api_version: 'io.tobkiri.workflow.v4',
+    name: 'Authoritative definition',
+    steps: [exactWorkflowStepFromPaletteOperation(operation, [])],
+  };
+  let validationDocument: Record<string, unknown> | null = null;
+  let getCalls = 0;
+  let releaseGet: (() => void) | null = null;
+  const getGate = new Promise<void>((resolve) => {
+    releaseGet = resolve;
+  });
+  const dependencies: WorkflowAuthoringDependencies = {
+    fetchCatalog: async () => workflowCatalog([
+      'definition.list',
+      'definition.get',
+      'definition.validate',
+      'operation.palette',
+    ]),
+    invoke: async (request) => {
+      if (request.contributionId.endsWith('.definition.list')) {
+        return {definitions: [workflowDefinition('saved-definition')]};
+      }
+      if (request.contributionId.endsWith('.operation.palette')) {
+        return {
+          catalog_digest: digest('7'),
+          security_epoch: 1,
+          operations: [operation],
+        };
+      }
+      if (request.contributionId.endsWith('.definition.get')) {
+        getCalls += 1;
+        await getGate;
+        return {
+          ...workflowDefinition('saved-definition'),
+          revision: 2,
+          etag: '"authoritative-etag"',
+          document: authoritativeDocument,
+        };
+      }
+      if (request.contributionId.endsWith('.definition.validate')) {
+        validationDocument = request.payload.document as Record<string, unknown>;
+        return {valid: true, errors: []};
+      }
+      throw new Error(`Unexpected Workflow operation: ${request.contributionId}`);
+    },
+  };
+  try {
+    await act(async () => {
+      root.render(<WorkflowAuthoringPanel dependencies={dependencies} />);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    assert.match(container.textContent ?? '', new RegExp(operation.provider_id));
+    assert.match(container.textContent ?? '', new RegExp(operation.contract_revision_digest));
+    assert.match(container.textContent ?? '', new RegExp(operation.input_schema_digest));
+    const insert = container.querySelector<HTMLButtonElement>(
+      `[aria-label="Insert exact Workflow step for ${operation.operation_id}"]`,
+    );
+    assert.ok(insert);
+    await act(async () => {
+      insert.click();
+    });
+    const editor = container.querySelector<HTMLTextAreaElement>('#workflow-definition-json');
+    assert.ok(editor);
+    const inserted = JSON.parse(editor.value) as Record<string, unknown>;
+    assert.deepEqual(inserted.steps, [exactWorkflowStepFromPaletteOperation(operation, [])]);
+
+    const validate = Array.from(container.querySelectorAll('button')).find((button) => (
+      button.textContent === 'Validate'
+    ));
+    assert.ok(validate);
+    await act(async () => {
+      validate.click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    assert.deepEqual(validationDocument, inserted);
+    assert.match(container.textContent ?? '', /valid against the active Workflow v4 palette/i);
+
+    const saved = Array.from(container.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('saved-definition')
+    ));
+    assert.ok(saved);
+    await act(async () => {
+      saved.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    assert.equal(getCalls, 1);
+    const create = Array.from(container.querySelectorAll('button')).find((button) => (
+      button.textContent === 'Create draft'
+    ));
+    assert.ok(create);
+    assert.equal(create.disabled, true);
+    assert.equal(saved.disabled, true);
+    assert.ok(releaseGet);
+    await act(async () => {
+      releaseGet();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    assert.equal(create.disabled, false);
+    assert.deepEqual(JSON.parse(editor.value), authoritativeDocument);
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+    });
+  }
 });
 
 test('Workflow authoring Reload resolves a malformed successful write by its original request ID', async () => {

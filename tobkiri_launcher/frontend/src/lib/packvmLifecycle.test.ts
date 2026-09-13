@@ -36,6 +36,7 @@ const planPayload = {
   image_digest: digest('a'),
   image_size_bytes: 703_594_496,
   image_download_required: true,
+  host_free_space_required_bytes: 6 * 1024 ** 3,
   config_digest: digest('b'),
   guest_runner_digest: digest('c'),
   host_build_digest: digest('d'),
@@ -90,6 +91,7 @@ test('PackVM plan normalization drops host paths while preserving pinned facts',
   const plan = normalizePackVMPlan(planPayload);
   assert.equal(plan.plan_digest, digest('e'));
   assert.equal(plan.image_size_bytes, 703_594_496);
+  assert.equal(plan.host_free_space_required_bytes, 6 * 1024 ** 3);
   assert.equal('limactl' in plan, false);
   assert.doesNotMatch(JSON.stringify(plan), /Users|limactl/);
 });
@@ -171,6 +173,15 @@ test('PackVM normalization rejects tampered digests and missing success evidence
     () => normalizePackVMPlan({...planPayload, image_digest: digest('z').slice(0, -1)}),
     /invalid PackVM image_digest digest/,
   );
+  for (const hostFreeSpaceRequired of [undefined, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(
+      () => normalizePackVMPlan({
+        ...planPayload,
+        host_free_space_required_bytes: hostFreeSpaceRequired,
+      }),
+      /invalid PackVM host_free_space_required_bytes/,
+    );
+  }
   assert.throws(
     () => normalizePackVMDoctor({...readyDoctor, attestation_digest: null}),
     /without an attestation digest/,

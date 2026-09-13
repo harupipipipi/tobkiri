@@ -573,8 +573,11 @@ export function PackVMLifecyclePanel() {
                 {digestRow('Guest runner digest', plan.guest_runner_digest)}
                 {digestRow('Host build digest', plan.host_build_digest)}
                 {digestRow('Plan digest', plan.plan_digest)}
-                {digestRow('Required disk space', plan.image_download_required
-                  ? `${formatPackVMBytes(plan.image_size_bytes)} for the pinned image download`
+                {digestRow('Required host free space', formatPackVMBytes(
+                  plan.host_free_space_required_bytes,
+                ))}
+                {digestRow('Pinned image download', plan.image_download_required
+                  ? formatPackVMBytes(plan.image_size_bytes)
                   : 'No image download required')}
               </dl>
               {plan.storage_rebind ? (

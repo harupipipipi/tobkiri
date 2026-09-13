@@ -731,6 +731,45 @@ test("SettingsModalRenderer renders template api_key_setup with setup control", 
   assert.match(html, />Save</);
 });
 
+test("custom LLM API setup exposes only supported protocol choices", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [{
+        id: "apis",
+        label: "APIs",
+        fields: [{
+          id: "api_key_setup_template",
+          label: "API Key Setup",
+          type: "api_key_setup",
+          provider_id: "acme-ai",
+          api_keys: [{
+            provider_id: "acme-ai",
+            label: "Acme AI",
+            kind: "llm",
+          }],
+        } as unknown as TemplateSettingsField] as unknown as SettingsSection["fields"],
+      }],
+      settingsValues: { apis: { api_keys: [] } },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /aria-label="Custom LLM protocol"/);
+  assert.match(html, /value="openai-compatible"/);
+  assert.match(html, /value="anthropic"/);
+});
+
 test("Connections API credential template excludes AI provider keys", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
@@ -785,6 +824,10 @@ test("Connections API credential template excludes AI provider keys", () => {
   assert.match(html, /data-provider-scope="non_llm"/);
   assert.match(html, /line:channel:\*\*\*/);
   assert.doesNotMatch(html, /openai:main:\*\*\*/);
+  assert.match(html, /placeholder="line token"/);
+  assert.match(html, /外部サービス用トークンとして保存します/);
+  assert.doesNotMatch(html, /loopback endpoint only/);
+  assert.doesNotMatch(html, /Provider HTTPS base URL/);
 });
 
 test("Models places AI API registration before model API connections", () => {

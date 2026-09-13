@@ -45,6 +45,7 @@ const plan = {
   image_digest: digest('a'),
   image_size_bytes: 703_594_496,
   image_download_required: true,
+  host_free_space_required_bytes: 6 * 1024 ** 3,
   config_digest: digest('b'),
   guest_runner_digest: digest('c'),
   host_build_digest: digest('d'),
@@ -220,7 +221,9 @@ test('PackVM GUI completes prepare, consent, provision, doctor, and hides host p
   assert.match(surface.container.textContent ?? '', /Pinned plan/);
   assert.match(surface.container.textContent ?? '', /Configuration digest/);
   assert.match(surface.container.textContent ?? '', /Guest runner digest/);
-  assert.match(surface.container.textContent ?? '', /Required disk space/);
+  assert.match(surface.container.textContent ?? '', /Required host free space/);
+  assert.match(surface.container.textContent ?? '', /6.0 GiB/);
+  assert.match(surface.container.textContent ?? '', /Pinned image download/);
   assert.doesNotMatch(surface.container.textContent ?? '', /Users\/haru|limactl/);
 
   const checkbox = surface.container.querySelector<HTMLInputElement>('input[type="checkbox"]');

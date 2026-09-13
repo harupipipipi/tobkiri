@@ -153,6 +153,8 @@ export interface ApiPackVMProvisioningPlan {
   image_digest: string;
   image_size_bytes: number;
   image_download_required: boolean;
+  /** Exact host capacity the Host checked for this immutable plan. */
+  host_free_space_required_bytes: number;
   config_digest: string;
   guest_runner_digest: string;
   host_build_digest: string;

@@ -310,6 +310,7 @@ class _PackVMLifecycle:
             "image_source": "https://images.invalid/pinned.img",
             "image_digest": "sha256:" + "a" * 64,
             "image_size_bytes": 700_000_000,
+            "host_free_space_required_bytes": 8_000_000_000,
             "plan_digest": "sha256:" + "b" * 64,
             "ceremony_nonce": "c" * 32,
             "confirmation": "PROVISION tobkiri-packvm-v4 bbbbbbbbbbbb",
@@ -662,6 +663,7 @@ def test_packvm_lifecycle_routes_require_auth_csrf_and_fresh_request_id() -> Non
         )
         assert status == 200
         assert prepared["data"]["image_size_bytes"] == 700_000_000
+        assert prepared["data"]["host_free_space_required_bytes"] == 8_000_000_000
         assert prepared["data"]["image_digest"] == "sha256:" + "a" * 64
 
         replay_status, _replay, _headers = _request(

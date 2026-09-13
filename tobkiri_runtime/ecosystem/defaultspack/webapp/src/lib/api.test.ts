@@ -2089,6 +2089,65 @@ test("saveProviderApiKey sends canonical preparation and returns success only af
   }
 });
 
+test("saveProviderApiKey forwards an explicit custom LLM protocol unchanged", async () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalFetch = globalThis.fetch;
+  const bodies: Record<string, unknown>[] = [];
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      sessionStorage: {
+        getItem: () => null,
+        setItem: () => undefined,
+        removeItem: () => undefined,
+      },
+      location: { hash: "" },
+    },
+  });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    bodies.push(body);
+    const path = requestTarget(input);
+    const data = path.includes("interactive-approval")
+      ? { request_id: "approval-1", state: "approved" }
+      : {
+        effect_id: "effect-1",
+        approval_request_id: "approval-1",
+        state: body.phase === "resume" ? "succeeded" : "approval_pending",
+      };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const result = await api.saveProviderApiKey("acme-ai", "fixture-private-key", {
+      apiId: "main",
+      baseUrl: "https://models.example/v1",
+      kind: "llm",
+      protocol: "anthropic",
+    });
+    assert.equal(result.configured, true);
+    assert.deepEqual(bodies[0], {
+      phase: "prepare",
+      effect_kind: "provider_configure",
+      request: {
+        connection_name: "acme-ai.main",
+        protocol: "anthropic",
+        endpoint: "https://models.example/v1",
+        key_value: "fixture-private-key",
+      },
+      correlation_id: bodies[0].correlation_id,
+    });
+    assert.doesNotMatch(JSON.stringify(bodies.slice(1)), /fixture-private-key|https:/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
 test("provider configuration waits for approval then resumes once and stores no raw key", async () => {
   const f = providerConfigurationFixture();
   let polls = 0;

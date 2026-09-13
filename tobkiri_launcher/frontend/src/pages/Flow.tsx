@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {
   CheckCircle2,
   CircleAlert,
@@ -35,6 +35,7 @@ import {
 import {
   createWorkflowDefinition,
   deleteWorkflowDefinition,
+  getWorkflowDefinition,
   hasUnknownWorkflowMutation,
   loadWorkflowDefinitions,
   loadWorkflowPalette,
@@ -44,6 +45,7 @@ import {
   type WorkflowDefinition,
   type WorkflowAuthoringDependencies,
   type WorkflowPalette,
+  type WorkflowPaletteOperation,
   type WorkflowValidation,
   updateWorkflowDefinition,
   validateWorkflowDefinition,
@@ -56,6 +58,43 @@ const EMPTY_WORKFLOW_DOCUMENT = JSON.stringify({
   workflow_api_version: 'io.tobkiri.workflow.v4',
   steps: [],
 }, null, 2);
+
+/**
+ * Build one schema-shaped, exact-bound Workflow step from the active palette.
+ *
+ * `input_schema_digest` and `provider_id` deliberately remain presentation
+ * evidence: the v4 Definition schema rejects both as request properties. The
+ * executable request identity is the exact four-tuple that v4 accepts.
+ */
+export function exactWorkflowStepFromPaletteOperation(
+  operation: WorkflowPaletteOperation,
+  existingSteps: readonly unknown[],
+): Record<string, unknown> {
+  const existingIds = new Set(existingSteps.flatMap((step) => (
+    typeof step === 'object'
+      && step !== null
+      && !Array.isArray(step)
+      && typeof (step as Record<string, unknown>).id === 'string'
+      ? [(step as Record<string, unknown>).id as string]
+      : []
+  )));
+  let ordinal = 1;
+  let stepId = `step-${ordinal}`;
+  while (existingIds.has(stepId)) {
+    ordinal += 1;
+    stepId = `step-${ordinal}`;
+  }
+  return {
+    id: stepId,
+    request: {
+      contract_id: operation.contract_id,
+      contract_revision_digest: operation.contract_revision_digest,
+      operation_id: operation.operation_id,
+      function_principal_id: operation.function_principal_id,
+      input: {},
+    },
+  };
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'The Workflow authoring request failed.';
@@ -107,11 +146,15 @@ export function WorkflowAuthoringPanel({
   const [unknownMutationBlocked, setUnknownMutationBlocked] = useState(
     hasUnknownWorkflowMutation,
   );
+  const selectionRequest = useRef(0);
 
   const selectedDefinition = definitions.find((item) => (
     item.definition_id === selectedDefinitionId
   )) ?? null;
-  const mutationsBlocked = mutating || unknownMutationBlocked;
+  // The selected Definition's ETag is refreshed through definition.get. Keep
+  // every authoring write disabled while that read (or a refresh/validation)
+  // is in flight; otherwise a list-projected stale ETag could be submitted.
+  const mutationsBlocked = loading || mutating || unknownMutationBlocked;
 
   const loadAuthoringState = async (): Promise<{
     definitions: WorkflowDefinition[];
@@ -125,6 +168,7 @@ export function WorkflowAuthoringPanel({
   };
 
   const refresh = async () => {
+    selectionRequest.current += 1;
     setLoading(true);
     try {
       let next = await loadAuthoringState();
@@ -178,11 +222,50 @@ export function WorkflowAuthoringPanel({
     void refresh();
   }, []);
 
-  const selectDefinition = (definition: WorkflowDefinition) => {
+  const selectDefinition = async (definition: WorkflowDefinition) => {
     if (mutationsBlocked) return;
-    setSelectedDefinitionId(definition.definition_id);
-    setDefinitionId(definition.definition_id);
-    setDocumentText(JSON.stringify(definition.document, null, 2));
+    const request = ++selectionRequest.current;
+    setLoading(true);
+    setNotice(null);
+    try {
+      // A list projection is not an ETag refresh. Load the exact selected
+      // Definition before an update, so a stale list cannot overwrite it.
+      const current = await getWorkflowDefinition(definition.definition_id, dependencies);
+      if (request !== selectionRequest.current) return;
+      setDefinitions((items) => [
+        ...items.filter((item) => item.definition_id !== current.definition_id),
+        current,
+      ].sort((left, right) => left.definition_id.localeCompare(right.definition_id)));
+      setSelectedDefinitionId(current.definition_id);
+      setDefinitionId(current.definition_id);
+      setDocumentText(JSON.stringify(current.document, null, 2));
+      setValidation(null);
+    } catch (error) {
+      if (request === selectionRequest.current) {
+        setNotice({kind: 'error', message: errorMessage(error)});
+      }
+    } finally {
+      if (request === selectionRequest.current) setLoading(false);
+    }
+  };
+
+  const insertExactPaletteStep = (operation: WorkflowPaletteOperation) => {
+    if (mutationsBlocked) return;
+    const parsed = parseWorkflowDefinitionText(documentText);
+    if (!parsed || !Array.isArray(parsed.steps)) {
+      setNotice({
+        kind: 'error',
+        message: 'Restore a Workflow v4 JSON document before inserting an exact palette step.',
+      });
+      return;
+    }
+    setDocumentText(JSON.stringify({
+      ...parsed,
+      steps: [
+        ...parsed.steps,
+        exactWorkflowStepFromPaletteOperation(operation, parsed.steps),
+      ],
+    }, null, 2));
     setValidation(null);
     setNotice(null);
   };
@@ -390,7 +473,7 @@ export function WorkflowAuthoringPanel({
               className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border bg-bg-main px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] disabled:cursor-not-allowed"
               aria-pressed={definition.definition_id === selectedDefinitionId}
               disabled={mutationsBlocked}
-              onClick={() => selectDefinition(definition)}
+              onClick={() => void selectDefinition(definition)}
             >
               <span className="min-w-0 truncate">{definition.definition_id}</span>
               <Badge variant={definition.state === 'draft' ? 'warning' : 'outline'}>{definition.state} · r{definition.revision}</Badge>
@@ -401,13 +484,29 @@ export function WorkflowAuthoringPanel({
       <Card>
         <CardHeader>
           <CardTitle>Active operation palette</CardTitle>
-          <p className="text-sm text-text-muted">Read-only full identities from the active Workflow v4 catalog.</p>
+          <p className="text-sm text-text-muted">Choose an active operation to insert its exact v4 request identity. Provider and input-schema digests stay visible as catalog evidence because the v4 Definition request schema rejects them as extra fields.</p>
         </CardHeader>
         <CardContent className="grid gap-2">
           {palette?.operations.length ? palette.operations.map((operation) => (
             <div key={[operation.function_principal_id, operation.provider_id, operation.contract_id, operation.operation_id].join('\u0000')} className="rounded-lg border border-border bg-bg-main p-3 text-xs text-text-muted">
               <p className="font-medium text-text-main">{operation.operation_id}</p>
               <p className="mt-1 break-all">{operation.function_principal_id} → {operation.provider_id} · {operation.contract_id}</p>
+              <dl className="mt-2 grid gap-1 break-all">
+                <div><dt className="inline font-medium text-text-main">Contract revision: </dt><dd className="inline">{operation.contract_revision_digest}</dd></div>
+                <div><dt className="inline font-medium text-text-main">Input schema: </dt><dd className="inline">{operation.input_schema_digest}</dd></div>
+                <div><dt className="inline font-medium text-text-main">Effect ceiling: </dt><dd className="inline">{operation.effect_ceiling.join(', ') || 'none'}</dd></div>
+              </dl>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                disabled={mutationsBlocked}
+                aria-label={`Insert exact Workflow step for ${operation.operation_id}`}
+                onClick={() => insertExactPaletteStep(operation)}
+              >
+                Insert exact step
+              </Button>
             </div>
           )) : <p className="text-sm text-text-muted">Reload to retrieve the active palette.</p>}
         </CardContent>

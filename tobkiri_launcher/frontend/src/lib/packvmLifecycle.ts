@@ -321,6 +321,10 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
     image_digest: imageDigest,
     image_size_bytes: positiveIntegerField(payload, 'image_size_bytes'),
     image_download_required: imageDownloadRequired,
+    host_free_space_required_bytes: positiveIntegerField(
+      payload,
+      'host_free_space_required_bytes',
+    ),
     config_digest: configDigest,
     guest_runner_digest: guestRunnerDigest,
     host_build_digest: hostBuildDigest,
