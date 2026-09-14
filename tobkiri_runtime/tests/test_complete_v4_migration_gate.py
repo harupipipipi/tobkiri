@@ -225,6 +225,7 @@ SHELL_ROOT_NAMES = frozenset(
 )
 SAFE_LAUNCH_CONTEXTS = frozenset(
     {
+        "ci_e2e",
         "host_broker",
         "uv",
         "codesign",
@@ -3353,6 +3354,10 @@ fn codesign() {
 
 fn launchservices() {
     std::process::Command::new("lsregister").status();
+}
+
+fn ci_e2e_shell_handoff() {
+    std::env::var_os("TOBKIRI_CI_E2E_APP_DATA_ROOT");
 }
 """
     fixture_findings = _rust_call_findings_for_source(Path("launcher_fixture.rs"), launcher_fixture)

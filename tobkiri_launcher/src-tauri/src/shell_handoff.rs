@@ -433,7 +433,7 @@ fn expected_launcher_handoff_root() -> Result<PathBuf> {
         .join("user_data")
         .join(HANDOFF_DIRECTORY);
     if MACOS_ARTIFACT_POLICY == "ci-e2e-v1" {
-        return crate::ci_e2e_app_data::resolve_shell_handoff_root_from_env(
+        return crate::ci_e2e_app_data::resolve_ci_e2e_shell_handoff_root_from_env(
             MACOS_ARTIFACT_POLICY,
             &default_root,
         );

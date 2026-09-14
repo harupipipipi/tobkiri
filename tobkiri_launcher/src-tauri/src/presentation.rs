@@ -716,7 +716,7 @@ fn launch_verified_target_once(
     )?;
     // Validate the optional CI-E2E Shell environment before creating a
     // short-lived handoff file that contains the authenticated runtime URL.
-    let shell_environment = crate::ci_e2e_app_data::shell_launch_environment(
+    let shell_environment = crate::ci_e2e_app_data::ci_e2e_shell_launch_environment(
         &app.config().identifier,
         &config.user_data_dir,
     )?;

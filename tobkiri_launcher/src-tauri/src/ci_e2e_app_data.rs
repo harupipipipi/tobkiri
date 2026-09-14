@@ -36,7 +36,7 @@ pub(crate) fn resolve_app_data_dir_from_env(
 /// app-data root explicitly with `open --env`. Production identifiers never
 /// receive an override, and a root that differs from the Launcher's active
 /// writable state fails closed.
-pub(crate) fn shell_launch_environment(
+pub(crate) fn ci_e2e_shell_launch_environment(
     identifier: &str,
     user_data_dir: &Path,
 ) -> Result<Option<OsString>> {
@@ -76,7 +76,7 @@ fn shell_launch_environment_from_value(
 /// The production Shell remains bound to the platform Application Support
 /// directory. This helper is called only by a Shell compiled with the
 /// `ci-e2e-v1` artifact policy.
-pub(crate) fn resolve_shell_handoff_root_from_env(
+pub(crate) fn resolve_ci_e2e_shell_handoff_root_from_env(
     artifact_policy: &str,
     default_root: &Path,
 ) -> Result<PathBuf> {
