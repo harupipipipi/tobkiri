@@ -14,7 +14,7 @@ from concurrent.futures import Future
 from threading import Barrier, Event, Lock, Thread
 from types import SimpleNamespace
 import time
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 import pytest
 
@@ -27,7 +27,12 @@ from tobkiri_host.backends import (
     BackendRegistry,
     BackendStatus,
 )
-from tobkiri_host.broker import AdmissionTicket, RequestBroker, RequestEnvelope
+from tobkiri_host.broker import (
+    AdmissionTicket,
+    NestedCancellationProof,
+    RequestBroker,
+    RequestEnvelope,
+)
 from tobkiri_host.contracts import AdapterPlanner, OperationCatalog, OperationRoute
 from tobkiri_host.effects import (
     EffectDisposition,
@@ -650,7 +655,7 @@ def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exi
     class CancellableBackend(FakeBackend):
         def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
             assert request.cancellation_requested is parent.cancellation_requested
-            assert request.nested_cancellation_proof is proof
+            assert not hasattr(request, "nested_cancellation_proof")
             self.invocations += 1
             entered.set()
             assert parent.cancellation_requested.wait(timeout=2)
@@ -735,6 +740,27 @@ def test_already_cancelled_parent_never_starts_inner_work() -> None:
         with pytest.raises(RequestCancellationRequestedError):
             fixture.broker.invoke(
                 frame(), context(), effect_scope={}, parent_cancellation=cancelled,
+            )
+        assert fixture.events == []
+    finally:
+        fixture.broker.close()
+
+
+def test_forged_parent_cancellation_proof_is_rejected_before_resolution() -> None:
+    """Only a concrete Host-owned cancellation proof may enter dispatch."""
+
+    fixture = make_broker()
+    try:
+        with pytest.raises(ValueError, match="cancellation proof is invalid"):
+            fixture.broker.invoke(
+                frame(),
+                context(),
+                effect_scope={},
+                parent_cancellation=Event(),
+                parent_cancellation_proof=cast(
+                    NestedCancellationProof,
+                    object(),
+                ),
             )
         assert fixture.events == []
     finally:

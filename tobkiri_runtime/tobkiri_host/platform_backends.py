@@ -114,6 +114,8 @@ class PlatformIsolationDriver(Protocol):
 
 
 CapabilityBridge = Callable[[object, Mapping[str, Any]], Mapping[str, Any]]
+_HostCapabilityBridge = Callable[[object, object, object | None], Mapping[str, Any]]
+_HostSavedPreflight = Callable[[object, object | None], None]
 
 
 class UnavailablePlatformDriver:
@@ -179,8 +181,11 @@ class ProductionIsolationBackend:
         self._pending_requests: dict[str, tuple[str, threading.Event]] = {}
         self._request_domains: dict[str, str] = {}
         self._request_lock = threading.RLock()
-        self._capability_bridge: CapabilityBridge | None = None
-        self._saved_bridge: tuple[CapabilityBridge, Callable[[object], None]] | None = None
+        self._nested_cancellation_context = threading.local()
+        self._capability_bridge: _HostCapabilityBridge | None = None
+        self._saved_bridge: (
+            tuple[_HostCapabilityBridge, _HostSavedPreflight] | None
+        ) = None
         self.status = BackendStatus(
             backend_id=driver.backend_id,
             execution_kind=ExecutionKind.PACK_VM,
@@ -227,7 +232,7 @@ class ProductionIsolationBackend:
             raise BackendUnavailableError("target domain resolver is already bound")
         self._target_domain_resolver = resolver
 
-    def bind_capability_bridge(self, callback: CapabilityBridge) -> None:
+    def bind_capability_bridge(self, callback: _HostCapabilityBridge) -> None:
         """Bind verified PackVM-to-Host capability continuation handling.
 
         Only a direct platform driver that implements the explicit bridge
@@ -248,11 +253,24 @@ class ProductionIsolationBackend:
             raise BackendUnavailableError(
                 "platform supervisor does not support a verified capability bridge"
             )
-        binder(callback)
+        def invoke_bridge(
+            outer_request: object,
+            bridge_request: Mapping[str, Any],
+        ) -> Mapping[str, Any]:
+            proof = getattr(
+                self._nested_cancellation_context,
+                "proof",
+                None,
+            )
+            return callback(outer_request, bridge_request, proof)
+
+        binder(invoke_bridge)
         self._capability_bridge = callback
 
     def bind_saved_capability_bridge(
-        self, callback: CapabilityBridge, preflight: Callable[[object], None],
+        self,
+        callback: _HostCapabilityBridge,
+        preflight: _HostSavedPreflight,
     ) -> None:
         """Forward captured v2 hooks only to an explicitly supporting supervisor.
 
@@ -268,7 +286,23 @@ class ProductionIsolationBackend:
         binder = getattr(self._driver, "bind_saved_capability_bridge", None)
         if not callable(binder):
             raise BackendUnavailableError("platform supervisor does not support a saved capability bridge")
-        binder(callback, preflight)
+        def invoke_saved_bridge(outer_request: object, frame: object) -> Mapping[str, Any]:
+            proof = getattr(
+                self._nested_cancellation_context,
+                "proof",
+                None,
+            )
+            return callback(outer_request, frame, proof)
+
+        def invoke_saved_preflight(outer_request: object) -> None:
+            proof = getattr(
+                self._nested_cancellation_context,
+                "proof",
+                None,
+            )
+            preflight(outer_request, proof)
+
+        binder(invoke_saved_bridge, invoke_saved_preflight)
         self._saved_bridge = (callback, preflight)
 
     def materialize(
@@ -411,6 +445,23 @@ class ProductionIsolationBackend:
             domain_lease_id=attestation.lease_id,
             resource_reservation_id=attestation.reservation_id,
         )
+
+    def invoke_with_nested_cancellation_proof(
+        self,
+        request: object,
+        proof: object | None,
+    ) -> object:
+        """Invoke with one Broker-authenticated proof hidden from the request."""
+
+        if hasattr(self._nested_cancellation_context, "proof"):
+            raise BackendUnavailableError(
+                "nested platform cancellation context is already active"
+            )
+        self._nested_cancellation_context.proof = proof
+        try:
+            return self.invoke(request)
+        finally:
+            del self._nested_cancellation_context.proof
 
     def invoke(self, request: object) -> object:
         target = getattr(getattr(request, "target_domain", None), "value", None)

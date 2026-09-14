@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import math
 import os
@@ -23,7 +24,11 @@ from tobkiri_host.admission import (
 )
 from tobkiri_host.artifact_materialization import capture_materialized_artifact
 from tobkiri_host.backends import BackendRegistry, BackendStatus, ExecutionBackend
-from tobkiri_host.broker import AdmissionTicket, RequestAdmissionPort
+from tobkiri_host.broker import (
+    AdmissionTicket,
+    NestedCancellationProof,
+    RequestAdmissionPort,
+)
 from tobkiri_host.composition import AuthorityCeilings
 from tobkiri_host.contracts import (
     AdapterPlanner,
@@ -1913,6 +1918,7 @@ def capture_production_dispatch(
         bridge_edge: _CapturedPlanEdge,
         request: Mapping[str, Any],
         *,
+        parent_cancellation_proof: NestedCancellationProof | None,
         result_projector: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Invoke the selected Provider with one Host session and original budget."""
@@ -1936,9 +1942,6 @@ def capture_production_dispatch(
         parent_cancellation = getattr(outer_request, "cancellation_requested", None)
         if type(parent_cancellation) is not threading.Event:
             raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
-        parent_cancellation_proof = getattr(
-            outer_request, "nested_cancellation_proof", None
-        )
         bridge_authority_session_id = bind_nested_session(
             bridge_session_id,
             outer_edge.target.principal_id,
@@ -1974,6 +1977,7 @@ def capture_production_dispatch(
     def capability_bridge(
         outer_request: object,
         bridge_request: Mapping[str, Any],
+        parent_cancellation_proof: NestedCancellationProof | None = None,
     ) -> Mapping[str, Any]:
         outer_edge = resolve_bridge_outer(outer_request)
 
@@ -2050,7 +2054,13 @@ def capture_production_dispatch(
         ):
             raise AuthorityDenied("PackVM capability bridge continuation is invalid")
 
-        result = invoke_bridge_provider(outer_request, outer_edge, bridge_edge, request)
+        result = invoke_bridge_provider(
+            outer_request,
+            outer_edge,
+            bridge_edge,
+            request,
+            parent_cancellation_proof=parent_cancellation_proof,
+        )
 
         response = {
             "kind": "tobkiri.packvm.bridge.result.v1",
@@ -2070,6 +2080,13 @@ def capture_production_dispatch(
 
     from .saved_bridge import (
         ALLOWED_TARGETS, SavedBridgeCallbacks, project_saved_ai_result, project_saved_tool_result,
+    )
+
+    saved_bridge_cancellation_proof: contextvars.ContextVar[
+        NestedCancellationProof | None
+    ] = contextvars.ContextVar(
+        "saved_bridge_cancellation_proof",
+        default=None,
     )
 
     def saved_target(outer_request: object, target: tuple[str, str]) -> _CapturedPlanEdge:
@@ -2118,6 +2135,7 @@ def capture_production_dispatch(
         runtime.composition.catalog.validate_input(edge.resolved_binding, arguments)
         return invoke_bridge_provider(
             outer_request, resolve_bridge_outer(outer_request), edge, arguments,
+            parent_cancellation_proof=saved_bridge_cancellation_proof.get(),
             result_projector=(
                 project_saved_ai_result
                 if target[0] == "tobkiri.service.ai.generate.v1"
@@ -2126,6 +2144,28 @@ def capture_production_dispatch(
         )
 
     saved_callbacks = SavedBridgeCallbacks(saved_dispatch, require_saved_targets)
+
+    def saved_capability_bridge(
+        outer_request: object,
+        frame: Any,
+        parent_cancellation_proof: NestedCancellationProof | None = None,
+    ) -> Mapping[str, Any]:
+        token = saved_bridge_cancellation_proof.set(parent_cancellation_proof)
+        try:
+            return saved_callbacks(outer_request, frame)
+        finally:
+            saved_bridge_cancellation_proof.reset(token)
+
+    def saved_preflight(
+        outer_request: object,
+        parent_cancellation_proof: NestedCancellationProof | None = None,
+    ) -> None:
+        token = saved_bridge_cancellation_proof.set(parent_cancellation_proof)
+        try:
+            saved_callbacks.preflight(outer_request)
+        finally:
+            saved_bridge_cancellation_proof.reset(token)
+
     saved_backend_ids = {
         edge.resolved_binding.variant.backend for edge in captured_edges
         if edge.resolved_binding.operation.contract_id == SAVED_CONVERSATION_CONTRACT
@@ -2166,7 +2206,7 @@ def capture_production_dispatch(
             saved_binder = getattr(registered_backend, "bind_saved_capability_bridge", None)
             if not callable(saved_binder):
                 raise AuthorityDenied("production PackVM backend cannot bind saved callbacks")
-            saved_binder(saved_callbacks, saved_callbacks.preflight)
+            saved_binder(saved_capability_bridge, saved_preflight)
     registered_backend_ids = {item.status.backend_id for item in registered_backends}
     for backend_id in sorted(packvm_backend_ids - registered_backend_ids):
         registered_backends += (_UnavailablePackVmBackend(backend_id),)

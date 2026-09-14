@@ -276,6 +276,114 @@ def test_platform_selection_and_attestation_fail_closed() -> None:
         backend.materialize(replace(selected, variant=wrong), "reservation-3")
 
 
+def test_platform_bridge_carries_private_proof_outside_provider_envelope() -> None:
+    """Only the platform adapter side-channel receives a nested proof."""
+
+    class BridgeDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.bridge = None
+
+        def bind_capability_bridge(self, callback) -> None:
+            self.bridge = callback
+
+        def invoke(self, request: object) -> object:
+            assert not hasattr(request, "nested_cancellation_proof")
+            assert self.bridge is not None
+            return self.bridge(request, {"kind": "bridge"})
+
+    driver = BridgeDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.bridge",
+    )
+    observed_proofs: list[object | None] = []
+
+    def bridge(
+        _outer_request: object,
+        bridge_request: object,
+        proof: object | None,
+    ) -> dict[str, object]:
+        assert bridge_request == {"kind": "bridge"}
+        observed_proofs.append(proof)
+        return {"proof": proof is not None}
+
+    backend.bind_capability_bridge(bridge)
+    evidence = backend.materialize(binding(), "reservation-bridge")
+    request = SimpleNamespace(
+        target_domain=SimpleNamespace(value=evidence.domain_ref.value),
+        context=SimpleNamespace(request_id="request-bridge"),
+        cancellation_requested=Event(),
+    )
+    proof = object()
+
+    assert backend.invoke_with_nested_cancellation_proof(request, proof) == {
+        "proof": True
+    }
+    request.context.request_id = "request-without-proof"
+    assert backend.invoke(request) == {"proof": False}
+    assert observed_proofs == [proof, None]
+
+
+def test_saved_platform_preflight_and_bridge_share_private_proof() -> None:
+    """Saved preflight and continuation inherit the same private proof."""
+
+    class SavedDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.saved_bridge = None
+            self.saved_preflight = None
+
+        def bind_capability_bridge(self, callback) -> None:
+            return None
+
+        def bind_saved_capability_bridge(self, callback, preflight) -> None:
+            self.saved_bridge = callback
+            self.saved_preflight = preflight
+
+        def invoke(self, request: object) -> object:
+            assert not hasattr(request, "nested_cancellation_proof")
+            assert self.saved_bridge is not None
+            assert self.saved_preflight is not None
+            self.saved_preflight(request)
+            return self.saved_bridge(request, {"kind": "saved"})
+
+    driver = SavedDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.saved",
+    )
+    observed_proofs: list[tuple[str, object | None]] = []
+
+    def bridge(
+        _outer_request: object,
+        bridge_request: object,
+        proof: object | None,
+    ) -> dict[str, object]:
+        assert bridge_request == {"kind": "saved"}
+        observed_proofs.append(("bridge", proof))
+        return {"proof": proof is not None}
+
+    def preflight(_outer_request: object, proof: object | None) -> None:
+        observed_proofs.append(("preflight", proof))
+
+    backend.bind_saved_capability_bridge(bridge, preflight)
+    evidence = backend.materialize(binding(), "reservation-saved")
+    request = SimpleNamespace(
+        target_domain=SimpleNamespace(value=evidence.domain_ref.value),
+        context=SimpleNamespace(request_id="request-saved"),
+        cancellation_requested=Event(),
+    )
+    proof = object()
+
+    assert backend.invoke_with_nested_cancellation_proof(request, proof) == {
+        "proof": True
+    }
+    assert observed_proofs == [("preflight", proof), ("bridge", proof)]
+
+
 def test_platform_backend_reuses_only_exact_live_resident_domain() -> None:
     now = [100.0]
     driver = Driver()

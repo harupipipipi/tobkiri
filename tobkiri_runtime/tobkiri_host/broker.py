@@ -11,7 +11,7 @@ import math
 import threading
 import time
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence, cast
 
 from .admission import AdmissionEstimate, QueueScope, ResourceReservation
 from .backends import BackendRegistry, ExecutionBackend, RequestScopedBackend
@@ -135,11 +135,6 @@ class RequestEnvelope:
     idempotency_key: str | None
     resource_reservation_id: str | None = None
     cancellation_requested: threading.Event = field(default_factory=threading.Event)
-    nested_cancellation_proof: NestedCancellationProof | None = field(
-        default=None,
-        repr=False,
-        compare=False,
-    )
 
 
 @dataclass(frozen=True)
@@ -349,6 +344,11 @@ class RequestBroker:
                 raise RequestCancellationRequestedError("parent cancellation was requested")
         elif parent_cancellation_proof is not None:
             raise ValueError("parent cancellation proof requires a cancellation signal")
+        if parent_cancellation_proof is not None:
+            from .operation_cancellation import _NestedCancellationProof
+
+            if type(parent_cancellation_proof) is not _NestedCancellationProof:
+                raise ValueError("parent cancellation proof is invalid")
         if parent_deadline_monotonic is not None:
             if (
                 type(parent_deadline_monotonic) not in (int, float)
@@ -544,7 +544,6 @@ class RequestBroker:
                     cancellation_requested
                     if cancellation_requested is not None else threading.Event()
                 ),
-                nested_cancellation_proof=nested_cancellation_proof,
             )
             return self._dispatch(
                 backend,
@@ -771,11 +770,33 @@ class RequestBroker:
                     )
             operation_context = contextvars.copy_context()
             try:
-                future = self._executor.submit(
-                    operation_context.run,
-                    backend.invoke,
-                    envelope,
+                from .platform_backends import (
+                    LinuxFirecrackerBackend,
+                    MacOSVZBackend,
+                    ProductionIsolationBackend,
+                    WindowsWHPXBackend,
                 )
+
+                platform_backend_types = (
+                    ProductionIsolationBackend,
+                    MacOSVZBackend,
+                    WindowsWHPXBackend,
+                    LinuxFirecrackerBackend,
+                )
+                if type(backend) in platform_backend_types:
+                    platform_backend = cast(ProductionIsolationBackend, backend)
+                    future = self._executor.submit(
+                        operation_context.run,
+                        platform_backend.invoke_with_nested_cancellation_proof,
+                        envelope,
+                        proof,
+                    )
+                else:
+                    future = self._executor.submit(
+                        operation_context.run,
+                        backend.invoke,
+                        envelope,
+                    )
             except Exception:
                 if proof is not None and child_id is not None:
                     proof.abandon_child(child_id)

@@ -591,7 +591,6 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
         outer = SimpleNamespace(
             deadline_monotonic=time.monotonic() + 30,
             cancellation_requested=threading.Event(),
-            nested_cancellation_proof=nested_cancellation_proof,
             context=context,
             target_principal=OpaqueAuthorityRef(target.principal_id),
             target_domain=OpaqueAuthorityRef(context.target_domain_id),
@@ -621,7 +620,11 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             return {"content": "verified completion"}
 
         monkeypatch.setattr(V4DispatchSession, "invoke", captured_ai_dispatch)
-        result = backend.capability_bridge(outer, bridge_request)
+        result = backend.capability_bridge(
+            outer,
+            bridge_request,
+            nested_cancellation_proof,
+        )
         assert len(invocations) == 1
         contract_id, operation_id, payload = invocations[0]
         assert (contract_id, operation_id) == (

@@ -23,24 +23,39 @@ def _backend(binder: Callable[..., None] | None = None) -> ProductionIsolationBa
 def test_saved_binding_forwards_both_hooks_without_changing_readiness() -> None:
     calls = []
     backend = _backend(lambda *hooks: calls.append(hooks))
-    def callback(request: object, frame: object) -> dict[str, object]:
+    observed_proofs: list[object | None] = []
+
+    def callback(
+        request: object,
+        frame: object,
+        proof: object | None,
+    ) -> dict[str, object]:
+        observed_proofs.append(proof)
         return {"status": "ok", "value": {}}
 
-    def preflight(request: object) -> None:
-        return None
+    def preflight(request: object, proof: object | None) -> None:
+        observed_proofs.append(proof)
+
     before = backend.status
     backend.bind_saved_capability_bridge(callback, preflight)
-    assert calls == [(callback, preflight)]
+    assert len(calls) == 1
+    driver_callback, driver_preflight = calls[0]
+    assert driver_callback(object(), object()) == {"status": "ok", "value": {}}
+    assert driver_preflight(object()) is None
+    assert observed_proofs == [None, None]
     assert backend.status == before
     assert not backend.status.production_enabled
     with pytest.raises(BackendUnavailableError, match="already bound"):
-        backend.bind_saved_capability_bridge(callback, lambda request: None)
+        backend.bind_saved_capability_bridge(callback, lambda request, proof: None)
 
 
 def test_v1_support_does_not_imply_saved_support() -> None:
     backend = _backend()
     with pytest.raises(BackendUnavailableError, match="does not support"):
-        backend.bind_saved_capability_bridge(lambda request, frame: {}, lambda request: None)
+        backend.bind_saved_capability_bridge(
+            lambda request, frame, proof: {},
+            lambda request, proof: None,
+        )
     assert backend._saved_bridge is None
 
 
@@ -50,7 +65,10 @@ def test_materialized_or_reserved_backend_cannot_change_saved_hooks(state: str) 
     backend = _backend(lambda *hooks: calls.append(hooks))
     getattr(backend, state)["existing"] = object()
     with pytest.raises(BackendUnavailableError, match="after materialization"):
-        backend.bind_saved_capability_bridge(lambda request, frame: {}, lambda request: None)
+        backend.bind_saved_capability_bridge(
+            lambda request, frame, proof: {},
+            lambda request, proof: None,
+        )
     assert not calls
 
 
@@ -59,5 +77,8 @@ def test_failed_supervisor_binding_does_not_record_a_successful_binding() -> Non
         raise BackendUnavailableError("supervisor rejected binding")
     backend = _backend(denied)
     with pytest.raises(BackendUnavailableError, match="supervisor rejected"):
-        backend.bind_saved_capability_bridge(lambda request, frame: {}, lambda request: None)
+        backend.bind_saved_capability_bridge(
+            lambda request, frame, proof: {},
+            lambda request, proof: None,
+        )
     assert backend._saved_bridge is None
