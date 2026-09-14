@@ -30,9 +30,6 @@ def legacy_approval_lock(path: Path, *, timeout: float = 5.0) -> Iterator[None]:
             raise OSError("approval lock must be a singly-linked regular file")
         if os.name == "nt":
             msvcrt = importlib.import_module("msvcrt")
-
-            if opened.st_size == 0:
-                os.write(descriptor, b"0")
         else:
             import fcntl
 
@@ -40,6 +37,12 @@ def legacy_approval_lock(path: Path, *, timeout: float = 5.0) -> Iterator[None]:
         while True:
             try:
                 if os.name == "nt":
+                    # msvcrt locks an existing byte. Initializing that byte
+                    # can itself race a holder which already locked it, so
+                    # keep initialization under the same bounded retry path.
+                    if os.fstat(descriptor).st_size == 0:
+                        os.lseek(descriptor, 0, os.SEEK_SET)
+                        os.write(descriptor, b"0")
                     os.lseek(descriptor, 0, os.SEEK_SET)
                     msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
                 else:

@@ -1,6 +1,7 @@
 """Legacy token updates are one-shot across independent callers."""
 
 from concurrent.futures import ThreadPoolExecutor
+import errno
 import multiprocessing
 import os
 from pathlib import Path
@@ -117,6 +118,49 @@ def test_lock_contention_times_out_without_breaking_owner(tmp_path):
                 pytest.fail("contender must not acquire the held lock")
     with legacy_approval_lock(path, timeout=0.02):
         assert path.with_name("approvals.json.lock").is_file()
+
+
+def test_windows_lock_byte_initialization_retries_contention(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "approvals.json"
+    original_write = os.write
+    write_attempts = 0
+    lock_attempts = 0
+
+    class FakeMsvcrt:
+        LK_NBLCK = 1
+
+        @staticmethod
+        def locking(_descriptor, mode, size):
+            nonlocal lock_attempts
+            assert mode == FakeMsvcrt.LK_NBLCK and size == 1
+            lock_attempts += 1
+
+    def contended_write(descriptor, data):
+        nonlocal write_attempts
+        write_attempts += 1
+        if write_attempts == 1:
+            raise PermissionError(errno.EACCES, "approval byte is locked")
+        return original_write(descriptor, data)
+
+    lock_module = __import__(
+        "ecosystem.rumi_default_tools_pack.domain.tool.legacy_approval_lock",
+        fromlist=["legacy_approval_lock"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(lock_module.os, "name", "nt")
+        patch.setattr(lock_module.os, "write", contended_write)
+        patch.setattr(
+            lock_module.importlib,
+            "import_module",
+            lambda name: FakeMsvcrt if name == "msvcrt" else __import__(name),
+        )
+        with legacy_approval_lock(path, timeout=0.1):
+            pass
+
+    assert write_attempts == 2
+    assert lock_attempts == 1
 
 
 @pytest.mark.parametrize("kind", ["computer", "companion"])
