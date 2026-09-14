@@ -529,6 +529,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
     original = V4DispatchSession.invoke
     ai_calls = []
     stop_receipts = []
+    stop_receipt_ready = threading.Event()
     lose_owner_reply = completion in {"reply_lost", "stop_after_commit"}
     selected_tools = []
     tool_results = []
@@ -591,6 +592,7 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                     headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
                 )
                 stop_receipts.append((stop_status, stopped))
+                stop_receipt_ready.set()
             raise RuntimeError("owner reply lost after commit")
         return result
 
@@ -687,6 +689,9 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
         headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
         status, payload, _ = _request(server, "POST", route, body=body, headers=headers)
         if completion == "stop_after_commit":
+            assert stop_receipt_ready.wait(
+                timeout=EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS
+            )
             assert len(stop_receipts) == 1
             stop_status, stopped = stop_receipts[0]
             assert stop_status == 200, stopped
