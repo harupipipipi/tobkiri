@@ -1237,6 +1237,7 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
         let base_url = format!("http://127.0.0.1:{}", active_defaultspack_http_port());
         let health_url = format!("{base_url}/health");
         let deadline = SystemTime::now() + Duration::from_secs(60);
+        let mut health_ready = false;
         while SystemTime::now() < deadline {
             if client
                 .get(&health_url)
@@ -1244,9 +1245,14 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
                 .map(|response| response.status().is_success())
                 .unwrap_or(false)
             {
+                health_ready = true;
                 break;
             }
             thread::sleep(Duration::from_millis(300));
+        }
+        if !health_ready {
+            warn!("debug approval smoke timed out waiting for Kernel health");
+            return;
         }
 
         let config = app.state::<AppConfig>().inner().clone();
@@ -1257,11 +1263,21 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
                 return;
             }
         };
-        let session = match debug_panel_session(&client, &base_url, &bootstrap_secret) {
-            Ok(session) => session,
-            Err(error) => {
-                warn!("debug approval smoke could not establish its panel session: {error}");
-                return;
+        // Kernel health becomes reachable slightly before the authenticated
+        // panel bootstrap is guaranteed to answer under cold-start load. Keep
+        // the individual request timeout short, but retry this read-only
+        // handshake within one bounded startup window.
+        let session_deadline = SystemTime::now() + Duration::from_secs(30);
+        let session = loop {
+            match debug_panel_session(&client, &base_url, &bootstrap_secret) {
+                Ok(session) => break session,
+                Err(error) if SystemTime::now() < session_deadline => {
+                    thread::sleep(Duration::from_millis(300));
+                }
+                Err(error) => {
+                    warn!("debug approval smoke could not establish its panel session: {error}");
+                    return;
+                }
             }
         };
 
@@ -2285,19 +2301,27 @@ fn stop_managed_runtimes(
     defaultspack: &DefaultspackManager,
     kernel_manager: &Mutex<KernelManager>,
 ) {
-    if let Err(error) = defaultspack.stop() {
-        error!("Failed to stop Defaultspack during shutdown: {error:#}");
-    }
-    match kernel_manager.lock() {
-        Ok(mut kernel) => {
-            if let Err(error) = kernel.stop() {
-                error!("Failed to stop kernel during shutdown: {error}");
+    // Both runtimes own independent process groups and each preserves its own
+    // bounded graceful-stop window. Stop them concurrently so application
+    // shutdown waits for the slower runtime once instead of adding both
+    // deadlines together.
+    thread::scope(|scope| {
+        let _defaultspack_stop = scope.spawn(|| {
+            if let Err(error) = defaultspack.stop() {
+                error!("Failed to stop Defaultspack during shutdown: {error:#}");
             }
-        }
-        Err(error) => {
-            error!("Failed to lock kernel manager during shutdown: {error}");
-        }
-    }
+        });
+        let _kernel_stop = scope.spawn(|| match kernel_manager.lock() {
+            Ok(mut kernel) => {
+                if let Err(error) = kernel.stop() {
+                    error!("Failed to stop kernel during shutdown: {error}");
+                }
+            }
+            Err(error) => {
+                error!("Failed to lock kernel manager during shutdown: {error}");
+            }
+        });
+    });
 }
 
 fn spawn_kernel_exit_monitor(
