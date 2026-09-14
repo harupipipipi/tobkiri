@@ -2060,6 +2060,16 @@ def _strip_rust_comments_and_strings(source: str) -> str:
             index = end
             continue
 
+        char_match = re.match(
+            r"b?'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}|.)|[^\\'\n])'",
+            production_source[index:],
+        )
+        if char_match:
+            end = index + char_match.end()
+            output.append(_blank_rust_segment(production_source[index:end]))
+            index = end
+            continue
+
         output.append(production_source[index])
         index += 1
     return "".join(output)
@@ -2135,9 +2145,91 @@ def _strip_rust_test_items(source: str) -> str:
             return result
 
 
+def _rust_balanced_brace_end(source: str, opening: int) -> int:
+    """Return a balanced body end for lexically blanked Rust source."""
+
+    depth = 0
+    for position in range(opening, len(source)):
+        if source[position] == "{":
+            depth += 1
+        elif source[position] == "}":
+            depth -= 1
+            if depth == 0:
+                return position + 1
+    return len(source)
+
+
+def _rust_function_body_span(source: str, start: int) -> tuple[int, int] | None:
+    """Return a Rust function body's balanced span from after its name."""
+
+    parentheses = 0
+    brackets = 0
+    angles = 0
+    signature_braces = 0
+    for position in range(start, len(source)):
+        char = source[position]
+        if signature_braces:
+            if char == "{":
+                signature_braces += 1
+            elif char == "}":
+                signature_braces -= 1
+            continue
+        if char == "(":
+            parentheses += 1
+        elif char == ")" and parentheses:
+            parentheses -= 1
+        elif char == "[":
+            brackets += 1
+        elif char == "]" and brackets:
+            brackets -= 1
+        elif char == "<" and not parentheses and not brackets:
+            angles += 1
+        elif char == ">" and angles and not parentheses and not brackets:
+            angles -= 1
+        elif char == "{":
+            previous = position - 1
+            while previous >= start and source[previous].isspace():
+                previous -= 1
+            macro_bang = previous >= start and source[previous] == "!"
+            macro_name_end = previous - 1
+            while macro_name_end >= start and source[macro_name_end].isspace():
+                macro_name_end -= 1
+            braced_macro = (
+                macro_bang
+                and macro_name_end >= start
+                and (source[macro_name_end].isalnum() or source[macro_name_end] == "_")
+            )
+            if parentheses or brackets or angles or braced_macro:
+                signature_braces = 1
+                continue
+            return position, _rust_balanced_brace_end(source, position)
+        elif char == ";" and not parentheses and not brackets and not angles:
+            return None
+    return None
+
+
+def _rust_function_context_at(source: str, offset: int) -> tuple[str, bool]:
+    """Return the innermost containing function and whether it is not nested."""
+
+    containing: list[tuple[int, str]] = []
+    for match in re.finditer(
+        r"\bfn\s+(?:r#)?([A-Za-z_][A-Za-z0-9_]*)",
+        source[:offset],
+    ):
+        span = _rust_function_body_span(source, match.end())
+        if span is None:
+            continue
+        opening, end = span
+        if opening < offset < end:
+            containing.append((opening, match.group(1)))
+    if not containing:
+        return "<module>", False
+    containing.sort()
+    return containing[-1][1], len(containing) == 1
+
+
 def _rust_function_at(source: str, offset: int) -> str:
-    matches = list(re.finditer(r"\bfn\s+([A-Za-z_][A-Za-z0-9_]*)", source[:offset]))
-    return matches[-1].group(1) if matches else "<module>"
+    return _rust_function_context_at(source, offset)[0]
 
 
 def _rust_call_argument(source: str, offset: int) -> str:
@@ -2191,6 +2283,7 @@ def _rust_context_is_safe(function: str) -> bool:
 def _rust_is_exact_ci_e2e_app_data_read(
     path: Path,
     function: str,
+    function_is_not_nested: bool,
     argument: str,
 ) -> bool:
     """Allow only the fixed CI/E2E app-data reader's one bounded env key."""
@@ -2198,6 +2291,7 @@ def _rust_is_exact_ci_e2e_app_data_read(
     return (
         path == CI_E2E_APP_DATA_SOURCE
         and function in CI_E2E_APP_DATA_ENV_READERS
+        and function_is_not_nested
         and argument.strip() == f'"{CI_E2E_APP_DATA_ENV}"'
     )
 
@@ -2258,7 +2352,10 @@ def _rust_call_findings_for_source(path: Path, source: str) -> list[dict[str, An
     command_env_pattern = re.compile(r"\.(?:env|envs)\s*\(")
     command_pattern = re.compile(r"\b(?:std::process::)?Command::new\s*\(")
     for match in env_pattern.finditer(stripped):
-        function = _rust_function_at(stripped, match.start())
+        function, function_is_not_nested = _rust_function_context_at(
+            stripped,
+            match.start(),
+        )
         argument = _rust_call_argument(production_source, match.start())
         literal = _rust_literal_argument(production_source, match.start())
         authority_env = literal in AUTHORITY_ENV_NAMES
@@ -2269,7 +2366,12 @@ def _rust_call_findings_for_source(path: Path, source: str) -> list[dict[str, An
         )
         if not authority_env and not shell_env and not exact_ci_e2e_reader:
             continue
-        if _rust_is_exact_ci_e2e_app_data_read(path, function, argument):
+        if _rust_is_exact_ci_e2e_app_data_read(
+            path,
+            function,
+            function_is_not_nested,
+            argument,
+        ):
             continue
         if _rust_context_is_safe(function):
             continue
@@ -3448,6 +3550,107 @@ fn ci_e2e_shell_launch_environment() {
 """,
     )
     assert [item["rule"] for item in composed_exact_prefix] == ["launcher_env"]
+    nested_function_attribution = _rust_call_findings_for_source(
+        CI_E2E_APP_DATA_SOURCE,
+        """
+fn ci_e2e_shell_bypass() {
+    fn ci_e2e_shell_launch_environment() {}
+    std::env::var_os("TOBKIRI_CI_E2E_APP_DATA_ROOT");
+}
+""",
+    )
+    assert [item["function"] for item in nested_function_attribution] == [
+        "ci_e2e_shell_bypass"
+    ]
+    nested_exact_reader = _rust_call_findings_for_source(
+        CI_E2E_APP_DATA_SOURCE,
+        """
+fn outer() {
+    fn ci_e2e_shell_launch_environment() {
+        std::env::var_os("TOBKIRI_CI_E2E_APP_DATA_ROOT");
+    }
+}
+""",
+    )
+    assert [item["rule"] for item in nested_exact_reader] == ["launcher_env"]
+    array_return_function = _rust_call_findings_for_source(
+        ROOT / "tobkiri_launcher" / "src-tauri" / "src" / "array_return.rs",
+        """
+fn launch_shell() -> [u8; 1] {
+    std::env::var_os("PATH");
+    Command::new("sh").env("PATH", "/tmp").spawn();
+    [0]
+}
+""",
+    )
+    assert {item["function"] for item in array_return_function} == {"launch_shell"}
+    assert {item["rule"] for item in array_return_function} == {
+        "launcher_direct_command",
+        "launcher_env",
+    }
+    char_literal_return_function = _rust_call_findings_for_source(
+        ROOT / "tobkiri_launcher" / "src-tauri" / "src" / "char_return.rs",
+        """
+fn launch_shell() -> [u8; ('{' as usize) - 122] {
+    std::env::var_os("PATH");
+    Command::new("sh").env("PATH", "/tmp").spawn();
+    [0]
+}
+""",
+    )
+    assert {item["function"] for item in char_literal_return_function} == {
+        "launch_shell"
+    }
+    assert {item["rule"] for item in char_literal_return_function} == {
+        "launcher_direct_command",
+        "launcher_env",
+    }
+    raw_identifier_function = _rust_call_findings_for_source(
+        ROOT / "tobkiri_launcher" / "src-tauri" / "src" / "raw_identifier.rs",
+        """
+fn r#launch_shell() {
+    std::env::var_os("PATH");
+    Command::new("sh").env("PATH", "/tmp").spawn();
+}
+""",
+    )
+    assert {item["function"] for item in raw_identifier_function} == {"launch_shell"}
+    assert {item["rule"] for item in raw_identifier_function} == {
+        "launcher_direct_command",
+        "launcher_env",
+    }
+    labeled_loop_function = _rust_call_findings_for_source(
+        ROOT / "tobkiri_launcher" / "src-tauri" / "src" / "labeled_loop.rs",
+        """
+fn launch_shell() {
+    'done: loop { break 'done; }
+    std::env::var_os("PATH");
+    Command::new("sh").spawn();
+}
+""",
+    )
+    assert {item["function"] for item in labeled_loop_function} == {"launch_shell"}
+    assert {item["rule"] for item in labeled_loop_function} == {
+        "launcher_direct_command",
+        "launcher_env",
+    }
+    braced_return_macro_function = _rust_call_findings_for_source(
+        ROOT / "tobkiri_launcher" / "src-tauri" / "src" / "return_macro.rs",
+        """
+macro_rules! unit_type { () => { () }; }
+fn launch_shell() -> unit_type! {} {
+    std::env::var_os("PATH");
+    Command::new("sh").env("PATH", "/tmp").spawn();
+}
+""",
+    )
+    assert {item["function"] for item in braced_return_macro_function} == {
+        "launch_shell"
+    }
+    assert {item["rule"] for item in braced_return_macro_function} == {
+        "launcher_direct_command",
+        "launcher_env",
+    }
     presentation_path = ROOT / "tobkiri_launcher" / "src-tauri" / "src" / "presentation.rs"
     presentation_findings = _rust_call_findings_for_source(
         presentation_path, presentation_path.read_text(encoding="utf-8")
