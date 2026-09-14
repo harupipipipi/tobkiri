@@ -24,7 +24,7 @@ pub(crate) fn resolve_app_data_dir_from_env(
     resolve_app_data_dir(
         identifier,
         default_path,
-        std::env::var_os(CI_E2E_APP_DATA_ROOT_ENV).as_deref(),
+        std::env::var_os("TOBKIRI_CI_E2E_APP_DATA_ROOT").as_deref(),
     )
 }
 
@@ -43,7 +43,7 @@ pub(crate) fn ci_e2e_shell_launch_environment(
     shell_launch_environment_from_value(
         identifier,
         user_data_dir,
-        std::env::var_os(CI_E2E_APP_DATA_ROOT_ENV).as_deref(),
+        std::env::var_os("TOBKIRI_CI_E2E_APP_DATA_ROOT").as_deref(),
     )
 }
 
@@ -83,7 +83,7 @@ pub(crate) fn resolve_ci_e2e_shell_handoff_root_from_env(
     resolve_shell_handoff_root(
         artifact_policy,
         default_root,
-        std::env::var_os(CI_E2E_APP_DATA_ROOT_ENV).as_deref(),
+        std::env::var_os("TOBKIRI_CI_E2E_APP_DATA_ROOT").as_deref(),
     )
 }
 

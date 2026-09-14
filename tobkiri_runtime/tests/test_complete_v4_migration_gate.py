@@ -225,12 +225,22 @@ SHELL_ROOT_NAMES = frozenset(
 )
 SAFE_LAUNCH_CONTEXTS = frozenset(
     {
-        "ci_e2e",
         "host_broker",
         "uv",
         "codesign",
         "launchservices",
         "dock_registration",
+    }
+)
+CI_E2E_APP_DATA_SOURCE = (
+    ROOT / "tobkiri_launcher" / "src-tauri" / "src" / "ci_e2e_app_data.rs"
+)
+CI_E2E_APP_DATA_ENV = "TOBKIRI_CI_E2E_APP_DATA_ROOT"
+CI_E2E_APP_DATA_ENV_READERS = frozenset(
+    {
+        "resolve_app_data_dir_from_env",
+        "ci_e2e_shell_launch_environment",
+        "resolve_ci_e2e_shell_handoff_root_from_env",
     }
 )
 MIGRATION_STAGES = (
@@ -2178,6 +2188,20 @@ def _rust_context_is_safe(function: str) -> bool:
     )
 
 
+def _rust_is_exact_ci_e2e_app_data_read(
+    path: Path,
+    function: str,
+    argument: str,
+) -> bool:
+    """Allow only the fixed CI/E2E app-data reader's one bounded env key."""
+
+    return (
+        path == CI_E2E_APP_DATA_SOURCE
+        and function in CI_E2E_APP_DATA_ENV_READERS
+        and argument.strip() == f'"{CI_E2E_APP_DATA_ENV}"'
+    )
+
+
 def _rust_is_shell_root(function: str) -> bool:
     """Return whether a Rust function is a Shell select/verify/launch root."""
     lowered = function.lower()
@@ -2235,10 +2259,17 @@ def _rust_call_findings_for_source(path: Path, source: str) -> list[dict[str, An
     command_pattern = re.compile(r"\b(?:std::process::)?Command::new\s*\(")
     for match in env_pattern.finditer(stripped):
         function = _rust_function_at(stripped, match.start())
+        argument = _rust_call_argument(production_source, match.start())
         literal = _rust_literal_argument(production_source, match.start())
         authority_env = literal in AUTHORITY_ENV_NAMES
         shell_env = _rust_is_shell_root(function)
-        if not authority_env and not shell_env:
+        exact_ci_e2e_reader = (
+            path == CI_E2E_APP_DATA_SOURCE
+            and function in CI_E2E_APP_DATA_ENV_READERS
+        )
+        if not authority_env and not shell_env and not exact_ci_e2e_reader:
+            continue
+        if _rust_is_exact_ci_e2e_app_data_read(path, function, argument):
             continue
         if _rust_context_is_safe(function):
             continue
@@ -3363,9 +3394,60 @@ fn ci_e2e_shell_handoff() {
     fixture_findings = _rust_call_findings_for_source(Path("launcher_fixture.rs"), launcher_fixture)
     assert [item["function"] for item in fixture_findings] == [
         "launch_shell",
+        "ci_e2e_shell_handoff",
         "launch_shell",
         "launch_shell",
     ]
+    exact_ci_e2e_reader = _rust_call_findings_for_source(
+        CI_E2E_APP_DATA_SOURCE,
+        """
+fn ci_e2e_shell_launch_environment() {
+    std::env::var_os("TOBKIRI_CI_E2E_APP_DATA_ROOT");
+}
+""",
+    )
+    assert exact_ci_e2e_reader == []
+    renamed_ci_e2e_bypass = _rust_call_findings_for_source(
+        CI_E2E_APP_DATA_SOURCE,
+        """
+fn ci_e2e_shell_bypass() {
+    std::env::var_os("TOBKIRI_CI_E2E_APP_DATA_ROOT");
+    std::process::Command::new("sh").env("PATH", "/tmp").spawn();
+}
+""",
+    )
+    assert [item["rule"] for item in renamed_ci_e2e_bypass] == [
+        "launcher_env",
+        "launcher_env",
+        "launcher_direct_command",
+    ]
+    exact_function_wrong_key = _rust_call_findings_for_source(
+        CI_E2E_APP_DATA_SOURCE,
+        """
+fn ci_e2e_shell_launch_environment() {
+    std::env::var_os("RUMI_ALLOW_HOST_EXECUTION");
+}
+""",
+    )
+    assert [item["rule"] for item in exact_function_wrong_key] == ["launcher_env"]
+    non_shell_reader_wrong_key = _rust_call_findings_for_source(
+        CI_E2E_APP_DATA_SOURCE,
+        """
+fn resolve_app_data_dir_from_env() {
+    std::env::var_os("PATH");
+}
+""",
+    )
+    assert [item["rule"] for item in non_shell_reader_wrong_key] == ["launcher_env"]
+    composed_exact_prefix = _rust_call_findings_for_source(
+        CI_E2E_APP_DATA_SOURCE,
+        """
+fn ci_e2e_shell_launch_environment() {
+    std::env::var_os(concat!("TOBKIRI_CI_E2E_APP_DATA_ROOT", "_EVIL"));
+}
+""",
+    )
+    assert [item["rule"] for item in composed_exact_prefix] == ["launcher_env"]
     presentation_path = ROOT / "tobkiri_launcher" / "src-tauri" / "src" / "presentation.rs"
     presentation_findings = _rust_call_findings_for_source(
         presentation_path, presentation_path.read_text(encoding="utf-8")
