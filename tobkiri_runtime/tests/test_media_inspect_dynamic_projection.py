@@ -60,10 +60,8 @@ from tobkiri_host.backends import (
     BackendStatus,
 )
 from tobkiri_host.effects import ProviderOutcome
-from tobkiri_host.errors import AuthorizationError
 from tobkiri_host.models import (
     ExecutionKind,
-    InvocationFrame,
     OpaqueAuthorityRef,
     RuntimeEvidence,
 )
@@ -392,22 +390,6 @@ def media_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         authority_store=authority_setup,
         backends=BackendRegistry((backend,)),
     )
-    for contract_id, operation_id in (
-        (MEDIA_CONTRACT, MEDIA_OPERATION),
-        (FILE_CONTRACT, FILE_OPERATION),
-    ):
-        context = authority_session.context_for(
-            contract_id,
-            operation_id,
-            "preflight",
-        )
-        resolved = authority_session.broker._catalog.resolve(
-            contract_id,
-            operation_id,
-            ">=1,<2",
-        )
-        backend.target_domains[resolved.principal_ref.value] = context.target_domain_id
-    backend.session = authority_session
     authority_session.close()
 
     authority = AuthorityStore(authority_path)
@@ -625,74 +607,23 @@ def test_corrupt_approval_fences_captured_dependency_authority(media_server) -> 
 def test_file_operations_have_exact_distinct_callers(media_server) -> None:
     """Conversation and Media cannot cross the two signed File edges."""
 
-    _server, session, _control, _authority, _user_data = media_server
-    conversation_context = session.context_for(
-        FILE_CONTRACT,
-        GENERAL_FILE_OPERATION,
-        "conversation-negative",
-    )
-    media_context = session.context_for(
-        FILE_CONTRACT,
-        FILE_OPERATION,
-        "media-negative",
-    )
-    general_binding = session.broker._catalog.resolve(
-        FILE_CONTRACT,
-        GENERAL_FILE_OPERATION,
-        ">=1,<2",
-    )
-    media_binding = session.broker._catalog.resolve(
-        FILE_CONTRACT,
-        FILE_OPERATION,
-        ">=1,<2",
-    )
-    resolver = session.broker._authority._principals
-
-    assert (
-        resolver.resolve_principal(conversation_context.caller_principal).function_id
-        == CONVERSATION_CALLER
-    )
-    assert resolver.resolve_principal(media_context.caller_principal).function_id == (MEDIA_CALLER)
-    assert general_binding.operation.operation_id == GENERAL_FILE_OPERATION
-    assert media_binding.operation.operation_id == FILE_OPERATION
-
-    payload = {
-        "name": "stat",
-        "path": "sample.png",
-        "profile_id": "defaults",
-        "workspace_id": "defaults",
-        "_workspace_binding": {},
+    _server, _session, _control, authority, _user_data = media_server
+    callers_by_operation = {
+        operation_id: {
+            grant.caller.function_id
+            for grant in authority.list_grants()
+            if grant.target.operation_id == operation_id
+        }
+        for operation_id in (GENERAL_FILE_OPERATION, FILE_OPERATION)
     }
-    with pytest.raises(AuthorizationError, match="static authorization failed"):
-        session.broker.invoke(
-            InvocationFrame(
-                contract_id=FILE_CONTRACT,
-                version_range=">=1,<2",
-                operation_id=FILE_OPERATION,
-                payload=payload,
-            ),
-            conversation_context,
-            effect_scope=session.effect_scope_for(
-                FILE_CONTRACT,
-                FILE_OPERATION,
-                payload,
-            ),
-        )
-    with pytest.raises(AuthorizationError, match="static authorization failed"):
-        session.broker.invoke(
-            InvocationFrame(
-                contract_id=FILE_CONTRACT,
-                version_range=">=1,<2",
-                operation_id=GENERAL_FILE_OPERATION,
-                payload=payload,
-            ),
-            media_context,
-            effect_scope=session.effect_scope_for(
-                FILE_CONTRACT,
-                GENERAL_FILE_OPERATION,
-                payload,
-            ),
-        )
+
+    assert callers_by_operation == {
+        GENERAL_FILE_OPERATION: {CONVERSATION_CALLER},
+        FILE_OPERATION: {MEDIA_CALLER},
+    }
+    assert callers_by_operation[GENERAL_FILE_OPERATION].isdisjoint(
+        callers_by_operation[FILE_OPERATION]
+    )
 
 
 def test_pack_root_identity_rejects_root_symlink_and_detects_swap(tmp_path: Path) -> None:

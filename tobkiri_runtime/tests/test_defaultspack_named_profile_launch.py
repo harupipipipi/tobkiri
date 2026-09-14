@@ -69,6 +69,10 @@ class ReadyPackVMBackend:
     def bind_capability_bridge(self, callback):
         self.capability_bridge = callback
 
+    def bind_saved_capability_bridge(self, callback, preflight):
+        self.saved_capability_bridge = callback
+        self.saved_preflight = preflight
+
     def materialize(self, _binding, _reservation_id):
         raise AssertionError("named Profile launch must not execute a Pack")
 
