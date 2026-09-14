@@ -173,6 +173,7 @@ class PackVMLifecycleV4:
         self._loaded_state_digest: str | None = None
         self._loaded_archive_size = 0
         self._operations_generation = 0
+        self._journal_recovery_changed = False
         self._journal_loaded = False
         if self._operations_lock_path.parent.is_dir():
             with self._journal_transaction(recover=True):
@@ -711,9 +712,27 @@ class PackVMLifecycleV4:
                 acquired = True
                 if reload or first_load:
                     self._reload_operations(recover=recover or first_load)
-                    if first_load and (self._operations or self._archived_operations):
+                    if first_load:
+                        # Startup normally only reads the authenticated
+                        # journal. Rewriting it here used to bump its
+                        # generation/HMAC on every Launcher boot, even when
+                        # recovery and compaction had made no changes. Keep
+                        # the compatibility compaction behavior, but persist
+                        # only when the in-memory journal or archive actually
+                        # changed. This makes a read-only startup harmless to
+                        # another app instance that owns the same PackVM.
+                        before_operations = _canonical_json(self._operations)
+                        before_archived = _canonical_json(self._archived_operations)
+                        before_checkpoint = _canonical_json(self._archive_checkpoint)
                         self._compact_operations()
-                        self._persist_operations()
+                        changed = (
+                            self._journal_recovery_changed
+                            or before_operations != _canonical_json(self._operations)
+                            or before_archived != _canonical_json(self._archived_operations)
+                            or before_checkpoint != _canonical_json(self._archive_checkpoint)
+                        )
+                        if changed:
+                            self._persist_operations()
                     self._journal_loaded = True
                 yield
             finally:
@@ -726,6 +745,7 @@ class PackVMLifecycleV4:
     def _reload_operations(self, *, recover: bool) -> None:
         """Reload both authenticated journals while holding the process lock."""
 
+        self._journal_recovery_changed = False
         (
             self._archived_operations,
             self._archive_checkpoint,
@@ -840,6 +860,7 @@ class PackVMLifecycleV4:
                     )
                     record["error_type"] = "PackVMOperationInterrupted"
                 record["updated_unix"] = int(time.time())
+                self._journal_recovery_changed = True
             operations[operation_id] = record
         return operations
 
