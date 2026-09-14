@@ -418,8 +418,9 @@ fn expected_launcher_handoff_root() -> Result<PathBuf> {
     // LaunchServices, so it cannot inherit the Launcher's environment; derive
     // the same bounded root that AppConfig uses instead.  File ownership,
     // permissions, path containment, nonce, lifetime, and payload identity are
-    // still verified below. Packaged production and CI policies remain bound
-    // to their Application Support container.
+    // still verified below. Packaged production remains bound to its
+    // Application Support container. The non-publishable CI policy may use its
+    // separately validated 0700 test root when the Launcher forwarded it.
     #[cfg(debug_assertions)]
     if MACOS_ARTIFACT_POLICY == "production-v1" {
         return development_launcher_handoff_root();
@@ -427,10 +428,17 @@ fn expected_launcher_handoff_root() -> Result<PathBuf> {
     let data_dir = dirs::data_dir().context("platform data directory is unavailable")?;
     let launcher_bundle_identifier =
         launcher_bundle_identifier_for_artifact_policy(MACOS_ARTIFACT_POLICY)?;
-    Ok(data_dir
+    let default_root = data_dir
         .join(launcher_bundle_identifier)
         .join("user_data")
-        .join(HANDOFF_DIRECTORY))
+        .join(HANDOFF_DIRECTORY);
+    if MACOS_ARTIFACT_POLICY == "ci-e2e-v1" {
+        return crate::ci_e2e_app_data::resolve_shell_handoff_root_from_env(
+            MACOS_ARTIFACT_POLICY,
+            &default_root,
+        );
+    }
+    Ok(default_root)
 }
 
 fn launcher_bundle_identifier_for_artifact_policy(policy: &str) -> Result<&'static str> {

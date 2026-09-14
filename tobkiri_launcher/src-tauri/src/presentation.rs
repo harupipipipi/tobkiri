@@ -7,7 +7,7 @@
 //! launch fallback.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
@@ -714,6 +714,12 @@ fn launch_verified_target_once(
         &target.artifact,
         Some(&prepared_runtime.identity),
     )?;
+    // Validate the optional CI-E2E Shell environment before creating a
+    // short-lived handoff file that contains the authenticated runtime URL.
+    let shell_environment = crate::ci_e2e_app_data::shell_launch_environment(
+        &app.config().identifier,
+        &config.user_data_dir,
+    )?;
     let ticket = crate::shell_handoff::create_shell_handoff(
         config,
         crate::shell_handoff::ShellHandoffBinding {
@@ -730,7 +736,12 @@ fn launch_verified_target_once(
     // handoff now exists, so the Shell gets the entire fixed receipt window.
     let receipt_deadline = shell_receipt_deadline(Instant::now());
 
-    match launch_verified_artifact(&target.artifact_path, &ticket, receipt_deadline) {
+    match launch_verified_artifact(
+        &target.artifact_path,
+        &ticket,
+        receipt_deadline,
+        shell_environment.as_deref(),
+    ) {
         Ok(status) => Ok(status),
         Err(error) => {
             crate::shell_handoff::discard_shell_handoff(&ticket);
@@ -827,6 +838,7 @@ fn verified_launch_spec(
     platform: &str,
     artifact_path: &Path,
     handoff_path: &Path,
+    macos_environment: Option<&OsStr>,
 ) -> AnyResult<VerifiedLaunchSpec> {
     if !artifact_path.is_absolute() {
         bail!("verified Shell artifact launch path must be absolute");
@@ -841,22 +853,34 @@ fn verified_launch_spec(
         // guarantees that the handoff path reaches a process; the Shell's own
         // single-instance plugin forwards that path to an existing Shell when
         // needed. The authenticated URL itself never appears in argv.
-        "macos" => Ok(VerifiedLaunchSpec {
-            program: PathBuf::from("/usr/bin/open"),
-            args: vec![
-                OsString::from("-n"),
+        "macos" => {
+            let mut args = vec![OsString::from("-n")];
+            if let Some(environment) = macos_environment {
+                args.push(OsString::from("--env"));
+                args.push(environment.to_owned());
+            }
+            args.extend([
                 artifact_path.as_os_str().to_owned(),
                 OsString::from("--args"),
                 handoff_flag,
                 handoff_value,
-            ],
-        }),
+            ]);
+            Ok(VerifiedLaunchSpec {
+                program: PathBuf::from("/usr/bin/open"),
+                args,
+            })
+        }
         // Linux AppImages and Windows executables are the verified artifacts,
         // so execute their exact absolute paths without a shell or PATH lookup.
-        "linux" | "windows" => Ok(VerifiedLaunchSpec {
-            program: artifact_path.to_path_buf(),
-            args: vec![handoff_flag, handoff_value],
-        }),
+        "linux" | "windows" => {
+            if macos_environment.is_some() {
+                bail!("Shell launch environment is supported only on macOS");
+            }
+            Ok(VerifiedLaunchSpec {
+                program: artifact_path.to_path_buf(),
+                args: vec![handoff_flag, handoff_value],
+            })
+        }
         other => bail!("verified Shell artifact launch is unsupported on {other}"),
     }
 }
@@ -969,8 +993,14 @@ fn launch_verified_artifact(
     artifact_path: &Path,
     ticket: &crate::shell_handoff::ShellHandoffTicket,
     deadline: Instant,
+    macos_environment: Option<&OsStr>,
 ) -> AnyResult<crate::shell_handoff::ShellHandoffReceiptStatus> {
-    let spec = verified_launch_spec(current_platform(), artifact_path, &ticket.path)?;
+    let spec = verified_launch_spec(
+        current_platform(),
+        artifact_path,
+        &ticket.path,
+        macos_environment,
+    )?;
     let mut process = Command::new(&spec.program)
         .args(&spec.args)
         .stdin(Stdio::null())
@@ -3383,7 +3413,7 @@ mod tests {
         } else {
             Path::new("/private/launcher/shell_handoff/handoff-ABC.json")
         };
-        let macos = verified_launch_spec("macos", artifact, handoff).unwrap();
+        let macos = verified_launch_spec("macos", artifact, handoff, None).unwrap();
         assert_eq!(macos.program, Path::new("/usr/bin/open"));
         assert_eq!(
             macos.args,
@@ -3397,7 +3427,7 @@ mod tests {
         );
 
         for platform in ["linux", "windows"] {
-            let direct = verified_launch_spec(platform, artifact, handoff).unwrap();
+            let direct = verified_launch_spec(platform, artifact, handoff, None).unwrap();
             assert_eq!(direct.program, artifact);
             assert_eq!(
                 direct.args,
@@ -3407,6 +3437,32 @@ mod tests {
                 ]
             );
         }
+        assert!(macos
+            .args
+            .iter()
+            .all(|arg| !arg.to_string_lossy().contains("rumi_local_auth")));
+    }
+
+    #[test]
+    fn macos_launch_spec_forwards_only_the_validated_ci_environment() {
+        let artifact = Path::new("/verified/release/Tobkiri Shell.app");
+        let handoff = Path::new("/private/launcher/shell_handoff/handoff-ABC.json");
+        let environment = OsStr::new("TOBKIRI_CI_E2E_APP_DATA_ROOT=/private/ci/ci-e2e-app-data");
+
+        let macos = verified_launch_spec("macos", artifact, handoff, Some(environment)).unwrap();
+        assert_eq!(
+            macos.args,
+            vec![
+                OsString::from("-n"),
+                OsString::from("--env"),
+                environment.to_owned(),
+                artifact.as_os_str().to_owned(),
+                OsString::from("--args"),
+                OsString::from(crate::shell_handoff::HANDOFF_ARGUMENT),
+                handoff.as_os_str().to_owned(),
+            ]
+        );
+        assert!(verified_launch_spec("linux", artifact, handoff, Some(environment)).is_err());
         assert!(macos
             .args
             .iter()
@@ -3739,21 +3795,26 @@ mod tests {
         } else {
             Path::new("/private/launcher/handoff.json")
         };
-        let relative =
-            verified_launch_spec("linux", Path::new("Tobkiri.AppImage"), absolute_handoff)
-                .unwrap_err()
-                .to_string();
+        let relative = verified_launch_spec(
+            "linux",
+            Path::new("Tobkiri.AppImage"),
+            absolute_handoff,
+            None,
+        )
+        .unwrap_err()
+        .to_string();
         assert!(relative.contains("artifact launch path must be absolute"));
 
         let relative_handoff =
-            verified_launch_spec("linux", absolute_shell, Path::new("handoff.json"))
+            verified_launch_spec("linux", absolute_shell, Path::new("handoff.json"), None)
                 .unwrap_err()
                 .to_string();
         assert!(relative_handoff.contains("handoff path must be absolute"));
 
-        let unsupported = verified_launch_spec("fixture-os", absolute_shell, absolute_handoff)
-            .unwrap_err()
-            .to_string();
+        let unsupported =
+            verified_launch_spec("fixture-os", absolute_shell, absolute_handoff, None)
+                .unwrap_err()
+                .to_string();
         assert!(unsupported.contains("unsupported"));
     }
 

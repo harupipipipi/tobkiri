@@ -1,13 +1,13 @@
 //! Explicit app-data isolation for the non-publishable macOS CI-E2E artifact.
 
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
 const CI_E2E_BUNDLE_IDENTIFIER: &str = "dev.tobkiri.launcher.ci-e2e";
-const CI_E2E_APP_DATA_ROOT_ENV: &str = "TOBKIRI_CI_E2E_APP_DATA_ROOT";
+pub(crate) const CI_E2E_APP_DATA_ROOT_ENV: &str = "TOBKIRI_CI_E2E_APP_DATA_ROOT";
 const CI_E2E_APP_DATA_ROOT_NAME: &str = "ci-e2e-app-data";
 
 /// Resolve the opt-in app-data root for a native CI-E2E launch.
@@ -26,6 +26,86 @@ pub(crate) fn resolve_app_data_dir_from_env(
         default_path,
         std::env::var_os(CI_E2E_APP_DATA_ROOT_ENV).as_deref(),
     )
+}
+
+/// Return the one environment assignment that the CI-E2E Launcher may pass
+/// to its separately launched presentation Shell.
+///
+/// LaunchServices does not reliably preserve a caller's environment. The
+/// non-publishable CI artifact therefore forwards its already-validated
+/// app-data root explicitly with `open --env`. Production identifiers never
+/// receive an override, and a root that differs from the Launcher's active
+/// writable state fails closed.
+pub(crate) fn shell_launch_environment(
+    identifier: &str,
+    user_data_dir: &Path,
+) -> Result<Option<OsString>> {
+    shell_launch_environment_from_value(
+        identifier,
+        user_data_dir,
+        std::env::var_os(CI_E2E_APP_DATA_ROOT_ENV).as_deref(),
+    )
+}
+
+fn shell_launch_environment_from_value(
+    identifier: &str,
+    user_data_dir: &Path,
+    override_value: Option<&OsStr>,
+) -> Result<Option<OsString>> {
+    if identifier != CI_E2E_BUNDLE_IDENTIFIER {
+        return Ok(None);
+    }
+    let Some(override_value) = override_value else {
+        return Ok(None);
+    };
+    let root = PathBuf::from(override_value);
+    if !secure_app_data_root(&root) || root.join("user_data") != user_data_dir {
+        bail!(
+            "{} must match the CI-E2E Launcher's validated writable state",
+            CI_E2E_APP_DATA_ROOT_ENV,
+        );
+    }
+    let mut assignment = OsString::from(CI_E2E_APP_DATA_ROOT_ENV);
+    assignment.push("=");
+    assignment.push(override_value);
+    Ok(Some(assignment))
+}
+
+/// Resolve the handoff root expected by a CI-E2E presentation Shell.
+///
+/// The production Shell remains bound to the platform Application Support
+/// directory. This helper is called only by a Shell compiled with the
+/// `ci-e2e-v1` artifact policy.
+pub(crate) fn resolve_shell_handoff_root_from_env(
+    artifact_policy: &str,
+    default_root: &Path,
+) -> Result<PathBuf> {
+    resolve_shell_handoff_root(
+        artifact_policy,
+        default_root,
+        std::env::var_os(CI_E2E_APP_DATA_ROOT_ENV).as_deref(),
+    )
+}
+
+fn resolve_shell_handoff_root(
+    artifact_policy: &str,
+    default_root: &Path,
+    override_value: Option<&OsStr>,
+) -> Result<PathBuf> {
+    if artifact_policy != "ci-e2e-v1" {
+        return Ok(default_root.to_path_buf());
+    }
+    let Some(override_value) = override_value else {
+        return Ok(default_root.to_path_buf());
+    };
+    let root = PathBuf::from(override_value);
+    if !secure_app_data_root(&root) {
+        bail!(
+            "{} must name a validated private CI-E2E app-data root",
+            CI_E2E_APP_DATA_ROOT_ENV,
+        );
+    }
+    Ok(root.join("user_data").join("shell_handoff"))
 }
 
 fn resolve_app_data_dir(
@@ -167,6 +247,109 @@ mod tests {
             .unwrap(),
             override_path
         );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn shell_environment_is_ci_scoped_and_bound_to_the_active_root() {
+        let root = fixture_root("shell-environment");
+        fs::create_dir(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let override_path = root.join(CI_E2E_APP_DATA_ROOT_NAME);
+        fs::create_dir(&override_path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            fs::set_permissions(&override_path, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let user_data = override_path.join("user_data");
+
+        assert_eq!(
+            shell_launch_environment_from_value(
+                "dev.rumiai.app",
+                &user_data,
+                Some(override_path.as_os_str()),
+            )
+            .unwrap(),
+            None
+        );
+        assert_eq!(
+            shell_launch_environment_from_value(
+                CI_E2E_BUNDLE_IDENTIFIER,
+                &user_data,
+                Some(override_path.as_os_str()),
+            )
+            .unwrap(),
+            Some(OsString::from(format!(
+                "{CI_E2E_APP_DATA_ROOT_ENV}={}",
+                override_path.display()
+            )))
+        );
+        assert!(shell_launch_environment_from_value(
+            CI_E2E_BUNDLE_IDENTIFIER,
+            &root.join("other-user-data"),
+            Some(override_path.as_os_str()),
+        )
+        .is_err());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ci_shell_handoff_root_uses_only_a_validated_override() {
+        let root = fixture_root("shell-handoff");
+        fs::create_dir(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let override_path = root.join(CI_E2E_APP_DATA_ROOT_NAME);
+        fs::create_dir(&override_path).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            fs::set_permissions(&override_path, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let default_root = root.join("default-handoff");
+
+        assert_eq!(
+            resolve_shell_handoff_root("ci-e2e-v1", &default_root, None).unwrap(),
+            default_root
+        );
+        assert_eq!(
+            resolve_shell_handoff_root(
+                "ci-e2e-v1",
+                &default_root,
+                Some(override_path.as_os_str()),
+            )
+            .unwrap(),
+            override_path.join("user_data").join("shell_handoff")
+        );
+        assert_eq!(
+            resolve_shell_handoff_root(
+                "production-v1",
+                &default_root,
+                Some(override_path.as_os_str()),
+            )
+            .unwrap(),
+            default_root
+        );
+        assert!(resolve_shell_handoff_root(
+            "ci-e2e-v1",
+            &default_root,
+            Some(root.join("wrong-name").as_os_str()),
+        )
+        .is_err());
 
         fs::remove_dir_all(root).unwrap();
     }

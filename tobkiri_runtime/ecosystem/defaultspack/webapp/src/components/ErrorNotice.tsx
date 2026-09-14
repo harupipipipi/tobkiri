@@ -1,5 +1,12 @@
 import { AlertTriangle, CircleAlert, Copy } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { cn } from "../lib/cn";
 
@@ -105,7 +112,7 @@ export function ErrorCopyAction({
   const feedbackId = useId();
   const copyAttempt = useRef(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     copyAttempt.current += 1;
     setFeedback("idle");
     return () => {

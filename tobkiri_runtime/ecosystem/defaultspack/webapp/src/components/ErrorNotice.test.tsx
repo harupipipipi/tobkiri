@@ -114,6 +114,14 @@ test("copy feedback keeps the Copy glyph instead of swapping to a status icon", 
   assert.match(source, /copyText \?\? errorNoticeCopyText\(title, message\)/);
   assert.match(source, /const copyAttempt = useRef\(0\)/);
   assert.match(source, /if \(attempt === copyAttempt\.current\)/);
+  assert.match(
+    source,
+    /useLayoutEffect\(\(\) => \{\s+copyAttempt\.current \+= 1;\s+setFeedback\("idle"\);[\s\S]*?\}, \[copyText\]\);/,
+  );
+  assert.doesNotMatch(
+    source,
+    /useEffect\(\(\) => \{\s+copyAttempt\.current \+= 1;\s+setFeedback\("idle"\);[\s\S]*?\}, \[copyText\]\);/,
+  );
   assert.doesNotMatch(source, /<Check\b|<X\b/);
 });
 
