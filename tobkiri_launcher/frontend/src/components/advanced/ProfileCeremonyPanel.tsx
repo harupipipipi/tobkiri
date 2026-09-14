@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, LockKeyhole, PackagePlus, ShieldCheck, XCircle} from 'lucide-react';
+import {ArrowRight, CheckCircle2, CircleAlert, CircleHelp, LockKeyhole, PackagePlus, ShieldCheck, XCircle} from 'lucide-react';
 
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
@@ -221,6 +221,11 @@ export function ProfileCeremonyPanel({
     && catalogMissingPackIds.length === 0
     && catalogIncompatiblePackIds.length === 0,
   );
+  const unavailableProfileHeading = 'This Profile is unavailable in the verified catalog.';
+  const unavailableProfileDiagnosticText = [
+    unavailableProfileHeading,
+    ...catalogEntry.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.subject}`),
+  ].join('\n');
   const isRuntimeReady = (
     (surface.status === 'ready' && !surface.stale && currentSnapshot !== null)
     || (catalogProjection?.active_profile_id === null && catalogBindingStable)
@@ -813,12 +818,12 @@ export function ProfileCeremonyPanel({
             ) : null}
             {!catalogEntry.available ? (
               <div className="mt-3 flex items-start gap-2 text-sm text-destructive" role="alert">
-                <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="profile-ceremony-unavailable" />
                 <div className="min-w-0 flex-1">
-                <p>This Profile is unavailable in the verified catalog.</p>
+                <p>{unavailableProfileHeading}</p>
                 <ul className="mt-1 list-disc pl-5">{catalogEntry.diagnostics.map((diagnostic) => <li key={`${diagnostic.code}:${diagnostic.subject}`}>{diagnostic.code}: {diagnostic.subject}</li>)}</ul>
                 </div>
-                <CopyErrorButton label="Copy unavailable Profile diagnostics" text={catalogEntry.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.subject}`).join('\n')} />
+                <CopyErrorButton label="Copy unavailable Profile diagnostics" text={unavailableProfileDiagnosticText} />
               </div>
             ) : null}
           </div>
@@ -828,7 +833,7 @@ export function ProfileCeremonyPanel({
           <div className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm" role="alert">
             <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
             <div className="min-w-0 flex-1"><p className="font-medium text-text-main">Profile ceremony stopped fail-closed</p><p className="mt-1 break-words text-text-muted">{failure.code}: {failure.message}</p></div>
-            <CopyErrorButton label="Copy Profile ceremony error" text={`${failure.code}: ${failure.message}`} />
+            <CopyErrorButton label="Copy Profile ceremony error" text={`Profile ceremony stopped fail-closed\n${failure.code}: ${failure.message}`} />
           </div>
         ) : null}
 

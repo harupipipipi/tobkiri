@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {Link} from 'react-router';
-import {AlertTriangle, CheckCircle2, Database, FileKey2, MessageSquare, PackageCheck, Plus, RefreshCw, Search, ShieldCheck} from 'lucide-react';
+import {CheckCircle2, CircleAlert, Database, FileKey2, MessageSquare, PackageCheck, Plus, RefreshCw, Search, ShieldCheck} from 'lucide-react';
 
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
@@ -139,7 +139,7 @@ function OptionalConversationCapability({
         </dl>
       ) : (
         <div className="mt-4 flex items-start gap-2 rounded-md border border-dashed border-border px-3 py-3 text-sm text-text-muted" role={capabilityErrorDiagnostic ? 'alert' : 'status'}>
-          {capabilityErrorDiagnostic ? <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-destructive" /> : null}
+          {capabilityErrorDiagnostic ? <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-destructive" data-error-icon="profile-capability" /> : null}
           <p className="min-w-0 flex-1">{capabilityErrorDiagnostic ?? 'No verified conversation capability is published for this Profile.'}</p>
           {capabilityErrorDiagnostic ? <CopyErrorButton label="Copy Profile capability error" text={capabilityErrorDiagnostic} /> : null}
         </div>
@@ -179,6 +179,11 @@ function ProfileDefinitionDetails({
 }) {
   const t = useT();
   const {base, shell, application} = entry.bindings;
+  const unavailableHeading = t('profile_catalog.profile_unavailable');
+  const unavailableDiagnosticText = [
+    unavailableHeading,
+    ...entry.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.subject}`),
+  ].join('\n');
   return (
     <div className="mt-4 flex flex-col gap-4" aria-label={`Details for Profile ${entry.profile_id}`}>
       <section className="rounded-lg border border-border bg-bg-main p-4">
@@ -196,10 +201,10 @@ function ProfileDefinitionDetails({
         </div>
         {entry.diagnostics.length > 0 ? (
           <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm" role="alert">
-            <p className="flex items-center gap-2 font-medium text-text-main"><AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />{t('profile_catalog.profile_unavailable')}</p>
+            <p className="flex items-center gap-2 font-medium text-text-main"><CircleAlert className="h-4 w-4 text-destructive" aria-hidden="true" data-error-icon="profile-catalog-unavailable" />{unavailableHeading}</p>
             <div className="mt-2 flex items-start gap-2"><ul className="min-w-0 flex-1 list-disc space-y-1 pl-5 text-text-muted">
               {entry.diagnostics.map((diagnostic) => <li key={`${diagnostic.code}:${diagnostic.subject}`}>{diagnostic.code}: {diagnostic.subject}</li>)}
-            </ul><CopyErrorButton label="Copy Profile catalog diagnostics" text={entry.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.subject}`).join('\n')} /></div>
+            </ul><CopyErrorButton label="Copy Profile catalog diagnostics" text={unavailableDiagnosticText} /></div>
           </div>
         ) : null}
       </section>
@@ -434,7 +439,7 @@ export function ProfileCatalogSelector({
           {showFailure ? (
             <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-4" role="alert">
               <div className="flex min-w-0 items-start gap-3 text-sm">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
+                <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" data-error-icon="profile-catalog" />
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-text-main">{t('profile_catalog.locked_title')}</p>
                   <p className="mt-1 text-text-muted">{catalogInvalid ? t('profile_catalog.validation_failed') : catalogSurface.error?.message ?? t('profile_catalog.snapshot_unavailable')}</p>

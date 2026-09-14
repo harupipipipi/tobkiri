@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {act} from 'react';
+import {flushSync} from 'react-dom';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 
@@ -165,6 +166,59 @@ test('text changes reset feedback and invalidate a late clipboard result', async
     });
     assert.deepEqual(copied, ['old diagnostic', 'new diagnostic']);
     assert.match(container.textContent ?? '', /Copied/);
+  } finally {
+    await act(async () => root?.unmount());
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+    });
+  }
+});
+
+test('text changes clear copied feedback before the new diagnostic is painted', async () => {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  let root: Root | null = null;
+
+  try {
+    Object.defineProperties(globalThis, {
+      window: {value: dom.window, configurable: true},
+      document: {value: dom.window.document, configurable: true},
+      navigator: {value: dom.window.navigator, configurable: true},
+    });
+    Object.defineProperty(dom.window.navigator, 'clipboard', {
+      configurable: true,
+      value: {writeText: async () => undefined},
+    });
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    const container = dom.window.document.querySelector<HTMLElement>('#root');
+    assert.ok(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<CopyErrorButton label="Copy current error" text="old diagnostic" />);
+    });
+    const button = container.querySelector<HTMLButtonElement>('button');
+    assert.ok(button);
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+    });
+    assert.equal(button.getAttribute('aria-label'), 'Error details copied to the clipboard.');
+
+    globalThis.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      flushSync(() => {
+        root?.render(<CopyErrorButton label="Copy current error" text="new diagnostic" />);
+      });
+    } finally {
+      globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    }
+    assert.equal(button.getAttribute('aria-label'), 'Copy current error');
+    assert.doesNotMatch(container.textContent ?? '', /Copied/);
   } finally {
     await act(async () => root?.unmount());
     Object.defineProperties(globalThis, {

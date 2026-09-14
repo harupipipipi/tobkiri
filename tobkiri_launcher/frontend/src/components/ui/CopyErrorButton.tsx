@@ -1,5 +1,5 @@
 import {Copy} from 'lucide-react';
-import {useEffect, useId, useRef, useState} from 'react';
+import {useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
 
 import {copyTextToClipboard} from '@/src/lib/clipboard';
 import {cn} from '@/src/lib/utils';
@@ -44,7 +44,9 @@ export function CopyErrorButton({
   const statusId = useId();
   const copyAttempt = useRef(0);
 
-  useEffect(() => {
+  // Reset synchronously with the new diagnostic. A passive effect would let
+  // the previous "Copied" or "Copy failed" state render for one frame.
+  useLayoutEffect(() => {
     copyAttempt.current += 1;
     setFeedback('idle');
     return () => {

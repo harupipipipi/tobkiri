@@ -335,6 +335,86 @@ test('Profile ceremony does not offer an error-copy action while its catalog is 
   }
 });
 
+test('Profile ceremony marks an unavailable selected Profile with a destructive error icon', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+  const surface = surfaceState();
+  let copied = '';
+  const unavailable = catalogEntry(['provider-pack']);
+  unavailable.available = false;
+  unavailable.diagnostics = [{code: 'PACK_REVOKED', subject: 'provider-pack'}];
+  const selection = authoritativeSelection(unavailable);
+  Object.defineProperty(dom.window.navigator, 'clipboard', {
+    configurable: true,
+    value: {writeText: async (text: string) => { copied = text; }},
+  });
+
+  try {
+    await act(async () => {
+      root.render(
+        <ProfileCeremonyPanel
+          surface={surface.state}
+          packs={[pack('provider-pack')]}
+          loadPacks={async () => undefined}
+          authoritativeSelection={selection}
+          catalogSurface={catalogSurfaceState(unavailable)}
+        />,
+      );
+    });
+    assert.match(container.textContent ?? '', /This Profile is unavailable in the verified catalog/);
+    const errorIcon = container.querySelector<SVGElement>(
+      '[data-error-icon="profile-ceremony-unavailable"]',
+    );
+    assert.ok(errorIcon);
+    assert.ok(errorIcon.classList.contains('lucide-circle-alert'));
+    const copy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy unavailable Profile diagnostics"]',
+    );
+    assert.ok(copy);
+    await act(async () => {
+      copy.click();
+      await Promise.resolve();
+    });
+    assert.equal(copied, [
+      'This Profile is unavailable in the verified catalog.',
+      'PACK_REVOKED: provider-pack',
+    ].join('\n'));
+
+    const withoutDiagnostics = catalogEntry(['provider-pack']);
+    withoutDiagnostics.available = false;
+    withoutDiagnostics.diagnostics = [];
+    const emptySelection = authoritativeSelection(withoutDiagnostics);
+    await act(async () => {
+      root.render(
+        <ProfileCeremonyPanel
+          surface={surface.state}
+          packs={[pack('provider-pack')]}
+          loadPacks={async () => undefined}
+          authoritativeSelection={emptySelection}
+          catalogSurface={catalogSurfaceState(withoutDiagnostics)}
+        />,
+      );
+    });
+    const emptyCopy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy unavailable Profile diagnostics"]',
+    );
+    assert.ok(emptyCopy);
+    await act(async () => {
+      emptyCopy.click();
+      await Promise.resolve();
+    });
+    assert.equal(copied, 'This Profile is unavailable in the verified catalog.');
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+    Object.defineProperty(globalThis, 'navigator', {value: previousNavigator, configurable: true});
+  }
+});
+
 test('Profile ceremony exposes an unknown mutation result with a status icon and stable copy action', async () => {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
@@ -474,9 +554,15 @@ test('a non-active Profile can stage and review a successor closure without acti
 test('Profile ceremony fails closed when a custom review client substitutes another candidate', async () => {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
   const {dom, container, root} = createDom();
   const surface = surfaceState();
   let approvalCalls = 0;
+  let copied = '';
+  Object.defineProperty(dom.window.navigator, 'clipboard', {
+    configurable: true,
+    value: {writeText: async (text: string) => { copied = text; }},
+  });
   const client: ProfileCeremonyClient = {
     resolve: async (): Promise<ProfileResolveResult> => ({
       state: 'resolved',
@@ -532,10 +618,23 @@ test('Profile ceremony fails closed when a custom review client substitutes anot
     assert.match(container.textContent ?? '', /different candidate/);
     assert.equal(approvalCalls, 0);
     assert.doesNotMatch(container.textContent ?? '', /Request Kernel approval/);
+    const copy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy Profile ceremony error"]',
+    );
+    assert.ok(copy);
+    await act(async () => {
+      copy.click();
+      await Promise.resolve();
+    });
+    assert.equal(copied, [
+      'Profile ceremony stopped fail-closed',
+      'DIGEST_MISMATCH: Profile review returned a different candidate than the one displayed for approval.',
+    ].join('\n'));
   } finally {
     act(() => root.unmount());
     dom.window.close();
     Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
     Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+    Object.defineProperty(globalThis, 'navigator', {value: previousNavigator, configurable: true});
   }
 });

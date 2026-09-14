@@ -682,10 +682,63 @@ test('Profile catalog failure copies the complete visible diagnostic, not a hidd
     assert.match(container.textContent ?? '', /Authoritative Profile catalog is locked/);
     assert.match(container.textContent ?? '', /The Broker rejected the signed catalog response\./);
     assert.match(container.textContent ?? '', /The last accepted definitions remain read-only until the catalog refreshes\./);
+    const errorIcon = container.querySelector<SVGElement>('[data-error-icon="profile-catalog"]');
+    assert.ok(errorIcon);
+    assert.ok(errorIcon.classList.contains('lucide-circle-alert'));
     assert.equal(copied, [
       'Authoritative Profile catalog is locked',
       'The Broker rejected the signed catalog response.',
       'The last accepted definitions remain read-only until the catalog refreshes.',
+    ].join('\n'));
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+    Object.defineProperty(globalThis, 'navigator', {value: previousNavigator, configurable: true});
+  }
+});
+
+test('Profile catalog unavailable diagnostics copy the localized heading and every visible item', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+  let copied = '';
+  const catalog = catalogEnvelope();
+  const unavailable = catalog.data.profiles[0];
+  assert.ok(unavailable);
+  unavailable.available = false;
+  unavailable.diagnostics = [
+    {code: 'PACK_REVOKED', subject: 'provider-pack'},
+    {code: 'DIGEST_MISMATCH', subject: 'shell-pack'},
+  ];
+  Object.defineProperty(dom.window.navigator, 'clipboard', {
+    configurable: true,
+    value: {writeText: async (text: string) => { copied = text; }},
+  });
+
+  try {
+    await act(async () => {
+      root.render(
+        <ProfileCatalogSelector
+          profileSurface={surfaceState()}
+          catalogSurface={catalogState(catalog)}
+          packs={[pack('provider-pack')]}
+          packsLoading={false}
+          loadPacks={async () => undefined}
+        />,
+      );
+    });
+    const copy = buttonByLabel(container, 'Copy Profile catalog diagnostics');
+    await act(async () => {
+      copy.click();
+      await Promise.resolve();
+    });
+    assert.equal(copied, [
+      'Profile is unavailable in the verified catalog.',
+      'PACK_REVOKED: provider-pack',
+      'DIGEST_MISMATCH: shell-pack',
     ].join('\n'));
   } finally {
     act(() => root.unmount());
@@ -791,6 +844,9 @@ test('Profile capability errors copy the displayed safe diagnostic instead of hi
     assert.ok(capability);
     assert.match(capability.textContent ?? '', /No accepted capability snapshot is bound to this active Profile\./);
     assert.doesNotMatch(capability.textContent ?? '', /Host-only catalog transport detail/);
+    const errorIcon = capability.querySelector<SVGElement>('[data-error-icon="profile-capability"]');
+    assert.ok(errorIcon);
+    assert.ok(errorIcon.classList.contains('lucide-circle-alert'));
     const copy = buttonByLabel(capability, 'Copy Profile capability error');
     await act(async () => {
       copy.click();

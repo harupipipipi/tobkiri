@@ -1,5 +1,5 @@
 import type {ReactNode} from 'react';
-import {AlertTriangle, CheckCircle2, Clock3, RefreshCw, ShieldAlert} from 'lucide-react';
+import {CheckCircle2, CircleAlert, Clock3, RefreshCw, ShieldAlert} from 'lucide-react';
 
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
@@ -94,6 +94,12 @@ function StatusNotice({
           : 'Action is locked and fail-closed'
         : 'Canonical v4 surface could not be loaded';
   const message = state.error?.message ?? 'No new data was accepted.';
+  const staleExplanation = 'Showing the last accepted snapshot. Actions are disabled until the authoritative surface is fresh.';
+  const diagnosticText = [
+    title,
+    message,
+    ...(state.stale ? [staleExplanation] : []),
+  ].join('\n');
 
   return (
     <div
@@ -106,14 +112,14 @@ function StatusNotice({
       role="alert"
     >
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        {state.status === 'timeout' ? <Clock3 className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" /> : isBlocked ? <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />}
+        {state.status === 'timeout' ? <Clock3 className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="surface-timeout" /> : isBlocked ? <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="surface-blocked" /> : <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" data-error-icon="surface-load" />}
         <div className="min-w-0">
           <p className="text-sm font-semibold text-text-main">{title}</p>
           <p className="mt-1 text-sm leading-6 text-text-muted">{message}</p>
-          {state.stale ? <p className="mt-1 text-xs text-text-muted">Showing the last accepted snapshot. Actions are disabled until the authoritative surface is fresh.</p> : null}
+          {state.stale ? <p className="mt-1 text-xs text-text-muted">{staleExplanation}</p> : null}
         </div>
       </div>
-      <CopyErrorButton label={`Copy ${descriptor.label} error`} text={`${title}\n${message}`} />
+      <CopyErrorButton label={`Copy ${descriptor.label} error`} text={diagnosticText} />
       <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={state.status === 'loading'}>
         <RefreshCw className="h-4 w-4" aria-hidden="true" />
         Retry
