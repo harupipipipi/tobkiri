@@ -7,6 +7,7 @@ import http.client
 import json
 import time
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import quote
@@ -60,8 +61,10 @@ from tobkiri_host.backends import (
     BackendStatus,
 )
 from tobkiri_host.effects import ProviderOutcome
+from tobkiri_host.errors import AuthorizationError
 from tobkiri_host.models import (
     ExecutionKind,
+    InvocationFrame,
     OpaqueAuthorityRef,
     RuntimeEvidence,
 )
@@ -607,14 +610,18 @@ def test_corrupt_approval_fences_captured_dependency_authority(media_server) -> 
 def test_file_operations_have_exact_distinct_callers(media_server) -> None:
     """Conversation and Media cannot cross the two signed File edges."""
 
-    _server, _session, _control, authority, _user_data = media_server
-    callers_by_operation = {
-        operation_id: {
-            grant.caller.function_id
+    _server, session, _control, authority, _user_data = media_server
+    matching_grants = {
+        operation_id: tuple(
+            grant
             for grant in authority.list_grants()
             if grant.target.operation_id == operation_id
-        }
+        )
         for operation_id in (GENERAL_FILE_OPERATION, FILE_OPERATION)
+    }
+    callers_by_operation = {
+        operation_id: {grant.caller.function_id for grant in grants}
+        for operation_id, grants in matching_grants.items()
     }
 
     assert callers_by_operation == {
@@ -624,6 +631,86 @@ def test_file_operations_have_exact_distinct_callers(media_server) -> None:
     assert callers_by_operation[GENERAL_FILE_OPERATION].isdisjoint(
         callers_by_operation[FILE_OPERATION]
     )
+    assert all(len(grants) == 1 for grants in matching_grants.values())
+    grants_by_operation = {
+        operation_id: grants[0]
+        for operation_id, grants in matching_grants.items()
+    }
+
+    domains = authority.list_domains()
+    base_context = session.context_for(
+        MEDIA_CONTRACT,
+        MEDIA_OPERATION,
+        "crossed-file-edge",
+    )
+    payload = {
+        "name": "stat",
+        "path": "sample.png",
+        "profile_id": "defaults",
+        "workspace_id": "defaults",
+        "_workspace_binding": {},
+    }
+    crossed_edges = (
+        (grants_by_operation[GENERAL_FILE_OPERATION], FILE_OPERATION),
+        (grants_by_operation[FILE_OPERATION], GENERAL_FILE_OPERATION),
+    )
+    for caller_grant, target_operation in crossed_edges:
+        caller = caller_grant.caller
+        caller_domain = next(
+            domain
+            for domain in domains
+            if caller.principal_id in domain.principal_ids
+        )
+        target_binding = session.broker._catalog.resolve(
+            FILE_CONTRACT,
+            target_operation,
+            ">=1,<2",
+        )
+        target_domain = next(
+            domain
+            for domain in domains
+            if target_binding.principal_ref.value in domain.principal_ids
+        )
+        caller_session_id = (
+            "session.provider.pack_vm."
+            f"{caller.principal_id.removeprefix('sha256:')[:24]}."
+            f"{base_context.fencing_token}"
+        )
+        session_domain, session_principal_id = authority.resolve_authenticated_session(
+            caller_session_id
+        )
+        assert session_domain == caller_domain
+        assert session_principal_id == caller.principal_id
+        crossed_context = replace(
+            base_context,
+            request_id=f"request.{uuid.uuid4().hex}",
+            trace_id=f"trace.{uuid.uuid4().hex}",
+            caller_principal=OpaqueAuthorityRef(caller.principal_id),
+            caller_session_id=caller_session_id,
+            caller_domain_id=caller_domain.domain_id,
+            caller_boot_epoch=caller_domain.boot_epoch,
+            target_domain_id=target_domain.domain_id,
+            target_boot_epoch=target_domain.boot_epoch,
+            target_backend_digest=base_context.target_backend_digest,
+            handle_namespace=f"crossed.{target_operation}",
+        )
+        frame = InvocationFrame(
+            contract_id=FILE_CONTRACT,
+            version_range=">=1,<2",
+            operation_id=target_operation,
+            payload=payload,
+        )
+        with pytest.raises(AuthorizationError, match="static authorization failed"):
+            session.broker.invoke(
+                frame,
+                crossed_context,
+                effect_scope=session.effect_scope_for(
+                    FILE_CONTRACT,
+                    caller_grant.target.operation_id,
+                    payload,
+                    crossed_context,
+                ),
+            )
 
 
 def test_pack_root_identity_rejects_root_symlink_and_detects_swap(tmp_path: Path) -> None:
