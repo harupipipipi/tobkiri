@@ -548,7 +548,7 @@ fn validate_authority_approval_open_caller(
     current_url: &Url,
     expected_port: u16,
     active_profile_id: Option<&str>,
-    active_frontend_route: Option<&str>,
+    active_application_routes: Option<&[crate::frontend_entry::VerifiedFrontendRoute]>,
 ) -> Result<(), String> {
     if !focused {
         return Err("opening an approval window requires the focused caller window".into());
@@ -565,17 +565,21 @@ fn validate_authority_approval_open_caller(
         DEFAULTSPACK_MAIN_WINDOW_LABEL => {
             let active_profile_id = active_profile_id
                 .ok_or_else(|| "approval window requires an active Profile".to_string())?;
-            let active_frontend_route = active_frontend_route.ok_or_else(|| {
-                "approval window requires an active Application frontend entry".to_string()
+            let active_application_routes = active_application_routes.ok_or_else(|| {
+                "approval window requires active Application frontend routes".to_string()
             })?;
-            crate::health_check::validate_application_route(active_frontend_route)
-                .map_err(|_| "approval window requires a valid frontend route".to_string())?;
             let encoded_profile =
                 crate::health_check::encode_profile_path_segment(active_profile_id)
                     .map_err(|_| "approval window requires a valid active Profile".to_string())?;
-            current_url.query().is_none()
+            let profile_prefix = format!("/p/{encoded_profile}");
+            let application_route = current_url.path().strip_prefix(&profile_prefix);
+            authority_application_query_is_safe(current_url)
                 && current_url.fragment().is_none()
-                && current_url.path() == format!("/p/{encoded_profile}{active_frontend_route}")
+                && application_route.is_some_and(|route| {
+                    active_application_routes
+                        .iter()
+                        .any(|declaration| declaration.matches(route))
+                })
         }
         AMBIENT_TRIGGER_WINDOW_LABEL => current_url.path() == "/ambient",
         FINGER_RECORDING_WINDOW_LABEL => current_url.path() == "/finger-recording",
@@ -587,7 +591,30 @@ fn validate_authority_approval_open_caller(
     Ok(())
 }
 
-fn active_authority_binding_for_approval(config: &AppConfig) -> Result<(String, String), String> {
+fn authority_application_query_is_safe(current_url: &Url) -> bool {
+    let mut chat_seen = false;
+    let mut pending_seen = false;
+    current_url
+        .query_pairs()
+        .all(|(key, value)| match key.as_ref() {
+            "chat" if !chat_seen => {
+                chat_seen = true;
+                (1..=128).contains(&value.len())
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            }
+            "pending" if !pending_seen => {
+                pending_seen = true;
+                value == "1"
+            }
+            _ => false,
+        })
+}
+
+fn active_authority_binding_for_approval(
+    config: &AppConfig,
+) -> Result<(String, Vec<crate::frontend_entry::VerifiedFrontendRoute>), String> {
     let authority = crate::defaultspack_authority::resolve(config)
         .map_err(|_| "approval window requires an active verified Profile".to_string())?;
     let identity = authority
@@ -595,7 +622,7 @@ fn active_authority_binding_for_approval(config: &AppConfig) -> Result<(String, 
         .map_err(|_| "approval window requires an active verified Profile".to_string())?;
     Ok((
         identity.profile_id,
-        authority.launch.frontend_entry.entry.route,
+        authority.launch.frontend_entry.application_routes.clone(),
     ))
 }
 
@@ -651,7 +678,7 @@ async fn open_authority_approval_window(
         &current_url,
         active_defaultspack_http_port(),
         active_binding.as_ref().map(|binding| binding.0.as_str()),
-        active_binding.as_ref().map(|binding| binding.1.as_str()),
+        active_binding.as_ref().map(|binding| binding.1.as_slice()),
     )?;
     open_authority_approval_window_for_app(&app, config.inner(), &request_id)
 }
@@ -866,19 +893,19 @@ async fn open_host_permissions_window(
     open_host_permissions_window_for_app(&app, config.inner())
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 const DEBUG_DEFAULTSPACK_CONTRACT_PREFIX: &str = "/api/contracts/defaultspack/";
 
-/// One authenticated, short-lived panel session used only by the debug native
-/// approval smoke.  The cookie and CSRF token stay in this thread and are
-/// never logged or exposed to the approval window.
-#[cfg(debug_assertions)]
+/// One authenticated, short-lived panel session used only by the development
+/// or non-publishable CI/E2E native approval smoke. The cookie and CSRF token
+/// stay in this thread and are never logged or exposed to the approval window.
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 struct DebugPanelSession {
     cookie: String,
     csrf_token: String,
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn truthy_env_flag(name: &str) -> bool {
     matches!(
         std::env::var(name)
@@ -890,7 +917,7 @@ fn truthy_env_flag(name: &str) -> bool {
     )
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn debug_contract_url(base_url: &str, method: &str, api_path: &str) -> AnyResult<String> {
     if !matches!(method, "GET" | "POST")
         || !api_path.starts_with("/api/")
@@ -907,7 +934,7 @@ fn debug_contract_url(base_url: &str, method: &str, api_path: &str) -> AnyResult
     ))
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn debug_contract_request_id() -> String {
     let mut bytes = [0_u8; 16];
     rand::thread_rng().fill(&mut bytes);
@@ -936,7 +963,7 @@ fn debug_contract_request_id() -> String {
     )
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn debug_panel_session(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -994,7 +1021,7 @@ fn debug_panel_session(
     Ok(DebugPanelSession { cookie, csrf_token })
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn debug_contract_request(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -1032,7 +1059,7 @@ fn debug_contract_request(
         .context("debug approval smoke contract response had no result")
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn debug_pending_interactive_request_id(value: &serde_json::Value) -> Option<&str> {
     value
         .get("approval_request_id")
@@ -1040,12 +1067,12 @@ fn debug_pending_interactive_request_id(value: &serde_json::Value) -> Option<&st
         .filter(|request_id| valid_authority_request_id(request_id))
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn debug_result_state(value: &serde_json::Value) -> Option<&str> {
     value.get("state").and_then(serde_json::Value::as_str)
 }
 
-/// Finish one debug-only native approval smoke through the same captured V4
+/// Finish one development/CI native approval smoke through the same captured V4
 /// client path that prepared it.
 ///
 /// The approval window alone may settle the Host approval record but it cannot
@@ -1055,7 +1082,7 @@ fn debug_result_state(value: &serde_json::Value) -> Option<&str> {
 /// provides a UI operator, changes production routes, or retries a resumed
 /// effect.  The Host remains the sole authority that decides whether resume
 /// can execute the effect.
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn monitor_debug_authority_smoke_settlement(
     client: &reqwest::blocking::Client,
     base_url: &str,
@@ -1183,9 +1210,16 @@ fn monitor_debug_authority_smoke_settlement(
     warn!("debug approval smoke timed out waiting for native approval settlement");
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
     if !truthy_env_flag("RUMI_AUTHORITY_TEST_AUTORUN") {
+        return;
+    }
+    if cfg!(tobkiri_ci_e2e_artifact)
+        && (app.config().identifier != ci_e2e_app_data::CI_E2E_BUNDLE_IDENTIFIER
+            || std::env::var_os(ci_e2e_app_data::CI_E2E_APP_DATA_ROOT_ENV).is_none())
+    {
+        warn!("CI/E2E authority smoke requires the non-publishable bundle and isolated app data");
         return;
     }
 
@@ -1245,6 +1279,17 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
                 .map(char::from)
                 .collect::<String>()
         );
+        let (smoke_title, smoke_summary) = if cfg!(tobkiri_ci_e2e_artifact) {
+            (
+                "Tobkiri native approval smoke (CI/E2E)",
+                "A non-publishable CI/E2E no-op command is awaiting one interactive approval.",
+            )
+        } else {
+            (
+                "Tobkiri native approval smoke (development)",
+                "A development no-op command is awaiting one interactive approval.",
+            )
+        };
         let prepared = match debug_contract_request(
             &client,
             &base_url,
@@ -1262,8 +1307,8 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
                     "timeout": 30
                 },
                 "presentation": {
-                    "title": "Tobkiri native approval smoke (debug)",
-                    "summary": "A debug-only no-op command is awaiting one interactive approval."
+                    "title": smoke_title,
+                    "summary": smoke_summary
                 }
             })),
         ) {
@@ -2994,7 +3039,7 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             let monitor_handle = app.handle().clone();
             let port = config.kernel_port;
 
-            #[cfg(debug_assertions)]
+            #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
             maybe_spawn_authority_approval_smoke_window(app.handle().clone());
 
             spawn_kernel_exit_monitor(
@@ -3734,6 +3779,16 @@ mod tests {
     #[test]
     fn authority_approval_open_requires_focused_exact_launcher_route() {
         let active_profile_id = "profile-a";
+        let application_routes = [
+            crate::frontend_entry::VerifiedFrontendRoute {
+                route: "/chat".into(),
+                route_match: "exact".into(),
+            },
+            crate::frontend_entry::VerifiedFrontendRoute {
+                route: "/coding".into(),
+                route_match: "exact".into(),
+            },
+        ];
         for (label, route) in [
             (AMBIENT_TRIGGER_WINDOW_LABEL, "/ambient"),
             (FINGER_RECORDING_WINDOW_LABEL, "/finger-recording"),
@@ -3750,15 +3805,30 @@ mod tests {
         }
 
         // A bootstrap-complete Shell is the only Defaultspack caller that can
-        // open this high-risk window: no query or fragment may survive on the
-        // exact selected frontend route for the verified active Profile.
+        // open this high-risk window. Its path must be declared by the active
+        // verified Application map; a route declaration remains presentation,
+        // not an execution grant. The pending request is independently looked
+        // up and settled by the Host authority.
         validate_authority_approval_open_caller(
             DEFAULTSPACK_MAIN_WINDOW_LABEL,
             true,
             &Url::parse("http://127.0.0.1:18771/p/profile-a/chat").unwrap(),
             18771,
             Some(active_profile_id),
-            Some("/chat"),
+            Some(&application_routes),
+        )
+        .unwrap();
+
+        validate_authority_approval_open_caller(
+            DEFAULTSPACK_MAIN_WINDOW_LABEL,
+            true,
+            &Url::parse(
+                "http://127.0.0.1:18771/p/profile-a/coding?chat=550e8400-e29b-41d4-a716-446655440000&pending=1",
+            )
+            .unwrap(),
+            18771,
+            Some(active_profile_id),
+            Some(&application_routes),
         )
         .unwrap();
 
@@ -3768,7 +3838,7 @@ mod tests {
             &Url::parse("http://127.0.0.1:18771/p/profile-a/coding").unwrap(),
             18771,
             Some(active_profile_id),
-            Some("/coding"),
+            Some(&application_routes),
         )
         .unwrap();
 
@@ -3778,7 +3848,7 @@ mod tests {
             &Url::parse("http://127.0.0.1:18771/p/profile-a/chat").unwrap(),
             18771,
             Some(active_profile_id),
-            Some("/chat"),
+            Some(&application_routes),
         )
         .is_err());
 
@@ -3823,11 +3893,19 @@ mod tests {
             ),
             (
                 DEFAULTSPACK_MAIN_WINDOW_LABEL,
-                "http://127.0.0.1:18771/p/profile-a/coding",
+                "http://127.0.0.1:18771/p/profile-a/chat?code=one-time",
             ),
             (
                 DEFAULTSPACK_MAIN_WINDOW_LABEL,
-                "http://127.0.0.1:18771/p/profile-a/chat?code=one-time",
+                "http://127.0.0.1:18771/p/profile-a/chat?chat=one&chat=two",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://127.0.0.1:18771/p/profile-a/chat?pending=0",
+            ),
+            (
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                "http://127.0.0.1:18771/p/profile-a/chat?unknown=1",
             ),
             (
                 DEFAULTSPACK_MAIN_WINDOW_LABEL,
@@ -3849,7 +3927,23 @@ mod tests {
                 &Url::parse(rejected).unwrap(),
                 18771,
                 Some(active_profile_id),
-                Some("/chat"),
+                Some(&application_routes),
+            )
+            .is_err());
+        }
+
+        for invalid_chat in [String::new(), "a".repeat(129)] {
+            let url = Url::parse(&format!(
+                "http://127.0.0.1:18771/p/profile-a/chat?chat={invalid_chat}"
+            ))
+            .unwrap();
+            assert!(validate_authority_approval_open_caller(
+                DEFAULTSPACK_MAIN_WINDOW_LABEL,
+                true,
+                &url,
+                18771,
+                Some(active_profile_id),
+                Some(&application_routes),
             )
             .is_err());
         }
@@ -3860,7 +3954,7 @@ mod tests {
             &Url::parse("http://127.0.0.1:18771/p/profile-a/chat").unwrap(),
             18771,
             None,
-            Some("/chat"),
+            Some(&application_routes),
         )
         .is_err());
 
@@ -3887,7 +3981,7 @@ mod tests {
             &canonical_unicode_url,
             18771,
             Some(unicode_profile_id),
-            Some("/chat"),
+            Some(&application_routes),
         )
         .unwrap();
 
@@ -3902,7 +3996,7 @@ mod tests {
             &noncanonical_unicode_url,
             18771,
             Some(unicode_profile_id),
-            Some("/chat"),
+            Some(&application_routes),
         )
         .is_err());
     }
@@ -4069,7 +4163,7 @@ mod tests {
         );
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
     #[test]
     fn debug_authority_smoke_uses_an_opaque_signed_contract_route() {
         assert_eq!(
@@ -4095,7 +4189,7 @@ mod tests {
         .is_err());
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
     #[test]
     fn debug_authority_smoke_request_ids_are_uuid_v4() {
         let request_id = debug_contract_request_id();
@@ -4110,7 +4204,7 @@ mod tests {
         assert_eq!(bytes[23], b'-');
     }
 
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
     #[test]
     fn debug_authority_smoke_reads_only_the_authoritative_state_field() {
         assert_eq!(

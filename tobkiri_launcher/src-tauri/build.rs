@@ -319,6 +319,7 @@ fn make_generated_tree_owner_writable(path: &Path) -> io::Result<()> {
 }
 
 fn bind_macos_artifact_policy() -> io::Result<()> {
+    println!("cargo:rustc-check-cfg=cfg(tobkiri_ci_e2e_artifact)");
     let target = required_cargo_target()?;
     let profile = required_cargo_profile()?;
     let policy =
@@ -394,6 +395,9 @@ fn bind_macos_artifact_policy() -> io::Result<()> {
         _ => return Err(invalid_release("unknown macOS artifact policy")),
     };
     println!("cargo:rustc-env=TOBKIRI_MACOS_ARTIFACT_POLICY={policy}");
+    if policy == "ci-e2e-v1" {
+        println!("cargo:rustc-cfg=tobkiri_ci_e2e_artifact");
+    }
     println!("cargo:rustc-env=TOBKIRI_MACOS_ARTIFACT_IDENTITY={identity}");
     println!(
         "cargo:rustc-env=TOBKIRI_MACOS_CI_PUBLIC_KEY={}",

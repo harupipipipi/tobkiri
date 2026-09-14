@@ -777,8 +777,62 @@ fn process_group_exists(process_group: u32) -> bool {
         return linux_process_group_has_live_members(process_group).unwrap_or(true);
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        return macos_process_group_has_live_members(process_group).unwrap_or(true);
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     true
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_group_has_live_members(process_group: u32) -> std::io::Result<bool> {
+    if process_group == 0 || process_group > i32::MAX as u32 {
+        return Err(std::io::Error::other("invalid macOS process group"));
+    }
+    let suggested =
+        unsafe { libc::proc_listpgrppids(process_group as i32, std::ptr::null_mut(), 0) };
+    if suggested <= 0 {
+        return Ok(false);
+    }
+    let capacity = (suggested as usize).saturating_mul(2).max(64);
+    let mut pids = vec![0_i32; capacity];
+    let count = unsafe {
+        libc::proc_listpgrppids(
+            process_group as i32,
+            pids.as_mut_ptr() as *mut libc::c_void,
+            (pids.len() * std::mem::size_of::<i32>()) as i32,
+        )
+    };
+    if count < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    for pid in pids.into_iter().take(count as usize).filter(|pid| *pid > 0) {
+        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        let expected = std::mem::size_of::<libc::proc_bsdinfo>();
+        let received = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                &mut info as *mut libc::proc_bsdinfo as *mut libc::c_void,
+                expected as i32,
+            )
+        };
+        if received == 0 {
+            continue;
+        }
+        if received != expected as i32 || info.pbi_pid != pid as u32 {
+            return Err(std::io::Error::other(
+                "macOS returned an invalid process-group member",
+            ));
+        }
+        if info.pbi_status != libc::SZOMB {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(target_os = "linux")]
@@ -1064,7 +1118,12 @@ mod tests {
         });
         assert!(shell_exited, "pack-shell wrapper did not exit before stop");
 
+        let started = Instant::now();
         manager.stop().unwrap();
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "orphaned process-group shutdown exceeded the responsive bound"
+        );
 
         let state = manager.lock_state().unwrap();
         assert!(state.stop_requested);

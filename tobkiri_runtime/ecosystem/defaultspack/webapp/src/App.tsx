@@ -2408,6 +2408,13 @@ export function parseSlashCommandInput(
   return { command: matchedCommand, args, raw: trimmed };
 }
 
+export function commandSupportsMode(
+  command: ComposerCommandItem,
+  mode: ComposerCommandMode,
+): boolean {
+  return command.modes?.includes(mode) === true;
+}
+
 export function parseCommandBoolean(value: unknown, fallback: boolean): boolean {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value === "boolean") return value;
@@ -5261,6 +5268,10 @@ export function ChatApp() {
     if (!parsed.command) {
       setError(`/${commandId} は未登録の command です。`);
       return;
+    }
+    if (!commandSupportsMode(parsed.command, mode as ComposerCommandMode)) {
+      setError(`/${parsed.command.name} は ${mode} mode では利用できません。`);
+      return false;
     }
     try {
       setError(null);

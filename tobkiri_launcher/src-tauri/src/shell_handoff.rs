@@ -28,10 +28,11 @@ pub(crate) const HANDOFF_ARGUMENT: &str = "--tobkiri-shell-handoff";
 const LAUNCHER_BUNDLE_IDENTIFIER: &str = "dev.rumiai.app";
 const CI_E2E_LAUNCHER_BUNDLE_IDENTIFIER: &str = "dev.tobkiri.launcher.ci-e2e";
 const MACOS_ARTIFACT_POLICY: &str = env!("TOBKIRI_MACOS_ARTIFACT_POLICY");
-// v3 existed only in the immediately preceding, unmerged Launcher selector
-// commit: no branch, tag, signed catalog, or release artifact contained it.
-// v4 is therefore a hard internal transition, not a shipped compatibility cut.
-const HANDOFF_SCHEMA: &str = "io.tobkiri.shell-handoff.v4";
+// v3 and v4 existed only in preceding commits on this unmerged branch: no tag,
+// signed catalog, or release artifact contained them. v5 is therefore a hard
+// internal transition, not a shipped compatibility cut. It binds the Shell to
+// both the Launcher PID and its kernel-reported start time.
+const HANDOFF_SCHEMA: &str = "io.tobkiri.shell-handoff.v5";
 const RECEIPT_SCHEMA: &str = "io.tobkiri.shell-handoff-ack.v1";
 const LOCAL_AUTH_PROTOCOL: &str = "io.tobkiri.local-auth.v1";
 const LOCAL_AUTH_AUDIENCE: &str = "runtime-profile";
@@ -59,6 +60,9 @@ struct ShellHandoffPayload {
     artifact_id: String,
     artifact_digest: String,
     entrypoint_digest: String,
+    launcher_pid: u32,
+    launcher_start_tvsec: u64,
+    launcher_start_tvusec: u64,
     runtime_url: String,
     created_at: u64,
     expires_at: u64,
@@ -67,12 +71,20 @@ struct ShellHandoffPayload {
 }
 
 pub(crate) struct ValidatedShellHandoff {
+    pub launcher_process: LauncherProcessIdentity,
     pub runtime_url: Url,
     pub runtime_port: u16,
     pub identity: ExecutionProfileIdentity,
     pub catalog_revision: String,
     pub artifact: ShellArtifactIdentity,
     pub receipt: ShellHandoffReceiptIdentity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LauncherProcessIdentity {
+    pub pid: u32,
+    pub start_tvsec: u64,
+    pub start_tvusec: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +162,7 @@ pub(crate) fn create_shell_handoff(
     let now = epoch_seconds()?;
     let nonce = random_component(40);
     let receipt_nonce = random_component(40);
+    let launcher_process = current_launcher_process_identity()?;
     let payload = ShellHandoffPayload {
         schema: HANDOFF_SCHEMA.to_string(),
         protocol: LOCAL_AUTH_PROTOCOL.to_string(),
@@ -163,6 +176,9 @@ pub(crate) fn create_shell_handoff(
         artifact_id: binding.artifact_id.to_string(),
         artifact_digest: binding.artifact_digest.to_string(),
         entrypoint_digest: binding.entrypoint_digest.to_string(),
+        launcher_pid: launcher_process.pid,
+        launcher_start_tvsec: launcher_process.start_tvsec,
+        launcher_start_tvusec: launcher_process.start_tvusec,
         runtime_url: runtime_url.to_string(),
         created_at: now,
         expires_at: now.saturating_add(HANDOFF_TTL_SECONDS),
@@ -571,6 +587,13 @@ fn validate_payload(
     }
     validate_sha256(&payload.artifact_digest, "artifact digest")?;
     validate_sha256(&payload.entrypoint_digest, "entrypoint digest")?;
+    if payload.launcher_pid == 0 {
+        bail!("Shell handoff Launcher process identity is invalid");
+    }
+    #[cfg(target_os = "macos")]
+    if payload.launcher_start_tvsec == 0 {
+        bail!("Shell handoff Launcher start time is invalid");
+    }
     validate_nonce(&payload.nonce, "handoff nonce")?;
     validate_nonce(&payload.receipt_nonce, "handoff receipt nonce")?;
     if payload.nonce == payload.receipt_nonce {
@@ -621,6 +644,11 @@ fn validate_payload(
         bail!("Shell runtime URL has an invalid one-time panel code");
     }
     Ok(ValidatedShellHandoff {
+        launcher_process: LauncherProcessIdentity {
+            pid: payload.launcher_pid,
+            start_tvsec: payload.launcher_start_tvsec,
+            start_tvusec: payload.launcher_start_tvusec,
+        },
         runtime_url,
         runtime_port,
         identity,
@@ -636,6 +664,46 @@ fn validate_payload(
             handoff_nonce: payload.nonce.clone(),
             receipt_nonce: payload.receipt_nonce.clone(),
         },
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn process_identity(pid: u32) -> Result<LauncherProcessIdentity> {
+    if pid == 0 || pid > i32::MAX as u32 {
+        bail!("Launcher process ID is invalid");
+    }
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let expected = std::mem::size_of::<libc::proc_bsdinfo>();
+    let received = unsafe {
+        libc::proc_pidinfo(
+            pid as i32,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            &mut info as *mut libc::proc_bsdinfo as *mut libc::c_void,
+            expected as i32,
+        )
+    };
+    if received != expected as i32 || info.pbi_pid != pid || info.pbi_start_tvsec == 0 {
+        bail!("Launcher process identity is unavailable");
+    }
+    Ok(LauncherProcessIdentity {
+        pid,
+        start_tvsec: info.pbi_start_tvsec,
+        start_tvusec: info.pbi_start_tvusec,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn current_launcher_process_identity() -> Result<LauncherProcessIdentity> {
+    process_identity(std::process::id())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_launcher_process_identity() -> Result<LauncherProcessIdentity> {
+    Ok(LauncherProcessIdentity {
+        pid: std::process::id(),
+        start_tvsec: 0,
+        start_tvusec: 0,
     })
 }
 
@@ -1356,6 +1424,7 @@ mod tests {
     #[test]
     fn payload_rejects_wrong_identity_expiry_and_non_loopback_url() {
         let now = epoch_seconds().unwrap();
+        let launcher_process = current_launcher_process_identity().unwrap();
         let base = ShellHandoffPayload {
             schema: HANDOFF_SCHEMA.into(),
             protocol: LOCAL_AUTH_PROTOCOL.into(),
@@ -1369,6 +1438,9 @@ mod tests {
             artifact_id: "fixture.shell.macos-arm64".into(),
             artifact_digest: format!("sha256:{}", "d".repeat(64)),
             entrypoint_digest: format!("sha256:{}", "e".repeat(64)),
+            launcher_pid: launcher_process.pid,
+            launcher_start_tvsec: launcher_process.start_tvsec,
+            launcher_start_tvusec: launcher_process.start_tvusec,
             runtime_url: format!(
                 "http://127.0.0.1:8766/p/profile-a/chat?code={}",
                 "c".repeat(64)
@@ -1380,6 +1452,14 @@ mod tests {
         };
         let root = std::env::temp_dir();
         assert!(validate_payload(&base, now, &root).is_ok());
+        let mut missing_launcher = serde_json::to_value(&base).unwrap();
+        missing_launcher["launcher_pid"] = serde_json::Value::from(0);
+        assert!(validate_payload(
+            &serde_json::from_value(missing_launcher).unwrap(),
+            now,
+            &root
+        )
+        .is_err());
         let mut mismatched_route_profile = serde_json::to_value(&base).unwrap();
         mismatched_route_profile["runtime_url"] = serde_json::Value::String(format!(
             "http://127.0.0.1:8766/p/profile-b/chat?code={}",
@@ -1462,6 +1542,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         prepare_private_root(&root).unwrap();
         let now = epoch_seconds().unwrap();
+        let launcher_process = current_launcher_process_identity().unwrap();
         let mut payload = ShellHandoffPayload {
             schema: HANDOFF_SCHEMA.into(),
             protocol: LOCAL_AUTH_PROTOCOL.into(),
@@ -1475,6 +1556,9 @@ mod tests {
             artifact_id: "fixture.shell.macos-arm64".into(),
             artifact_digest: format!("sha256:{}", "d".repeat(64)),
             entrypoint_digest: format!("sha256:{}", "e".repeat(64)),
+            launcher_pid: launcher_process.pid,
+            launcher_start_tvsec: launcher_process.start_tvsec,
+            launcher_start_tvusec: launcher_process.start_tvusec,
             runtime_url: format!(
                 "http://127.0.0.1:8766/p/profile-a/chat?code={}",
                 "c".repeat(64)

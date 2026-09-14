@@ -17,13 +17,15 @@ use tauri::{AppHandle, Manager};
 use crate::navigation_is_allowed;
 use crate::shell_handoff::{
     consume_shell_handoff, handoff_path_from_os_args, handoff_path_from_strings,
-    write_shell_handoff_receipt, ShellHandoffReceiptIdentity, ShellHandoffReceiptStatus,
+    write_shell_handoff_receipt, LauncherProcessIdentity, ShellHandoffReceiptIdentity,
+    ShellHandoffReceiptStatus,
 };
 
 const SHELL_ADMISSION_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ShellRuntimeBinding {
+    launcher_process: LauncherProcessIdentity,
     runtime_port: u16,
     identity: crate::host_contract::ExecutionProfileIdentity,
     catalog_revision: String,
@@ -49,6 +51,7 @@ impl ShellNavigationState {
         handoff: &crate::shell_handoff::ValidatedShellHandoff,
     ) -> ShellHandoffAdmission {
         let proposed = ShellRuntimeBinding {
+            launcher_process: handoff.launcher_process,
             runtime_port: handoff.runtime_port,
             identity: handoff.identity.clone(),
             catalog_revision: handoff.catalog_revision.clone(),
@@ -67,6 +70,7 @@ impl ShellNavigationState {
     fn stage_initial(&mut self, handoff: &crate::shell_handoff::ValidatedShellHandoff) {
         self.allowed_runtime_ports = vec![handoff.runtime_port];
         self.binding = Some(ShellRuntimeBinding {
+            launcher_process: handoff.launcher_process,
             runtime_port: handoff.runtime_port,
             identity: handoff.identity.clone(),
             catalog_revision: handoff.catalog_revision.clone(),
@@ -220,11 +224,19 @@ fn apply_handoff(
 ) -> Result<()> {
     let lifecycle_for_timeout = Arc::clone(lifecycle);
     let app_for_timeout = app.clone();
-    consume_and_apply_handoff(
-        path,
+    let handoff = consume_shell_handoff(path)?;
+    let initial_binding = navigation_state
+        .lock()
+        .map_err(|error| anyhow!("Shell navigation state lock is poisoned: {error}"))?
+        .binding
+        .is_none();
+    if initial_binding {
+        spawn_launcher_exit_monitor(app.clone(), handoff.launcher_process)?;
+    }
+    apply_validated_handoff(
+        handoff,
         navigation_state,
         lifecycle,
-        consume_shell_handoff,
         |runtime_url| {
             let window = app
                 .get_webview_window("main")
@@ -258,6 +270,120 @@ fn apply_handoff(
         },
         write_shell_handoff_receipt,
     )
+}
+
+#[cfg(target_os = "macos")]
+struct LauncherExitWatcher {
+    queue: std::os::fd::RawFd,
+    launcher_process: LauncherProcessIdentity,
+}
+
+#[cfg(target_os = "macos")]
+impl LauncherExitWatcher {
+    fn register(launcher_process: LauncherProcessIdentity) -> Result<Self> {
+        let queue = unsafe { libc::kqueue() };
+        if queue < 0 {
+            return Err(std::io::Error::last_os_error())
+                .context("failed to create Launcher lifetime watcher");
+        }
+        let watcher = Self {
+            queue,
+            launcher_process,
+        };
+        let mut change: libc::kevent = unsafe { std::mem::zeroed() };
+        change.ident = launcher_process.pid as _;
+        change.filter = libc::EVFILT_PROC;
+        change.flags = libc::EV_ADD | libc::EV_ENABLE | libc::EV_ONESHOT;
+        change.fflags = libc::NOTE_EXIT;
+        let registered = unsafe {
+            libc::kevent(
+                watcher.queue,
+                &change,
+                1,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null(),
+            )
+        };
+        if registered != 0 {
+            return Err(std::io::Error::last_os_error())
+                .context("failed to bind Shell to the Launcher lifetime");
+        }
+        // Register first so kqueue binds the kernel process object, then
+        // compare its non-reusable start time. This closes both sides of the
+        // exit/PID-reuse race around registration.
+        if crate::shell_handoff::process_identity(launcher_process.pid)? != launcher_process {
+            return Err(anyhow!("Shell handoff Launcher process identity changed"));
+        }
+        Ok(watcher)
+    }
+
+    fn wait(self) -> Result<()> {
+        let mut event: libc::kevent = unsafe { std::mem::zeroed() };
+        let observed = unsafe {
+            libc::kevent(
+                self.queue,
+                std::ptr::null(),
+                0,
+                &mut event,
+                1,
+                std::ptr::null(),
+            )
+        };
+        if observed != 1 {
+            return Err(std::io::Error::last_os_error())
+                .context("Launcher lifetime watcher stopped unexpectedly");
+        }
+        if event.flags & libc::EV_ERROR != 0 {
+            return Err(std::io::Error::from_raw_os_error(event.data as i32))
+                .context("Launcher lifetime watcher reported an error");
+        }
+        if event.ident != self.launcher_process.pid as usize
+            || event.filter != libc::EVFILT_PROC
+            || event.fflags & libc::NOTE_EXIT == 0
+        {
+            return Err(anyhow!(
+                "Launcher lifetime watcher returned an invalid event"
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for LauncherExitWatcher {
+    fn drop(&mut self) {
+        unsafe {
+            libc::close(self.queue);
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_launcher_exit_monitor(
+    app: AppHandle,
+    launcher_process: LauncherProcessIdentity,
+) -> Result<()> {
+    let watcher = LauncherExitWatcher::register(launcher_process)?;
+    std::thread::Builder::new()
+        .name("tobkiri-shell-launcher-lifetime".to_string())
+        .spawn(move || match watcher.wait() {
+            Ok(()) => app.exit(0),
+            Err(error) => {
+                error!("Tobkiri Shell Launcher lifetime watcher failed closed: {error:#}");
+                app.exit(1);
+            }
+        })
+        .context("failed to start Launcher lifetime watcher")?;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn spawn_launcher_exit_monitor(
+    _app: AppHandle,
+    _launcher_process: LauncherProcessIdentity,
+) -> Result<()> {
+    Ok(())
 }
 
 fn consume_and_apply_handoff<C, U, E, T, W>(
@@ -426,7 +552,8 @@ pub(crate) fn run(context: tauri::Context<tauri::Wry>) {
 mod tests {
     use super::*;
     use crate::shell_handoff::{
-        ShellArtifactIdentity, ShellHandoffReceiptIdentity, ValidatedShellHandoff,
+        LauncherProcessIdentity, ShellArtifactIdentity, ShellHandoffReceiptIdentity,
+        ValidatedShellHandoff,
     };
     use std::cell::{Cell, RefCell};
     use std::path::PathBuf;
@@ -434,6 +561,11 @@ mod tests {
 
     fn handoff(code: char, receipt_nonce: char) -> ValidatedShellHandoff {
         ValidatedShellHandoff {
+            launcher_process: LauncherProcessIdentity {
+                pid: std::process::id(),
+                start_tvsec: 1,
+                start_tvusec: 2,
+            },
             runtime_url: Url::parse(&format!(
                 "http://127.0.0.1:8766/?code={}",
                 code.to_string().repeat(64)
@@ -537,6 +669,10 @@ mod tests {
     #[test]
     fn every_forwarded_binding_mismatch_preserves_state_and_requests_rotation() {
         let cases: &[(&str, fn(&mut ValidatedShellHandoff))] = &[
+            ("Launcher process", |value| {
+                value.launcher_process.start_tvusec =
+                    value.launcher_process.start_tvusec.saturating_add(1)
+            }),
             ("port", |value| value.runtime_port = 9876),
             ("profile", |value| {
                 value.identity.profile_id = "profile-b".into()
@@ -608,6 +744,24 @@ mod tests {
             assert!(!exact_exit.get(), "{label}");
             assert!(!receipt_written.get(), "{label}");
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn launcher_exit_watcher_rejects_changed_identity_and_observes_exact_process_exit() {
+        let mut wrong = crate::shell_handoff::process_identity(std::process::id()).unwrap();
+        wrong.start_tvusec = wrong.start_tvusec.saturating_add(1);
+        assert!(LauncherExitWatcher::register(wrong).is_err());
+
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let identity = crate::shell_handoff::process_identity(child.id()).unwrap();
+        let watcher = LauncherExitWatcher::register(identity).unwrap();
+        child.kill().unwrap();
+        child.wait().unwrap();
+        watcher.wait().unwrap();
     }
 
     #[test]

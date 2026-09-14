@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
-const CI_E2E_BUNDLE_IDENTIFIER: &str = "dev.tobkiri.launcher.ci-e2e";
+pub(crate) const CI_E2E_BUNDLE_IDENTIFIER: &str = "dev.tobkiri.launcher.ci-e2e";
 pub(crate) const CI_E2E_APP_DATA_ROOT_ENV: &str = "TOBKIRI_CI_E2E_APP_DATA_ROOT";
 const CI_E2E_APP_DATA_ROOT_NAME: &str = "ci-e2e-app-data";
 

@@ -13,6 +13,7 @@ import {
   MIMO_CODING_DEFAULT_FAST_MODEL,
   MIMO_CODING_DEFAULT_MODEL,
   MIMO_CODING_DEFAULT_VISION_MODEL,
+  commandSupportsMode,
   frontendCommandArgs,
   keepSelectedToolsAfterSend,
   parseCommandBoolean,
@@ -57,6 +58,24 @@ function bindChatStream(body: string, init?: RequestInit): string {
     })}`;
   });
 }
+
+test("commands cannot execute outside their declared modes", () => {
+  const terminal = {
+    id: "terminal",
+    name: "terminal",
+    label: "Terminal",
+    category: "coding",
+    modes: ["coding"],
+    risk: "high",
+    visibility: "hidden",
+    execution: { type: "frontend", action: "request_terminal_approval" },
+  } satisfies ComposerCommandItem;
+
+  assert.equal(commandSupportsMode(terminal, "chat"), false);
+  assert.equal(commandSupportsMode(terminal, "agent"), false);
+  assert.equal(commandSupportsMode(terminal, "coding"), true);
+  assert.equal(commandSupportsMode({ ...terminal, modes: [] }, "chat"), false);
+});
 
 test("saved turn reconciliation is a read with no replay or caller Profile", async (context) => {
   const originalFetch = globalThis.fetch;

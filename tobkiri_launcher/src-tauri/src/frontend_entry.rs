@@ -30,6 +30,25 @@ struct FrontendEntries {
 pub(crate) struct VerifiedFrontendEntry {
     pub entry: FrontendEntry,
     pub map_digest: String,
+    /// Every route in the same verified Application map. These declarations
+    /// select presentation surfaces; they are not execution grants.
+    pub application_routes: Vec<VerifiedFrontendRoute>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerifiedFrontendRoute {
+    pub route: String,
+    pub route_match: String,
+}
+
+impl VerifiedFrontendRoute {
+    pub(crate) fn matches(&self, route: &str) -> bool {
+        route == self.route
+            || (self.route_match == "subpath"
+                && route
+                    .strip_prefix(self.route.trim_end_matches('/'))
+                    .is_some_and(|suffix| suffix.starts_with('/')))
+    }
 }
 
 /// Resolve an explicit Profile entry, or the map's explicit default.
@@ -96,9 +115,18 @@ pub(crate) fn resolve(
         .iter()
         .find(|entry| entry.entry_id == selected)
         .context("Profile frontend entry is not declared by the Application")?;
+    let application_routes = declaration
+        .entries
+        .iter()
+        .map(|candidate| VerifiedFrontendRoute {
+            route: candidate.route.clone(),
+            route_match: candidate.route_match.clone(),
+        })
+        .collect();
     Ok(VerifiedFrontendEntry {
         entry: entry.clone(),
         map_digest: map_digest.to_owned(),
+        application_routes,
     })
 }
 
@@ -152,9 +180,20 @@ mod tests {
 
     #[test]
     fn non_chat_default_and_explicit_profile_entry_are_resolved_without_first_fallback() {
+        let resolved = resolve(&map(), "digest", None).unwrap();
+        assert_eq!(resolved.entry.route, "/workbench");
         assert_eq!(
-            resolve(&map(), "digest", None).unwrap().entry.route,
-            "/workbench"
+            resolved.application_routes,
+            vec![
+                VerifiedFrontendRoute {
+                    route: "/conversation".into(),
+                    route_match: "exact".into(),
+                },
+                VerifiedFrontendRoute {
+                    route: "/workbench".into(),
+                    route_match: "exact".into(),
+                },
+            ]
         );
         assert_eq!(
             resolve(&map(), "digest", Some(&json!("chat")))
@@ -217,6 +256,31 @@ mod tests {
             let mut changed = map();
             changed["frontend"]["entries"][1][field] = json!(value);
             assert_ne!(first, resolve(&changed, "map-a", None).unwrap());
+        }
+    }
+
+    #[test]
+    fn verified_route_matching_is_exact_or_segment_bounded() {
+        let exact = VerifiedFrontendRoute {
+            route: "/chat".into(),
+            route_match: "exact".into(),
+        };
+        let subpath = VerifiedFrontendRoute {
+            route: "/share".into(),
+            route_match: "subpath".into(),
+        };
+        for route in ["/chat", "/share", "/share/one", "/share/one/two"] {
+            assert!(
+                if route == "/chat" {
+                    exact.matches(route)
+                } else {
+                    subpath.matches(route)
+                },
+                "{route}"
+            );
+        }
+        for route in ["/chat/one", "/chatty", "/shared", "/shareevil"] {
+            assert!(!exact.matches(route) && !subpath.matches(route), "{route}");
         }
     }
 }
