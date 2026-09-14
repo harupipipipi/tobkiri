@@ -1090,7 +1090,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((current) => ({packInstallPending: {...current.packInstallPending, [id]: true}}));
     let responseAccepted = false;
     try {
-      const response = await apiInstallPack(id);
+      const response = await apiInstallPack(id, {requestId: mutation.requestId});
       if (response.pack_id !== id || response.installed !== true) {
         throw new Error('Tobkiri did not confirm Pack installation.');
       }

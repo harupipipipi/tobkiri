@@ -360,8 +360,11 @@ test('install remains indeterminate while PackVM doctor readiness is unknown', a
     approvalReason: 'install_required',
     approvalIssues: ['install_required'],
   };
-  const routes = installFetch(async (route) => {
+  let installRequestId = '';
+  const routes = installFetch(async (route, init) => {
     if (route === 'POST /api/pack-control/install') {
+      installRequestId = String(new Headers(init?.headers).get('X-Tobkiri-Request-ID') ?? '');
+      assert.match(installRequestId, /^[0-9a-f-]{36}$/i);
       return new Response(JSON.stringify({
         success: true,
         data: {...binding(), pack_id: samplePack.id, installed: true},
@@ -374,6 +377,10 @@ test('install remains indeterminate while PackVM doctor readiness is unknown', a
       }), {headers: {'Content-Type': 'application/json'}});
     }
     if (route.startsWith('GET /api/runtime-surface/operation-status?')) {
+      assert.equal(
+        new URLSearchParams(route.split('?', 2)[1]).get('request_id'),
+        installRequestId,
+      );
       return operationStatusResponse(route, 'pack.install');
     }
     assert.equal(route, 'GET /api/ui/catalog');
