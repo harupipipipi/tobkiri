@@ -3127,8 +3127,11 @@ def test_guest_runner_executes_only_the_explicit_staged_python_abi(tmp_path: Pat
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {
-        "operation_id": "example-pack.inspect",
-        "value": 7,
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": {
+            "operation_id": "example-pack.inspect",
+            "value": 7,
+        },
     }
 
     implementation.write_text("RESULT = {}\n", encoding="utf-8")
