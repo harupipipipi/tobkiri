@@ -650,6 +650,7 @@ def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exi
     class CancellableBackend(FakeBackend):
         def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
             assert request.cancellation_requested is parent.cancellation_requested
+            assert request.nested_cancellation_proof is proof
             self.invocations += 1
             entered.set()
             assert parent.cancellation_requested.wait(timeout=2)

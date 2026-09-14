@@ -1936,6 +1936,9 @@ def capture_production_dispatch(
         parent_cancellation = getattr(outer_request, "cancellation_requested", None)
         if type(parent_cancellation) is not threading.Event:
             raise AuthorityDenied("PackVM capability bridge cancellation signal is missing")
+        parent_cancellation_proof = getattr(
+            outer_request, "nested_cancellation_proof", None
+        )
         bridge_authority_session_id = bind_nested_session(
             bridge_session_id,
             outer_edge.target.principal_id,
@@ -1948,6 +1951,7 @@ def capture_production_dispatch(
                 {**dict(request), "_session_id": bridge_session_id},
                 parent_deadline_monotonic=parent_deadline,
                 parent_cancellation=parent_cancellation,
+                parent_cancellation_proof=parent_cancellation_proof,
             )
             if not isinstance(provider_result, Mapping):
                 raise TypeError("verified Provider capability returned a non-object")

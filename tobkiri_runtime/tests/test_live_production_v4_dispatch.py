@@ -587,9 +587,11 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             "requirements": {"request_surface": "defaultspack.conversation"},
         }
         bridge_request = _ai_bridge_request(request)
+        nested_cancellation_proof = object()
         outer = SimpleNamespace(
             deadline_monotonic=time.monotonic() + 30,
             cancellation_requested=threading.Event(),
+            nested_cancellation_proof=nested_cancellation_proof,
             context=context,
             target_principal=OpaqueAuthorityRef(target.principal_id),
             target_domain=OpaqueAuthorityRef(context.target_domain_id),
@@ -608,11 +610,13 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             version_range: str | None = None,
             parent_deadline_monotonic: float | None = None,
             parent_cancellation: threading.Event | None = None,
+            parent_cancellation_proof: object | None = None,
         ) -> dict[str, object]:
             assert self is session
             assert version_range is None
             assert parent_deadline_monotonic == outer.deadline_monotonic
             assert parent_cancellation is outer.cancellation_requested
+            assert parent_cancellation_proof is nested_cancellation_proof
             invocations.append((contract_id, operation_id, dict(payload)))
             return {"content": "verified completion"}
 
@@ -695,8 +699,18 @@ def test_packvm_bridge_uses_only_the_captured_ai_capability(
             version_range: str | None = None,
             parent_deadline_monotonic: float | None = None,
             parent_cancellation: threading.Event | None = None,
+            parent_cancellation_proof: object | None = None,
         ) -> dict[str, object]:
-            del self, contract_id, operation_id, payload, version_range
+            del (
+                self,
+                contract_id,
+                operation_id,
+                payload,
+                version_range,
+                parent_deadline_monotonic,
+                parent_cancellation,
+                parent_cancellation_proof,
+            )
             raise GlobalContractInvocationError(
                 "missing_provider",
                 "no selected provider",

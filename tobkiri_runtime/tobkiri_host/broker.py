@@ -135,6 +135,11 @@ class RequestEnvelope:
     idempotency_key: str | None
     resource_reservation_id: str | None = None
     cancellation_requested: threading.Event = field(default_factory=threading.Event)
+    nested_cancellation_proof: NestedCancellationProof | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
 
 @dataclass(frozen=True)
@@ -539,6 +544,7 @@ class RequestBroker:
                     cancellation_requested
                     if cancellation_requested is not None else threading.Event()
                 ),
+                nested_cancellation_proof=nested_cancellation_proof,
             )
             return self._dispatch(
                 backend,
