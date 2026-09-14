@@ -764,6 +764,50 @@ test('activation verification waits through a slow restart without submitting an
   assert.equal(reads, 1);
 });
 
+test('additive Profile review allows a slow bounded read without replaying it', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json', import.meta.url,
+  ), 'utf8'));
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/setup/packs?include_source_additions=true');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: fixture})),
+    ), 11_000));
+  };
+  const pending = fetchDefaultsSetupState({includeSourceAdditions: true});
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(11_000);
+  assert.equal((await pending).state, fixture.state);
+  assert.equal(reads, 1);
+});
+
+test('additive Profile review stops at its bounded read deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/setup/packs?include_source_additions=true');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+  const bounded = assert.rejects(
+    fetchDefaultsSetupState({includeSourceAdditions: true}),
+    /GET request timed out after 60000ms: GET:\/api\/setup\/packs\?include_source_additions=true/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(60_000);
+  await bounded;
+  assert.equal(reads, 1);
+});
+
 test('Defaults activation allows the bounded cold start and still has a hard deadline', async (context) => {
   context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
   const fixture = JSON.parse(readFileSync(new URL(

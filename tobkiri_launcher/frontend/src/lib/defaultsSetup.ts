@@ -372,12 +372,13 @@ export async function fetchDefaultsSetupState(
   // Restart may close the connection before a response arrives. Retry only
   // transport failures of this read; integrity/auth errors and POSTs are final.
   const deadline = Date.now() + 60_000;
+  const needsExtendedRead = options.waitForRestart || options.includeSourceAdditions;
   while (true) {
     try {
       return parseDefaultsSetupState(await apiFetch<unknown>(
         options.includeSourceAdditions
           ? '/api/setup/packs?include_source_additions=true' : '/api/setup/packs',
-        {}, options.waitForRestart
+        {}, needsExtendedRead
           ? {timeoutMs: Math.max(1, deadline - Date.now())} : {},
       ));
     } catch (error) {
