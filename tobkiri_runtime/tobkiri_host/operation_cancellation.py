@@ -80,6 +80,19 @@ class _NestedCancellationProof:
             and owner_session == self._owner_session
         )
 
+    def validate_parent(self, cancellation_requested: threading.Event) -> None:
+        """Require the exact live outer cancellation signal without mutation."""
+
+        with self._registry._lock:
+            if (
+                self._registry._records.get(self._key) is not self
+                or self._scope_exited
+                or self._cancellation_requested
+                or cancellation_requested is not self._envelope.cancellation_requested
+                or cancellation_requested.is_set()
+            ):
+                raise PermissionError("nested cancellation parent is unavailable")
+
     def reserve_child(self, envelope: RequestEnvelope) -> int:
         """Reserve one child before submission so cancellation cannot miss it."""
 

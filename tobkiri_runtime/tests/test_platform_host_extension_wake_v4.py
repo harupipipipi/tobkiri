@@ -27,6 +27,7 @@ from tobkiri_host.artifact_materialization import (
     MaterializedPackArtifact,
 )
 from tobkiri_host.backends import production_backend_registry
+from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.contracts import OperationCatalog, OperationRoute
 from tobkiri_host.errors import (
     AuthorizationError,
@@ -47,6 +48,12 @@ from tobkiri_host.models import (
     OpaqueAuthorityRef,
     PackArtifact,
     PackageKind,
+    RequestContext,
+)
+from tobkiri_host.operation_cancellation import (
+    OwnedCancellationBinding,
+    OwnedCancellationHandles,
+    nested_cancellation_proof_for,
 )
 from tobkiri_host.platform_backends import (
     IsolationLaunch,
@@ -157,6 +164,53 @@ def materialized_artifact() -> MaterializedPackArtifact:
         root_inode=2,
         files=(artifact_file,),
     )
+
+
+def cancellation_parent() -> tuple[RequestEnvelope, OwnedCancellationBinding]:
+    """Create one live-proof-capable outer request for platform adapter tests."""
+
+    context = RequestContext(
+        request_id="outer-platform-request",
+        trace_id="outer-platform-trace",
+        caller_principal=OpaqueAuthorityRef("authority:platform-caller"),
+        profile_id="profile-platform",
+        activation_id="activation-platform",
+        activation_digest=digest("platform-activation"),
+        plan_digest=digest("platform-plan"),
+        security_epoch=1,
+        caller_session_id="platform-caller-session",
+        caller_domain_id="platform-caller-domain",
+        caller_boot_epoch=1,
+        target_domain_id="platform-target-domain",
+        target_boot_epoch=1,
+        target_backend_digest=digest("platform-target-backend"),
+        profile_authority_digest=digest("platform-authority"),
+        fencing_token=1,
+        handle_namespace="platform-handles",
+    )
+    envelope = RequestEnvelope(
+        context=context,
+        target_principal=OpaqueAuthorityRef("authority:platform-target"),
+        target_domain=OpaqueAuthorityRef("domain:platform-target"),
+        contract_id="platform.contract",
+        contract_version="1.0.0",
+        operation_id="invoke",
+        payload={},
+        request_digest=digest("platform-request"),
+        deadline_monotonic=time.monotonic() + 30,
+        lease=OpaqueInvocationLease(b"platform-lease"),
+        idempotency_key=None,
+    )
+    handles = OwnedCancellationHandles()
+    binding = handles.bind(
+        group=("pack", "platform"),
+        role="execute",
+        envelope=envelope,
+        owner_principal="platform-owner",
+        owner_session="platform-session",
+        guard=lambda: None,
+    )
+    return envelope, binding
 
 
 class Driver:
@@ -311,17 +365,32 @@ def test_platform_bridge_carries_private_proof_outside_provider_envelope() -> No
 
     backend.bind_capability_bridge(bridge)
     evidence = backend.materialize(binding(), "reservation-bridge")
-    request = SimpleNamespace(
-        target_domain=SimpleNamespace(value=evidence.domain_ref.value),
-        context=SimpleNamespace(request_id="request-bridge"),
-        cancellation_requested=Event(),
+    parent, cancellation_binding = cancellation_parent()
+    request = replace(
+        parent,
+        target_domain=evidence.domain_ref,
+        context=replace(parent.context, request_id="request-bridge"),
     )
-    proof = object()
-
-    assert backend.invoke_with_nested_cancellation_proof(request, proof) == {
-        "proof": True
-    }
-    request.context.request_id = "request-without-proof"
+    with cancellation_binding.track("turn"):
+        proof = nested_cancellation_proof_for(
+            parent,
+            "platform-owner",
+            "platform-session",
+        )
+        assert proof is not None
+        assert backend.invoke_with_nested_cancellation_proof(request, proof) == {
+            "proof": True
+        }
+    forged_request = replace(
+        request,
+        context=replace(request.context, request_id="request-forged-proof"),
+    )
+    with pytest.raises(BackendUnavailableError, match="proof is invalid"):
+        backend.invoke_with_nested_cancellation_proof(forged_request, object())
+    request = replace(
+        request,
+        context=replace(request.context, request_id="request-without-proof"),
+    )
     assert backend.invoke(request) == {"proof": False}
     assert observed_proofs == [proof, None]
 
@@ -371,16 +440,22 @@ def test_saved_platform_preflight_and_bridge_share_private_proof() -> None:
 
     backend.bind_saved_capability_bridge(bridge, preflight)
     evidence = backend.materialize(binding(), "reservation-saved")
-    request = SimpleNamespace(
-        target_domain=SimpleNamespace(value=evidence.domain_ref.value),
-        context=SimpleNamespace(request_id="request-saved"),
-        cancellation_requested=Event(),
+    parent, cancellation_binding = cancellation_parent()
+    request = replace(
+        parent,
+        target_domain=evidence.domain_ref,
+        context=replace(parent.context, request_id="request-saved"),
     )
-    proof = object()
-
-    assert backend.invoke_with_nested_cancellation_proof(request, proof) == {
-        "proof": True
-    }
+    with cancellation_binding.track("turn"):
+        proof = nested_cancellation_proof_for(
+            parent,
+            "platform-owner",
+            "platform-session",
+        )
+        assert proof is not None
+        assert backend.invoke_with_nested_cancellation_proof(request, proof) == {
+            "proof": True
+        }
     assert observed_proofs == [("preflight", proof), ("bridge", proof)]
 
 

@@ -767,6 +767,62 @@ def test_forged_parent_cancellation_proof_is_rejected_before_resolution() -> Non
         fixture.broker.close()
 
 
+def test_foreign_and_stale_parent_proofs_are_rejected_before_resolution() -> None:
+    """A real proof is useful only with its exact live outer signal."""
+
+    parent = RequestEnvelope(
+        context=context(),
+        target_principal=OpaqueAuthorityRef("provider"),
+        target_domain=OpaqueAuthorityRef("domain"),
+        contract_id="contract",
+        contract_version="1.0.0",
+        operation_id="operation",
+        payload={},
+        request_digest=digest("outer-proof-parent"),
+        deadline_monotonic=time.monotonic() + 2,
+        lease=OpaqueInvocationLease(b"outer-proof-lease"),
+        idempotency_key=None,
+    )
+    handles = OwnedCancellationHandles()
+    execute = handles.bind(
+        group=("pack", "saved-turn"),
+        role="execute",
+        envelope=parent,
+        owner_principal="presentation-owner",
+        owner_session="presentation-session",
+        guard=lambda: None,
+    )
+    fixture = make_broker()
+    try:
+        with execute.track("turn"):
+            proof = nested_cancellation_proof_for(
+                parent,
+                "presentation-owner",
+                "presentation-session",
+            )
+            assert proof is not None
+            with pytest.raises(ValueError, match="cancellation proof is invalid"):
+                fixture.broker.invoke(
+                    frame(),
+                    context(),
+                    effect_scope={},
+                    parent_cancellation=Event(),
+                    parent_cancellation_proof=proof,
+                )
+            assert fixture.events == []
+        with pytest.raises(ValueError, match="cancellation proof is invalid"):
+            fixture.broker.invoke(
+                frame(),
+                context(),
+                effect_scope={},
+                parent_cancellation=parent.cancellation_requested,
+                parent_cancellation_proof=proof,
+            )
+        assert fixture.events == []
+    finally:
+        fixture.broker.close()
+
+
 def test_unstopped_cancelled_provider_keeps_admission_charged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

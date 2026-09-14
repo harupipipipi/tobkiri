@@ -453,6 +453,24 @@ class ProductionIsolationBackend:
     ) -> object:
         """Invoke with one Broker-authenticated proof hidden from the request."""
 
+        if proof is not None:
+            from .operation_cancellation import _NestedCancellationProof
+
+            cancellation_requested = getattr(request, "cancellation_requested", None)
+            if (
+                type(proof) is not _NestedCancellationProof
+                or type(cancellation_requested) is not threading.Event
+            ):
+                raise BackendUnavailableError(
+                    "nested platform cancellation proof is invalid"
+                )
+            try:
+                proof.validate_parent(cancellation_requested)
+            except PermissionError as exc:
+                raise BackendUnavailableError(
+                    "nested platform cancellation proof is invalid"
+                ) from exc
+
         if hasattr(self._nested_cancellation_context, "proof"):
             raise BackendUnavailableError(
                 "nested platform cancellation context is already active"

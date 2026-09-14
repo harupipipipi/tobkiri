@@ -98,6 +98,9 @@ class RequestAdmissionPort(Protocol):
 class NestedCancellationProof(Protocol):
     """Private Host proof for one exact nested Broker Future tree."""
 
+    def validate_parent(self, cancellation_requested: threading.Event) -> None:
+        """Reject a foreign, stale, or already-cancelled parent scope."""
+
     def reserve_child(self, envelope: "RequestEnvelope") -> int:
         """Reserve a child before Broker submission."""
 
@@ -349,6 +352,12 @@ class RequestBroker:
 
             if type(parent_cancellation_proof) is not _NestedCancellationProof:
                 raise ValueError("parent cancellation proof is invalid")
+            try:
+                parent_cancellation_proof.validate_parent(
+                    cast(threading.Event, parent_cancellation)
+                )
+            except PermissionError as exc:
+                raise ValueError("parent cancellation proof is invalid") from exc
         if parent_deadline_monotonic is not None:
             if (
                 type(parent_deadline_monotonic) not in (int, float)
