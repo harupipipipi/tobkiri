@@ -59,6 +59,10 @@ from tobkiri_host.models import (
     RequestContext,
     RuntimeEvidence,
 )
+from tobkiri_host.operation_cancellation import (
+    OwnedCancellationHandles,
+    nested_cancellation_proof_for,
+)
 from tobkiri_host.ports import (
     OpaqueAuditReservation,
     OpaqueInvocationLease,
@@ -596,6 +600,128 @@ def test_parent_cancellation_targets_inner_request_without_claiming_termination(
     assert fixture.backend.cancelled == ["inner-request"]
     assert fixture.backend.invocations == 1
     assert fixture.authority.fenced == ["inner-request"]
+    assert "audit_committed" not in fixture.events
+
+
+@pytest.mark.parametrize(
+    ("cancel_fails", "release_on_cancel", "confirmed"),
+    [(False, True, True), (True, True, False), (False, False, False)],
+)
+def test_broker_nested_cancellation_proof_requires_acknowledged_exact_future_exit(
+    cancel_fails: bool,
+    release_on_cancel: bool,
+    confirmed: bool,
+) -> None:
+    """Broker wiring cannot turn a late result into a stopped confirmation."""
+
+    parent = RequestEnvelope(
+        context=context(),
+        target_principal=OpaqueAuthorityRef("provider"),
+        target_domain=OpaqueAuthorityRef("domain"),
+        contract_id="contract",
+        contract_version="1.0.0",
+        operation_id="operation",
+        payload={},
+        request_digest=digest("outer-request"),
+        deadline_monotonic=time.monotonic() + 2,
+        lease=OpaqueInvocationLease(b"outer-lease"),
+        idempotency_key=None,
+    )
+    stop = replace(parent, cancellation_requested=Event())
+    handles = OwnedCancellationHandles()
+    execute = handles.bind(
+        group=("pack", "saved-turn"),
+        role="execute",
+        envelope=parent,
+        owner_principal="presentation-owner",
+        owner_session="presentation-session",
+        guard=lambda: None,
+    )
+    cancel = handles.bind(
+        group=("pack", "saved-turn"),
+        role="stop",
+        envelope=stop,
+        owner_principal="presentation-owner",
+        owner_session="presentation-session",
+        guard=lambda: None,
+    )
+    entered, release, child_exited, worker_completed = (Event() for _ in range(4))
+
+    class CancellableBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            assert request.cancellation_requested is parent.cancellation_requested
+            self.invocations += 1
+            entered.set()
+            assert parent.cancellation_requested.wait(timeout=2)
+            try:
+                assert release.wait()
+                # A late successful value must remain fenced by Broker cancellation.
+                return self.outcome
+            finally:
+                child_exited.set()
+
+        def cancel(self, request_id: str) -> None:
+            super().cancel(request_id)
+            if release_on_cancel:
+                release.set()
+            if cancel_fails:
+                raise RuntimeError("test cancellation failed")
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=1000,
+        backend=CancellableBackend([]),
+    )
+    worker_errors: list[BaseException] = []
+    observation = None
+    worker: Thread | None = None
+    try:
+        with execute.track("turn"):
+            proof = nested_cancellation_proof_for(
+                parent, "presentation-owner", "presentation-session"
+            )
+            assert proof is not None
+
+            def invoke_child() -> None:
+                try:
+                    fixture.broker.invoke(
+                        frame(1000),
+                        context(),
+                        effect_scope={},
+                        parent_deadline_monotonic=parent.deadline_monotonic,
+                        parent_cancellation=parent.cancellation_requested,
+                        parent_cancellation_proof=proof,
+                    )
+                except BaseException as exc:
+                    worker_errors.append(exc)
+                finally:
+                    worker_completed.set()
+
+            worker = Thread(target=invoke_child)
+            worker.start()
+            assert entered.wait(timeout=2)
+            observation = cancel.request("turn")
+            assert worker_completed.wait(timeout=2)
+            if not release_on_cancel:
+                assert not child_exited.is_set()
+            assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
+        assert observation is not None
+        assert observation.wait_for_verified_drain(time.monotonic() + 0.1) is confirmed
+    finally:
+        release.set()
+        assert child_exited.wait(timeout=2)
+        if worker is not None:
+            worker.join(timeout=2)
+        fixture.broker.close()
+
+    expected = (
+        ProviderExecutionError
+        if cancel_fails
+        else RequestCancellationRequestedError
+    )
+    assert len(worker_errors) == 1
+    assert isinstance(worker_errors[0], expected)
+    assert fixture.backend.cancelled == ["request-1"]
     assert "audit_committed" not in fixture.events
 
 

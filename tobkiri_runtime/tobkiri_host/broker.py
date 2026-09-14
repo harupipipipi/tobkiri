@@ -95,6 +95,29 @@ class RequestAdmissionPort(Protocol):
         """Release all queue/workload charges for the ticket."""
 
 
+class NestedCancellationProof(Protocol):
+    """Private Host proof for one exact nested Broker Future tree."""
+
+    def reserve_child(self, envelope: "RequestEnvelope") -> int:
+        """Reserve a child before Broker submission."""
+
+    def abandon_child(self, child_id: int) -> None:
+        """Discard a reservation which never submitted work."""
+
+    def bind_child(self, child_id: int, future: Future[object]) -> None:
+        """Bind one exact Future to its reservation."""
+
+    def record_queued_cancellation(
+        self, child_id: int, future: Future[object]
+    ) -> None:
+        """Record an unstarted Future cancellation."""
+
+    def record_backend_cancellation(
+        self, child_id: int, future: Future[object]
+    ) -> None:
+        """Record successful authenticated backend cancellation."""
+
+
 @dataclass(frozen=True)
 class RequestEnvelope:
     """Host-generated provider envelope; caller identity is never payload data."""
@@ -308,6 +331,7 @@ class RequestBroker:
         allow_lossy_adapters: bool = False,
         parent_deadline_monotonic: float | None = None,
         parent_cancellation: threading.Event | None = None,
+        parent_cancellation_proof: NestedCancellationProof | None = None,
     ) -> Mapping[str, Any]:
         """Resolve, admit, materialize, authorize, dispatch, and validate."""
         with self._lifecycle_lock:
@@ -318,6 +342,8 @@ class RequestBroker:
                 raise ValueError("parent cancellation signal is invalid")
             if parent_cancellation.is_set():
                 raise RequestCancellationRequestedError("parent cancellation was requested")
+        elif parent_cancellation_proof is not None:
+            raise ValueError("parent cancellation proof requires a cancellation signal")
         if parent_deadline_monotonic is not None:
             if (
                 type(parent_deadline_monotonic) not in (int, float)
@@ -345,6 +371,7 @@ class RequestBroker:
             monotonic_clock=time.monotonic,
             before_dispatch=None,
             cancellation_requested=parent_cancellation,
+            nested_cancellation_proof=parent_cancellation_proof,
         )
 
     def invoke_prepared(
@@ -405,6 +432,7 @@ class RequestBroker:
         monotonic_clock: Callable[[], float],
         before_dispatch: Callable[[], None] | None,
         cancellation_requested: threading.Event | None = None,
+        nested_cancellation_proof: NestedCancellationProof | None = None,
     ) -> Mapping[str, Any]:
         """Run the shared static-auth through dispatch pipeline once."""
 
@@ -521,6 +549,7 @@ class RequestBroker:
                 monotonic_clock,
                 before_dispatch,
                 background_requests,
+                nested_cancellation_proof,
             )
         except Exception:
             if lease_issued:
@@ -704,8 +733,11 @@ class RequestBroker:
         monotonic_clock: Callable[[], float],
         before_dispatch: Callable[[], None] | None,
         background_requests: list[Future[object]],
+        nested_cancellation_proof: NestedCancellationProof | None,
     ) -> Mapping[str, Any]:
         future: Future[object] | None = None
+        proof = nested_cancellation_proof
+        child_id: int | None = None
         try:
             self._authority.recheck_effect_boundary(
                 envelope.context,
@@ -718,12 +750,33 @@ class RequestBroker:
                 before_dispatch()
             if envelope.cancellation_requested.is_set():
                 raise RequestCancellationRequestedError("request cancellation was requested")
+            if proof is not None:
+                try:
+                    child_id = proof.reserve_child(envelope)
+                except PermissionError as exc:
+                    raise RequestCancellationRequestedError(
+                        "nested cancellation scope is unavailable"
+                    ) from exc
+                if envelope.cancellation_requested.is_set():
+                    proof.abandon_child(child_id)
+                    child_id = None
+                    raise RequestCancellationRequestedError(
+                        "request cancellation was requested"
+                    )
             operation_context = contextvars.copy_context()
-            future = self._executor.submit(
-                operation_context.run,
-                backend.invoke,
-                envelope,
-            )
+            try:
+                future = self._executor.submit(
+                    operation_context.run,
+                    backend.invoke,
+                    envelope,
+                )
+            except Exception:
+                if proof is not None and child_id is not None:
+                    proof.abandon_child(child_id)
+                    child_id = None
+                raise
+            if proof is not None and child_id is not None:
+                proof.bind_child(child_id, future)
             while True:
                 if envelope.cancellation_requested.is_set():
                     raise RequestCancellationRequestedError("request cancellation was requested")
@@ -773,8 +826,14 @@ class RequestBroker:
                 # request yet.  Once execution has started, authenticated
                 # backend cancellation remains mandatory.
                 queued_work_cancelled = future is not None and future.cancel()
-                if future is not None and not queued_work_cancelled:
-                    backend.cancel(envelope.context.request_id)
+                if future is not None:
+                    if queued_work_cancelled:
+                        if proof is not None and child_id is not None:
+                            proof.record_queued_cancellation(child_id, future)
+                    else:
+                        backend.cancel(envelope.context.request_id)
+                        if proof is not None and child_id is not None:
+                            proof.record_backend_cancellation(child_id, future)
             except Exception as cancel_exc:
                 cancellation_error = cancel_exc
             ambiguous = (

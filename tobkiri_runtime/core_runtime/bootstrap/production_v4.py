@@ -31,7 +31,11 @@ from tobkiri_host.contracts import (
     StructuralAdapter,
 )
 from tobkiri_host.effects import InMemoryReconciliationStore
-from tobkiri_host.operation_cancellation import OwnedCancellationBinding, OwnedCancellationHandles
+from tobkiri_host.operation_cancellation import (
+    OwnedCancellationBinding,
+    OwnedCancellationHandles,
+    nested_cancellation_proof_for,
+)
 from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.models import (
     ArtifactVariant,
@@ -2322,6 +2326,11 @@ def capture_production_dispatch(
                     version_range=version_range,
                     parent_deadline_monotonic=self._envelope.deadline_monotonic,
                     parent_cancellation=self._envelope.cancellation_requested,
+                    parent_cancellation_proof=nested_cancellation_proof_for(
+                        self._envelope,
+                        self._presentation_owner[0],
+                        self._presentation_owner[1],
+                    ),
                 )
             finally:
                 release_nested_session(nested_session_id, nested_authority_session_id)

@@ -5,6 +5,7 @@ from pathlib import Path
 import copy
 import json
 import threading
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -74,11 +75,15 @@ def test_stop_factory_does_not_treat_host_scope_exit_as_nested_termination(
 
     def request(turn_id: str) -> Any:
         requests.append(turn_id)
-        return SimpleNamespace(completed=completed)
+        return SimpleNamespace(
+            completed=completed,
+            wait_for_verified_drain=lambda _deadline: False,
+        )
 
     invocation = SimpleNamespace(
         cancellation=SimpleNamespace(request=request),
         assert_current=lambda: fences.append("checked"),
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
     )
     factory = TurnHostFactoryV4("stop")
     invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
@@ -92,6 +97,40 @@ def test_stop_factory_does_not_treat_host_scope_exit_as_nested_termination(
     }
     assert requests == ["saved-turn"]
     assert fences == ["checked"]
+
+
+def test_stop_factory_returns_confirmed_only_for_private_verified_drain(
+    tmp_path: Path,
+) -> None:
+    """The turn contract projects only a bounded Host drain confirmation."""
+
+    requests: list[str] = []
+    fences: list[str] = []
+
+    def request(turn_id: str) -> Any:
+        requests.append(turn_id)
+        return SimpleNamespace(
+            completed=threading.Event(),
+            wait_for_verified_drain=lambda _deadline: True,
+        )
+
+    invocation = SimpleNamespace(
+        cancellation=SimpleNamespace(request=request),
+        assert_current=lambda: fences.append("checked"),
+        envelope=SimpleNamespace(deadline_monotonic=time.monotonic() + 1),
+    )
+    factory = TurnHostFactoryV4("stop")
+    invoke = factory.capture(_context(tmp_path, factory)).contributions[0].invoke
+
+    result = invoke(factory.operation_id, {"turn_id": "saved-turn"}, invocation)
+
+    assert result == {
+        "status": "stopped_confirmed",
+        "turn_id": "saved-turn",
+        "stopped": True,
+    }
+    assert requests == ["saved-turn"]
+    assert fences == ["checked", "checked"]
 
 
 def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) -> None:

@@ -79,10 +79,26 @@ class TurnHostFactoryV4:
                 if operation_id != self.operation_id or set(values) != {"turn_id"}:
                     raise PermissionError("stop requires only an existing turn ID")
                 turn_id = _identifier(values["turn_id"])
-                invocation.cancellation.request(turn_id)
+                observation = invocation.cancellation.request(turn_id)
                 invocation.assert_current()
-                # A Host scope can exit while a nested Broker future or guest
-                # still runs. Its exit Event is not termination evidence.
+                deadline = getattr(
+                    getattr(invocation, "envelope", None), "deadline_monotonic", None
+                )
+                verified_drained = (
+                    isinstance(deadline, (int, float))
+                    and not isinstance(deadline, bool)
+                    and observation.wait_for_verified_drain(float(deadline))
+                )
+                if verified_drained:
+                    invocation.assert_current()
+                    return {
+                        "status": "stopped_confirmed",
+                        "turn_id": turn_id,
+                        "stopped": True,
+                    }
+                # An unavailable observation, stale capture, timeout, lost
+                # backend cancellation, or live child Future remains only a
+                # request.  No Provider/guest detail reaches the contract.
                 return {
                     "status": "cancellation_requested",
                     "turn_id": turn_id,

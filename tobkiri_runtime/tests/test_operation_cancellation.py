@@ -1,7 +1,7 @@
 """Live cancellation is owner-scoped and never a durable completion proof."""
 
 from dataclasses import replace
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import nullcontext
 import threading
 import time
@@ -10,7 +10,10 @@ import pytest
 
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.models import OpaqueAuthorityRef
-from tobkiri_host.operation_cancellation import OwnedCancellationHandles
+from tobkiri_host.operation_cancellation import (
+    OwnedCancellationHandles,
+    nested_cancellation_proof_for,
+)
 from tobkiri_host.ports import OpaqueInvocationLease
 from tests.test_tobkiri_host_execution_integration import context, digest
 
@@ -32,6 +35,24 @@ def _binding(registry, envelope, role, **overrides):
     }
     values.update(overrides)
     return registry.bind(envelope=envelope, role=role, **values)
+
+
+def _child_envelope(parent: RequestEnvelope) -> RequestEnvelope:
+    """Create an exact nested envelope sharing the Host-only parent signal."""
+
+    return replace(
+        _envelope(),
+        cancellation_requested=parent.cancellation_requested,
+        deadline_monotonic=parent.deadline_monotonic,
+    )
+
+
+def _tracked_execution_and_stop():
+    registry = OwnedCancellationHandles()
+    execution, stop = _envelope(), _envelope()
+    execute = _binding(registry, execution, "execute")
+    cancel = _binding(registry, stop, "stop")
+    return registry, execution, execute, cancel
 
 
 def test_request_signals_only_live_execution_without_discarding_handle() -> None:
@@ -70,7 +91,7 @@ def test_foreign_owner_or_group_cannot_signal(override) -> None:
     ("profile_id", "other"), ("profile_revision", digest("revision")),
     ("activation_id", "other"), ("activation_digest", digest("activation")),
     ("plan_digest", digest("plan")), ("profile_authority_digest", digest("authority")),
-    ("security_epoch", 10),
+    ("security_epoch", 10), ("fencing_token", 2),
 ])
 def test_foreign_capture_cannot_signal(field, value) -> None:
     registry, execution = OwnedCancellationHandles(), _envelope()
@@ -179,3 +200,156 @@ def test_cancelled_envelope_cannot_register_execution() -> None:
         with _binding(registry, execution, "execute").track("turn"):
             pytest.fail("cancelled execution must not become active")
     assert not registry._active
+
+
+def test_verified_drain_requires_exact_backend_cancel_future_and_scope_exit() -> None:
+    """A complete exact child may confirm only after its tracked Host scope exits."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(_child_envelope(execution))
+        child = Future()
+        proof.bind_child(child_id, child)
+        observation = cancel.request("turn")
+        proof.record_backend_cancellation(child_id, child)
+        child.set_result(None)
+        assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
+    assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
+
+
+def test_verified_drain_accepts_an_unstarted_exact_child_cancellation() -> None:
+    """Queued work needs no backend owner, but still must complete exactly."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(_child_envelope(execution))
+        child = Future()
+        proof.bind_child(child_id, child)
+        observation = cancel.request("turn")
+        assert child.cancel()
+        proof.record_queued_cancellation(child_id, child)
+    assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
+
+
+def test_stop_before_child_rejects_late_registration_and_confirms_scope_exit() -> None:
+    """A request linearized first prevents a later child from escaping proof."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        observation = cancel.request("turn")
+        with pytest.raises(PermissionError):
+            proof.reserve_child(_child_envelope(execution))
+    assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
+
+
+def test_completed_child_before_stop_is_not_stale_cancellation_work() -> None:
+    """A normal pre-request completion cannot block the later exact stop proof."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(_child_envelope(execution))
+        child = Future()
+        proof.bind_child(child_id, child)
+        child.set_result(None)
+        observation = cancel.request("turn")
+    assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
+
+
+def test_pre_request_history_does_not_hide_a_live_child_drain_requirement() -> None:
+    """Only the child live at request time needs cancellation and exact exit."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        completed_id = proof.reserve_child(_child_envelope(execution))
+        completed_child = Future()
+        proof.bind_child(completed_id, completed_child)
+        completed_child.set_result(None)
+        live_id = proof.reserve_child(_child_envelope(execution))
+        live_child = Future()
+        proof.bind_child(live_id, live_child)
+        observation = cancel.request("turn")
+        proof.record_backend_cancellation(live_id, live_child)
+        live_child.set_result(None)
+        assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
+    assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
+
+
+@pytest.mark.parametrize("finish_child,record_backend", [(False, True), (True, False)])
+def test_verified_drain_fails_closed_for_live_or_unacknowledged_child(
+    finish_child: bool,
+    record_backend: bool,
+) -> None:
+    """A missing Future exit or authenticated backend cancellation never confirms."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        child_id = proof.reserve_child(_child_envelope(execution))
+        child = Future()
+        proof.bind_child(child_id, child)
+        observation = cancel.request("turn")
+        if record_backend:
+            proof.record_backend_cancellation(child_id, child)
+        if finish_child:
+            child.set_result(None)
+    assert not observation.wait_for_verified_drain(time.monotonic() + 0.03)
+
+
+def test_foreign_or_replayed_nested_proof_cannot_confirm_a_turn() -> None:
+    """The active proof is bound to one outer envelope, owner, and capture."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    foreign = replace(
+        _envelope(), cancellation_requested=execution.cancellation_requested
+    )
+    with execute.track("turn"):
+        proof = nested_cancellation_proof_for(execution, "owner", "session")
+        assert proof is not None
+        assert nested_cancellation_proof_for(foreign, "owner", "session") is None
+        assert nested_cancellation_proof_for(execution, "foreign", "session") is None
+        with pytest.raises(PermissionError):
+            proof.reserve_child(
+                replace(
+                    _child_envelope(execution),
+                    context=replace(execution.context, profile_id="foreign"),
+                )
+            )
+        child_id = proof.reserve_child(_child_envelope(execution))
+        child = Future()
+        proof.bind_child(child_id, child)
+        observation = cancel.request("turn")
+        child.set_result(None)
+    assert observation.completed.is_set()
+    assert not observation.wait_for_verified_drain(time.monotonic() + 0.03)
+
+
+@pytest.mark.parametrize(
+    "deadline", [float("nan"), float("inf"), float("-inf")]
+)
+def test_verified_drain_rejects_nonfinite_stop_deadline(deadline: float) -> None:
+    """Proof wait treats malformed Host deadline values as unverified."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        observation = cancel.request("turn")
+    assert not observation.wait_for_verified_drain(deadline)
+
+
+def test_verified_drain_never_waits_past_stop_deadline() -> None:
+    """The stop response reserves a small deadline margin for its own fence."""
+
+    registry, execution, execute, cancel = _tracked_execution_and_stop()
+    with execute.track("turn"):
+        observation = cancel.request("turn")
+    assert not observation.wait_for_verified_drain(time.monotonic() + 0.001)

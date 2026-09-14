@@ -12,7 +12,7 @@ from core_runtime.authority.v4 import AuthorityStore
 
 from .artifact_compiler import CompiledPack, compile_pack_root, routes_for_plan
 from .backends import BackendRegistry
-from .broker import RequestAdmissionPort, RequestBroker
+from .broker import NestedCancellationProof, RequestAdmissionPort, RequestBroker
 from .authority_v4 import AuthorityV4Adapter
 from .composition import AuthorityCeilings, HostV4Composition
 from .contracts import AdapterExecutor, AdapterPlanner
@@ -239,6 +239,7 @@ class V4DispatchSession:
         version_range: str | None = None,
         parent_deadline_monotonic: float | None = None,
         parent_cancellation: threading.Event | None = None,
+        parent_cancellation_proof: NestedCancellationProof | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
@@ -276,7 +277,11 @@ class V4DispatchSession:
             operation_id=operation_id,
             payload=arguments,
         )
-        if parent_deadline_monotonic is None and parent_cancellation is None:
+        if (
+            parent_deadline_monotonic is None
+            and parent_cancellation is None
+            and parent_cancellation_proof is None
+        ):
             return self.broker.invoke(invocation, context, effect_scope=scope)
         return self.broker.invoke(
             invocation,
@@ -284,6 +289,7 @@ class V4DispatchSession:
             effect_scope=scope,
             parent_deadline_monotonic=parent_deadline_monotonic,
             parent_cancellation=parent_cancellation,
+            parent_cancellation_proof=parent_cancellation_proof,
         )
 
 

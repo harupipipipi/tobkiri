@@ -1064,9 +1064,13 @@ class _OpenSSLAgentSigner:
         if not isinstance(payload, bytes) or len(payload) > MAX_AGENT_RESPONSE_BYTES:
             raise ValueError("PackVM guest agent signing payload is invalid")
         _assert_root_only_regular_file(self._key_path, "PackVM guest agent key")
+        memfd_create = getattr(os, "memfd_create", None)
+        memfd_cloexec = getattr(os, "MFD_CLOEXEC", None)
+        if not callable(memfd_create) or not isinstance(memfd_cloexec, int):
+            raise ValueError("PackVM guest agent signer is unavailable")
         try:
-            descriptor = os.memfd_create("tobkiri-packvm-agent-sign", os.MFD_CLOEXEC)
-        except (AttributeError, OSError) as exc:
+            descriptor = memfd_create("tobkiri-packvm-agent-sign", memfd_cloexec)
+        except OSError as exc:
             raise ValueError("PackVM guest agent signer is unavailable") from exc
         try:
             view = memoryview(payload)
