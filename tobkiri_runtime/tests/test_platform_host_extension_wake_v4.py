@@ -344,7 +344,12 @@ def test_platform_bridge_carries_private_proof_outside_provider_envelope() -> No
         def invoke(self, request: object) -> object:
             assert not hasattr(request, "nested_cancellation_proof")
             assert self.bridge is not None
-            return self.bridge(request, {"kind": "bridge"})
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(
+                    self.bridge,
+                    request,
+                    {"kind": "bridge"},
+                ).result(timeout=2)
 
     driver = BridgeDriver()
     backend = ProductionIsolationBackend(
@@ -391,8 +396,9 @@ def test_platform_bridge_carries_private_proof_outside_provider_envelope() -> No
         request,
         context=replace(request.context, request_id="request-without-proof"),
     )
-    assert backend.invoke(request) == {"proof": False}
-    assert observed_proofs == [proof, None]
+    with pytest.raises(BackendUnavailableError, match="context is unavailable"):
+        backend.invoke(request)
+    assert observed_proofs == [proof]
 
 
 def test_saved_platform_preflight_and_bridge_share_private_proof() -> None:
@@ -415,8 +421,13 @@ def test_saved_platform_preflight_and_bridge_share_private_proof() -> None:
             assert not hasattr(request, "nested_cancellation_proof")
             assert self.saved_bridge is not None
             assert self.saved_preflight is not None
-            self.saved_preflight(request)
-            return self.saved_bridge(request, {"kind": "saved"})
+
+            def invoke_saved() -> object:
+                self.saved_preflight(request)
+                return self.saved_bridge(request, {"kind": "saved"})
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(invoke_saved).result(timeout=2)
 
     driver = SavedDriver()
     backend = ProductionIsolationBackend(

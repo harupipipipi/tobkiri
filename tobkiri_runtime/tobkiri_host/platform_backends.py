@@ -181,7 +181,10 @@ class ProductionIsolationBackend:
         self._pending_requests: dict[str, tuple[str, threading.Event]] = {}
         self._request_domains: dict[str, str] = {}
         self._request_lock = threading.RLock()
-        self._nested_cancellation_context = threading.local()
+        self._nested_cancellation_proofs: dict[
+            int,
+            tuple[object, object | None],
+        ] = {}
         self._capability_bridge: _HostCapabilityBridge | None = None
         self._saved_bridge: (
             tuple[_HostCapabilityBridge, _HostSavedPreflight] | None
@@ -257,11 +260,7 @@ class ProductionIsolationBackend:
             outer_request: object,
             bridge_request: Mapping[str, Any],
         ) -> Mapping[str, Any]:
-            proof = getattr(
-                self._nested_cancellation_context,
-                "proof",
-                None,
-            )
+            proof = self._proof_for_platform_callback(outer_request)
             return callback(outer_request, bridge_request, proof)
 
         binder(invoke_bridge)
@@ -287,19 +286,11 @@ class ProductionIsolationBackend:
         if not callable(binder):
             raise BackendUnavailableError("platform supervisor does not support a saved capability bridge")
         def invoke_saved_bridge(outer_request: object, frame: object) -> Mapping[str, Any]:
-            proof = getattr(
-                self._nested_cancellation_context,
-                "proof",
-                None,
-            )
+            proof = self._proof_for_platform_callback(outer_request)
             return callback(outer_request, frame, proof)
 
         def invoke_saved_preflight(outer_request: object) -> None:
-            proof = getattr(
-                self._nested_cancellation_context,
-                "proof",
-                None,
-            )
+            proof = self._proof_for_platform_callback(outer_request)
             preflight(outer_request, proof)
 
         binder(invoke_saved_bridge, invoke_saved_preflight)
@@ -471,15 +462,31 @@ class ProductionIsolationBackend:
                     "nested platform cancellation proof is invalid"
                 ) from exc
 
-        if hasattr(self._nested_cancellation_context, "proof"):
-            raise BackendUnavailableError(
-                "nested platform cancellation context is already active"
-            )
-        self._nested_cancellation_context.proof = proof
+        request_key = id(request)
+        binding = (request, proof)
+        with self._request_lock:
+            if request_key in self._nested_cancellation_proofs:
+                raise BackendUnavailableError(
+                    "nested platform cancellation context is already active"
+                )
+            self._nested_cancellation_proofs[request_key] = binding
         try:
             return self.invoke(request)
         finally:
-            del self._nested_cancellation_context.proof
+            with self._request_lock:
+                if self._nested_cancellation_proofs.get(request_key) is binding:
+                    self._nested_cancellation_proofs.pop(request_key, None)
+
+    def _proof_for_platform_callback(self, request: object) -> object | None:
+        """Resolve proof only for the identical currently executing request."""
+
+        with self._request_lock:
+            binding = self._nested_cancellation_proofs.get(id(request))
+            if binding is None or binding[0] is not request:
+                raise BackendUnavailableError(
+                    "nested platform cancellation context is unavailable"
+                )
+            return binding[1]
 
     def invoke(self, request: object) -> object:
         target = getattr(getattr(request, "target_domain", None), "value", None)

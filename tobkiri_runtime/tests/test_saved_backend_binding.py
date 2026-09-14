@@ -40,9 +40,11 @@ def test_saved_binding_forwards_both_hooks_without_changing_readiness() -> None:
     backend.bind_saved_capability_bridge(callback, preflight)
     assert len(calls) == 1
     driver_callback, driver_preflight = calls[0]
-    assert driver_callback(object(), object()) == {"status": "ok", "value": {}}
-    assert driver_preflight(object()) is None
-    assert observed_proofs == [None, None]
+    with pytest.raises(BackendUnavailableError, match="context is unavailable"):
+        driver_callback(object(), object())
+    with pytest.raises(BackendUnavailableError, match="context is unavailable"):
+        driver_preflight(object())
+    assert observed_proofs == []
     assert backend.status == before
     assert not backend.status.production_enabled
     with pytest.raises(BackendUnavailableError, match="already bound"):
