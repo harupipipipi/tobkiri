@@ -163,7 +163,9 @@ function operationHasExactInvocationBinding(
     && ownerPack.invokable_operations.includes(operationKey)
     && operation.invocation_contribution_id !== null
     && operation.invocation_owner_pack_id === operation.owner_pack_id
-    && operation.invocation_catalog_hash === envelope.catalog_revision
+    // The capability hash binds the Application map; catalog_revision binds
+    // the Profile Pack catalog. The Broker revalidates the former on invoke.
+    && operation.invocation_catalog_hash !== null
     && operation.catalog_digest === envelope.catalog_revision
     && typeof operation.activation_id === 'string'
     && operation.activation_id.length > 0;

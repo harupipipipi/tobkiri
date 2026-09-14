@@ -1961,8 +1961,9 @@ export function invokeRuntimeOperation({
   }
   if (
     !envelope.catalog_revision
+    // invocation_catalog_hash is a distinct Application capability-map hash
+    // and is revalidated by the Broker when the request is dispatched.
     || operation.catalog_digest !== envelope.catalog_revision
-    || operation.invocation_catalog_hash !== envelope.catalog_revision
   ) {
     return Promise.reject(new RuntimeSurfaceError(
       'DIGEST_MISMATCH',

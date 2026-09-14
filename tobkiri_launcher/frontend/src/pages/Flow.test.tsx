@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {act} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
@@ -151,80 +152,10 @@ function succeededStatus(requestId: string): Record<string, unknown> {
   };
 }
 
-function operationsEnvelope(): RuntimeSurfaceEnvelope<unknown> {
-  const artifactDigest = digest('8');
-  return {
-    runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION,
-    surface: 'operations',
-    state: 'ready',
-    profile_id: 'defaults',
-    profile_revision: digest('1'),
-    plan_digest: digest('2'),
-    catalog_revision: digest('3'),
-    records: {
-      profile_lock: {digest: digest('4'), source_ref: 'profile-lock-v4://defaults/lock'},
-      resolved_plan: {digest: digest('2'), source_ref: 'resolved-plan-v1://defaults/plan'},
-      activation_record: {digest: digest('5'), source_ref: 'activation-record-v1://defaults/active'},
-      authority_snapshot: {digest: digest('6'), source_ref: 'authority-snapshot-v4://defaults/current'},
-    },
-    data: {
-      packs: [{
-        pack_id: 'published-flow-pack',
-        role: 'provider',
-        kind: 'normal',
-        version: '1.0.0',
-        display_name: 'Published Flow Pack',
-        artifact_digest: artifactDigest,
-        artifact_ref: `pack-v4://published-flow-pack@${artifactDigest}`,
-        installed: true,
-        enabled: true,
-        approved: true,
-        required: false,
-        invokable_operations: ['example.echo.v1::echo'],
-      }],
-      operations: [{
-        action: 'contract_invoke',
-        operation_id: 'echo',
-        contract_id: 'example.echo.v1',
-        owner_pack_id: 'published-flow-pack',
-        contribution_id: 'pack.published-flow-pack.echo',
-        target_provider_id: 'example.echo.provider',
-        artifact_digest: artifactDigest,
-        invocation_contribution_id: 'pack.published-flow-pack.echo.invoke',
-        invocation_owner_pack_id: 'published-flow-pack',
-        invocation_catalog_hash: digest('3'),
-        invocation_reason: null,
-        invokable: true,
-        catalog_digest: digest('3'),
-        activation_id: 'activation:published-flow',
-        function_id: 'example.echo.function',
-        function_principal_id: 'example.echo.provider',
-        caller_function_id: 'published.workflow',
-        authority_reference: 'authority-ref:published-flow',
-        schema: {input_schema: {type: 'object', properties: {}}},
-        label: 'Echo published workflow',
-        route: {
-          contract_id: 'example.echo.v1',
-          operation_id: 'echo',
-          function_id: 'example.echo.function',
-          provider_pack_id: 'published-flow-pack',
-        },
-      }],
-      flows: [{
-        flow_id: 'published.workflow',
-        label: 'Published workflow',
-        state: 'ready',
-        operation_ids: ['echo'],
-        edges: [{
-          caller_function_id: 'published.workflow',
-          target_provider_id: 'example.echo.provider',
-          contract_id: 'example.echo.v1',
-          operation_id: 'echo',
-        }],
-      }],
-    },
-  };
-}
+const flowUiFixture = JSON.parse(readFileSync(new URL(
+  '../../../../tobkiri_runtime/tests/fixtures/runtime_surface_v4/operations_flow_ui.ready.v1.json',
+  import.meta.url,
+), 'utf8')) as RuntimeSurfaceEnvelope<unknown>;
 test('Flow admits only ready canonical compositions', () => {
   const ready = flow('flow-a', [
     edge('flow-a', 'provider-a', 'contract-a', 'declared'),
@@ -539,7 +470,7 @@ test('a published Profile-declared flow renders its exact backend operation as i
   const previousDocument = globalThis.document;
   const previousNavigator = globalThis.navigator;
   const {dom, container, root} = createDom();
-  const envelope = operationsEnvelope();
+  const envelope = flowUiFixture;
   const authoringDependencies: WorkflowAuthoringDependencies = {
     fetchCatalog: async () => workflowCatalog(),
     invoke: async (request) => {
@@ -572,8 +503,15 @@ test('a published Profile-declared flow renders its exact backend operation as i
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    assert.match(container.textContent ?? '', /Published workflow/);
-    assert.match(container.textContent ?? '', /Echo published workflow/);
+    assert.match(container.textContent ?? '', /rumi_model_registry_pack\.model-registry\.manage/);
+    assert.match(container.textContent ?? '', /rumi_provider_registry_pack\.provider-registry-resource/);
+    assert.doesNotMatch(container.textContent ?? '', /No Pack-declared Flow composition is available/);
+    assert.ok(container.querySelector(
+      '[aria-label="Select Flow composition rumi_model_registry_pack.model-registry.manage"]',
+    ));
+    assert.ok(container.querySelector(
+      '[aria-label="Select contract operation tobkiri.resource.ai.provider.registry.v1 / rumi_provider_registry_pack.provider-registry-resource"]',
+    ));
     const invoke = container.querySelector<HTMLButtonElement>(
       '[aria-label="Invoke declared contract operation"]',
     );

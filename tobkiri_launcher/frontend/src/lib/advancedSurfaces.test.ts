@@ -28,7 +28,7 @@ function operation(id: string, overrides: Partial<RuntimeOperationDescriptor> = 
     artifact_digest: digest('a'),
     invocation_contribution_id: `${id}.invoke`,
     invocation_owner_pack_id: 'provider-pack',
-    invocation_catalog_hash: digest('c'),
+    invocation_catalog_hash: digest('b'),
     invocation_reason: null,
     invokable: true,
     catalog_digest: digest('c'),
@@ -155,7 +155,16 @@ test('contract invocation selection fails closed on revoked, stale, and digest-m
       descriptor,
       state,
       validEnvelope,
-      [operation('selected', {catalog_digest: digest('d'), invocation_catalog_hash: digest('d')})],
+      [operation('selected', {catalog_digest: digest('d')})],
+    ),
+    [],
+  );
+  assert.deepEqual(
+    selectAdvancedContractInvokableOperations(
+      descriptor,
+      state,
+      validEnvelope,
+      [operation('selected', {invocation_catalog_hash: null})],
     ),
     [],
   );

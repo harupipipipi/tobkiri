@@ -37,6 +37,14 @@ from tobkiri_protocol.canonical import canonical_digest
 
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_ROOT = RUNTIME_ROOT / "ecosystem" / "defaultspack" / "v4"
+FLOW_UI_FIXTURE = (
+    RUNTIME_ROOT
+    / "tests"
+    / "fixtures"
+    / "runtime_surface_v4"
+    / "operations_flow_ui.ready.v1.json"
+)
+FLOW_UI_CALLER_ID = "rumi_model_registry_pack.model-registry.manage"
 
 
 def _approve_profile_process(
@@ -156,6 +164,81 @@ def _capability_snapshot(active_runtime, operations) -> dict[str, object]:
         ),
         "targets": targets,
     }
+
+
+def _project_fixture_shape(value: object, template: object) -> object:
+    if isinstance(template, dict):
+        assert isinstance(value, dict)
+        return {
+            key: _project_fixture_shape(value[key], child)
+            for key, child in template.items()
+        }
+    if isinstance(template, list):
+        assert isinstance(value, list) and len(value) == len(template)
+        return [
+            _project_fixture_shape(child, expected)
+            for child, expected in zip(value, template, strict=True)
+        ]
+    return value
+
+
+def _normalize_flow_ui_envelope(
+    envelope: dict[str, object],
+    fixture: dict[str, object],
+) -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    data = envelope["data"]
+    assert isinstance(data, dict)
+    flow = next(
+        item for item in data["flows"]
+        if item["flow_id"] == FLOW_UI_CALLER_ID
+    )
+    assert len(flow["edges"]) == 1
+    edge = flow["edges"][0]
+    identity_keys = (
+        "caller_function_id",
+        "target_provider_id",
+        "contract_id",
+        "operation_id",
+    )
+    operation = next(
+        item for item in data["operations"]
+        if all(item[key] == edge[key] for key in identity_keys)
+    )
+    pack = next(
+        item for item in data["packs"]
+        if item["pack_id"] == operation["owner_pack_id"]
+    )
+    operation_key = f"{operation['contract_id']}::{operation['operation_id']}"
+    selected = {
+        **envelope,
+        "data": {
+            "packs": [{**pack, "invokable_operations": [operation_key]}],
+            "operations": [operation],
+            "flows": [flow],
+        },
+    }
+    normalized = _project_fixture_shape(selected, fixture)
+    assert isinstance(normalized, dict)
+    for key in ("profile_revision", "plan_digest", "catalog_revision", "records"):
+        normalized[key] = fixture[key]
+    normalized_pack = normalized["data"]["packs"][0]
+    fixture_pack = fixture["data"]["packs"][0]
+    for key in ("artifact_digest", "artifact_ref"):
+        normalized_pack[key] = fixture_pack[key]
+    normalized_operation = normalized["data"]["operations"][0]
+    fixture_operation = fixture["data"]["operations"][0]
+    volatile_keys = (
+        "artifact_digest", "invocation_catalog_hash", "catalog_digest",
+        "activation_id", "function_principal_id", "authority_reference",
+    )
+    for key in volatile_keys:
+        normalized_operation[key] = fixture_operation[key]
+    return normalized, operation, pack, edge
 
 
 def test_capability_invocation_hash_binds_the_application_map() -> None:
@@ -380,6 +463,64 @@ def test_operations_publish_exact_profile_declared_flow_compositions(
         == sorted({edge["operation_id"] for edge in flow["edges"]})
         for flow in flows
     )
+
+
+@pytest.mark.contract
+def test_operations_flow_ui_fixture_comes_from_the_real_surface(
+    active_runtime,
+) -> None:
+    """Keep the frontend Flow fixture bound to the real operations producer."""
+
+    initial = _service(active_runtime).read_advanced("operations")
+    capability = _capability_snapshot(
+        active_runtime,
+        [
+            operation for operation in initial["data"]["operations"]
+            if operation["caller_function_id"] == FLOW_UI_CALLER_ID
+        ],
+    )
+    envelope = _service(
+        active_runtime,
+        capability_binding_reader=lambda: (
+            capability,
+            runtime_surface._captured_lifecycle_projection(),
+        ),
+    ).read_advanced("operations")
+
+    assert set(envelope) == {
+        "runtime_surface_api_version", "surface", "state", "profile_id",
+        "profile_revision", "plan_digest", "catalog_revision", "records", "data",
+    }
+    assert set(envelope["data"]) == {"operations", "packs", "flows"}
+    fixture = json.loads(FLOW_UI_FIXTURE.read_text(encoding="utf-8"))
+    normalized, real_operation, real_pack, real_edge = (
+        _normalize_flow_ui_envelope(envelope, fixture)
+    )
+    assert real_operation["invocation_catalog_hash"] == capability["catalog_hash"]
+    assert real_operation["catalog_digest"] == envelope["catalog_revision"]
+    assert real_operation["artifact_digest"] == real_pack["artifact_digest"]
+    assert real_operation["invocation_owner_pack_id"] == real_pack["pack_id"]
+    assert real_operation["invocation_contribution_id"]
+    assert real_edge["caller_function_id"] == real_operation["caller_function_id"]
+    operation = normalized["data"]["operations"][0]
+    pack = normalized["data"]["packs"][0]
+    edge = normalized["data"]["flows"][0]["edges"][0]
+    identity_keys = (
+        "caller_function_id", "target_provider_id", "contract_id", "operation_id",
+    )
+    assert all(operation[key] == edge[key] for key in identity_keys)
+    assert operation["invokable"] is True
+    assert operation["invocation_contribution_id"]
+    assert operation["invocation_owner_pack_id"] == pack["pack_id"]
+    assert operation["invocation_catalog_hash"] != normalized["catalog_revision"]
+    assert operation["catalog_digest"] == normalized["catalog_revision"]
+    assert pack["enabled"] is True and pack["approved"] is True
+    assert pack["artifact_digest"] == operation["artifact_digest"]
+    assert (
+        f"{operation['contract_id']}::{operation['operation_id']}"
+        in pack["invokable_operations"]
+    )
+    assert normalized == fixture
 
 
 def test_resolved_plan_bindings_keep_the_profile_target_provider(

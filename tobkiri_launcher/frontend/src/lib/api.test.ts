@@ -546,7 +546,7 @@ test('runtime operation invocation uses only its exact invocation contribution a
     artifact_digest: digest('1'),
     invocation_contribution_id: 'invocation-contribution',
     invocation_owner_pack_id: 'provider-pack',
-    invocation_catalog_hash: digest('c'),
+    invocation_catalog_hash: digest('f'),
     invocation_reason: null,
     invokable: true,
     catalog_digest: digest('c'),
@@ -591,7 +591,7 @@ test('runtime operation invocation uses only its exact invocation contribution a
   };
   const [acceptedOperation] = extractExactOperationDescriptors(envelope.data);
   assert.ok(acceptedOperation);
-  assert.equal(acceptedOperation.invocation_catalog_hash, digest('c'));
+  assert.equal(acceptedOperation.invocation_catalog_hash, digest('f'));
   assert.equal(acceptedOperation.invocation_contribution_id, 'invocation-contribution');
   assert.equal(acceptedOperation.function_principal_id, 'principal.function.one');
   assert.equal(acceptedOperation.caller_function_id, 'caller.function.one');
@@ -613,7 +613,7 @@ test('runtime operation invocation uses only its exact invocation contribution a
   assert.deepEqual(result, {accepted: true});
   assert.equal(decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')), 'POST /api/ui/capability/invoke');
   assert.equal(body?.contribution_id, 'invocation-contribution');
-  assert.equal(body?.catalog_hash, digest('c'));
+  assert.equal(body?.catalog_hash, digest('f'));
   assert.equal(body?.profile_id, 'defaults');
   assert.equal(body?.profile_revision, digest('a'));
   assert.equal(body?.activation_id, 'activation:defaults-one');
