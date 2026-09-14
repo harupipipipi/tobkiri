@@ -2277,7 +2277,7 @@ fn summarize_background_control_status(
 
 pub(crate) fn request_app_exit(app: &AppHandle) {
     let shutdown_flag = Arc::clone(&app.state::<ShutdownState>().inner().0);
-    if shutdown_flag.swap(true, Ordering::SeqCst) {
+    if !claim_shutdown(&shutdown_flag) {
         return;
     }
 
@@ -2295,6 +2295,10 @@ pub(crate) fn request_app_exit(app: &AppHandle) {
         stop_managed_runtimes(&defaultspack, &km);
         handle.exit(0);
     });
+}
+
+fn claim_shutdown(shutdown_flag: &AtomicBool) -> bool {
+    !shutdown_flag.swap(true, Ordering::SeqCst)
 }
 
 fn stop_managed_runtimes(
@@ -3241,14 +3245,18 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
         }
 
         if matches!(&event, tauri::RunEvent::Exit) {
-            app_handle
-                .state::<ShutdownState>()
-                .inner()
-                .0
-                .store(true, Ordering::SeqCst);
-            let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
-            let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
-            stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
+            // `request_app_exit` performs the bounded runtime stop before it
+            // asks Tauri to exit.  Do not run the same stop again from the
+            // resulting `Exit` event: a second stop can contend on the
+            // Kernel lock and extend the measured process lifetime.  The
+            // event still owns the fallback path for exits that arrive
+            // without an earlier `ExitRequested` callback.
+            let shutdown_flag = &app_handle.state::<ShutdownState>().inner().0;
+            if claim_shutdown(shutdown_flag) {
+                let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
+                let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
+                stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
+            }
         }
 
         #[cfg(target_os = "macos")]
@@ -3271,6 +3279,14 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn shutdown_claim_is_single_use() {
+        let shutdown_flag = std::sync::atomic::AtomicBool::new(false);
+
+        assert!(super::claim_shutdown(&shutdown_flag));
+        assert!(!super::claim_shutdown(&shutdown_flag));
+    }
+
     #[test]
     fn panel_bootstrap_waits_through_kernel_replacement() {
         use std::io::{Read, Write};
