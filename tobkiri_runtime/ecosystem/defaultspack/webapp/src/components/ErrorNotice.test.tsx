@@ -112,6 +112,8 @@ test("copy feedback keeps the Copy glyph instead of swapping to a status icon", 
   assert.match(source, /const liveMode = severity === "warning" \? "polite" : "assertive"/);
   assert.match(source, /const noticeRole = severity === "warning" \? "status" : "alert"/);
   assert.match(source, /copyText \?\? errorNoticeCopyText\(title, message\)/);
+  assert.match(source, /const copyAttempt = useRef\(0\)/);
+  assert.match(source, /if \(attempt === copyAttempt\.current\)/);
   assert.doesNotMatch(source, /<Check\b|<X\b/);
 });
 

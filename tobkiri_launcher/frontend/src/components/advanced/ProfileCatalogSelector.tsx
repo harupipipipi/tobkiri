@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {Link} from 'react-router';
-import {AlertTriangle, CheckCircle2, Database, FileKey2, MessageSquare, PackageCheck, Plus, RefreshCw, Search, ShieldCheck, X} from 'lucide-react';
+import {AlertTriangle, CheckCircle2, Database, FileKey2, MessageSquare, PackageCheck, Plus, RefreshCw, Search, ShieldCheck} from 'lucide-react';
 
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
@@ -19,6 +19,7 @@ import {
   resolveConversationCapabilityForProfile,
   verifiedCapabilityLabel,
 } from '@/src/lib/presentation';
+import {useT} from '@/src/lib/i18n';
 import {panelRoutes} from '@/src/lib/routes';
 import type {ProfileActivateResult, ProfileCeremonyClient} from '@/src/lib/profileCeremony';
 import {useAppStore, type Pack} from '@/src/store';
@@ -151,15 +152,16 @@ function profileCatalogFailureDiagnostic(
   catalogInvalid: boolean,
   error: RuntimeSurfaceState<RuntimeProfileCatalogProjection>['error'],
   stale: boolean,
+  t: ReturnType<typeof useT>,
 ): string {
   const detail = catalogInvalid
-    ? 'The Broker response failed exact v4 validation.'
-    : error?.message ?? 'No accepted catalog snapshot is available.';
+    ? t('profile_catalog.validation_failed')
+    : error?.message ?? t('profile_catalog.snapshot_unavailable');
   return [
-    'Authoritative Profile catalog is locked',
+    t('profile_catalog.locked_title'),
     detail,
     ...(stale
-      ? ['The last accepted definitions remain read-only until the catalog refreshes.']
+      ? [t('profile_catalog.stale_read_only')]
       : []),
   ].join('\n');
 }
@@ -175,6 +177,7 @@ function ProfileDefinitionDetails({
   frontendCatalogLoading: boolean;
   frontendCatalogError: string | null;
 }) {
+  const t = useT();
   const {base, shell, application} = entry.bindings;
   return (
     <div className="mt-4 flex flex-col gap-4" aria-label={`Details for Profile ${entry.profile_id}`}>
@@ -186,20 +189,14 @@ function ProfileDefinitionDetails({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {entry.active ? (
-              <Badge variant="success"><CheckCircle2 className="mr-1 h-3 w-3" aria-hidden="true" />Active</Badge>
-            ) : <Badge variant="outline">Available candidate</Badge>}
-            <Badge variant={entry.available ? 'success' : 'destructive'}>{entry.available ? 'Verified' : 'Unavailable'}</Badge>
+              <Badge variant="success"><CheckCircle2 className="mr-1 h-3 w-3" aria-hidden="true" />{t('profile_catalog.active')}</Badge>
+            ) : <Badge variant="outline">{t('profile_catalog.available_candidate')}</Badge>}
+            <Badge variant={entry.available ? 'success' : 'destructive'}>{entry.available ? t('profile_catalog.verified') : t('profile_catalog.unavailable')}</Badge>
           </div>
         </div>
-        <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-          <BindingField label="Profile definition digest" value={entry.definition.digest} />
-          <BindingField label="Definition catalog revision" value={entry.definition.catalog_revision} />
-          <BindingField label="Definition reference" value={entry.definition.ref} />
-          <BindingField label="Source path" value={entry.definition.source_path} />
-        </dl>
         {entry.diagnostics.length > 0 ? (
           <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm" role="alert">
-            <p className="flex items-center gap-2 font-medium text-text-main"><AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />Profile is unavailable in the verified catalog.</p>
+            <p className="flex items-center gap-2 font-medium text-text-main"><AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />{t('profile_catalog.profile_unavailable')}</p>
             <div className="mt-2 flex items-start gap-2"><ul className="min-w-0 flex-1 list-disc space-y-1 pl-5 text-text-muted">
               {entry.diagnostics.map((diagnostic) => <li key={`${diagnostic.code}:${diagnostic.subject}`}>{diagnostic.code}: {diagnostic.subject}</li>)}
             </ul><CopyErrorButton label="Copy Profile catalog diagnostics" text={entry.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.subject}`).join('\n')} /></div>
@@ -207,65 +204,75 @@ function ProfileDefinitionDetails({
         ) : null}
       </section>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <BindingCard title="Base binding" icon={<Database className="h-4 w-4" aria-hidden="true" />}>
-          <BindingField label="Pack ID" value={base.pack_id} />
-          <BindingField label="Definition revision" value={base.definition_revision} />
-          <BindingField label="Definition digest" value={base.definition_digest} />
-          <BindingField label="Artifact digest" value={base.artifact_digest} />
-        </BindingCard>
-        <BindingCard title="Shell binding" icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />}>
-          <BindingField label="Provider ID" value={shell.provider_id} />
-          <BindingField label="Pack ID" value={shell.pack_id} />
-          <BindingField label="Definition revision" value={shell.definition_revision} />
-          <BindingField label="Definition digest" value={shell.definition_digest} />
-          <BindingField label="Artifact digest" value={shell.artifact_digest} />
-        </BindingCard>
-        <BindingCard title="Application binding" icon={<FileKey2 className="h-4 w-4" aria-hidden="true" />}>
-          {application ? (
-            <>
-              <BindingField label="Pack ID" value={application.pack_id} />
-              <BindingField label="Artifact digest" value={application.artifact_digest} />
-              <BindingField label="Artifact reference" value={application.artifact_ref} />
-            </>
-          ) : <p className="text-sm text-text-muted">No application binding was published.</p>}
-        </BindingCard>
-      </div>
-
-      <section className="scroll-mt-6 rounded-lg border border-border bg-bg-main p-4" id="profile-closure">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="flex items-center gap-2 text-sm font-semibold text-text-main"><PackageCheck className="h-4 w-4" aria-hidden="true" />Authoritative Pack closure</h4>
-          <Badge variant="outline">{entry.pack_closure.length} exact rows</Badge>
-        </div>
-        <div className="mt-3 flex flex-col gap-2">
-          {entry.pack_closure.map((pack) => (
-            <div key={pack.pack_id} className="grid gap-2 rounded-md border border-border/70 px-3 py-2 text-xs sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)] sm:items-center">
-              <div className="min-w-0">
-                <p className="truncate font-medium text-text-main">{pack.pack_id}</p>
-                <p className="truncate text-text-muted">role: {pack.role} · version: {pack.version}</p>
-              </div>
-              <span className="font-mono text-text-muted">{pack.artifact_digest}</span>
-              <span className="break-all font-mono text-text-muted">{pack.artifact_ref}</span>
+      <details className="rounded-lg border border-border bg-bg-main px-4 py-4" data-testid="profile-technical-details">
+        <summary className="cursor-pointer text-sm font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]">
+          {t('profile_catalog.technical_details')}
+        </summary>
+        <div className="mt-4 flex flex-col gap-4">
+          <dl className="grid gap-3 rounded-lg border border-border bg-bg-card p-4 sm:grid-cols-2">
+            <BindingField label="Profile definition digest" value={entry.definition.digest} />
+            <BindingField label="Definition catalog revision" value={entry.definition.catalog_revision} />
+            <BindingField label="Definition reference" value={entry.definition.ref} />
+            <BindingField label="Source path" value={entry.definition.source_path} />
+          </dl>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <BindingCard title="Base binding" icon={<Database className="h-4 w-4" aria-hidden="true" />}>
+              <BindingField label="Pack ID" value={base.pack_id} />
+              <BindingField label="Definition revision" value={base.definition_revision} />
+              <BindingField label="Definition digest" value={base.definition_digest} />
+              <BindingField label="Artifact digest" value={base.artifact_digest} />
+            </BindingCard>
+            <BindingCard title="Shell binding" icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />}>
+              <BindingField label="Provider ID" value={shell.provider_id} />
+              <BindingField label="Pack ID" value={shell.pack_id} />
+              <BindingField label="Definition revision" value={shell.definition_revision} />
+              <BindingField label="Definition digest" value={shell.definition_digest} />
+              <BindingField label="Artifact digest" value={shell.artifact_digest} />
+            </BindingCard>
+            <BindingCard title="Application binding" icon={<FileKey2 className="h-4 w-4" aria-hidden="true" />}>
+              {application ? (
+                <>
+                  <BindingField label="Pack ID" value={application.pack_id} />
+                  <BindingField label="Artifact digest" value={application.artifact_digest} />
+                  <BindingField label="Artifact reference" value={application.artifact_ref} />
+                </>
+              ) : <p className="text-sm text-text-muted">No application binding was published.</p>}
+            </BindingCard>
+          </div>
+          <section className="scroll-mt-6 rounded-lg border border-border bg-bg-card p-4" id="profile-closure">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="flex items-center gap-2 text-sm font-semibold text-text-main"><PackageCheck className="h-4 w-4" aria-hidden="true" />Authoritative Pack closure</h4>
+              <Badge variant="outline">{entry.pack_closure.length} exact rows</Badge>
             </div>
-          ))}
+            <div className="mt-3 flex flex-col gap-2">
+              {entry.pack_closure.map((pack) => (
+                <div key={pack.pack_id} className="grid gap-2 rounded-md border border-border/70 px-3 py-2 text-xs sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)] sm:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-text-main">{pack.pack_id}</p>
+                    <p className="truncate text-text-muted">role: {pack.role} · version: {pack.version}</p>
+                  </div>
+                  <span className="font-mono text-text-muted">{pack.artifact_digest}</span>
+                  <span className="break-all font-mono text-text-muted">{pack.artifact_ref}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <OptionalConversationCapability
+            entry={entry}
+            catalog={catalog}
+            loading={frontendCatalogLoading}
+            error={frontendCatalogError}
+          />
+          <dl className="grid gap-3 rounded-lg border border-border bg-bg-card p-4 sm:grid-cols-3">
+            <BindingField label="Profile revision" value={entry.records.profile_revision} />
+            <BindingField label="Profile lock digest" value={entry.records.profile_lock_digest} />
+            <BindingField label="Resolved Plan digest" value={entry.records.plan_digest} />
+            <BindingField label="Authority snapshot" value={entry.authority_snapshot.digest} />
+            <BindingField label="Authority snapshot reference" value={entry.authority_snapshot.ref} />
+            <BindingField label="Candidate state" value={entry.candidate.state} />
+          </dl>
         </div>
-      </section>
-
-      <OptionalConversationCapability
-        entry={entry}
-        catalog={catalog}
-        loading={frontendCatalogLoading}
-        error={frontendCatalogError}
-      />
-
-      <dl className="grid gap-3 rounded-lg border border-border bg-bg-main p-4 sm:grid-cols-3">
-        <BindingField label="Profile revision" value={entry.records.profile_revision} />
-        <BindingField label="Profile lock digest" value={entry.records.profile_lock_digest} />
-        <BindingField label="Resolved Plan digest" value={entry.records.plan_digest} />
-        <BindingField label="Authority snapshot" value={entry.authority_snapshot.digest} />
-        <BindingField label="Authority snapshot reference" value={entry.authority_snapshot.ref} />
-        <BindingField label="Candidate state" value={entry.candidate.state} />
-      </dl>
+      </details>
     </div>
   );
 }
@@ -294,13 +301,13 @@ export function ProfileCatalogSelector({
   /** Runtime/effect ceremony access, independent from catalog browsing. */
   runtimeVerified?: boolean;
 }) {
+  const t = useT();
   const frontendCatalog = useAppStore((state) => state.frontendCatalog);
   const frontendCatalogLoading = useAppStore((state) => state.frontendCatalogLoading);
   const frontendCatalogError = useAppStore((state) => state.frontendCatalogError);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [ceremonyBusy, setCeremonyBusy] = useState(false);
   const [query, setQuery] = useState('');
-  const [showAddProfileHelp, setShowAddProfileHelp] = useState(false);
   const previousPackFingerprint = useRef<string | null>(null);
   const previousInitialSelectedProfileId = useRef<string | null | undefined>(undefined);
 
@@ -379,6 +386,7 @@ export function ProfileCatalogSelector({
     catalogInvalid,
     catalogSurface.error,
     catalogSurface.stale,
+    t,
   );
 
   return (
@@ -386,42 +394,40 @@ export function ProfileCatalogSelector({
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" aria-hidden="true" />Advanced Profile catalog</CardTitle>
+            <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" aria-hidden="true" />{t('profile_catalog.title')}</CardTitle>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={catalogProjection && !catalogSurface.stale ? 'success' : 'warning'}>
-                {catalogProjection ? `${catalogProjection.count} profiles` : 'locked'}
+                {catalogProjection
+                  ? t('profile_catalog.count', {count: String(catalogProjection.count)})
+                  : t('profile_catalog.locked')}
               </Badge>
-              <Button type="button" size="sm" variant="outline" onClick={() => setShowAddProfileHelp((current) => !current)}>
-                {showAddProfileHelp ? <X className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-                {showAddProfileHelp ? 'Close' : 'Add Profile'}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void catalogSurface.refresh(true)}
+                disabled={catalogSurface.status === 'loading'}
+                aria-label={t('profile_catalog.refresh_profiles')}
+              >
+                <RefreshCw className={catalogSurface.status === 'loading' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} aria-hidden="true" />
+                {t('profile_catalog.refresh_profiles')}
               </Button>
+              <Link
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-accent px-3 text-sm font-medium text-accent-fg transition-colors hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+                to={panelRoutes.home}
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                {t('profile_catalog.add_profile')}
+              </Link>
             </div>
           </div>
-          <CardDescription>Profiles are owned by Tobkiri's Host registry and projected through the Broker-backed Protocol v4 catalog. Selection here only changes the Profile being inspected; use Home to create, rename, duplicate, or delete named Profiles.</CardDescription>
+          <CardDescription>{t('profile_catalog.description')}</CardDescription>
         </CardHeader>
         <CardContent>
-          {showAddProfileHelp ? (
-            <div className="mb-4 rounded-lg border border-accent/30 bg-accent/5 px-4 py-4" role="note">
-              <p className="text-sm font-semibold text-text-main">Add a named Profile</p>
-              <p className="mt-1 text-sm leading-6 text-text-muted">Use Home to create a named Profile from an existing source Profile. The Host validates the change and publishes the updated catalog; return here to inspect or activate it.</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  className="inline-flex min-h-9 items-center justify-center rounded-md bg-accent px-3 text-sm font-medium text-accent-fg transition-colors hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
-                  to={panelRoutes.home}
-                >
-                  Open Home Profile management
-                </Link>
-                <Button type="button" size="sm" variant="outline" onClick={() => void catalogSurface.refresh(true)} disabled={catalogSurface.status === 'loading'}>
-                  <RefreshCw className={catalogSurface.status === 'loading' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} aria-hidden="true" />
-                  Refresh Profiles
-                </Button>
-              </div>
-            </div>
-          ) : null}
           {showLoading ? (
             <div className="flex min-h-28 items-center gap-3 rounded-lg border border-border bg-bg-main px-4 py-4 text-sm text-text-muted" role="status" aria-live="polite">
               <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Loading authoritative Profile definitions…
+              {t('profile_catalog.loading')}
             </div>
           ) : null}
 
@@ -430,50 +436,57 @@ export function ProfileCatalogSelector({
               <div className="flex min-w-0 items-start gap-3 text-sm">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-text-main">Authoritative Profile catalog is locked</p>
-                  <p className="mt-1 text-text-muted">{catalogInvalid ? 'The Broker response failed exact v4 validation.' : catalogSurface.error?.message ?? 'No accepted catalog snapshot is available.'}</p>
-                  {catalogSurface.stale ? <p className="mt-1 text-xs text-text-muted">The last accepted definitions remain read-only until the catalog refreshes.</p> : null}
+                  <p className="font-semibold text-text-main">{t('profile_catalog.locked_title')}</p>
+                  <p className="mt-1 text-text-muted">{catalogInvalid ? t('profile_catalog.validation_failed') : catalogSurface.error?.message ?? t('profile_catalog.snapshot_unavailable')}</p>
+                  {catalogSurface.stale ? <p className="mt-1 text-xs text-text-muted">{t('profile_catalog.stale_read_only')}</p> : null}
                 </div>
               </div>
               <CopyErrorButton label="Copy Profile catalog error" text={catalogFailure} />
               <Button type="button" variant="outline" size="sm" onClick={() => void catalogSurface.refresh(true)} disabled={catalogSurface.status === 'loading'}>
                 <RefreshCw className="h-4 w-4" aria-hidden="true" />
-                Refresh catalog
+                {t('profile_catalog.refresh_catalog')}
               </Button>
             </div>
           ) : null}
 
           {!showLoading && !showFailure && catalogProjection && catalogProjection.profiles.length === 0 ? (
             <div className="flex min-h-28 flex-col items-center justify-center rounded-lg border border-dashed border-border px-5 py-8 text-center" role="status">
-              <p className="text-sm font-semibold text-text-main">No Profile definitions are currently published</p>
-              <p className="mt-2 max-w-xl text-sm text-text-muted">The authoritative catalog is empty. No client-side Profile candidates or Pack closures are created.</p>
+              <p className="text-sm font-semibold text-text-main">{t('profile_catalog.empty_title')}</p>
+              <p className="mt-2 max-w-xl text-sm text-text-muted">{t('profile_catalog.empty_description')}</p>
             </div>
           ) : null}
 
           {!showLoading && catalogProjection && catalogProjection.profiles.length > 0 ? (
             <>
               {catalogSurface.stale ? (
-                <p className="mb-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">The catalog is stale. Definitions and markers remain visible for diagnosis, but selection and ceremony actions are locked.</p>
+                <p className="mb-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">{t('profile_catalog.stale_warning')}</p>
               ) : null}
               <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                 <Input
-                  label="Find a Profile"
+                  label={t('profile_catalog.find')}
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Name, ID, Base, Shell, or Pack"
+                  placeholder={t('profile_catalog.find_placeholder')}
                 />
-                <span className="pb-2 text-xs text-text-muted">{filteredProfiles.length} of {catalogProjection.profiles.length}</span>
+                <span className="pb-2 text-xs text-text-muted">{t('profile_catalog.result_count', {
+                  filtered: String(filteredProfiles.length),
+                  total: String(catalogProjection.profiles.length),
+                })}</span>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Select a verified Profile">
+              <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label={t('profile_catalog.select_group')}>
                 {filteredProfiles.map((entry) => {
                   const selected = selectedProfileId === entry.profile_id;
-                  const unavailableLabel = entry.available ? '' : ' unavailable';
+                  const unavailableLabel = entry.available ? '' : t('profile_catalog.unavailable_suffix');
                   return (
                     <button
                       key={entry.profile_id}
                       type="button"
                       className="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-bg-main px-3 py-3 text-left transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] disabled:pointer-events-none disabled:opacity-60"
-                      aria-label={`Select Profile ${entry.display_name} (${entry.profile_id})${unavailableLabel}`}
+                      aria-label={t('profile_catalog.select_profile', {
+                        name: entry.display_name,
+                        id: entry.profile_id,
+                        availability: unavailableLabel,
+                      })}
                       aria-pressed={selected}
                       disabled={!entry.available || catalogSurface.stale || ceremonyBusy}
                       onClick={() => {
@@ -487,10 +500,10 @@ export function ProfileCatalogSelector({
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2 text-sm font-medium text-text-main">
                           <span className="truncate">{entry.display_name}</span>
-                          {entry.active ? <Badge variant="success">Active</Badge> : null}
-                          {!entry.available ? <Badge variant="destructive">Unavailable</Badge> : null}
+                          {entry.active ? <Badge variant="success">{t('profile_catalog.active')}</Badge> : null}
+                          {!entry.available ? <Badge variant="destructive">{t('profile_catalog.unavailable')}</Badge> : null}
                         </span>
-                        <span className="mt-1 block truncate font-mono text-xs text-text-muted">{entry.profile_id} · {entry.pack_closure.length} closure rows</span>
+                        <span className="mt-1 block truncate font-mono text-xs text-text-muted">{entry.profile_id} · {t('profile_catalog.closure_rows', {count: String(entry.pack_closure.length)})}</span>
                       </span>
                     </button>
                   );
@@ -499,8 +512,8 @@ export function ProfileCatalogSelector({
               {filteredProfiles.length === 0 ? (
                 <div className="mt-3 flex min-h-24 flex-col items-center justify-center rounded-lg border border-dashed border-border px-4 text-center">
                   <Search className="mb-2 h-5 w-5 text-text-muted" aria-hidden="true" />
-                  <p className="text-sm font-medium text-text-main">No Profiles match “{query.trim()}”</p>
-                  <Button type="button" className="mt-2" size="sm" variant="ghost" onClick={() => setQuery('')}>Clear search</Button>
+                  <p className="text-sm font-medium text-text-main">{t('profile_catalog.no_match', {query: query.trim()})}</p>
+                  <Button type="button" className="mt-2" size="sm" variant="ghost" onClick={() => setQuery('')}>{t('profile_catalog.clear_search')}</Button>
                 </div>
               ) : null}
             </>
@@ -512,8 +525,8 @@ export function ProfileCatalogSelector({
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Configure {selectedEntry.display_name}</CardTitle>
-              <CardDescription>Review the verified composition, then activate it as published or create a new Defaults Pack-set through the staged change ceremony.</CardDescription>
+              <CardTitle>{t('profile_catalog.configure', {name: selectedEntry.display_name})}</CardTitle>
+              <CardDescription>{t('profile_catalog.configure_description')}</CardDescription>
             </CardHeader>
             <CardContent>
               <ProfileDefinitionDetails
@@ -523,7 +536,7 @@ export function ProfileCatalogSelector({
                 frontendCatalogError={frontendCatalogError}
               />
               <p className="mt-5 text-sm text-text-muted">
-                Resolve, review, approve, and activate this selected Profile without changing the browsing selection first.
+                {t('profile_catalog.selected_instruction')}
               </p>
             </CardContent>
           </Card>
@@ -547,17 +560,17 @@ export function ProfileCatalogSelector({
       ) : selectedEntry && catalogProjection ? (
         <Card>
           <CardHeader>
-            <CardTitle>Profile activation is unavailable</CardTitle>
-            <CardDescription>The catalog remains available for browsing, but runtime verification is required before resolve, approval, or activation can change the active execution Profile.</CardDescription>
+            <CardTitle>{t('profile_catalog.activation_unavailable')}</CardTitle>
+            <CardDescription>{t('profile_catalog.activation_unavailable_description')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-4 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" data-testid="profile-ceremony-gate" role="alert">
-              <span className="min-w-0 flex-1">Complete Setup verification, then return here to continue the v4 ceremony.</span>
+              <span className="min-w-0 flex-1">{t('profile_catalog.complete_setup')}</span>
               <Link
                 className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border bg-bg-main px-4 py-2 text-sm font-medium text-text-main transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] focus-visible:ring-offset-2"
                 to={panelRoutes.setup}
               >
-                Open Setup
+                {t('profile_catalog.open_setup')}
               </Link>
             </div>
           </CardContent>
@@ -566,7 +579,7 @@ export function ProfileCatalogSelector({
         <Card>
           <CardContent>
             <p className="py-4 text-sm text-text-muted">
-              Select a verified Profile definition before starting the resolve, review, approval, and activation ceremony.
+              {t('profile_catalog.select_before_ceremony')}
             </p>
           </CardContent>
         </Card>

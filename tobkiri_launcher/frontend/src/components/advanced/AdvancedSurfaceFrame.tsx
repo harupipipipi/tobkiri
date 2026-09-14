@@ -152,19 +152,22 @@ export function AdvancedSurfaceFrame({
           </Button>
         </header>
 
-        <section
+        <details
           className="rounded-xl border border-border bg-bg-card px-4 py-4 sm:px-5"
           aria-label={`${descriptor.label} capability and action metadata`}
           data-advanced-action={descriptor.actions}
         >
-          <div className="flex flex-wrap items-center gap-2">
+          <summary className="cursor-pointer text-sm font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]">
+            Capability and action details
+          </summary>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Badge variant={actionVariant(descriptor.actions)}>Action: {descriptor.actions}</Badge>
             <Badge variant="outline">Capability: {descriptor.capability}</Badge>
           </div>
           <p className="mt-2 text-sm leading-6 text-text-muted">{advancedActionMetadata(descriptor).sideEffects}</p>
           <p className="mt-1 text-sm leading-6 text-text-muted">{advancedActionMetadata(descriptor).approval}</p>
           <p className="mt-1 text-xs leading-5 text-text-muted">{actionStateCopy(descriptor.actions, state.status, state.stale)}</p>
-        </section>
+        </details>
 
         <StatusNotice descriptor={descriptor} state={state} onRetry={onRetry} />
         {state.status === 'ready' && !state.error ? (

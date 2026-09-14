@@ -7,12 +7,19 @@ import {JSDOM} from 'jsdom';
 
 import {
   exactWorkflowStepFromPaletteOperation,
+  Flow,
   flowOperationSelectionKey,
   operationMatchesFlowEdge,
   readyFlowCompositions,
   WorkflowAuthoringPanel,
 } from './Flow';
-import type {RuntimeFlowDescriptor, RuntimeFlowEdgeDescriptor} from '@/src/lib/runtimeSurface';
+import {
+  RUNTIME_SURFACE_API_VERSION,
+  validateRuntimeSurfaceEnvelope,
+  type RuntimeFlowDescriptor,
+  type RuntimeFlowEdgeDescriptor,
+  type RuntimeSurfaceEnvelope,
+} from '@/src/lib/runtimeSurface';
 import type {ApiDynamicFrontendCatalog} from '@/src/lib/apiTypes';
 import {
   createWorkflowDefinition,
@@ -141,6 +148,81 @@ function succeededStatus(requestId: string): Record<string, unknown> {
     safe_error_code: null,
     created_at: 1,
     updated_at: 2,
+  };
+}
+
+function operationsEnvelope(): RuntimeSurfaceEnvelope<unknown> {
+  const artifactDigest = digest('8');
+  return {
+    runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION,
+    surface: 'operations',
+    state: 'ready',
+    profile_id: 'defaults',
+    profile_revision: digest('1'),
+    plan_digest: digest('2'),
+    catalog_revision: digest('3'),
+    records: {
+      profile_lock: {digest: digest('4'), source_ref: 'profile-lock-v4://defaults/lock'},
+      resolved_plan: {digest: digest('2'), source_ref: 'resolved-plan-v1://defaults/plan'},
+      activation_record: {digest: digest('5'), source_ref: 'activation-record-v1://defaults/active'},
+      authority_snapshot: {digest: digest('6'), source_ref: 'authority-snapshot-v4://defaults/current'},
+    },
+    data: {
+      packs: [{
+        pack_id: 'published-flow-pack',
+        role: 'provider',
+        kind: 'normal',
+        version: '1.0.0',
+        display_name: 'Published Flow Pack',
+        artifact_digest: artifactDigest,
+        artifact_ref: `pack-v4://published-flow-pack@${artifactDigest}`,
+        installed: true,
+        enabled: true,
+        approved: true,
+        required: false,
+        invokable_operations: ['example.echo.v1::echo'],
+      }],
+      operations: [{
+        action: 'contract_invoke',
+        operation_id: 'echo',
+        contract_id: 'example.echo.v1',
+        owner_pack_id: 'published-flow-pack',
+        contribution_id: 'pack.published-flow-pack.echo',
+        target_provider_id: 'example.echo.provider',
+        artifact_digest: artifactDigest,
+        invocation_contribution_id: 'pack.published-flow-pack.echo.invoke',
+        invocation_owner_pack_id: 'published-flow-pack',
+        invocation_catalog_hash: digest('3'),
+        invocation_reason: null,
+        invokable: true,
+        catalog_digest: digest('3'),
+        activation_id: 'activation:published-flow',
+        function_id: 'example.echo.function',
+        function_principal_id: 'example.echo.provider',
+        caller_function_id: 'published.workflow',
+        authority_reference: 'authority-ref:published-flow',
+        schema: {input_schema: {type: 'object', properties: {}}},
+        label: 'Echo published workflow',
+        route: {
+          contract_id: 'example.echo.v1',
+          operation_id: 'echo',
+          function_id: 'example.echo.function',
+          provider_pack_id: 'published-flow-pack',
+        },
+      }],
+      flows: [{
+        flow_id: 'published.workflow',
+        label: 'Published workflow',
+        state: 'ready',
+        operation_ids: ['echo'],
+        edges: [{
+          caller_function_id: 'published.workflow',
+          target_provider_id: 'example.echo.provider',
+          contract_id: 'example.echo.v1',
+          operation_id: 'echo',
+        }],
+      }],
+    },
   };
 }
 test('Flow admits only ready canonical compositions', () => {
@@ -373,6 +455,130 @@ test('Workflow authoring Reload resolves a malformed successful write by its ori
     ));
     assert.ok(create);
     assert.equal(create.disabled, false);
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+    });
+  }
+});
+
+test('Workflow visual editor inserts an exact palette operation and retains an explicit JSON source mode', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+  const operation = paletteOperation();
+  const dependencies: WorkflowAuthoringDependencies = {
+    fetchCatalog: async () => workflowCatalog(),
+    invoke: async (request) => {
+      if (request.contributionId.endsWith('.definition.list')) return {definitions: []};
+      if (request.contributionId.endsWith('.operation.palette')) {
+        return {
+          catalog_digest: digest('7'),
+          security_epoch: 1,
+          operations: [operation],
+        };
+      }
+      throw new Error(`Unexpected Workflow operation: ${request.contributionId}`);
+    },
+  };
+  try {
+    await act(async () => {
+      root.render(<WorkflowAuthoringPanel dependencies={dependencies} />);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    const visual = Array.from(container.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('Visual steps')
+    ));
+    assert.ok(visual);
+    await act(async () => visual.click());
+    const add = Array.from(container.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('Add step')
+    ));
+    assert.ok(add);
+    await act(async () => add.click());
+    assert.match(container.textContent ?? '', /example\.echo\.v1 \/ echo/);
+
+    const source = Array.from(container.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('Source JSON')
+    ));
+    assert.ok(source);
+    await act(async () => source.click());
+    assert.match(container.textContent ?? '', /YAML is intentionally unsupported/);
+    const textarea = container.querySelector<HTMLTextAreaElement>('#workflow-definition-json');
+    assert.ok(textarea);
+    const sourceDocument = JSON.parse(textarea.value) as {
+      steps: Array<{request: Record<string, unknown>}>
+    };
+    assert.deepEqual(sourceDocument.steps[0]?.request, {
+      contract_id: operation.contract_id,
+      contract_revision_digest: operation.contract_revision_digest,
+      operation_id: operation.operation_id,
+      function_principal_id: operation.function_principal_id,
+      input: {},
+    });
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    Object.defineProperties(globalThis, {
+      window: {value: previousWindow, configurable: true},
+      document: {value: previousDocument, configurable: true},
+      navigator: {value: previousNavigator, configurable: true},
+    });
+  }
+});
+
+test('a published Profile-declared flow renders its exact backend operation as invokable', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousNavigator = globalThis.navigator;
+  const {dom, container, root} = createDom();
+  const envelope = operationsEnvelope();
+  const authoringDependencies: WorkflowAuthoringDependencies = {
+    fetchCatalog: async () => workflowCatalog(),
+    invoke: async (request) => {
+      if (request.contributionId.endsWith('.definition.list')) return {definitions: []};
+      if (request.contributionId.endsWith('.operation.palette')) {
+        return {catalog_digest: digest('7'), security_epoch: 1, operations: []};
+      }
+      throw new Error(`Unexpected authoring operation: ${request.contributionId}`);
+    },
+  };
+  try {
+    assert.equal(validateRuntimeSurfaceEnvelope('operations', envelope).surface, 'operations');
+    await act(async () => {
+      root.render(
+        <Flow
+          operationsClient={{read: async <T,>() => envelope as RuntimeSurfaceEnvelope<T>}}
+          authoringDependencies={authoringDependencies}
+        />,
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    const profileTab = Array.from(container.querySelectorAll('button')).find((button) => (
+      button.textContent?.includes('Profile-declared operations')
+    ));
+    assert.ok(profileTab);
+    await act(async () => {
+      profileTab.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    assert.match(container.textContent ?? '', /Published workflow/);
+    assert.match(container.textContent ?? '', /Echo published workflow/);
+    const invoke = container.querySelector<HTMLButtonElement>(
+      '[aria-label="Invoke declared contract operation"]',
+    );
+    assert.ok(invoke);
+    assert.equal(invoke.disabled, false);
   } finally {
     await act(async () => root.unmount());
     dom.window.close();

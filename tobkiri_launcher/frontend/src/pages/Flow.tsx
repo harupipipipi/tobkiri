@@ -31,6 +31,7 @@ import {
   type RuntimeFlowEdgeDescriptor,
   type RuntimeFlowDescriptor,
   type RuntimeOperationDescriptor,
+  type RuntimeSurfaceClient,
 } from '@/src/lib/runtimeSurface';
 import {
   createWorkflowDefinition,
@@ -51,8 +52,21 @@ import {
   validateWorkflowDefinition,
 } from '@/src/lib/workflowAuthoring';
 import {isMutationResultUnknown} from '@/src/lib/mutationJournal';
+import {
+  dependencyInputValue,
+  insertPaletteWorkflowStep,
+  moveWorkflowStep,
+  parseDependencyInput,
+  parseVisualWorkflowDocument,
+  removeWorkflowStep,
+  setWorkflowStepDependencies,
+  setWorkflowStepId,
+  visualWorkflowSteps,
+  workflowDocumentJson,
+} from '@/src/lib/workflowEditor';
 
 type FlowTab = 'authoring' | 'profile';
+type WorkflowEditorMode = 'visual' | 'source';
 
 const EMPTY_WORKFLOW_DOCUMENT = JSON.stringify({
   workflow_api_version: 'io.tobkiri.workflow.v4',
@@ -143,6 +157,7 @@ export function WorkflowAuthoringPanel({
   const [notice, setNotice] = useState<WorkflowAuthoringNoticeProps | null>(null);
   const [loading, setLoading] = useState(false);
   const [mutating, setMutating] = useState(false);
+  const [editorMode, setEditorMode] = useState<WorkflowEditorMode>('source');
   const [unknownMutationBlocked, setUnknownMutationBlocked] = useState(
     hasUnknownWorkflowMutation,
   );
@@ -155,6 +170,22 @@ export function WorkflowAuthoringPanel({
   // every authoring write disabled while that read (or a refresh/validation)
   // is in flight; otherwise a list-projected stale ETag could be submitted.
   const mutationsBlocked = loading || mutating || unknownMutationBlocked;
+  const visualDocument = useMemo(
+    () => parseVisualWorkflowDocument(documentText),
+    [documentText],
+  );
+  const visualSteps = useMemo(
+    () => visualWorkflowSteps(visualDocument),
+    [visualDocument],
+  );
+
+  const updateVisualDocument = (
+    update: (document: Record<string, unknown>) => Record<string, unknown>,
+  ): void => {
+    if (!visualDocument || mutationsBlocked) return;
+    setDocumentText(workflowDocumentJson(update(visualDocument)));
+    setValidation(null);
+  };
 
   const loadAuthoringState = async (): Promise<{
     definitions: WorkflowDefinition[];
@@ -431,20 +462,99 @@ export function WorkflowAuthoringPanel({
               setNotice(null);
             }}>New draft</Button>
           </div>
-          <div className="grid gap-1.5">
-            <label className="text-sm font-medium text-text-main" htmlFor="workflow-definition-json">Workflow definition JSON</label>
-            <textarea
-              id="workflow-definition-json"
-              className="min-h-72 w-full rounded-lg border border-border bg-bg-main px-3 py-2 font-mono text-xs text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] disabled:cursor-not-allowed disabled:opacity-50"
-              value={documentText}
-              disabled={mutationsBlocked}
-              onChange={(event) => {
-                setDocumentText(event.target.value);
-                setValidation(null);
-              }}
-              spellCheck={false}
-            />
+          <div role="tablist" aria-label="Workflow editor mode" className="flex flex-wrap gap-2">
+            <Button
+              role="tab"
+              type="button"
+              variant={editorMode === 'visual' ? 'default' : 'outline'}
+              size="sm"
+              aria-selected={editorMode === 'visual'}
+              onClick={() => setEditorMode('visual')}
+            >
+              Visual steps
+            </Button>
+            <Button
+              role="tab"
+              type="button"
+              variant={editorMode === 'source' ? 'default' : 'outline'}
+              size="sm"
+              aria-selected={editorMode === 'source'}
+              onClick={() => setEditorMode('source')}
+            >
+              Source JSON
+            </Button>
           </div>
+          {editorMode === 'visual' ? (
+            <div className="grid gap-3 rounded-lg border border-border bg-bg-main p-3">
+              <div>
+                <p className="text-sm font-medium text-text-main">Visual steps and dependencies</p>
+                <p className="mt-1 text-xs text-text-muted">Insert only exact active-palette identities. IDs, missing references, and cycles are deliberately left to authoritative v4 validation.</p>
+              </div>
+              {!visualDocument ? (
+                <WorkflowAuthoringNotice kind="error" message="Visual editing requires a canonical Workflow v4 JSON object with object-valued steps. Use Source JSON to repair it." />
+              ) : (
+                <>
+                  <div className="grid gap-2">
+                    <p className="text-xs font-medium text-text-main">Insert from active palette</p>
+                    {palette?.operations.length ? palette.operations.map((operation) => (
+                      <div key={[operation.contract_id, operation.contract_revision_digest, operation.operation_id, operation.function_principal_id].join('\u0000')} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-2 py-2 text-xs">
+                        <span className="min-w-0 break-all text-text-muted">{operation.contract_id} / {operation.operation_id}</span>
+                        <Button type="button" variant="outline" size="sm" disabled={mutationsBlocked} onClick={() => updateVisualDocument((current) => insertPaletteWorkflowStep(current, operation))}>Add step</Button>
+                      </div>
+                    )) : <p className="text-xs text-text-muted">Reload to obtain the active palette before inserting a step.</p>}
+                  </div>
+                  <div className="grid gap-2">
+                    {visualSteps.length ? visualSteps.map((step, index) => (
+                      <div key={`${index}:${step.id}`} className="grid gap-2 rounded-md border border-border p-3">
+                        <p className="break-all text-xs text-text-muted">{step.operationLabel}</p>
+                        <Input
+                          label={`Step ${index + 1} ID`}
+                          value={step.id}
+                          disabled={mutationsBlocked}
+                          onChange={(event) => updateVisualDocument((current) => (
+                            setWorkflowStepId(current, index, event.target.value)
+                          ))}
+                        />
+                        <Input
+                          label="depends_on (comma-separated step IDs)"
+                          value={dependencyInputValue(step.dependsOn)}
+                          disabled={mutationsBlocked}
+                          onChange={(event) => updateVisualDocument((current) => (
+                            setWorkflowStepDependencies(
+                              current,
+                              index,
+                              parseDependencyInput(event.target.value),
+                            )
+                          ))}
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" size="sm" disabled={mutationsBlocked || index === 0} onClick={() => updateVisualDocument((current) => moveWorkflowStep(current, index, -1))}>Move up</Button>
+                          <Button type="button" variant="outline" size="sm" disabled={mutationsBlocked || index === visualSteps.length - 1} onClick={() => updateVisualDocument((current) => moveWorkflowStep(current, index, 1))}>Move down</Button>
+                          <Button type="button" variant="destructive" size="sm" disabled={mutationsBlocked} onClick={() => updateVisualDocument((current) => removeWorkflowStep(current, index))}>Remove step</Button>
+                        </div>
+                      </div>
+                    )) : <p className="text-sm text-text-muted">No steps yet. Add an exact operation from the active palette.</p>}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium text-text-main" htmlFor="workflow-definition-json">Canonical Workflow v4 JSON source</label>
+              <p className="text-xs text-text-muted">YAML is intentionally unsupported: this editor sends the canonical JSON document used by the v4 Contract.</p>
+              <textarea
+                id="workflow-definition-json"
+                className="min-h-72 w-full rounded-lg border border-border bg-bg-main px-3 py-2 font-mono text-xs text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] disabled:cursor-not-allowed disabled:opacity-50"
+                value={documentText}
+                disabled={mutationsBlocked}
+                onChange={(event) => {
+                  setDocumentText(event.target.value);
+                  setValidation(null);
+                }}
+                spellCheck={false}
+              />
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" disabled={loading || mutationsBlocked} onClick={() => void validate()}>Validate</Button>
             <Button type="button" disabled={mutationsBlocked || (selectedDefinition?.definition_id === definitionId.trim() && selectedDefinition.state !== 'draft')} loading={mutating} onClick={() => void save()}>{selectedDefinition?.definition_id === definitionId.trim() ? 'Save draft' : 'Create draft'}</Button>
@@ -544,8 +654,15 @@ export function flowOperationSelectionKey(
   ].map((value) => JSON.stringify(value)).join('\u0000');
 }
 
-export function Flow() {
-  const surface = useRuntimeSurface<unknown>('operations');
+export interface FlowProps {
+  /** Injectable only for deterministic vertical surface tests. */
+  operationsClient?: RuntimeSurfaceClient;
+  /** Injectable only for deterministic authoring tests. */
+  authoringDependencies?: WorkflowAuthoringDependencies;
+}
+
+export function Flow({operationsClient, authoringDependencies}: FlowProps = {}) {
+  const surface = useRuntimeSurface<unknown>('operations', operationsClient);
   const descriptor = LAUNCHER_ADVANCED_VIEWS.flow;
   const flows = surface.data ? extractExactFlowDescriptors(surface.data.data) : null;
   const operations = surface.data ? extractExactOperationDescriptors(surface.data.data) : [];
@@ -634,7 +751,7 @@ export function Flow() {
           </div>
         </CardContent>
       </Card>
-      {activeTab === 'authoring' ? <WorkflowAuthoringPanel /> : null}
+      {activeTab === 'authoring' ? <WorkflowAuthoringPanel dependencies={authoringDependencies} /> : null}
       {activeTab === 'profile' && surface.data ? <RuntimeEvidenceCard envelope={surface.data} title="Flow catalog provenance" /> : null}
       {activeTab === 'profile' ? (
         surface.status === 'ready' && hasDeclaredCompositions ? (

@@ -1,5 +1,5 @@
 import { AlertTriangle, CircleAlert, Copy } from "lucide-react";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "../lib/cn";
 
@@ -103,9 +103,14 @@ export function ErrorCopyAction({
 }: ErrorCopyActionProps) {
   const [feedback, setFeedback] = useState<"idle" | "copied" | "failed">("idle");
   const feedbackId = useId();
+  const copyAttempt = useRef(0);
 
   useEffect(() => {
+    copyAttempt.current += 1;
     setFeedback("idle");
+    return () => {
+      copyAttempt.current += 1;
+    };
   }, [copyText]);
 
   useEffect(() => {
@@ -133,9 +138,16 @@ export function ErrorCopyAction({
         )}
         data-copy-action=""
         onClick={() => {
+          const attempt = ++copyAttempt.current;
           void Promise.resolve(onCopy(copyText)).then(
-            (copied) => setFeedback(copied ? "copied" : "failed"),
-            () => setFeedback("failed"),
+            (copied) => {
+              if (attempt === copyAttempt.current) {
+                setFeedback(copied ? "copied" : "failed");
+              }
+            },
+            () => {
+              if (attempt === copyAttempt.current) setFeedback("failed");
+            },
           );
         }}
         title={label}

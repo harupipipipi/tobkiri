@@ -59,6 +59,12 @@ test('Settings localizes its descriptor and primary controls in Japanese', async
     assert.match(html, /開発ツールを表示/);
     assert.match(html, /ランタイム Profile 設定/);
     assert.match(html, /aria-label="言語"/);
+    const technicalDetails = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="runtime-settings-technical-details"]',
+    );
+    assert.ok(technicalDetails);
+    assert.equal(technicalDetails.open, false);
+    assert.match(technicalDetails.textContent ?? '', /技術的なランタイム詳細を表示/);
     assert.equal(translate('settings.appearance', undefined, 'zh'), 'Appearance');
   } finally {
     act(() => root.unmount());

@@ -24,6 +24,22 @@ test('initial loading does not announce empty results before a snapshot arrives'
   }
 });
 
+test('capability and action metadata is collapsed by default', () => {
+  const html = renderToStaticMarkup(
+    <AdvancedSurfaceFrame
+      descriptor={LAUNCHER_ADVANCED_VIEWS.profileFiles}
+      state={{status: 'ready', stale: false, error: null}}
+      onRetry={() => {}}
+    >
+      <p>Accepted content</p>
+    </AdvancedSurfaceFrame>,
+  );
+
+  assert.match(html, /<details[^>]*data-advanced-action="read_only"/);
+  assert.doesNotMatch(html, /<details[^>]*open/);
+  assert.match(html, /<summary[^>]*>Capability and action details<\/summary>/);
+});
+
 function createSurface(): {dom: JSDOM; container: HTMLElement; root: Root} {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
   Object.defineProperties(globalThis, {

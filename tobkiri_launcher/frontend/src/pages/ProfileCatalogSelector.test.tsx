@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import {act} from 'react';
+import {act, type ComponentProps} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import test, {afterEach, beforeEach} from 'node:test';
 import {MemoryRouter} from 'react-router';
 
-import {ProfileCatalogSelector} from '@/src/components/advanced/ProfileCatalogSelector';
+import {ProfileCatalogSelector as ProfileCatalogSelectorComponent} from '@/src/components/advanced/ProfileCatalogSelector';
 import type {ApiDynamicFrontendCatalog} from '@/src/lib/apiTypes';
 import type {
   ProfileActivateResult,
@@ -25,6 +25,12 @@ import type {RuntimeSurfaceState} from '@/src/hooks/useRuntimeSurface';
 import {useAppStore, type Pack} from '@/src/store';
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+
+function ProfileCatalogSelector(
+  props: ComponentProps<typeof ProfileCatalogSelectorComponent>,
+) {
+  return <MemoryRouter><ProfileCatalogSelectorComponent {...props} /></MemoryRouter>;
+}
 
 function optionalConversationCatalog(profileId = 'defaults', include = true): ApiDynamicFrontendCatalog {
   return {
@@ -500,36 +506,76 @@ test('catalog refresh keeps a manual selection when the URL-selected Profile is 
   }
 });
 
-test('Add Profile help sends Profile authoring to Home CRUD', async () => {
+test('Add Profile links directly to Home CRUD without an intermediate help panel', async () => {
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
   const {dom, container, root} = createDom();
   try {
     await act(async () => {
       root.render(
-        <MemoryRouter>
-          <ProfileCatalogSelector
-            profileSurface={surfaceState()}
-            catalogSurface={catalogState(catalogEnvelope())}
-            packs={[pack('provider-pack')]}
-            packsLoading={false}
-            loadPacks={async () => undefined}
-          />
-        </MemoryRouter>,
+        <ProfileCatalogSelector
+          profileSurface={surfaceState()}
+          catalogSurface={catalogState(catalogEnvelope())}
+          packs={[pack('provider-pack')]}
+          packsLoading={false}
+          loadPacks={async () => undefined}
+        />,
       );
     });
-    await act(async () => { buttonContaining(container, 'Add Profile').click(); });
-
-    assert.match(container.textContent ?? '', /Use Home to create a named Profile from an existing source Profile/);
-    assert.doesNotMatch(container.textContent ?? '', /does not currently expose a Profile-authoring operation/i);
-    assert.doesNotMatch(container.textContent ?? '', /Install or publish the bundle/i);
     const homeLink = [...container.querySelectorAll<HTMLAnchorElement>('a')]
-      .find((link) => link.textContent?.includes('Open Home Profile management'));
+      .find((link) => link.textContent?.includes('Add Profile'));
     assert.ok(homeLink);
     assert.equal(homeLink.getAttribute('href'), '/');
+    assert.equal(container.querySelector('[role="note"]'), null);
   } finally {
     act(() => root.unmount());
     dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('Profile catalog localizes its primary controls and keeps technical details collapsed', async () => {
+  const previousState = useAppStore.getState();
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  try {
+    useAppStore.setState({profile: {...previousState.profile, language: 'ja'}});
+    await act(async () => {
+      root.render(
+        <ProfileCatalogSelector
+          profileSurface={surfaceState()}
+          catalogSurface={catalogState(catalogEnvelope())}
+          packs={[pack('provider-pack')]}
+          packsLoading={false}
+          loadPacks={async () => undefined}
+        />,
+      );
+    });
+    await act(async () => undefined);
+
+    assert.match(container.textContent ?? '', /高度な Profile カタログ/);
+    const addLink = [...container.querySelectorAll<HTMLAnchorElement>('a')]
+      .find((link) => link.textContent?.includes('Profile を追加'));
+    assert.ok(addLink);
+    assert.equal(addLink.getAttribute('href'), '/');
+    assert.ok(container.querySelector('input[placeholder="名前、ID、Base、Shell、Pack"]'));
+    assert.equal(
+      buttonByLabel(container, 'Profile Defaults Profile (defaults) を選択')
+        .getAttribute('aria-pressed'),
+      'true',
+    );
+    const technicalDetails = container.querySelector<HTMLDetailsElement>(
+      '[data-testid="profile-technical-details"]',
+    );
+    assert.ok(technicalDetails);
+    assert.equal(technicalDetails.open, false);
+    assert.match(technicalDetails.textContent ?? '', /技術的な Profile 詳細を表示/);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    useAppStore.setState(previousState, true);
     Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
     Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
   }
@@ -1074,16 +1120,14 @@ test('Profile catalog remains browseable while runtime ceremony actions are gate
   try {
     await act(async () => {
       root.render(
-        <MemoryRouter>
-          <ProfileCatalogSelector
-            profileSurface={surfaceState()}
-            catalogSurface={catalogState(catalogEnvelope())}
-            packs={[pack('provider-pack')]}
-            packsLoading={false}
-            loadPacks={async () => undefined}
-            runtimeVerified={false}
-          />
-        </MemoryRouter>,
+        <ProfileCatalogSelector
+          profileSurface={surfaceState()}
+          catalogSurface={catalogState(catalogEnvelope())}
+          packs={[pack('provider-pack')]}
+          packsLoading={false}
+          loadPacks={async () => undefined}
+          runtimeVerified={false}
+        />,
       );
     });
     await act(async () => undefined);

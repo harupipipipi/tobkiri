@@ -300,8 +300,7 @@ function VerificationMessage({
   );
 }
 
-/** Keep Home visible while directing unresolved runtime state to Setup. */
-export function SetupVerificationBanner({
+function useSetupVerification({
   isSetupDone,
   runtimeReady,
   runtimeStatus,
@@ -317,9 +316,6 @@ export function SetupVerificationBanner({
     defaultsBootstrapRequired,
   });
   const [retrying, setRetrying] = useState(false);
-
-  if (state === 'verified') return null;
-
   const retry = () => {
     if (!onRetry || retrying) return;
     setRetrying(true);
@@ -327,12 +323,34 @@ export function SetupVerificationBanner({
       .then(onRetry)
       .finally(() => setRetrying(false));
   };
+  return {state, retrying, retry: onRetry ? retry : undefined};
+}
+
+/** Keep Home visible while directing unresolved runtime state to Setup. */
+export function SetupVerificationBanner({
+  isSetupDone,
+  runtimeReady,
+  runtimeStatus,
+  runtimeDisconnected,
+  defaultsBootstrapRequired,
+  onRetry,
+}: SetupVerificationBannerProps) {
+  const {state, retrying, retry} = useSetupVerification({
+    isSetupDone,
+    runtimeReady,
+    runtimeStatus,
+    runtimeDisconnected,
+    defaultsBootstrapRequired,
+    onRetry,
+  });
+
+  if (state === 'verified') return null;
 
   return (
     <div className="text-text-main" data-testid="setup-verification-banner">
       <VerificationMessage
         state={state}
-        onRetry={onRetry ? retry : undefined}
+        onRetry={retry}
         retrying={retrying}
         compact
         testId="setup-verification-banner-content"
@@ -416,30 +434,22 @@ export function SetupVerificationGate({
   onRetry,
   embedded = false,
 }: SetupVerificationGateProps) {
-  const state = resolveSetupVerificationState({
+  const {state, retrying, retry} = useSetupVerification({
     isSetupDone,
     runtimeReady,
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
+    onRetry,
   });
-  const [retrying, setRetrying] = useState(false);
 
   if (state === 'verified') return <>{children}</>;
-
-  const retry = () => {
-    if (!onRetry || retrying) return;
-    setRetrying(true);
-    void Promise.resolve()
-      .then(onRetry)
-      .finally(() => setRetrying(false));
-  };
 
   if (embedded) {
     return (
       <VerificationMessage
         state={state}
-        onRetry={onRetry ? retry : undefined}
+        onRetry={retry}
         retrying={retrying}
         compact
         testId="runtime-route-verification-gate"
