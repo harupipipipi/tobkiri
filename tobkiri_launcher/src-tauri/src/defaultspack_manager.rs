@@ -297,21 +297,21 @@ impl ApplicationProcessManager {
             self.debug_approval.unregister_guardian(run_id);
         }
 
-        let mut stopped_child_group = None;
-        if let Some(mut child) = child {
-            stopped_child_group = Some(child.id());
-            info!("Stopping managed Defaultspack (pid {})", child.id());
-            stop_child(&mut child)?;
-        }
+        let had_live_child = child.is_some();
 
         #[cfg(unix)]
-        for process_group in owned_process_groups {
-            if Some(process_group) != stopped_child_group {
-                stop_unix_process_group_id(process_group)?;
+        stop_owned_unix_process_groups(child, owned_process_groups)?;
+
+        #[cfg(not(unix))]
+        {
+            let _ = owned_process_groups;
+            if let Some(mut child) = child {
+                info!("Stopping managed Defaultspack (pid {})", child.id());
+                stop_child(&mut child)?;
             }
         }
 
-        if stopped_child_group.is_none() {
+        if !had_live_child {
             info!("No live managed Defaultspack child remained during stop");
         }
         info!("Managed Defaultspack process groups stopped");
@@ -537,6 +537,45 @@ impl ApplicationProcessManager {
             .lock()
             .map_err(|error| anyhow!("Application process manager lock poisoned: {error}"))
     }
+}
+
+#[cfg(unix)]
+fn stop_owned_unix_process_groups(
+    mut child: Option<crate::python_env::PythonChild>,
+    owned_process_groups: Vec<u32>,
+) -> Result<()> {
+    let child_group = child.as_ref().map(crate::python_env::PythonChild::id);
+    let mut groups = owned_process_groups
+        .into_iter()
+        .filter(|process_group| Some(*process_group) != child_group)
+        .collect::<Vec<_>>();
+    groups.sort_unstable();
+    groups.dedup();
+
+    // A wrapper can exit while its process group remains alive, and multiple
+    // previously-owned groups can therefore be retained for shutdown. Their
+    // grace windows are independent. Stop them concurrently so the product's
+    // fixed quit budget is not multiplied by the number of owned groups.
+    thread::scope(|scope| -> Result<()> {
+        let child_stop = child.as_mut().map(|child| {
+            info!("Stopping managed Defaultspack (pid {})", child.id());
+            scope.spawn(move || stop_child(child))
+        });
+        let group_stops = groups
+            .into_iter()
+            .map(|process_group| scope.spawn(move || stop_unix_process_group_id(process_group)))
+            .collect::<Vec<_>>();
+
+        if let Some(stop) = child_stop {
+            stop.join()
+                .map_err(|_| anyhow!("Defaultspack child stop worker panicked"))??;
+        }
+        for stop in group_stops {
+            stop.join()
+                .map_err(|_| anyhow!("Defaultspack process-group stop worker panicked"))??;
+        }
+        Ok(())
+    })
 }
 
 fn managed_defaultspack_run_id() -> String {
@@ -1216,6 +1255,64 @@ mod tests {
             "forced process-group shutdown exceeded its share of the quit budget"
         );
         assert!(!process_group_exists(process_group));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_stop_shares_one_quit_window_across_owned_process_groups() {
+        let manager = test_manager();
+        let unique = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let ready_a =
+            std::env::temp_dir().join(format!("defaultspack-manager-concurrent-a-{unique}.ready"));
+        let ready_b =
+            std::env::temp_dir().join(format!("defaultspack-manager-concurrent-b-{unique}.ready"));
+        let spawn_group = |ready: &std::path::Path| {
+            let script = format!(
+                "trap '' TERM; printf ready > {}; while :; do sleep 1; done",
+                ready.display()
+            );
+            let mut command = process_utils::command(SYSTEM_SHELL);
+            command.args(["-c", &script]);
+            crate::dock_registration::configure_defaultspack_process_group(&mut command);
+            command.spawn().unwrap()
+        };
+        let child_a = spawn_group(&ready_a);
+        let mut child_b = spawn_group(&ready_b);
+        let group_a = child_a.id();
+        let group_b = child_b.id();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.owned_process_groups.extend([group_a, group_b]);
+            state.child = Some(crate::python_env::PythonChild::development(child_a));
+        }
+        assert!((0..40).any(|_| {
+            if ready_a.exists() && ready_b.exists() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(25));
+            false
+        }));
+
+        let started = Instant::now();
+        manager.stop().unwrap();
+        let elapsed = started.elapsed();
+        let _ = child_b.wait();
+        fs::remove_file(ready_a).ok();
+        fs::remove_file(ready_b).ok();
+
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "owned process-group grace windows accumulated to {elapsed:?}"
+        );
+        assert!(!process_group_exists(group_a));
+        assert!(!process_group_exists(group_b));
     }
 
     #[cfg(unix)]
