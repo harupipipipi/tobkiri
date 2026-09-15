@@ -148,6 +148,125 @@ def test_attach_plist_requires_exact_canonical_mountpoint(tmp_path: Path) -> Non
         MODULE._device_from_attach_plist(payload, alias)
 
 
+def test_attach_retries_only_bounded_resource_unavailability(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg = tmp_path / "fixture.dmg"
+    dmg.write_bytes(b"fixture")
+    parent = tmp_path / "mount-parent"
+    parent.mkdir()
+    mount = MODULE.MountedDmg(dmg, temporary_parent=parent)
+    device = Path("/dev/disk999")
+    payload = plistlib.dumps(
+        {
+            "system-entities": [
+                {
+                    "dev-entry": os.fspath(device),
+                    "mount-point": os.fspath(mount.path),
+                }
+            ]
+        }
+    )
+    results = iter(
+        [
+            subprocess.CompletedProcess(
+                [],
+                1,
+                stdout=b"",
+                stderr=b"Resource temporarily unavailable\n",
+            ),
+            subprocess.CompletedProcess([], 0, stdout=payload, stderr=b""),
+        ]
+    )
+    calls: list[tuple[object, ...]] = []
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        MODULE,
+        "_run",
+        lambda *args, **kwargs: calls.append((*args, kwargs)) or next(results),
+    )
+    monkeypatch.setattr(MODULE.time, "sleep", sleeps.append)
+    monkeypatch.setattr(
+        MODULE.MountedDmg,
+        "_bind_mounted_path",
+        lambda self, candidate: setattr(self, "device", candidate),
+    )
+    try:
+        mount.attach()
+    finally:
+        mount.device = None
+        mount.close()
+
+    assert len(calls) == 2
+    assert sleeps == [MODULE._ATTACH_TRANSIENT_DELAY_SECONDS]
+
+
+def test_attach_does_not_retry_other_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg = tmp_path / "fixture.dmg"
+    dmg.write_bytes(b"fixture")
+    parent = tmp_path / "mount-parent"
+    parent.mkdir()
+    mount = MODULE.MountedDmg(dmg, temporary_parent=parent)
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        MODULE,
+        "_run",
+        lambda *args, **kwargs: calls.append((*args, kwargs))
+        or subprocess.CompletedProcess(
+            [], 1, stdout=b"", stderr=b"invalid image\n"
+        ),
+    )
+    monkeypatch.setattr(
+        MODULE.time,
+        "sleep",
+        lambda _delay: pytest.fail("non-transient failure was retried"),
+    )
+    try:
+        with pytest.raises(MODULE.DmgVerificationError, match="attach failed"):
+            mount.attach()
+    finally:
+        mount.close()
+
+    assert len(calls) == 1
+
+
+def test_attach_stops_after_bounded_transient_attempts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dmg = tmp_path / "fixture.dmg"
+    dmg.write_bytes(b"fixture")
+    parent = tmp_path / "mount-parent"
+    parent.mkdir()
+    mount = MODULE.MountedDmg(dmg, temporary_parent=parent)
+    calls: list[tuple[object, ...]] = []
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        MODULE,
+        "_run",
+        lambda *args, **kwargs: calls.append((*args, kwargs))
+        or subprocess.CompletedProcess(
+            [],
+            1,
+            stdout=b"",
+            stderr=b"Resource temporarily unavailable\n",
+        ),
+    )
+    monkeypatch.setattr(MODULE.time, "sleep", sleeps.append)
+    try:
+        with pytest.raises(MODULE.DmgVerificationError, match="attach failed"):
+            mount.attach()
+    finally:
+        mount.close()
+
+    assert len(calls) == MODULE._ATTACH_TRANSIENT_ATTEMPTS
+    assert sleeps == [MODULE._ATTACH_TRANSIENT_DELAY_SECONDS] * 2
+
+
 @pytest.mark.parametrize("mode", ["root_symlink", "root_replace"])
 def test_fake_hdiutil_rejects_root_swap_and_never_detaches_unbound_device(
     tmp_path: Path,

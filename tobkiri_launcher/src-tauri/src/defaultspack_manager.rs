@@ -30,7 +30,10 @@ const DEFAULTSPACK_STABLE_RUN_WINDOW: Duration = Duration::from_secs(30);
 // shells to observe the stopped listeners and terminate after this group.
 const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(unix)]
-const DEFAULTSPACK_FORCE_KILL_TIMEOUT: Duration = Duration::from_millis(750);
+// A loaded macOS runner has taken longer than 750 ms to report every group
+// member gone after SIGKILL. Keep the observation bounded inside the product's
+// five-second quit contract without treating signal delivery as termination.
+const DEFAULTSPACK_FORCE_KILL_TIMEOUT: Duration = Duration::from_millis(1_500);
 #[cfg(unix)]
 const SYSTEM_KILL: &str = "/bin/kill";
 #[cfg(all(test, unix))]
@@ -1193,7 +1196,7 @@ mod tests {
         let started = Instant::now();
         manager.stop().unwrap();
         assert!(
-            started.elapsed() < Duration::from_secs(3),
+            started.elapsed() < Duration::from_secs(4),
             "orphaned process-group shutdown exceeded the responsive bound"
         );
 
@@ -1308,7 +1311,7 @@ mod tests {
         fs::remove_file(ready_b).ok();
 
         assert!(
-            elapsed < Duration::from_secs(3),
+            elapsed < Duration::from_secs(4),
             "owned process-group grace windows accumulated to {elapsed:?}"
         );
         assert!(!process_group_exists(group_a));
