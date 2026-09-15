@@ -1,0 +1,354 @@
+{
+  "pack_id": "tobkiri_workflow_pack",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.archive",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "definition_id",
+            "if_match"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.archive",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.archive",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.create",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "definition_id",
+            "document"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.create",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.create",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.delete",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "definition_id",
+            "if_match"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.delete",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.delete",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.get",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "definition_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.get",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.get",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.list",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.list",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.list",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.publish",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "definition_id",
+            "if_match"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.publish",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.publish",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.update",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "definition_id",
+            "document",
+            "if_match"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.update",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.update",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.validate",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "document"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.validate",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.validate",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/definition.compile-preview",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "document"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.definition.compile-preview",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "definition.compile-preview",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/contracts/tobkiri_workflow_pack/operation.palette",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.operation.palette",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "operation.palette",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.cancel",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.cancel",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.cancel",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.advance",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.advance",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.advance",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.create",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "definition_id",
+            "inputs",
+            "occurrence_id",
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.create",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.create",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.get",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.get",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.get",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.pause",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.pause",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.pause",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.reconcile-recovery",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.reconcile-recovery",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.reconcile-recovery",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.resume",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.resume",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.resume",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.step.execute",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id",
+            "step_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.step.execute",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.step.execute",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.step.resume",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id",
+            "step_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.step.resume",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.step.resume",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/contracts/tobkiri_workflow_pack/run.step.retry",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "allowed_payload_keys": [
+            "run_id",
+            "step_id"
+          ],
+          "contract_id": "tobkiri.workflow.v4",
+          "contribution_id": "workflow.run.step.retry",
+          "function_id": "tobkiri.workflow.provider",
+          "operation_id": "run.step.retry",
+          "provider_id": "tobkiri.workflow.provider"
+        }
+      ]
+    }
+  ],
+  "schema": "io.tobkiri.frontend-contract-map.v4"
+}

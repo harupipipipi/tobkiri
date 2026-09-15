@@ -1,0 +1,222 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:11e5cf80bdbcb9ef068008ad85851c41d1325a07ee6e4bfc2978a15911ff08bc",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "kind": "executable",
+      "path": "runtime/coordinator.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.company.coordinator.v1",
+      "operations": [
+        "rumi_company_coordinator_pack.company-coordinator-control"
+      ],
+      "revision_digest": "sha256:35210adcc5c145e82b9f0139c2438037291786d6b7277da638a284c1038ffee0"
+    },
+    {
+      "contract_id": "tobkiri.action.job.adapter.v1",
+      "operations": [
+        "rumi_company_coordinator_pack.company-supervisor-job-adapter"
+      ],
+      "revision_digest": "sha256:c4488f4e1cde0fb205037f384949ded4ef8db28cbd88bbec6935ac0c08b72e79"
+    },
+    {
+      "contract_id": "tobkiri.resource.company.runtime.v1",
+      "operations": [
+        "rumi_company_coordinator_pack.company-runtime-resource"
+      ],
+      "revision_digest": "sha256:da063e0f6f1c9e42d56406159022ab1eb5e49f9771e9014510e8d9e34d783c33"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:35210adcc5c145e82b9f0139c2438037291786d6b7277da638a284c1038ffee0",
+      "id": "rumi_company_coordinator_pack.company.coordinator",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_company_coordinator_pack.company-coordinator-control"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:da063e0f6f1c9e42d56406159022ab1eb5e49f9771e9014510e8d9e34d783c33",
+      "id": "rumi_company_coordinator_pack.company.runtime",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_company_coordinator_pack.company-runtime-resource"
+      ],
+      "role": "brokered"
+    },
+    {
+      "contract_revision_digest": "sha256:c4488f4e1cde0fb205037f384949ded4ef8db28cbd88bbec6935ac0c08b72e79",
+      "id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
+      "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_company_coordinator_pack.company-supervisor-job-adapter"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:76f9c14a45eb30c4908b6dc2d98f630f937cb14a6e7fa8c11388efa34dec6ad4",
+    "artifact_set_digest": "sha256:c66398a8d6e76e447371a455f82b2280a2cb40ffcfcd7643eafb2d9779239c58",
+    "contract_catalog_digest": "sha256:4a97e5495fa8aae7b3fbad18ab359ceb2e6c1bab4982d8a43df17323200c964f"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.company.coordinator.v1",
+      "rumi.action.job.adapter.v1",
+      "rumi.resource.company.runtime.v1",
+      "rumi:ecosystem/rumi_company_coordinator_pack",
+      "rumi_company_coordinator_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_company_coordinator_pack.company-coordinator-control",
+      "owner": "rumi_company_coordinator_pack",
+      "contract_reference": "tobkiri.action.company.coordinator.v1",
+      "provider_id": "rumi_company_coordinator_pack.company.coordinator",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_company_coordinator_pack.company-runtime-resource",
+      "owner": "rumi_company_coordinator_pack",
+      "contract_reference": "tobkiri.resource.company.runtime.v1",
+      "provider_id": "rumi_company_coordinator_pack.company.runtime",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    },
+    {
+      "operation_id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
+      "owner": "rumi_company_coordinator_pack",
+      "contract_reference": "tobkiri.action.job.adapter.v1",
+      "provider_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:390bc0fc7f34296533ae1b7fcf47febda08667d86455e7e439e84f1e1dd75264",
+    "display_name": "Rumi Company Coordinator",
+    "id": "rumi_company_coordinator_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_company_coordinator_pack/pack.v4.json",
+    "source_digest": "sha256:76f9c14a45eb30c4908b6dc2d98f630f937cb14a6e7fa8c11388efa34dec6ad4",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:794cf32acc1341204e6fb76b63e06ec5345945cb6a60536ae5ef6dea6bf8bc0d",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:5f6452307215d85d1399e8cd635d6505190cb4a94463b41c741a1c87b4a3f81f",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_company_coordinator_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:76f9c14a45eb30c4908b6dc2d98f630f937cb14a6e7fa8c11388efa34dec6ad4"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_company_coordinator_pack.company.coordinator",
+      "owner": "rumi_company_coordinator_pack",
+      "contract_reference": "tobkiri.action.company.coordinator.v1",
+      "operations": [
+        "rumi_company_coordinator_pack.company-coordinator-control"
+      ]
+    },
+    {
+      "provider_id": "rumi_company_coordinator_pack.company.runtime",
+      "owner": "rumi_company_coordinator_pack",
+      "contract_reference": "tobkiri.resource.company.runtime.v1",
+      "operations": [
+        "rumi_company_coordinator_pack.company-runtime-resource"
+      ]
+    },
+    {
+      "provider_id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
+      "owner": "rumi_company_coordinator_pack",
+      "contract_reference": "tobkiri.action.job.adapter.v1",
+      "operations": [
+        "rumi_company_coordinator_pack.company-supervisor-job-adapter"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "company.coordinate",
+      "company.runtime.observe",
+      "company.state.manage",
+      "company.state.read",
+      "company.work",
+      "host.authority.consume",
+      "job.adapter.invoke"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.company.state.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.action.company.work.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.company.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_company_state_store_pack": ">=1.0.0,<2.0.0",
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

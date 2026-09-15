@@ -1,0 +1,74 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.turn.lifecycle.v1",
+      "rumi.event.turn.v1",
+      "rumi.resource.turn.v1"
+    ],
+    "requires": [
+      "rumi.resource.conversation.v1",
+      "rumi.resource.message.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_conversation_store_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Ephemeral revision-bound turn lifecycle owner.",
+  "display_name": "Rumi Turn Runtime",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:b458900f001fd7e1ee92c0720487da3e4351a3926953776141ce94a03a46c3e1",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:357f695bf2aa8868dfabfbcf742a3581b1b0ec4167e9edb0a62ba0c0cb0120a8"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:357f695bf2aa8868dfabfbcf742a3581b1b0ec4167e9edb0a62ba0c0cb0120a8"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "turn_lifecycle"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "bounded_retention": true,
+      "conversation_storage": false,
+      "message_storage": false
+    }
+  },
+  "pack_id": "rumi_turn_runtime_pack",
+  "pack_identity": "rumi:ecosystem/rumi_turn_runtime_pack",
+  "provenance": {
+    "build_identity": "rumi_turn_runtime_pack:1.0.0",
+    "content_hash": "sha256:ee2279ae2a1052d8e6284ba47e4cb744fbce00579e70b0a77870022bbc576f6f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "turn.manage",
+    "turn.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

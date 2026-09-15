@@ -25,9 +25,11 @@ def run(input_data, context):
     data = input_data if isinstance(input_data, dict) else {}
     registry = FrontendRegistry()
     full = _bool_with_default(data.get("full"), False)
+    include_skills = _bool_with_default(data.get("include_skills"), False)
     return ok(
         registry.build_catalog(
             profile_id=str(data.get("profile_id") or "").strip() or None,
             lightweight=not full,
+            include_skills=include_skills,
         )
     )

@@ -3,15 +3,22 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from ..extensions.runtime import get_extension_registry
-from .executor import ToolExecutor
+from .executor import SubagentFactory, ToolExecutor
 from .schema_adapter import adapt_tool_definitions, tool_name_from_definition
 
 
 class ToolBroker:
     """Bridge layer between provider capabilities and tool execution."""
 
-    def __init__(self, executor: Optional[ToolExecutor] = None) -> None:
-        self._executor = executor or ToolExecutor()
+    def __init__(
+        self,
+        executor: Optional[ToolExecutor] = None,
+        *,
+        subagent_factory: Optional[SubagentFactory] = None,
+    ) -> None:
+        self._executor = executor or ToolExecutor(
+            subagent_factory=subagent_factory
+        )
 
     @staticmethod
     def supports_native_tool_calling(provider_manifest: Dict[str, Any]) -> bool:

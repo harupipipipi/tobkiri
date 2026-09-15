@@ -1,0 +1,11 @@
+{
+  "architecture": "arm64",
+  "package": "bubblewrap",
+  "schema": "io.tobkiri.packvm-vz-bubblewrap-descriptor.v1",
+  "source": {
+    "sha256": "sha256:c838daebddb7fe169ebb461612e90b1fcb981de838f81bfbecf26d45ab5a71ee",
+    "size_bytes": 50132,
+    "url": "https://deb.debian.org/debian/pool/main/b/bubblewrap/bubblewrap_0.11.0-2+deb13u1_arm64.deb"
+  },
+  "version": "0.11.0-2+deb13u1"
+}

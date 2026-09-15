@@ -9,7 +9,7 @@ API 一覧:
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
 from ._helpers import _log_internal_error, _SAFE_ERROR_MSG
 
@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 class DesktopHandlersMixin:
     """Desktop App API のハンドラ"""
+
+    if TYPE_CHECKING:
+        def _validate_pack_id(self, pack_id: str) -> bool: ...
 
     def _desktop_issue_token(self, body: Dict[str, Any]) -> Dict[str, Any]:
         """POST /api/desktop/token — Desktop App 用 Pack トークンを発行する。

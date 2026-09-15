@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { describeRuntimeBadge, describeRuntimeBanner, runtimeMonitorDelay } from "./runtimeHealth";
+import {getRuntimeDispatchStatus, setRuntimeDispatchStatus} from "./runtimeDispatchGate";
+import {useAppStore} from "@/src/store";
 
 test("runtimeMonitorDelay polls slowly when the runtime is stable", () => {
   assert.equal(runtimeMonitorDelay({
@@ -49,4 +51,146 @@ test("describeRuntimeBanner returns crafted warmup copy", () => {
 
   assert.equal(banner.tone, "warning");
   assert.match(banner.title, /静かに起動中/);
+});
+
+test("reconfirmation is a distinct actionable state, not warmup or runtime error", () => {
+  const badge = describeRuntimeBadge({
+    runtimeReady: false,
+    runtimeStatus: "profile_reconfirmation_required",
+    runtimeError: "private Host diagnostic",
+    runtimeDisconnected: false,
+    lastRuntimeHealthyAt: null,
+  });
+  assert.equal(badge.label, "Profile reconfirmation required");
+  assert.equal(badge.tone, "warning");
+  assert.doesNotMatch(badge.detail, /private Host diagnostic/);
+
+  const banner = describeRuntimeBanner({
+    runtimeReady: false,
+    runtimeStatus: "profile_reconfirmation_required",
+    runtimeError: "private Host diagnostic",
+    runtimeDisconnected: false,
+    lastRuntimeHealthyAt: null,
+  });
+  assert.match(banner.title, /Profile reconfirmation/);
+  assert.doesNotMatch(banner.detail, /private Host diagnostic/);
+  assert.equal(runtimeMonitorDelay({
+    runtimeReady: false,
+    runtimeStatus: "profile_reconfirmation_required",
+    runtimeError: null,
+    runtimeDisconnected: false,
+    lastRuntimeHealthyAt: null,
+  }), 2_500);
+});
+
+test("the store cannot publish a contradictory health state to the dispatch gate", () => {
+  const previousState = useAppStore.getState();
+  const previousDispatchStatus = getRuntimeDispatchStatus();
+  setRuntimeDispatchStatus("runtime_ready");
+
+  assert.throws(() => useAppStore.getState().setRuntimeHealth({
+    status: "error",
+    needs_setup: false,
+    panel_ready: true,
+    runtime_ready: false,
+    runtime_status: "runtime_ready",
+    runtime_error: "denied",
+    host_catalog_verified: true,
+    profile_ceremony_available: true,
+    active_profile_ready: false,
+    launch_ready: false,
+    defaults_bootstrap_required: false,
+  }), /contradictory/);
+  assert.equal(getRuntimeDispatchStatus(), "error");
+  assert.equal(useAppStore.getState().runtimeReady, false);
+  assert.equal(useAppStore.getState().runtimeStatus, "error");
+  assert.equal(useAppStore.getState().hostCatalogVerified, false);
+  assert.equal(useAppStore.getState().profileCeremonyAvailable, false);
+
+  useAppStore.setState(previousState, true);
+  setRuntimeDispatchStatus(previousDispatchStatus);
+});
+
+test("a failed health refresh clears stale Profile ceremony verification", async () => {
+  const previousState = useAppStore.getState();
+  const previousDispatchStatus = getRuntimeDispatchStatus();
+  const previousFetch = globalThis.fetch;
+
+  try {
+    useAppStore.setState({
+      runtimeReady: true,
+      runtimeStatus: "runtime_ready",
+      runtimeError: null,
+      runtimeDisconnected: false,
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      lastRuntimeHealthyAt: 1,
+    });
+    globalThis.fetch = (async () => {
+      throw new Error("health endpoint unavailable");
+    }) as typeof fetch;
+
+    await useAppStore.getState().refreshRuntimeHealth();
+
+    assert.equal(useAppStore.getState().runtimeReady, false);
+    assert.equal(useAppStore.getState().runtimeStatus, "error");
+    assert.equal(useAppStore.getState().runtimeDisconnected, true);
+    assert.equal(useAppStore.getState().hostCatalogVerified, false);
+    assert.equal(useAppStore.getState().profileCeremonyAvailable, false);
+  } finally {
+    globalThis.fetch = previousFetch;
+    useAppStore.setState(previousState, true);
+    setRuntimeDispatchStatus(previousDispatchStatus);
+  }
+});
+
+test("an error health response cannot retain Profile ceremony verification", () => {
+  const previousState = useAppStore.getState();
+  const previousDispatchStatus = getRuntimeDispatchStatus();
+
+  try {
+    useAppStore.getState().setRuntimeHealth({
+      status: "error",
+      needs_setup: false,
+      panel_ready: true,
+      runtime_ready: false,
+      runtime_status: "error",
+      runtime_error: "runtime startup failed",
+      host_catalog_verified: true,
+      profile_ceremony_available: true,
+      active_profile_ready: false,
+      launch_ready: false,
+      defaults_bootstrap_required: false,
+    });
+
+    assert.equal(useAppStore.getState().hostCatalogVerified, false);
+    assert.equal(useAppStore.getState().profileCeremonyAvailable, false);
+  } finally {
+    useAppStore.setState(previousState, true);
+    setRuntimeDispatchStatus(previousDispatchStatus);
+  }
+});
+
+test("the store retains the Host-owned Defaults bootstrap requirement", () => {
+  const previousState = useAppStore.getState();
+  const previousDispatchStatus = getRuntimeDispatchStatus();
+
+  useAppStore.getState().setRuntimeHealth({
+    status: "ok",
+    needs_setup: true,
+    panel_ready: true,
+    runtime_ready: false,
+    runtime_status: "panel_ready",
+    runtime_error: null,
+    host_catalog_verified: true,
+    profile_ceremony_available: false,
+    active_profile_ready: false,
+    launch_ready: false,
+    defaults_bootstrap_required: true,
+  });
+
+  assert.equal(useAppStore.getState().defaultsBootstrapRequired, true);
+
+  useAppStore.setState(previousState, true);
+  setRuntimeDispatchStatus(previousDispatchStatus);
 });

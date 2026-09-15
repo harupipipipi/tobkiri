@@ -1,4 +1,4 @@
-import { cloneElement, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactElement, type ReactNode } from "react";
+import { cloneElement, memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactElement, type ReactNode } from "react";
 import {
   Blocks,
   BrainCircuit,
@@ -84,7 +84,11 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const RAIL_BUTTON_CLASS = "relative flex h-9 min-h-9 w-9 min-w-9 shrink-0 items-center justify-center overflow-visible rounded-md transition-all duration-200 ease-out hover:scale-[1.06] active:scale-[0.94]";
+// Keep the persistent rail on a stable compositing layer. WKWebView can drop an
+// inline SVG for a frame when a transformed rail button opens a fixed portal or
+// when currentColor is interpolated while that portal is mounted. Keep feedback
+// on the button surface and never animate the glyph's inherited color.
+const RAIL_BUTTON_CLASS = "relative isolate flex h-10 min-h-10 w-10 min-w-10 shrink-0 items-center justify-center overflow-visible rounded-lg transition-[background-color,border-color,box-shadow] duration-150 ease-out [-webkit-tap-highlight-color:transparent]";
 const PANEL_WIDTH_STORAGE_KEY = "rumi-right-sidebar-panel-width";
 const PLACEMENT_PANEL_PREFIX = "__placement__:";
 const DEFAULT_TOOL_GROUP_RAIL_LIMIT = 8;
@@ -205,7 +209,8 @@ function readStoredStringArrayRecord(key: string): Record<string, string[]> {
 
 const CATEGORY_META: Record<SidebarCategory | "all", { label: string; icon: ReactElement }> = {
   all: { label: "All", icon: <Layers size={16} /> },
-  tool: { label: "機能", icon: <Wrench size={16} /> },
+  activity: { label: "Activities", icon: <Route size={16} /> },
+  tool: { label: "Advanced Tools", icon: <Wrench size={16} /> },
   widget: { label: "Widgets", icon: <LayoutGrid size={16} /> },
   system: { label: "System", icon: <Settings size={16} /> },
   integration: { label: "Integrations", icon: <Blocks size={16} /> },
@@ -318,11 +323,12 @@ const ACTION_ICONS: Record<string, ReactElement> = {
 };
 
 const SIDEBAR_CATEGORY_ORDER: Record<SidebarCategory, number> = {
-  tool: 0,
-  widget: 1,
+  widget: 0,
+  activity: 1,
   capability: 2,
   integration: 3,
   system: 4,
+  tool: 5,
 };
 
 function compareText(left: string, right: string): number {
@@ -491,6 +497,7 @@ function iconForItem(item: SidebarItem) {
   const normalized = item.label.toLowerCase().replace(/\s+/g, "_");
   if (ITEM_ICONS[normalized]) return ITEM_ICONS[normalized];
   const byCategory: Record<SidebarCategory, ReactElement> = {
+    activity: <Route size={18} />,
     tool: <Wrench size={18} />,
     widget: <LayoutGrid size={18} />,
     system: <Cpu size={18} />,
@@ -508,8 +515,27 @@ function railIcon(item: ReactElement, size = 18): ReactElement {
   });
 }
 
+const StableToolGroupRailGlyph = memo(function StableToolGroupRailGlyph({
+  iconName,
+  groupId,
+}: {
+  iconName?: string;
+  groupId: string;
+}) {
+  const icon = (iconName && TOOL_GROUP_ICONS[iconName]) || TOOL_GROUP_ICONS[groupId] || TOOL_GROUP_ICONS.other;
+  return (
+    <span
+      aria-hidden="true"
+      className="rumi-rail-stable-glyph pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center text-zinc-400 [backface-visibility:hidden] [transform:translateZ(0)] [will-change:transform] [&>svg]:block"
+    >
+      {railIcon(icon, 20)}
+    </span>
+  );
+});
+
 function categoryColor(cat: SidebarCategory, variant: "bg" | "indicator" | "dot" | "badge") {
   const map: Record<SidebarCategory, Record<string, string>> = {
+    activity: { bg: "bg-fuchsia-500", indicator: "bg-fuchsia-500", dot: "bg-fuchsia-500/60", badge: "bg-fuchsia-500/20 text-fuchsia-300" },
     tool: { bg: "bg-emerald-500", indicator: "bg-emerald-500", dot: "bg-emerald-500/60", badge: "bg-emerald-500/20 text-emerald-400" },
     widget: { bg: "bg-blue-500", indicator: "bg-blue-500", dot: "bg-blue-500/60", badge: "bg-blue-500/20 text-blue-400" },
     system: { bg: "bg-amber-500", indicator: "bg-amber-500", dot: "bg-amber-500/60", badge: "bg-amber-500/20 text-amber-400" },
@@ -519,13 +545,17 @@ function categoryColor(cat: SidebarCategory, variant: "bg" | "indicator" | "dot"
   return map[cat]?.[variant] ?? "";
 }
 
-function ToggleSwitch({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+function ToggleSwitch({ value, label, onChange }: { value: boolean; label: string; onChange: (v: boolean) => void }) {
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={value}
+      aria-label={label}
       onClick={() => onChange(!value)}
-      className={cn("w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0", value ? "bg-emerald-500" : "bg-zinc-700")}
+      className={cn("relative h-5 w-9 flex-shrink-0 rounded-full transition-colors", value ? "bg-emerald-500" : "bg-zinc-700")}
     >
-      <div className={cn("w-3 h-3 bg-white rounded-full absolute top-[3px] transition-transform", value ? "translate-x-[16px]" : "translate-x-[3px]")} />
+      <span aria-hidden="true" className={cn("absolute top-1 h-3 w-3 rounded-full bg-white transition-transform", value ? "translate-x-5" : "translate-x-1")} />
     </button>
   );
 }
@@ -540,7 +570,7 @@ function FieldControl({
   onChange: (value: unknown) => void;
 }) {
   if (field.type === "toggle") {
-    return <ToggleSwitch value={Boolean(value)} onChange={onChange} />;
+    return <ToggleSwitch value={Boolean(value)} label={field.label} onChange={onChange} />;
   }
 
   if (field.type === "select") {
@@ -808,7 +838,7 @@ function CategorySwitcher({
               <p className="text-[9px] font-semibold text-zinc-500 uppercase tracking-wider">表示フィルター</p>
             </div>
             <div className="py-0.5">
-              {(["all", "tool", "widget", "system", "integration", "capability"] as const).map((filterId) => {
+              {(["all", "widget", "activity", "capability", "integration", "system", "tool"] as const).map((filterId) => {
                 const count = counts[filterId] ?? 0;
                 if (filterId !== "all" && count === 0) return null;
                 return (
@@ -966,7 +996,6 @@ export function RightSidebar({
   onLoadPromptActive,
   onTogglePromptEdge,
   onToggleChatPromptUsage,
-  onOpenPromptStudio,
   onToolToggle,
   onToolBatchSet,
   onPanelAction,
@@ -1001,13 +1030,12 @@ export function RightSidebar({
   onLoadPromptActive?: (params: { profile_id?: string; conversation_id?: string; include_text?: boolean; model_profile_id?: string; model?: string }) => Promise<PromptUsageSummary>;
   onTogglePromptEdge?: (payload: { profile_id?: string; conversation_id?: string; edge_id: string; enabled: boolean; model_profile_id?: string; model?: string }) => Promise<PromptUsageSummary>;
   onToggleChatPromptUsage?: (visible: boolean) => void;
-  onOpenPromptStudio?: (promptId?: string) => void;
   onToolToggle?: (item: SidebarItem) => void;
   onToolBatchSet?: (toolIds: string[], enabled: boolean) => void;
   onPanelAction?: (item: SidebarItem, action: SidebarAction) => void;
 }) {
   const [activePanel, setActivePanel] = useState<string | null>(() => requestedPanelIdFromActiveItemId(activeItemId));
-  const [categoryFilter, setCategoryFilter] = useState<"all" | SidebarCategory>("tool");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | SidebarCategory>("activity");
   const [searchQuery, setSearchQuery] = useState("");
   const [toolManagerSearchQuery, setToolManagerSearchQuery] = useState("");
   const [isToolManagerSearchOpen, setIsToolManagerSearchOpen] = useState(false);
@@ -1125,6 +1153,23 @@ export function RightSidebar({
     },
     [panelWidthPx],
   );
+
+  const resizePanelWithKeyboard = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 48 : 16;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setPanelWidth(clampPanelWidth(panelWidthPx + step));
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setPanelWidth(clampPanelWidth(panelWidthPx - step));
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setPanelWidth(clampPanelWidth(220));
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setPanelWidth(clampPanelWidth(520));
+    }
+  }, [panelWidthPx]);
 
   useEffect(() => {
     const requestedId = requestedPanelIdFromActiveItemId(activeItemId);
@@ -1350,7 +1395,7 @@ export function RightSidebar({
     }));
   }, [toolItems]);
 
-  const showToolGroups = (categoryFilter === "all" || categoryFilter === "tool") && toolGroups.length > 0;
+  const showToolGroups = categoryFilter === "tool" && toolGroups.length > 0;
 
   const visibleItems = useMemo(() => {
     const base = (categoryFilter === "all" ? searchFilteredItems : searchFilteredItems.filter((item) => item.category === categoryFilter))
@@ -1366,8 +1411,11 @@ export function RightSidebar({
       .filter((item): item is SidebarItem => Boolean(item))
   ), [searchFilteredItems, pinnedItemIds]);
   const unpinnedVisibleItems = useMemo(
-    () => visibleItems.filter((item) => !pinnedItemIdSet.has(item.id)),
-    [pinnedItemIdSet, visibleItems],
+    () => visibleItems.filter((item) => (
+      !pinnedItemIdSet.has(item.id)
+      && (item.category !== "tool" || categoryFilter === "tool")
+    )),
+    [categoryFilter, pinnedItemIdSet, visibleItems],
   );
 
   const activeItem = items.find((item) => item.id === activePanel) ?? null;
@@ -1744,21 +1792,27 @@ export function RightSidebar({
   };
 
   return (
-    <aside className="flex-shrink-0 border-l border-zinc-800/60 bg-[#09090b] hidden md:flex h-full transition-[width,opacity] duration-200 ease-out">
+    <aside aria-label="Tools and utility panels" className="rumi-right-sidebar relative hidden h-full flex-shrink-0 border-l border-zinc-800/60 bg-[#09090b] transition-[width,opacity] duration-200 ease-out md:flex">
       {(activeItem || isPlacementPanelActive || isToolManagerActive || isToolFilterLogActive || isRuntimeStatusActive || isContextUsageActive || isPromptUsageActive || isCompanyPanelActive || isCodingPanelActive || isWorkspaceTabsActive) && (
         <div
-          className="relative flex flex-col border-r border-zinc-800/40 bg-[#0a0a0c] animate-in slide-in-from-right-2 duration-200"
+          className="rumi-right-sidebar-panel rumi-layer-local-popover relative flex min-w-0 flex-col border-r border-zinc-800/40 bg-[#0a0a0c] shadow-2xl animate-in slide-in-from-right-2 duration-200"
           style={{ width: panelWidthPx }}
         >
           <div
             role="separator"
+            tabIndex={0}
             aria-label="機能パネル幅を変更"
-            title="機能パネル幅を変更"
-            className="absolute left-0 top-0 rumi-layer-local-popover h-full w-1.5 cursor-col-resize bg-transparent transition-colors hover:bg-zinc-700/60"
+            aria-orientation="vertical"
+            aria-valuemin={220}
+            aria-valuemax={520}
+            aria-valuenow={panelWidthPx}
+            title="ドラッグまたは左右キーで機能パネル幅を変更"
+            className="absolute left-0 top-0 rumi-layer-local-popover h-full w-2 cursor-col-resize bg-transparent transition-colors hover:bg-zinc-700/60 focus-visible:bg-indigo-400/50"
             onPointerDown={startPanelResize}
+            onKeyDown={resizePanelWithKeyboard}
           />
-          <div className="h-10 flex items-center justify-between px-2.5 border-b border-zinc-800/60 flex-shrink-0">
-            <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+          <div className="flex h-11 flex-shrink-0 items-center justify-between gap-2 border-b border-zinc-800/60 px-2.5">
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
               <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", activeItem ? categoryColor(activeItem.category, "bg") : isPlacementPanelActive ? "bg-violet-300" : isCompanyPanelActive ? "bg-sky-400" : isCodingPanelActive ? "bg-zinc-300" : isWorkspaceTabsActive ? "bg-emerald-300" : isPromptUsageActive ? "bg-cyan-300" : isToolFilterLogActive ? "bg-amber-300" : isRuntimeStatusActive ? "bg-sky-300" : "bg-emerald-500")} />
               <h3 className="text-[13px] font-medium text-zinc-100 truncate">{activeItem?.label ?? activePlacementManifest?.label ?? (isCompanyPanelActive ? "Employees" : isCodingPanelActive ? "Coding widget" : isWorkspaceTabsActive ? "Workspace tabs" : isPromptUsageActive ? "Current prompts" : isToolFilterLogActive ? "選定ログ" : isContextUsageActive ? "Context usage" : isRuntimeStatusActive ? "Runtime status" : "機能")}</h3>
               {activeItem?.badge && (
@@ -1767,19 +1821,31 @@ export function RightSidebar({
                 </span>
               )}
             </div>
-            {activeItem?.category === "tool" && (
+            <div className="flex shrink-0 items-center gap-1">
+              {activeItem?.category === "tool" && (
+                <button
+                  type="button"
+                  onClick={() => onToolToggle?.(activeItem)}
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+                    selectedToolIdSet.has(activeItem.id) ? "text-emerald-400 hover:bg-emerald-500/10" : "text-zinc-600 hover:bg-zinc-800",
+                  )}
+                  title={selectedToolIdSet.has(activeItem.id) ? "今回の指定を解除" : "今回使う"}
+                  aria-label={selectedToolIdSet.has(activeItem.id) ? "今回の指定を解除" : "今回使う"}
+                >
+                  <Power size={14} />
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => onToolToggle?.(activeItem)}
-                className={cn(
-                  "p-1 rounded transition-colors",
-                  selectedToolIdSet.has(activeItem.id) ? "text-emerald-400 hover:bg-emerald-500/10" : "text-zinc-600 hover:bg-zinc-800",
-                )}
-                title={selectedToolIdSet.has(activeItem.id) ? "今回の指定を解除" : "今回使う"}
+                onClick={() => setActivePanel(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                title="Close panel"
+                aria-label="Close panel"
               >
-                <Power size={14} />
+                <X size={15} />
               </button>
-            )}
+            </div>
           </div>
 
           {activeItem?.description && (
@@ -1897,7 +1963,6 @@ export function RightSidebar({
                 togglePromptEdge={onTogglePromptEdge}
                 showChatPromptUsage={showChatPromptUsage}
                 onToggleChatPromptUsage={onToggleChatPromptUsage}
-                onOpenStudio={onOpenPromptStudio}
               />
             ) : isToolFilterLogActive ? (
               <ToolFilterLogWidget entries={toolFilterEntries} />
@@ -2347,9 +2412,9 @@ export function RightSidebar({
         </div>
       )}
 
-              <div className="w-12 flex flex-col flex-shrink-0 overflow-visible">
+              <div className="rumi-right-sidebar-rail flex w-13 flex-shrink-0 flex-col overflow-visible">
                 <div
-                  className="flex-1 flex flex-col items-center gap-1 overflow-x-visible overflow-y-auto w-full py-1.5 scrollbar-none rumi-stagger-tight"
+                  className="rumi-right-sidebar-rail-scroll flex w-full flex-1 flex-col items-center gap-1 overflow-x-visible overflow-y-auto py-2 scrollbar-none"
                   onDragOver={(event) => {
                     if (event.dataTransfer.types.includes("application/rumi-sidebar-shortcut")) {
                       event.preventDefault();
@@ -2359,7 +2424,7 @@ export function RightSidebar({
                   onDrop={handleShortcutDrop}
                 >
           {(pinnedRailItems.length > 0 || pinnedRightSidebarPlacements.length > 0) && (
-            <div className="flex w-full flex-col items-center gap-1 rumi-stagger-tight">
+            <div className="flex w-full flex-col items-center gap-1">
               {pinnedRailItems.map((item) => renderRailItemButton(item, true))}
               {pinnedRightSidebarPlacements.map((placement) => renderPinnedPlacementButton(placement.id))}
               <div className="w-5 h-px bg-sky-500/20 my-0.5" />
@@ -2588,12 +2653,12 @@ export function RightSidebar({
                                 RAIL_BUTTON_CLASS,
                                 "group/group",
                                 isGroupOpen || isGroupActive
-                                  ? "bg-emerald-900/40 text-emerald-300 border border-emerald-500/30"
-                                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50",
+                                  ? "bg-emerald-900/40 text-zinc-400 border border-emerald-500/30"
+                                  : "text-zinc-400 hover:bg-zinc-800/50",
                               )}
                     title={`${group.path?.length ? group.path.join(" / ") : group.label || TOOL_GROUP_LABELS[group.id] || group.id} (${group.count})`}
                   >
-                    {railIcon((group.icon && TOOL_GROUP_ICONS[group.icon]) || TOOL_GROUP_ICONS[group.id] || <Wrench size={20} />, 20)}
+                    <StableToolGroupRailGlyph iconName={group.icon} groupId={group.id} />
                     <span className="absolute -top-0.5 -right-0.5 text-[7px] bg-zinc-700 text-zinc-300 px-0.5 rounded-full leading-tight">
                       {group.count}
                     </span>

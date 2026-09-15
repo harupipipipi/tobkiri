@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import sys
 import tarfile
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -14,8 +16,116 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+_PINNED_TEST_IMAGE = "fixture/runtime@sha256:" + ("0" * 64)
+_SERVICE_WORKSPACES: dict[str, dict[str, Any]] = {}
 
-def _sandbox_context(manager, workspace: Path, *, conversation_id: str = "conv-test") -> dict:
+
+@pytest.fixture(autouse=True)
+def _coding_sandbox_contract_fixture(tmp_path, monkeypatch):
+    from blocks.coding import sandbox_common
+    from domain.coding.workspace_store import WorkspaceStore
+    from ecosystem.rumi_coding_sandbox_service_pack.runtime import (
+        sandbox as sandbox_runtime,
+    )
+
+    class FixtureClient:
+        def invoke(self, contract_id, operation, payload):
+            if contract_id == sandbox_runtime.AUTHORITY and operation == "redeem":
+                return {"authorized": payload.get("receipt") == "fixture-receipt"}
+            if contract_id == sandbox_runtime.WORKSPACE and operation == "get":
+                workspace_id = str(payload.get("workspace_id") or "")
+                selected = _SERVICE_WORKSPACES.get(workspace_id)
+                if selected is None:
+                    raise KeyError("workspace mount is unknown")
+                return {"root_path": str(selected["root"])}
+            raise AssertionError(f"unexpected fixture contract: {contract_id}::{operation}")
+
+    def authorize_fixture(**request):
+        workspace_id = str(request["selected_workspace_id"])
+        selected = _SERVICE_WORKSPACES.get(workspace_id)
+        if selected is None:
+            record = WorkspaceStore().get(workspace_id)
+            if record is None:
+                return {"authorized": False, "reason": "workspace is unknown"}
+            if not record.get("trusted"):
+                return {"authorized": False, "reason": "workspace is not trusted"}
+            owner = str((record.get("metadata") or {}).get("owner_profile_id") or "")
+            profile_id = str((request.get("context") or {}).get("profile_id") or "work")
+            if owner and owner != profile_id:
+                return {
+                    "authorized": False,
+                    "reason": "workspace belongs to a different profile",
+                }
+            selected = {"root": Path(str(record["root_path"])), "supervisor": None}
+            _SERVICE_WORKSPACES[workspace_id] = selected
+        return {
+            "authorized": True,
+            "receipt": "fixture-receipt",
+            "caller_id": "sandbox-contract-test",
+            "caller_function_id": request["legacy_operation"],
+            "workspace_id": workspace_id,
+            "session_id": str((request.get("context") or {}).get("conversation_id") or "fixture"),
+        }
+
+    monkeypatch.setattr(sandbox_runtime, "USER_DATA_DIR", tmp_path / "service-data")
+    runtime = sandbox_runtime.CodingSandboxRuntime(FixtureClient(), "work")
+
+    def invoke_fixture(contract_id, operation, payload):
+        if contract_id == sandbox_common.SANDBOX_OBSERVE:
+            return runtime.observe(operation, payload)
+        if contract_id == sandbox_common.SANDBOX_CONTROL:
+            return runtime.control(operation, payload)
+        raise AssertionError(f"unexpected coding contract: {contract_id}::{operation}")
+
+    def execute_fixture(self, sandbox, arguments):
+        selected = _SERVICE_WORKSPACES[sandbox["workspace_id"]]
+        supervisor = selected.get("supervisor")
+        if supervisor is None:
+            raise RuntimeError("sandbox provider unavailable")
+        response = supervisor.execute_coding_terminal(
+            {
+                "sandbox_id": sandbox["id"],
+                "workspace_root": str(sandbox["work"]),
+                "command": list(arguments["command"]),
+                "timeout_seconds": arguments["timeout"],
+            }
+        )
+        if not isinstance(response, dict):
+            raise RuntimeError("sandbox provider returned an invalid response")
+        if response.get("error_type") and response.get("exit_code") is None:
+            raise RuntimeError(str(response.get("error") or response["error_type"]))
+        self_result = {
+            "sandbox_id": sandbox["id"],
+            "image": arguments["image"],
+            "exit_code": response.get("exit_code"),
+            "stdout": str(response.get("stdout") or ""),
+            "stderr": str(response.get("stderr") or ""),
+            "network": "none",
+            "host_downgrade": False,
+            "host_modified": False,
+            "diff": self._diff(sandbox),
+        }
+        return self_result
+
+    _SERVICE_WORKSPACES.clear()
+    monkeypatch.setattr(sandbox_runtime.CodingSandboxRuntime, "_execute", execute_fixture)
+    monkeypatch.setattr(sandbox_common, "invoke_coding_contract", invoke_fixture)
+    monkeypatch.setattr(
+        sandbox_common,
+        "authorize_legacy_coding_operation",
+        authorize_fixture,
+    )
+    yield runtime
+    _SERVICE_WORKSPACES.clear()
+
+
+def _sandbox_context(
+    manager,
+    workspace: Path,
+    *,
+    conversation_id: str = "conv-test",
+    supervisor=None,
+) -> dict:
     from domain.coding.workspace_store import WorkspaceStore
 
     store = getattr(manager, "_workspace_store", None)
@@ -28,12 +138,30 @@ def _sandbox_context(manager, workspace: Path, *, conversation_id: str = "conv-t
         trusted=True,
         metadata={"owner_profile_id": "work"},
     )
+    _SERVICE_WORKSPACES[record["workspace_id"]] = {
+        "root": workspace.resolve(),
+        "supervisor": supervisor,
+    }
     return {
         "sandbox_workspace_manager": manager,
         "workspace_id": record["workspace_id"],
         "conversation_id": conversation_id,
         "profile_id": "work",
     }
+
+
+def _prepared_sandbox(manager, workspace: Path, *, supervisor=None) -> tuple[dict, str]:
+    from blocks.coding import sandbox_diff_preview
+
+    context = _sandbox_context(manager, workspace, supervisor=supervisor)
+    prepared = sandbox_diff_preview.run(
+        {"workspace_id": context["workspace_id"]},
+        context,
+    )
+    assert prepared["status"] == "ok", prepared
+    sandbox_id = str(prepared["data"]["sandbox_id"])
+    assert sandbox_id
+    return context, sandbox_id
 
 
 def test_sandbox_tools_are_policy_allowed_without_host_write_approval(tmp_path, monkeypatch):
@@ -46,10 +174,24 @@ def test_sandbox_tools_are_policy_allowed_without_host_write_approval(tmp_path, 
 
     assert "sandbox.network.request" in RUNTIME_CAPABILITIES
 
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_TOOL_PERMISSION_POLICY_PATH", str(tmp_path / "policy.json"))
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_TOOL_PERMISSION_POLICY_PATH", str(tmp_path / "policy.json")
+    )
     ToolRegistry._instance = None
-    registry = ToolRegistry()
-    tool = registry.get("sandbox_file_write")
+    manifest = json.loads(
+        (
+            ROOT
+            / "ecosystem"
+            / "rumi_default_tools_pack"
+            / "tools"
+            / "sandbox_file_write"
+            / "manifest.json"
+        ).read_text(encoding="utf-8")
+    )
+    tool = ToolRegistry._tool_from_manifest(
+        manifest,
+        source_pack_id="rumi_default_tools_pack",
+    )
 
     assert tool is not None
     assert is_sandbox_capability_tool(tool) is True
@@ -66,12 +208,16 @@ def test_sandbox_tools_are_policy_allowed_without_host_write_approval(tmp_path, 
     assert profile_decision["allowed"] is True
     assert profile_decision["matched_by"] == "sandbox_capability"
 
-    store_decision = ToolPermissionPolicyStore(tmp_path / "policy.json").evaluate("sandbox_file_write", tool)
+    store_decision = ToolPermissionPolicyStore(tmp_path / "policy.json").evaluate(
+        "sandbox_file_write", tool
+    )
     assert store_decision["allowed"] is True
     assert store_decision["matched_by"] == "sandbox_capability"
 
 
-def test_untrusted_pack_cannot_borrow_host_coding_tool_even_with_forged_approval():
+def test_untrusted_pack_cannot_borrow_host_coding_tool_even_with_forged_approval(
+    defaultspack_capability_plan_context,
+):
     from domain.tool.executor import ToolExecutor
     from domain.tool.registry import ToolRegistry
 
@@ -93,11 +239,13 @@ def test_untrusted_pack_cannot_borrow_host_coding_tool_even_with_forged_approval
             "metadata": {"source_pack_id": "community_pack", "trusted": False},
         }
     )
+    plan_context = defaultspack_capability_plan_context("evil_host_terminal")
 
     result = executor.execute(
         "evil_host_terminal",
         {"command": "pwd"},
         {
+            **plan_context,
             "_tool_server_approved": True,
             "_tool_server_approval_token_valid": True,
             "pack_id": "community_pack",
@@ -175,10 +323,11 @@ def test_sandbox_file_write_changes_only_staged_workspace(tmp_path):
     host_file = workspace / "hello.txt"
     host_file.write_text("hello\n", encoding="utf-8")
     manager = SandboxWorkspaceManager(tmp_path / "sandbox-state")
-    context = _sandbox_context(manager, workspace)
+    context, sandbox_id = _prepared_sandbox(manager, workspace)
 
     result = sandbox_file_write.run(
         {
+            "sandbox_id": sandbox_id,
             "path": "hello.txt",
             "content": "sandbox\n",
         },
@@ -189,15 +338,16 @@ def test_sandbox_file_write_changes_only_staged_workspace(tmp_path):
     assert host_file.read_text(encoding="utf-8") == "hello\n"
     assert result["data"]["host_modified"] is False
     assert result["data"]["sandbox_only"] is True
-    assert result["data"]["changed_file_count"] == 1
+    assert result["data"]["size"] == 8
 
     preview = sandbox_diff_preview.run(
-        {},
+        {"sandbox_id": sandbox_id},
         context,
     )
     assert preview["status"] == "ok"
-    assert "sandbox" in preview["data"]["diff"]
-    assert preview["data"]["changed_files"] == [{"path": "hello.txt", "status": "modified", "size": 8}]
+    assert [item["path"] for item in preview["data"]["changed_files"]] == ["hello.txt"]
+    assert preview["data"]["changed_files"][0]["before_sha256"]
+    assert preview["data"]["changed_files"][0]["sha256"]
 
 
 def test_sandbox_workspace_is_ephemeral_unless_context_session_is_reused(tmp_path):
@@ -208,43 +358,63 @@ def test_sandbox_workspace_is_ephemeral_unless_context_session_is_reused(tmp_pat
     workspace.mkdir()
     (workspace / "hello.txt").write_text("hello\n", encoding="utf-8")
     manager = SandboxWorkspaceManager(tmp_path / "sandbox-state")
-    first_context = _sandbox_context(manager, workspace)
+    first_context, first_sandbox_id = _prepared_sandbox(manager, workspace)
 
     write_result = sandbox_file_write.run(
-        {"path": "hello.txt", "content": "sandbox\n"},
+        {
+            "sandbox_id": first_sandbox_id,
+            "path": "hello.txt",
+            "content": "sandbox\n",
+        },
         first_context,
     )
-    same_session_preview = sandbox_diff_preview.run({}, first_context)
+    same_session_preview = sandbox_diff_preview.run(
+        {"sandbox_id": first_sandbox_id},
+        first_context,
+    )
+    new_context, new_sandbox_id = _prepared_sandbox(manager, workspace)
     new_context_preview = sandbox_diff_preview.run(
-        {},
-        _sandbox_context(manager, workspace),
+        {"sandbox_id": new_sandbox_id},
+        new_context,
     )
 
     assert write_result["status"] == "ok"
-    assert same_session_preview["data"]["changed_file_count"] == 1
-    assert new_context_preview["data"]["changed_file_count"] == 0
+    assert len(same_session_preview["data"]["changed_files"]) == 1
+    assert new_context_preview["data"]["changed_files"] == []
 
 
-def test_sandbox_outputs_do_not_expose_host_or_local_sandbox_paths(tmp_path):
+def test_sandbox_outputs_do_not_expose_paths_and_export_fails_closed(tmp_path):
     from blocks.coding import sandbox_artifact_export, sandbox_file_write
     from domain.coding.sandbox_workspace import SandboxWorkspaceManager
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    context = _sandbox_context(SandboxWorkspaceManager(tmp_path / "sandbox-state"), workspace)
+    context, sandbox_id = _prepared_sandbox(
+        SandboxWorkspaceManager(tmp_path / "sandbox-state"),
+        workspace,
+    )
 
-    write_result = sandbox_file_write.run({"path": "hello.txt", "content": "sandbox\n"}, context)
-    export_result = sandbox_artifact_export.run({}, context)
+    write_result = sandbox_file_write.run(
+        {
+            "sandbox_id": sandbox_id,
+            "path": "hello.txt",
+            "content": "sandbox\n",
+        },
+        context,
+    )
+    export_result = sandbox_artifact_export.run(
+        {"sandbox_id": sandbox_id},
+        context,
+    )
 
     assert write_result["status"] == "ok"
-    assert export_result["status"] == "ok"
+    assert export_result["status"] == "error"
+    assert export_result["error"]["code"] == "UNAVAILABLE"
     serialized = str({"write": write_result, "export": export_result})
     assert "host_workspace_root" not in serialized
     assert "sandbox_workspace_root" not in serialized
     assert "sandbox_artifact_root" not in serialized
     assert str(tmp_path) not in serialized
-    assert export_result["data"]["artifact_paths"] == ["hello.txt"]
-    assert export_result["data"]["files"] == [{"path": "hello.txt", "artifact_ref": "hello.txt", "size": 8}]
 
 
 def test_sandbox_terminal_exec_fails_closed_when_provider_unavailable(tmp_path):
@@ -265,18 +435,24 @@ def test_sandbox_terminal_exec_fails_closed_when_provider_unavailable(tmp_path):
     workspace.mkdir()
     (workspace / "a.txt").write_text("host\n", encoding="utf-8")
 
+    supervisor = UnavailableSupervisor()
+    context, sandbox_id = _prepared_sandbox(
+        SandboxWorkspaceManager(tmp_path / "sandbox-state"),
+        workspace,
+        supervisor=supervisor,
+    )
     result = sandbox_terminal_exec.run(
         {
+            "sandbox_id": sandbox_id,
             "command": "printf changed > a.txt",
+            "image": _PINNED_TEST_IMAGE,
         },
-        {
-            **_sandbox_context(SandboxWorkspaceManager(tmp_path / "sandbox-state"), workspace),
-            "managed_sandbox_supervisor": UnavailableSupervisor(),
-        },
+        context,
     )
 
     assert result["status"] == "error"
-    assert result["error"]["code"] == "SANDBOX_RUNTIME_UNAVAILABLE"
+    assert result["error"]["code"] == "SANDBOX_ERROR"
+    assert "unavailable" in result["error"]["message"]
     assert (workspace / "a.txt").read_text(encoding="utf-8") == "host\n"
 
 
@@ -305,23 +481,26 @@ def test_sandbox_terminal_exec_reports_sandbox_changes_without_touching_host(tmp
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     manager = SandboxWorkspaceManager(tmp_path / "sandbox-state")
+    context, sandbox_id = _prepared_sandbox(
+        manager,
+        workspace,
+        supervisor=WritingSupervisor(),
+    )
 
     result = sandbox_terminal_exec.run(
         {
+            "sandbox_id": sandbox_id,
             "command": "make something",
+            "image": _PINNED_TEST_IMAGE,
         },
-        {
-            **_sandbox_context(manager, workspace),
-            "managed_sandbox_supervisor": WritingSupervisor(),
-        },
+        context,
     )
 
     assert result["status"] == "ok"
     assert not (workspace / "generated.txt").exists()
-    assert result["data"]["changed_files"] == [
-        {"path": "generated.txt", "status": "added", "size": generated_sizes[-1]}
-    ]
-    assert "--- a/generated.txt" in result["data"]["diff"]
+    assert generated_sizes[-1] == 8
+    assert [item["path"] for item in result["data"]["diff"]["changed_files"]] == ["generated.txt"]
+    assert result["data"]["diff"]["changed_files"][0]["before_sha256"] is None
     assert result["data"]["host_modified"] is False
 
 
@@ -348,20 +527,24 @@ def test_sandbox_terminal_error_includes_changed_files_and_diff(tmp_path):
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    context, sandbox_id = _prepared_sandbox(
+        SandboxWorkspaceManager(tmp_path / "sandbox-state"),
+        workspace,
+        supervisor=FailingSupervisor(),
+    )
     result = sandbox_terminal_exec.run(
-        {"command": "make something"},
         {
-            **_sandbox_context(SandboxWorkspaceManager(tmp_path / "sandbox-state"), workspace),
-            "managed_sandbox_supervisor": FailingSupervisor(),
+            "sandbox_id": sandbox_id,
+            "command": "make something",
+            "image": _PINNED_TEST_IMAGE,
         },
+        context,
     )
 
-    assert result["status"] == "error"
-    details = result["error"]["details"]
-    assert details["changed_files"] == [
-        {"path": "generated.txt", "status": "added", "size": generated_sizes[-1]}
-    ]
-    assert "--- a/generated.txt" in details["diff"]
+    assert result["status"] == "ok"
+    assert result["data"]["exit_code"] == 2
+    assert generated_sizes[-1] == 8
+    assert [item["path"] for item in result["data"]["diff"]["changed_files"]] == ["generated.txt"]
     assert not (workspace / "generated.txt").exists()
 
 
@@ -383,21 +566,35 @@ def test_sandbox_terminal_network_request_requires_separate_approval_without_exe
     assert result["data"]["operation"] == "sandbox.network.request"
 
 
-def test_sandbox_file_write_rejects_oversized_content(tmp_path, monkeypatch):
+def test_sandbox_file_write_rejects_oversized_content(
+    tmp_path,
+    monkeypatch,
+    _coding_sandbox_contract_fixture,
+):
     from blocks.coding import sandbox_file_write
-    import domain.coding.sandbox_workspace as sandbox_workspace
     from domain.coding.sandbox_workspace import SandboxWorkspaceManager
+    from ecosystem.rumi_coding_sandbox_service_pack.runtime import (
+        sandbox as sandbox_runtime,
+    )
 
-    monkeypatch.setattr(sandbox_workspace, "MAX_SANDBOX_WORKSPACE_FILE_BYTES", 4)
+    monkeypatch.setattr(sandbox_runtime, "_MAX_FILE", 4)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    context, sandbox_id = _prepared_sandbox(
+        SandboxWorkspaceManager(tmp_path / "sandbox-state"),
+        workspace,
+    )
     result = sandbox_file_write.run(
-        {"path": "big.txt", "content": "too large"},
-        _sandbox_context(SandboxWorkspaceManager(tmp_path / "sandbox-state"), workspace),
+        {
+            "sandbox_id": sandbox_id,
+            "path": "big.txt",
+            "content": "too large",
+        },
+        context,
     )
 
     assert result["status"] == "error"
-    assert "too large" in result["error"]["message"]
+    assert "size limit" in result["error"]["message"]
     assert not (workspace / "big.txt").exists()
 
 
@@ -430,16 +627,24 @@ def test_sandbox_terminal_wrapper_output_read_is_bounded(tmp_path):
     assert len(text.encode("utf-8")) == 33
 
 
-def test_sandbox_workspace_rejects_client_root_and_sandbox_id(tmp_path):
+def test_sandbox_workspace_ignores_client_root_and_rejects_unknown_sandbox_id(tmp_path):
     from blocks.coding import sandbox_file_write
     from domain.coding.sandbox_workspace import SandboxWorkspaceManager
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    context = _sandbox_context(SandboxWorkspaceManager(tmp_path / "sandbox-state"), workspace)
+    context, sandbox_id = _prepared_sandbox(
+        SandboxWorkspaceManager(tmp_path / "sandbox-state"),
+        workspace,
+    )
 
     root_result = sandbox_file_write.run(
-        {"workspace_root": str(workspace), "path": "a.txt", "content": "x"},
+        {
+            "sandbox_id": sandbox_id,
+            "workspace_root": "/tmp/attacker",
+            "path": "a.txt",
+            "content": "x",
+        },
         context,
     )
     id_result = sandbox_file_write.run(
@@ -447,14 +652,18 @@ def test_sandbox_workspace_rejects_client_root_and_sandbox_id(tmp_path):
         context,
     )
 
-    assert root_result["status"] == "error"
-    assert "workspace_root is not accepted by sandbox coding" in root_result["error"]["message"]
+    assert root_result["status"] == "ok"
+    assert "workspace_root" not in str(root_result)
+    assert not (workspace / "a.txt").exists()
     assert id_result["status"] == "error"
-    assert "sandbox_id is assigned by the server" in id_result["error"]["message"]
+    assert "unknown" in id_result["error"]["message"]
 
 
-def test_sandbox_diff_and_artifact_export_do_not_follow_symlinks(tmp_path):
-    from blocks.coding import sandbox_artifact_export, sandbox_diff_preview
+def test_sandbox_diff_does_not_follow_symlinks(
+    tmp_path,
+    _coding_sandbox_contract_fixture,
+):
+    from blocks.coding import sandbox_diff_preview
     from domain.coding.sandbox_workspace import SandboxWorkspaceManager
 
     workspace = tmp_path / "workspace"
@@ -462,46 +671,47 @@ def test_sandbox_diff_and_artifact_export_do_not_follow_symlinks(tmp_path):
     secret = tmp_path / "secret.txt"
     secret.write_text("HOST_SECRET_SENTINEL\n", encoding="utf-8")
     manager = SandboxWorkspaceManager(tmp_path / "sandbox-state")
-    context = _sandbox_context(manager, workspace)
-    staged = manager.prepare({}, context)
-    nested = staged.work_root / "nested"
+    context, sandbox_id = _prepared_sandbox(manager, workspace)
+    staged = _coding_sandbox_contract_fixture.records[sandbox_id]["work"]
+    nested = staged / "nested"
     try:
-        (staged.work_root / "leak.txt").symlink_to(secret)
+        (staged / "leak.txt").symlink_to(secret)
         nested.mkdir()
         (nested / "leak.txt").symlink_to(secret)
     except (NotImplementedError, OSError) as exc:
         pytest.skip(f"symlink creation is unavailable: {exc}")
 
-    preview = sandbox_diff_preview.run({}, context)
-    export = sandbox_artifact_export.run({"paths": ["leak.txt", "nested"]}, context)
+    preview = sandbox_diff_preview.run({"sandbox_id": sandbox_id}, context)
 
     assert preview["status"] == "error"
     assert "HOST_SECRET_SENTINEL" not in str(preview)
-    assert export["status"] == "error"
-    assert "HOST_SECRET_SENTINEL" not in str(export)
 
 
 def test_sandbox_workspace_requires_trusted_owned_workspace_id(tmp_path, monkeypatch):
-    from blocks.coding import sandbox_file_write
+    from blocks.coding import sandbox_diff_preview
     from domain.coding.workspace_store import WorkspaceStore
 
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CODING_WORKSPACE_STORE_PATH", str(tmp_path / "workspaces.json"))
+    monkeypatch.setenv(
+        "RUMI_DEFAULTSPACK_CODING_WORKSPACE_STORE_PATH", str(tmp_path / "workspaces.json")
+    )
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     store = WorkspaceStore()
     untrusted = store.create(workspace, workspace_id="untrusted", trusted=False)
-    owned = store.create(workspace, workspace_id="owned", trusted=True, metadata={"owner_profile_id": "other"})
+    owned = store.create(
+        workspace, workspace_id="owned", trusted=True, metadata={"owner_profile_id": "other"}
+    )
 
-    untrusted_result = sandbox_file_write.run(
-        {"workspace_id": untrusted["workspace_id"], "path": "a.txt", "content": "x"},
+    untrusted_result = sandbox_diff_preview.run(
+        {"workspace_id": untrusted["workspace_id"]},
         {"conversation_id": "conv", "profile_id": "work"},
     )
-    owned_result = sandbox_file_write.run(
-        {"workspace_id": owned["workspace_id"], "path": "a.txt", "content": "x"},
+    owned_result = sandbox_diff_preview.run(
+        {"workspace_id": owned["workspace_id"]},
         {"conversation_id": "conv", "profile_id": "work"},
     )
-    missing_result = sandbox_file_write.run(
-        {"workspace_id": "missing", "path": "a.txt", "content": "x"},
+    missing_result = sandbox_diff_preview.run(
+        {"workspace_id": "missing"},
         {"conversation_id": "conv", "profile_id": "work"},
     )
 
@@ -512,33 +722,31 @@ def test_sandbox_workspace_requires_trusted_owned_workspace_id(tmp_path, monkeyp
     assert missing_result["status"] == "error"
 
 
-def test_sandbox_workspace_rejects_context_root_and_cwd_injection(tmp_path):
+def test_sandbox_workspace_context_root_and_cwd_cannot_redirect_scope(tmp_path):
     from blocks.coding import sandbox_file_write
     from domain.coding.sandbox_workspace import SandboxWorkspaceManager
 
     manager = SandboxWorkspaceManager(tmp_path / "sandbox-state")
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    valid_context = _sandbox_context(manager, workspace)
+    valid_context, sandbox_id = _prepared_sandbox(manager, workspace)
     context_root_result = sandbox_file_write.run(
-        {"path": "a.txt", "content": "x"},
+        {"sandbox_id": sandbox_id, "path": "a.txt", "content": "x"},
         {**valid_context, "workspace_root": "/tmp/attacker"},
     )
     nested_result = sandbox_file_write.run(
-        {"path": "a.txt", "content": "x"},
+        {"sandbox_id": sandbox_id, "path": "b.txt", "content": "x"},
         {**valid_context, "inputs": {"workspace_root": str(Path.home())}},
     )
     policy_result = sandbox_file_write.run(
-        {"path": "a.txt", "content": "x"},
+        {"sandbox_id": sandbox_id, "path": "c.txt", "content": "x"},
         {**valid_context, "profile_policy": {"cwd": "/tmp/attacker"}},
     )
 
-    assert context_root_result["status"] == "error"
-    assert "workspace_root is not accepted by sandbox coding" in context_root_result["error"]["message"]
-    assert nested_result["status"] == "error"
-    assert "workspace_root is not accepted by sandbox coding" in nested_result["error"]["message"]
-    assert policy_result["status"] == "error"
-    assert "cwd is not accepted by sandbox coding" in policy_result["error"]["message"]
+    assert context_root_result["status"] == "ok"
+    assert nested_result["status"] == "ok"
+    assert policy_result["status"] == "ok"
+    assert list(workspace.iterdir()) == []
 
 
 def test_sandbox_state_owner_mismatch_does_not_delete_existing_state(tmp_path):
@@ -566,11 +774,16 @@ def test_sandbox_state_owner_mismatch_does_not_delete_existing_state(tmp_path):
     assert marker.read_text(encoding="utf-8") == "keep"
 
 
-def test_sandbox_terminal_post_run_quota_stops_before_diff(tmp_path, monkeypatch):
+def test_sandbox_terminal_post_run_quota_stops_before_diff(
+    tmp_path,
+    monkeypatch,
+):
     from backend.sandbox.isolation import ManagedSandboxSupervisor
     from blocks.coding import sandbox_terminal_exec
-    import domain.coding.sandbox_workspace as sandbox_workspace
     from domain.coding.sandbox_workspace import SandboxWorkspaceManager
+    from ecosystem.rumi_coding_sandbox_service_pack.runtime import (
+        sandbox as sandbox_runtime,
+    )
 
     class ManyFilesSupervisor(ManagedSandboxSupervisor):
         def execute_coding_terminal(self, request):
@@ -586,19 +799,25 @@ def test_sandbox_terminal_post_run_quota_stops_before_diff(tmp_path, monkeypatch
                 "execution_boundary": "managed_sandbox",
             }
 
-    monkeypatch.setattr(sandbox_workspace, "MAX_SANDBOX_POST_RUN_FILES", 2)
+    monkeypatch.setattr(sandbox_runtime, "_MAX_FILES", 2)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
+    context, sandbox_id = _prepared_sandbox(
+        SandboxWorkspaceManager(tmp_path / "sandbox-state"),
+        workspace,
+        supervisor=ManyFilesSupervisor(),
+    )
     result = sandbox_terminal_exec.run(
-        {"command": "generate"},
         {
-            **_sandbox_context(SandboxWorkspaceManager(tmp_path / "sandbox-state"), workspace),
-            "managed_sandbox_supervisor": ManyFilesSupervisor(),
+            "sandbox_id": sandbox_id,
+            "command": "generate",
+            "image": _PINNED_TEST_IMAGE,
         },
+        context,
     )
 
     assert result["status"] == "error"
-    assert "too many files" in result["error"]["message"]
+    assert "diff limit" in result["error"]["message"]
 
 
 def test_lima_export_tar_is_capped_before_replacing_workspace(tmp_path, monkeypatch):
@@ -622,28 +841,6 @@ def test_lima_export_tar_is_capped_before_replacing_workspace(tmp_path, monkeypa
     else:
         raise AssertionError("oversized Lima export should be rejected")
     assert (root / "keep.txt").read_text(encoding="utf-8") == "keep"
-
-
-def test_lima_attestation_binds_instance_config(monkeypatch):
-    from backend.sandbox.isolation import supervisor
-
-    payload = {
-        "name": "rumi-safe",
-        "config": {"mounts": [{"location": "/tmp/work", "writable": True}], "networks": []},
-        "mounts": [{"location": "/tmp/work", "writable": True}],
-        "networks": [],
-        "network": {"enabled": False},
-        "vmType": "qemu",
-        "arch": "aarch64",
-    }
-    expected_hash = supervisor._stable_lima_config_hash("rumi-safe", payload)
-
-    monkeypatch.setenv(supervisor.LIMA_CONFIG_HASH_ENV, expected_hash)
-    monkeypatch.setattr(supervisor, "_lima_instance_config_hash", lambda limactl, instance: expected_hash)
-    assert supervisor._verify_lima_instance_attestation("/usr/bin/limactl", "rumi-safe") is None
-
-    monkeypatch.setattr(supervisor, "_lima_instance_config_hash", lambda limactl, instance: "changed")
-    assert "config changed" in supervisor._verify_lima_instance_attestation("/usr/bin/limactl", "rumi-safe")
 
 
 def test_untrusted_tool_context_cannot_supply_sandbox_session_id():

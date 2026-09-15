@@ -1,15 +1,60 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { userFacingModelProfiles, profileNeedsApiKey } from "../../App";
+import { ModelRouteErrorNotices, ModelRouteSetup } from "./ModelRouteSetup";
 
 import {
   buildVisibleModelOptions,
   findSelectedModelOption,
+  filterModelOptionsByProvider,
+  filterModelProviderOptions,
   modelOptionBadges,
+  modelProviderOptions,
   modelSearchItemToModelSelectOption,
+  parseModelProviderQuery,
   parseModelAllowlist,
   serializeModelAllowlist,
   type ModelSelectOption,
 } from "./modelSelect";
+
+test("saved canonical routes remain selectable without claiming Provider health", () => {
+  const route = {
+    profile_id: "daily", display_name: "Daily", model_id: "deepseek-chat",
+    provider_id: "provider.deepseek.main", route_configured: true,
+  };
+  assert.deepEqual(userFacingModelProfiles([route], "stub/default"), [route]);
+  assert.equal(profileNeedsApiKey(route), false);
+  assert.equal("availability" in route, false);
+  assert.deepEqual(userFacingModelProfiles([{ ...route, route_configured: false }], "stub/default"), []);
+  assert.deepEqual(userFacingModelProfiles([{ ...route, type: "embedding" }], "stub/default"), []);
+});
+
+test("model route setup never offers a free-form provider connection ID", () => {
+  const html = renderToStaticMarkup(createElement(ModelRouteSetup));
+
+  assert.match(html, /Provider接続ID（登録済みのみ）/);
+  assert.match(html, /aria-label="Provider connection ID"/);
+  assert.match(html, /<select/);
+  assert.match(html, /登録済みの接続がありません/);
+  assert.doesNotMatch(html, /provider\.deepseek\.main/);
+});
+
+test("model route setup errors keep severity icons separate from stable copy actions", () => {
+  const html = renderToStaticMarkup(createElement(ModelRouteErrorNotices, {
+    connectionsError: "接続一覧を取得できませんでした。",
+    saveError: "保存時に接続が更新されました。",
+  }));
+
+  assert.match(html, /data-error-notice="model-route-provider-connections"/);
+  assert.match(html, /data-error-icon="model-route-provider-connections"/);
+  assert.match(html, /aria-label="Provider接続一覧エラーをコピー"/);
+  assert.match(html, /data-error-notice="model-route-save"/);
+  assert.match(html, /data-error-icon="model-route-save"/);
+  assert.match(html, /aria-label="モデルルート保存エラーをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
+});
 
 function makeModelOption(index: number): ModelSelectOption {
   return {
@@ -105,4 +150,52 @@ test("model allowlist parsing and serialization dedupe stable model ids", () => 
 
   assert.deepEqual(parsed, ["stub/default", "google/gemini"]);
   assert.equal(serializeModelAllowlist(parsed), "stub/default\ngoogle/gemini");
+});
+
+test("@provider query offers providers and scopes the following model search", () => {
+  const options: ModelSelectOption[] = [
+    {
+      value: "openai/gpt-4.1",
+      label: "GPT 4.1",
+      provider_id: "openai",
+      provider_display_name: "OpenAI",
+    },
+    {
+      value: "openrouter/anthropic/claude-sonnet-4",
+      label: "Claude Sonnet 4",
+      provider_id: "openrouter",
+      provider_display_name: "OpenRouter",
+    },
+    {
+      value: "openrouter/google/gemini-2.5-pro",
+      label: "Gemini 2.5 Pro",
+      provider_id: "openrouter",
+      provider_display_name: "OpenRouter",
+    },
+  ];
+  const providers = modelProviderOptions(options);
+
+  assert.deepEqual(
+    filterModelProviderOptions(providers, "router").map((provider) => provider.provider_id),
+    ["openrouter"],
+  );
+  assert.deepEqual(parseModelProviderQuery("@openr", providers), {
+    active: true,
+    providerQuery: "openr",
+    providerId: "",
+    modelQuery: "",
+  });
+  assert.deepEqual(parseModelProviderQuery("@openrouter gemini", providers), {
+    active: false,
+    providerQuery: "openrouter",
+    providerId: "openrouter",
+    modelQuery: "gemini",
+  });
+  assert.deepEqual(
+    filterModelOptionsByProvider(options, "openrouter").map((option) => option.value),
+    [
+      "openrouter/anthropic/claude-sonnet-4",
+      "openrouter/google/gemini-2.5-pro",
+    ],
+  );
 });

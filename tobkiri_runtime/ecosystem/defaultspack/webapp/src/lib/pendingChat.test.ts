@@ -1,9 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import type { ChatMessage } from "./api";
+import type { ChatMessage, SavedTurnResult } from "./api";
 import {
   PENDING_USER_ONLY_GRACE_MS,
+  savedTurnSnapshotState,
+  savedTurnSnapshotNotice,
+  savedTurnProgressNotice,
+  savedTurnProgressState,
+  savedTurnTerminalNotice,
+  updateSavedTurnNotice,
   isAssistantMessageStillRunning,
   shouldClearPendingAfterConversationRefresh,
   shouldForgetPendingAfterPollError,
@@ -33,6 +39,26 @@ function pending(startedAt: number): PendingChatRequest {
   };
 }
 
+test("late saved stop notices stay with their original pending turn", () => {
+  const first = { ...pending(1000), savedTurn: true, operationId: "turn-1" };
+  const second = { ...first, conversationId: "c2", operationId: "turn-2" };
+  const current = { c1: first, c2: second };
+  const updated = updateSavedTurnNotice(current, "c1", "turn-1", "stop requested");
+  assert.equal(updated.c1.status, "stop requested");
+  assert.equal(updated.c2, second);
+  assert.equal(updated.c1.operationId, "turn-1");
+  assert.equal(first.status, "Processing...");
+  const stale: Record<string, PendingChatRequest>[] = [
+    { c2: second },
+    { c1: { ...first, operationId: "new-turn" } },
+    { c1: { ...first, savedTurn: false } },
+    { c1: { ...first, conversationId: "c2" } },
+  ];
+  for (const records of stale) {
+    assert.equal(updateSavedTurnNotice(records, "c1", "turn-1", "late reply"), records);
+  }
+});
+
 test("assistant streaming metadata keeps pending active", () => {
   assert.equal(isAssistantMessageStillRunning(message({
     finish_reason: "streaming",
@@ -47,6 +73,138 @@ test("completed assistant clears pending", () => {
   });
 
   assert.equal(shouldClearPendingAfterConversationRefresh(latest, pending(1000), 2000), true);
+});
+
+test("saved turns require their own assistant acknowledgement, never elapsed grace", () => {
+  const request = { ...pending(1000), savedTurn: true, operationId: "turn-1" };
+  const late = 1000 + 24 * 60 * 60_000;
+  for (const patch of [
+    { role: "user", metadata: { turn_id: "turn-1" } },
+    { metadata: { turn_id: "older-turn" } },
+    { conversation_id: "other", metadata: { turn_id: "turn-1" } },
+    { metadata: { turn_id: "turn-1" }, finish_reason: "streaming" },
+    { metadata: null },
+  ]) {
+    assert.equal(shouldClearPendingAfterConversationRefresh(message(patch), request, late), false);
+  }
+  assert.equal(shouldClearPendingAfterConversationRefresh(message({
+    metadata: { turn_id: "turn-1" }, finish_reason: "stop",
+  }), request, late), false);
+});
+
+test("saved completion distinguishes current, changed, unavailable and unverified snapshots", () => {
+  const turn: SavedTurnResult["turn"] = {
+    id: "turn-1", conversation_id: "c1", status: "completed", revision: 3,
+    result_reference: {
+      conversation_id: "c1", conversation_revision: 3, user_message_id: "user-1",
+      assistant_message_id: "assistant-1", outcome_digest: `sha256:${"a".repeat(64)}`,
+    },
+  };
+  const snapshot = {
+    id: "c1", conversation_revision: 3, messages: [
+      message({ id: "user-1", role: "user", metadata: { turn_id: "turn-1" } }),
+      message({ id: "assistant-1", metadata: { turn_id: "turn-1" } }),
+    ],
+  };
+  const classify = (value: typeof snapshot | null, result = turn) => savedTurnSnapshotState(result, value, "c1", "turn-1");
+  assert.equal(classify(snapshot), "current");
+  assert.equal(classify({ ...snapshot, conversation_revision: 4, messages: [] }), "changed");
+  assert.equal(classify(null), "unavailable");
+  assert.equal(classify({ ...snapshot, conversation_revision: 2 }), "pending");
+  assert.equal(classify({ ...snapshot, id: "other" }), "pending");
+  assert.equal(classify({ ...snapshot, messages: [] }), "pending");
+  assert.equal(classify(snapshot, { ...turn, status: "running" }), "pending");
+  assert.equal(classify(null, { ...turn, result_reference: undefined }), "pending");
+  assert.equal(classify(snapshot, { ...turn, id: "other" }), "pending");
+  assert.equal(classify(snapshot, { ...turn, result_reference: { ...turn.result_reference!, outcome_digest: "forged" } }), "pending");
+  assert.match(savedTurnSnapshotNotice("changed")!, /その後更新/);
+  assert.match(savedTurnSnapshotNotice("unavailable")!, /自動再送はしません/);
+  assert.equal(savedTurnSnapshotNotice("current"), null);
+});
+
+test("pending saved turn distinguishes owner message persistence without authorizing replay", () => {
+  const turn: SavedTurnResult["turn"] = {
+    id: "turn-1", conversation_id: "c1", status: "waiting", revision: 3,
+    events: [{
+      name: "turn.running",
+      details: {
+        phase: "saved_execution_claimed",
+        user_message_id: "message:" + "a".repeat(64),
+        assistant_message_id: "message:" + "b".repeat(64),
+      },
+    }],
+  };
+  const snapshot = {
+    id: "c1", conversation_revision: 2, messages: [
+      message({
+        id: "message:" + "a".repeat(64),
+        role: "user",
+        metadata: { turn_id: "turn-1" },
+      }),
+    ],
+  };
+  const classify = (
+    value: typeof snapshot | null,
+    result = turn,
+  ) => savedTurnProgressState(result, value, "c1", "turn-1");
+  assert.equal(classify({ ...snapshot, messages: [] }), "ledger_only");
+  assert.equal(classify(snapshot), "user_saved");
+  assert.equal(classify({
+    ...snapshot,
+    conversation_revision: 3,
+    messages: [
+      ...snapshot.messages,
+      message({
+        id: "message:" + "b".repeat(64),
+        metadata: { turn_id: "turn-1" },
+        finish_reason: "stop",
+      }),
+    ],
+  }), "all_messages_saved_unconfirmed");
+  assert.equal(classify({
+    ...snapshot,
+    messages: [
+      ...snapshot.messages,
+      message({
+        id: "message:" + "b".repeat(64),
+        metadata: { turn_id: "turn-1", thinking: { state: "streaming" } },
+        finish_reason: "streaming",
+      }),
+    ],
+  }), "user_saved");
+  assert.equal(classify(null), "conversation_unavailable");
+  assert.equal(classify(snapshot, { ...turn, id: "other" }), "ledger_only");
+  assert.equal(classify(snapshot, { ...turn, events: [] }), "ledger_only");
+  assert.equal(classify({
+    ...snapshot,
+    messages: [message({
+      id: "forged",
+      role: "user",
+      metadata: { turn_id: "turn-1" },
+    })],
+  }), "ledger_only");
+  assert.match(savedTurnProgressNotice("user_saved"), /assistant の保存状態/);
+  assert.match(savedTurnProgressNotice("all_messages_saved_unconfirmed"), /完了状態/);
+  assert.match(savedTurnProgressNotice("conversation_unavailable"), /取得できません/);
+  assert.match(savedTurnProgressNotice("ledger_only"), /保存状態/);
+});
+
+test("only matching terminal saved turns stop reconciliation", () => {
+  const turn: SavedTurnResult["turn"] = {
+    id: "turn-1", conversation_id: "c1", status: "failed", revision: 4,
+  };
+  assert.match(savedTurnTerminalNotice(turn, "c1", "turn-1")!, /失敗で終了/);
+  assert.match(savedTurnTerminalNotice({ ...turn, status: "cancelled" }, "c1", "turn-1")!, /停止を確認/);
+  for (const candidate of [
+    { ...turn, status: "running" },
+    { ...turn, status: "waiting" },
+    { ...turn, status: "queued" },
+    { ...turn, status: "unknown" },
+    { ...turn, id: "other" },
+    { ...turn, conversation_id: "other" },
+  ]) {
+    assert.equal(savedTurnTerminalNotice(candidate, "c1", "turn-1"), null);
+  }
 });
 
 test("stale user-only pending is cleared after reload grace", () => {

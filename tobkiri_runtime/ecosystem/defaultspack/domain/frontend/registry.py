@@ -1,23 +1,21 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import importlib
 import json
-import os
 import re
-import tempfile
 import threading
 import time
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 from urllib.parse import quote
 
-from core_runtime.profile_graph_models import normalize_profile_graph_selected
-from core_runtime.profile_workspace import ProfileWorkspaceManager
 from domain.ai_client.client import AIClient
-from domain.ai_client.api_key_store import provider_key_status, set_provider_api_key
+from domain.frontend_settings_catalog import SettingsCatalogInputs, SettingsSections
+from domain.frontend_builtin_catalog import builtin_ui_catalog
+from domain.ai_client.api_key_store import provider_key_status
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 from domain.ai_client.oauth_store import provider_oauth_statuses
 from domain.capability.catalog import CapabilityCatalog
@@ -33,11 +31,15 @@ from domain.external.io_templates import external_io_template_catalog
 from domain.external.output_profile_registry import OutputProfileRegistry
 from domain.external.source_store import ExternalSourceStore, external_source_key
 from domain.external.token_store import external_token_status
+from domain.frontend_settings_client import update_settings_document
 from domain.frontend_settings_store import (
     FrontendSettingsCorruptError,
     FrontendSettingsStore,
+    MUTATION_RECEIPTS_KEY,
+    STATE_REVISIONS_KEY,
+    defaultspack_frontend_settings_path,
 )
-from domain.tool.registry import ToolRegistry
+from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 from domain.webhook.endpoint_store import WebhookEndpointStore
 from transport.registry import (
     component_http_route_specs,
@@ -53,22 +55,41 @@ _KEYBOARD_NAVIGATION_SOURCE_LEGACY_MIGRATION = "legacy_default_migrated"
 _KEYBOARD_NAVIGATION_SOURCE_USER = "user"
 
 
+def _validated_dict(value: object) -> dict[str, object]:
+    """Return a dictionary value after validating its runtime container type."""
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
+
+
+def _validated_dict_list(value: object) -> list[dict[str, object]]:
+    """Return only dictionary entries from a runtime list value."""
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
+
+
 class FrontendRegistry:
     """Registry for frontend catalog, settings, and chat preview metadata."""
 
     _selectable_model_profiles_lock = threading.Lock()
     _selectable_model_profiles_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
     _selectable_model_profiles_cache_ttl_seconds = 30.0
+    _load_diagnostics: list[dict[str, str]]
 
-    def __init__(self, pack_root: Path | None = None) -> None:
+    def __init__(self, pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        self._extensions_dir = self._pack_root / "user_data" / "shared" / "frontend_extensions"
-        self._shell_path = self._pack_root / "user_data" / "shared" / "frontend_shell.json"
-        self._settings_path = self._pack_root / "user_data" / "shared" / "frontend_settings.json"
-        self._settings_store = FrontendSettingsStore(self._settings_path)
+        self._settings_path = defaultspack_frontend_settings_path(pack_root)
+        self._settings_store = FrontendSettingsStore(self._settings_path, owner=settings_owner)
 
-    def build_catalog(self, profile_id: str | None = None, *, lightweight: bool = False) -> dict[str, Any]:
-        self._load_diagnostics: list[dict[str, Any]] = []
+    def build_catalog(
+        self,
+        profile_id: str | None = None,
+        *,
+        lightweight: bool = False,
+        include_skills: bool = False,
+    ) -> dict[str, Any]:
+        self._load_diagnostics = []
         template_catalog = self._template_catalog_metadata()
         extensions = self._load_extensions()
         ui_surfaces = self._load_ui_surfaces()
@@ -106,6 +127,7 @@ class FrontendRegistry:
         ]
         chat_renderers = self._filter_frontend_items(chat_renderers, selected_frontend_ids)
         return {
+            "dynamic_host": self._dynamic_frontend_catalog(),
             "app": self._app_metadata(ui_surfaces),
             "agent_service": CapabilityCatalog(self._pack_root).manifest(),
             "shell": shell,
@@ -122,7 +144,7 @@ class FrontendRegistry:
             "chat_rendering": {
                 "renderers": chat_renderers,
             },
-            "skills": [] if lightweight else self._skill_items(),
+            "skills": self._skill_items() if include_skills or not lightweight else [],
             "routes": self._route_metadata(),
             "templates": template_catalog.get("templates", []),
             "field_renderers": template_catalog.get("field_renderers", []),
@@ -144,6 +166,20 @@ class FrontendRegistry:
             "extension_points": self._extension_points(),
             "diagnostics": self._diagnostics(shell, parts, component_bindings),
         }
+
+    @staticmethod
+    def _dynamic_frontend_catalog() -> dict[str, Any] | None:
+        """Project the active core-owned frontend catalog into the legacy API."""
+        try:
+            from .host import build_frontend_catalog
+            from core_runtime.resolved_profile_scope import persisted_resolved_profile
+
+            plan = persisted_resolved_profile()
+            if plan is None:
+                return None
+            return build_frontend_catalog(plan).to_dict()
+        except Exception:
+            return None
 
     def get_settings(self, *, lightweight: bool = False) -> dict[str, Any]:
         self._load_diagnostics: list[dict[str, Any]] = []
@@ -174,7 +210,7 @@ class FrontendRegistry:
                 self._deep_merge(values, sanitized_patch)
             )
 
-        return self._settings_store.update(merge)
+        return update_settings_document(self._settings_store, merge)
 
     def build_conversation_preview(self, conversation_id: str) -> dict[str, Any]:
         store = ChatStore()
@@ -202,19 +238,12 @@ class FrontendRegistry:
         }
 
     def _sidebar_filters(self) -> list[dict[str, str]]:
-        return [
-            {"id": "all", "label": "All"},
-            {"id": "tool", "label": "Tools"},
-            {"id": "widget", "label": "Widgets"},
-            {"id": "system", "label": "System"},
-            {"id": "integration", "label": "Integrations"},
-            {"id": "capability", "label": "Capabilities"},
-        ]
+        return builtin_ui_catalog()["sidebar_filters"]
 
     def _app_metadata(self, ui_surfaces: list[dict[str, Any]]) -> dict[str, Any]:
         app: dict[str, Any] = {
             "id": "defaultspack",
-            "name": "rumi DP",
+            "name": "Tobkiri",
             "icon": "/static/assets/icons/defaultspack-icon.png",
             "account": self._rumi_account_metadata(),
         }
@@ -304,42 +333,20 @@ class FrontendRegistry:
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        shell = {
-            "layout": {
-                "id": "default_chat_shell",
-                "regions": [
-                    {"id": "title_bar", "part_id": "app_chrome", "renderer": "title_bar", "slot": "top", "order": 10, "enabled": True},
-                    {"id": "history", "part_id": "conversation_history", "renderer": "history_board", "slot": "left", "order": 20, "enabled": True},
-                    {"id": "chat_header", "part_id": "ai_chat", "renderer": "chat_header", "slot": "main", "order": 30, "enabled": True},
-                    {"id": "chat_messages", "part_id": "ai_chat", "renderer": "chat_messages", "slot": "main", "order": 40, "enabled": True},
-                    {"id": "composer", "part_id": "ai_chat", "renderer": "composer", "slot": "bottom", "order": 50, "enabled": True},
-                    {"id": "activity_preview", "part_id": "activity_preview", "renderer": "activity_preview", "slot": "right", "order": 60, "enabled": True},
-                    {"id": "right_sidebar", "part_id": "extension_sidebar", "renderer": "right_sidebar", "slot": "right", "order": 70, "enabled": True},
-                    {"id": "settings_modal", "part_id": "settings", "renderer": "settings_modal", "slot": "overlay", "order": 80, "enabled": True},
-                ],
-            },
-            "renderers": [
-                {"id": "title_bar", "component": "TitleBar", "regions": ["title_bar"], "fallback": "hidden"},
-                {"id": "history_board", "component": "HistoryBoard", "regions": ["history"], "fallback": "hidden"},
-                {"id": "chat_header", "component": "ChatHeader", "regions": ["chat_header"], "fallback": "hidden"},
-                {"id": "chat_messages", "component": "ChatMessages", "regions": ["chat_messages"], "fallback": "plain_text"},
-                {"id": "composer", "component": "Composer", "regions": ["composer"], "fallback": "hidden"},
-                {"id": "activity_preview", "component": "ToolPreviewPanel", "regions": ["activity_preview"], "fallback": "hidden"},
-                {"id": "right_sidebar", "component": "RightSidebar", "regions": ["right_sidebar"], "fallback": "hidden"},
-                {"id": "settings_modal", "component": "SettingsModal", "regions": ["settings_modal"], "fallback": "hidden"},
-            ],
-        }
+        shell: dict[str, object] = builtin_ui_catalog()["shell"]
         user_shell = self._load_shell_config()
         for manifest in [*ui_surfaces, user_shell, *extensions]:
             config = manifest.get("config", manifest)
             if not isinstance(config, dict):
                 continue
             if isinstance(config.get("shell_layout"), dict):
-                shell["layout"] = self._deep_merge(shell["layout"], config["shell_layout"])
+                current_layout = _validated_dict(shell.get("layout"))
+                shell["layout"] = self._deep_merge(current_layout, config["shell_layout"])
             renderers = config.get("shell_renderers")
             if isinstance(renderers, list):
+                current_renderers = _validated_dict_list(shell.get("renderers"))
                 shell["renderers"] = self._dedupe_by_key(
-                    [*shell["renderers"], *(item for item in renderers if isinstance(item, dict))],
+                    [*current_renderers, *[dict(item) for item in renderers if isinstance(item, dict)]],
                     "id",
                 )
         return shell
@@ -357,18 +364,18 @@ class FrontendRegistry:
 
         template_regions = template_catalog.get("shell_regions")
         if isinstance(template_regions, list):
-            regions = layout.get("regions") if isinstance(layout.get("regions"), list) else []
+            regions = _validated_dict_list(layout.get("regions"))
             layout["regions"] = self._merge_template_shell_items(
-                [item for item in regions if isinstance(item, dict)],
-                [item for item in template_regions if isinstance(item, dict)],
+                regions,
+                _validated_dict_list(template_regions),
             )
 
         template_renderers = template_catalog.get("shell_renderers")
         if isinstance(template_renderers, list):
-            renderers = merged.get("renderers") if isinstance(merged.get("renderers"), list) else []
+            renderers = _validated_dict_list(merged.get("renderers"))
             merged["renderers"] = self._merge_template_shell_items(
-                [item for item in renderers if isinstance(item, dict)],
-                [item for item in template_renderers if isinstance(item, dict)],
+                renderers,
+                _validated_dict_list(template_renderers),
             )
         return merged
 
@@ -411,96 +418,7 @@ class FrontendRegistry:
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        parts: list[dict[str, Any]] = [
-            {
-                "id": "app_chrome",
-                "kind": "shell",
-                "label": "App Chrome",
-                "uses": ["frontend"],
-                "schema": {"type": "object", "properties": {"app": {"type": "object"}, "shell": {"type": "object"}}},
-            },
-            {
-                "id": "conversation_history",
-                "kind": "navigation",
-                "label": "Conversation History",
-                "uses": ["chat"],
-                "contracts": {"conversations": "/api/chat/conversations"},
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "items": {"type": "array", "items": {"type": "object"}},
-                        "active_id": {"type": "string", "nullable": True},
-                    },
-                },
-            },
-            {
-                "id": "ai_chat",
-                "kind": "chat",
-                "label": "AI Chat",
-                "uses": ["chat", "ai_client", "prompt", "memory", "tool", "frontend"],
-                "contracts": {
-                    "conversation": "/api/chat/conversations",
-                    "catalog": "/api/ui/catalog",
-                    "settings": "/api/ui/settings",
-                },
-                "schema": {
-                    "type": "object",
-                    "required": ["conversation", "messages"],
-                    "properties": {
-                        "conversation": {"type": "object", "nullable": True},
-                        "messages": {"type": "array", "items": {"type": "object"}},
-                        "composer": {"type": "object"},
-                    },
-                },
-            },
-            {
-                "id": "activity_preview",
-                "kind": "preview",
-                "label": "Activity Preview",
-                "uses": ["chat", "dev", "tool", "context", "media", "artifact", "extension"],
-                "contracts": {
-                    "preview": "/api/ui/conversations/{conversation_id}/preview",
-                },
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "tool_timeline": {"type": "array", "items": {"type": "object"}},
-                        "plan_steps": {"type": "array", "items": {"type": "object"}},
-                        "approvals": {"type": "array", "items": {"type": "object"}},
-                        "attachments": {"type": "array", "items": {"type": "object"}},
-                        "audio": {"type": "array", "items": {"type": "object"}},
-                    },
-                },
-            },
-            {
-                "id": "extension_sidebar",
-                "kind": "sidebar",
-                "label": "Extension Sidebar",
-                "uses": ["tool", "widget", "frontend", "artifact", "extension"],
-                "contracts": {"catalog": "/api/ui/catalog", "settings": "/api/ui/settings"},
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "items": {"type": "array", "items": {"type": "object"}},
-                        "filters": {"type": "array", "items": {"type": "object"}},
-                    },
-                },
-            },
-            {
-                "id": "settings",
-                "kind": "settings",
-                "label": "Settings",
-                "uses": ["frontend"],
-                "contracts": {"settings": "/api/ui/settings"},
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "sections": {"type": "array", "items": {"type": "object"}},
-                        "values": {"type": "object"},
-                    },
-                },
-            },
-        ]
+        parts: list[dict[str, Any]] = builtin_ui_catalog()["parts"]
         parts.extend(self._config_list(ui_surfaces, "parts"))
         parts.extend(self._config_list(extensions, "parts"))
         return self._dedupe_by_key(parts, "id")
@@ -510,33 +428,16 @@ class FrontendRegistry:
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        bindings: list[dict[str, Any]] = [
-            {
-                "part_id": "ai_chat",
-                "component": "chat",
-                "requires": ["ai_client"],
-                "optional": ["prompt", "memory", "tool", "agent"],
-            }
-        ]
+        bindings: list[dict[str, Any]] = builtin_ui_catalog()["component_bindings"]
         bindings.extend(self._config_list(ui_surfaces, "component_bindings"))
         bindings.extend(self._config_list(extensions, "component_bindings"))
         return self._dedupe_by_key(bindings, "part_id")
 
     def _profile_frontend_selection(self, profile_id: str | None) -> set[str]:
-        candidate = str(profile_id or "").strip()
-        if not candidate:
-            return set()
-        try:
-            profile = ProfileWorkspaceManager().load_profile_yaml(candidate)
-        except Exception:
-            return set()
-        metadata = profile.get("metadata") if isinstance(profile, dict) and isinstance(profile.get("metadata"), dict) else {}
-        selected = normalize_profile_graph_selected(metadata.get("selected"))
-        return {
-            item_id
-            for item_id in (selected.get("frontend") if isinstance(selected.get("frontend"), list) else [])
-            if isinstance(item_id, str) and item_id.strip()
-        }
+        # Frontend attachment is resolved by v4 Shell/contract bindings.  The
+        # removed Profile YAML graph cannot filter the active Shell.
+        del profile_id
+        return set()
 
     def _filter_shell(self, shell: dict[str, Any], selected_frontend_ids: set[str]) -> dict[str, Any]:
         if not selected_frontend_ids:
@@ -556,7 +457,7 @@ class FrontendRegistry:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            visibility = item.get("profile_visibility") if isinstance(item.get("profile_visibility"), dict) else {}
+            visibility = _validated_dict(item.get("profile_visibility"))
             selected_ids = visibility.get("selected_frontend_ids")
             if isinstance(selected_ids, list):
                 normalized = {
@@ -577,12 +478,64 @@ class FrontendRegistry:
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
         registry = ToolRegistry()
-        items: list[dict[str, Any]] = []
+        items: list[dict[str, Any]] = builtin_ui_catalog()["sidebar_primary_items"]
+
+        try:
+            activity_manifests = (
+                get_extension_registry(force_reload=True)
+                .activities()
+                .list(enabled_only=True)
+            )
+        except Exception:
+            activity_manifests = []
+        for activity in activity_manifests:
+            activity_id = str(activity.get("id") or "").strip()
+            if not activity_id:
+                continue
+            label = self._localized_label(
+                activity.get("display_name"), activity_id
+            )
+            items.append(
+                {
+                    "id": activity_id,
+                    "label": label,
+                    "category": "activity",
+                    "description": self._localized_label(
+                        activity.get("description"), ""
+                    ),
+                    "tags": [
+                        "activity",
+                        *[
+                            str(alias)
+                            for alias in activity.get("aliases", [])
+                            if str(alias).strip()
+                        ],
+                    ],
+                    "ui": (
+                        dict(activity.get("ui"))
+                        if isinstance(activity.get("ui"), dict)
+                        else {}
+                    ),
+                    "origin": {
+                        "kind": "activity_registry",
+                        "path": str(activity.get("source_path") or ""),
+                    },
+                    "panel": {
+                        "kind": "activity",
+                        "title": label,
+                        "notes": [
+                            "このActivityのToolとSkillはCapability Planで動的に解決されます。",
+                            "明示指定: @" + activity_id,
+                        ],
+                    },
+                }
+            )
 
         for tool in registry.list_tools():
             schema = tool.get("schema", {}).get("parameters", {})
             execution_type = tool.get("execution", {}).get("type", "local")
             ui = dict(tool.get("ui", {})) if isinstance(tool.get("ui"), dict) else {}
+            ui["advanced_only"] = True
             label = self._tool_display_label(tool, ui)
             risk = str(tool.get("risk") or tool.get("metadata", {}).get("risk") or "low").strip().lower()
             tags = [str(tag) for tag in tool.get("tags", []) if str(tag)]
@@ -643,56 +596,7 @@ class FrontendRegistry:
             )
 
         items.extend(
-            [
-                {
-                    "id": "agent-service-capabilities",
-                    "label": "Capabilities",
-                    "category": "system",
-                    "description": "defaultspack core capability catalog.",
-                    "tags": ["agent", "capability", "local-first"],
-                    "origin": {"kind": "builtin", "path": "capabilities/"},
-                    "panel": {
-                        "kind": "info",
-                        "title": "Agent Service Capabilities",
-                        "notes": [
-                            "The core registry exposes capability contracts.",
-                            "Concrete UI entries are supplied by frontend extension packs.",
-                        ],
-                    },
-                },
-                {
-                    "id": "runtime-management",
-                    "label": "Runtime Management",
-                    "category": "system",
-                    "description": "Pack modules, pack requests, and migration state.",
-                    "tags": ["pack", "management", "runtime"],
-                    "origin": {"kind": "builtin", "path": "ecosystem/defaultspack/api_routes"},
-                    "panel": {
-                        "kind": "actions",
-                        "title": "Runtime Management",
-                        "actions": [
-                            {
-                                "id": "list_modules",
-                                "label": "Modules",
-                                "method": "GET",
-                                "endpoint": "/api/defaultspack/modules",
-                            },
-                            {
-                                "id": "list_pack_requests",
-                                "label": "Pack Requests",
-                                "method": "GET",
-                                "endpoint": "/api/defaultspack/pack-requests",
-                            },
-                            {
-                                "id": "migration_status",
-                                "label": "Migration Status",
-                                "method": "GET",
-                                "endpoint": "/api/defaultspack/migration/status",
-                            },
-                        ],
-                    },
-                },
-            ]
+            builtin_ui_catalog()["sidebar_system_items"]
         )
 
         items.extend(self._config_list(ui_surfaces, "sidebar_items"))
@@ -704,6 +608,21 @@ class FrontendRegistry:
         )
 
         return sorted(self._dedupe_by_key(items, "id"), key=self._sidebar_item_sort_key)
+
+    @staticmethod
+    def _localized_label(value: Any, fallback: str) -> str:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            for locale in ("ja", "en"):
+                text = str(value.get(locale) or "").strip()
+                if text:
+                    return text
+            for candidate in value.values():
+                text = str(candidate or "").strip()
+                if text:
+                    return text
+        return fallback
 
     @staticmethod
     def _tool_display_label(tool: dict[str, Any], ui: dict[str, Any]) -> str:
@@ -753,11 +672,12 @@ class FrontendRegistry:
     @staticmethod
     def _sidebar_item_sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
         category_order = {
-            "tool": 0,
-            "widget": 1,
+            "widget": 0,
+            "activity": 1,
             "capability": 2,
             "integration": 3,
             "system": 4,
+            "tool": 5,
         }
         tool_group_order = {
             "browser": 0,
@@ -793,1027 +713,29 @@ class FrontendRegistry:
         *,
         template_catalog: dict[str, Any] | None = None,
         lightweight: bool = False,
+        inputs: SettingsCatalogInputs | None = None,
     ) -> list[dict[str, Any]]:
-        external_template_catalog = self._external_io_template_catalog(template_catalog)
-        input_templates = external_template_catalog.get("input") if isinstance(external_template_catalog.get("input"), list) else []
-        output_templates = external_template_catalog.get("output") if isinstance(external_template_catalog.get("output"), list) else []
-        input_profile_options = self._input_profile_options()
-        output_profile_options = self._output_profile_options()
-        sections = [
-            {
-                "id": "general",
-                "label": "General",
-                "description": "defaultspack shell behavior shared across the app.",
-                "fields": [
-                    {
-                        "id": "composer_placeholder",
-                        "label": "Composer Placeholder",
-                        "type": "text",
-                        "default": "メッセージを入力...",
-                        "help": "チャット入力欄の placeholder。",
-                    },
-                    {
-                        "id": "show_activity_in_messages",
-                        "label": "Activity In Chat",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "assistant メッセージ上部に activity 情報を表示する。",
-                    },
-                    {
-                        "id": "keyboard_button_navigation",
-                        "label": "Keyboard Button Navigation",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "Tab/Shift+Tabでcomposerや右サイドバーの操作へ移動できます。アクセシビリティのため既定で有効です。",
-                    },
-                    {
-                        "id": "spotlight_shortcut_enabled",
-                        "label": "Spotlight Shortcut",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "Enable the global conversation Spotlight shortcut.",
-                    },
-                    {
-                        "id": "spotlight_shortcut",
-                        "label": "Spotlight Keys",
-                        "type": "text",
-                        "default": "Ctrl+K",
-                        "help": "Use combinations such as Ctrl+K, Ctrl+Alt+K, or Win+K where the browser receives Win-key events.",
-                    },
-                    {
-                        "id": "spotlight_shortcut_text_input",
-                        "label": "Shortcut In Text Inputs",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "Allow the Spotlight shortcut while an input or textarea is focused.",
-                    },
-                    {
-                        "id": "language",
-                        "label": "Language",
-                        "type": "select",
-                        "default": "ja",
-                        "options": [
-                            {"value": "ja", "label": "日本語"},
-                            {"value": "en", "label": "English"},
-                            {"value": "auto", "label": "Auto"},
-                        ],
-                        "help": "frontend の表示言語です。未翻訳の拡張項目は元の文言を表示します。",
-                    },
-                    {
-                        "id": "voice_input_enabled",
-                        "label": "音声入力",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "composer のマイクボタンでブラウザ音声入力を使います。",
-                    },
-                    {
-                        "id": "voice_input_use_ai",
-                        "label": "AI文字起こしモード",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "ON の時は入力文に「文字起こしして:」を付けて、モデルへ文字起こしタスクとして渡します。",
-                    },
-                ],
-            },
-            {
-                "id": "preview",
-                "label": "Preview",
-                "description": "右 preview pane と activity feed の挙動。",
-                "fields": [
-                    {"id": "auto_open", "label": "Auto Open", "type": "toggle", "default": False},
-                    {
-                        "id": "default_mode",
-                        "label": "Preview Mode",
-                        "type": "select",
-                        "default": "auto",
-                        "options": [
-                            {"value": "auto", "label": "Auto"},
-                            {"value": "manual", "label": "Manual"},
-                        ],
-                    },
-                    {
-                        "id": "max_items",
-                        "label": "Preview Limit",
-                        "type": "number",
-                        "default": 12,
-                        "min": 1,
-                        "max": 50,
-                    },
-                ],
-            },
-            {
-                "id": "mobile",
-                "label": "Mobile",
-                "description": "スマホ接続要求をauthoritative pairing recordで確認します。",
-                "fields": [
-                    {
-                        "id": "pairing_review_id",
-                        "label": "Mobile Pairing Review",
-                        "type": "mobile_pairing_review",
-                        "renderer": "MobilePairingApproval",
-                        "default": "",
-                        "help": "PCで作成したpairing IDを入力し、保留・拒否・キャンセルを明示的に選びます。",
-                    },
-                ],
-            },
-            {
-                "id": "calendar",
-                "label": "Calendar",
-                "description": "カレンダー画面のクリック追加、週表示、予定色を調整します。",
-                "fields": [
-                    {
-                        "id": "quick_add_enabled",
-                        "label": "Click To Add",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "日付セルをクリックした時に、新規追加カードを開きます。",
-                    },
-                    {
-                        "id": "default_item_type",
-                        "label": "Default Item Type",
-                        "type": "select",
-                        "default": "task",
-                        "options": [
-                            {"value": "task", "label": "Task / 青"},
-                            {"value": "event", "label": "Event / 緑"},
-                            {"value": "reminder", "label": "Reminder / グレー"},
-                        ],
-                        "help": "新規追加カードで最初に選ばれる種類です。",
-                    },
-                    {
-                        "id": "default_time",
-                        "label": "Default Time",
-                        "type": "text",
-                        "default": "09:00",
-                        "help": "新規追加カードの初期時刻です。例: 09:00 / 午前9:00",
-                    },
-                    {
-                        "id": "time_slot_minutes",
-                        "label": "Time Slot Minutes",
-                        "type": "select",
-                        "default": 15,
-                        "options": [
-                            {"value": 15, "label": "15 minutes"},
-                            {"value": 30, "label": "30 minutes"},
-                            {"value": 60, "label": "60 minutes"},
-                        ],
-                        "help": "時刻ドロップダウンの刻み幅です。",
-                    },
-                    {
-                        "id": "show_time_picker",
-                        "label": "Show Time Picker",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "時刻入力時にスクロール式の候補を表示します。",
-                    },
-                    {
-                        "id": "agent_task_default",
-                        "label": "Agent Task Default",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "Task作成時に、AI agent実行の候補を初期ONにします。",
-                    },
-                    {
-                        "id": "agent_model",
-                        "label": "Agent Model",
-                        "type": "text",
-                        "default": "",
-                        "help": "空なら設定済みの非embeddingモデルを自動選択します。例: google/gemini-2.5-flash",
-                    },
-                    {
-                        "id": "agent_current_chat",
-                        "label": "Run In Current Chat",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "ONなら予定時刻に現在の会話へ送信します。OFFなら独立したagent実行にします。",
-                    },
-                    {
-                        "id": "week_start",
-                        "label": "Week Starts On",
-                        "type": "select",
-                        "default": "sunday",
-                        "options": [
-                            {"value": "sunday", "label": "Sunday"},
-                            {"value": "monday", "label": "Monday"},
-                        ],
-                        "help": "月表示の左端の曜日を選びます。",
-                    },
-                    {
-                        "id": "show_outside_days",
-                        "label": "Show Outside Days",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "前月/翌月の日付を薄く表示します。",
-                    },
-                    {
-                        "id": "dim_weekends",
-                        "label": "Dim Weekends",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "土日セルをほんの少し暗くします。",
-                    },
-                    {
-                        "id": "task_color",
-                        "label": "Task Color",
-                        "type": "select",
-                        "default": "blue",
-                        "options": [
-                            {"value": "blue", "label": "Blue"},
-                            {"value": "cyan", "label": "Cyan"},
-                            {"value": "slate", "label": "Slate"},
-                        ],
-                        "help": "Taskバーの色。既定は青です。",
-                    },
-                    {
-                        "id": "event_color",
-                        "label": "Event Color",
-                        "type": "select",
-                        "default": "green",
-                        "options": [
-                            {"value": "green", "label": "Green"},
-                            {"value": "blue", "label": "Blue"},
-                            {"value": "slate", "label": "Slate"},
-                        ],
-                        "help": "Eventバーの色。既定は緑です。",
-                    },
-                    {
-                        "id": "max_items_per_day",
-                        "label": "Visible Items / Day",
-                        "type": "number",
-                        "default": 3,
-                        "min": 1,
-                        "max": 6,
-                        "help": "1日に表示する予定バーの上限です。",
-                    },
-                ],
-            },
-            {
-                "id": "chat_rendering",
-                "label": "Chat Rendering",
-                "description": "block / widget rendering rules for the conversation pane.",
-                "fields": [
-                    {"id": "show_widgets", "label": "Render Widgets", "type": "toggle", "default": True},
-                    {
-                        "id": "unknown_block_strategy",
-                        "label": "Unknown Block Strategy",
-                        "type": "select",
-                        "default": "placeholder",
-                        "options": [
-                            {"value": "placeholder", "label": "Safe placeholder"},
-                            {"value": "debug", "label": "Developer diagnostics (redacted)"},
-                        ],
-                    },
-                ],
-            },
-            {
-                "id": "models",
-                "label": "Models",
-                "description": "会話で使うモデルと thinking 設定。",
-                "fields": [
-                    {
-                        "id": "main_model",
-                        "label": "Main Model",
-                        "type": "model_select",
-                        "default": "stub/default",
-                        "options": self._model_options(lightweight=lightweight),
-                        "help": "Default model for normal conversations and new chats.",
-                    },
-                    {
-                        "id": "lightweight_model",
-                        "label": "Lightweight Model",
-                        "type": "model_select",
-                        "default": "",
-                        "options": self._model_options(lightweight=lightweight),
-                        "help": "Fast model for quick replies and delegated rough work. Leave empty for automatic selection.",
-                    },
-                    {
-                        "id": "preferred_model",
-                        "label": "Preferred Model",
-                        "type": "select",
-                        "default": "stub/default",
-                        "options": self._model_options(lightweight=lightweight),
-                        "help": "新しい会話と composer の既定モデルです。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "preferred_model_group",
-                        "label": "Model Group",
-                        "type": "select",
-                        "default": "default",
-                        "options": [
-                            {"value": "default", "label": "標準"},
-                            {"value": "fast", "label": "高速"},
-                            {"value": "deep", "label": "深く考える"},
-                            {"value": "vision", "label": "画像対応"},
-                            {"value": "cheap", "label": "節約"},
-                            {"value": "local", "label": "ローカル"},
-                            {"value": "custom", "label": "カスタム"},
-                        ],
-                        "help": "個別モデルではなく、目的別グループ内で自動ルーティングします。",
-                    },
-                    {
-                        "id": "auto_route_within_group",
-                        "label": "Auto Route In Group",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "画像、tool、thinking、速度の条件に合わせてグループ内の実モデルを選びます。",
-                    },
-                    {
-                        "id": "on_switch_to_non_vision_with_images",
-                        "label": "Non-vision Image Switch",
-                        "type": "select",
-                        "default": "auto_bridge",
-                        "options": [
-                            {"value": "auto_bridge", "label": "Auto Bridge"},
-                            {"value": "ask", "label": "Ask"},
-                            {"value": "block", "label": "Block"},
-                            {"value": "ignore", "label": "Ignore"},
-                        ],
-                        "help": "画像あり会話で画像非対応モデルへ切り替える時の挙動です。",
-                    },
-                    {
-                        "id": "utility_models",
-                        "label": "Utility Models",
-                        "type": "textarea",
-                        "default": "{}",
-                        "help": "tool_selector / vision_ocr / prompt_compactor などの雑用モデル割り当て。空なら自動選択します。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "model_api_routes",
-                        "label": "Model API Variants",
-                        "type": "model_api_routes",
-                        "default": "",
-                        "options": self._model_route_options(lightweight=lightweight),
-                        "api_keys": [] if lightweight else provider_key_status(pack_root=self._pack_root),
-                        "help": "モデルごとに使う API key を選びます。複数選んだら、各 API key ごとに別 model variant として composer に並びます。",
-                    },
-                    {
-                        "id": "api_routes",
-                        "label": "Structured API Routes",
-                        "type": "textarea",
-                        "default": "[]",
-                        "help": "高度設定: JSON配列/オブジェクトで model と apis を定義します。旧 Model API Priority も読み取り互換です。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "api_bound_profiles",
-                        "label": "API-bound Profiles",
-                        "type": "textarea",
-                        "default": "[]",
-                        "help": "高度設定: このAPI keyだけで使えるモデル profile をJSONで追加します。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "composite_models",
-                        "label": "Composite Models",
-                        "type": "textarea",
-                        "default": "[]",
-                        "help": "高度設定: fallback_chain / ensemble の合体モデルをJSONで定義します。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "model_notes",
-                        "label": "Model Notes",
-                        "type": "textarea",
-                        "default": "{}",
-                        "help": "高度設定: モデルごとの特徴を自分の言葉で書き、検索とルーティングの判断材料にします。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "thinking_level",
-                        "label": "Thinking Level",
-                        "type": "select",
-                        "default": "medium",
-                        "options": [
-                            {"value": "none", "label": "Off"},
-                            {"value": "low", "label": "Low"},
-                            {"value": "medium", "label": "Medium"},
-                            {"value": "high", "label": "High"},
-                            {"value": "xhigh", "label": "Extra High"},
-                        ],
-                        "help": "Rumi は none/low/medium/high/xhigh を送り、各 provider が対応する API パラメータへ変換します。Gemini/Gemma では未対応の値を自動で近い値へ落とします。",
-                    },
-                    {
-                        "id": "deepthink_enabled",
-                        "label": "DeepThink",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "thinker型のDeepThink loopを有効にします。タスクには数時間かかる可能性があります。",
-                    },
-                    {
-                        "id": "favorite_profiles",
-                        "label": "Composer Model Pins",
-                        "type": "textarea",
-                        "default": "stub/default",
-                        "help": "高度設定: composer に優先表示する profile_id。通常は Preferred Model だけで十分です。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "thinking_level_by_profile",
-                        "label": "Per-profile Thinking Map",
-                        "type": "textarea",
-                        "default": '{"stub/default":"medium"}',
-                        "help": "高度設定: profile_id ごとの上書き。通常は Thinking Level を使います。",
-                        "advanced": True,
-                    },
-                ],
-            },
-            {
-                "id": "continuity",
-                "label": "Continuity",
-                "description": "API provider route, checkpoint, and device/cloud handoff controls.",
-                "fields": [
-                    {
-                        "id": "handoff",
-                        "label": "Cloud / Device Handoff",
-                        "type": "continuity",
-                        "default": {
-                            "sandbox_id": "logical-sandbox",
-                            "mode": "move",
-                            "destination_node_id": "",
-                            "route_id": "",
-                        },
-                        "help": "Pairs destination nodes, probes provider route portability, and starts fenced handoff operations.",
-                    },
-                ],
-            },
-            {
-                "id": "apis",
-                "label": "APIs / Tokens",
-                "description": "LLM の API キーも、LINE / Discord / Slack の token も、ここで一元管理します。値は再表示しません。",
-                "fields": [
-                    {
-                        "id": "api_keys",
-                        "label": "API Keys / Tokens",
-                        "type": "api_keys",
-                        "default": [],
-                        "help": "provider を選び、名前と値を貼って Save。LINE / Discord / Slack を選ぶと外部送信側の token としても自動で利用できます。",
-                    },
-                ],
-            },
-            {
-                "id": "line",
-                "label": "LINE",
-                "description": "LINE 受信時の反応条件。",
-                "fields": [
-                    {
-                        "id": "mention_policy",
-                        "label": "Mention Policy",
-                        "type": "textarea",
-                        "default": "{\"group_room_mention_required\":true}",
-                        "help": "group/room では既定でメンション時のみ反応します。1:1 は従来通り反応します。",
-                    },
-                ],
-            },
-            {
-                "id": "commands",
-                "label": "Commands",
-                "description": "Slash command visibility and command palette behavior.",
-                "fields": [
-                    {
-                        "id": "show_advanced_commands",
-                        "label": "Show Advanced Commands",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "Advanced slash commandsを候補に含めます。hidden command は直接入力か将来の管理UI向けです。",
-                    },
-                ],
-            },
-            {
-                "id": "external_input",
-                "label": "External Input",
-                "description": "Webhookで受ける入口。LINE は Messaging API channel の webhook として受けます。",
-                "fields": [
-                    {
-                        "id": "input_setup_guide",
-                        "label": "Setup Flow",
-                        "type": "readonly",
-                        "default": (
-                            "1. Providerを選ぶ\n"
-                            "2. Temporary Public URLでWebhook URLを発行する\n"
-                            "3. ProviderのWebhook URL欄へコピーする\n"
-                            "4. LINE Messaging API Channel Secret / Access Tokenを貼る\n"
-                            "5. line-main endpointを有効化し、受信元ルールを確認する"
-                        ),
-                    },
-                    {
-                        "id": "endpoint_summary",
-                        "label": "Input Endpoints",
-                        "type": "readonly",
-                        "default": "No endpoints",
-                    },
-                    {
-                        "id": "input_provider",
-                        "label": "Input Provider",
-                        "type": "select",
-                        "default": "line",
-                        "options": self._provider_options(input_templates, fallback=["line", "discord", "slack", "generic"]),
-                        "help": "ビルトイン provider は選択だけで切り替えます。独自 provider は External Custom から追加します。",
-                    },
-                    {
-                        "id": "input_template_id",
-                        "label": "Input Template",
-                        "type": "select",
-                        "default": "line.input.default",
-                        "options": self._template_options(input_templates, include_custom=False),
-                        "help": "LINE/Discord/Slack は YAML 編集なしでテンプレートを選ぶだけにします。",
-                    },
-                    {
-                        "id": "input_profile_id",
-                        "label": "Input Profile",
-                        "type": "select",
-                        "default": "line.default",
-                        "options": input_profile_options,
-                        "help": "受信 payload を Rumi 入力へ変換する既定 profile です。",
-                    },
-                    {
-                        "id": "input_endpoint_id",
-                        "label": "Endpoint ID",
-                        "type": "text",
-                        "default": "line-main",
-                        "help": "Rumi 側の endpoint 識別子です。LINE の channel ID ではありません。",
-                    },
-                    {
-                        "id": "public_url_launcher",
-                        "label": "Temporary Public URL",
-                        "type": "public_url",
-                        "default": {
-                            "provider_id": "cloudflare_quick_tunnel",
-                            "local_url": "http://127.0.0.1:8766",
-                            "route_path": "/api/integrations/line/webhook",
-                        },
-                        "help": "LINE/Slack/DiscordのWebhook URL欄へ貼る一時公開URLを発行します。Cloudflareはprovider実装の1つです。",
-                    },
-                    {
-                        "id": "provider_route_copy",
-                        "label": "Route Paths",
-                        "type": "readonly",
-                        "default": (
-                            "LINE: /api/integrations/line/webhook\n"
-                            "Discord: /api/integrations/discord/interactions, /api/integrations/discord/events\n"
-                            "Slack: /api/integrations/slack/events"
-                        ),
-                        "help": "公開URLを作ったら、この path を provider 側 webhook URL の末尾としてコピペします。",
-                    },
-                    {
-                        "id": "input_template_summary",
-                        "label": "Input Templates",
-                        "type": "readonly",
-                        "default": "LINE / Discord / Slack / Generic / Custom",
-                    },
-                    {
-                        "id": "input_profile_summary",
-                        "label": "Input Profiles",
-                        "type": "readonly",
-                        "default": "No profiles",
-                    },
-                    {
-                        "id": "include_source_context",
-                        "label": "Include Source Context",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "外部入力をchatへ渡す時に、LINE/Discord/Slackなど送信元を既定で伝えます。",
-                    },
-                    {
-                        "id": "default_response_mode",
-                        "label": "Default Response",
-                        "type": "select",
-                        "default": "same_response",
-                        "options": [
-                            {"value": "same_response", "label": "Reply to source conversation"},
-                            {"value": "custom_prompt", "label": "Custom prompt"},
-                            {"value": "store_only", "label": "Store only"},
-                        ],
-                        "help": "LINE では replyToken を使って受信元の個人/グループ/複数人トークへ返信します。",
-                    },
-                    {
-                        "id": "input_response_preset",
-                        "label": "Input Response Preset",
-                        "type": "select",
-                        "default": "same_source_reply",
-                        "options": [
-                            {"value": "same_source_reply", "label": "Same source reply"},
-                            {"value": "store_only", "label": "Store only"},
-                            {"value": "push_to_remembered_source", "label": "Push to remembered source"},
-                            {"value": "line_to_discord", "label": "LINE -> Discord"},
-                            {"value": "line_to_web", "label": "LINE -> Web/local"},
-                            {"value": "browser_then_reply", "label": "Browser use -> reply"},
-                            {"value": "python_then_reply", "label": "Python -> reply"},
-                            {"value": "computer_use_line_biz", "label": "Computer use -> LINE Biz"},
-                        ],
-                        "help": "Same source reply は送信先ID入力不要です。Push は保存済み source の許可がある時だけ使います。",
-                    },
-                    {
-                        "id": "policy_summary",
-                        "label": "Audience Policies",
-                        "type": "readonly",
-                        "default": "line.production: verified text only, saved source allowed, unknown source denied.",
-                    },
-                    {
-                        "id": "saved_sources_summary",
-                        "label": "Saved Sources",
-                        "type": "readonly",
-                        "default": "No saved sources",
-                        "help": "LINE の user/group/room source は webhook 受信時に自動保存されます。push は許可済み source のみ使います。",
-                    },
-                ],
-            },
-            {
-                "id": "external_output",
-                "label": "External Output",
-                "description": "返信・転送先。LINE/Discord/Slack/Webを選び、秘密値はExternal Tokensに貼ります。",
-                "fields": [
-                    {
-                        "id": "output_setup_guide",
-                        "label": "Send Modes",
-                        "type": "readonly",
-                        "default": (
-                            "LINE: Messaging API Channel Access Tokenで受信元へreply。push fallbackは既定OFF\n"
-                            "Discord Bot + Channel: Bot Tokenを保存し、Channel IDをTarget IDへ貼る\n"
-                            "Discord Webhook URL: Channel Webhook URLをExternal Tokensへ保存する\n"
-                            "Slack: Bot Tokenを保存し、Channel ID / Thread TSをTarget IDへ貼る\n"
-                            "Web/local: 外部投稿せず、chat historyやlocal保存に寄せる"
-                        ),
-                    },
-                    {
-                        "id": "external_tokens",
-                        "label": "External Tokens (read-only)",
-                        "type": "external_tokens",
-                        "default": [],
-                        "help": "ここでは設定しません。APIs / Tokens で provider に LINE / Discord / Slack を選んで保存してください。保存済みのものはここに自動で表示されます。",
-                    },
-                    {
-                        "id": "output_provider",
-                        "label": "Output Provider",
-                        "type": "select",
-                        "default": "line",
-                        "options": self._provider_options(output_templates, fallback=["line", "discord", "slack", "generic", "web"]),
-                        "help": "返信・転送先 provider を選びます。LINE の送信先は channel ではなく source conversation です。",
-                    },
-                    {
-                        "id": "output_template_id",
-                        "label": "Output Template",
-                        "type": "select",
-                        "default": "line.output.default",
-                        "options": self._template_options(output_templates, include_custom=False),
-                        "help": "Discord は bot+channel と webhook URL を選択で切り替えます。",
-                    },
-                    {
-                        "id": "output_profile_id",
-                        "label": "Output Profile",
-                        "type": "select",
-                        "default": "line.default",
-                        "options": output_profile_options,
-                        "help": "送信能力、文字数上限、reply/push mode を決める response profile です。",
-                    },
-                    {
-                        "id": "output_send_mode",
-                        "label": "Send Mode",
-                        "type": "select",
-                        "default": "reply_to_origin",
-                        "options": [
-                            {"value": "reply_to_origin", "label": "Reply to source conversation"},
-                            {"value": "push_to_saved_origin", "label": "Push to remembered source"},
-                            {"value": "push_to_explicit_target", "label": "Push to explicit target"},
-                            {"value": "discord_bot_channel", "label": "Discord bot + channel_id"},
-                            {"value": "discord_webhook_url", "label": "Discord webhook URL"},
-                            {"value": "slack_channel", "label": "Slack channel/thread"},
-                            {"value": "generic_webhook", "label": "Generic webhook"},
-                            {"value": "web_local", "label": "Web / local only"},
-                            {"value": "tool_external_send", "label": "Tool: external_send"},
-                        ],
-                    },
-                    {
-                        "id": "output_target_id",
-                        "label": "Explicit Target ID",
-                        "type": "text",
-                        "default": "",
-                        "help": "明示送信時だけ使います。LINE は userId / groupId / roomId、Discord/Slack は channel_id。Webhook URLはExternal Tokensへ保存します。",
-                    },
-                    {
-                        "id": "output_callback_token_id",
-                        "label": "Token ID To Use",
-                        "type": "text",
-                        "default": "main",
-                        "help": "webhook URL や bot token は External Tokens に保存し、ここには token_id だけを書きます。",
-                    },
-                    {
-                        "id": "output_template_summary",
-                        "label": "Output Templates",
-                        "type": "readonly",
-                        "default": "Discord bot/channel or webhook URL, LINE source reply or explicit push, Slack channel, Generic webhook, Web/local.",
-                    },
-                    {
-                        "id": "output_profile_summary",
-                        "label": "Output Profiles",
-                        "type": "readonly",
-                        "default": "Provider capabilities drive response planning.",
-                    },
-                    {
-                        "id": "response_summary",
-                        "label": "Response Prompt Policy",
-                        "type": "readonly",
-                        "default": "Prompt decisions create action plans; tools/adapters execute after policy checks.",
-                    },
-                    {
-                        "id": "response_prompt_preset",
-                        "label": "Response Prompt Preset",
-                        "type": "select",
-                        "default": "same_source_reply",
-                        "options": [
-                            {"value": "same_source_reply", "label": "Same source reply"},
-                            {"value": "summarize_then_reply", "label": "Summarize then reply"},
-                            {"value": "run_browser_use", "label": "Browser use when current info is needed"},
-                            {"value": "run_python", "label": "Python for calculation / file processing"},
-                            {"value": "run_computer_use_approval", "label": "Computer use with approval"},
-                            {"value": "send_file_if_allowed", "label": "Send file if provider allows"},
-                            {"value": "store_only", "label": "Store only"},
-                        ],
-                        "help": "プロンプト routing もビルトインはプリセット選択にします。自由文は External Custom 側に置きます。",
-                    },
-                    {
-                        "id": "public_url_summary",
-                        "label": "Temporary Public URLs",
-                        "type": "readonly",
-                        "default": "Providers: static, cloudflare_quick_tunnel",
-                    },
-                ],
-            },
-            {
-                "id": "external_custom",
-                "label": "External Custom",
-                "description": "Custom input/output templates loaded from registration API or extension files.",
-                "fields": [
-                    {
-                        "id": "custom_template_path",
-                        "label": "Template Extension Path",
-                        "type": "readonly",
-                        "default": "user_data/shared/external_io_templates",
-                    },
-                    {
-                        "id": "custom_profile_paths",
-                        "label": "Profile Extension Paths",
-                        "type": "readonly",
-                        "default": "user_data/shared/input_profiles, user_data/shared/output_profiles",
-                    },
-                    {
-                        "id": "custom_prompt_examples",
-                        "label": "Custom Prompt Examples",
-                        "type": "textarea",
-                        "default": "",
-                        "help": "例: Google Chromeをcomputer_useで操作して起動し、指定のLINE Official Account Manager URLにアクセスして返答する。",
-                    },
-                ],
-            },
-            {
-                "id": "triggers",
-                "label": "Triggers",
-                "description": "発火判断と、入力に関係ない候補を落とすための設定。",
-                "fields": [
-                    {
-                        "id": "mode",
-                        "label": "Trigger Mode",
-                        "type": "select",
-                        "default": "vector",
-                        "options": [
-                            {"value": "vector", "label": "Vector / memo match"},
-                            {"value": "llm", "label": "LLM decides"},
-                        ],
-                        "help": "発火要因をベクトル/メモ照合で見るか、LLMに判断させるかを選びます。",
-                    },
-                    {
-                        "id": "filter_unrelated",
-                        "label": "Filter Unrelated",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "LLM判断時に、発火候補と入力が無関係なら候補を落とすためのフラグです。",
-                    },
-                    {
-                        "id": "model",
-                        "label": "Trigger LLM",
-                        "type": "text",
-                        "default": "",
-                        "help": "空なら現在の既定モデルを継承します。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "vector_threshold",
-                        "label": "Vector Threshold",
-                        "type": "number",
-                        "default": 0.1,
-                        "min": 0,
-                        "max": 1,
-                        "help": "vector mode の発火候補スコアしきい値です。外部返信の既定動作は維持します。",
-                        "advanced": True,
-                    },
-                ],
-            },
-            {
-                "id": "tools",
-                "label": "機能と接続",
-                "description": "機能の既定動作、権限、接続、高度な選定方式。",
-                "fields": [
-                    {
-                        "id": "default_target",
-                        "label": "Default Target",
-                        "type": "text",
-                        "default": "",
-                        "help": "Backcompat value for tool UIs that still read a shared default_target.",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "default_mode",
-                        "label": "既定の使い方",
-                        "type": "select",
-                        "default": "auto",
-                        "options": [
-                            {"value": "auto", "label": "自動で選ぶ"},
-                            {"value": "review", "label": "使う前に確認"},
-                            {"value": "manual", "label": "自分で選ぶ"},
-                            {"value": "none", "label": "機能を使わない"},
-                        ],
-                    },
-                    {
-                        "id": "selection_strategy",
-                        "label": "選定方式",
-                        "type": "select",
-                        "default": "hybrid",
-                        "options": [
-                            {"value": "hybrid", "label": "自動選定・高精度"},
-                            {"value": "semantic", "label": "意味検索"},
-                            {"value": "catalog_ai", "label": "別AIに全体から選ばせる"},
-                            {"value": "all_with_hints", "label": "全機能＋おすすめ"},
-                            {"value": "all_schemas", "label": "全schemaを公開・デバッグ"},
-                            {"value": "lexical", "label": "軽量検索"},
-                        ],
-                        "help": "通常は自動選定・高精度のままで構いません。",
-                        "advanced": True,
-                    },
-                    {
-                        "id": "show_selection_summary",
-                        "label": "選んだ機能を回答内に表示",
-                        "type": "toggle",
-                        "default": True,
-                    },
-                    {
-                        "id": "show_selection_reasons",
-                        "label": "選定理由を常に展開して表示",
-                        "type": "toggle",
-                        "default": False,
-                    },
-                    {
-                        "id": "semantic_backend",
-                        "label": "Semantic backend",
-                        "type": "select",
-                        "default": "auto",
-                        "options": [
-                            {"value": "auto", "label": "自動"},
-                            {"value": "embedding", "label": "Embedding"},
-                            {"value": "lexical", "label": "軽量検索"},
-                        ],
-                        "advanced": True,
-                    },
-                    {
-                        "id": "selector_trace",
-                        "label": "Trace",
-                        "type": "select",
-                        "default": "summary",
-                        "options": [
-                            {"value": "none", "label": "保存しない"},
-                            {"value": "summary", "label": "要約のみ"},
-                            {"value": "full", "label": "完全トレース"},
-                        ],
-                        "advanced": True,
-                    },
-                    {
-                        "id": "final_tool_limit",
-                        "label": "最終機能数",
-                        "type": "number",
-                        "default": 8,
-                        "min": 1,
-                        "max": 24,
-                        "advanced": True,
-                    },
-                    {
-                        "id": "semantic_candidate_limit",
-                        "label": "Semantic候補数",
-                        "type": "number",
-                        "default": 32,
-                        "min": 8,
-                        "max": 64,
-                        "advanced": True,
-                    },
-                ],
-            },
-            {
-                "id": "computer_use_haze",
-                "label": "Computer Use Haze",
-                "description": "Visible edge glow while computer-use performs screen-mutating actions.",
-                "fields": [
-                    {
-                        "id": "enabled",
-                        "label": "Enable Haze",
-                        "type": "toggle",
-                        "default": True,
-                        "help": "computer use の可視操作中、画面端にクリック透過のもやもやを表示します。",
-                    },
-                    {
-                        "id": "preset",
-                        "label": "Gradient Preset",
-                        "type": "select",
-                        "default": "aurora",
-                        "options": [
-                            {"value": "aurora", "label": "Aurora"},
-                            {"value": "ocean", "label": "Ocean"},
-                            {"value": "ember", "label": "Ember"},
-                            {"value": "custom", "label": "Custom"},
-                        ],
-                    },
-                    {
-                        "id": "start_color",
-                        "label": "Start Color",
-                        "type": "color",
-                        "default": "#6EE7F9",
-                    },
-                    {
-                        "id": "end_color",
-                        "label": "End Color",
-                        "type": "color",
-                        "default": "#A78BFA",
-                    },
-                    {
-                        "id": "accent_color",
-                        "label": "Accent Color",
-                        "type": "color",
-                        "default": "#F0ABFC",
-                    },
-                    {
-                        "id": "opacity",
-                        "label": "Opacity",
-                        "type": "number",
-                        "default": 0.36,
-                        "min": 0.05,
-                        "max": 0.9,
-                    },
-                    {
-                        "id": "edge_width",
-                        "label": "Edge Width",
-                        "type": "number",
-                        "default": 150,
-                        "min": 40,
-                        "max": 420,
-                        "advanced": True,
-                    },
-                    {
-                        "id": "animation_speed",
-                        "label": "Animation Speed",
-                        "type": "number",
-                        "default": 1,
-                        "min": 0.1,
-                        "max": 4,
-                        "advanced": True,
-                    },
-                ],
-            },
-            {
-                "id": "debug",
-                "label": "Debug",
-                "description": "モデル呼び出しとcomputer use調査用のログ設定。",
-                "fields": [
-                    {
-                        "id": "ai_request_logging",
-                        "label": "AI Request Logs",
-                        "type": "toggle",
-                        "default": False,
-                        "help": "AIに渡すmessages/tools/paramsと添付画像を会話workspace/debug/ai_requestsへ保存します。",
-                    },
-                ],
-            },
-            {
-                "id": "system_info",
-                "label": "System Info",
-                "description": "App version and macOS privacy permissions used by Computer Use.",
-                "fields": [],
-            },
-        ]
-
-        sections.extend(self._config_list(ui_surfaces, "settings_sections"))
-        sections.extend(self._config_list(extensions, "settings_sections"))
-
-        return self._suppress_template_owned_base_settings(sections, template_catalog)
+        if inputs is None:
+            templates = self._external_io_template_catalog(template_catalog)
+            inputs = SettingsCatalogInputs(
+                input_templates=_validated_dict_list(templates.get("input")),
+                output_templates=_validated_dict_list(templates.get("output")),
+                input_profile_options=self._input_profile_options(),
+                output_profile_options=self._output_profile_options(),
+                model_options=self._model_options(lightweight=lightweight),
+                model_route_options=self._model_route_options(lightweight=lightweight),
+                api_key_status=[] if lightweight else provider_key_status(pack_root=self._pack_root),
+            )
+        return SettingsSections().build(
+            ui_surfaces, extensions, template_catalog=template_catalog, inputs=inputs
+        )
 
     def _chat_renderers(
         self,
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        renderers = [
-            {"id": "text", "block_types": ["text", "markdown"], "component": "MarkdownBlock", "fallback": "plain_text"},
-            {"id": "code", "block_types": ["code"], "component": "CodeBlock", "fallback": "plain_text"},
-            {"id": "image", "block_types": ["image"], "component": "ImageBlock", "fallback": "link"},
-            {"id": "widget", "block_types": [], "widget_types": ["*"], "component": "WidgetCard", "fallback": "json"},
-        ]
+        renderers = builtin_ui_catalog()["chat_renderers"]
 
         renderers.extend(self._config_list(ui_surfaces, "chat_renderers"))
         renderers.extend(self._config_list(extensions, "chat_renderers"))
@@ -1821,58 +743,7 @@ class FrontendRegistry:
         return self._dedupe_by_key(renderers, "id")
 
     def _extension_points(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "id": "parts",
-                "path": "extensions/ui/*/manifest.json config.parts",
-                "description": "Small frontend parts and the component contracts they use.",
-            },
-            {
-                "id": "component_bindings",
-                "path": "extensions/ui/*/manifest.json config.component_bindings",
-                "description": "Declarative component-to-part usage rules.",
-            },
-            {
-                "id": "sidebar_items",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json",
-                "description": "Right sidebar entries and their panel metadata.",
-            },
-            {
-                "id": "settings_sections",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json",
-                "description": "Settings modal sections / fields. Saved into frontend_settings.json.",
-            },
-            {
-                "id": "chat_renderers",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json",
-                "description": "Metadata describing custom block/widget renderers.",
-            },
-            {
-                "id": "composer.inline",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json config.composer.inline",
-                "description": "Small action buttons rendered inside the composer control row.",
-            },
-            {
-                "id": "composer.below",
-                "path": "packs/frontend_extensions/*.ui.json or user_data/shared/frontend_extensions/*.ui.json config.composer.below",
-                "description": "Secondary action buttons rendered below the composer.",
-            },
-            {
-                "id": "chat.activity",
-                "path": "chat message events/tool_logs",
-                "description": "Provider/tool activity records rendered in message history.",
-            },
-            {
-                "id": "shell_layout",
-                "path": "extensions/ui/*/manifest.json config.shell_layout or user_data/shared/frontend_shell.json",
-                "description": "Declarative layout regions for the replaceable shell.",
-            },
-            {
-                "id": "shell_renderers",
-                "path": "extensions/ui/*/manifest.json config.shell_renderers or packs/frontend_extensions/*.ui.json",
-                "description": "Renderer IDs and component names bound to shell regions.",
-            },
-        ]
+        return builtin_ui_catalog()["extension_points"]
 
     def _preview_from_log(self, log: dict[str, Any]) -> list[dict[str, Any]]:
         timestamp = self._iso_to_ms(log.get("timestamp"))
@@ -2258,7 +1129,16 @@ class FrontendRegistry:
                 extension = json.loads(path.read_text(encoding="utf-8"))
                 if isinstance(extension, dict):
                     extension["_source"] = str(path)
-                    extension["source_pack_id"] = self._source_pack_id(path)
+                    projection_id = self._source_projection_id(path)
+                    if projection_id:
+                        extension["source_projection_id"] = projection_id
+                        extension["source_authority_id"] = projection_id
+                        extension["source_authority_kind"] = "ui_projection"
+                    else:
+                        pack_id = self._source_pack_id(path)
+                        extension["source_pack_id"] = pack_id
+                        extension["source_authority_id"] = pack_id
+                        extension["source_authority_kind"] = "pack"
                     extensions.append(extension)
                 else:
                     self._add_diagnostic("warning", "frontend_extension_not_object", f"{path} must contain a JSON object.", str(path))
@@ -2286,38 +1166,68 @@ class FrontendRegistry:
         ecosystem_root = self._ecosystem_root()
         selected_pack_ids = selected_extension_pack_ids(self._pack_root)
         if ecosystem_root.exists():
-            for pack_root in sorted(ecosystem_root.iterdir()):
-                if not pack_root.is_dir() or not (pack_root / "ecosystem.json").exists():
-                    continue
-                if selected_pack_ids is not None and pack_root.name not in selected_pack_ids:
+            for pack_id in sorted(selected_pack_ids):
+                pack_root = ecosystem_root / pack_id
+                if not pack_root.is_dir() or self._v4_pack_id(pack_root) != pack_id:
                     continue
                 dirs.append(pack_root / "frontend_extensions")
-        dirs.append(self._extensions_dir)
+        from core_runtime.profile_content_projection import selected_projection_roots
+        from core_runtime.resolved_profile_scope import effective_profile_projections
+
+        for _projection_id, root in selected_projection_roots(
+            effective_profile_projections(), kind="ui_projection"
+        ):
+            dirs.append(root / "frontend_extensions")
         return dirs
 
+    @staticmethod
+    def _source_projection_id(path: Path) -> str:
+        from core_runtime.profile_content_projection import selected_projection_roots
+        from core_runtime.resolved_profile_scope import effective_profile_projections
+
+        resolved_path = path.resolve()
+        for projection_id, root in selected_projection_roots(
+            effective_profile_projections(), kind="ui_projection"
+        ):
+            try:
+                resolved_path.relative_to(root.resolve())
+                return projection_id
+            except ValueError:
+                continue
+        return ""
+
     def _ecosystem_root(self) -> Path:
-        if (self._pack_root / "ecosystem.json").exists() and self._pack_root.parent.name == "ecosystem":
+        if self._v4_pack_id(self._pack_root) and self._pack_root.parent.name == "ecosystem":
             return self._pack_root.parent
         return Path(__file__).resolve().parents[3]
 
     def _source_pack_id(self, path: Path) -> str:
         for parent in path.parents:
-            if (parent / "ecosystem.json").exists():
-                return parent.name
-        return "user_data"
+            pack_id = self._v4_pack_id(parent)
+            if pack_id:
+                return pack_id
+        return ""
+
+    @staticmethod
+    def _v4_pack_id(pack_root: Path) -> str:
+        candidates = (
+            pack_root / "pack.v4.json",
+            pack_root / "v4" / "packs" / f"{pack_root.name}.pack.v4.json",
+        )
+        for manifest_path in candidates:
+            try:
+                raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+                pack_id = str((raw.get("pack") or {}).get("id") or "").strip()
+                if pack_id:
+                    return pack_id
+            except (OSError, UnicodeError, ValueError, TypeError):
+                continue
+        return ""
 
     def _load_shell_config(self) -> dict[str, Any]:
-        if not self._shell_path.exists():
-            return {}
-        try:
-            config = json.loads(self._shell_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            self._add_diagnostic("warning", "frontend_shell_invalid_json", str(exc), str(self._shell_path))
-            return {}
-        if not isinstance(config, dict):
-            self._add_diagnostic("warning", "frontend_shell_not_object", "frontend_shell.json must contain a JSON object.", str(self._shell_path))
-            return {}
-        return config
+        # Shell selection is bound by the verified v4 Profile/ShellDefinition.
+        # Mutable user_data shell JSON is not a layout authority.
+        return {}
 
     def _template_catalog_metadata(self) -> dict[str, Any]:
         try:
@@ -2647,82 +1557,22 @@ class FrontendRegistry:
     def _read_settings(self) -> dict[str, Any]:
         values = self._default_settings()
         try:
-            saved = self._settings_store.read()
+            saved = self._settings_store.read(preserve_corrupt=True)
         except FrontendSettingsCorruptError:
-            try:
-                raw_settings = self._settings_path.read_bytes()
-            except OSError:
-                return self._refresh_derived_settings(values)
-            self._backup_corrupt_settings(raw_settings)
             return self._refresh_derived_settings(values)
         saved, migrated = self._migrate_legacy_keyboard_navigation(saved)
         if migrated:
-            saved = self._settings_store.update(
+            saved = update_settings_document(
+                self._settings_store,
                 lambda current: self._migrate_legacy_keyboard_navigation(current)[0]
             )
         if saved:
+            saved = dict(saved)
+            saved.pop(MUTATION_RECEIPTS_KEY, None)
+            saved.pop(STATE_REVISIONS_KEY, None)
             saved = self._settings_with_legacy_tool_version(saved)
             values = self._deep_merge(values, saved)
         return self._refresh_derived_settings(values)
-
-    def _backup_corrupt_settings(self, content: bytes) -> None:
-        """Preserve unreadable settings without changing the original file."""
-
-        digest = hashlib.sha256(content).hexdigest()[:12]
-        backup_path = self._settings_path.with_name(
-            f"{self._settings_path.name}.corrupt-{digest}.bak"
-        )
-        if backup_path.exists():
-            return
-        mode = self._settings_file_mode(self._settings_path)
-        self._atomic_write_bytes(backup_path, content, mode=mode)
-
-    def _write_settings_atomically(self, values: dict[str, Any]) -> None:
-        """Durably replace settings while preserving existing file permissions."""
-
-        content = json.dumps(values, ensure_ascii=False, indent=2).encode("utf-8")
-        mode = self._settings_file_mode(self._settings_path)
-        self._atomic_write_bytes(self._settings_path, content, mode=mode)
-
-    @staticmethod
-    def _settings_file_mode(path: Path) -> int:
-        """Return the current settings mode, or a private default for new files."""
-
-        try:
-            return path.stat().st_mode & 0o777
-        except OSError:
-            return 0o600
-
-    @staticmethod
-    def _atomic_write_bytes(path: Path, content: bytes, *, mode: int) -> None:
-        """Write bytes through a same-directory temporary file and atomic replace."""
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        file_descriptor, temporary_name = tempfile.mkstemp(
-            dir=path.parent,
-            prefix=f".{path.name}.",
-            suffix=".tmp",
-        )
-        temporary_path = Path(temporary_name)
-        try:
-            os.fchmod(file_descriptor, mode)
-            with os.fdopen(file_descriptor, "wb") as temporary_file:
-                temporary_file.write(content)
-                temporary_file.flush()
-                os.fsync(temporary_file.fileno())
-            os.replace(temporary_path, path)
-            directory_descriptor = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
-        except Exception:
-            try:
-                os.close(file_descriptor)
-            except OSError:
-                pass
-            temporary_path.unlink(missing_ok=True)
-            raise
 
     def _migrate_legacy_keyboard_navigation(
         self,
@@ -2786,6 +1636,7 @@ class FrontendRegistry:
                 "spotlight_shortcut": "Ctrl+K",
                 "spotlight_shortcut_text_input": True,
                 "language": "ja",
+                "manual_runtime_mode_selection": False,
             },
             "preview": {"auto_open": False, "default_mode": "auto", "max_items": 12},
             "calendar": {
@@ -2987,25 +1838,54 @@ class FrontendRegistry:
             if not provider_id and "/" in profile_id:
                 provider_id, inferred_model = profile_id.split("/", 1)
                 model_id = model_id or inferred_model
-            availability = profile.get("availability") if isinstance(profile.get("availability"), dict) else {}
+            availability = _validated_dict(profile.get("availability"))
+            configured = bool(
+                availability.get("configured")
+                or availability.get("active")
+                or str(availability.get("status", "")).lower() in {"configured", "active"}
+            )
+            local = bool(
+                profile.get("local")
+                or availability.get("local")
+                or availability.get("offline")
+                or provider_id in {"stub", "ollama", "lmstudio", "vllm"}
+            )
+            requires_api_key = bool(
+                provider_id
+                and provider_id not in {"stub", "rumi"}
+                and not local
+                and not configured
+            )
             options.append(
                 {
                     "value": profile_id,
                     "label": self._model_option_label(profile),
                     "provider_id": provider_id,
+                    "provider_display_name": str(
+                        profile.get("provider_display_name") or provider_id
+                    ),
                     "model_id": model_id,
                     "qualified_model_id": str(profile.get("qualified_model_id") or profile_id),
-                    "configured": bool(
-                        availability.get("configured")
-                        or availability.get("active")
-                        or str(availability.get("status", "")).lower() in {"configured", "active"}
+                    "configured": configured,
+                    "local": local,
+                    "requires_api_key": requires_api_key,
+                    "api_key_required": requires_api_key,
+                    "api_key_configured": configured,
+                    "supports_vision": bool(profile.get("supports_vision")),
+                    "supports_image_input": bool(
+                        profile.get("supports_image_input")
+                        or profile.get("supports_vision")
                     ),
-                    "local": bool(
-                        profile.get("local")
-                        or availability.get("local")
-                        or availability.get("offline")
-                        or provider_id in {"stub", "ollama", "lmstudio", "vllm"}
-                    ),
+                    "supports_tool_calling": bool(profile.get("supports_tool_calling")),
+                    "supports_thinking": bool(profile.get("supports_thinking")),
+                    "supports_fast": bool(profile.get("supports_fast")),
+                    "speed_tier": str(profile.get("speed_tier") or ""),
+                    "quality_tier": str(profile.get("quality_tier") or ""),
+                    "cost_tier": str(profile.get("cost_tier") or ""),
+                    "knowledge_level": profile.get("knowledge_level"),
+                    "capability_tags": list(profile.get("capability_tags") or []),
+                    "recommended_roles": list(profile.get("recommended_roles") or []),
+                    "notes": str(profile.get("notes") or ""),
                 }
             )
         return options or [{"value": "stub/default", "label": "Stub Default", "provider_id": "stub", "model_id": "default", "local": True}]
@@ -3018,22 +1898,29 @@ class FrontendRegistry:
             if cached is not None and now - cached[0] < self._selectable_model_profiles_cache_ttl_seconds:
                 return deepcopy(cached[1])
 
+        list_profile_catalog_fn: Callable[[], list[dict[str, object]]] | None = None
         try:
-            from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_profile_catalog
+            from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
+                list_profile_catalog as primary_catalog_loader,
+            )
+            list_profile_catalog_fn = primary_catalog_loader
         except ModuleNotFoundError:
             try:
-                from backend.ai_client.provider_catalog import list_profile_catalog
+                from backend.ai_client.provider_catalog import (
+                    list_profile_catalog as fallback_catalog_loader,
+                )
+                list_profile_catalog_fn = fallback_catalog_loader
             except ModuleNotFoundError:
-                list_profile_catalog = None
+                pass
 
         with self._selectable_model_profiles_lock:
             now = time.monotonic()
             cached = self._selectable_model_profiles_cache.get(cache_key)
             if cached is not None and now - cached[0] < self._selectable_model_profiles_cache_ttl_seconds:
                 return deepcopy(cached[1])
-            if list_profile_catalog is not None:
+            if list_profile_catalog_fn is not None:
                 try:
-                    profiles = list_profile_catalog()
+                    profiles = list_profile_catalog_fn()
                 except Exception:
                     profiles = self._fallback_selectable_model_profiles()
             else:
@@ -3061,7 +1948,7 @@ class FrontendRegistry:
         provider_id = str(profile.get("provider_id") or profile.get("provider") or "").strip()
         model_id = str(profile.get("model_id") or "").strip()
         model_type = str(profile.get("type") or "chat").strip().lower()
-        availability = profile.get("availability") if isinstance(profile.get("availability"), dict) else {}
+        availability = _validated_dict(profile.get("availability"))
 
         if model_type and model_type != "chat":
             return False
@@ -3084,8 +1971,8 @@ class FrontendRegistry:
         provider_id: str,
         availability: dict[str, Any],
     ) -> bool:
-        """Expose direct cloud models as selectable setup targets without enabling runtime calls."""
-        if provider_id not in {"openai", "anthropic", "google", "genspark"}:
+        """Expose every invokable catalog model as a setup target without enabling calls."""
+        if not provider_id:
             return False
         if availability.get("configured") or availability.get("active"):
             return False
@@ -3095,7 +1982,7 @@ class FrontendRegistry:
 
     def _model_profile_sort_key(self, profile: dict[str, Any]) -> tuple[int, int, str]:
         model_id = str(profile.get("model_id") or "").strip()
-        availability = profile.get("availability") if isinstance(profile.get("availability"), dict) else {}
+        availability = _validated_dict(profile.get("availability"))
         is_default = str(profile.get("profile_id") or "") == "stub/default"
         is_local = bool(profile.get("local") or availability.get("local") or availability.get("offline"))
         is_configured = bool(
@@ -3115,7 +2002,7 @@ class FrontendRegistry:
             or ""
         ).strip()
         name = str(profile.get("display_name") or profile.get("profile_id") or "").strip()
-        availability = profile.get("availability") if isinstance(profile.get("availability"), dict) else {}
+        availability = _validated_dict(profile.get("availability"))
         provider_id = str(profile.get("provider_id") or profile.get("provider") or "").strip()
         requires_key = (
             not (profile.get("local") or availability.get("local") or availability.get("offline"))
@@ -3150,7 +2037,7 @@ class FrontendRegistry:
             label = str(action.get("label") or "").strip()
             if not action_id or not label:
                 continue
-            item = {
+            item: dict[str, object] = {
                 "id": action_id,
                 "label": label,
             }
@@ -3243,11 +2130,13 @@ class FrontendRegistry:
         except ValueError:
             return 0
 
-    def _deep_merge(self, base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    def _deep_merge(self, base: dict[str, object], patch: dict[str, object]) -> dict[str, object]:
         result = deepcopy(base)
         for key, value in patch.items():
             if isinstance(value, dict) and isinstance(result.get(key), dict):
-                result[key] = self._deep_merge(result[key], value)
+                existing = result[key]
+                if isinstance(existing, dict):
+                    result[key] = self._deep_merge(existing, value)
             else:
                 result[key] = value
         return result
@@ -3297,37 +2186,10 @@ class FrontendRegistry:
                 models_patch = sanitized.setdefault("models", {})
                 if isinstance(models_patch, dict) and not models_patch.get("model_api_routes"):
                     models_patch["model_api_routes"] = legacy_model_routes
-            api_key_patch = apis.pop("api_keys", None)
-            if isinstance(api_key_patch, dict) and api_key_patch.get("action") == "upsert":
-                provider_id = str(api_key_patch.get("provider_id") or "").strip()
-                name = str(api_key_patch.get("name") or api_key_patch.get("api_id") or "").strip()
-                value = str(api_key_patch.get("value") or "")
-                if provider_id and name and value.strip():
-                    budget_raw = api_key_patch.get("monthly_budget_usd")
-                    request_limit_raw = api_key_patch.get("monthly_request_limit")
-                    try:
-                        budget_value = float(budget_raw) if budget_raw not in (None, "") else None
-                    except (TypeError, ValueError):
-                        budget_value = None
-                    try:
-                        request_limit_value = int(request_limit_raw) if request_limit_raw not in (None, "") else None
-                    except (TypeError, ValueError):
-                        request_limit_value = None
-                    set_provider_api_key(
-                        provider_id,
-                        value,
-                        pack_root=self._pack_root,
-                        api_id=name,
-                        name=name,
-                        base_url=str(api_key_patch.get("base_url") or "").strip() or None,
-                        allowed_models=api_key_patch.get("allowed_models"),
-                        default_model=str(api_key_patch.get("default_model") or "").strip() or None,
-                        notes=str(api_key_patch.get("notes") or "").strip() or None,
-                        quota_label=str(api_key_patch.get("quota_label") or "").strip() or None,
-                        monthly_budget_usd=budget_value,
-                        monthly_request_limit=request_limit_value,
-                        kind=str(api_key_patch.get("kind") or "").strip() or None,
-                    )
+            # Credential mutations require the signed approval flow exposed by
+            # /api/ai/provider-key. Settings patches have no trusted approval
+            # context, so they may never become a second secret-write path.
+            apis.pop("api_keys", None)
             apis["api_keys"] = []
         external_output = sanitized.get("external_output")
         legacy_external_inputs = sanitized.get("external_inputs")
@@ -3366,12 +2228,15 @@ class FrontendRegistry:
         if not isinstance(general_patch, dict):
             return
         current_general = current.get("general")
+        current_version_value: object = (
+            current_general.get("settings_version")
+            if isinstance(current_general, dict)
+            else _GENERAL_SETTINGS_VERSION
+        )
         try:
-            current_version = int(
-                current_general.get("settings_version")
-                if isinstance(current_general, dict)
-                else _GENERAL_SETTINGS_VERSION
-            )
+            if not isinstance(current_version_value, (bool, int, float, str)):
+                raise TypeError("settings_version must be numeric")
+            current_version = int(current_version_value)
         except (TypeError, ValueError):
             current_version = _GENERAL_SETTINGS_VERSION
         general_patch["settings_version"] = max(
@@ -3444,6 +2309,9 @@ class FrontendRegistry:
         general["spotlight_shortcut_text_input"] = self._setting_bool(
             general.get("spotlight_shortcut_text_input"),
             True,
+        )
+        general["manual_runtime_mode_selection"] = (
+            general.get("manual_runtime_mode_selection") is True
         )
 
         tools = refreshed.setdefault("tools", {})
@@ -3731,8 +2599,8 @@ class FrontendRegistry:
         output_profiles = OutputProfileRegistry(self._pack_root).list_profiles()
         template_catalog = self._template_catalog_metadata()
         external_template_catalog = self._external_io_template_catalog(template_catalog)
-        input_templates = external_template_catalog.get("input") if isinstance(external_template_catalog.get("input"), list) else []
-        output_templates = external_template_catalog.get("output") if isinstance(external_template_catalog.get("output"), list) else []
+        input_templates = _validated_dict_list(external_template_catalog.get("input"))
+        output_templates = _validated_dict_list(external_template_catalog.get("output"))
         enabled_count = sum(1 for endpoint in endpoints if endpoint.get("enabled"))
         self._sync_external_input_selection(external_input, input_templates, endpoints=endpoints)
         self._sync_external_output_selection(external_output, output_templates)
@@ -3799,7 +2667,7 @@ class FrontendRegistry:
         external_output.setdefault("response_summary", "Prompt decisions create action plans; tools/adapters execute after policy checks.")
         external_output.setdefault("response_prompt_preset", "same_source_reply")
         external_output.setdefault("public_url_summary", "Providers: static, cloudflare_quick_tunnel")
-        extension_paths = external_template_catalog.get("extension_paths") if isinstance(external_template_catalog.get("extension_paths"), dict) else {}
+        extension_paths = _validated_dict(external_template_catalog.get("extension_paths"))
         external_custom["custom_template_path"] = str(extension_paths.get("templates") or external_custom.get("custom_template_path") or "")
         external_custom["custom_profile_paths"] = ", ".join(
             item
@@ -3970,7 +2838,7 @@ class FrontendRegistry:
         if endpoint is None and template.get("input_profile_id"):
             values["input_profile_id"] = str(template.get("input_profile_id"))
         if endpoint is None:
-            template_endpoint = template.get("endpoint") if isinstance(template.get("endpoint"), dict) else {}
+            template_endpoint = _validated_dict(template.get("endpoint"))
             if template_endpoint.get("id"):
                 values["input_endpoint_id"] = str(template_endpoint.get("id"))
 
@@ -4017,7 +2885,7 @@ class FrontendRegistry:
             return None
         provider = str(endpoint.get("kind") or "").strip()
         input_profile_id = str(endpoint.get("input_profile_id") or "").strip()
-        response = endpoint.get("response") if isinstance(endpoint.get("response"), dict) else {}
+        response = _validated_dict(endpoint.get("response"))
         response_mode = str(response.get("mode") or "").strip()
         candidates = [
             item
@@ -4030,7 +2898,8 @@ class FrontendRegistry:
             if (
                 input_profile_id
                 and str(item.get("input_profile_id") or "").strip() == input_profile_id
-                and str((item.get("response") or {}).get("mode") or "").strip() == response_mode
+                and str(_validated_dict(item.get("response")).get("mode") or "").strip()
+                == response_mode
             ):
                 return item
         for item in candidates:
@@ -4042,7 +2911,7 @@ class FrontendRegistry:
 
     @staticmethod
     def _template_route(template: dict[str, Any]) -> str:
-        endpoint = template.get("endpoint") if isinstance(template.get("endpoint"), dict) else {}
+        endpoint = _validated_dict(template.get("endpoint"))
         route = str(endpoint.get("route") or "").strip()
         if route:
             return route
@@ -4053,8 +2922,8 @@ class FrontendRegistry:
 
     @staticmethod
     def _output_mode_for_template(template: dict[str, Any]) -> str:
-        response = template.get("response") if isinstance(template.get("response"), dict) else {}
-        default_response = template.get("default_response") if isinstance(template.get("default_response"), dict) else {}
+        response = _validated_dict(template.get("response"))
+        default_response = _validated_dict(template.get("default_response"))
         return str(
             template.get("output_send_mode")
             or template.get("send_mode")

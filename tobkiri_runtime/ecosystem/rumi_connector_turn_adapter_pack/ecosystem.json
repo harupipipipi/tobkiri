@@ -1,0 +1,68 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.connector.route.v1"
+    ],
+    "requires": [
+      "rumi.action.conversation.manage.v1",
+      "rumi.action.job.v1",
+      "rumi.action.message.manage.v1",
+      "rumi.resource.conversation.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_job_action_broker_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Connector event projection into conversation and agent job contracts.",
+  "display_name": "Rumi Connector Turn Adapter",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:82b678e022f3b3df5f6f19ec5f7f3c74866ed7b5185b47ee3e73e889fdc2a29f",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:3a4b03628fe3282c4a122d3b5e50d5c723d3d1818ab9d8f86673247741fad6ef"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:3a4b03628fe3282c4a122d3b5e50d5c723d3d1818ab9d8f86673247741fad6ef"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_connector_turn_adapter_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_turn_adapter_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_turn_adapter_pack:1.0.0",
+    "content_hash": "sha256:d3a22819c65248246b22b225fb9a1d268e89321cf7a624cefa1e36c00bd0472b",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.route",
+    "conversation.manage",
+    "conversation.read",
+    "job.dispatch",
+    "message.manage"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

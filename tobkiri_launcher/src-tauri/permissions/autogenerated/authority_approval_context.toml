@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-authority-approval-context"
+description = "Enables the authority_approval_context command without any pre-configured scope."
+commands.allow = ["authority_approval_context"]
+
+[[permission]]
+identifier = "deny-authority-approval-context"
+description = "Denies the authority_approval_context command without any pre-configured scope."
+commands.deny = ["authority_approval_context"]

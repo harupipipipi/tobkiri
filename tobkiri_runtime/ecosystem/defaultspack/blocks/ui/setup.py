@@ -4,15 +4,33 @@ from __future__ import annotations
 
 import os
 import sys
+import inspect
+from functools import partial
 
 
-def _lazy(module_path: str, func_name: str = "run"):
+def _lazy(
+    module_path: str,
+    func_name: str = "run",
+    *,
+    sensitive: bool = False,
+    local_only: bool = False,
+    settings_owner=None,
+):
     def handler(request_data, context):
         import importlib
 
         mod = importlib.import_module(module_path)
-        return getattr(mod, func_name)(request_data, context)
+        run = getattr(mod, func_name)
+        if "settings_owner" in inspect.signature(run).parameters:
+            return run(
+                request_data,
+                context,
+                settings_owner=settings_owner,
+            )
+        return run(request_data, context)
 
+    setattr(handler, "__rumi_route_sensitive__", sensitive)
+    setattr(handler, "__rumi_route_local_only__", local_only)
     return handler
 
 
@@ -50,18 +68,94 @@ def run(context):
 
     interface_registry = context["interface_registry"]
     source_component = context.get("_source_component", "defaultspack:frontend:ui")
+    settings_owner = context.get("_settings_owner_port")
+    owner_route = partial(_lazy, settings_owner=settings_owner)
     routes = [
         ("GET", "/api/ui/catalog", _lazy("blocks.ui.catalog"), {}),
-        ("GET", "/api/ui/settings", _lazy("blocks.ui.settings"), {}),
-        ("PUT", "/api/ui/settings", _lazy("blocks.ui.settings"), {}),
+        (
+            "POST",
+            "/api/ui/capability/invoke",
+            _lazy(
+                "blocks.ui.frontend_capability",
+                sensitive=True,
+                local_only=True,
+            ),
+            {},
+        ),
+        ("GET", "/api/ui/settings", owner_route("blocks.ui.settings"), {}),
+        ("PUT", "/api/ui/settings", owner_route("blocks.ui.settings"), {}),
         ("GET", "/api/ui/provider-health", _lazy("blocks.ui.provider_health"), {}),
         ("GET", "/api/connections/codex", _lazy("blocks.connections.codex"), {}),
         ("POST", "/api/connections/codex", _lazy("blocks.connections.codex"), {}),
-        ("GET", "/api/ui/commands", _lazy("blocks.ui.commands"), {}),
-        ("POST", "/api/ui/commands/execute", _lazy("blocks.ui.commands"), {}),
+        (
+            "GET",
+            "/api/ui/commands",
+            owner_route("blocks.ui.commands"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/ui/commands/execute",
+            owner_route("blocks.ui.commands"),
+            {},
+        ),
+        (
+            "GET",
+            "/api/command-protocol/v1/catalog",
+            owner_route("blocks.ui.command_protocol_catalog"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/command-protocol/v1/invoke",
+            owner_route("blocks.ui.command_protocol_invoke"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/command-protocol/v1/invocations/events/query",
+            owner_route("blocks.ui.command_protocol_events"),
+            {},
+        ),
+        (
+            "GET",
+            "/api/command-protocol/v1/invocations/{invocation_id}/events",
+            owner_route("blocks.ui.command_protocol_stream", sensitive=True),
+            {"invocation_id": "invocation_id"},
+        ),
+        (
+            "POST",
+            "/api/command-protocol/v1/offline",
+            owner_route("blocks.ui.command_protocol_offline"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/command-protocol/v1/resume",
+            owner_route("blocks.ui.command_protocol_resume", sensitive=True),
+            {},
+        ),
+        (
+            "POST",
+            "/api/command-protocol/v1/states/query",
+            owner_route("blocks.ui.command_protocol_states"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/command-protocol/v1/datasources/query",
+            owner_route("blocks.ui.command_protocol_datasources"),
+            {},
+        ),
         ("POST", "/api/ui/clipboard", _lazy("blocks.ui.clipboard"), {}),
         ("POST", "/api/ui/client-events", _lazy("blocks.ui.client_events"), {}),
         ("POST", "/api/ui/compile-plan", _lazy("blocks.ui.compile_plan"), {}),
+        (
+            "GET",
+            "/isolated/packs/{pack_id}/{path}",
+            _lazy("blocks.ui.isolated_pack_asset", local_only=True),
+            {"pack_id": "pack_id", "path": "asset_path"},
+        ),
         (
             "GET",
             "/api/ui/conversations/{id}/preview",
@@ -81,6 +175,18 @@ def run(context):
         ("GET", "/console", _static_shell, {}),
         ("GET", "/host-permissions", _static_shell, {}),
     ]
+    try:
+        from ecosystem.defaultspack.domain.frontend.host import build_frontend_catalog
+        from core_runtime.resolved_profile_scope import active_resolved_profile
+
+        plan = active_resolved_profile()
+        if plan is not None and any(
+            item.kind == "route" and item.route == "/prompts"
+            for item in build_frontend_catalog(plan).contributions
+        ):
+            routes.append(("GET", "/prompts", _static_shell, {}))
+    except Exception:
+        pass
 
     for method, pattern, handler, path_inject in routes:
         interface_registry.register(

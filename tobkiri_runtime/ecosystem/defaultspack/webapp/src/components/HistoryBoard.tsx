@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ErrorNotice } from './ErrorNotice';
 import {
   DndContext,
   DragOverlay,
@@ -25,7 +26,11 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  Globe, Terminal, MessageSquare, Plus, ChevronRight, Settings,
+  Bot, BookOpen, BriefcaseBusiness, Bug, Calendar, ChartNoAxesColumn,
+  Cloud, Coffee, Database, FlaskConical, Globe, Heart, Image, Mail, Map as MapIcon,
+  MessageSquare, Music, Palette, PenLine, Search, Server, Settings,
+  Shield, ShoppingCart, Terminal, Video, Wrench, Zap,
+  Plus, ChevronRight,
   GripVertical, FolderOpen, Folder, KanbanSquare, Monitor, PanelLeftOpen, PanelLeftClose, X,
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
@@ -37,6 +42,13 @@ import { ConversationPinStarMenu } from './history/ConversationPinStarMenu';
 import { ConversationSearchBar } from './history/ConversationSearchBar';
 import { ConversationTagFilter } from './history/ConversationTagFilter';
 import { WarmActionIcon } from './WarmActionIcon';
+import {
+  PROJECTS_CHANGED_EVENT,
+  loadProjects,
+  newProjectId,
+  saveProjects,
+  type ProjectInfo,
+} from '../features/projects/projectStorage';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -64,6 +76,73 @@ export type ChatItem = {
   children?: ChatItem[];
 };
 
+const HISTORY_CHAT_ICON_SIZE = 14;
+const HISTORY_ICON_COMPONENTS = {
+  ai: Bot,
+  book: BookOpen,
+  briefcase: BriefcaseBusiness,
+  bug: Bug,
+  calendar: Calendar,
+  chart: ChartNoAxesColumn,
+  chat: MessageSquare,
+  cloud: Cloud,
+  code: Terminal,
+  coffee: Coffee,
+  database: Database,
+  email: Mail,
+  folder: Folder,
+  globe: Globe,
+  heart: Heart,
+  image: Image,
+  lightning: Zap,
+  map: MapIcon,
+  music: Music,
+  paint: Palette,
+  science: FlaskConical,
+  search: Search,
+  security: Shield,
+  server: Server,
+  settings: Settings,
+  shield: Shield,
+  shopping: ShoppingCart,
+  terminal: Terminal,
+  tools: Wrench,
+  video: Video,
+  write: PenLine,
+} as const;
+
+function HistoryChatIcon({ chat, tone = "text-zinc-500" }: { chat: ChatItem; tone?: string }) {
+  const iconId = typeof chat.metadata?.icon_id === "string" ? chat.metadata.icon_id : "";
+  const Icon = HISTORY_ICON_COMPONENTS[iconId as keyof typeof HISTORY_ICON_COMPONENTS]
+    ?? (chat.type === "research"
+      ? Globe
+      : chat.type === "code"
+        ? Terminal
+        : MessageSquare);
+  const className = cn(
+    "flex h-3.5 w-3.5 min-h-3.5 min-w-3.5 shrink-0 items-center justify-center overflow-hidden leading-none [&>svg]:block [&>svg]:h-full [&>svg]:w-full",
+    tone,
+  );
+  const style = {
+    width: HISTORY_CHAT_ICON_SIZE,
+    height: HISTORY_CHAT_ICON_SIZE,
+    flexBasis: HISTORY_CHAT_ICON_SIZE,
+  };
+
+  return (
+    <span
+      aria-hidden="true"
+      data-history-chat-icon="true"
+      data-history-chat-icon-id={iconId || undefined}
+      data-history-chat-icon-size={HISTORY_CHAT_ICON_SIZE}
+      className={className}
+      style={style}
+    >
+      <Icon size={HISTORY_CHAT_ICON_SIZE} strokeWidth={2} />
+    </span>
+  );
+}
+
 export type ChatGroup = {
   id: string;
   sourceGroupId?: string;
@@ -78,14 +157,8 @@ export type ChatGroup = {
   rumiDataPath?: string | null;
 };
 
-export type CustomGroupInfo = {
-  id: string;
-  title: string;
-  workspaceId?: string | null;
-  workspaceLabel?: string | null;
-  workspaceRoot?: string | null;
-  rumiDataPath?: string | null;
-};
+/** @deprecated API/storage compatibility alias. Use ProjectInfo in new UI code. */
+export type CustomGroupInfo = ProjectInfo;
 
 export type HistoryBoardNewTaskOptions = {
   groupId?: string;
@@ -227,46 +300,16 @@ function hasWorkspaceGroupingMetadata(chat: ChatItem): boolean {
   return Boolean(chat.isPinned || chat.isStarred || chatTags(chat).length || isCompanyChat(chat) || isCodingChat(chat));
 }
 
-const CUSTOM_GROUPS_STORAGE_KEY = 'rumi-history-custom-groups';
-
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function customGroupFromStorageItem(item: unknown): CustomGroupInfo | null {
-  if (!item || typeof item !== "object") return null;
-  const record = item as Record<string, unknown>;
-  const id = stringOrNull(record.id);
-  const title = stringOrNull(record.title);
-  if (!id || !title) return null;
-  return {
-    id,
-    title,
-    workspaceId: stringOrNull(record.workspaceId ?? record.workspace_id),
-    workspaceLabel: stringOrNull(record.workspaceLabel ?? record.workspace_label),
-    workspaceRoot: stringOrNull(record.workspaceRoot ?? record.workspace_root ?? record.rootPath),
-    rumiDataPath: stringOrNull(record.rumiDataPath ?? record.rumi_data_path ?? record.rumiDPPath),
-  };
-}
-
 export function loadCustomGroups(): CustomGroupInfo[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_GROUPS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed.map(customGroupFromStorageItem).filter((item): item is CustomGroupInfo => Boolean(item))
-      : [];
-  } catch {
-    return [];
-  }
+  return loadProjects();
 }
 
 function saveCustomGroups(groups: CustomGroupInfo[]) {
-  try {
-    localStorage.setItem(CUSTOM_GROUPS_STORAGE_KEY, JSON.stringify(groups));
-  } catch {
-    // localStorage can be unavailable in restricted contexts.
-  }
+  saveProjects(groups);
 }
 
 function collectGroupIds(groups: ChatGroup[], ids = new Set<string>()): Set<string> {
@@ -672,16 +715,7 @@ function SortableChatItem({ chat, activeChatId, selectedChatId = null, selection
     else setTitle(chat.title);
   };
 
-  const icon = chat.metadata?.icon_svg ? (
-    <span
-      className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
-      dangerouslySetInnerHTML={{ __html: chat.metadata.icon_svg }}
-    />
-  ) : (
-    chat.type === 'research' ? <Globe size={13} className="text-zinc-500 flex-shrink-0" /> :
-    chat.type === 'code' ? <Terminal size={13} className="text-zinc-500 flex-shrink-0" /> :
-    <MessageSquare size={13} className="text-zinc-500 flex-shrink-0" />
-  );
+  const icon = <HistoryChatIcon chat={chat} />;
 
   return (
     <>
@@ -905,7 +939,7 @@ function SubGroup({ group, activeChatId, selectedChatId = null, selectionMode = 
         <button
           onClick={(e) => { e.stopPropagation(); onUngroup(group.id); }}
           className="flex h-5 w-5 items-center justify-center text-zinc-600 hover:text-zinc-300 opacity-0 group-hover/folder:opacity-100 transition-all"
-          title="Ungroup"
+          title="Remove from project"
         >
           <X size={11} />
         </button>
@@ -1033,7 +1067,7 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
               "flex h-5 w-3 flex-shrink-0 items-center justify-center rounded text-zinc-700 transition-all cursor-grab active:cursor-grabbing hover:bg-zinc-800 hover:text-zinc-400",
               group.isCollapsed ? "opacity-100" : "opacity-0 group-hover/colheader:opacity-100"
             )}
-            title="Drag group"
+            title="Drag project"
           >
             <GripVertical size={10} />
           </div>
@@ -1073,7 +1107,7 @@ function DroppableColumn({ group, activeChatId, selectedChatId = null, selection
           <span className="ml-auto text-[10px] text-zinc-600 flex-shrink-0">{totalChats}</span>
         </div>
         <div className="flex items-center gap-0.5 opacity-0 group-hover/colheader:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => onNewTask(group.id)} className="flex h-5 w-5 items-center justify-center text-zinc-500 hover:text-emerald-400 transition-colors" title="New chat in group">
+          <button onClick={() => onNewTask(group.id)} className="flex h-5 w-5 items-center justify-center text-zinc-500 hover:text-emerald-400 transition-colors" title="New chat in project">
             <Plus size={13} />
           </button>
         </div>
@@ -1219,6 +1253,7 @@ interface HistoryBoardProps {
 }
 
 type GroupWorkspaceChoice = "none" | "current" | "custom";
+type GroupCreationStep = "details" | "workspace";
 
 function workspaceSummary(workspaceId?: string | null, workspaceLabel?: string | null, workspaceRoot?: string | null): string {
   if (workspaceLabel) return workspaceLabel;
@@ -1435,12 +1470,19 @@ export function HistoryBoard({
   const [groups, setGroups] = useState<ChatGroup[]>(() => buildGroupsFromChats(visibleChatItems, customGroups));
   const [expandedChatIds, setExpandedChatIds] = useState<Set<string>>(() => new Set());
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [newGroupStep, setNewGroupStep] = useState<GroupCreationStep>("details");
   const [newGroupTitle, setNewGroupTitle] = useState("");
   const [newGroupWorkspaceChoice, setNewGroupWorkspaceChoice] = useState<GroupWorkspaceChoice>("none");
   const [newGroupCustomPath, setNewGroupCustomPath] = useState("");
   const [newGroupError, setNewGroupError] = useState<string | null>(null);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [isSelectingGroupDirectory, setIsSelectingGroupDirectory] = useState(false);
+
+  useEffect(() => {
+    const refreshProjects = () => setCustomGroups(loadProjects());
+    window.addEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
+    return () => window.removeEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
+  }, []);
 
   const selectedCodingWorkspace = useMemo(
     () => codingWorkspaces.find((workspace) => workspace.workspace_id === selectedCodingWorkspaceId) ?? null,
@@ -1632,11 +1674,9 @@ export function HistoryBoard({
   const handleRenameGroup = (id: string, newTitle: string) => {
     const sourceGroupId = findGroupById(groups, id)?.sourceGroupId ?? id;
     setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, title: newTitle } : g));
-    setCustomGroups((prev) => {
-      const next = prev.map((group) => group.id === sourceGroupId ? { ...group, title: newTitle } : group);
-      saveCustomGroups(next);
-      return next;
-    });
+    const nextCustomGroups = customGroups.map((group) => group.id === sourceGroupId ? { ...group, title: newTitle } : group);
+    saveCustomGroups(nextCustomGroups);
+    setCustomGroups(nextCustomGroups);
   };
 
   const handleToggleCollapse = (id: string) => {
@@ -1679,19 +1719,33 @@ export function HistoryBoard({
   };
 
   const openCreateGroup = () => {
-    setNewGroupTitle(`Group ${groups.length + 1}`);
+    setNewGroupTitle(`Project ${customGroups.length + 1}`);
+    setNewGroupStep("details");
     setNewGroupWorkspaceChoice("none");
     setNewGroupCustomPath("");
     setNewGroupError(null);
     setIsCreateGroupOpen((value) => !value);
   };
 
+  const closeCreateGroup = () => {
+    if (isCreatingGroup) return;
+    setIsCreateGroupOpen(false);
+    setNewGroupError(null);
+  };
+
+  const advanceGroupCreation = () => {
+    setNewGroupError(null);
+    setNewGroupStep("workspace");
+  };
+
+  const handleMinimizeHistory = () => {
+    onMinimize?.();
+  };
+
   const createCustomGroup = (customGroup: CustomGroupInfo) => {
-    setCustomGroups((prev) => {
-      const next = [...prev, customGroup];
-      saveCustomGroups(next);
-      return next;
-    });
+    const nextCustomGroups = [...customGroups, customGroup];
+    saveCustomGroups(nextCustomGroups);
+    setCustomGroups(nextCustomGroups);
     const newGroup: ChatGroup = {
       ...customGroup,
       chats: [],
@@ -1728,7 +1782,7 @@ export function HistoryBoard({
     if (isCreatingGroup) return;
     setIsCreatingGroup(true);
     setNewGroupError(null);
-    const title = newGroupTitle.trim() || `Group ${groups.length + 1}`;
+    const title = newGroupTitle.trim() || `Project ${customGroups.length + 1}`;
     let workspace: Pick<CodingWorkspaceRecord, "workspace_id" | "label" | "root_path"> | null = null;
     let rumiDataPath: string | null = null;
     try {
@@ -1782,7 +1836,7 @@ export function HistoryBoard({
       }
 
       const customGroup: CustomGroupInfo = {
-        id: `group-${Date.now()}`,
+        id: newProjectId(),
         title,
         workspaceId: workspace?.workspace_id ?? null,
         workspaceLabel: workspace?.label ?? null,
@@ -1792,7 +1846,7 @@ export function HistoryBoard({
       createCustomGroup(customGroup);
       setIsCreateGroupOpen(false);
     } catch (error) {
-      setNewGroupError(error instanceof Error ? error.message : "Failed to create group.");
+      setNewGroupError(error instanceof Error ? error.message : "Failed to create project.");
     } finally {
       setIsCreatingGroup(false);
     }
@@ -1852,87 +1906,195 @@ export function HistoryBoard({
     : "";
   const createGroupForm = isCreateGroupOpen ? (
     <form
-      onSubmit={(event) => void handleCreateGroup(event)}
+      data-new-project-flow="progressive"
+      onSubmit={(event) => {
+        if (newGroupStep === "details") {
+          event.preventDefault();
+          advanceGroupCreation();
+          return;
+        }
+        void handleCreateGroup(event);
+      }}
       className={cn(
-        "rumi-layer-modal flex w-full flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-950/95 p-2 text-xs shadow-xl shadow-black/30",
-        isCompact && "absolute left-full top-14 ml-2 w-64"
+        "rumi-layer-modal flex w-full flex-col gap-3 rounded-xl border border-zinc-800/90 bg-gradient-to-b from-zinc-900 to-zinc-950 p-3 text-xs shadow-[0_18px_44px_rgba(0,0,0,0.42)]",
+        isCompact && "absolute left-full top-full mt-2 ml-2 w-72"
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium text-zinc-200">New Group</span>
-        <button
-          type="button"
-          onClick={() => setIsCreateGroupOpen(false)}
-          className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
-          aria-label="Close new group form"
-        >
-          <X size={12} />
-        </button>
-      </div>
-      <input
-        value={newGroupTitle}
-        onChange={(event) => setNewGroupTitle(event.target.value)}
-        className="h-8 rounded-md border border-zinc-800 bg-zinc-900/70 px-2 text-[12px] text-zinc-100 outline-none focus:border-emerald-500/60"
-        placeholder={`Group ${groups.length + 1}`}
-      />
-      <div className="grid grid-cols-3 gap-1">
-        {([
-          ["none", "No path"],
-          ["current", "Current"],
-          ["custom", "Custom"],
-        ] as const).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            disabled={value === "current" && !selectedCodingWorkspaceId}
-            onClick={() => setNewGroupWorkspaceChoice(value)}
-            className={cn(
-              "h-7 rounded-md border px-1 text-[10px] transition-colors",
-              newGroupWorkspaceChoice === value
-                ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-100"
-                : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100",
-              value === "current" && !selectedCodingWorkspaceId && "cursor-not-allowed opacity-50 hover:bg-zinc-900/60 hover:text-zinc-400"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {newGroupWorkspaceChoice === "current" && (
-        <p className="truncate rounded border border-zinc-800 bg-zinc-900/50 px-2 py-1 text-[10px] text-zinc-400" title={selectedCodingWorkspace?.root_path ?? ""}>
-          {currentWorkspaceText || "No coding workspace selected"}
-        </p>
-      )}
-      {newGroupWorkspaceChoice === "custom" && (
-        <div className="flex flex-col gap-1 rounded-md border border-zinc-800 bg-zinc-900/60 p-1.5">
-          <button
-            type="button"
-            onClick={() => void handleSelectGroupDirectory()}
-            disabled={isSelectingGroupDirectory}
-            className="flex h-7 items-center justify-center gap-1.5 rounded bg-zinc-100 px-2 text-[11px] font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60"
-          >
-            <FolderOpen size={12} />
-            {isSelectingGroupDirectory ? "選択中..." : "ファイルを設定"}
-          </button>
-          <p
-            className={cn(
-              "min-h-4 truncate px-1 font-mono text-[10px]",
-              newGroupCustomPath ? "text-zinc-300" : "text-zinc-500"
-            )}
-            title={newGroupCustomPath || undefined}
-          >
-            {newGroupCustomPath || "保存先フォルダ未選択"}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-zinc-100">New Project</span>
+            <span className="rounded-full border border-zinc-700/80 bg-zinc-900/80 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+              Step {newGroupStep === "details" ? "1" : "2"} / 2
+            </span>
+          </div>
+          <p className="mt-1 text-[10px] text-zinc-500">
+            {newGroupStep === "details" ? "Name this project." : "Link an existing folder when it helps."}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={closeCreateGroup}
+          disabled={isCreatingGroup}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
+          aria-label="Close new project form"
+        >
+          <X size={13} />
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-1" aria-label="New project setup progress">
+        {([
+          ["details", "Name"],
+          ["workspace", "Workspace"],
+        ] as const).map(([step, label]) => {
+          const active = newGroupStep === step;
+          const completed = newGroupStep === "workspace" && step === "details";
+          return (
+            <div
+              key={step}
+              className={cn(
+                "flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] transition-colors",
+                active || completed
+                  ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-100"
+                  : "border-zinc-800 bg-zinc-950/50 text-zinc-600",
+              )}
+            >
+              <span className={cn(
+                "flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-semibold",
+                active || completed ? "bg-emerald-400 text-zinc-950" : "bg-zinc-800 text-zinc-500",
+              )}>
+                {step === "details" ? "1" : "2"}
+              </span>
+              <span>{label}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {newGroupStep === "details" ? (
+        <>
+          <label className="flex flex-col gap-1.5 text-[10px] font-medium text-zinc-400" htmlFor="new-history-group-title">
+            Project name
+            <input
+              id="new-history-group-title"
+              autoFocus
+              value={newGroupTitle}
+              onChange={(event) => setNewGroupTitle(event.target.value)}
+              className="h-9 rounded-lg border border-zinc-800 bg-black/20 px-2.5 text-[12px] font-medium text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/10"
+              placeholder={`Project ${customGroups.length + 1}`}
+            />
+          </label>
+          <p className="rounded-lg border border-zinc-800/80 bg-black/15 px-2.5 py-2 text-[10px] leading-relaxed text-zinc-500">
+            Keep it standalone or link it to an existing workspace folder.
+          </p>
+          <button
+            type="button"
+            onClick={advanceGroupCreation}
+            className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-zinc-100 px-2.5 text-[11px] font-semibold text-zinc-950 hover:bg-white"
+          >
+            Continue
+            <ChevronRight size={13} />
+          </button>
+        </>
+      ) : (
+        <>
+          <div role="radiogroup" aria-label="Workspace for the new project" className="flex flex-col gap-1.5">
+            {([
+              ["none", "No workspace", "Keep this as a standalone project"],
+              ["current", "Current workspace", currentWorkspaceText || "No coding workspace selected"],
+              ["custom", "Choose a folder", "Create or reuse a coding workspace"],
+            ] as const).map(([value, label, description]) => {
+              const disabled = value === "current" && !selectedCodingWorkspaceId;
+              const selected = newGroupWorkspaceChoice === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={disabled}
+                  onClick={() => {
+                    setNewGroupError(null);
+                    setNewGroupWorkspaceChoice(value);
+                  }}
+                  className={cn(
+                    "flex min-h-11 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors",
+                    selected
+                      ? "border-emerald-500/50 bg-emerald-500/10 text-zinc-100"
+                      : "border-zinc-800 bg-black/15 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/80 hover:text-zinc-100",
+                    disabled && "cursor-not-allowed opacity-45 hover:border-zinc-800 hover:bg-black/15 hover:text-zinc-400",
+                  )}
+                >
+                  <span className={cn(
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                    selected ? "border-emerald-400 bg-emerald-400" : "border-zinc-600",
+                  )}>
+                    {selected && <span className="h-1.5 w-1.5 rounded-full bg-zinc-950" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-medium">{label}</span>
+                    <span className="mt-0.5 block truncate text-[10px] text-zinc-500" title={value === "current" ? selectedCodingWorkspace?.root_path ?? "" : undefined}>
+                      {description}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {newGroupWorkspaceChoice === "custom" && (
+            <div className="rounded-lg border border-zinc-800 bg-black/20 p-2">
+              <button
+                type="button"
+                onClick={() => void handleSelectGroupDirectory()}
+                disabled={isSelectingGroupDirectory}
+                className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-semibold text-zinc-100 hover:bg-zinc-800 disabled:cursor-wait disabled:opacity-60"
+              >
+                <FolderOpen size={12} />
+                {isSelectingGroupDirectory ? "選択中..." : "ファイルを設定"}
+              </button>
+              <p
+                className={cn(
+                  "mt-1.5 truncate px-1 font-mono text-[10px]",
+                  newGroupCustomPath ? "text-zinc-300" : "text-zinc-500",
+                )}
+                title={newGroupCustomPath || undefined}
+              >
+                {newGroupCustomPath || "保存先フォルダ未選択"}
+              </p>
+            </div>
+          )}
+
+          {newGroupError && (
+            <ErrorNotice
+              className="px-2.5 py-2 text-[10px]"
+              copyLabel="プロジェクト作成エラーをコピー"
+              message={newGroupError}
+            />
+          )}
+
+          <div className="grid grid-cols-[auto_1fr] gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setNewGroupError(null);
+                setNewGroupStep("details");
+              }}
+              disabled={isCreatingGroup}
+              className="h-9 rounded-lg border border-zinc-800 px-3 text-[11px] font-medium text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
+            >
+              Back
+            </button>
+            <button
+              type="submit"
+              disabled={isCreatingGroup}
+              className="h-9 rounded-lg bg-zinc-100 px-2.5 text-[11px] font-semibold text-zinc-950 hover:bg-white disabled:cursor-wait disabled:opacity-60"
+            >
+              {isCreatingGroup ? "Creating..." : "Create Project"}
+            </button>
+          </div>
+        </>
       )}
-      {newGroupError && <p className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-200">{newGroupError}</p>}
-      <button
-        type="submit"
-        disabled={isCreatingGroup}
-        className="h-8 rounded-md bg-zinc-100 px-2 text-[11px] font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-wait disabled:opacity-60"
-      >
-        {isCreatingGroup ? "Creating..." : "Create Group"}
-      </button>
     </form>
   ) : null;
 
@@ -1961,15 +2123,18 @@ export function HistoryBoard({
               >
                 <WarmActionIcon kind="newChat" size="sm" iconClassName="h-3.5 w-3.5" />
               </button>
-              <button
-                onClick={openCreateGroup}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                title="New Group"
-                aria-label="New Group"
-              >
-                <WarmActionIcon kind="group" size="sm" iconClassName="h-3.5 w-3.5" />
-              </button>
-              {createGroupForm}
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center">
+                <button
+                  onClick={openCreateGroup}
+                  className="flex h-11 w-11 items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                  title="New Project"
+                  aria-label="New Project"
+                  aria-expanded={isCreateGroupOpen}
+                >
+                  <WarmActionIcon kind="group" size="sm" iconClassName="h-3.5 w-3.5" />
+                </button>
+                {createGroupForm}
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -2053,16 +2218,7 @@ export function HistoryBoard({
                 title={chat.title}
                 aria-label={chat.title}
               >
-                {chat.metadata?.icon_svg ? (
-                  <span
-                    className="flex h-3.5 w-3.5 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
-                    dangerouslySetInnerHTML={{ __html: chat.metadata.icon_svg }}
-                  />
-                ) : (
-                  chat.type === 'research' ? <Globe size={14} className="flex-shrink-0" /> :
-                  chat.type === 'code' ? <Terminal size={14} className="flex-shrink-0" /> :
-                  <MessageSquare size={14} className="flex-shrink-0" />
-                )}
+                <HistoryChatIcon chat={chat} tone={isActive ? "text-zinc-100" : "text-zinc-500"} />
                 {isActive && <span className="absolute left-0 h-5 w-0.5 rounded-r bg-emerald-400" />}
               </button>
             );
@@ -2092,15 +2248,20 @@ export function HistoryBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="relative flex flex-col h-full min-w-0">
+      <div
+        data-history-pane-content="true"
+        className={cn(
+          "relative flex h-full min-w-0 origin-left flex-col overflow-hidden bg-[#09090b] transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
+        )}
+      >
         {/* Top action bar */}
-        <div className="flex flex-col gap-1 px-4 py-4 flex-shrink-0">
+        <header className="flex flex-shrink-0 flex-col gap-1 border-b border-zinc-800/60 bg-[#09090b] px-4 py-4">
           <div className="flex h-8 items-center justify-between gap-2 px-2.5">
-            <span className="text-xs font-semibold tracking-wide text-zinc-400">rumi DP</span>
+            <span className="text-xs font-semibold tracking-wide text-zinc-400">Tobkiri</span>
             {onMinimize && (
               <button
                 type="button"
-                onClick={onMinimize}
+                onClick={handleMinimizeHistory}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
                 title="サイドバーを閉じる"
                 aria-label="サイドバーを閉じる"
@@ -2120,15 +2281,6 @@ export function HistoryBoard({
                   <WarmActionIcon kind="newChat" size="sm" />
                   <span className="truncate">New Chat</span>
                 </button>
-                <button
-                  onClick={openCreateGroup}
-                  className="flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-900/70 hover:text-zinc-100"
-                  title="New Group"
-                >
-                  <WarmActionIcon kind="group" size="sm" />
-                  <span className="truncate">New Group</span>
-                </button>
-                {createGroupForm}
               </div>
               <button
                 type="button"
@@ -2185,11 +2337,34 @@ export function HistoryBoard({
           )}
           <ConversationSearchBar value={searchQuery} resultCount={visibleChatCount} onChange={setSearchQuery} />
           <ConversationTagFilter tags={allTags} activeTag={activeTag} onChange={setActiveTag} />
-        </div>
+        </header>
 
         {/* Columns */}
         <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
           <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto pb-12">
+            {!selectionMode && (
+              <div className="relative border-b border-zinc-800/70 bg-[#09090b] px-3 py-1">
+                <div className="flex min-h-8 items-center justify-between gap-3 px-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <FolderOpen size={14} className="shrink-0 text-zinc-500" aria-hidden="true" />
+                    <span className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                      Projects
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openCreateGroup}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/70 text-zinc-400 transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-300"
+                    title="New Project"
+                    aria-label="New Project"
+                    aria-expanded={isCreateGroupOpen}
+                  >
+                    <Plus size={15} aria-hidden="true" />
+                  </button>
+                </div>
+                {createGroupForm}
+              </div>
+            )}
             {groups.map((group) => (
               <DraggableColumnHandle key={group.id} group={group}>
                 {(dragHandleProps) => (
@@ -2257,14 +2432,7 @@ export function HistoryBoard({
         ) : activeChat ? (
           <div className="w-[220px] flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800 border border-emerald-500/50 shadow-2xl">
             <GripVertical size={12} className="text-zinc-500" />
-            {activeChat.metadata?.icon_svg ? (
-              <span
-                className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0 flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
-                dangerouslySetInnerHTML={{ __html: activeChat.metadata.icon_svg }}
-              />
-            ) : activeChat.type === 'research' ? <Globe size={14} className="text-zinc-400" /> :
-             activeChat.type === 'code' ? <Terminal size={14} className="text-zinc-400" /> :
-             <MessageSquare size={14} className="text-zinc-400" />}
+            <HistoryChatIcon chat={activeChat} tone="text-zinc-400" />
             <span className="text-sm truncate text-zinc-100">{activeChat.title}</span>
           </div>
         ) : null}

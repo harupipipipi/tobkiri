@@ -76,7 +76,7 @@ export function CompanyTaskBoard({
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             disabled={busy}
-            placeholder="Ask an employee"
+            placeholder="Ask a Subagent"
             className="h-8 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
           <select
@@ -85,7 +85,7 @@ export function CompanyTaskBoard({
             disabled={busy}
             className="h-8 rounded-md border border-zinc-800 bg-zinc-950 px-1.5 text-[11px] text-zinc-300 outline-none"
           >
-            <option value="">employee</option>
+            <option value="">Subagent</option>
             {agents.map((agent) => (
               <option key={agent.agent_id} value={agent.agent_id}>
                 {agent.role_key || agent.agent_id}
