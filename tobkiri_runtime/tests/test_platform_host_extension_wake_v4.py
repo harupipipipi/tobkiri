@@ -834,6 +834,10 @@ def test_production_composition_registers_only_verified_direct_vz_facts(
         def production_backend_registration(self) -> MacOSVZProvisionedFacts:
             return facts
 
+        def recover_interrupted_allocation(self, **binding: object) -> bool:
+            recovery_calls.append(binding)
+            return True
+
         def prepare_direct_vz(self) -> None:
             raise AssertionError("lifecycle registration must be preferred")
 
@@ -852,9 +856,23 @@ def test_production_composition_registers_only_verified_direct_vz_facts(
         defaultspack_packvm_backend_factory,
     )
 
-    backend = defaultspack_packvm_backend_factory(Lifecycle())()
+    recovery_calls: list[dict[str, object]] = []
+    factory = defaultspack_packvm_backend_factory(Lifecycle())
+    assert factory.recover_interrupted_allocation(
+        domain_id="domain.provider.test.1",
+        reservation_id="reservation.test",
+        executable_digest="sha256:" + "a" * 64,
+    )
+    backend = factory()
 
     assert isinstance(backend, CapturedBackend)
+    assert recovery_calls == [
+        {
+            "domain_id": "domain.provider.test.1",
+            "reservation_id": "reservation.test",
+            "executable_digest": "sha256:" + "a" * 64,
+        }
+    ]
     assert transport_factory_calls == []
     assert backend.driver.kwargs == {
         "transport_factory": transport_factory,

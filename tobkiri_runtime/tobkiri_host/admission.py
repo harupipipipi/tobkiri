@@ -208,6 +208,10 @@ class DurableResourceLedger(ResourceLedger):
         state_path: Path,
         identity: Mapping[str, str],
         lease_ttl_seconds: float = 120.0,
+        confirmed_supervisor_release: Callable[
+            [Mapping[str, str], tuple[ResourceReservation, ...]], bool
+        ]
+        | None = None,
     ) -> None:
         if (
             type(lease_ttl_seconds) not in (int, float)
@@ -223,6 +227,7 @@ class DurableResourceLedger(ResourceLedger):
         self._state_path = state_path
         self._identity = {str(key): str(value) for key, value in identity.items()}
         self._lease_ttl_seconds = lease_ttl_seconds
+        self._confirmed_supervisor_release = confirmed_supervisor_release
         self._expires_at: dict[str, float] = {}
         self._load_state()
 
@@ -269,12 +274,11 @@ class DurableResourceLedger(ResourceLedger):
             rows = raw.get("reservations")
             if not isinstance(rows, list):
                 raise ValueError("ledger reservations are not an array")
-            if dict(raw.get("identity") or {}) != self._identity:
-                if rows:
-                    raise AdmissionError(
-                        "outstanding admission reservations require confirmed supervisor release"
-                    )
-                return
+            saved_identity = {
+                str(key): str(value)
+                for key, value in dict(raw.get("identity") or {}).items()
+            }
+            loaded: list[tuple[ResourceReservation, float]] = []
             for row in rows:
                 if not isinstance(row, Mapping):
                     raise ValueError("ledger reservation is not an object")
@@ -306,7 +310,7 @@ class DurableResourceLedger(ResourceLedger):
                         amount_value.get("start_slots", 1)
                     ),
                 )
-                if reservation_id in self._reservations:
+                if any(item.reservation_id == reservation_id for item, _ in loaded):
                     raise ValueError("ledger contains duplicate reservation IDs")
                 if profile_id not in self._profile_limits:
                     raise ValueError("ledger reservation targets an unknown Profile")
@@ -315,10 +319,29 @@ class DurableResourceLedger(ResourceLedger):
                     profile_id=profile_id,
                     amount=amount,
                 )
-                self._reservations[reservation_id] = reservation
-                self._expires_at[reservation_id] = float(expires_at)
-                self._runtime_used = self._runtime_used + amount
-                self._profile_used[profile_id] = self._profile_used[profile_id] + amount
+                loaded.append((reservation, float(expires_at)))
+            if saved_identity != self._identity:
+                confirmed = self._confirmed_supervisor_release
+                reservations = tuple(item for item, _ in loaded)
+                if reservations and (
+                    confirmed is None or not confirmed(saved_identity, reservations)
+                ):
+                    raise AdmissionError(
+                        "outstanding admission reservations require confirmed supervisor release"
+                    )
+                if reservations:
+                    # This is an exact supervisor release after durable child
+                    # reconciliation. Activation rotation or wall time alone
+                    # never reaches this branch.
+                    self._persist_locked()
+                return
+            for reservation, expires_at in loaded:
+                self._reservations[reservation.reservation_id] = reservation
+                self._expires_at[reservation.reservation_id] = expires_at
+                self._runtime_used = self._runtime_used + reservation.amount
+                self._profile_used[reservation.profile_id] = (
+                    self._profile_used[reservation.profile_id] + reservation.amount
+                )
             if not self._runtime_used.fits(self._runtime_limit - self._guard):
                 raise ValueError("ledger exceeds the Host runtime ceiling")
             for profile_id, used in self._profile_used.items():

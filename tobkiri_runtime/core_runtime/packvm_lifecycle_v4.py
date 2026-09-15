@@ -443,6 +443,30 @@ class PackVMLifecycleV4:
         except (OSError, ValueError):
             return None
 
+    def recover_interrupted_allocation(
+        self,
+        *,
+        domain_id: str,
+        reservation_id: str,
+        executable_digest: str,
+    ) -> bool:
+        """Confirm exact pre-launch child cleanup for admission recovery."""
+
+        candidate = getattr(self._provisioner, "recover_interrupted_allocation", None)
+        if not callable(candidate):
+            return False
+        with self._lock:
+            try:
+                return bool(
+                    candidate(
+                        domain_id=domain_id,
+                        reservation_id=reservation_id,
+                        executable_digest=executable_digest,
+                    )
+                )
+            except (OSError, ValueError):
+                return False
+
     def stop(self, payload: Mapping[str, object]) -> Mapping[str, Any]:
         """Stop only the authenticated v4 instance after exact confirmation."""
 

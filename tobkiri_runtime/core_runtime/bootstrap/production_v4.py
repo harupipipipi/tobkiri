@@ -21,6 +21,7 @@ from tobkiri_host.admission import (
     FairAdmissionQueue,
     QueueScope,
     ResourceAmount,
+    ResourceReservation,
 )
 from tobkiri_host.artifact_materialization import capture_materialized_artifact
 from tobkiri_host.backends import BackendRegistry, BackendStatus, ExecutionBackend
@@ -312,6 +313,10 @@ class _PlanAdmission(RequestAdmissionPort):
         activation_id: str,
         plan: Mapping[str, Any],
         state_path: Path,
+        confirmed_supervisor_release: Callable[
+            [Mapping[str, str], tuple[ResourceReservation, ...]], bool
+        ]
+        | None = None,
     ) -> None:
         self._profile_id = profile_id
         self._plan_digest = str(plan["plan_digest"])
@@ -356,6 +361,7 @@ class _PlanAdmission(RequestAdmissionPort):
                 "activation_id": activation_id,
                 "plan_digest": self._plan_digest,
             },
+            confirmed_supervisor_release=confirmed_supervisor_release,
         )
         self._queue = FairAdmissionQueue(self._ledger)
         self._policy = policy
@@ -2641,6 +2647,85 @@ def capture_production_dispatch(
             if previous_digest is not None and previous_digest != selected_digest:
                 raise AuthorityDenied("selected Provider backend identity changed")
             target_backend_digests[target.principal_id] = selected_digest
+    def confirmed_supervisor_release(
+        saved_identity: Mapping[str, str],
+        reservations: tuple[ResourceReservation, ...],
+    ) -> bool:
+        """Release a predecessor ledger only after exact PackVM reconciliation."""
+
+        recover = getattr(packvm_provisioner, "recover_interrupted_allocation", None)
+        current_fencing = int(active.activation["fencing_token"])
+        saved_activation_id = saved_identity.get("activation_id", "")
+        if (
+            not callable(recover)
+            or saved_identity.get("profile_id") != profile_id
+            or saved_activation_id == activation_id
+            or current_fencing <= 1
+            or not reservations
+            or any(item.profile_id != profile_id for item in reservations)
+        ):
+            return False
+        activation_name = saved_activation_id.removeprefix("activation:")
+        if (
+            not activation_name
+            or len(activation_name) > 255
+            or Path(activation_name).name != activation_name
+        ):
+            return False
+        try:
+            envelope = json.loads(
+                (
+                    authority_workspace
+                    / "activation"
+                    / "activations"
+                    / f"{activation_name}.json"
+                ).read_text(encoding="utf-8")
+            )
+            saved_activation = envelope["activation"]
+            saved_fencing = saved_activation["fencing_token"]
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if (
+            not isinstance(saved_activation, Mapping)
+            or type(saved_fencing) is not int
+            or saved_fencing < 1
+            or saved_fencing >= current_fencing
+            or any(
+                saved_activation.get(field) != saved_identity.get(field)
+                for field in (
+                    "profile_id",
+                    "profile_revision",
+                    "activation_id",
+                    "plan_digest",
+                )
+            )
+        ):
+            return False
+        candidates = {
+            (
+                f"domain.provider."
+                f"{binding.principal_ref.value.removeprefix('sha256:')[:24]}."
+                f"{saved_fencing}",
+                item.reservation_id,
+                binding.function.implementation_digest,
+            )
+            for item in reservations
+            for binding in catalog_bindings
+            if binding.variant.execution_kind is ExecutionKind.PACK_VM
+        }
+        matched = 0
+        for domain_id, reservation_id, executable_digest in sorted(candidates):
+            if recover(
+                domain_id=domain_id,
+                reservation_id=reservation_id,
+                executable_digest=executable_digest,
+            ):
+                matched += 1
+        # Matching one exact reservation to the stale allocation proves the
+        # dead process owning the claim is this ledger's predecessor Host. Its
+        # in-process rows share that supervisor; this is the only PackVM child.
+        return matched == 1
+
     broker = runtime.broker(
         authority_store=authority_store,
         adapters=AdapterPlanner(()),
@@ -2652,6 +2737,7 @@ def capture_production_dispatch(
             activation_id=activation_id,
             plan=plan,
             state_path=authority_workspace / "admission" / "reservations.json",
+            confirmed_supervisor_release=confirmed_supervisor_release,
         ),
         reconciliation=InMemoryReconciliationStore(),
         authority_adapter=authority_control,

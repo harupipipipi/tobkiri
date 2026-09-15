@@ -337,6 +337,37 @@ def test_durable_reservation_requires_release_after_deadline_and_restart(
     assert successor.reserve("p1", ResourceAmount(100)).amount == reservation.amount
 
 
+def test_durable_ledger_accepts_only_confirmed_supervisor_release(
+    tmp_path: Path,
+) -> None:
+    """A successor persists an empty ledger only after exact child cleanup."""
+
+    options = {
+        "runtime_limit": ResourceAmount(100, 0, 2, 2),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100, 0, 2, 2)},
+        "state_path": tmp_path / "reservations.json",
+    }
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    first = DurableResourceLedger(identity=identity, **options)
+    reservation = first.reserve("p1", ResourceAmount(10))
+    calls: list[object] = []
+
+    successor = DurableResourceLedger(
+        identity={**identity, "activation_id": "b"},
+        confirmed_supervisor_release=lambda saved, rows: (
+            calls.append((saved, rows)) or rows == (reservation,)
+        ),
+        **options,
+    )
+
+    assert calls == [(identity, (reservation,))]
+    assert successor.runtime_used == ResourceAmount(0, 0, 0, 0)
+    saved = json.loads(options["state_path"].read_text(encoding="utf-8"))
+    assert saved["identity"]["activation_id"] == "b"
+    assert saved["reservations"] == []
+
+
 @pytest.mark.parametrize("ttl", [True, None, "1", 0, -1, float("nan"), float("inf")])
 def test_durable_ledger_rejects_invalid_ttl_before_creating_state(
     tmp_path: Path, ttl: object,

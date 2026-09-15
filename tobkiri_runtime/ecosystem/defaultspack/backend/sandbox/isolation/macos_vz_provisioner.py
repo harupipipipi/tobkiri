@@ -539,6 +539,12 @@ class MacOSVZProvisioner:
         return self._state_dir / "packvm-vz-mutation-claim.json"
 
     @property
+    def allocation_recovery_path(self) -> Path:
+        """Return the authenticated receipt for an interrupted allocation."""
+
+        return self._state_dir / "packvm-vz-allocation-recovery.json"
+
+    @property
     def audit_path(self) -> Path:
         """Return the bounded append-only local lifecycle audit path."""
 
@@ -1084,6 +1090,211 @@ class MacOSVZProvisioner:
             config_seed_path=seed_facts["config_seed_path"],
             config_seed_digest=seed_facts["config_seed_digest"],
             guest_public_key=_decode_domain_public_key(seed_facts["guest_public_key_b64"]),
+        )
+
+    def recover_interrupted_allocation(
+        self,
+        *,
+        domain_id: str,
+        reservation_id: str,
+        executable_digest: str,
+    ) -> bool:
+        """Reconcile one exact pre-launch allocation owned by a dead supervisor.
+
+        A missing ``allocation.json`` proves that ``allocate`` never returned
+        to the VZ supervisor, so no guest transport could have been launched.
+        The helper's command channel is the owning process' stdin pipe; a dead
+        owner closes that channel before recovery. The HMAC receipt makes the
+        later admission-ledger release retryable across a second crash.
+        """
+
+        _validate_allocation_identifier(domain_id, "domain")
+        _validate_allocation_identifier(reservation_id, "reservation")
+        if not _is_digest(executable_digest):
+            raise ValueError("PackVM VZ recovery executable digest is invalid")
+        claim = _read_json_if_present(self.mutation_claim_path)
+        receipt_hint = _read_json_if_present(self.allocation_recovery_path)
+        hint = claim if claim is not None else receipt_hint
+        hint_binding = hint.get("binding") if isinstance(hint, Mapping) else None
+        if not isinstance(hint_binding, Mapping) or (
+            hint_binding.get("domain_digest") != _digest_text(domain_id)
+            or hint_binding.get("reservation_digest")
+            != _digest_text(reservation_id)
+        ):
+            # This unauthenticated comparison is only a cheap rejection. Full
+            # claim/receipt verification still precedes cleanup or release.
+            return False
+        state = self._load_state()
+        manifest = self._require_manifest()
+        from tobkiri_host.macos_vz_supervisor import (
+            MacOSVZAgentIdentity,
+            MacOSVZHelperIdentity,
+            MacOSVZLaunchAssets,
+            MacOSVZRuntime,
+        )
+
+        helper_identity = MacOSVZHelperIdentity(
+            binary_digest=str(state["helper_digest"]),
+            code_digest=str(state["helper_digest"]),
+            bundle_id=manifest.helper_bundle_id,
+            team_id=manifest.helper_team_id,
+            signing_identity=manifest.helper_signing_identity,
+        )
+        launch_assets = MacOSVZLaunchAssets(
+            base_image_digest=str(state["image_digest"]),
+            base_image_path=str(state["base_image_path"]),
+            agent_template_digest=str(state["guest_runner_digest"]),
+            config_template_digest=str(state["cloud_template_digest"]),
+            base_image_read_only=True,
+        )
+        backend_digest = _canonical_digest(
+            {
+                "backend_id": PACKVM_BACKEND_ID,
+                "substrate_id": "macos-vz",
+                "platform": VZ_PLATFORM,
+                "helper": helper_identity.to_dict(),
+                "launch_assets": launch_assets.to_dict(),
+                "agent_code_digest": MacOSVZAgentIdentity(
+                    agent_digest=str(state["guest_runner_digest"])
+                ).agent_digest,
+                "runtime": MacOSVZRuntime().to_dict(),
+            }
+        )
+        lease_id = _canonical_digest(
+            {
+                "reservation_id": reservation_id,
+                "executable": executable_digest,
+                "backend": backend_digest,
+            }
+        )
+        binding = {
+            "domain_digest": _digest_text(domain_id),
+            "reservation_digest": _digest_text(reservation_id),
+            "lease_digest": _digest_text(lease_id),
+        }
+        allocation_name = _digest_text(
+            f"{domain_id}\0{reservation_id}\0{lease_id}"
+        )[7:]
+        root = self._state_dir / "domains" / allocation_name
+        expected_claim = {
+            "version": 1,
+            "operation": "allocate",
+            "instance": VZ_INSTANCE,
+            "binding": binding,
+        }
+        receipt_matches = self._allocation_recovery_receipt_matches(binding, root)
+        if claim is None:
+            return receipt_matches
+        if not self._stale_allocation_claim_matches(claim, expected_claim):
+            return False
+        if root.exists() or root.is_symlink():
+            if not _safe_private_domain_root(root):
+                raise ValueError("PackVM VZ interrupted allocation root is unsafe")
+            allocation_record = root / "allocation.json"
+            if allocation_record.exists() or allocation_record.is_symlink():
+                return False
+        descriptor = _open_private_file(
+            self.mutation_lock_path, os.O_CREAT | os.O_RDWR
+        )
+        locked = False
+        try:
+            _try_lock(descriptor)
+            locked = True
+            current = _read_json_if_present(self.mutation_claim_path)
+            if current is None or not self._stale_allocation_claim_matches(
+                current, expected_claim
+            ):
+                return False
+            if root.exists() or root.is_symlink():
+                self._remove_allocation_root(root)
+            if not receipt_matches:
+                self._write_allocation_recovery_receipt(
+                    binding, root, int(current["owner_pid"])
+                )
+            latest = _read_json_if_present(self.mutation_claim_path)
+            if latest is None or not hmac.compare_digest(
+                _canonical_bytes(latest), _canonical_bytes(current)
+            ):
+                raise ValueError("PackVM VZ allocation recovery claim changed")
+            self.mutation_claim_path.unlink()
+            return True
+        finally:
+            if locked:
+                _unlock(descriptor)
+            os.close(descriptor)
+
+    @staticmethod
+    def _stale_allocation_claim_matches(
+        claim: Mapping[str, Any], expected: Mapping[str, Any]
+    ) -> bool:
+        return (
+            _claim_binding_equal(claim, expected)
+            and _valid_process_id(claim.get("owner_pid"))
+            and not _process_is_alive(claim.get("owner_pid"))
+        )
+
+    def _allocation_recovery_receipt_matches(
+        self, binding: Mapping[str, str], root: Path
+    ) -> bool:
+        receipt = _read_json_if_present(self.allocation_recovery_path)
+        if receipt is None or set(receipt) != {
+            "version",
+            "operation",
+            "instance",
+            "binding",
+            "root_digest",
+            "owner_pid",
+            "authentication",
+        }:
+            return False
+        authentication = receipt.pop("authentication")
+        key = generate_or_load_signing_key(
+            self._state_dir / "packvm-vz-allocation-recovery.key"
+        )
+        expected = hmac.new(
+            key, _canonical_bytes(receipt), hashlib.sha256
+        ).hexdigest()
+        return (
+            isinstance(authentication, str)
+            and hmac.compare_digest(authentication, expected)
+            and receipt.get("version") == 1
+            and receipt.get("operation") == "allocate_recovered"
+            and receipt.get("instance") == VZ_INSTANCE
+            and hmac.compare_digest(
+                _canonical_bytes(receipt.get("binding")),
+                _canonical_bytes(dict(binding)),
+            )
+            and receipt.get("root_digest") == _digest_text(str(root))
+            and _valid_process_id(receipt.get("owner_pid"))
+            and not root.exists()
+            and not root.is_symlink()
+        )
+
+    def _write_allocation_recovery_receipt(
+        self,
+        binding: Mapping[str, str],
+        root: Path,
+        owner_pid: int,
+    ) -> None:
+        unsigned = {
+            "version": 1,
+            "operation": "allocate_recovered",
+            "instance": VZ_INSTANCE,
+            "binding": dict(binding),
+            "root_digest": _digest_text(str(root)),
+            "owner_pid": owner_pid,
+        }
+        key = generate_or_load_signing_key(
+            self._state_dir / "packvm-vz-allocation-recovery.key"
+        )
+        _atomic_private_json(
+            self.allocation_recovery_path,
+            {
+                **unsigned,
+                "authentication": hmac.new(
+                    key, _canonical_bytes(unsigned), hashlib.sha256
+                ).hexdigest(),
+            },
         )
 
     def release(self, allocation: MacOSVZDomainAllocation) -> None:

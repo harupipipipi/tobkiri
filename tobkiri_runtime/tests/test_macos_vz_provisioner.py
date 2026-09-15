@@ -864,6 +864,92 @@ def test_cleanup_rejects_live_preflight_claim(
     assert provisioner.mutation_claim_path.exists()
 
 
+def test_interrupted_allocation_recovery_is_exact_and_idempotent(
+    attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dead pre-launch allocation yields one durable supervisor receipt."""
+
+    provisioner, manifest, _instance_root = attested_provisioner
+    lifecycle = PackVMLifecycleV4(provisioner)
+    state = provisioner._load_state()
+    driver = MacOSVZSupervisorDriver(
+        transport_factory=None,
+        helper_path=manifest.helper_path,
+        helper_identity=MacOSVZHelperIdentity(
+            binary_digest=manifest.helper_digest,
+            code_digest=manifest.helper_digest,
+            bundle_id=manifest.helper_bundle_id,
+            team_id=manifest.helper_team_id,
+            signing_identity=manifest.helper_signing_identity,
+        ),
+        launch_assets=MacOSVZLaunchAssets(
+            base_image_digest=manifest.image_digest,
+            base_image_path=str(state["base_image_path"]),
+            agent_template_digest=manifest.agent_digest,
+            config_template_digest=manifest.config_digest,
+            base_image_read_only=True,
+        ),
+        agent_identity=MacOSVZAgentIdentity(agent_digest=manifest.agent_digest),
+        domain_allocator=provisioner,
+    )
+    domain_id = "domain.provider.0123456789abcdef01234567.1"
+    reservation_id = "reservation-fixture"
+    executable_digest = _digest(b"implementation")
+    lease_id = macos_vz_provisioner._canonical_digest(
+        {
+            "reservation_id": reservation_id,
+            "executable": executable_digest,
+            "backend": driver.backend_digest,
+        }
+    )
+    binding = {
+        "domain_digest": macos_vz_provisioner._digest_text(domain_id),
+        "reservation_digest": macos_vz_provisioner._digest_text(reservation_id),
+        "lease_digest": macos_vz_provisioner._digest_text(lease_id),
+    }
+    allocation_name = macos_vz_provisioner._digest_text(
+        f"{domain_id}\0{reservation_id}\0{lease_id}"
+    )[7:]
+    root = provisioner.state_path.parent / "domains" / allocation_name
+    root.mkdir(parents=True, mode=0o700)
+    _private_file(root / "agent-seed.iso", b"partial")
+    _private_file(
+        provisioner.mutation_claim_path,
+        json.dumps(
+            {
+                "version": 1,
+                "operation": "allocate",
+                "instance": macos_vz_provisioner.VZ_INSTANCE,
+                "owner_pid": 99_999_999,
+                "binding": binding,
+            }
+        ).encode(),
+    )
+    monkeypatch.setattr(
+        macos_vz_provisioner, "_process_is_alive", lambda _pid: False
+    )
+
+    assert lifecycle.recover_interrupted_allocation(
+        domain_id=domain_id,
+        reservation_id=reservation_id,
+        executable_digest=executable_digest,
+    )
+    assert not root.exists()
+    assert not provisioner.mutation_claim_path.exists()
+    assert provisioner.allocation_recovery_path.is_file()
+    assert lifecycle.recover_interrupted_allocation(
+        domain_id=domain_id,
+        reservation_id=reservation_id,
+        executable_digest=executable_digest,
+    )
+    assert not lifecycle.recover_interrupted_allocation(
+        domain_id=domain_id,
+        reservation_id="other-reservation",
+        executable_digest=executable_digest,
+    )
+
+
 @pytest.mark.parametrize("owner_pid", [None, True, 0, -1, "123"])
 def test_cleanup_rejects_malformed_preflight_claim_owner(
     attested_provisioner: tuple[MacOSVZProvisioner, MacOSVZAssetManifest, Path],

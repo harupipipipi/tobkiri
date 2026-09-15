@@ -165,6 +165,11 @@ def defaultspack_packvm_backend_factory(
             )
         )
 
+    recovery = getattr(provisioner, "recover_interrupted_allocation", None)
+    if callable(recovery):
+        # The composition root keeps recovery beside the exact backend factory
+        # without widening the generic PackVM execution interface.
+        setattr(build, "recover_interrupted_allocation", recovery)
     return build
 
 
