@@ -929,6 +929,32 @@ def test_interrupted_allocation_recovery_is_exact_and_idempotent(
     monkeypatch.setattr(
         macos_vz_provisioner, "_process_is_alive", lambda _pid: False
     )
+    _private_file(root / "allocation.json", b"{}")
+    assert not lifecycle.recover_interrupted_allocation(
+        domain_id=domain_id,
+        reservation_id=reservation_id,
+        executable_digest=executable_digest,
+    )
+    assert root.is_dir()
+    assert provisioner.mutation_claim_path.is_file()
+    assert not provisioner.allocation_recovery_path.exists()
+    (root / "allocation.json").unlink()
+
+    monkeypatch.setattr(
+        macos_vz_provisioner, "_process_is_alive", lambda _pid: True
+    )
+    assert not lifecycle.recover_interrupted_allocation(
+        domain_id=domain_id,
+        reservation_id=reservation_id,
+        executable_digest=executable_digest,
+    )
+    assert root.is_dir()
+    assert provisioner.mutation_claim_path.is_file()
+    assert not provisioner.allocation_recovery_path.exists()
+
+    monkeypatch.setattr(
+        macos_vz_provisioner, "_process_is_alive", lambda _pid: False
+    )
 
     assert lifecycle.recover_interrupted_allocation(
         domain_id=domain_id,

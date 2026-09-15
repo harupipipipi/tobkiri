@@ -314,7 +314,7 @@ class _PlanAdmission(RequestAdmissionPort):
         plan: Mapping[str, Any],
         state_path: Path,
         confirmed_supervisor_release: Callable[
-            [Mapping[str, str], tuple[ResourceReservation, ...]], bool
+            [Mapping[str, str], tuple[ResourceReservation, ...]], tuple[str, ...]
         ]
         | None = None,
     ) -> None:
@@ -2650,8 +2650,8 @@ def capture_production_dispatch(
     def confirmed_supervisor_release(
         saved_identity: Mapping[str, str],
         reservations: tuple[ResourceReservation, ...],
-    ) -> bool:
-        """Release a predecessor ledger only after exact PackVM reconciliation."""
+    ) -> tuple[str, ...]:
+        """Return only reservations with exact PackVM reconciliation proof."""
 
         recover = getattr(packvm_provisioner, "recover_interrupted_allocation", None)
         current_fencing = int(active.activation["fencing_token"])
@@ -2664,14 +2664,14 @@ def capture_production_dispatch(
             or not reservations
             or any(item.profile_id != profile_id for item in reservations)
         ):
-            return False
+            return ()
         activation_name = saved_activation_id.removeprefix("activation:")
         if (
             not activation_name
             or len(activation_name) > 255
             or Path(activation_name).name != activation_name
         ):
-            return False
+            return ()
         try:
             envelope = json.loads(
                 (
@@ -2684,7 +2684,7 @@ def capture_production_dispatch(
             saved_activation = envelope["activation"]
             saved_fencing = saved_activation["fencing_token"]
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-            return False
+            return ()
         if (
             not isinstance(saved_activation, Mapping)
             or type(saved_fencing) is not int
@@ -2700,7 +2700,7 @@ def capture_production_dispatch(
                 )
             )
         ):
-            return False
+            return ()
         candidates = {
             (
                 f"domain.provider."
@@ -2713,18 +2713,15 @@ def capture_production_dispatch(
             for binding in catalog_bindings
             if binding.variant.execution_kind is ExecutionKind.PACK_VM
         }
-        matched = 0
+        released: set[str] = set()
         for domain_id, reservation_id, executable_digest in sorted(candidates):
             if recover(
                 domain_id=domain_id,
                 reservation_id=reservation_id,
                 executable_digest=executable_digest,
             ):
-                matched += 1
-        # Matching one exact reservation to the stale allocation proves the
-        # dead process owning the claim is this ledger's predecessor Host. Its
-        # in-process rows share that supervisor; this is the only PackVM child.
-        return matched == 1
+                released.add(reservation_id)
+        return tuple(sorted(released))
 
     broker = runtime.broker(
         authority_store=authority_store,

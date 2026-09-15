@@ -356,7 +356,7 @@ def test_durable_ledger_accepts_only_confirmed_supervisor_release(
     successor = DurableResourceLedger(
         identity={**identity, "activation_id": "b"},
         confirmed_supervisor_release=lambda saved, rows: (
-            calls.append((saved, rows)) or rows == (reservation,)
+            calls.append((saved, rows)) or (reservation.reservation_id,)
         ),
         **options,
     )
@@ -366,6 +366,88 @@ def test_durable_ledger_accepts_only_confirmed_supervisor_release(
     saved = json.loads(options["state_path"].read_text(encoding="utf-8"))
     assert saved["identity"]["activation_id"] == "b"
     assert saved["reservations"] == []
+
+
+def test_durable_ledger_retains_each_unproven_predecessor_reservation(
+    tmp_path: Path,
+) -> None:
+    """One exact child receipt never releases another ledger row."""
+
+    state_path = tmp_path / "reservations.json"
+    options = {
+        "runtime_limit": ResourceAmount(100, 0, 2, 2),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100, 0, 2, 2)},
+        "state_path": state_path,
+    }
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    first = DurableResourceLedger(identity=identity, **options)
+    proven = first.reserve("p1", ResourceAmount(10))
+    retained = first.reserve("p1", ResourceAmount(20))
+
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={**identity, "activation_id": "b"},
+            confirmed_supervisor_release=lambda _saved, _rows: (
+                proven.reservation_id,
+            ),
+            **options,
+        )
+
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert saved["identity"] == identity
+    assert [item["reservation_id"] for item in saved["reservations"]] == [
+        retained.reservation_id
+    ]
+
+    # A second interruption resumes from the one remaining row. The already
+    # released reservation cannot be recovered or charged twice.
+    reopened = DurableResourceLedger(identity=identity, **options)
+    assert reopened.runtime_used == retained.amount
+    calls: list[tuple[str, ...]] = []
+    successor = DurableResourceLedger(
+        identity={**identity, "activation_id": "b"},
+        confirmed_supervisor_release=lambda _saved, rows: (
+            calls.append(tuple(item.reservation_id for item in rows))
+            or (retained.reservation_id,)
+        ),
+        **options,
+    )
+    assert calls == [(retained.reservation_id,)]
+    assert successor.runtime_used == ResourceAmount(0, 0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "released",
+    ["reservation", ("unknown",), ("duplicate", "duplicate")],
+)
+def test_durable_ledger_rejects_invalid_release_identity_without_mutation(
+    tmp_path: Path, released: object,
+) -> None:
+    """Malformed, unknown, or duplicate recovery results cannot alter a ledger."""
+
+    state_path = tmp_path / "reservations.json"
+    options = {
+        "runtime_limit": ResourceAmount(100, 0, 1, 1),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100, 0, 1, 1)},
+        "state_path": state_path,
+    }
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    first = DurableResourceLedger(identity=identity, **options)
+    reservation = first.reserve("p1", ResourceAmount(10))
+    if released == ("duplicate", "duplicate"):
+        released = (reservation.reservation_id, reservation.reservation_id)
+    before = state_path.read_bytes()
+
+    with pytest.raises(AdmissionError, match="durable admission ledger is invalid"):
+        DurableResourceLedger(
+            identity={**identity, "activation_id": "b"},
+            confirmed_supervisor_release=lambda _saved, _rows: released,  # type: ignore[arg-type,return-value]
+            **options,
+        )
+
+    assert state_path.read_bytes() == before
 
 
 @pytest.mark.parametrize("ttl", [True, None, "1", 0, -1, float("nan"), float("inf")])

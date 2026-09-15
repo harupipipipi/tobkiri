@@ -209,7 +209,7 @@ class DurableResourceLedger(ResourceLedger):
         identity: Mapping[str, str],
         lease_ttl_seconds: float = 120.0,
         confirmed_supervisor_release: Callable[
-            [Mapping[str, str], tuple[ResourceReservation, ...]], bool
+            [Mapping[str, str], tuple[ResourceReservation, ...]], tuple[str, ...]
         ]
         | None = None,
     ) -> None:
@@ -323,17 +323,43 @@ class DurableResourceLedger(ResourceLedger):
             if saved_identity != self._identity:
                 confirmed = self._confirmed_supervisor_release
                 reservations = tuple(item for item, _ in loaded)
-                if reservations and (
-                    confirmed is None or not confirmed(saved_identity, reservations)
+                if not reservations:
+                    return
+                released = (
+                    () if confirmed is None else confirmed(saved_identity, reservations)
+                )
+                if not isinstance(released, tuple) or any(
+                    not isinstance(item, str) or not item for item in released
                 ):
+                    raise ValueError("confirmed supervisor release result is invalid")
+                released_ids = set(released)
+                known_ids = {item.reservation_id for item in reservations}
+                if len(released_ids) != len(released) or not released_ids <= known_ids:
+                    raise ValueError("confirmed supervisor release identity is invalid")
+                if not released_ids:
                     raise AdmissionError(
                         "outstanding admission reservations require confirmed supervisor release"
                     )
-                if reservations:
-                    # This is an exact supervisor release after durable child
-                    # reconciliation. Activation rotation or wall time alone
-                    # never reaches this branch.
-                    self._persist_locked()
+                remaining = [
+                    item for item in loaded if item[0].reservation_id not in released_ids
+                ]
+                for reservation, expires_at in remaining:
+                    self._reservations[reservation.reservation_id] = reservation
+                    self._expires_at[reservation.reservation_id] = expires_at
+                    self._runtime_used = self._runtime_used + reservation.amount
+                    self._profile_used[reservation.profile_id] = (
+                        self._profile_used[reservation.profile_id] + reservation.amount
+                    )
+                # Persist only the individually proven releases. A partial
+                # recovery retains the predecessor identity and remains
+                # fail-closed on this startup.
+                self._persist_locked(
+                    identity=saved_identity if remaining else self._identity,
+                )
+                if remaining:
+                    raise AdmissionError(
+                        "outstanding admission reservations require confirmed supervisor release"
+                    )
                 return
             for reservation, expires_at in loaded:
                 self._reservations[reservation.reservation_id] = reservation
@@ -357,7 +383,9 @@ class DurableResourceLedger(ResourceLedger):
         ) as exc:
             raise AdmissionError("durable admission ledger is invalid") from exc
 
-    def _persist_locked(self) -> None:
+    def _persist_locked(
+        self, *, identity: Mapping[str, str] | None = None,
+    ) -> None:
         rows = [
             {
                 "reservation_id": reservation.reservation_id,
@@ -377,7 +405,7 @@ class DurableResourceLedger(ResourceLedger):
         ]
         payload = {
             "schema": self._SCHEMA,
-            "identity": self._identity,
+            "identity": dict(self._identity if identity is None else identity),
             "reservations": rows,
         }
         self._state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
