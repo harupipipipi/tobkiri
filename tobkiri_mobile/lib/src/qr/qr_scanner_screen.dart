@@ -66,6 +66,14 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     if (raw.isEmpty) return;
     _handled = true;
     final payload = parseQrPayload(raw);
+    if (payload is QrRejected) {
+      _controller.clear();
+      setState(() {
+        _scanError = payload.reason;
+        _handled = false;
+      });
+      return;
+    }
     final mismatch = !_matchesPurpose(payload);
     Navigator.of(context).pop((payload, mismatch));
   }
@@ -186,6 +194,17 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_scanError != null) ...[
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              _scanError!,
+              key: const ValueKey('qr-rejection-message'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         TextField(
           controller: _controller,
           maxLines: 4,
@@ -209,18 +228,21 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(_title)),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              widget.hint ?? _title,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 12),
-            _showManualInput ? _buildManualInput() : _buildScanner(),
-          ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                widget.hint ?? _title,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              _showManualInput ? _buildManualInput() : _buildScanner(),
+            ],
+          ),
         ),
       ),
     );
