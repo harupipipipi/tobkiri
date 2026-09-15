@@ -148,6 +148,7 @@ class V4DispatchSession:
     def cancel_pending_reads(self) -> None:
         """Fence server-owned reads at a reusable stop/restart boundary."""
 
+        self.broker.cancel_pending_requests()
         for callback in self.stop_callbacks:
             callback()
 

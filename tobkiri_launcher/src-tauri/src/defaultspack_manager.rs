@@ -30,6 +30,8 @@ const DEFAULTSPACK_STABLE_RUN_WINDOW: Duration = Duration::from_secs(30);
 // shells to observe the stopped listeners and terminate after this group.
 const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(unix)]
+const DEFAULTSPACK_FORCE_KILL_TIMEOUT: Duration = Duration::from_millis(750);
+#[cfg(unix)]
 const SYSTEM_KILL: &str = "/bin/kill";
 #[cfg(all(test, unix))]
 const SYSTEM_SHELL: &str = "/bin/sh";
@@ -688,6 +690,11 @@ fn stop_unix_process_group(child: &mut crate::python_env::PythonChild) -> Result
             .wait()
             .context("failed to wait for killed Defaultspack process group")?;
     }
+    if !wait_for_process_group_exit(pid, DEFAULTSPACK_FORCE_KILL_TIMEOUT) {
+        return Err(anyhow!(
+            "Defaultspack process group {pid} remained live after SIGKILL"
+        ));
+    }
     Ok(())
 }
 
@@ -706,8 +713,32 @@ fn stop_unix_process_group_id(process_group: u32) -> Result<()> {
         thread::sleep(Duration::from_millis(100));
     }
 
-    let _ = send_process_group_signal(process_group, "-KILL");
+    let sent_kill = send_process_group_signal(process_group, "-KILL");
+    if !sent_kill && process_group_exists(process_group) {
+        return Err(anyhow!(
+            "failed to kill Defaultspack process group {process_group}"
+        ));
+    }
+    if !wait_for_process_group_exit(process_group, DEFAULTSPACK_FORCE_KILL_TIMEOUT) {
+        return Err(anyhow!(
+            "Defaultspack process group {process_group} remained live after SIGKILL"
+        ));
+    }
     Ok(())
+}
+
+#[cfg(unix)]
+fn wait_for_process_group_exit(process_group: u32, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if !process_group_exists(process_group) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 #[cfg(not(unix))]

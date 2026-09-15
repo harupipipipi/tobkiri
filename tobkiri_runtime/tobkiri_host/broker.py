@@ -177,6 +177,14 @@ class PreparedInvocation:
         )
 
 
+@dataclass
+class _ActiveRequest:
+    """Broker-private shutdown state for one admitted request."""
+
+    cancellation_requested: threading.Event
+    completed: threading.Event = field(default_factory=threading.Event)
+
+
 @dataclass(frozen=True)
 class PreparedInvocationSnapshot:
     """JSON-serializable Host-private input for one durable pending effect.
@@ -320,6 +328,8 @@ class RequestBroker:
         self._production = production
         self._lifecycle_lock = threading.RLock()
         self._closed = False
+        self._active_requests: dict[int, _ActiveRequest] = {}
+        self._next_active_request_id = 0
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="tobkiri-v4-request",
@@ -496,6 +506,19 @@ class RequestBroker:
             estimate,
             min(30.0, remaining),
         )
+        cancellation_signal = (
+            cancellation_requested
+            if cancellation_requested is not None
+            else threading.Event()
+        )
+        active_request = _ActiveRequest(cancellation_signal)
+        with self._lifecycle_lock:
+            if self._closed:
+                self._admission.release(ticket)
+                raise RuntimeError("request broker is closed")
+            active_request_id = self._next_active_request_id
+            self._next_active_request_id += 1
+            self._active_requests[active_request_id] = active_request
         lease_issued = False
         background_requests: list[Future[object]] = []
 
@@ -507,6 +530,9 @@ class RequestBroker:
                     self._authority.fence_request(context.request_id)
                     raise
             self._admission.release(ticket)
+            with self._lifecycle_lock:
+                self._active_requests.pop(active_request_id, None)
+            active_request.completed.set()
 
         try:
             workload_key = WorkloadInstanceKey(
@@ -550,8 +576,7 @@ class RequestBroker:
                 idempotency_key=prepared.idempotency_key,
                 resource_reservation_id=evidence.resource_reservation_id,
                 cancellation_requested=(
-                    cancellation_requested
-                    if cancellation_requested is not None else threading.Event()
+                    cancellation_signal
                 ),
             )
             return self._dispatch(
@@ -946,13 +971,26 @@ class RequestBroker:
             raise AuthorizationError("runtime evidence mismatch")
 
     def close(self) -> None:
-        """Idempotently stop accepting work without waiting on hostile providers."""
+        """Fence new work, cancel admitted work, and bound provider drain."""
 
         with self._lifecycle_lock:
-            if self._closed:
-                return
-            self._closed = True
-            self._executor.shutdown(wait=False, cancel_futures=True)
+            if not self._closed:
+                self._closed = True
+            active_requests = tuple(self._active_requests.values())
+        for active_request in active_requests:
+            active_request.cancellation_requested.set()
+        deadline = time.monotonic() + 1.0
+        for active_request in active_requests:
+            active_request.completed.wait(max(0.0, deadline - time.monotonic()))
+        self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def cancel_pending_requests(self) -> None:
+        """Signal every exact admitted request before an HTTP drain begins."""
+
+        with self._lifecycle_lock:
+            active_requests = tuple(self._active_requests.values())
+        for active_request in active_requests:
+            active_request.cancellation_requested.set()
 
     def __enter__(self) -> "RequestBroker":
         """Return this open Broker for explicit scoped ownership."""

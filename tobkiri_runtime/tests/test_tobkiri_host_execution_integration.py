@@ -863,6 +863,115 @@ def test_unstopped_cancelled_provider_keeps_admission_charged(
     assert "audit_committed" not in fixture.events
 
 
+def test_broker_close_cancels_concurrent_requests_and_waits_for_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shutdown drains exact active invocations before ledger release."""
+    entered = Barrier(3)
+
+    class ShutdownBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            entered.wait(timeout=2)
+            assert request.cancellation_requested.wait(timeout=2)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=10000,
+        backend=ShutdownBackend([]),
+    )
+    released = []
+    original_release = fixture.admission.release
+
+    def release(ticket) -> None:
+        original_release(ticket)
+        released.append(ticket.reservation.reservation_id)
+
+    monkeypatch.setattr(fixture.admission, "release", release)
+    errors = []
+
+    def invoke(request_id: str) -> None:
+        try:
+            fixture.broker.invoke(
+                replace(frame(), idempotency_key=request_id),
+                replace(context(), request_id=request_id, trace_id=request_id),
+                effect_scope={},
+            )
+        except RequestCancellationRequestedError:
+            return
+        except BaseException as exc:
+            errors.append(exc)
+
+    workers = [Thread(target=invoke, args=(f"request-{index}",)) for index in (1, 2)]
+    for worker in workers:
+        worker.start()
+    entered.wait(timeout=2)
+
+    started = time.monotonic()
+    fixture.broker.close()
+    elapsed = time.monotonic() - started
+    for worker in workers:
+        worker.join(timeout=2)
+
+    assert errors == []
+    assert all(not worker.is_alive() for worker in workers)
+    assert sorted(fixture.backend.cancelled) == ["request-1", "request-2"]
+    assert len(released) == 2
+    assert elapsed < 1.0
+
+
+def test_broker_close_does_not_release_unstopped_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bounded shutdown timeout cannot claim a hostile provider exited."""
+    entered = Event()
+    release_provider = Event()
+    resources_released = Event()
+
+    class UnstoppableBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            entered.set()
+            assert release_provider.wait(timeout=10)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.READ,
+        timeout_ms=10000,
+        backend=UnstoppableBackend([]),
+    )
+    original_release = fixture.admission.release
+
+    def release(ticket) -> None:
+        original_release(ticket)
+        resources_released.set()
+
+    monkeypatch.setattr(fixture.admission, "release", release)
+    errors = []
+
+    def invoke() -> None:
+        try:
+            fixture.broker.invoke(frame(), context(), effect_scope={})
+        except RequestCancellationRequestedError:
+            return
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=invoke)
+    worker.start()
+    assert entered.wait(timeout=2)
+
+    fixture.broker.close()
+
+    assert not resources_released.is_set()
+    release_provider.set()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert errors == []
+    assert resources_released.wait(timeout=2)
+
+
 @pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
 def test_completed_future_cannot_publish_a_late_result(
     monkeypatch: pytest.MonkeyPatch, effect: EffectClass,

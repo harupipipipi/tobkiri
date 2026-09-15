@@ -7,12 +7,12 @@ import pytest
 from tobkiri_host.runtime import V4DispatchSession
 
 
-def _session(*callbacks):
+def _session(*callbacks, stop_callbacks=()):
     return V4DispatchSession(
         broker=Mock(), context_for=Mock(), effect_scope_for=Mock(), providers={},
         profile_id="defaults", plan_digest="plan", profile_revision="revision",
         activation_id="activation", owned_authority_store=Mock(),
-        close_callbacks=callbacks,
+        close_callbacks=callbacks, stop_callbacks=stop_callbacks,
     )
 
 
@@ -43,3 +43,17 @@ def test_authority_close_failure_retries_without_repeating_provider_cleanup() ->
     session.close()
     provider.assert_called_once_with()
     assert session.owned_authority_store.close.call_count == 2
+
+
+def test_server_stop_cancels_broker_requests_before_read_owners() -> None:
+    events = []
+    session = _session(
+        stop_callbacks=(lambda: events.append("read_owner_cancelled"),)
+    )
+    session.broker.cancel_pending_requests.side_effect = lambda: events.append(
+        "broker_requests_cancelled"
+    )
+
+    session.cancel_pending_reads()
+
+    assert events == ["broker_requests_cancelled", "read_owner_cancelled"]
