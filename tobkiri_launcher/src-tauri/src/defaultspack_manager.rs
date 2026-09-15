@@ -26,7 +26,9 @@ const DEFAULTSPACK_MONITOR_INTERVAL: Duration = Duration::from_millis(250);
 const DEFAULTSPACK_RESTART_INITIAL_BACKOFF: Duration = Duration::from_millis(250);
 const DEFAULTSPACK_RESTART_MAX_BACKOFF: Duration = Duration::from_secs(5);
 const DEFAULTSPACK_STABLE_RUN_WINDOW: Duration = Duration::from_secs(30);
-const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+// Leave enough of the product's five-second quit budget for the desktop
+// shells to observe the stopped listeners and terminate after this group.
+const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(unix)]
 const SYSTEM_KILL: &str = "/bin/kill";
 #[cfg(all(test, unix))]
@@ -1138,6 +1140,51 @@ mod tests {
             !descendant_alive,
             "Defaultspack descendant {descendant_pid} survived process-group shutdown"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_stop_force_kills_a_group_with_a_term_ignoring_child() {
+        let manager = test_manager();
+        let ready_file = std::env::temp_dir().join(format!(
+            "defaultspack-manager-term-ignore-{}-{}.ready",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let script = format!(
+            "trap '' TERM; printf ready > {}; while :; do sleep 1; done",
+            ready_file.display()
+        );
+        let mut command = process_utils::command(SYSTEM_SHELL);
+        command.args(["-c", &script]);
+        crate::dock_registration::configure_defaultspack_process_group(&mut command);
+        let child = command.spawn().unwrap();
+        let process_group = child.id();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.owned_process_groups.push(process_group);
+            state.child = Some(crate::python_env::PythonChild::development(child));
+        }
+        assert!((0..40).any(|_| {
+            if ready_file.exists() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(25));
+            false
+        }));
+
+        let started = Instant::now();
+        manager.stop().unwrap();
+        fs::remove_file(ready_file).ok();
+
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "forced process-group shutdown exceeded its share of the quit budget"
+        );
+        assert!(!process_group_exists(process_group));
     }
 
     #[cfg(unix)]

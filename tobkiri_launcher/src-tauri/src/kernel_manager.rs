@@ -29,6 +29,9 @@ const MAX_AUTO_RESTARTS: u32 = 3;
 /// Seconds to wait after SIGTERM before sending SIGKILL.
 const KILL_TIMEOUT_SECS: u64 = 5;
 
+/// Grace period used specifically during application shutdown.
+const KERNEL_STOP_TIMEOUT: Duration = Duration::from_secs(2);
+
 fn python_runtime_env_vars() -> [(&'static str, &'static str); 4] {
     [
         ("PYTHONUTF8", "1"),
@@ -467,18 +470,18 @@ impl KernelManager {
     #[cfg(unix)]
     fn unix_stop(child: &mut crate::python_env::PythonChild) -> Result<()> {
         use std::thread;
-        use std::time::Duration;
 
         let pid = child.id() as i32;
         let _ = process_utils::command("kill")
             .args(["-TERM", &pid.to_string()])
             .status();
 
-        for _ in 0..KILL_TIMEOUT_SECS {
-            thread::sleep(Duration::from_secs(1));
+        let deadline = Instant::now() + KERNEL_STOP_TIMEOUT;
+        while Instant::now() < deadline {
             if let Ok(Some(_)) = child.try_wait() {
                 return Ok(());
             }
+            thread::sleep(Duration::from_millis(100));
         }
 
         warn!("Kernel did not exit after SIGTERM, sending SIGKILL");
@@ -909,6 +912,48 @@ mod tests {
         let config = test_config();
         let mut km = KernelManager::new(&config, "test-bootstrap".into());
         assert!(km.stop().is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_force_kills_a_term_ignoring_kernel_within_quit_budget() {
+        let (root, config) = temporary_packaged_config("kernel-term-ignore");
+        let ready_file = std::env::temp_dir().join(format!(
+            "tobkiri-kernel-term-ignore-{}-{}.ready",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let script = format!(
+            "trap '' TERM; printf ready > {}; while :; do sleep 1; done",
+            ready_file.display()
+        );
+        let child = process_utils::command("/bin/sh")
+            .args(["-c", &script])
+            .spawn()
+            .unwrap();
+        let mut kernel = KernelManager::new(&config, "test-bootstrap".into());
+        kernel.child = Some(crate::python_env::PythonChild::development(child));
+        assert!((0..40).any(|_| {
+            if ready_file.exists() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+            false
+        }));
+
+        let started = Instant::now();
+        kernel.stop().unwrap();
+        fs::remove_file(ready_file).ok();
+
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "forced kernel shutdown exceeded its share of the quit budget"
+        );
+        assert!(kernel.child.is_none());
+        fs::remove_dir_all(root).ok();
     }
 
     #[test]
