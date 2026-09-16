@@ -27,6 +27,7 @@
     "operation_cancellation.py",
     "platform_backends.py",
     "ports.py",
+    "resource_controller.py",
     "resources.py",
     "runtime.py",
     "saved_guest_dispatch.py",

@@ -4,10 +4,10 @@
   "resolution_scope": "source_release",
   "activation_authority": "unbound",
   "profile_id": "defaults",
-  "profile_revision": "sha256:815104a769785543c944436de4ad1e65cabb6cb360654eced8fbc46f43f9ee6e",
-  "profile_definition_digest": "sha256:8c0987b5fe0ebe82198de2521d6a020c95b94aeed67811038c8727523c02106f",
-  "catalog_revision": "sha256:a165938fc14d414539765d24e1b614640ec95f0cb7b993fcecf9100edd339e0e",
-  "bundle_digest": "sha256:fc62c69bb1a713a71e2014f3e35013713db4f5cb95deb02e0e8b0cea23ea64d1",
+  "profile_revision": "sha256:b5ad541ecb6a650188a86a3cb14eb90ffb22b0374ae15b4c2cd217896e5fd8c4",
+  "profile_definition_digest": "sha256:975355d1574a0507a5f1a1961ad1e1e98c6cefb65da57aab87041be1f2615a46",
+  "catalog_revision": "sha256:0b2056baba1650b2abbc32b48b01dabb450055f1a7605daa6a5cb25b0c47ea44",
+  "bundle_digest": "sha256:0f4190f471d49511707690a0a33a9cc9d4d8c238e780ac5ea807f89c247a6676",
   "base": {
     "pack_id": "defaults-basepack",
     "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
@@ -27,7 +27,7 @@
     "pack_id": "runtime.tauri.application.default",
     "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
     "executable_artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
-    "definition_digest": "sha256:e37d7c2f1e22a0a67c2e08c7b76bf08900815a56c3407ea1a51a4a4d0df3ec59"
+    "definition_digest": "sha256:4643af813cbf972d91172a7483198c023aa45d6dc10f39bb3847179fc0a43c94"
   },
   "effective_set": [
     {
@@ -969,9 +969,9 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:f932f5fab33f7bef26dee53c732030edff706d6b3a4099dd83b87d2d18fb46b9",
-  "constraints_digest": "sha256:912cb7bf31bfc274255779f2d980c1f46f3def8103698c369927ba0de4bb403f",
-  "closure_digest": "sha256:c00238e6db2ae8ec41bda27b2700ab3cc03bca9a83e4c16d86ba7464a62c76c2",
-  "provenance_digest": "sha256:7b79ba8eb575465656d7dcbd4a7ded0cee2344063467c3cfd8b0cc2af4148e31",
-  "lock_digest": "sha256:dac79d21537ee5b51d050b45054e6dd673f95981e5ef03fbeda1ca69c2b917b7"
+  "requested_edges_digest": "sha256:fe2caba744d369e34c7474b5cedcdf781ddefc3d40547419fd1ab151d26fb5e8",
+  "constraints_digest": "sha256:3e5020450762cd788700fff055abc350c70836e6c2db166f1c36da16afa53e15",
+  "closure_digest": "sha256:5f51fbcb00fcdeb68d0cec54bb27dd65817700735a319a98b037ab2fb15a448f",
+  "provenance_digest": "sha256:23b67dac6003b8da8b9525a348f292a5a12a49b3899b83d44bb8145af66f83f6",
+  "lock_digest": "sha256:477db1e7f6d9dc7c18acb1453713856e41a8d0e36376b2df2fff372611c308e4"
 }
