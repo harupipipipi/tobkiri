@@ -91,8 +91,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json",
       "type": "regular-file",
-      "size": 31263,
-      "sha256": "09b267370dfde74a002321cf77af0140bec0059413eebb8d87b2066178831645",
+      "size": 32376,
+      "sha256": "8fe277bd8449bd725aa006ec52e19633454e88c4f84824fc73bc8fd93870cd98",
       "executable": false
     },
     {
@@ -112,8 +112,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
       "type": "regular-file",
-      "size": 22605,
-      "sha256": "232a8dd729f3c972a89d1d7ee50b166e26da92da4a591c0b9578c2b91c3282dc",
+      "size": 23498,
+      "sha256": "8ce83aebee113d3d16066fa3174126280bb0e27b1e581e05fe584de52b113e17",
       "executable": false
     },
     {
@@ -170,6 +170,13 @@
       "type": "regular-file",
       "size": 3741,
       "sha256": "39257fbe4884693f3a1b2f7a29c247a8d183d478fb180f2900deda518e1bd555",
+      "executable": false
+    },
+    {
+      "path": "ecosystem/defaultspack/defaultspack/workspace_presentation.py",
+      "type": "regular-file",
+      "size": 4573,
+      "sha256": "28071ab18928f33676b47379e770c3086bd91326545e9042b329b3c6a8f61764",
       "executable": false
     },
     {
@@ -1127,8 +1134,8 @@
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
       "type": "regular-file",
-      "size": 92127,
-      "sha256": "6e1455a236f8f05a62d85ee22c3008f1cb7a7ddca56b7d94a7a67215d3fd3f9d",
+      "size": 92820,
+      "sha256": "da2011004e583c7868b04ccb9403d0eda0ec92920e341281cf75312a1b86c4e8",
       "executable": false
     },
     {
@@ -1141,8 +1148,8 @@
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
       "type": "regular-file",
-      "size": 107443,
-      "sha256": "01a91de3f8241e9136231ae9014ce9ed0b089a9ed708204c742fe195b8f4752a",
+      "size": 108239,
+      "sha256": "a7c432eeb813c8793914b07d9680f73a97863ead76c482f14e1c26decb23816c",
       "executable": false
     },
     {
@@ -3074,7 +3081,7 @@
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
       "type": "regular-file",
       "size": 3909,
-      "sha256": "e45f534fe78e87ef50972ba54492541b3c4d31253bbc4f80a3b31fc6b2d4058e",
+      "sha256": "64af2aa2ff108694e117aa28b44224c944a33e040c6eba81a59234204c5625e4",
       "executable": false
     },
     {

@@ -27,7 +27,7 @@
     "pack_id": "runtime.tauri.application.default",
     "artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
     "executable_artifact_digest": "sha256:6dcd53a6833979c3fec4cc1e507a3bd4e3dd7e7028ec4b7abf0c9f8e92f1c5b8",
-    "definition_digest": "sha256:498fdba4171f67fac54854f2f6edb6c299134ff02e74f0199fe549d9ba190bfc"
+    "definition_digest": "sha256:e37d7c2f1e22a0a67c2e08c7b76bf08900815a56c3407ea1a51a4a4d0df3ec59"
   },
   "effective_set": [
     {
@@ -933,7 +933,7 @@
       "domain_kind": "dedicated_process"
     }
   ],
-  "requested_edges_digest": "sha256:bf589afc8beb607bdf2e0067caeae43f5d6d93da685576f11eb63edf264656df",
+  "requested_edges_digest": "sha256:f932f5fab33f7bef26dee53c732030edff706d6b3a4099dd83b87d2d18fb46b9",
   "constraints_digest": "sha256:912cb7bf31bfc274255779f2d980c1f46f3def8103698c369927ba0de4bb403f",
   "closure_digest": "sha256:c00238e6db2ae8ec41bda27b2700ab3cc03bca9a83e4c16d86ba7464a62c76c2",
   "provenance_digest": "sha256:d1ababebbec547f9ae675cb0b197fcba0ba1d8d81919e50db5db2cdc29129441",

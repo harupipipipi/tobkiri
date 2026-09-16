@@ -44,6 +44,13 @@ from .conversation_record_presentation import (
     present_conversation_record,
     present_conversation_deleted,
 )
+from .workspace_presentation import (
+    WORKSPACE_GET_TARGET,
+    WORKSPACE_LIST_TARGET,
+    normalize_workspace_read,
+    present_workspace_list,
+    present_workspace_record,
+)
 
 
 _CONVERSATION_TARGET = (
@@ -283,6 +290,20 @@ class DefaultspackHTTPPresentation:
             if not profile_id or payload:
                 raise ValueError("owner listing requires captured identity")
             return {"profile_id": profile_id, "operation": "list"}
+        target_identity = (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        )
+        if target_identity in {WORKSPACE_LIST_TARGET, WORKSPACE_GET_TARGET}:
+            session.assert_current()
+            return normalize_workspace_read(
+                target_identity,
+                payload,
+                profile_id=str(getattr(session, "profile_id", "")),
+            )
         if (
             target.contribution_id,
             target.contract_id,
@@ -379,6 +400,10 @@ class DefaultspackHTTPPresentation:
             return present_conversation_record(result)
         if binding.presentation == "conversation_deleted":
             return present_conversation_deleted(result)
+        if binding.presentation == "workspace_list":
+            return present_workspace_list(result)
+        if binding.presentation == "workspace_record":
+            return present_workspace_record(result)
         if binding.presentation != "dynamic_pack_catalog":
             return dict(result)
         capability_binding = routes.get(("POST", "/api/ui/capability/invoke"))

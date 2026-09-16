@@ -137,6 +137,36 @@
   "routes": [
     {
       "method": "GET",
+      "path": "/api/coding/workspaces",
+      "presentation": "workspace_list",
+      "targets": [
+        {
+          "contribution_id": "defaults.workspaces.list",
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+          "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/coding/workspaces/get",
+      "presentation": "workspace_record",
+      "targets": [
+        {
+          "contribution_id": "defaults.workspaces.get",
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+          "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "allowed_payload_keys": ["workspace_id"]
+        }
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/tools/catalog",
       "presentation": "tool_catalog",
       "targets": [

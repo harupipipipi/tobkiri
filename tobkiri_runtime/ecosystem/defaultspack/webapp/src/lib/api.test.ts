@@ -3661,6 +3661,8 @@ test("coding workspace and compact helpers serialize request bodies", async () =
   }) as typeof fetch;
 
   try {
+    await api.listCodingWorkspaces();
+    await api.getCodingWorkspace("ws1");
     await api.selectCodingWorkspace("ws1");
     await api.trustCodingWorkspace("ws1");
     await api.compactConversation("c1", { protect_last_messages: 4 });
@@ -3670,21 +3672,31 @@ test("coding workspace and compact helpers serialize request bodies", async () =
   }
 
   assert.deepEqual(seen[0], {
+    input: routeKey("api/coding/workspaces"),
+    method: "GET",
+    body: undefined,
+  });
+  assert.deepEqual(seen[1], {
+    input: `${routeKey("api/coding/workspaces/get")}?workspace_id=ws1`,
+    method: "GET",
+    body: undefined,
+  });
+  assert.deepEqual(seen[2], {
     input: routeKey("api/coding/workspaces/select"),
     method: "POST",
     body: { workspace_id: "ws1" },
   });
-  assert.deepEqual(seen[1], {
+  assert.deepEqual(seen[3], {
     input: routeKey("api/coding/workspaces/trust"),
     method: "POST",
     body: { workspace_id: "ws1" },
   });
-  assert.deepEqual(seen[2], {
+  assert.deepEqual(seen[4], {
     input: routeKey("api/chat/conversations/c1/compact"),
     method: "POST",
     body: { conversation_id: "c1", protect_last_messages: 4 },
   });
-  assert.deepEqual(seen[3], {
+  assert.deepEqual(seen[5], {
     input: routeKey("api/chat/conversations/c1/auto-compact"),
     method: "POST",
     body: { conversation_id: "c1", mode: "apply", approved: true },

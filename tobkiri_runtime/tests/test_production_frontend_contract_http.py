@@ -1320,6 +1320,71 @@ def test_history_list_reads_real_captured_store_without_mutation(
     assert store.path.read_bytes() == before
 
 
+def test_workspace_reads_use_the_real_captured_owner_without_mutation(
+    production_server,
+    tmp_path: Path,
+) -> None:
+    """The coding UI lists and gets mounts through the signed Shell edge."""
+
+    from ecosystem.rumi_workspace_mount_pack.runtime.mounts import WorkspaceMountStore
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = WorkspaceMountStore("defaults", user_data_root=tmp_path / "user-data")
+    mounted = store.mount(
+        "workspace-1",
+        str(workspace),
+        expected_revision=0,
+        metadata={"label": "Repository", "trusted": True},
+    )
+    store.select("workspace-1", expected_revision=mounted["revision"])
+    before = store.path.read_bytes()
+
+    server, _session, _authority = production_server
+    cookie, _csrf, _origin = _authenticate(server)
+    headers = {"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())}
+    status, payload, _response_headers = _request(
+        server,
+        "GET",
+        _contract("GET", "/api/coding/workspaces"),
+        headers=headers,
+    )
+    assert status == 200, payload
+    assert payload["data"]["selected_workspace_id"] == "workspace-1"
+    assert payload["data"]["revision"] == 2
+    expected_workspace = {
+        "workspace_id": "workspace-1",
+        "label": "Repository",
+        "root_path": str(workspace.resolve()),
+        "trusted": True,
+        "trust_granted_at": None,
+        "last_used_at": mounted["mount"]["updated_at"],
+        "metadata": {},
+    }
+    assert payload["data"]["workspaces"] == [expected_workspace]
+
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, payload, _response_headers = _request(
+        server,
+        "GET",
+        _contract("GET", "/api/coding/workspaces/get?workspace_id=workspace-1"),
+        headers=headers,
+    )
+    assert status == 200, payload
+    assert payload["data"]["workspace"] == expected_workspace
+
+    for query in ("profile_id=other", "operation=mount", "workspace_id=../escape"):
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, payload, _response_headers = _request(
+            server,
+            "GET",
+            _contract("GET", f"/api/coding/workspaces/get?{query}"),
+            headers=headers,
+        )
+        assert status == 400, payload
+    assert store.path.read_bytes() == before
+
+
 def test_conversation_create_uses_real_broker_and_rejects_replay(
     production_server,
     tmp_path: Path,
