@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_slack_connector_pack",
-  "source_identity": "sha256:a03ae981cc8c9d9207dec4d9d84f35e8fc42a4e50089e77fde0a885607d0d2e8",
+  "source_identity": "sha256:d0e3b603a11433ec5354ae91ba28ed8bbd010c7d6c2fa1d3af8813582d85b900",
   "variants": [
     {
       "variant_id": "rumi_slack_connector_pack.connector-oauth.slack.python",
@@ -53,7 +53,7 @@
         {
           "contract_id": "tobkiri.service.connector.adapter.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:362a1de06940172d240027b87097478d5fae8625e7736df79dfb48218fe8d8c0",
+          "revision_digest": "sha256:638ef8248d9e0ec02c0bf335732bff3457ea32daeb5249ace4b3e71d89095320",
           "operation_id": "rumi_slack_connector_pack.slack-adapter",
           "input_schema": {
             "type": "object"
@@ -72,6 +72,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:bab83277d3a38fef5c8d88808f7cec31837d3c4e36583c3017e5f1356f213946",
-  "catalog_digest": "sha256:9e28b97f9635e2f622e1e5e3e06f0f198621520373c96f2a8b9d50fdb04f6423"
+  "materialization_catalog_digest": "sha256:23b1d69693c0daff3fa6602673c576576096c6caa80f0bd5672986089e266f8e",
+  "catalog_digest": "sha256:b8d2b1ef6a3e57e866ac12776294bc94541fd713047a2c3b61bf753b1437fd74"
 }

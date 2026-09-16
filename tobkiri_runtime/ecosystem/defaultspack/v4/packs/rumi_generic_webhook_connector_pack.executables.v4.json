@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_generic_webhook_connector_pack",
-  "source_identity": "sha256:a8054b183d38d936a0260f3da3a9ce54f010a58c7ad46f8953929677ee3a5288",
+  "source_identity": "sha256:6520365536e529defbf3c659ca8eccc43f47a40e329ceae424359e7c483ffff9",
   "variants": [
     {
       "variant_id": "rumi_generic_webhook_connector_pack.connector.generic_webhook.python",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.service.connector.adapter.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:5eae9a76d2b3cbf53169f42b64566e7b2e486c35db463adbf58d9220cb79b46e",
+          "revision_digest": "sha256:ad571b2fde969d5c216aa1ee17c10ce39021f20fd83fb66e9b0e02fa3b60210f",
           "operation_id": "rumi_generic_webhook_connector_pack.generic-webhook-adapter",
           "input_schema": {
             "type": "object"
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:5cbc65794b034a344d31229937f968f34ffef328e845d17cee6743739450bf26",
-  "catalog_digest": "sha256:9d2e1304f6f0b70d807e2bed0577bde3c909ae5c0a569799465fa44586717e40"
+  "materialization_catalog_digest": "sha256:21d5066856a0b2a7d2af20d6a32797f869398738285302f12d8e21d9c95a6d34",
+  "catalog_digest": "sha256:25deb34eee69278842ef6b1859e1c2b967f759efdd01b860912e0df3566aae73"
 }

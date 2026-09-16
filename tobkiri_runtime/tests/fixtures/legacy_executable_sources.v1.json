@@ -1168,6 +1168,30 @@
           }
         },
         {
+          "function_id": "rumi_command_protocol_pack.command.datasource",
+          "operation_ids": ["command.datasource.query"],
+          "contract_id": "tobkiri.resource.command.datasource.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/datasource.py",
+          "schemas": {
+            "input": {"additionalProperties": false, "properties": {"cursor": {"maxLength": 8, "pattern": "^[0-9]+$", "type": "string"}, "datasource_ref": {"enum": ["tobkiri:model_catalog", "tobkiri:provider_catalog"]}, "limit": {"maximum": 100, "minimum": 1, "type": "integer"}, "profile_id": {"maxLength": 128, "minLength": 1, "type": "string"}, "query": {"maxLength": 200, "type": "string"}, "request_id": {"maxLength": 160, "minLength": 1, "type": "string"}, "selected_values": {"items": {"maxLength": 256, "minLength": 1, "type": "string"}, "maxItems": 100, "type": "array"}}, "required": ["profile_id", "datasource_ref"], "type": "object"},
+            "output": {"type": "object"},
+            "error": {"type": "object"}
+          }
+        },
+        {
+          "function_id": "rumi_command_protocol_pack.command.state",
+          "operation_ids": ["command.state.query"],
+          "contract_id": "tobkiri.resource.command.state.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/state.py",
+          "schemas": {
+            "input": {"additionalProperties": false, "properties": {"profile_id": {"maxLength": 128, "minLength": 1, "type": "string"}, "state_refs": {"items": {"const": "defaultspack:models.deepthink_enabled"}, "maxItems": 16, "type": "array", "uniqueItems": true}}, "required": ["profile_id", "state_refs"], "type": "object"},
+            "output": {"type": "object"},
+            "error": {"type": "object"}
+          }
+        },
+        {
           "function_id": "rumi_command_protocol_pack.command.invoke",
           "operation_ids": [
             "command.invoke"

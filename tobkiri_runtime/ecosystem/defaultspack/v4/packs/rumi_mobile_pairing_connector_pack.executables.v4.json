@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_mobile_pairing_connector_pack",
-  "source_identity": "sha256:a2bc3fe654ded368cec2161a64faaf9f53f23a04a68f651caa7dc6fc67c1ed47",
+  "source_identity": "sha256:a8e481924ab02a38e53717addb5fb5b3b7bea92037274dcf498636a048fd0375",
   "variants": [
     {
       "variant_id": "rumi_mobile_pairing_connector_pack.connector.mobile_pairing.python",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.service.connector.adapter.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:1826a605996d2beef9d29c9f365f61f3c21a0d104779128f17430b5f3b2b6299",
+          "revision_digest": "sha256:afde263510cb01641f3135fe0e3cb2f0e5be239ca1ae3ff84778357f5fb61e18",
           "operation_id": "rumi_mobile_pairing_connector_pack.mobile-pairing-adapter",
           "input_schema": {
             "type": "object"
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:34d38dddabf1e5e7393606ab784266c97cf4a86c3c14e99593a2991fa719baab",
-  "catalog_digest": "sha256:493a076a76f7a7386e44f2d2ec5e610166479154b002f08ec73ef3b4741f7227"
+  "materialization_catalog_digest": "sha256:cb3777a42f34299a9ad41d9808adcd2c2555395d1efdd84ce686256add268517",
+  "catalog_digest": "sha256:c276ff79e6f6def625d14cf957f796db7953733bc8439ca46557cd1386f29f68"
 }

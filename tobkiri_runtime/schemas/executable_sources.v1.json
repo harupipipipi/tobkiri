@@ -4464,6 +4464,149 @@
       ],
       "variant_id": "rumi_command_protocol_pack.catalog.read.python"
     },
+    "rumi_command_protocol_pack.command.datasource": {
+      "contract_id": "tobkiri.resource.command.datasource.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_command_protocol_pack.command.datasource",
+      "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "implementation_path": "runtime/datasource.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "maxLength": 8,
+            "pattern": "^[0-9]+$",
+            "type": "string"
+          },
+          "datasource_ref": {
+            "enum": [
+              "tobkiri:model_catalog",
+              "tobkiri:provider_catalog"
+            ]
+          },
+          "limit": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "profile_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "selected_values": {
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile_id",
+          "datasource_ref"
+        ],
+        "type": "object"
+      },
+      "operation_id": "command.datasource.query",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.command.datasource.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "command.datasource.query",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+          "implementation_path": "runtime/datasource.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "maxLength": 8,
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "datasource_ref": {
+                "enum": [
+                  "tobkiri:model_catalog",
+                  "tobkiri:provider_catalog"
+                ]
+              },
+              "limit": {
+                "maximum": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "query": {
+                "maxLength": 200,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "selected_values": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              }
+            },
+            "required": [
+              "profile_id",
+              "datasource_ref"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "command.datasource.query",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_command_protocol_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_command_protocol_pack",
+      "pack_id": "rumi_command_protocol_pack",
+      "source": [
+        {
+          "entrypoint_id": "command.datasource.query",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_command_protocol_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_command_protocol_pack.command.datasource.python"
+    },
     "rumi_command_protocol_pack.command.invoke": {
       "contract_id": "tobkiri.action.command.invoke.v1",
       "contract_version": "1.0.0",
@@ -4619,74 +4762,95 @@
       ],
       "variant_id": "rumi_command_protocol_pack.command.invoke.python"
     },
-    "rumi_command_protocol_pack.command.datasource": {
-      "contract_id": "tobkiri.resource.command.datasource.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {"type": "object"},
-      "execution_kind": "source-verified",
-      "function_id": "rumi_command_protocol_pack.command.datasource",
-      "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
-      "implementation_path": "runtime/datasource.py",
-      "input_schema": {"type": "object"},
-      "operation_id": "command.datasource.query",
-      "operations": [{
-        "contract_id": "tobkiri.resource.command.datasource.v1",
-        "contract_version": "1.0.0",
-        "entrypoint_id": "command.datasource.query",
-        "error_schema": {"type": "object"},
-        "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
-        "implementation_path": "runtime/datasource.py",
-        "input_schema": {"type": "object"},
-        "kind": "canonical-v4-runtime",
-        "operation_id": "command.datasource.query",
-        "output_schema": {"type": "object"},
-        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/datasource.py",
-        "symbol": "HOST_PROVIDER_FACTORY"
-      }],
-      "output_schema": {"type": "object"},
-      "owner": "rumi_command_protocol_pack",
-      "pack_id": "rumi_command_protocol_pack",
-      "source": [{
-        "entrypoint_id": "command.datasource.query",
-        "kind": "canonical-v4-runtime",
-        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/datasource.py",
-        "symbol": "HOST_PROVIDER_FACTORY"
-      }],
-      "variant_id": "rumi_command_protocol_pack.command.datasource.python"
-    },
     "rumi_command_protocol_pack.command.state": {
       "contract_id": "tobkiri.resource.command.state.v1",
       "contract_version": "1.0.0",
-      "error_schema": {"type": "object"},
+      "error_schema": {
+        "type": "object"
+      },
       "execution_kind": "source-verified",
       "function_id": "rumi_command_protocol_pack.command.state",
       "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
       "implementation_path": "runtime/state.py",
-      "input_schema": {"type": "object"},
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "state_refs": {
+            "items": {
+              "const": "defaultspack:models.deepthink_enabled"
+            },
+            "maxItems": 16,
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "profile_id",
+          "state_refs"
+        ],
+        "type": "object"
+      },
       "operation_id": "command.state.query",
-      "operations": [{
-        "contract_id": "tobkiri.resource.command.state.v1",
-        "contract_version": "1.0.0",
-        "entrypoint_id": "command.state.query",
-        "error_schema": {"type": "object"},
-        "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
-        "implementation_path": "runtime/state.py",
-        "input_schema": {"type": "object"},
-        "kind": "canonical-v4-runtime",
-        "operation_id": "command.state.query",
-        "output_schema": {"type": "object"},
-        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/state.py",
-        "symbol": "HOST_PROVIDER_FACTORY"
-      }],
-      "output_schema": {"type": "object"},
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.command.state.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "command.state.query",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+          "implementation_path": "runtime/state.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "state_refs": {
+                "items": {
+                  "const": "defaultspack:models.deepthink_enabled"
+                },
+                "maxItems": 16,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "profile_id",
+              "state_refs"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "command.state.query",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_command_protocol_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
       "owner": "rumi_command_protocol_pack",
       "pack_id": "rumi_command_protocol_pack",
-      "source": [{
-        "entrypoint_id": "command.state.query",
-        "kind": "canonical-v4-runtime",
-        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/state.py",
-        "symbol": "HOST_PROVIDER_FACTORY"
-      }],
+      "source": [
+        {
+          "entrypoint_id": "command.state.query",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_command_protocol_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
       "variant_id": "rumi_command_protocol_pack.command.state.python"
     },
     "rumi_command_protocol_pack.high-risk-command.service": {
@@ -15701,7 +15865,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 202,
-    "input_digest": "sha256:80b8af91a32d826f4e4f7a64b3c51ded34c787520856a964ee5fb046360a60ae",
+    "input_digest": "sha256:b8ccc3eae3886bbfb72e8b97b80015d21737ef56eb0cd16acb7fffca405594d7",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -16438,7 +16602,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:eb07d1571284edfacc551a63c08bb6ebd36b9ac22e8e4c3551285307f61b0794",
+        "digest": "sha256:6c6152000b756f6b45cb31b97b040624d4910271b4ee31f366a13d73f3d10a81",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -16513,7 +16677,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:ccba1cc5049b153cc31cc5a618c220d8355c6e8fa931fba292690d5e58a48fdf",
+        "digest": "sha256:9e06f966a25f4b466a96d00a6a82245ec8ed6adea5d46c6335701cb28e05c4ef",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json"
       },
@@ -16563,7 +16727,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_connector_transport_gateway_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:8e1361c2a012c258cc1868dc28903a684b46d029988d97d647c93d93431926f0",
+        "digest": "sha256:1aa2fe43fe8748388537fdd5ab7f17c470d049ff6688779f63062e1f156553dc",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/rumi.pack.v3.json"
       },
@@ -16608,7 +16772,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:9403e6a78774ccec9a0803c0c9a1b1825a08db237c54540d0e99dacaa1fa72af",
+        "digest": "sha256:989a3b59b404be5dc3726514edc0fcc6de9e0d7b662661b374f4a303cbdef06f",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_email_connector_pack/rumi.pack.v3.json"
       },
@@ -16628,7 +16792,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_file_patch_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:0bf096d9c3e21b1a4ec1c5bf30e01240a10dd056972d52c35f8627434097a774",
+        "digest": "sha256:0697a067f772201407f6f4bb49fe248888456318af166ec43d0b61096305e7eb",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/rumi.pack.v3.json"
       },
@@ -16653,7 +16817,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:d756784766f0438afbb1e102715939a32861555aa7e6fbf41152a748a3694297",
+        "digest": "sha256:972b92ea96fd22f7b83faed000c46f535e413c8768b92979176a275774e85cb3",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/rumi.pack.v3.json"
       },
@@ -16693,7 +16857,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_knowledge_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:63c36d7e4ee2e6da0f35ab074b8c357b4980860de604dc5534c23b7485f87e4a",
+        "digest": "sha256:5d93e6957f5503e4ad8a70ec1c57f7e2f113c9897d417b55288c12f3cac4f052",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_line_connector_pack/rumi.pack.v3.json"
       },
@@ -16728,7 +16892,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_memory_store_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:aa9dd24dcc93d12e4831e89e412106480cca62643117409f6a2b7220c5a23b6a",
+        "digest": "sha256:66daf9b360d486f514bcd4876970a6a7899c8f60377ab148c405972db02e6f51",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/rumi.pack.v3.json"
       },
@@ -16753,7 +16917,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_office_authoring_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:f82876a93ceab1f4c0b9b2fab8e822612a51f81508ed4ff231d6d8410ffbc687",
+        "digest": "sha256:779903e3d11d86a54936787c4b637ab23701d232cadd494755b4b7777e74b02b",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/rumi.pack.v3.json"
       },
@@ -16773,7 +16937,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_provider_registry_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:f822cba910baa2e7a17804b63a3791748af123c14d03644a804475647a1bdc39",
+        "digest": "sha256:3b6656c471ae1fa60a00812bbea7a2e3bf88a6649e3ea09040a4d1eb85258225",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/rumi.pack.v3.json"
       },
@@ -16818,7 +16982,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:5d6f828537720024045cb652130aa53566588c785b0f8c089aa3f96b693acb68",
+        "digest": "sha256:1bb35d06f7e486c4b56959d456ec64a2f7c30898c0da4eb0228e24c43a85143c",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/rumi.pack.v3.json"
       },

@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_connector_turn_adapter_pack",
-  "source_identity": "sha256:6c74571d0ac31d0dd3dd18805a28bb750b7556a8cf053210e7455ef46f956193",
+  "source_identity": "sha256:05414f56638feb3579a7c3f89543fa74b942eeaf9ad98645f701d9d41e2d3199",
   "variants": [
     {
       "variant_id": "rumi_connector_turn_adapter_pack.connector-route.turn.python",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.action.connector.route.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:167234533d7a186c52c03304bd4c336a212d4d8ecf6c816feb0fb51acf9de2db",
+          "revision_digest": "sha256:33d2789fcd1a5bf1ff4b52597daeef29f1692a7fe1e9e0c7764ddc37295b9d9d",
           "operation_id": "rumi_connector_turn_adapter_pack.connector-turn-route",
           "input_schema": {
             "type": "object"
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:209c46ead3d8ab044560245bf4359a3de967051a116446cebb27f267a84e9ee8",
-  "catalog_digest": "sha256:66ef8fa2686e045e259face7bde6b15db93addeddcd777eff304f50c78f4283d"
+  "materialization_catalog_digest": "sha256:ea53fa7e130af7a6d05355ab410becbd6f36fb29789a6d316848277d635a9a40",
+  "catalog_digest": "sha256:45574e646c2756c6facc3a80a875ec043854668a0e59e231af422d4f71cd94c3"
 }

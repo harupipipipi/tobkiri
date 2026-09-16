@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_company_coordinator_pack",
-  "source_identity": "sha256:76f9c14a45eb30c4908b6dc2d98f630f937cb14a6e7fa8c11388efa34dec6ad4",
+  "source_identity": "sha256:647a077a290d7c74d3a238d1563ebfe3cc5f7a09d58decffd7110b92bc106448",
   "variants": [
     {
       "variant_id": "rumi_company_coordinator_pack.company.coordinator.python",
@@ -87,7 +87,7 @@
         {
           "contract_id": "tobkiri.action.job.adapter.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:c4488f4e1cde0fb205037f384949ded4ef8db28cbd88bbec6935ac0c08b72e79",
+          "revision_digest": "sha256:cda76ede5258c3305d4786a5b48255737d4dff5862579f8f7befaa023c4469f3",
           "operation_id": "rumi_company_coordinator_pack.company-supervisor-job-adapter",
           "input_schema": {
             "type": "object"
@@ -106,6 +106,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:507bdfe00311392f3a0b3018c50ea099c9c850a1de62f0025ad31396170df24a",
-  "catalog_digest": "sha256:cc0fdc4b1ae87c9cc99c8873340b0f01eef80cc81b950b5e0b3e944a1596e2bd"
+  "materialization_catalog_digest": "sha256:68b56dcd4bda7eb787bb18b717fea651658bdfb39837745e8924c8597db009eb",
+  "catalog_digest": "sha256:dd63cdeb421327c68713f306623c3778e55f8829adff707d12805af51947bd9b"
 }

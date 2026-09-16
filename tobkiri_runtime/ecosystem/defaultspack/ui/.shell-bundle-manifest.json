@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "78d3b66a3558de4acc6b6fffbf233cacbd0252b4f3ec451481fbd13f0346af76",
+    "digest": "4a370e5eadec24c36ed20a69fcdc2c78aea82555e240883fe6f2352eb684dd22",
     "entries": [
       {
         "path": "index.html",
@@ -1125,13 +1125,13 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 147229,
-        "sha256": "251a142bdc461bebbd44d700a68b60c3ffe91f23aae68c85d165071fee52e23c"
+        "size": 146332,
+        "sha256": "51bcfa8f1390b3bf15abf141c7341fa10f564bbfc92833362a3aba33ca66622b"
       },
       {
         "path": "src/lib/api.ts",
-        "size": 201026,
-        "sha256": "d3c706b4c7c8aca2c85d60ed2332329ab0ed8334d2b07f00a7a81b7acdd28e80"
+        "size": 199427,
+        "sha256": "2f63af3892896c4f44f342defcc118c31ac375c99e0551b34043586be37675d4"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1931,7 +1931,7 @@
     ]
   },
   "bundle": {
-    "digest": "a4511caff2429e56f4daba7f82055113864aaaf9964fdd6afcd2c14cbaf8c36d",
+    "digest": "eb0bf93f2c6f90fafed6d2308ba9d8fb4d498dcb0c166652d7b844bb151aaed3",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1945,8 +1945,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2236172,
-        "sha256": "7f3f589231a13ab2f505735c460c464397196888dd9d6e2ec7a47e7b4d368e73"
+        "size": 2235518,
+        "sha256": "3a04794aaf0c40e5511829ab8b8954f88b45a02525e73d0c0215698064536d2f"
       },
       {
         "path": "shell-rolldown-runtime.js",

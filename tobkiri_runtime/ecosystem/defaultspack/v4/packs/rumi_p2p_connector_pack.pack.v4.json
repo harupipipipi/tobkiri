@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:6b5f074d719780f724de9039380848740a5f1fbdbb680a6dbec5bae9eb346ca2",
+      "digest": "sha256:ced68f73b5227003f134cddab09cce823becaad68bb58bd8965b6765f48bae97",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -17,12 +17,12 @@
       "operations": [
         "rumi_p2p_connector_pack.p2p-adapter"
       ],
-      "revision_digest": "sha256:d849d7823f6c554baa0e67ff56c05a29254c90dbf03ea4e7202211db9cf0c215"
+      "revision_digest": "sha256:e8c916567305b553c45587ebec10284c673e8a5fad8cf7232c21e93d902cc1cf"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:d849d7823f6c554baa0e67ff56c05a29254c90dbf03ea4e7202211db9cf0c215",
+      "contract_revision_digest": "sha256:e8c916567305b553c45587ebec10284c673e8a5fad8cf7232c21e93d902cc1cf",
       "id": "rumi_p2p_connector_pack.connector.p2p",
       "implementation_digest": "sha256:08de45459e7857a492a480fdf6a028dac404c58c53a81978c2a5a40002497fcb",
       "isolation": "dedicated_process",
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:b1b3592f796a0c9ce093bdb828fb15bdd8677b1f7957d971539216c9d8172b39",
-    "artifact_set_digest": "sha256:935579a5e4931bffb140e061e01766b0ca2e469b6d3b989fd01f9dd723356906",
-    "contract_catalog_digest": "sha256:959e219903db18041a1fa9f26605eb936a42fe7b43fd8e0fb982772463d8dddb"
+    "source_identity": "sha256:1c0435af1b1b6b55130766390eabd4f7cd7ab89bed25fe33c254ebec0971dd74",
+    "artifact_set_digest": "sha256:bb578f7948d56506a0852a8fb0367df995e1ee7bc6c5672148a713213d98262d",
+    "contract_catalog_digest": "sha256:15166744704777dce2d4c59769f7fc84a684557d950f42addbf75f8c07717e9b"
   },
   "migration": {
     "compatibility": "read_only",
@@ -58,7 +58,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:ac8d258e3ed2603dd077627ea682a7789b2d6997804ab44a2c57cea46fbaae4b",
+    "artifact_digest": "sha256:ce6cf26ceec620851acabf7e34a2fbcd63d57880912c48c317ec626790250067",
     "display_name": "Rumi P2P Connector",
     "id": "rumi_p2p_connector_pack",
     "kind": "host_extension",
@@ -69,15 +69,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_p2p_connector_pack/pack.v4.json",
-    "source_digest": "sha256:b1b3592f796a0c9ce093bdb828fb15bdd8677b1f7957d971539216c9d8172b39",
+    "source_digest": "sha256:1c0435af1b1b6b55130766390eabd4f7cd7ab89bed25fe33c254ebec0971dd74",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:7b4465afedced53dd5dcc6fdd30830977ff4aea80d7ccd9125e15081110cffab",
+    "content_root_digest": "sha256:b56ef2b3c1ce52fbb71b2ee3eb773caf25cb01e0896bcdf75f330fea27bff07a",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:9248375d433182a52da419661ab0530983e2008dc7425468d45d22ab737cf709",
+    "input_inventory_digest": "sha256:e1d5a357d6f4f009439f82120752effebc12f6e08213b40caba86852f7904e70",
     "normative": true,
     "evidence": [
       {
@@ -88,7 +88,7 @@
       {
         "path": "ecosystem/rumi_p2p_connector_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:b1b3592f796a0c9ce093bdb828fb15bdd8677b1f7957d971539216c9d8172b39"
+        "digest": "sha256:1c0435af1b1b6b55130766390eabd4f7cd7ab89bed25fe33c254ebec0971dd74"
       }
     ]
   },

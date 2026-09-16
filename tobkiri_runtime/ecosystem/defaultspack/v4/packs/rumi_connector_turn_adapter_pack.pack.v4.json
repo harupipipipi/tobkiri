@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:826b5eb451de9cb5df31ae8dc61b397dac67e84032e02836d78bb8bedaa27b16",
+      "digest": "sha256:dade256c3b1c6eac1252fe4ddc150cf21b4cbca9b247d789b23a51e0dbcc79d0",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -17,12 +17,12 @@
       "operations": [
         "rumi_connector_turn_adapter_pack.connector-turn-route"
       ],
-      "revision_digest": "sha256:167234533d7a186c52c03304bd4c336a212d4d8ecf6c816feb0fb51acf9de2db"
+      "revision_digest": "sha256:33d2789fcd1a5bf1ff4b52597daeef29f1692a7fe1e9e0c7764ddc37295b9d9d"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:167234533d7a186c52c03304bd4c336a212d4d8ecf6c816feb0fb51acf9de2db",
+      "contract_revision_digest": "sha256:33d2789fcd1a5bf1ff4b52597daeef29f1692a7fe1e9e0c7764ddc37295b9d9d",
       "id": "rumi_connector_turn_adapter_pack.connector-route.turn",
       "implementation_digest": "sha256:d3a22819c65248246b22b225fb9a1d268e89321cf7a624cefa1e36c00bd0472b",
       "isolation": "dedicated_process",
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:6c74571d0ac31d0dd3dd18805a28bb750b7556a8cf053210e7455ef46f956193",
-    "artifact_set_digest": "sha256:2da8bea8d57a386b53c77e7f19550c0dafec407df86e1ebee641d4e54c098a60",
-    "contract_catalog_digest": "sha256:b32f4cbf71b2da024fddc3d3f72f2d4614d3d85ec160bc4203d8d0714e1b76f0"
+    "source_identity": "sha256:05414f56638feb3579a7c3f89543fa74b942eeaf9ad98645f701d9d41e2d3199",
+    "artifact_set_digest": "sha256:2f959f4e8ffa5e03e459bd8870a0682093dd01e361d07b81ee727c365d916869",
+    "contract_catalog_digest": "sha256:96f30f44326bbec56f8eeb8e05b3112a7eaeca77191eb45f592f83ae9d7da58f"
   },
   "migration": {
     "compatibility": "read_only",
@@ -58,7 +58,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:82b678e022f3b3df5f6f19ec5f7f3c74866ed7b5185b47ee3e73e889fdc2a29f",
+    "artifact_digest": "sha256:40f9e3fbfdc6c3fa14add5a27a85df03451808e07eaed50e59be6b608fe3951e",
     "display_name": "Rumi Connector Turn Adapter",
     "id": "rumi_connector_turn_adapter_pack",
     "kind": "normal_sandbox",
@@ -69,15 +69,15 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/rumi_connector_turn_adapter_pack/pack.v4.json",
-    "source_digest": "sha256:6c74571d0ac31d0dd3dd18805a28bb750b7556a8cf053210e7455ef46f956193",
+    "source_digest": "sha256:05414f56638feb3579a7c3f89543fa74b942eeaf9ad98645f701d9d41e2d3199",
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:fff73e047ce45ddc978b467183f39f8761ccc02abbad23257554dedcc5aa3c6b",
+    "content_root_digest": "sha256:b92be28c3a8e5a01d589947af8ec0616fa9d9de723cab83ba5b0816a61d11acb",
     "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
     "generator_version": "2.1.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
     "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:53745239a767de02d1e711be82d89153560e0d5ec207417a13d562c5328f8409",
+    "input_inventory_digest": "sha256:2d9cb3ee515e7a8ab209c5c3b31bbdac6699cca385cc02868ea7aeff32c25034",
     "normative": true,
     "evidence": [
       {
@@ -88,7 +88,7 @@
       {
         "path": "ecosystem/rumi_connector_turn_adapter_pack/pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:6c74571d0ac31d0dd3dd18805a28bb750b7556a8cf053210e7455ef46f956193"
+        "digest": "sha256:05414f56638feb3579a7c3f89543fa74b942eeaf9ad98645f701d9d41e2d3199"
       }
     ]
   },

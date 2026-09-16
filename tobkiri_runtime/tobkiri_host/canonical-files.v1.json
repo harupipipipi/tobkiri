@@ -3,6 +3,7 @@
   "files": [
     "README.md",
     "__init__.py",
+    "acceptance_receipts.py",
     "admission.py",
     "artifact_compiler.py",
     "artifact_materialization.py",

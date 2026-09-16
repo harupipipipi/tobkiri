@@ -913,7 +913,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/ecosystem.json",
-          "sha256": "79edaf8ff0d42572169d26b332878d7391fb41ee23d512fea5bb40fd3abfd08e"
+          "sha256": "59120a46cfc2a9dac94572d17999387db8ca9d2bfa464843e02ce29153c3e167"
         }
       ]
     },
@@ -1201,7 +1201,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/ecosystem.json",
-          "sha256": "b8c706ec13ed26b224df603f23c146184a6ef5d4a28584addfdbfe7a6af4e88a"
+          "sha256": "78dca2c77456068f282288c203a756b0a9596e74b0a6baf3f59e8e45856cf123"
         }
       ]
     },
@@ -1489,7 +1489,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_email_connector_pack/ecosystem.json",
-          "sha256": "9c050e32171a6c1799b0bded5b35e9573bc6abe1769b131f8b3285d2ea42c6a3"
+          "sha256": "1cdf83f217449850ee065e07afddb0366dc0d4b330d3fc8071aca4d229686879"
         }
       ]
     },
@@ -1657,7 +1657,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/ecosystem.json",
-          "sha256": "0160cb7f7d282ca599a1a28adc43e2b71f90d0ea46784fc32524a9fbcaaf20b8"
+          "sha256": "a265edb965642cf46b1cc91459e5fc668e1a11963553d11c26ac243c5c7a4b94"
         }
       ]
     },
@@ -1801,7 +1801,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/ecosystem.json",
-          "sha256": "24bd130125dc1c64e7f1210dcf3253b0fe2f4b07f07191c9d0a13ff253a93a7a"
+          "sha256": "e284e7e36986971fc9926240a1c482e677c4ef8a3eebe344a641400456b61a40"
         }
       ]
     },
@@ -2017,7 +2017,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_line_connector_pack/ecosystem.json",
-          "sha256": "1c8766d5b0c4de3b45cf04336087c0ff3540b42a4a67359246df6d3199a15510"
+          "sha256": "f5f70ba863ed15205d4466777d4fddb2ef9248e929b59ab549d6b46d025084eb"
         }
       ]
     },
@@ -2257,7 +2257,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/ecosystem.json",
-          "sha256": "112e8011f5f28e5677fa605f4ec6da1395c3fdaab9195e4847ecd28793d696f3"
+          "sha256": "0fe7b01647a2c9e2144dfc9c95b4fe54856ee47efb06c887da9bd8069422db26"
         }
       ]
     },
@@ -2473,7 +2473,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/ecosystem.json",
-          "sha256": "d9c27fed1b641d0958ea59ea7695e6572123e1ffc69b9f92e1a6729955128b0b"
+          "sha256": "daa9c5107d416b38bfa91325ebb9b834d9cd34ec58e4b6dba62f18ee8685c9b7"
         }
       ]
     },
@@ -2569,7 +2569,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/ecosystem.json",
-          "sha256": "0274b7e2984b3a41b8de5c4f292cc613b52b30cccf9e728718b93bccbfd773d8"
+          "sha256": "16b578bca8178be038a42a2587126d97260e9f5ca492b61ce90fb3859f947c7f"
         }
       ]
     },
@@ -2857,7 +2857,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/ecosystem.json",
-          "sha256": "1f4a7bb7d346135867f8a6f498226b75448b6cc1369bb0ed5175a27699fc4ce4"
+          "sha256": "a487ef4c8d7a16b2f5013149f3477e572db92993cc26749f133b59be7e5b06a4"
         }
       ]
     },

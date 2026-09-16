@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_qr_pairing_connector_pack",
-  "source_identity": "sha256:63b96e30f7ddbbdac762b76fa4b16898eec6ce1305484318f1ac023866e003e9",
+  "source_identity": "sha256:b4825009c07412b10e28732fb45ae3f38fcc860faa40191b9438a62629f27c31",
   "variants": [
     {
       "variant_id": "rumi_qr_pairing_connector_pack.connector.qr_pairing.python",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.service.connector.adapter.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:4ae4f5aebae13501d88b1c7aab9172e79147981842aea670ec65931e99d2e7f2",
+          "revision_digest": "sha256:1170da2034ee00c86eaef202042775ead28cb71c4ef100b3d2aac7c9a6ac2b63",
           "operation_id": "rumi_qr_pairing_connector_pack.qr-pairing-adapter",
           "input_schema": {
             "type": "object"
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:8c209b6a0286f4f86693a50680a0c32e3ee51027e0aba40fedc71d9b9601a335",
-  "catalog_digest": "sha256:620d99214af6263f514906f508976fd458c59f37bde8dd8f24a9cd89be274dc5"
+  "materialization_catalog_digest": "sha256:3ed859a7db80902fc43a98bf98b2aad96e654b131de14bfaf8c5ec4b7d9acdc2",
+  "catalog_digest": "sha256:2447644a3edfdeeade3082509de1c5baf62810e1516a7e42245f3cf7d9414f16"
 }

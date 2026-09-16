@@ -168,7 +168,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:9c19ae3e5faa85871114ed4087ae918881e9557400dce89f93fe743f98306d2d",
+    "source_digest": "sha256:8d6054d8d0655e7d673a02e9f237caaf9421e524ea099cb3a02876f8736dd7b7",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",

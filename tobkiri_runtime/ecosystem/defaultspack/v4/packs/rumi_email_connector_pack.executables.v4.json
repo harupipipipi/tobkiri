@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_email_connector_pack",
-  "source_identity": "sha256:557f14e4dda30c53b1c502ddea3e92f4a2342cfb530b6b22c976bec8a45cac0b",
+  "source_identity": "sha256:e583987cec38108c2eb44e3e5c97204eedde4ce8bf2a88f86ffad46f733c0a38",
   "variants": [
     {
       "variant_id": "rumi_email_connector_pack.connector.email.python",
@@ -19,7 +19,7 @@
         {
           "contract_id": "tobkiri.service.connector.adapter.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:2e20ec5fff93e52c1d8d053a373deb01469ce3c9151cf0137de5052ef1262aa5",
+          "revision_digest": "sha256:fa9f4c7c3c713f8b16802cdd6968cc6ef67ed57b97e2edf3a99f3e1017c4d018",
           "operation_id": "rumi_email_connector_pack.email-adapter",
           "input_schema": {
             "type": "object"
@@ -38,6 +38,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:ba036ae4e668ab8339402dd095dccb5d1a8610284bcdf569f24e4f83693249c9",
-  "catalog_digest": "sha256:c89145d16d454d3263ec81544fa734d2e67d24f19841f4cd3b1aface1225588e"
+  "materialization_catalog_digest": "sha256:b877ddd76ab63e434a22ba1cd7ad27e4a21f200e42c6a9d9bddabca15e0ca4be",
+  "catalog_digest": "sha256:424b29dddd03700574d59c73953268a98a70b109b708ed91d779285234c5c428"
 }
