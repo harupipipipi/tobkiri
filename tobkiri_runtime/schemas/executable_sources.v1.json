@@ -4464,6 +4464,161 @@
       ],
       "variant_id": "rumi_command_protocol_pack.catalog.read.python"
     },
+    "rumi_command_protocol_pack.command.invoke": {
+      "contract_id": "tobkiri.action.command.invoke.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_command_protocol_pack.command.invoke",
+      "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+      "implementation_path": "runtime/invoke.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "args": {
+            "maxProperties": 0,
+            "type": "object"
+          },
+          "catalog_revision": {
+            "maxLength": 160,
+            "type": "string"
+          },
+          "client_sequence": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "command_ref": {
+            "const": "defaultspack:help"
+          },
+          "conversation_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "invocation_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "chat",
+              "coding",
+              "agent"
+            ]
+          },
+          "profile_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "command_ref",
+          "args",
+          "invocation_id",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "operation_id": "command.invoke",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.command.invoke.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "command.invoke",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+          "implementation_path": "runtime/invoke.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "args": {
+                "maxProperties": 0,
+                "type": "object"
+              },
+              "catalog_revision": {
+                "maxLength": 160,
+                "type": "string"
+              },
+              "client_sequence": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "command_ref": {
+                "const": "defaultspack:help"
+              },
+              "conversation_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "idempotency_key": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "invocation_id": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "chat",
+                  "coding",
+                  "agent"
+                ]
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "command_ref",
+              "args",
+              "invocation_id",
+              "mode"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "command.invoke",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_command_protocol_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_command_protocol_pack",
+      "pack_id": "rumi_command_protocol_pack",
+      "source": [
+        {
+          "entrypoint_id": "command.invoke",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_command_protocol_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_command_protocol_pack.command.invoke.python"
+    },
     "rumi_command_protocol_pack.high-risk-command.service": {
       "contract_id": "tobkiri.service.command.high-risk.v1",
       "contract_version": "1.0.0",
@@ -13617,6 +13772,194 @@
       ],
       "variant_id": "tobkiri.host.pack-control.python"
     },
+    "tobkiri.project.state.read": {
+      "contract_id": "tobkiri.resource.project.state.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.project.state.read",
+      "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "implementation_path": "runtime/projects.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.projects-read",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.project.state.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.projects-read",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+          "implementation_path": "runtime/projects.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.projects-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.projects-read",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.project.state.read.python"
+    },
+    "tobkiri.project.state.replace": {
+      "contract_id": "tobkiri.action.project.state.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.project.state.replace",
+      "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "implementation_path": "runtime/projects.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "migration_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "mutation_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "projects": {
+            "items": {
+              "type": "object"
+            },
+            "maxItems": 256,
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile_id",
+          "projects",
+          "expected_revision",
+          "mutation_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.projects-replace",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.project.state.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.projects-replace",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+          "implementation_path": "runtime/projects.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "migration_digest": {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "mutation_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "projects": {
+                "items": {
+                  "type": "object"
+                },
+                "maxItems": 256,
+                "type": "array"
+              }
+            },
+            "required": [
+              "profile_id",
+              "projects",
+              "expected_revision",
+              "mutation_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.projects-replace",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.projects-replace",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.project.state.replace.python"
+    },
     "tobkiri.ui.catalog.read": {
       "contract_id": "tobkiri.resource.ui.settings.v1",
       "contract_version": "1.0.0",
@@ -14582,7 +14925,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 202,
-    "input_digest": "sha256:f9de16a410602d01e1ea0590e9f3588c18112ab8e1be9c2715632de075ad5f30",
+    "input_digest": "sha256:9a0bf3856fb7b774c22ebb44782c54fdd8b43879ee270544181b8c681ef74bcf",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -15319,7 +15662,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:3551fc0e96798bcaea80839c80ea33bc86fa4dfe458380716d6a9f340d53909d",
+        "digest": "sha256:24d91b0cc454838c440069316f4584e9479b99ef0977f48eac7de6023ca803ed",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },

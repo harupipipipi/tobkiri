@@ -1156,6 +1156,78 @@
           }
         },
         {
+          "function_id": "rumi_command_protocol_pack.command.invoke",
+          "operation_ids": [
+            "command.invoke"
+          ],
+          "contract_id": "tobkiri.action.command.invoke.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/invoke.py",
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "args": {
+                  "maxProperties": 0,
+                  "type": "object"
+                },
+                "catalog_revision": {
+                  "maxLength": 160,
+                  "type": "string"
+                },
+                "client_sequence": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "command_ref": {
+                  "const": "defaultspack:help"
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "idempotency_key": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "invocation_id": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "mode": {
+                  "enum": [
+                    "chat",
+                    "coding",
+                    "agent"
+                  ]
+                },
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "command_ref",
+                "args",
+                "invocation_id",
+                "mode"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
           "function_id": "rumi_command_protocol_pack.high-risk-command.service",
           "operation_ids": [
             "high_risk_command.manage"
@@ -1179,6 +1251,89 @@
     },
     "tobkiri_ui_settings_pack": {
       "entries": [
+        {
+          "function_id": "tobkiri.project.state.read",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.projects-read"
+          ],
+          "contract_id": "tobkiri.resource.project.state.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/projects.py",
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
+        {
+          "function_id": "tobkiri.project.state.replace",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.projects-replace"
+          ],
+          "contract_id": "tobkiri.action.project.state.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/projects.py",
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "expected_revision": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "migration_digest": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "mutation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "profile_id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "projects": {
+                  "items": {
+                    "type": "object"
+                  },
+                  "maxItems": 256,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "profile_id",
+                "projects",
+                "expected_revision",
+                "mutation_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
+        },
         {
           "function_id": "tobkiri.ui.preferences.write",
           "operation_ids": [
