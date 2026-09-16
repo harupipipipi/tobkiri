@@ -3260,6 +3260,13 @@
       "executable": false
     },
     {
+      "path": "scripts/generate_packvm_sandbox_qa_pack.py",
+      "type": "regular-file",
+      "size": 12223,
+      "sha256": "9f6f7baa2330853b1fe6bb15332208371ab8d87b9fd81d04eb792f8725518f61",
+      "executable": false
+    },
+    {
       "path": "scripts/generate_profile_artifacts.py",
       "type": "regular-file",
       "size": 35679,

@@ -12,6 +12,8 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from acceptance.packvm_sandbox_acceptance import run_live_acceptance
+from scripts.generate_packvm_sandbox_qa_pack import build_documents
+from tobkiri_host.artifact_compiler import compile_pack_root
 from acceptance.packvm_sandbox_qa_pack.runtime import probe
 from core_runtime.pack_signature import (
     build_signed_manifest,
@@ -142,6 +144,20 @@ def test_acceptance_pack_source_stays_outside_production_catalog() -> None:
     fixture = root / "acceptance" / "packvm_sandbox_qa_pack"
     assert fixture.is_dir()
     assert not (root / "ecosystem" / "tobkiri_packvm_sandbox_qa_pack").exists()
+
+
+def test_acceptance_pack_generated_v4_artifacts_are_current_and_packvm_only() -> None:
+    root = Path(__file__).resolve().parents[1]
+    fixture = root / "acceptance" / "packvm_sandbox_qa_pack"
+    documents = build_documents(fixture)
+    for name, expected in documents.items():
+        assert json.loads((fixture / name).read_text(encoding="utf-8")) == expected
+    compiled = compile_pack_root(fixture)
+    assert compiled.artifact.pack_id == "tobkiri_packvm_sandbox_qa_pack"
+    assert not documents["pack.v4.json"]["requirements"]["capabilities"]
+    assert {
+        variant.execution_kind.value for variant in compiled.artifact.variants
+    } == {"pack_vm"}
 
 
 def test_acceptance_pack_is_signable_without_gaining_authority() -> None:
