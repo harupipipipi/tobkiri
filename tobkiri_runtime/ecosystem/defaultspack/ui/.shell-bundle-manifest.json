@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "a25cb6c7667225d4d420c6366816c5bc9d685ac1b54d00e997e20478d7fc07d2",
+    "digest": "3ebd15926d2168ec66798aa67f600a43a9cd83b4209f7753f67e635011d10f95",
     "entries": [
       {
         "path": "index.html",
@@ -1125,8 +1125,8 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 142632,
-        "sha256": "21e52030865534861678e49ea061ff889f8ef1a466dc213b58fd1129e0bafcaf"
+        "size": 142981,
+        "sha256": "387ffb13ae74989b84cd886ccbae8479afe0fb3b02cd322de98bf21e3bcf0c8d"
       },
       {
         "path": "src/lib/api.ts",
