@@ -51,6 +51,9 @@ struct DiagnosticResponse<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostTermination {
     Completed,
+    InputLimitRejected,
+    OutputLimitRejected,
+    ErrorLimitRejected,
     DeadlineExpired,
     AuthenticatedCancel,
     AbnormalExit(i32),
@@ -211,13 +214,13 @@ fn project_host_evidence(evidence: HostExecutionEvidence) -> Result<serde_json::
     }
     let outcome = match evidence.scenario.as_str() {
         "probe_isolation" if evidence.termination == HostTermination::Completed => "denied",
-        "stdin_overflow" if evidence.termination == HostTermination::Completed => {
+        "stdin_overflow" if evidence.termination == HostTermination::InputLimitRejected => {
             "input_limit_rejected"
         }
-        "stdout_overflow" if evidence.termination == HostTermination::Completed => {
+        "stdout_overflow" if evidence.termination == HostTermination::OutputLimitRejected => {
             "output_limit_rejected"
         }
-        "stderr_overflow" if evidence.termination == HostTermination::Completed => {
+        "stderr_overflow" if evidence.termination == HostTermination::ErrorLimitRejected => {
             "error_limit_rejected"
         }
         "original_deadline"
@@ -328,6 +331,21 @@ mod tests {
     #[test]
     fn terminal_outcomes_require_typed_host_proof() {
         let cases = [
+            (
+                "stdin_overflow",
+                HostTermination::InputLimitRejected,
+                "input_limit_rejected",
+            ),
+            (
+                "stdout_overflow",
+                HostTermination::OutputLimitRejected,
+                "output_limit_rejected",
+            ),
+            (
+                "stderr_overflow",
+                HostTermination::ErrorLimitRejected,
+                "error_limit_rejected",
+            ),
             (
                 "original_deadline",
                 HostTermination::DeadlineExpired,

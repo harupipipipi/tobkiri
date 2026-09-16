@@ -34,6 +34,7 @@ from .errors import (
     AuditUnavailableError,
     AuthorizationError,
     ProviderExecutionError,
+    PackVMAcceptanceError,
     RequestTimedOutError,
     RequestCancellationRequestedError,
     ResolutionError,
@@ -348,7 +349,17 @@ class RequestBroker:
 
         if self._acceptance_receipts is None:
             raise PermissionError("PackVM acceptance receipt port is unavailable")
-        return self._acceptance_receipts.take(request_id, nonce)
+        return self._acceptance_receipts.take(
+            request_id,
+            nonce,
+            timeout_seconds=30.0,
+        )
+
+    @property
+    def acceptance_receipts_enabled(self) -> bool:
+        """Return whether this capture owns the gated CI/E2E receipt ledger."""
+
+        return self._acceptance_receipts is not None
 
     def invoke(
         self,
@@ -360,6 +371,7 @@ class RequestBroker:
         parent_deadline_monotonic: float | None = None,
         parent_cancellation: threading.Event | None = None,
         parent_cancellation_proof: NestedCancellationProof | None = None,
+        before_dispatch: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Resolve, admit, materialize, authorize, dispatch, and validate."""
         with self._lifecycle_lock:
@@ -408,7 +420,7 @@ class RequestBroker:
             context,
             effect_scope=effect_scope,
             monotonic_clock=time.monotonic,
-            before_dispatch=None,
+            before_dispatch=before_dispatch,
             cancellation_requested=parent_cancellation,
             nested_cancellation_proof=parent_cancellation_proof,
         )
@@ -991,12 +1003,25 @@ class RequestBroker:
             raise
         except Exception as exc:
             if acceptance_request_id is not None and self._acceptance_receipts is not None:
-                exit_status = getattr(backend, "acceptance_exit_code", None)
-                if callable(exit_status):
-                    self._acceptance_receipts.record_abnormal_exit(
-                        acceptance_request_id,
-                        exit_status(envelope.context.request_id),
-                    )
+                if isinstance(exc, PackVMAcceptanceError):
+                    if exc.termination == "abnormal_exit":
+                        assert exc.exit_code is not None
+                        self._acceptance_receipts.record_abnormal_exit(
+                            acceptance_request_id,
+                            exc.exit_code,
+                        )
+                    else:
+                        self._acceptance_receipts.record_limit_rejected(
+                            acceptance_request_id,
+                            exc.termination,
+                        )
+                else:
+                    exit_status = getattr(backend, "acceptance_exit_code", None)
+                    if callable(exit_status):
+                        self._acceptance_receipts.record_abnormal_exit(
+                            acceptance_request_id,
+                            exit_status(envelope.context.request_id),
+                        )
             self._record_audit_failure(audit_reservation, ambiguous=False)
             raise ProviderExecutionError("provider execution failed") from exc
         finally:

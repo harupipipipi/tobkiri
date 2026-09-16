@@ -17,12 +17,14 @@ _NONCE = "e" * 64
 def _port(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> AcceptanceReceiptPort:
+    user_data = tmp_path / "user_data"
+    user_data.mkdir()
     monkeypatch.setenv("TOBKIRI_PACKVM_ACCEPTANCE_ENABLE", "1")
     monkeypatch.setenv("TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST", _DIGEST)
     monkeypatch.setenv("TOBKIRI_CI_E2E_APP_DATA_ROOT", str(tmp_path))
     return AcceptanceReceiptPort.from_host_environment(
         app_identifier="dev.tobkiri.launcher.ci-e2e",
-        user_data_root=tmp_path,
+        user_data_root=user_data,
     )
 
 
@@ -62,6 +64,7 @@ def test_receipt_port_is_unavailable_to_normal_production(
     monkeypatch.setenv("TOBKIRI_PACKVM_ACCEPTANCE_ENABLE", "1")
     monkeypatch.setenv("TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST", _DIGEST)
     monkeypatch.setenv("TOBKIRI_CI_E2E_APP_DATA_ROOT", str(tmp_path))
+    (tmp_path / "user_data").mkdir()
     with pytest.raises(PermissionError):
         AcceptanceReceiptPort.from_host_environment(
             app_identifier="dev.rumiai.app",
@@ -70,7 +73,7 @@ def test_receipt_port_is_unavailable_to_normal_production(
     with pytest.raises(PermissionError):
         AcceptanceReceiptPort.from_host_environment(
             app_identifier="dev.tobkiri.launcher.ci-e2e",
-            user_data_root=tmp_path / "other",
+            user_data_root=tmp_path / "user_data" / "other",
         )
 
 
@@ -133,6 +136,32 @@ def test_deadline_and_abnormal_exit_are_finite_typed_facts(
     receipt = port.take("abnormal-request", _NONCE)
     assert receipt.termination == "abnormal_exit"
     assert receipt.exit_code == 73
+
+
+@pytest.mark.parametrize(
+    "termination",
+    ["input_limit_rejected", "output_limit_rejected", "error_limit_rejected"],
+)
+def test_limit_rejections_are_typed_host_facts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    termination: str,
+) -> None:
+    port = _port(monkeypatch, tmp_path)
+    scenario = {
+        "input_limit_rejected": "stdin_overflow",
+        "output_limit_rejected": "stdout_overflow",
+        "error_limit_rejected": "stderr_overflow",
+    }[termination]
+    _begin(port, scenario)
+    port.record_limit_rejected("request-1", termination)
+    port.record_invocation_reaped("request-1")
+    port.record_resources_released(
+        "request-1",
+        reservation=True,
+        materialization=True,
+    )
+    assert port.take("request-1", _NONCE).termination == termination
 
 
 def test_pack_output_client_approval_and_http_disconnect_are_not_receipt_inputs(

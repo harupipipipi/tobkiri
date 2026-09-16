@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import threading
 import time
+from typing import Mapping
 
 from .models import RuntimeEvidence
 
@@ -78,6 +79,7 @@ class AcceptanceReceiptPort:
         self._expected_pack_digest = expected_pack_digest
         self._records: dict[str, _Record] = {}
         self._lock = threading.RLock()
+        self._changed = threading.Condition(self._lock)
 
     @classmethod
     def from_host_environment(
@@ -102,7 +104,7 @@ class AcceptanceReceiptPort:
             or not configured_root
             or exact_root is None
             or isolated_root is None
-            or exact_root != isolated_root
+            or exact_root != isolated_root / "user_data"
             or enabled not in {"1", "true", "yes", "on"}
             or _DIGEST.fullmatch(digest) is None
         ):
@@ -154,6 +156,7 @@ class AcceptanceReceiptPort:
                 request_digest=request_digest,
                 original_deadline_ns=original_deadline_ns,
             )
+            self._changed.notify_all()
 
     def is_candidate(self, pack_id: str, pack_digest: str, operation_id: str) -> bool:
         """Return true only for the exact configured QA Pack operation domain."""
@@ -186,11 +189,31 @@ class AcceptanceReceiptPort:
             raise ValueError("PackVM acceptance abnormal exit status is invalid")
         self._terminate(request_id, "abnormal_exit", exit_code, False)
 
+    def record_limit_rejected(self, request_id: str, termination: str) -> None:
+        """Record one signed guest-agent report of a Host-enforced I/O limit."""
+
+        if termination not in {
+            "input_limit_rejected",
+            "output_limit_rejected",
+            "error_limit_rejected",
+        }:
+            raise ValueError("PackVM acceptance limit rejection is invalid")
+        expected_scenario = {
+            "input_limit_rejected": "stdin_overflow",
+            "output_limit_rejected": "stdout_overflow",
+            "error_limit_rejected": "stderr_overflow",
+        }[termination]
+        with self._lock:
+            if self._require(request_id).scenario != expected_scenario:
+                raise PermissionError("PackVM acceptance limit scenario changed")
+        self._terminate(request_id, termination, None, False)
+
     def record_invocation_reaped(self, request_id: str) -> None:
         """Record Future completion; cancellation ACK alone is insufficient."""
 
         with self._lock:
             self._require(request_id).invocation_reaped = True
+            self._changed.notify_all()
 
     def record_resources_released(
         self,
@@ -207,21 +230,42 @@ class AcceptanceReceiptPort:
             record = self._require(request_id)
             record.resource_reservation_released = True
             record.materialization_released = True
+            self._changed.notify_all()
 
-    def take(self, request_id: str, nonce: str) -> AcceptanceReceipt:
+    def take(
+        self,
+        request_id: str,
+        nonce: str,
+        *,
+        timeout_seconds: float = 0.0,
+    ) -> AcceptanceReceipt:
         """Consume a complete exact receipt; incomplete state remains unavailable."""
 
-        with self._lock:
-            record = self._require(request_id)
-            if (
-                record.nonce != nonce
-                or record.termination is None
-                or record.finished_ns <= 0
-                or not record.invocation_reaped
-                or not record.resource_reservation_released
-                or not record.materialization_released
-            ):
-                raise PermissionError("PackVM acceptance receipt is incomplete")
+        if (
+            type(timeout_seconds) not in (int, float)
+            or timeout_seconds < 0
+            or timeout_seconds > 30
+        ):
+            raise ValueError("PackVM acceptance receipt timeout is invalid")
+        deadline = time.monotonic() + float(timeout_seconds)
+        with self._changed:
+            while True:
+                record = self._require(request_id)
+                if record.nonce != nonce:
+                    raise PermissionError("PackVM acceptance receipt is incomplete")
+                complete = (
+                    record.termination is not None
+                    and record.finished_ns > 0
+                    and record.invocation_reaped
+                    and record.resource_reservation_released
+                    and record.materialization_released
+                )
+                if complete:
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise PermissionError("PackVM acceptance receipt is incomplete")
+                self._changed.wait(remaining)
             if record.termination in {"deadline_expired", "cancelled"}:
                 if not record.authenticated_cancel_ack:
                     raise PermissionError("PackVM acceptance cancellation is unverified")
@@ -250,6 +294,7 @@ class AcceptanceReceiptPort:
             record.exit_code = exit_code
             record.authenticated_cancel_ack = authenticated_cancel_ack
             record.finished_ns = time.monotonic_ns()
+            self._changed.notify_all()
 
     def _require(self, request_id: str) -> _Record:
         record = self._records.get(request_id)
@@ -261,4 +306,29 @@ class AcceptanceReceiptPort:
 _HOST_GATE = object()
 
 
-__all__ = ["AcceptanceReceipt", "AcceptanceReceiptPort"]
+def acceptance_receipt_mapping(receipt: AcceptanceReceipt) -> Mapping[str, object]:
+    """Project the immutable Host receipt without accepting Pack-authored fields."""
+
+    return {
+        "request_id": receipt.request_id,
+        "scenario": receipt.scenario,
+        "nonce": receipt.nonce,
+        "guest_artifact_identity": receipt.guest_artifact_identity,
+        "attestation_digest": receipt.attestation_digest,
+        "request_digest": receipt.request_digest,
+        "original_deadline_ns": receipt.original_deadline_ns,
+        "finished_ns": receipt.finished_ns,
+        "termination": receipt.termination,
+        "exit_code": receipt.exit_code,
+        "authenticated_cancel_ack": receipt.authenticated_cancel_ack,
+        "invocation_reaped": receipt.invocation_reaped,
+        "resource_reservation_released": receipt.resource_reservation_released,
+        "materialization_released": receipt.materialization_released,
+    }
+
+
+__all__ = [
+    "AcceptanceReceipt",
+    "AcceptanceReceiptPort",
+    "acceptance_receipt_mapping",
+]

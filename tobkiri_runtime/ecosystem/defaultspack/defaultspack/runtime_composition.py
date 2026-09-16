@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import partial
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Mapping
 
@@ -12,6 +13,7 @@ from core_runtime.global_contracts.http_contract_dispatch import HTTPContractBin
 from core_runtime.pack_api_server import RuntimeCaptureInputs
 from tobkiri_host.backends import ExecutionBackend
 from tobkiri_host.credential_store import host_credential_store_factory
+from tobkiri_host.acceptance_receipts import AcceptanceReceiptPort
 
 if TYPE_CHECKING:
     from core_runtime.bootstrap.runtime import Kernel
@@ -104,6 +106,21 @@ def defaultspack_runtime_capture_inputs(
             else None
         ),
         credential_store_factory=credential_store_factory,
+        acceptance_receipts=_packvm_acceptance_receipts(),
+    )
+
+
+def _packvm_acceptance_receipts() -> AcceptanceReceiptPort | None:
+    """Create the non-publishable receipt port only for the exact CI/E2E app."""
+
+    enabled = os.environ.get("TOBKIRI_PACKVM_ACCEPTANCE_ENABLE", "").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        return None
+    from core_runtime.bootstrap.profile_capture import runtime_user_data_root
+
+    return AcceptanceReceiptPort.from_host_environment(
+        app_identifier=os.environ.get("TOBKIRI_LAUNCHER_APP_IDENTIFIER", ""),
+        user_data_root=runtime_user_data_root(),
     )
 
 

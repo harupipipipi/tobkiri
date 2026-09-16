@@ -1066,6 +1066,101 @@ fn debug_contract_request(
 }
 
 #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
+fn debug_authenticated_post(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    session: &DebugPanelSession,
+    api_path: &str,
+    payload: serde_json::Value,
+) -> AnyResult<serde_json::Value> {
+    if !api_path.starts_with("/api/") || api_path.contains(['?', '#', '\\']) {
+        bail!("debug authenticated route is invalid");
+    }
+    let response = client
+        .post(format!("{base_url}{api_path}"))
+        .header(reqwest::header::ORIGIN, base_url)
+        .header(reqwest::header::COOKIE, &session.cookie)
+        .header("X-Rumi-CSRF", &session.csrf_token)
+        .header("X-Tobkiri-Request-ID", debug_contract_request_id())
+        .json(&payload)
+        .send()
+        .context("debug authenticated request failed")?;
+    let status = response.status();
+    let envelope: ApiEnvelope<serde_json::Value> = response
+        .json()
+        .context("debug authenticated response was invalid")?;
+    if !status.is_success() || !envelope.success {
+        bail!("debug authenticated operation was rejected");
+    }
+    envelope
+        .data
+        .context("debug authenticated response had no result")
+}
+
+#[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+fn packvm_host_evidence(
+    request: &packvm_acceptance::AcceptanceRequest,
+    receipt: &serde_json::Value,
+) -> AnyResult<packvm_acceptance::HostExecutionEvidence> {
+    let text = |field: &str| -> AnyResult<String> {
+        receipt
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .with_context(|| format!("PackVM acceptance Host receipt omitted {field}"))
+    };
+    let flag = |field: &str| -> AnyResult<bool> {
+        receipt
+            .get(field)
+            .and_then(serde_json::Value::as_bool)
+            .with_context(|| format!("PackVM acceptance Host receipt omitted {field}"))
+    };
+    let termination_name = text("termination")?;
+    let authenticated_cancel_ack = flag("authenticated_cancel_ack")?;
+    let termination = match termination_name.as_str() {
+        "completed" => packvm_acceptance::HostTermination::Completed,
+        "input_limit_rejected" => packvm_acceptance::HostTermination::InputLimitRejected,
+        "output_limit_rejected" => packvm_acceptance::HostTermination::OutputLimitRejected,
+        "error_limit_rejected" => packvm_acceptance::HostTermination::ErrorLimitRejected,
+        "deadline_expired" => packvm_acceptance::HostTermination::DeadlineExpired,
+        "cancelled" => packvm_acceptance::HostTermination::AuthenticatedCancel,
+        "abnormal_exit" => {
+            let exit_code = receipt
+                .get("exit_code")
+                .and_then(serde_json::Value::as_i64)
+                .and_then(|value| i32::try_from(value).ok())
+                .filter(|value| *value != 0)
+                .context("PackVM acceptance Host receipt omitted the abnormal exit code")?;
+            packvm_acceptance::HostTermination::AbnormalExit(exit_code)
+        }
+        _ => bail!("PackVM acceptance Host receipt has an invalid termination"),
+    };
+    if text("nonce")? != request.nonce {
+        bail!("PackVM acceptance Host receipt nonce changed");
+    }
+    Ok(packvm_acceptance::HostExecutionEvidence {
+        scenario: request.scenario.clone(),
+        nonce: request.nonce.clone(),
+        guest_artifact_identity: text("guest_artifact_identity")?,
+        attestation_digest: text("attestation_digest")?,
+        request_digest: text("request_digest")?,
+        original_deadline_ns: receipt
+            .get("original_deadline_ns")
+            .and_then(serde_json::Value::as_u64)
+            .context("PackVM acceptance Host receipt omitted the original deadline")?,
+        finished_ns: receipt
+            .get("finished_ns")
+            .and_then(serde_json::Value::as_u64)
+            .context("PackVM acceptance Host receipt omitted the finish time")?,
+        termination,
+        authenticated_cancel_ack,
+        invocation_reaped: flag("invocation_reaped")?,
+        resource_reservation_released: flag("resource_reservation_released")?,
+        materialization_released: flag("materialization_released")?,
+    })
+}
+
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn debug_pending_interactive_request_id(value: &serde_json::Value) -> Option<&str> {
     value
         .get("approval_request_id")
@@ -1155,43 +1250,17 @@ fn maybe_start_packvm_acceptance_adapter(
                 })
             })
             .context("PackVM QA operation is not a verified invokable contribution")?;
-        let dynamic = catalog
-            .get("dynamic_host")
-            .and_then(serde_json::Value::as_object)
-            .context("PackVM QA Profile binding is unavailable")?;
-        let payload = if request.scenario == "stdin_overflow" {
-            serde_json::json!({"nonce": request.nonce, "fill": "x".repeat(1024 * 1024 + 1)})
-        } else {
-            serde_json::json!({"nonce": request.nonce})
-        };
-        // This returns only the canonical Broker result.  Timeout, cancellation,
-        // and abnormal-exit evidence still needs a dedicated Host projection;
-        // the outer validator will reject ordinary or sanitized error payloads.
-        let _broker_result = debug_contract_request(
+        let receipt = debug_authenticated_post(
             &client,
             &base_url,
             &session,
-            "POST",
-            "/api/ui/capability/invoke",
-            Some(serde_json::json!({
-                "request_id": debug_contract_request_id(),
-                "expires_at": unix_now_seconds() + 90,
-                "profile_id": dynamic.get("profile_id"),
-                "profile_revision": dynamic.get("profile_revision"),
-                "activation_id": dynamic.get("activation_id"),
-                "plan_hash": dynamic.get("plan_hash"),
-                "catalog_hash": dynamic.get("catalog_hash"),
-                "contribution_id": format!("pack.tobkiri_packvm_sandbox_qa_pack.{operation_id}"),
-                "owner_pack_id": "tobkiri_packvm_sandbox_qa_pack",
-                "contract_id": operation.get("contract_id"),
-                "payload": payload,
-            })),
+            "/api/internal/packvm-acceptance/run",
+            serde_json::json!({
+                "scenario": request.scenario.clone(),
+                "nonce": request.nonce.clone(),
+            }),
         )?;
-        // A Pack result is untrusted and cannot certify its own deadline,
-        // cancellation, termination, or cleanup.  Keep the adapter closed
-        // until the Host exposes the typed internal facts required by
-        // `HostExecutionEvidence`; never upgrade this ordinary result.
-        bail!("Host-owned PackVM acceptance evidence is unavailable")
+        packvm_host_evidence(&request, &receipt)
     });
     packvm_acceptance::start(&config.user_data_dir, handler).map(Some)
 }
@@ -3093,6 +3162,7 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
         )
         .setup(move |app| {
             record_startup_stage(&setup_startup_stage, "setup_entered");
+            std::env::set_var("TOBKIRI_LAUNCHER_APP_IDENTIFIER", &app_identifier);
             record_startup_stage(&setup_startup_stage, "resolving_app_paths");
             let resource_dir = match app.path().resource_dir() {
                 Ok(resource_dir) => resource_dir,

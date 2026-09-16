@@ -11,6 +11,7 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 from core_runtime.authority.v4 import AuthorityStore
 
 from .artifact_compiler import CompiledPack, compile_pack_root, routes_for_plan
+from .acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
 from .backends import BackendRegistry
 from .broker import NestedCancellationProof, RequestAdmissionPort, RequestBroker
 from .authority_v4 import AuthorityV4Adapter
@@ -73,6 +74,7 @@ class ProductionRuntimeV4:
         reconciliation: ReconciliationStore,
         terminate_domain: Callable[[str], None] | None = None,
         authority_adapter: AuthorityV4Adapter | None = None,
+        acceptance_receipts: AcceptanceReceiptPort | None = None,
     ) -> RequestBroker:
         """Build the sole request Broker using this captured authority adapter."""
         authority = authority_adapter or self.composition.authority_adapter(
@@ -88,6 +90,7 @@ class ProductionRuntimeV4:
             authority=authority,
             audit=authority,
             reconciliation=reconciliation,
+            acceptance_receipts=acceptance_receipts,
         )
 
     def dispatch_session(
@@ -241,6 +244,7 @@ class V4DispatchSession:
         parent_deadline_monotonic: float | None = None,
         parent_cancellation: threading.Event | None = None,
         parent_cancellation_proof: NestedCancellationProof | None = None,
+        before_dispatch: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
@@ -282,6 +286,7 @@ class V4DispatchSession:
             parent_deadline_monotonic is None
             and parent_cancellation is None
             and parent_cancellation_proof is None
+            and before_dispatch is None
         ):
             return self.broker.invoke(invocation, context, effect_scope=scope)
         return self.broker.invoke(
@@ -291,7 +296,78 @@ class V4DispatchSession:
             parent_deadline_monotonic=parent_deadline_monotonic,
             parent_cancellation=parent_cancellation,
             parent_cancellation_proof=parent_cancellation_proof,
+            before_dispatch=before_dispatch,
         )
+
+    def run_packvm_acceptance(
+        self,
+        scenario: str,
+        nonce: str,
+        *,
+        session_id: str,
+    ) -> AcceptanceReceipt:
+        """Run one finite CI/E2E scenario and consume its Broker-owned receipt."""
+
+        operation_scenario = {
+            "original_deadline": "deadline_hold",
+            "cancel": "cancel_hold",
+            "resource_cleanup": "probe_isolation",
+        }.get(scenario, scenario)
+        allowed = {
+            "probe_isolation",
+            "stdin_overflow",
+            "stdout_overflow",
+            "stderr_overflow",
+            "deadline_hold",
+            "cancel_hold",
+            "abnormal_exit",
+        }
+        if operation_scenario not in allowed:
+            raise ValueError("PackVM acceptance scenario is invalid")
+        if len(nonce) != 64 or any(
+            character not in "0123456789abcdef" for character in nonce
+        ):
+            raise ValueError("PackVM acceptance nonce is invalid")
+        if not session_id.strip() or len(session_id) > 512:
+            raise ValueError("PackVM acceptance session binding is invalid")
+        contract_id = "tobkiri.acceptance.packvm.sandbox.v1"
+        operation_id = f"tobkiri_packvm_sandbox_qa_pack.{operation_scenario}"
+        context = self.context_for(contract_id, operation_id, session_id)
+        payload: dict[str, object] = {"nonce": nonce}
+        if scenario == "stdin_overflow":
+            payload["fill"] = "x" * (1024 * 1024 + 1)
+        scope = self.effect_scope_for(contract_id, operation_id, payload, context)
+        cancellation = threading.Event()
+        timer: threading.Timer | None = None
+
+        def schedule_cancel() -> None:
+            nonlocal timer
+            timer = threading.Timer(0.05, cancellation.set)
+            timer.daemon = True
+            timer.start()
+
+        try:
+            self.broker.invoke(
+                InvocationFrame(
+                    contract_id=contract_id,
+                    version_range=None,
+                    operation_id=operation_id,
+                    payload=payload,
+                ),
+                context,
+                effect_scope=scope,
+                parent_cancellation=(cancellation if scenario == "cancel" else None),
+                before_dispatch=(schedule_cancel if scenario == "cancel" else None),
+            )
+        except Exception:
+            # Expected timeout, cancellation, overflow, and abnormal-exit paths
+            # are accepted only if the typed receipt below proves their exact
+            # terminal state and cleanup. No exception text crosses the route.
+            pass
+        finally:
+            if timer is not None:
+                timer.cancel()
+        return self.broker.take_acceptance_receipt(context.request_id, nonce)
 
 
 class DispatchContainer(Protocol):

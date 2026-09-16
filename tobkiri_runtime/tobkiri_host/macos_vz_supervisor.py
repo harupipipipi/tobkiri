@@ -70,7 +70,7 @@ from tobkiri_protocol.saved_tools import MAX_SAVED_TOOL_HOPS
 
 from .artifact_materialization import MaterializedPackArtifact
 from .effects import ProviderOutcome
-from .errors import BackendUnavailableError
+from .errors import BackendUnavailableError, PackVMAcceptanceError
 from .models import require_digest
 from .platform_backends import (
     IsolationLaunch,
@@ -98,6 +98,10 @@ _GUEST_OPERATION_ERROR_CODES = frozenset(
         "EXECUTION_FAILED",
         "REQUEST_OWNERSHIP_FAILED",
         "SANDBOX_LAUNCH_FAILED",
+        "INPUT_LIMIT_REJECTED",
+        "OUTPUT_LIMIT_REJECTED",
+        "ERROR_LIMIT_REJECTED",
+        "ABNORMAL_EXIT_73",
     }
 )
 _CONVERSATION_BRIDGE_TARGET = {
@@ -1447,6 +1451,15 @@ class MacOSVZSupervisorDriver:
             ) from exc
         if success is False:
             error_code = payload["error"]["code"]
+            acceptance_termination = {
+                "INPUT_LIMIT_REJECTED": "input_limit_rejected",
+                "OUTPUT_LIMIT_REJECTED": "output_limit_rejected",
+                "ERROR_LIMIT_REJECTED": "error_limit_rejected",
+            }.get(error_code)
+            if acceptance_termination is not None:
+                raise PackVMAcceptanceError(acceptance_termination)
+            if error_code == "ABNORMAL_EXIT_73":
+                raise PackVMAcceptanceError("abnormal_exit", 73)
             suffix = (
                 f": {error_code}"
                 if error_code in _GUEST_OPERATION_ERROR_CODES else ""

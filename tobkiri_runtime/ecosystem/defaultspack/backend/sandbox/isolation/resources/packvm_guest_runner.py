@@ -150,6 +150,10 @@ _GUEST_OPERATION_ERROR_CODES = frozenset(
         "EXECUTION_FAILED",
         "REQUEST_OWNERSHIP_FAILED",
         "SANDBOX_LAUNCH_FAILED",
+        "INPUT_LIMIT_REJECTED",
+        "OUTPUT_LIMIT_REJECTED",
+        "ERROR_LIMIT_REJECTED",
+        "ABNORMAL_EXIT_73",
     }
 )
 
@@ -420,15 +424,21 @@ def _communicate_staged_implementation(
             deadline=guest_deadline,
         )
         _remaining_guest_budget(guest_deadline)
-    except BaseException:
+    except BaseException as error:
         # Do not call communicate() here: cleanup must not buffer the output
         # which just exceeded its budget. This also owns serialization failures
         # after spawn, before the pipe exchange could start.
         _stop_staged_implementation(process)
+        classified = _acceptance_boundary_error(child_request, process.returncode)
+        if classified is not None:
+            raise classified from error
         raise
     if process.returncode != 0:
         # Child stderr is artifact-controlled.  Do not include it in errors
         # that cross the authenticated supervisor boundary.
+        classified = _acceptance_boundary_error(child_request, process.returncode)
+        if classified is not None:
+            raise classified
         raise ValueError("PackVM implementation failed")
     if len(stdout) > MAX_RESULT_BYTES:
         raise ValueError("PackVM invocation result exceeds size limit")
@@ -444,6 +454,26 @@ def _communicate_staged_implementation(
         raise ValueError("PackVM implementation result must be an object")
     _remaining_guest_budget(guest_deadline)
     return result
+
+
+def _acceptance_boundary_error(
+    child_request: Mapping[str, object],
+    returncode: int | None,
+) -> _GuestOperationError | None:
+    """Classify only the exact signed QA fixture's finite boundary probes."""
+
+    if child_request.get("contract_id") != "tobkiri.acceptance.packvm.sandbox.v1":
+        return None
+    operation_id = child_request.get("operation_id")
+    codes = {
+        "tobkiri_packvm_sandbox_qa_pack.stdin_overflow": "INPUT_LIMIT_REJECTED",
+        "tobkiri_packvm_sandbox_qa_pack.stdout_overflow": "OUTPUT_LIMIT_REJECTED",
+        "tobkiri_packvm_sandbox_qa_pack.stderr_overflow": "ERROR_LIMIT_REJECTED",
+    }
+    if operation_id == "tobkiri_packvm_sandbox_qa_pack.abnormal_exit":
+        return _GuestOperationError("ABNORMAL_EXIT_73") if returncode == 73 else None
+    code = codes.get(operation_id)
+    return _GuestOperationError(code) if code is not None else None
 
 
 def _stop_staged_implementation(process: subprocess.Popen[bytes]) -> None:

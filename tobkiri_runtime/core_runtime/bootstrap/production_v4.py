@@ -1312,6 +1312,7 @@ def capture_production_dispatch(
     capability_binding_snapshot_factory: CapabilityBindingSnapshotFactory | None = None,
     capability_binding_selector: CapabilityBindingSelector | None = None,
     credential_store_factory: CredentialMaterialStoreFactory | None = None,
+    acceptance_receipts: object | None = None,
 ) -> V4DispatchSession:
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
@@ -2769,6 +2770,7 @@ def capture_production_dispatch(
         ),
         reconciliation=InMemoryReconciliationStore(),
         authority_adapter=authority_control,
+        acceptance_receipts=acceptance_receipts,
     )
     activation_digest = canonical_digest(active.activation)
     edge_candidates_by_operation: dict[tuple[str, str], list[_CapturedPlanEdge]] = {}

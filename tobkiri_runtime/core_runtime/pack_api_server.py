@@ -304,6 +304,7 @@ class RuntimeCaptureInputs:
     capability_binding_selector: CapabilityBindingSelector | None = None
     packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None
     credential_store_factory: CredentialMaterialStoreFactory | None = None
+    acceptance_receipts: object | None = None
 
 
 class ActivationSnapshotLoader(Protocol):
@@ -932,6 +933,58 @@ class PackAPIHandler(
 
     def _send_not_found(self) -> None:
         self._send_response(APIResponse(False, error="Not found"), 404)
+
+    def _handle_packvm_acceptance(self, method: str, path: str) -> bool:
+        """Run one authenticated, non-publishable native PackVM QA scenario."""
+
+        acceptance_path = "/api/internal/packvm-acceptance/run"
+        if path != acceptance_path:
+            return False
+        session = self._dispatch_session
+        broker = getattr(session, "broker", None)
+        if (
+            method != "POST"
+            or session is None
+            or getattr(broker, "acceptance_receipts_enabled", False) is not True
+        ):
+            self._discard_request_body()
+            self._send_not_found()
+            return True
+        if not self._check_auth("POST", path):
+            self._discard_request_body()
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return True
+        body = self._parse_object_body()
+        if body is None:
+            return True
+        if set(body) != {"scenario", "nonce"}:
+            self._send_response(APIResponse(False, error="Invalid request"), 400)
+            return True
+        scenario = body.get("scenario")
+        nonce = body.get("nonce")
+        panel_session = self._panel_session or {}
+        session_id = panel_session.get("session_id")
+        if not all(isinstance(item, str) for item in (scenario, nonce, session_id)):
+            self._send_response(APIResponse(False, error="Invalid request"), 400)
+            return True
+        try:
+            from tobkiri_host.acceptance_receipts import acceptance_receipt_mapping
+
+            receipt = session.run_packvm_acceptance(
+                scenario,
+                nonce,
+                session_id=session_id,
+            )
+            result = acceptance_receipt_mapping(receipt)
+        except Exception as error:
+            logger.warning("PackVM acceptance scenario failed closed", exc_info=error)
+            self._send_response(
+                APIResponse(False, error="PackVM acceptance evidence is unavailable"),
+                503,
+            )
+            return True
+        self._send_response(APIResponse(True, data=dict(result)))
+        return True
 
     def _refresh_setup_runtime_after_response(
         self,
@@ -2245,6 +2298,8 @@ headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
 
         self._reset_request_state()
         path = urlparse(self.path).path
+        if self._handle_packvm_acceptance("POST", path):
+            return
         if self._handle_packvm_lifecycle("POST", path):
             return
         if self._handle_contract_request("POST"):
@@ -2770,6 +2825,7 @@ class PackAPIServer:
                         ),
                         capability_binding_selector=inputs.capability_binding_selector,
                         credential_store_factory=inputs.credential_store_factory,
+                        acceptance_receipts=inputs.acceptance_receipts,
                     )
                 except Exception:
                     authority.close()

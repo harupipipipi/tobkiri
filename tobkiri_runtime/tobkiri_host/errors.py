@@ -87,6 +87,30 @@ class ProviderExecutionError(HostCoreError):
     code = "provider_failed"
 
 
+class PackVMAcceptanceError(HostCoreError):
+    """Typed signed guest fact available only to the gated QA receipt path."""
+
+    code = "packvm_acceptance_failed"
+
+    def __init__(self, termination: str, exit_code: int | None = None) -> None:
+        allowed = {
+            "input_limit_rejected",
+            "output_limit_rejected",
+            "error_limit_rejected",
+            "abnormal_exit",
+        }
+        if termination not in allowed:
+            raise ValueError("PackVM acceptance termination is invalid")
+        if termination == "abnormal_exit":
+            if type(exit_code) is not int or exit_code == 0:
+                raise ValueError("PackVM acceptance exit code is invalid")
+        elif exit_code is not None:
+            raise ValueError("PackVM limit rejection cannot carry an exit code")
+        super().__init__("PackVM acceptance boundary rejected the operation")
+        self.termination = termination
+        self.exit_code = exit_code
+
+
 class AmbiguousEffectError(HostCoreError):
     """An external effect may have been accepted and needs reconciliation."""
 
