@@ -269,6 +269,49 @@ class DurableTurnRuntime:
         finally:
             connection.close()
 
+    def request_saved_cancellation(self, turn_id: str) -> dict[str, Any]:
+        """Persist a stop request without treating wrapper exit as termination."""
+
+        return self._saved_cancellation_update(turn_id, confirm=False)
+
+    def confirm_saved_cancellation(self, turn_id: str) -> dict[str, Any]:
+        """Persist a cancelled terminal after Host verified nested drain."""
+
+        return self._saved_cancellation_update(turn_id, confirm=True)
+
+    def _saved_cancellation_update(
+        self, turn_id: str, *, confirm: bool
+    ) -> dict[str, Any]:
+        if not isinstance(turn_id, str) or not _ID.fullmatch(turn_id):
+            raise ValueError("saved cancellation requires a stable turn ID")
+        if not self.path.exists():
+            raise KeyError("turn is unknown")
+        connection = self._connect_write()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT id, request_id, body FROM turns WHERE id = ?", (turn_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError("turn is unknown")
+            existing = self._record(row)
+            if (
+                not existing.get("input_digest")
+                or not existing["request_id"].startswith("saved-turn.")
+            ):
+                raise PermissionError("only saved turns can be cancelled")
+            runtime = self._restore(row)
+            result = (
+                runtime.confirm_cancellation(turn_id)
+                if confirm
+                else runtime.request_cancellation(turn_id)
+            )
+            self._save(connection, result)
+            connection.commit()
+            return result
+        finally:
+            connection.close()
+
     def _connect_write(self) -> sqlite3.Connection:
         self._check_path()
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)

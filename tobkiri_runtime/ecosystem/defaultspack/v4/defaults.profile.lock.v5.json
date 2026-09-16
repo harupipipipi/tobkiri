@@ -58,7 +58,7 @@
     {
       "role": "pack",
       "identity": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:02b2f33da96cef7e48a1aebb4681006978790f34249388f9bafe6369fb540ddb"
+      "artifact_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517"
     },
     {
       "role": "pack",
@@ -814,8 +814,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:02b2f33da96cef7e48a1aebb4681006978790f34249388f9bafe6369fb540ddb",
-      "executable_catalog_digest": "sha256:4f761409cf1daaf57101ea30403e4020e787c9aa2fab06ba70703dd2eccf6c28",
+      "artifact_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517",
+      "executable_catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.events.python",
       "platform": "any",
       "architecture": "any",
@@ -826,8 +826,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:02b2f33da96cef7e48a1aebb4681006978790f34249388f9bafe6369fb540ddb",
-      "executable_catalog_digest": "sha256:4f761409cf1daaf57101ea30403e4020e787c9aa2fab06ba70703dd2eccf6c28",
+      "artifact_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517",
+      "executable_catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle.python",
       "platform": "any",
       "architecture": "any",
@@ -838,8 +838,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:02b2f33da96cef7e48a1aebb4681006978790f34249388f9bafe6369fb540ddb",
-      "executable_catalog_digest": "sha256:4f761409cf1daaf57101ea30403e4020e787c9aa2fab06ba70703dd2eccf6c28",
+      "artifact_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517",
+      "executable_catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.reconcile.python",
       "platform": "any",
       "architecture": "any",
@@ -850,8 +850,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:02b2f33da96cef7e48a1aebb4681006978790f34249388f9bafe6369fb540ddb",
-      "executable_catalog_digest": "sha256:4f761409cf1daaf57101ea30403e4020e787c9aa2fab06ba70703dd2eccf6c28",
+      "artifact_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517",
+      "executable_catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.resource.python",
       "platform": "any",
       "architecture": "any",
@@ -862,8 +862,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:02b2f33da96cef7e48a1aebb4681006978790f34249388f9bafe6369fb540ddb",
-      "executable_catalog_digest": "sha256:4f761409cf1daaf57101ea30403e4020e787c9aa2fab06ba70703dd2eccf6c28",
+      "artifact_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517",
+      "executable_catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.saved.python",
       "platform": "any",
       "architecture": "any",
@@ -874,8 +874,8 @@
     },
     {
       "pack_id": "rumi_turn_runtime_pack",
-      "artifact_digest": "sha256:02b2f33da96cef7e48a1aebb4681006978790f34249388f9bafe6369fb540ddb",
-      "executable_catalog_digest": "sha256:4f761409cf1daaf57101ea30403e4020e787c9aa2fab06ba70703dd2eccf6c28",
+      "artifact_digest": "sha256:6af847b4c2b2616b021346f4bde957bc899f33adc002c4b9f4fd12fb06c55517",
+      "executable_catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
       "variant_id": "rumi_turn_runtime_pack.turn-runtime.stop.python",
       "platform": "any",
       "architecture": "any",

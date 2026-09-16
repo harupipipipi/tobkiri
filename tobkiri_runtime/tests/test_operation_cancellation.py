@@ -216,6 +216,8 @@ def test_verified_drain_requires_exact_backend_cancel_future_and_scope_exit() ->
         proof.record_backend_cancellation(child_id, child)
         child.set_result(None)
         assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
+        proof.record_resource_drain(child)
+        assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
     assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
 
 
@@ -232,11 +234,12 @@ def test_verified_drain_accepts_an_unstarted_exact_child_cancellation() -> None:
         observation = cancel.request("turn")
         assert child.cancel()
         proof.record_queued_cancellation(child_id, child)
+        proof.record_resource_drain(child)
     assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
 
 
-def test_stop_before_child_rejects_late_registration_and_confirms_scope_exit() -> None:
-    """A request linearized first prevents a later child from escaping proof."""
+def test_stop_before_child_rejects_late_registration_without_false_confirmation() -> None:
+    """Wrapper scope exit alone never proves nested Provider termination."""
 
     registry, execution, execute, cancel = _tracked_execution_and_stop()
     with execute.track("turn"):
@@ -245,11 +248,11 @@ def test_stop_before_child_rejects_late_registration_and_confirms_scope_exit() -
         observation = cancel.request("turn")
         with pytest.raises(PermissionError):
             proof.reserve_child(_child_envelope(execution))
-    assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
+    assert not observation.wait_for_verified_drain(time.monotonic() + 0.03)
 
 
-def test_completed_child_before_stop_is_not_stale_cancellation_work() -> None:
-    """A normal pre-request completion cannot block the later exact stop proof."""
+def test_completed_child_before_stop_cannot_supply_a_cancellation_ack() -> None:
+    """Normal completion before stop is not a nested cancellation acknowledgement."""
 
     registry, execution, execute, cancel = _tracked_execution_and_stop()
     with execute.track("turn"):
@@ -259,8 +262,9 @@ def test_completed_child_before_stop_is_not_stale_cancellation_work() -> None:
         child = Future()
         proof.bind_child(child_id, child)
         child.set_result(None)
+        proof.record_resource_drain(child)
         observation = cancel.request("turn")
-    assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
+    assert not observation.wait_for_verified_drain(time.monotonic() + 0.03)
 
 
 def test_pre_request_history_does_not_hide_a_live_child_drain_requirement() -> None:
@@ -274,12 +278,14 @@ def test_pre_request_history_does_not_hide_a_live_child_drain_requirement() -> N
         completed_child = Future()
         proof.bind_child(completed_id, completed_child)
         completed_child.set_result(None)
+        proof.record_resource_drain(completed_child)
         live_id = proof.reserve_child(_child_envelope(execution))
         live_child = Future()
         proof.bind_child(live_id, live_child)
         observation = cancel.request("turn")
         proof.record_backend_cancellation(live_id, live_child)
         live_child.set_result(None)
+        proof.record_resource_drain(live_child)
         assert not observation.wait_for_verified_drain(time.monotonic() + 0.01)
     assert observation.wait_for_verified_drain(time.monotonic() + 0.1)
 
@@ -303,6 +309,7 @@ def test_verified_drain_fails_closed_for_live_or_unacknowledged_child(
             proof.record_backend_cancellation(child_id, child)
         if finish_child:
             child.set_result(None)
+            proof.record_resource_drain(child)
     assert not observation.wait_for_verified_drain(time.monotonic() + 0.03)
 
 

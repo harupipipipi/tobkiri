@@ -35,6 +35,7 @@ class _TrackedChild:
     backend_cancelled: bool = False
     queued_cancelled: bool = False
     completed: bool = False
+    resource_drained: bool = False
 
 
 class _NestedCancellationProof:
@@ -131,7 +132,7 @@ class _NestedCancellationProof:
                     # A child that completed before the stop request has no
                     # cancellation to prove.  Remove it under the same lock
                     # so a later request cannot be held by stale history.
-                    if not self._cancellation_requested:
+                    if not self._cancellation_requested and current.resource_drained:
                         del self._children[child_id]
                     self._refresh_verified_drain_locked()
 
@@ -155,6 +156,27 @@ class _NestedCancellationProof:
         with self._registry._lock:
             child = self._child_for_future_locked(child_id, future)
             child.backend_cancelled = True
+            self._refresh_verified_drain_locked()
+
+    def record_resource_drain(self, future: Future[object]) -> None:
+        """Record exact Broker admission/materialization release after child exit."""
+
+        with self._registry._lock:
+            matches = [
+                (child_id, child)
+                for child_id, child in self._children.items()
+                if child.future is future
+            ]
+            if len(matches) != 1:
+                if not self._cancellation_requested:
+                    return
+                raise PermissionError("nested cancellation child is unavailable")
+            child_id, child = matches[0]
+            if not child.completed or not future.done():
+                raise PermissionError("nested cancellation resources are still active")
+            child.resource_drained = True
+            if not self._cancellation_requested:
+                del self._children[child_id]
             self._refresh_verified_drain_locked()
 
     def request(self) -> None:
@@ -230,9 +252,11 @@ class _NestedCancellationProof:
         if (
             self._cancellation_requested
             and self._scope_exited
+            and bool(self._children)
             and all(
                 (child.backend_cancelled or child.queued_cancelled)
                 and child.completed
+                and child.resource_drained
                 for child in self._children.values()
             )
         ):

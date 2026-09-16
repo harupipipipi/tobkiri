@@ -3025,14 +3025,14 @@
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.executables.v4.json",
       "type": "regular-file",
       "size": 17767,
-      "sha256": "af0fcf2993c7cafbf89c0307ffafe9207558544c7e37ebefae304fd7d6dfdee9",
+      "sha256": "fc230b67f49411f40b500c219124cd3734a1599f61a8f888dc9dbc77d78ce8c6",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_turn_runtime_pack.pack.v4.json",
       "type": "regular-file",
       "size": 12008,
-      "sha256": "a385c33250531fee150b5d792883040d2d73887685ae62a31c0ba1dd0a4693e4",
+      "sha256": "94b025d776c1453b5051ef2fb80243279ce41b52134c50f27a4f4bcdd1f25d35",
       "executable": false
     },
     {

@@ -80,6 +80,7 @@ class TurnHostFactoryV4:
                     raise PermissionError("stop requires only an existing turn ID")
                 turn_id = _identifier(values["turn_id"])
                 observation = invocation.cancellation.request(turn_id)
+                store.request_saved_cancellation(turn_id)
                 invocation.assert_current()
                 deadline = getattr(
                     getattr(invocation, "envelope", None), "deadline_monotonic", None
@@ -91,6 +92,9 @@ class TurnHostFactoryV4:
                 )
                 if verified_drained:
                     invocation.assert_current()
+                    confirmed = store.confirm_saved_cancellation(turn_id)
+                    if confirmed.get("status") != "cancelled":
+                        raise RuntimeError("saved cancellation terminal is unconfirmed")
                     return {
                         "status": "stopped_confirmed",
                         "turn_id": turn_id,

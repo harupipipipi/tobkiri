@@ -94,7 +94,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
+      "artifact_hash": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102",
       "contract_id": "rumi.resource.turn.v1",
       "id": "turn-resource",
       "loader": "python",
@@ -102,7 +102,7 @@
       "symbol": "create_turn_resource"
     },
     {
-      "artifact_hash": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
+      "artifact_hash": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102",
       "contract_id": "rumi.action.turn.lifecycle.v1",
       "id": "turn-lifecycle",
       "loader": "python",
@@ -110,7 +110,7 @@
       "symbol": "create_turn_action"
     },
     {
-      "artifact_hash": "sha256:c106bdb62ef6fe73157118a230f584f78f716aea626742519a1ba9608b35af1c",
+      "artifact_hash": "sha256:1783d96299bcf25433eb785df86f47550af9f5d5689de63658acfd69787c8102",
       "contract_id": "rumi.event.turn.v1",
       "id": "turn-events",
       "loader": "python",

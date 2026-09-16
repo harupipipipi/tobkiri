@@ -80,6 +80,34 @@ def test_turn_event_projection_preserves_terminal_receipt_and_error() -> None:
     assert present_turn_events(failed)["terminal"]["error"] == failed["error"]
 
 
+def test_turn_event_projection_keeps_requested_nonterminal_until_confirmed() -> None:
+    requested = _turn()
+    requested["events"].append({
+        "sequence": 2,
+        "name": "turn.cancellation_requested",
+        "at": 3,
+        "details": {"phase": "nested_cancellation_requested"},
+    })
+    requested["revision"] = 4
+    assert present_turn_events(requested)["terminal"] is None
+
+    confirmed = {**requested, "status": "cancelled", "revision": 5}
+    confirmed["events"] = [
+        *requested["events"],
+        {
+            "sequence": 3,
+            "name": "turn.cancelled",
+            "at": 4,
+            "details": {"phase": "nested_cancellation_confirmed"},
+        },
+    ]
+    terminal = present_turn_events(confirmed)["terminal"]
+    assert terminal is not None
+    assert terminal["status"] == "cancelled"
+    assert terminal["turn_id"] == "turn-1"
+    assert terminal["operation_id"] == "turn-1"
+
+
 def test_turn_event_projection_rejects_non_contiguous_owner_events() -> None:
     turn = _turn()
     turn["events"][1]["sequence"] = 4

@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:4f761409cf1daaf57101ea30403e4020e787c9aa2fab06ba70703dd2eccf6c28",
+  "catalog_digest": "sha256:fbbdf9e741aea5b844b34261fae9211f35a4183aa1015e68e2a227f815387d8c",
   "pack_id": "rumi_turn_runtime_pack",
-  "source_identity": "sha256:a01db50774cbe83801684dbd914dba083682962942b8fa8235bf265b60ce2d96",
+  "source_identity": "sha256:b7b55914aa8bd53c320f6982f2783296ee9576ccb40c9d8468fb76aed655a0bb",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
-      "implementation_digest": "sha256:b1eb9e979bcec24003fe5586d7dc2f6af2bd0730a8e3eed39a5c04447f31ae13",
+      "implementation_digest": "sha256:8a9fd49e630d22db882aa9dfc6f98f8a5f3f033ed2b7f46c2f83970cb742b848",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -44,7 +44,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.lifecycle",
-      "implementation_digest": "sha256:b1eb9e979bcec24003fe5586d7dc2f6af2bd0730a8e3eed39a5c04447f31ae13",
+      "implementation_digest": "sha256:8a9fd49e630d22db882aa9dfc6f98f8a5f3f033ed2b7f46c2f83970cb742b848",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -78,7 +78,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.reconcile",
-      "implementation_digest": "sha256:b1eb9e979bcec24003fe5586d7dc2f6af2bd0730a8e3eed39a5c04447f31ae13",
+      "implementation_digest": "sha256:8a9fd49e630d22db882aa9dfc6f98f8a5f3f033ed2b7f46c2f83970cb742b848",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -140,7 +140,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.resource",
-      "implementation_digest": "sha256:b1eb9e979bcec24003fe5586d7dc2f6af2bd0730a8e3eed39a5c04447f31ae13",
+      "implementation_digest": "sha256:8a9fd49e630d22db882aa9dfc6f98f8a5f3f033ed2b7f46c2f83970cb742b848",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -174,7 +174,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.saved",
-      "implementation_digest": "sha256:b1eb9e979bcec24003fe5586d7dc2f6af2bd0730a8e3eed39a5c04447f31ae13",
+      "implementation_digest": "sha256:8a9fd49e630d22db882aa9dfc6f98f8a5f3f033ed2b7f46c2f83970cb742b848",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -400,7 +400,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_turn_runtime_pack.turn-runtime.stop",
-      "implementation_digest": "sha256:b1eb9e979bcec24003fe5586d7dc2f6af2bd0730a8e3eed39a5c04447f31ae13",
+      "implementation_digest": "sha256:8a9fd49e630d22db882aa9dfc6f98f8a5f3f033ed2b7f46c2f83970cb742b848",
       "implementation_path": "runtime/host.py",
       "materialization_mode": "on_demand",
       "operations": [

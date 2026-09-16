@@ -120,6 +120,9 @@ class NestedCancellationProof(Protocol):
     ) -> None:
         """Record successful authenticated backend cancellation."""
 
+    def record_resource_drain(self, future: Future[object]) -> None:
+        """Record release of the exact child execution resources."""
+
 
 @dataclass(frozen=True)
 class RequestEnvelope:
@@ -533,6 +536,8 @@ class RequestBroker:
             with self._lifecycle_lock:
                 self._active_requests.pop(active_request_id, None)
             active_request.completed.set()
+            if nested_cancellation_proof is not None and _completed is not None:
+                nested_cancellation_proof.record_resource_drain(_completed)
 
         try:
             workload_key = WorkloadInstanceKey(
@@ -930,8 +935,10 @@ class RequestBroker:
             # invocation has completed or started running.
             if future is not None:
                 future.cancel()
-                if not future.done():
-                    background_requests.append(future)
+                # Resource release must be tied to this exact submitted child,
+                # including already-completed and queued-cancelled Futures.
+                # The done callback runs immediately for completed Futures.
+                background_requests.append(future)
 
     def _record_audit_failure(
         self,

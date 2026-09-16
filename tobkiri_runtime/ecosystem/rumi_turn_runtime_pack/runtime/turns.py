@@ -129,6 +129,46 @@ class TurnRuntime:
             self._prune()
             return _copy(turn)
 
+    def request_cancellation(self, turn_id: str) -> dict[str, Any]:
+        """Record a stop request without claiming that execution terminated."""
+
+        with self._lock:
+            turn = self._required(turn_id)
+            if turn["status"] in _TERMINAL:
+                raise TurnConflict("terminal turn cannot request cancellation")
+            if any(
+                event.get("name") == "turn.cancellation_requested"
+                for event in turn["events"]
+            ):
+                return _copy(turn)
+            turn["revision"] += 1
+            turn["updated_at"] = _now_ms()
+            self._event(
+                turn,
+                "turn.cancellation_requested",
+                {"phase": "nested_cancellation_requested"},
+            )
+            return _copy(turn)
+
+    def confirm_cancellation(self, turn_id: str) -> dict[str, Any]:
+        """Commit cancellation only after an external verified-drain proof."""
+
+        with self._lock:
+            turn = self._required(turn_id)
+            if turn["status"] == "cancelled":
+                return _copy(turn)
+            if turn["status"] in _TERMINAL or not any(
+                event.get("name") == "turn.cancellation_requested"
+                for event in turn["events"]
+            ):
+                raise TurnConflict("turn cancellation was not requested")
+            return self.transition(
+                turn_id,
+                "cancelled",
+                expected_revision=turn["revision"],
+                details={"phase": "nested_cancellation_confirmed"},
+            )
+
     def steer(
         self,
         turn_id: str,

@@ -700,6 +700,20 @@ def test_saved_send_http_preserves_authority_and_durable_idempotency(
                 "turn_id": "turn-1",
                 "stopped": False,
             }
+            headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+            event_status, event_read, _ = _request(
+                server,
+                "GET",
+                _contract("GET", "/api/chat/turn/events")
+                + "?turn_id=turn-1&conversation_id=conversation-1",
+                headers=headers,
+            )
+            assert event_status == 200, event_read
+            assert event_read["data"]["terminal"] is None
+            assert event_read["data"]["status"] in {"running", "waiting"}
+            assert event_read["data"]["events"][-1]["name"] == (
+                "turn.cancellation_requested"
+            )
         elif completion == "provider_error":
             assert status == 200, payload
             assert payload["data"]["status"] == "reconciliation_required"
@@ -1018,6 +1032,23 @@ def test_saved_stop_http_signals_only_the_original_owner(tmp_path, monkeypatch) 
                     "turn_id": "turn-stop-1",
                     "stopped": False,
                 }
+                event_status, event_read, _ = _request(
+                    server,
+                    "GET",
+                    _contract("GET", "/api/chat/turn/events")
+                    + "?turn_id=turn-stop-1&conversation_id=conversation-1",
+                    headers={
+                        "Cookie": cookie,
+                        "Origin": origin,
+                        "X-Rumi-CSRF": csrf,
+                        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                    },
+                )
+                assert event_status == 200, event_read
+                assert event_read["data"]["terminal"] is None
+                assert event_read["data"]["events"][-1]["name"] == (
+                    "turn.cancellation_requested"
+                )
                 assert observed.wait(2)
                 sent.result(timeout=5)
                 assert scope_exited.wait(2), "Host wrapper must exit before the child"

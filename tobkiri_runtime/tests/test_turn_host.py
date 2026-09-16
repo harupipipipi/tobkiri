@@ -61,12 +61,24 @@ BEGIN = {
     "conversation_revision": 1,
 }
 
+SAVED_INPUT = {"request": {
+    "turn_id": "saved-turn", "conversation_id": "conversation",
+    "conversation_revision": 1, "content": "original private text",
+}}
+
+
+def _seed_running_saved_turn(root: Path) -> None:
+    result = _invoke(root, "lifecycle", operation="claim_saved", **SAVED_INPUT)
+    assert result["claimed"] is True
+    assert result["turn"]["status"] == "running"
+
 
 @pytest.mark.parametrize("scope_exited", [False, True])
 def test_stop_factory_does_not_treat_host_scope_exit_as_nested_termination(
     tmp_path: Path,
     scope_exited: bool,
 ) -> None:
+    _seed_running_saved_turn(tmp_path)
     completed = threading.Event()
     if scope_exited:
         completed.set()
@@ -97,12 +109,22 @@ def test_stop_factory_does_not_treat_host_scope_exit_as_nested_termination(
     }
     assert requests == ["saved-turn"]
     assert fences == ["checked"]
+    observed = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
+    assert observed["status"] == "running"
+    assert observed["events"][-1] == {
+        "sequence": 2,
+        "name": "turn.cancellation_requested",
+        "at": observed["events"][-1]["at"],
+        "details": {"phase": "nested_cancellation_requested"},
+    }
 
 
 def test_stop_factory_returns_confirmed_only_for_private_verified_drain(
     tmp_path: Path,
 ) -> None:
     """The turn contract projects only a bounded Host drain confirmation."""
+
+    _seed_running_saved_turn(tmp_path)
 
     requests: list[str] = []
     fences: list[str] = []
@@ -131,6 +153,15 @@ def test_stop_factory_returns_confirmed_only_for_private_verified_drain(
     }
     assert requests == ["saved-turn"]
     assert fences == ["checked", "checked"]
+    observed = _invoke(tmp_path, "resource", operation="get", turn_id="saved-turn")
+    assert observed["status"] == "cancelled"
+    assert [event["name"] for event in observed["events"][-2:]] == [
+        "turn.cancellation_requested",
+        "turn.cancelled",
+    ]
+    assert observed["events"][-1]["details"] == {
+        "phase": "nested_cancellation_confirmed",
+    }
 
 
 def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) -> None:
@@ -324,12 +355,6 @@ def test_event_owner_requires_matching_conversation_and_returns_same_snapshot(
         )
     with pytest.raises(PermissionError, match="fields"):
         _invoke(tmp_path, "events", operation="get", turn_id="turn")
-
-
-SAVED_INPUT = {"request": {
-    "turn_id": "saved-turn", "conversation_id": "conversation",
-    "conversation_revision": 1, "content": "original private text",
-}}
 
 
 def test_saved_begin_computes_identity_and_never_restarts_running_turn(tmp_path: Path) -> None:
