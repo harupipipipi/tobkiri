@@ -42,3 +42,12 @@ python -m scripts.tobkiri_pack sign \
 The native adapter must independently verify that manifest against its pinned
 acceptance public key and then use normal Profile/Authority approval. The
 fixture requests zero capabilities; signature possession is never a grant.
+
+Terminal acceptance is Host-owned. A Pack result or ordinary error is never
+promoted into evidence. Deadline and cancellation require an authenticated
+Broker-to-PackVM cancellation acknowledgement; abnormal exit requires a
+non-zero guest termination status; and every terminal observation requires the
+Host to confirm that the invocation was reaped and both admission reservation
+and request-scoped materialization were released. Until the Host can expose all
+of those typed internal facts to the native adapter, the adapter returns a
+fail-closed diagnostic instead of an acceptance observation.

@@ -1167,7 +1167,7 @@ fn maybe_start_packvm_acceptance_adapter(
         // This returns only the canonical Broker result.  Timeout, cancellation,
         // and abnormal-exit evidence still needs a dedicated Host projection;
         // the outer validator will reject ordinary or sanitized error payloads.
-        debug_contract_request(
+        let _broker_result = debug_contract_request(
             &client,
             &base_url,
             &session,
@@ -1186,7 +1186,12 @@ fn maybe_start_packvm_acceptance_adapter(
                 "contract_id": operation.get("contract_id"),
                 "payload": payload,
             })),
-        )
+        )?;
+        // A Pack result is untrusted and cannot certify its own deadline,
+        // cancellation, termination, or cleanup.  Keep the adapter closed
+        // until the Host exposes the typed internal facts required by
+        // `HostExecutionEvidence`; never upgrade this ordinary result.
+        bail!("Host-owned PackVM acceptance evidence is unavailable")
     });
     packvm_acceptance::start(&config.user_data_dir, handler).map(Some)
 }

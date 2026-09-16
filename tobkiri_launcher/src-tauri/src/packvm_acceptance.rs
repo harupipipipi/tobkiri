@@ -17,7 +17,6 @@ use std::thread;
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 const REQUEST_KIND: &str = "tobkiri.packvm.sandbox-acceptance.request.v1";
 const MAX_REQUEST_BYTES: usize = 4096;
@@ -49,8 +48,34 @@ struct DiagnosticResponse<'a> {
     code: &'static str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HostTermination {
+    Completed,
+    DeadlineExpired,
+    AuthenticatedCancel,
+    AbnormalExit(i32),
+}
+
+/// Host-internal execution facts. This type is deliberately not deserializable:
+/// neither the socket caller nor the untrusted Pack may submit acceptance facts.
+#[derive(Debug)]
+pub(crate) struct HostExecutionEvidence {
+    pub(crate) scenario: String,
+    pub(crate) nonce: String,
+    pub(crate) guest_artifact_identity: String,
+    pub(crate) attestation_digest: String,
+    pub(crate) request_digest: String,
+    pub(crate) original_deadline_ns: u64,
+    pub(crate) finished_ns: u64,
+    pub(crate) termination: HostTermination,
+    pub(crate) authenticated_cancel_ack: bool,
+    pub(crate) invocation_reaped: bool,
+    pub(crate) resource_reservation_released: bool,
+    pub(crate) materialization_released: bool,
+}
+
 pub(crate) type AcceptanceHandler =
-    dyn Fn(AcceptanceRequest) -> Result<Value> + Send + Sync + 'static;
+    dyn Fn(AcceptanceRequest) -> Result<HostExecutionEvidence> + Send + Sync + 'static;
 
 /// Start a private adapter socket below the isolated CI/E2E user-data root.
 pub(crate) fn start(user_data_root: &Path, handler: Arc<AcceptanceHandler>) -> Result<PathBuf> {
@@ -136,15 +161,17 @@ fn handle_stream(stream: &mut UnixStream, handler: &Arc<AcceptanceHandler>) -> R
     validate_request(&request)?;
     let scenario = request.scenario.clone();
     let nonce = request.nonce.clone();
-    let response = handler(request).unwrap_or_else(|_| {
-        serde_json::to_value(DiagnosticResponse {
-            kind: "tobkiri.packvm.sandbox-acceptance.diagnostic.v1",
-            scenario: &scenario,
-            nonce: &nonce,
-            code: "QA_PROFILE_OR_BROKER_UNAVAILABLE",
-        })
-        .expect("static diagnostic is serializable")
-    });
+    let response = handler(request)
+        .and_then(project_host_evidence)
+        .unwrap_or_else(|_| {
+            serde_json::to_value(DiagnosticResponse {
+                kind: "tobkiri.packvm.sandbox-acceptance.diagnostic.v1",
+                scenario: &scenario,
+                nonce: &nonce,
+                code: "QA_PROFILE_OR_BROKER_UNAVAILABLE",
+            })
+            .expect("static diagnostic is serializable")
+        });
     let encoded = serde_json::to_vec(&response)?;
     if encoded.is_empty() || encoded.len() > MAX_RESPONSE_BYTES {
         bail!("PackVM acceptance response size is invalid");
@@ -152,6 +179,80 @@ fn handle_stream(stream: &mut UnixStream, handler: &Arc<AcceptanceHandler>) -> R
     stream.write_all(&(encoded.len() as u32).to_be_bytes())?;
     stream.write_all(&encoded)?;
     Ok(())
+}
+
+fn project_host_evidence(evidence: HostExecutionEvidence) -> Result<serde_json::Value> {
+    validate_request(&AcceptanceRequest {
+        kind: REQUEST_KIND.to_string(),
+        scenario: evidence.scenario.clone(),
+        nonce: evidence.nonce.clone(),
+    })?;
+    for digest in [
+        &evidence.guest_artifact_identity,
+        &evidence.attestation_digest,
+        &evidence.request_digest,
+    ] {
+        if digest.len() != 71
+            || !digest.starts_with("sha256:")
+            || !digest[7..]
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            bail!("PackVM acceptance Host evidence digest is invalid");
+        }
+    }
+    if evidence.original_deadline_ns == 0
+        || evidence.finished_ns == 0
+        || !evidence.invocation_reaped
+        || !evidence.resource_reservation_released
+        || !evidence.materialization_released
+    {
+        bail!("PackVM acceptance resource cleanup is unconfirmed");
+    }
+    let outcome = match evidence.scenario.as_str() {
+        "probe_isolation" if evidence.termination == HostTermination::Completed => "denied",
+        "stdin_overflow" if evidence.termination == HostTermination::Completed => {
+            "input_limit_rejected"
+        }
+        "stdout_overflow" if evidence.termination == HostTermination::Completed => {
+            "output_limit_rejected"
+        }
+        "stderr_overflow" if evidence.termination == HostTermination::Completed => {
+            "error_limit_rejected"
+        }
+        "original_deadline"
+            if evidence.termination == HostTermination::DeadlineExpired
+                && evidence.authenticated_cancel_ack
+                && evidence.finished_ns >= evidence.original_deadline_ns =>
+        {
+            "deadline_expired"
+        }
+        "cancel"
+            if evidence.termination == HostTermination::AuthenticatedCancel
+                && evidence.authenticated_cancel_ack =>
+        {
+            "cancelled"
+        }
+        "abnormal_exit" if matches!(evidence.termination, HostTermination::AbnormalExit(code) if code != 0) => {
+            "execution_failed"
+        }
+        "resource_cleanup" if evidence.termination == HostTermination::Completed => "released",
+        _ => bail!("PackVM acceptance Host outcome is not proven"),
+    };
+    Ok(serde_json::json!({
+        "kind": "tobkiri.packvm.sandbox-acceptance.v1",
+        "scenario": evidence.scenario,
+        "nonce": evidence.nonce,
+        "outcome": outcome,
+        "execution_boundary": "linux-packvm-guest",
+        "transport": "authenticated-vsock-signed-guest-envelope",
+        "guest_artifact_identity": evidence.guest_artifact_identity,
+        "attestation_digest": evidence.attestation_digest,
+        "request_digest": evidence.request_digest,
+        "original_deadline_ns": evidence.original_deadline_ns,
+        "finished_ns": evidence.finished_ns,
+        "resource_cleanup_confirmed": true,
+    }))
 }
 
 fn read_size(stream: &mut UnixStream) -> Result<usize> {
@@ -202,5 +303,69 @@ mod tests {
             "approved": true,
         });
         assert!(serde_json::from_value::<AcceptanceRequest>(value).is_err());
+    }
+
+    fn evidence(scenario: &str, termination: HostTermination) -> HostExecutionEvidence {
+        HostExecutionEvidence {
+            scenario: scenario.to_string(),
+            nonce: "a".repeat(64),
+            guest_artifact_identity: format!("sha256:{}", "b".repeat(64)),
+            attestation_digest: format!("sha256:{}", "c".repeat(64)),
+            request_digest: format!("sha256:{}", "d".repeat(64)),
+            original_deadline_ns: 100,
+            finished_ns: 101,
+            termination,
+            authenticated_cancel_ack: matches!(
+                termination,
+                HostTermination::AuthenticatedCancel | HostTermination::DeadlineExpired
+            ),
+            invocation_reaped: true,
+            resource_reservation_released: true,
+            materialization_released: true,
+        }
+    }
+
+    #[test]
+    fn terminal_outcomes_require_typed_host_proof() {
+        let cases = [
+            (
+                "original_deadline",
+                HostTermination::DeadlineExpired,
+                "deadline_expired",
+            ),
+            ("cancel", HostTermination::AuthenticatedCancel, "cancelled"),
+            (
+                "abnormal_exit",
+                HostTermination::AbnormalExit(73),
+                "execution_failed",
+            ),
+            ("resource_cleanup", HostTermination::Completed, "released"),
+        ];
+        for (scenario, termination, outcome) in cases {
+            let projected = project_host_evidence(evidence(scenario, termination)).unwrap();
+            assert_eq!(projected["outcome"], outcome);
+            assert_eq!(projected["resource_cleanup_confirmed"], true);
+        }
+    }
+
+    #[test]
+    fn normal_errors_and_incomplete_cleanup_never_become_evidence() {
+        let mut ordinary_error = evidence("cancel", HostTermination::Completed);
+        ordinary_error.authenticated_cancel_ack = true;
+        assert!(project_host_evidence(ordinary_error).is_err());
+
+        let mut missing_cancel_ack = evidence("cancel", HostTermination::AuthenticatedCancel);
+        missing_cancel_ack.authenticated_cancel_ack = false;
+        assert!(project_host_evidence(missing_cancel_ack).is_err());
+
+        let mut unreaped = evidence("abnormal_exit", HostTermination::AbnormalExit(73));
+        unreaped.invocation_reaped = false;
+        assert!(project_host_evidence(unreaped).is_err());
+
+        let renewed_deadline = HostExecutionEvidence {
+            finished_ns: 99,
+            ..evidence("original_deadline", HostTermination::DeadlineExpired)
+        };
+        assert!(project_host_evidence(renewed_deadline).is_err());
     }
 }
