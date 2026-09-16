@@ -2457,31 +2457,6 @@ export function isModelProfilesResponse(
   );
 }
 
-type ProviderConnectionCapabilityCatalog = {
-  dynamic_host: {
-    profile_id: string;
-    profile_revision: string;
-    activation_id: string;
-    plan_hash: string;
-    catalog_hash: string;
-  };
-};
-
-function isProviderConnectionCapabilityCatalog(
-  value: unknown,
-): value is ProviderConnectionCapabilityCatalog {
-  const record = objectRecord(value);
-  const dynamicHost = record && objectRecord(record.dynamic_host);
-  return Boolean(
-    dynamicHost
-    && hasNonEmptyString(dynamicHost, "profile_id")
-    && hasNonEmptyString(dynamicHost, "profile_revision")
-    && hasNonEmptyString(dynamicHost, "activation_id")
-    && hasNonEmptyString(dynamicHost, "plan_hash")
-    && hasNonEmptyString(dynamicHost, "catalog_hash"),
-  );
-}
-
 function isProviderConnectionSnapshot(
   value: unknown,
 ): value is {
@@ -3914,14 +3889,6 @@ export const api = {
   },
 
   async listProviderConnections(): Promise<ProviderConnectionSnapshot> {
-    const catalog = await request<ProviderConnectionCapabilityCatalog>(
-      defaultspackContractRoute("api/ui/catalog"),
-      {
-        cache: "no-store",
-      },
-      isProviderConnectionCapabilityCatalog,
-    );
-    const dynamicHost = catalog.dynamic_host;
     const snapshot = await request<{
       revision: number;
       providers: Array<{
@@ -3933,22 +3900,8 @@ export const api = {
         reachability: "available" | "unavailable" | "unknown";
         observed_at: number | null;
       }>;
-    }>(defaultspackContractRoute("api/ui/capability/invoke"), {
-      method: "POST",
+    }>(defaultspackContractRoute("api/connections/status"), {
       cache: "no-store",
-      body: JSON.stringify({
-        request_id: crypto.randomUUID(),
-        expires_at: Date.now() / 1000 + 30,
-        profile_id: dynamicHost.profile_id,
-        profile_revision: dynamicHost.profile_revision,
-        activation_id: dynamicHost.activation_id,
-        plan_hash: dynamicHost.plan_hash,
-        catalog_hash: dynamicHost.catalog_hash,
-        contribution_id: "defaults.providers.connections.read",
-        owner_pack_id: "runtime.tauri.application.default",
-        contract_id: "tobkiri.resource.ai.provider.registry.v1",
-        payload: {},
-      }),
     }, isProviderConnectionSnapshot);
     return {
       registry_revision: snapshot.revision,

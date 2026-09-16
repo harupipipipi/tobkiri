@@ -83,6 +83,12 @@ _DIAGNOSTIC_WRITE_TARGET = (
     "tobkiri_ui_settings_pack.recovery-diagnostic-write", "tobkiri.ui.recovery-diagnostic.write",
     "tobkiri.ui.recovery-diagnostic.write",
 )
+_CONNECTION_STATUS_TARGET = (
+    "defaults.connections.status.read", "tobkiri.resource.ai.provider.registry.v1",
+    "rumi_provider_registry_pack.provider-registry-resource",
+    "rumi_provider_registry_pack.provider-registry.resource",
+    "rumi_provider_registry_pack.provider-registry.resource",
+)
 
 
 _CONVERSATION_TARGET = (
@@ -232,6 +238,13 @@ class DefaultspackHTTPPresentation:
             if set(payload) != allowed:
                 raise ValueError("UI state write request is invalid")
             return {**dict(payload), "profile_id": profile_id}
+
+        if identity == _CONNECTION_STATUS_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id or payload:
+                raise ValueError("connection status requires captured identity")
+            return {"profile_id": profile_id}
 
         if target.contribution_id == "defaults.providers.configure":
             phase = payload.get("phase")

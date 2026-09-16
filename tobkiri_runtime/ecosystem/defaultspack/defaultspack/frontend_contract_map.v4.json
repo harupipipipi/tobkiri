@@ -471,6 +471,19 @@
       ]
     },
     {
+      "method": "GET",
+      "path": "/api/connections/status",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.connections.status.read",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
+        "provider_id": "rumi_provider_registry_pack.provider-registry.resource",
+        "function_id": "rumi_provider_registry_pack.provider-registry.resource",
+        "allowed_payload_keys": []
+      }]
+    },
+    {
       "method": "PUT",
       "path": "/api/ui/settings",
       "presentation": "broker_result",

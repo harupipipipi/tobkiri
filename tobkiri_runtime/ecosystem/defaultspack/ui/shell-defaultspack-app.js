@@ -20,14 +20,14 @@ import{a as e,i as t,n,r,t as i}from"/static/shell-rolldown-runtime.js";var a=i(
   void main() {
     gl_FragColor = texture2D(inputTexture, vTex);
   }
- `}m(){let e=this.g;if(this.h=$S(e.createProgram(),`Failed to create WebGL program`),this.X=eC(this,`
+ `}m(){let e=this.g;if(this.h=US(e.createProgram(),`Failed to create WebGL program`),this.X=WS(this,`
   attribute vec2 aVertex;
   attribute vec2 aTex;
   varying vec2 vTex;
   void main(void) {
     gl_Position = vec4(aVertex, 0.0, 1.0);
     vTex = aTex;
-  }`,e.VERTEX_SHADER),this.W=eC(this,this.H(),e.FRAGMENT_SHADER),e.linkProgram(this.h),!e.getProgramParameter(this.h,e.LINK_STATUS))throw Error(`Error during program linking: ${e.getProgramInfoLog(this.h)}`);this.O=e.getAttribLocation(this.h,`aVertex`),this.L=e.getAttribLocation(this.h,`aTex`)}D(){}l(){}close(){if(this.h){let e=this.g;e.deleteProgram(this.h),e.deleteShader(this.X),e.deleteShader(this.W)}this.B&&this.g.deleteFramebuffer(this.B),this.A&&this.A.close(),this.u&&this.u.close()}},cne=class extends sC{H(){return`
+  }`,e.VERTEX_SHADER),this.W=WS(this,this.H(),e.FRAGMENT_SHADER),e.linkProgram(this.h),!e.getProgramParameter(this.h,e.LINK_STATUS))throw Error(`Error during program linking: ${e.getProgramInfoLog(this.h)}`);this.O=e.getAttribLocation(this.h,`aVertex`),this.L=e.getAttribLocation(this.h,`aTex`)}D(){}l(){}close(){if(this.h){let e=this.g;e.deleteProgram(this.h),e.deleteShader(this.X),e.deleteShader(this.W)}this.B&&this.g.deleteFramebuffer(this.B),this.A&&this.A.close(),this.u&&this.u.close()}},_ne=class extends ZS{H(){return`
   precision mediump float;
   uniform sampler2D backgroundTexture;
   uniform sampler2D maskTexture;
@@ -39,7 +39,7 @@ import{a as e,i as t,n,r,t as i}from"/static/shell-rolldown-runtime.js";var a=i(
     vec4 categoryColor = texture2D(colorMappingTexture, vec2(category, 0.0));
     gl_FragColor = mix(backgroundColor, categoryColor, categoryColor.a);
   }
- `}D(){let e=this.g;e.activeTexture(e.TEXTURE1),this.C=iC(this,e,e.LINEAR),e.activeTexture(e.TEXTURE2),this.j=iC(this,e,e.NEAREST)}m(){super.m();let e=this.g;this.P=$S(e.getUniformLocation(this.h,`backgroundTexture`),`Uniform location`),this.U=$S(e.getUniformLocation(this.h,`colorMappingTexture`),`Uniform location`),this.M=$S(e.getUniformLocation(this.h,`maskTexture`),`Uniform location`)}l(){super.l();let e=this.g;e.uniform1i(this.M,0),e.uniform1i(this.P,1),e.uniform1i(this.U,2)}close(){this.C&&this.g.deleteTexture(this.C),this.j&&this.g.deleteTexture(this.j),super.close()}},lne=class extends sC{H(){return`
+ `}D(){let e=this.g;e.activeTexture(e.TEXTURE1),this.C=JS(this,e,e.LINEAR),e.activeTexture(e.TEXTURE2),this.j=JS(this,e,e.NEAREST)}m(){super.m();let e=this.g;this.P=US(e.getUniformLocation(this.h,`backgroundTexture`),`Uniform location`),this.U=US(e.getUniformLocation(this.h,`colorMappingTexture`),`Uniform location`),this.M=US(e.getUniformLocation(this.h,`maskTexture`),`Uniform location`)}l(){super.l();let e=this.g;e.uniform1i(this.M,0),e.uniform1i(this.P,1),e.uniform1i(this.U,2)}close(){this.C&&this.g.deleteTexture(this.C),this.j&&this.g.deleteTexture(this.j),super.close()}},vne=class extends ZS{H(){return`
   precision mediump float;
   uniform sampler2D maskTexture;
   uniform sampler2D defaultTexture;

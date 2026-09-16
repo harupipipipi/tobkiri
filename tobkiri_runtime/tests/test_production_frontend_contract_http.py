@@ -1438,6 +1438,55 @@ def test_model_and_recovery_diagnostic_writes_use_dedicated_owner_routes(
     assert payload["data"]["mutation_id"] == mutation_id
     assert payload["data"]["receipt"].startswith("sha256:")
 
+
+def test_connection_status_reads_canonical_registry_without_writing(
+    settings_vertical_server,
+    tmp_path: Path,
+) -> None:
+    """The fixed status route projects one captured owner snapshot only."""
+    from ecosystem.rumi_provider_registry_pack.runtime.registry import ProviderRegistry
+
+    registry = ProviderRegistry("defaults", user_data_root=tmp_path / "user-data")
+    registry.save(
+        {
+            "provider_instance_id": "connection/openai:main",
+            "adapter_id": "openai",
+            "display_name": "OpenAI main",
+            "credential_handle": "opaque:connection-secret",
+            "endpoint": "https://api.openai.com",
+            "enabled": True,
+        },
+        expected_revision=0,
+    )
+    before = registry.path.read_bytes()
+    server, _session, _authority = settings_vertical_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {
+        "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+    }
+    route = _contract("GET", "/api/connections/status")
+    status, payload, _ = _request(server, "GET", route, headers=headers)
+    assert status == 200, payload
+    assert payload["data"] == {
+        "revision": 1,
+        "providers": [{
+            "provider_instance_id": "connection/openai:main",
+            "display_name": "OpenAI main",
+            "enabled": True,
+        }],
+    }
+    assert "connection-secret" not in json.dumps(payload)
+    assert registry.path.read_bytes() == before
+    for query in ("profile_id=other", "approved=true", "path=/tmp/registry"):
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, payload, _ = _request(
+            server, "GET", _contract("GET", f"/api/connections/status?{query}"),
+            headers=headers,
+        )
+        assert status == 400, payload
+        assert registry.path.read_bytes() == before
+
     headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
     status, payload, _ = _request(
         server, "GET", _contract("GET", "/api/ui/recovery-diagnostics"),

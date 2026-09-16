@@ -1974,15 +1974,7 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
       target,
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
-    const data = target === routeKey("api/ui/catalog")
-      ? { dynamic_host: {
-        profile_id: "defaults",
-        profile_revision: "revision-1",
-        activation_id: "activation:fixture-1",
-        plan_hash: "plan-1",
-        catalog_hash: "catalog-1",
-      } }
-      : {
+    const data = {
         revision: 7,
         providers: [
           {
@@ -2022,12 +2014,7 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
         observed_at: 123.5,
       }],
     });
-    assert.equal(calls[0]?.target, routeKey("api/ui/catalog"));
-    assert.equal(calls[1]?.target, routeKey("api/ui/capability/invoke"));
-    assert.equal(calls[1]?.body?.contribution_id, "defaults.providers.connections.read");
-    assert.equal(calls[1]?.body?.contract_id, "tobkiri.resource.ai.provider.registry.v1");
-    assert.equal(calls[1]?.body?.owner_pack_id, "runtime.tauri.application.default");
-    assert.deepEqual(calls[1]?.body?.payload, {});
+    assert.deepEqual(calls, [{ target: routeKey("api/connections/status"), body: undefined }]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -2035,18 +2022,8 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
 
 test("listProviderConnections rejects a provider response that carries undeclared fields", async () => {
   const originalFetch = globalThis.fetch;
-  let calls = 0;
   globalThis.fetch = (async () => {
-    calls += 1;
-    const data = calls === 1
-      ? { dynamic_host: {
-        profile_id: "defaults",
-        profile_revision: "revision-1",
-        activation_id: "activation:fixture-1",
-        plan_hash: "plan-1",
-        catalog_hash: "catalog-1",
-      } }
-      : {
+    const data = {
         revision: 7,
         providers: [{
           provider_instance_id: "connection/openai:main",
