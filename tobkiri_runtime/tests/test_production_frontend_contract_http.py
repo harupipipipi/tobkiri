@@ -3739,6 +3739,21 @@ def test_mutation_status_reconciles_lost_response_and_exact_approval_retry(
     lost_response.close()
 
     status_path = _contract("GET", "/api/runtime-surface/operation-status")
+    status, absent, _ = _request(
+        server,
+        "GET",
+        f"{status_path}?request_id={uuid.uuid4()}",
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 404, absent
+    assert absent["data"] == {
+        "host_operation_api_version": "io.tobkiri.host.operation.v1",
+        "state": "error",
+        "code": "OPERATION_NOT_FOUND",
+        "message": "The operation is absent from the current data root",
+        "retryable": False,
+        "write_set": [],
+    }
     deadline = time.monotonic() + EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS
     while True:
         status, reconciled, _ = _request(
