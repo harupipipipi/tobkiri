@@ -1623,15 +1623,32 @@ def test_model_and_recovery_diagnostic_writes_use_dedicated_owner_routes(
 def test_project_state_uses_captured_owner_through_production_http(
     settings_vertical_server,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Project reads and CAS writes cross the signed owner edge exactly once."""
+    from core_runtime.host_provider_backend_v4 import ExactHostProviderBackendV4
     from ecosystem.tobkiri_ui_settings_pack.runtime.projects import ProjectStateStore
 
-    store = ProjectStateStore(
-        tmp_path / "user-data",
-        "defaults",
-        "shell.tauri.default",
-    )
+    project_operations = {
+        "tobkiri_ui_settings_pack.projects-read",
+        "tobkiri_ui_settings_pack.projects-replace",
+    }
+    captured_owners: list[tuple[str, str, str]] = []
+    original_host_invoke = ExactHostProviderBackendV4.invoke
+
+    def observe_owner(self, envelope):
+        if envelope.operation_id in project_operations:
+            invocation = self._invocation_context(envelope)
+            captured_owners.append(
+                (
+                    envelope.operation_id,
+                    invocation.presentation_owner_principal_id,
+                    envelope.context.caller_principal.value,
+                )
+            )
+        return original_host_invoke(self, envelope)
+
+    monkeypatch.setattr(ExactHostProviderBackendV4, "invoke", observe_owner)
     server, _session, _authority = settings_vertical_server
     cookie, csrf, origin = _authenticate(server)
     headers = {
@@ -1648,6 +1665,14 @@ def test_project_state_uses_captured_owner_through_production_http(
         "revision": 0,
         "projects": [],
     }
+    assert len(captured_owners) == 1
+    assert captured_owners[0][0] == "tobkiri_ui_settings_pack.projects-read"
+    assert captured_owners[0][1] == captured_owners[0][2]
+    store = ProjectStateStore(
+        tmp_path / "user-data",
+        "defaults",
+        captured_owners[0][1],
+    )
     assert not store.path.exists()
 
     for query in ("profile_id=other", "approved=true", "path=/tmp/projects"):
@@ -1695,6 +1720,11 @@ def test_project_state_uses_captured_owner_through_production_http(
     assert acknowledgement["mutation_id"] == body["mutation_id"]
     assert acknowledgement["receipt"].startswith("sha256:")
     assert len(acknowledgement["caller_session_digest"]) == 64
+    assert captured_owners[-1] == (
+        "tobkiri_ui_settings_pack.projects-replace",
+        captured_owners[0][1],
+        captured_owners[0][2],
+    )
     assert store.read()["projects"] == [project]
     before = store.path.read_bytes()
 
