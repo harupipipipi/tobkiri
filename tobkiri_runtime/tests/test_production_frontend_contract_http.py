@@ -1620,6 +1620,108 @@ def test_model_and_recovery_diagnostic_writes_use_dedicated_owner_routes(
     assert payload["data"]["receipt"].startswith("sha256:")
 
 
+def test_project_state_uses_captured_owner_through_production_http(
+    settings_vertical_server,
+    tmp_path: Path,
+) -> None:
+    """Project reads and CAS writes cross the signed owner edge exactly once."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.projects import ProjectStateStore
+
+    store = ProjectStateStore(
+        tmp_path / "user-data",
+        "defaults",
+        "shell.tauri.default",
+    )
+    server, _session, _authority = settings_vertical_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {
+        "Cookie": cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": csrf,
+        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+    }
+    route = _contract("GET", "/api/projects")
+    status, payload, _ = _request(server, "GET", route, headers=headers)
+    assert status == 200, payload
+    assert payload["data"] == {
+        "namespace": "defaultspack.projects.v1",
+        "revision": 0,
+        "projects": [],
+    }
+    assert not store.path.exists()
+
+    for query in ("profile_id=other", "approved=true", "path=/tmp/projects"):
+        headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+        status, payload, _ = _request(
+            server,
+            "GET",
+            _contract("GET", f"/api/projects?{query}"),
+            headers=headers,
+        )
+        assert status == 400, payload
+        assert not store.path.exists()
+
+    project = {
+        "id": "group-production",
+        "title": "Production Project",
+        "workspace_id": "workspace-production",
+        "workspace_label": "Production Workspace",
+        "workspace_root": str(tmp_path / "workspace"),
+        "rumi_data_path": str(tmp_path / "workspace" / ".rumiDP"),
+    }
+    body = {
+        "projects": [project],
+        "expected_revision": 0,
+        "mutation_id": "projects-production-mutation",
+    }
+    write_route = _contract("PUT", "/api/projects")
+    status, payload, _ = _request(server, "PUT", write_route, body=body)
+    assert status in {401, 403}, payload
+    assert not store.path.exists()
+
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, payload, _ = _request(
+        server,
+        "PUT",
+        write_route,
+        body=body,
+        headers=headers,
+    )
+    assert status == 200, payload
+    acknowledgement = payload["data"]
+    assert acknowledgement["namespace"] == "defaultspack.projects.v1"
+    assert acknowledgement["revision"] == 1
+    assert acknowledgement["projects"] == [project]
+    assert acknowledgement["mutation_id"] == body["mutation_id"]
+    assert acknowledgement["receipt"].startswith("sha256:")
+    assert len(acknowledgement["caller_session_digest"]) == 64
+    assert store.read()["projects"] == [project]
+    before = store.path.read_bytes()
+
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, replay, _ = _request(
+        server,
+        "PUT",
+        write_route,
+        body=body,
+        headers=headers,
+    )
+    assert status == 200, replay
+    assert replay["data"] == acknowledgement
+    assert store.path.read_bytes() == before
+
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, conflict, _ = _request(
+        server,
+        "PUT",
+        write_route,
+        body={**body, "projects": []},
+        headers=headers,
+    )
+    assert status != 200, conflict
+    assert store.path.read_bytes() == before
+
+
 def test_connection_status_reads_canonical_registry_without_writing(
     settings_vertical_server,
     tmp_path: Path,
