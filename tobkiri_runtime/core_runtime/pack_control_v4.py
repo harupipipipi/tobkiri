@@ -10,6 +10,7 @@ import re
 import secrets
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -376,7 +377,10 @@ class HostProfileControlSession:
                     selected_profile_id=str(selected) if selected is not None else None,
                 )
             if operation_id == "operation.status.read":
-                request_id = _required(arguments.pop("request_id", None), "request identity")
+                request_id = _required_request_id(
+                    arguments.pop("request_id", None),
+                    "request identity",
+                )
                 _require_empty(arguments)
                 from .control_reconciliation_v4 import ControlReconciliationStore
 
@@ -684,7 +688,7 @@ class CapturedPackControlSession:
                     ),
                 )
             if operation_id == "operation.status.read":
-                request_id = _required(
+                request_id = _required_request_id(
                     arguments.pop("request_id", None),
                     "operation request identity",
                 )
@@ -2344,6 +2348,19 @@ def _required(value: object, label: str) -> str:
     if not normalized:
         raise PackControlInvalidRequest(f"{label} is required")
     return normalized
+
+
+def _required_request_id(value: object, label: str) -> str:
+    """Return one canonical UUID request identity or reject before lookup."""
+
+    normalized = _required(value, label)
+    try:
+        parsed = uuid.UUID(normalized)
+    except (AttributeError, ValueError) as error:
+        raise PackControlInvalidRequest(f"{label} must be a UUID") from error
+    if parsed.version not in range(1, 9):
+        raise PackControlInvalidRequest(f"{label} must be a versioned UUID")
+    return str(parsed)
 
 
 def _optional_string(value: object) -> str | None:

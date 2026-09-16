@@ -3850,7 +3850,8 @@ def test_mutation_status_reconciles_lost_response_and_exact_approval_retry(
         f"{status_path}?request_id={request_id}-tampered",
         headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
     )
-    assert status == 409, rejected
+    assert status == 400, rejected
+    assert rejected["data"]["code"] == "INVALID_REQUEST"
 
 
 def test_contract_replay_unknown_and_stale_capture_fail_closed(
