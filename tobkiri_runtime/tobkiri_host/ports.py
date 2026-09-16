@@ -169,6 +169,10 @@ class InteractiveApprovalStatus:
     request_snapshot_digest: str
     typed_confirmation_digest: str | None
     redacted_metadata: Mapping[str, str]
+    target_principal_id: str | None = None
+    base_scope: Mapping[str, Any] | None = None
+    max_uses: int | None = None
+    remaining_uses: int | None = None
 
 
 @dataclass(frozen=True)

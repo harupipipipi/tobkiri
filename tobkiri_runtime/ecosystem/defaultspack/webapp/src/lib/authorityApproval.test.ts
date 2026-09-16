@@ -175,7 +175,11 @@ test("interactive approval API exposes only the redacted projection and exact de
   assert.match(typeSource, /typed_confirmation_required: boolean;/);
   assert.match(typeSource, /typed_confirmation_digest: string \| null;/);
   assert.match(typeSource, /redacted_metadata: Record<string, string>;/);
-  assert.doesNotMatch(typeSource, /token|grant|receipt|scope|resource|config|approval_id/i);
+  assert.match(typeSource, /target_principal_id\?: string \| null;/);
+  assert.match(typeSource, /base_scope\?: Record<string, unknown> \| null;/);
+  assert.match(typeSource, /max_uses\?: number \| null;/);
+  assert.match(typeSource, /remaining_uses\?: number \| null;/);
+  assert.doesNotMatch(typeSource, /token|grant|receipt|resource|config|approval_id/i);
   assert.match(apiSource, /defaultspackContractRoute\("api\/interactive-approval\/v1\/list"\)/);
   assert.match(apiSource, /defaultspackContractRoute\("api\/interactive-approval\/v1\/get"\)[\s\S]*body: JSON\.stringify\(\{ request_id: requestId \}\)/);
   assert.match(apiSource, /defaultspackContractRoute\("api\/interactive-approval\/v1\/approve"\)[\s\S]*request_id: requestId,[\s\S]*confirmation_text: options\.confirmation_text,[\s\S]*ui_operator: options\.ui_operator/);

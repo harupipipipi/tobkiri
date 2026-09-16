@@ -470,6 +470,10 @@ export type InteractiveApprovalRequest = {
   typed_confirmation_required: boolean;
   typed_confirmation_digest: string | null;
   redacted_metadata: Record<string, string>;
+  target_principal_id?: string | null;
+  base_scope?: Record<string, unknown> | null;
+  max_uses?: number | null;
+  remaining_uses?: number | null;
 };
 
 /** A redacted list projection from the interactive-approval Pack. */

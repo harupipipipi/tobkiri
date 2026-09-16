@@ -181,6 +181,10 @@ def test_approve_mints_only_one_shot_authority_and_returns_no_material(
             "confirmation_phrase": "APPROVE",
             "summary": "Restart local host",
         },
+        "target_principal_id": harness.target.principal_id,
+        "base_scope": request.base_scope.to_dict(),
+        "max_uses": 1,
+        "remaining_uses": 1,
     }
     decision = harness.store.get_interactive_approval_decision(pending.request_id)
     assert decision is not None

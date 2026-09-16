@@ -743,12 +743,14 @@ class AuthorityV4Adapter:
         if not isinstance(displayed, str) or not hmac.compare_digest(displayed, phrase):
             raise AuthorityDenied("interactive confirmation display is unavailable")
 
-    @staticmethod
     def _interactive_status(
+        self,
         request: InteractiveApprovalRequest,
         state: str,
     ) -> InteractiveApprovalStatus:
         """Project a request into the deliberately secret-free port response."""
+
+        max_uses, remaining_uses = self._interactive_usage(request, state)
 
         return InteractiveApprovalStatus(
             request_id=request.request_id,
@@ -762,7 +764,46 @@ class AuthorityV4Adapter:
                 else None
             ),
             redacted_metadata=dict(request.redacted_metadata),
+            target_principal_id=request.target.principal_id,
+            base_scope=request.base_scope.to_dict(),
+            max_uses=max_uses,
+            remaining_uses=remaining_uses,
         )
+
+    def _interactive_usage(
+        self,
+        request: InteractiveApprovalRequest,
+        state: str,
+    ) -> tuple[int, int | None]:
+        """Return exact one-shot usage without exposing Grant identity.
+
+        Pending requests describe the one use that an approval would create.
+        Terminal non-approval states cannot be used.  For an approved request,
+        the remaining count comes only from the durable Grant usage counters;
+        an inconsistent or unavailable Grant is reported as unavailable.
+        """
+
+        max_uses = 1
+        if state == "pending":
+            return max_uses, max_uses
+        if state != "approved":
+            return max_uses, 0
+        decision = self._kernel.store.get_interactive_approval_decision(
+            request.request_id
+        )
+        if decision is None or decision.grant_id is None:
+            return max_uses, None
+        grant = self._kernel.store.get_grant(decision.grant_id)
+        if (
+            grant is None
+            or grant.lifetime is not GrantLifetime.ONE_SHOT
+            or grant.max_uses != max_uses
+            or grant.target != request.target
+            or grant.scope != request.base_scope
+        ):
+            return max_uses, None
+        reserved_uses, committed_uses = self._kernel.store.grant_usage(grant.grant_id)
+        return max_uses, max(max_uses - reserved_uses - committed_uses, 0)
 
     @staticmethod
     def _verify_typed_confirmation(

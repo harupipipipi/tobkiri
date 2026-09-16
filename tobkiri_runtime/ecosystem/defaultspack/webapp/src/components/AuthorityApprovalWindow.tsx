@@ -25,6 +25,7 @@ import {
   type InteractiveApprovalRequest,
 } from "../features/chat/resources/authorityApprovalResources";
 import { broadcastAuthorityApprovalSettlement } from "../lib/authorityApprovalEvents";
+import { approvalAuthorityDetails } from "../lib/authorityApprovalPresentation";
 import { profileScreenUrlFromLocation } from "../lib/profileRoute";
 import { closeCurrentWindow, getAuthorityApprovalContext, openFingerRecordingWindow } from "../lib/desktopApproval";
 import { cn } from "../lib/cn";
@@ -213,6 +214,10 @@ export function AuthorityApprovalWindow() {
   }, [request]);
 
   const confirmationPhrase = request?.redacted_metadata.confirmation_phrase?.trim() ?? "";
+  const authorityDetails = useMemo(
+    () => request ? approvalAuthorityDetails(request) : null,
+    [request],
+  );
   const confirmationUnavailable = Boolean(
     request?.typed_confirmation_required && !confirmationPhrase,
   );
@@ -349,6 +354,35 @@ export function AuthorityApprovalWindow() {
                       </div>
                     ))}
                   </dl>
+                )}
+                {authorityDetails && (
+                  <div className="mt-4 border-t border-zinc-800 pt-4">
+                    <h2 className="text-xs font-medium text-zinc-300">許可される権限の詳細</h2>
+                    <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
+                      <div className="sm:col-span-2">
+                        <dt className="text-zinc-600">対象プリンシパル</dt>
+                        <dd className="mt-1 break-all font-mono text-zinc-200">
+                          {authorityDetails.targetPrincipal}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-zinc-600">最大使用回数</dt>
+                        <dd className="mt-1 font-mono text-zinc-200">{authorityDetails.maxUses}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-zinc-600">残り使用回数</dt>
+                        <dd className="mt-1 font-mono text-zinc-200">{authorityDetails.remainingUses}</dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-zinc-600">基本スコープ</dt>
+                        <dd className="mt-1">
+                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md border border-zinc-800 bg-black/30 p-2 font-mono text-[11px] leading-5 text-zinc-300">
+                            {authorityDetails.baseScope}
+                          </pre>
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
                 )}
               </div>
 

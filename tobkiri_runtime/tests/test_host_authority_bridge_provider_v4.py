@@ -49,6 +49,17 @@ class _ApprovalPort:
             request_snapshot_digest="a" * 64,
             typed_confirmation_digest="b" * 64,
             redacted_metadata={"summary": "Publish branch"},
+            target_principal_id="target-principal",
+            base_scope={
+                "capability": "terminal.execute",
+                "semantics_digest": "c" * 64,
+                "dimensions": {},
+                "quotas": {},
+                "exact_request_digest": "d" * 64,
+                "opaque": True,
+            },
+            max_uses=1,
+            remaining_uses=1,
         )
         self._records[request_id] = (context, status)
         return status
@@ -111,6 +122,10 @@ class _ApprovalPort:
             request_snapshot_digest=status.request_snapshot_digest,
             typed_confirmation_digest=status.typed_confirmation_digest,
             redacted_metadata=status.redacted_metadata,
+            target_principal_id=status.target_principal_id,
+            base_scope=status.base_scope,
+            max_uses=status.max_uses,
+            remaining_uses=(0 if state == "denied" else status.remaining_uses),
         )
         self._records[command.request_id] = (record[0], next_status)
         self.decisions.append((kind, command))
@@ -350,7 +365,15 @@ def test_decisions_forward_authenticated_context_and_return_only_redacted_status
         "request_snapshot_digest",
         "typed_confirmation_digest",
         "redacted_metadata",
+        "target_principal_id",
+        "base_scope",
+        "max_uses",
+        "remaining_uses",
     }
+    assert approved["target_principal_id"] == "target-principal"
+    assert approved["base_scope"]["capability"] == "terminal.execute"
+    assert approved["max_uses"] == 1
+    assert approved["remaining_uses"] == 1
     assert isinstance(approved["expires_at"], int)
     assert not {
         "grant",

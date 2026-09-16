@@ -930,6 +930,12 @@ def _redacted_status(status: InteractiveApprovalStatus) -> dict[str, Any]:
         "request_snapshot_digest": status.request_snapshot_digest,
         "typed_confirmation_digest": status.typed_confirmation_digest,
         "redacted_metadata": dict(status.redacted_metadata),
+        "target_principal_id": status.target_principal_id,
+        "base_scope": (
+            dict(status.base_scope) if status.base_scope is not None else None
+        ),
+        "max_uses": status.max_uses,
+        "remaining_uses": status.remaining_uses,
     }
 
 
