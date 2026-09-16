@@ -126,6 +126,42 @@ export type SavedTurnEventSnapshot = {
   turn: SavedTurnResult["turn"];
 };
 
+export type ProjectStateRecord = {
+  id: string;
+  title: string;
+  workspace_id: string | null;
+  workspace_label: string | null;
+  workspace_root: string | null;
+  rumi_data_path: string | null;
+};
+
+export type ProjectStateSnapshot = {
+  namespace: "defaultspack.projects.v1";
+  revision: number;
+  projects: ProjectStateRecord[];
+  receipt?: string;
+  mutation_id?: string;
+  migration_digest?: string | null;
+  caller_session_digest?: string;
+};
+
+function isProjectStateSnapshot(value: unknown): value is ProjectStateSnapshot {
+  const record = objectRecord(value);
+  if (!record || record.namespace !== "defaultspack.projects.v1"
+    || !Number.isSafeInteger(record.revision) || Number(record.revision) < 0
+    || !Array.isArray(record.projects) || record.projects.length > 256) return false;
+  return record.projects.every((candidate) => {
+    const project = objectRecord(candidate);
+    if (!project || Object.keys(project).sort().join(",") !== [
+      "id", "rumi_data_path", "title", "workspace_id", "workspace_label", "workspace_root",
+    ].sort().join(",")) return false;
+    if (typeof project.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(project.id)
+      || typeof project.title !== "string" || !project.title.trim()) return false;
+    return ["workspace_id", "workspace_label", "workspace_root", "rumi_data_path"]
+      .every((key) => project[key] === null || typeof project[key] === "string");
+  });
+}
+
 export type TokenizerInfo = {
   available?: boolean;
   fallback?: boolean;
