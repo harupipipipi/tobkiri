@@ -21,11 +21,11 @@
           "scope_semantics": "host_broker"
         }
       ],
-      "owner": "rumi_discord_connector_pack",
+      "owner": "rumi_http_api_connector_pack",
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:255099f5d40bc9dcb1feeb0867da610fbfb026b6634cce552d67412a20ec84a3",
+            "digest": "sha256:465a4a84cc89de7e523caaffa52f6ab53a01f674bb6411862b29e1fb3cbfbb01",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -36,7 +36,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:255099f5d40bc9dcb1feeb0867da610fbfb026b6634cce552d67412a20ec84a3",
+        "source_digest": "sha256:465a4a84cc89de7e523caaffa52f6ab53a01f674bb6411862b29e1fb3cbfbb01",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_http_api_connector_pack"
       },
@@ -56,7 +56,7 @@
         ],
         "security": "restricted"
       },
-      "revision_digest": "sha256:f7bde2f2e9605df5ae7512eef4eff7e8f22ba32a0c86e608a9dfbb33d9227ffd",
+      "revision_digest": "sha256:d384666c82a843f8fd735700b40ed8798a41f2e023b5467f3dfee1dcea10e7bf",
       "schema_catalog": {
         "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
           "type": "object"
@@ -67,5 +67,5 @@
     }
   ],
   "pack_id": "rumi_http_api_connector_pack",
-  "source_identity": "sha256:255099f5d40bc9dcb1feeb0867da610fbfb026b6634cce552d67412a20ec84a3"
+  "source_identity": "sha256:465a4a84cc89de7e523caaffa52f6ab53a01f674bb6411862b29e1fb3cbfbb01"
 }

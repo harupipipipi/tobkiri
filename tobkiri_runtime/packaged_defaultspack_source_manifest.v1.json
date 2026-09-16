@@ -3283,8 +3283,8 @@
     {
       "path": "scripts/migrate_pack_artifacts_v4.py",
       "type": "regular-file",
-      "size": 65746,
-      "sha256": "4ea8ff8fb6468a8a07662434cb04b601a18f08f8fe0cf22dd39eafd8f47a07ac",
+      "size": 67029,
+      "sha256": "cae1cead9be5e5caa5c26a68cad15a798cb0abed0cbf896c4463abeda490b6d5",
       "executable": false
     },
     {

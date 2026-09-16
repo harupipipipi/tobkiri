@@ -260,19 +260,19 @@ def test_checked_in_curated_reviews_bind_exact_generated_semantics() -> None:
         )["status"] == "generated-draft"
 
 
-def test_shared_contract_owner_mismatches_are_not_curated() -> None:
-    """Generator-reviewed shared Contracts remain gaps when owner is another Pack."""
+def test_corrected_shared_contract_owners_remain_uncurated_without_review() -> None:
+    """Corrected ownership alone does not manufacture an independent review."""
 
     reviews = load_curated_reviews(complete_gate.MIGRATION_REVIEW_PATH)
-    mismatched = {
+    corrected = {
         "rumi_connector_turn_adapter_pack",
         "rumi_email_connector_pack",
         "rumi_generic_webhook_connector_pack",
     }
 
-    assert mismatched.isdisjoint(reviews)
-    for pack_id in mismatched:
+    assert corrected.isdisjoint(reviews)
+    for pack_id in corrected:
         contracts = complete_gate._load_json(
             complete_gate.ECOSYSTEM / pack_id / "contracts.v4.json"
         )["contracts"]
-        assert all(contract["owner"] != pack_id for contract in contracts)
+        assert all(contract["owner"] == pack_id for contract in contracts)

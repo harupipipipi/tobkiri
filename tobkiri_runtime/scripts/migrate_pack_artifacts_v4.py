@@ -1452,7 +1452,7 @@ def _validate_catalog_payload(payload: Mapping[str, Any]) -> list[Mapping[str, A
 
 
 def _verify_global_uniqueness(rendered: Mapping[str, Mapping[str, str]]) -> None:
-    owners: dict[str, str] = {}
+    contract_declarations: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
     providers: dict[str, str] = {}
     operations: dict[str, str] = {}
     for pack_id, files in rendered.items():
@@ -1460,12 +1460,9 @@ def _verify_global_uniqueness(rendered: Mapping[str, Mapping[str, str]]) -> None
         manifest = json.loads(files["pack.v4.json"])
         contract_catalog = json.loads(files["contracts.v4.json"])
         for contract in contract_catalog["contracts"]:
-            owner = contract["owner"]
-            prior = owners.setdefault(contract["contract_id"], owner)
-            if prior != owner:
-                raise PackV4MigrationError(
-                    f"duplicate contract owner {contract['contract_id']}: {prior}, {owner}"
-                )
+            contract_declarations.setdefault(contract["contract_id"], []).append(
+                (pack_id, contract)
+            )
         for provider in manifest["provider_catalog"]:
             prior = providers.setdefault(provider["provider_id"], pack_id)
             if prior != pack_id:
@@ -1474,6 +1471,39 @@ def _verify_global_uniqueness(rendered: Mapping[str, Mapping[str, str]]) -> None
             prior = operations.setdefault(operation["operation_id"], pack_id)
             if prior != pack_id:
                 raise PackV4MigrationError(f"duplicate operation {operation['operation_id']}")
+
+    for contract_id, declarations in contract_declarations.items():
+        if len(declarations) == 1:
+            continue
+        self_owners = {
+            pack_id
+            for pack_id, contract in declarations
+            if contract["owner"] == pack_id
+        }
+        if not self_owners:
+            raise PackV4MigrationError(
+                f"shared contract has no Pack-qualified owner: {contract_id}"
+            )
+        versions = {str(contract["version"]) for _, contract in declarations}
+        cardinalities = {
+            str(contract["provider_semantics"]["cardinality"])
+            for _, contract in declarations
+        }
+        schema_catalogs = {
+            canonical_json(contract["schema_catalog"])
+            for _, contract in declarations
+        }
+        if len(versions) != 1 or cardinalities != {"many"} or len(schema_catalogs) != 1:
+            raise PackV4MigrationError(
+                f"shared contract semantics disagree: {contract_id}"
+            )
+        declaring_packs = {pack_id for pack_id, _ in declarations}
+        for pack_id, contract in declarations:
+            owner = str(contract["owner"])
+            if owner not in declaring_packs or owner not in self_owners | {pack_id}:
+                raise PackV4MigrationError(
+                    f"shared contract owner is not Pack-qualified: {contract_id}/{owner}"
+                )
 
 
 def _verify_runtime_artifact_sources(record: Mapping[str, Any]) -> None:

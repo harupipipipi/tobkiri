@@ -18,6 +18,7 @@ from scripts.migrate_pack_artifacts_v4 import (
     _migration_source_view,
     _render_record,
     _validate_catalog_payload,
+    _verify_global_uniqueness,
     generate,
     import_legacy,
     verify_rendered_artifacts,
@@ -256,6 +257,64 @@ def test_catalog_validation_does_not_use_a_pack_count_as_authority() -> None:
     assert len(records) == len(payload["pack_ids"])
 
 
+def test_shared_many_contract_accepts_pack_qualified_owners() -> None:
+    """A shared many-Contract is owned by each declaring provider Pack."""
+
+    records = {
+        item["pack_id"]: copy.deepcopy(item)
+        for item in _catalog()["packs"]
+        if item["pack_id"]
+        in {"rumi_discord_connector_pack", "rumi_email_connector_pack"}
+    }
+    email = records["rumi_email_connector_pack"]
+    email["provided_contracts"][0]["owner"] = email["pack_id"]
+
+    _verify_global_uniqueness(
+        {pack_id: _render_record(record) for pack_id, record in records.items()}
+    )
+
+
+def test_shared_many_contract_rejects_schema_disagreement() -> None:
+    """Pack-local ownership cannot hide incompatible shared Contract schemas."""
+
+    records = {
+        item["pack_id"]: copy.deepcopy(item)
+        for item in _catalog()["packs"]
+        if item["pack_id"]
+        in {"rumi_discord_connector_pack", "rumi_email_connector_pack"}
+    }
+    email = records["rumi_email_connector_pack"]
+    email["provided_contracts"][0]["owner"] = email["pack_id"]
+    email["provided_contracts"][0]["schemas"]["input"] = {
+        "type": "object",
+        "required": ["forged"],
+    }
+
+    with pytest.raises(PackV4MigrationError, match="shared contract semantics disagree"):
+        _verify_global_uniqueness(
+            {pack_id: _render_record(record) for pack_id, record in records.items()}
+        )
+
+
+def test_shared_many_contract_rejects_non_provider_owner() -> None:
+    """A shared Contract owner must be one of its actual provider Packs."""
+
+    records = {
+        item["pack_id"]: copy.deepcopy(item)
+        for item in _catalog()["packs"]
+        if item["pack_id"]
+        in {"rumi_discord_connector_pack", "rumi_email_connector_pack"}
+    }
+    records["rumi_email_connector_pack"]["provided_contracts"][0]["owner"] = (
+        "unrelated_pack"
+    )
+
+    with pytest.raises(PackV4MigrationError, match="owner is not Pack-qualified"):
+        _verify_global_uniqueness(
+            {pack_id: _render_record(record) for pack_id, record in records.items()}
+        )
+
+
 def test_all_packs_have_valid_deterministic_v4_artifacts() -> None:
     """Every declared Pack must match a second byte-identical generation."""
     catalog = _catalog()
@@ -458,7 +517,6 @@ def test_global_catalog_has_no_duplicate_provider_or_operation() -> None:
     """Canonical Provider and Operation identities are globally unique."""
     providers: set[str] = set()
     operations: set[str] = set()
-    owners: dict[str, str] = {}
     catalog = _catalog()
     expected_provider_count = sum(
         len(record.get("functions", record["provided_contracts"])) for record in catalog["packs"]
@@ -471,11 +529,6 @@ def test_global_catalog_has_no_duplicate_provider_or_operation() -> None:
     for record in catalog["packs"]:
         files = _render_record(record)
         manifest = json.loads(files["pack.v4.json"])
-        contracts = json.loads(files["contracts.v4.json"])["contracts"]
-        for contract in contracts:
-            assert (
-                owners.setdefault(contract["contract_id"], contract["owner"]) == contract["owner"]
-            )
         for provider in manifest["provider_catalog"]:
             assert provider["provider_id"] not in providers
             providers.add(provider["provider_id"])
