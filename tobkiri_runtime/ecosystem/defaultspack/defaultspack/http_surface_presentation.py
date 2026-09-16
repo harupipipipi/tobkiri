@@ -51,7 +51,11 @@ from .workspace_presentation import (
     present_workspace_list,
     present_workspace_record,
 )
-from .turn_event_presentation import TURN_EVENT_TARGET, normalize_turn_event_read
+from .turn_event_presentation import (
+    TURN_EVENT_TARGET,
+    normalize_turn_event_read,
+    present_turn_events,
+)
 
 _PROJECT_READ_TARGET = (
     "defaults.projects.read", "tobkiri.resource.project.state.v1",
@@ -544,6 +548,8 @@ class DefaultspackHTTPPresentation:
             return present_workspace_list(result)
         if binding.presentation == "workspace_record":
             return present_workspace_record(result)
+        if binding.presentation == "turn_events":
+            return present_turn_events(result)
         if binding.presentation != "dynamic_pack_catalog":
             return dict(result)
         capability_binding = routes.get(("POST", "/api/ui/capability/invoke"))

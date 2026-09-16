@@ -11,6 +11,10 @@ from ecosystem.defaultspack.defaultspack.turn_event_presentation import (
     normalize_turn_event_read,
     present_turn_events,
 )
+from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
+    DefaultspackHTTPPresentation,
+)
+from core_runtime.global_contracts.http_contract_dispatch import HTTPContractBinding
 
 
 def _turn(status: str = "running") -> dict[str, object]:
@@ -52,6 +56,25 @@ def test_turn_event_projection_uses_one_identity_for_every_event() -> None:
         assert event["conversation_id"] == "conversation-1"
         assert event["operation_id"] == "turn-1"
         assert event["request_id"] == "saved-turn.request-1"
+
+
+def test_http_presentation_applies_turn_event_projection() -> None:
+    binding = HTTPContractBinding(
+        method="GET",
+        path="/api/chat/turn/events",
+        presentation="turn_events",
+        targets=(),
+    )
+    projected = DefaultspackHTTPPresentation().present_result(
+        binding,
+        _turn(),
+        session=None,
+        routes={},
+        capability_snapshot=lambda *_args, **_kwargs: None,
+    )
+    assert projected["terminal"] is None
+    assert projected["turn_id"] == "turn-1"
+    assert projected["events"][1]["turn_id"] == "turn-1"
 
 
 def test_turn_event_projection_preserves_terminal_receipt_and_error() -> None:

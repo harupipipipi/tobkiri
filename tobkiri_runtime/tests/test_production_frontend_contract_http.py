@@ -1550,7 +1550,12 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         for item in command_catalog["commands"]
         if item["availability"]["status"] == "available"
     }
-    assert available == {"help", "terminal", "commit", "push", "patch", "restore"}
+    assert available == {
+        "help", "new", "clear", "tools", "status", "settings", "diff", "files",
+        "history", "context", "permissions", "approvals", "usage", "theme",
+        "keymap", "plugins", "mcp", "skills", "hooks",
+        "terminal", "commit", "push", "patch", "restore",
+    }
     assert all(
         item["authorization"]["approval_required"]
         for item in command_catalog["commands"]
@@ -1646,6 +1651,10 @@ def test_connection_status_reads_canonical_registry_without_writing(
             "provider_instance_id": "connection/openai:main",
             "display_name": "OpenAI main",
             "enabled": True,
+            "credential_status": "configured",
+            "health_status": "unverified",
+            "reachability": "unknown",
+            "observed_at": None,
         }],
     }
     assert "connection-secret" not in json.dumps(payload)
