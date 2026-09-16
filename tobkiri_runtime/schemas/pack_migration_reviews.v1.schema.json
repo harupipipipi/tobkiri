@@ -15,16 +15,17 @@
     "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "review": {
       "type": "object",
-      "required": ["pack_id", "source_kind", "reviewer_id", "reviewed_at", "source_digest", "target_digest", "semantic_record", "semantic_record_digest", "review_attestation_digest"],
+      "required": ["pack_id", "source_kind", "reviewer_id", "reviewed_at", "source_digest", "target_digest", "semantic_record_digest", "review_basis", "review_attestation_digest"],
       "properties": {
         "pack_id": {"type": "string", "minLength": 1},
-        "source_kind": {"const": "human-curated"},
+        "source_kind": {"const": "independent-curated"},
         "reviewer_id": {"type": "string", "minLength": 1},
         "reviewed_at": {"type": "string", "minLength": 1},
         "source_digest": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
         "target_digest": {"$ref": "#/$defs/digest"},
         "semantic_record": {"type": "object"},
         "semantic_record_digest": {"$ref": "#/$defs/digest"},
+        "review_basis": {"type": "object"},
         "review_attestation_digest": {"$ref": "#/$defs/digest"}
       }
     }

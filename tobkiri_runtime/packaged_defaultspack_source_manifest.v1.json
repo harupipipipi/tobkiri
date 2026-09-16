@@ -3353,8 +3353,8 @@
     {
       "path": "scripts/quality/evidence/pack_migration_reviews.v1.json",
       "type": "regular-file",
-      "size": 137,
-      "sha256": "99d5eeff50151bdfccd6aa03c65fe03951e055c811b9927f31cd78b66b77678c",
+      "size": 17598,
+      "sha256": "55bfd7635e72061c8906b521c994dcd4f60678d8ac22112249a98678efea6388",
       "executable": false
     },
     {
@@ -3388,8 +3388,8 @@
     {
       "path": "scripts/quality/migration_release_evidence.py",
       "type": "regular-file",
-      "size": 12252,
-      "sha256": "279941a4adca57dc7248af1cbfc820823ded2d9803e78ed8b3aee33224d6fe36",
+      "size": 13103,
+      "sha256": "d1fdc46f27404456d2ef2b406871822d4b982967c1886b0d8e8382912948a547",
       "executable": false
     },
     {

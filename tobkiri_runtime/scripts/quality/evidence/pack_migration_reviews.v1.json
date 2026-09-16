@@ -2,5 +2,356 @@
   "schema": "io.tobkiri.quality.pack-migration-reviews.v1",
   "authority": "curated-review",
   "generator_id": null,
-  "reviews": {}
+  "reviews": {
+    "rumi_company_agent_adapter_pack": {
+      "pack_id": "rumi_company_agent_adapter_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:9a0f2c9e6527193533280b11140a560ed25a4f760a2be67a9fc6750b9ce8e3bf",
+      "target_digest": "sha256:1b69db1b7e477545f9e039be58b9b2fa3206cc39214bacb35d4fbf60044cc988",
+      "semantic_record_digest": "sha256:a6639411ca0d0190cb5e4a68b15b63a1f54607901cecf856382826e165c97889",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:0a3e9b27d2d361389e5e1fc4d5bf2e793029d5b7fa9929280370f4d0c47141d1"
+    },
+    "rumi_connector_company_adapter_pack": {
+      "pack_id": "rumi_connector_company_adapter_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:8c4be6ccd98adb7f7e156f22d9996aec78ebeb20e081346be3f91aceacdc66d2",
+      "target_digest": "sha256:d6c25840c0af5391b052d3c334675222d3ae41b52f868873404a88ab3988b200",
+      "semantic_record_digest": "sha256:474d63fb62438add75d62c4ee407d7f0820d623938641edc9e16b2211460a381",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:ff3b5123789ed38c668109c4fa42c61f48b2c6c499fb5dc3c74ef1ed165ee575"
+    },
+    "rumi_connector_inbound_broker_pack": {
+      "pack_id": "rumi_connector_inbound_broker_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:7ce51d2254c693cfb38d052185b5b98c6a4a5071108aa18863308c25f6dc45cb",
+      "target_digest": "sha256:634c46d225f0c7239abc8de40a1211650e735e0d3eda9c5d0a260a2e68984d92",
+      "semantic_record_digest": "sha256:9e039143ff3b93ba417290a7c6b2bba47e36b704e7205038fdd2423d278dcb21",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:87f2f3b2ec24620e0e60b0bcf0cbfd21ebd25aa68dd9c017598939383f240ff6"
+    },
+    "rumi_context_runtime_pack": {
+      "pack_id": "rumi_context_runtime_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:89e637b8cee98a91c626a11dfa78a72e00d78950116ace82d46c6281f3237d84",
+      "target_digest": "sha256:1d0a4329cd25c818085e0522880ab3859cd7a2b0045c585b9459e1fb98ed0b8a",
+      "semantic_record_digest": "sha256:3d03be2e850477563b2baf60a95d3dbfe145c7179ccb1de08eb76d1f4f478a94",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:bfe9e73b6f740245e4eeb3ef9cd8daa7885c3646a9bc056cbb0c4b562d5ce31e"
+    },
+    "rumi_discord_connector_pack": {
+      "pack_id": "rumi_discord_connector_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:380f4afcdb405df230b8232056a457704cf77d55a36677708ce12cc68e77ff1c",
+      "target_digest": "sha256:53af2e7a34dfc424760db6162473a96474f15621a8893321b6a5c3c57269aeb5",
+      "semantic_record_digest": "sha256:b99a7a946d101c2ad138f2ba77c376c036fc084d99c5259ce2faccb1c71fece2",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:e7d7f005de7b4e60df4891f15a8b8e7f5f4e7a24bfa359666f1a43902fb02480"
+    },
+    "rumi_file_mutation_pack": {
+      "pack_id": "rumi_file_mutation_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:149d72830cb385589e217e7c56a793095197a34f818bfc3b549b4b20258a4465",
+      "target_digest": "sha256:3631adb05772eebedc69cd7bf697a20da88c6d4a5d739b3553e6a8cd1015c4dc",
+      "semantic_record_digest": "sha256:138e733f7170a2de005a946e9da6de3480f771bfcc48561adfafbf0a7eb6c167",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:aeeca3534d814cfb3e2f6e13bab755f758d9e798ea05a3868ab33767fc9a299b"
+    },
+    "rumi_file_patch_pack": {
+      "pack_id": "rumi_file_patch_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:b1fa68d95b3ba45dacc5af852da386612fad36de67090744994e4bfe67ce6a3d",
+      "target_digest": "sha256:e2e0c140e32ea27e1d1fdd792dbd46ac332b512664c9bda402af42d4047aa820",
+      "semantic_record_digest": "sha256:2293e4a2651845c7690cd8831c03888489784fbb2e1f669a1ca4fd15da34068f",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:86b41ad626ddc428fa82cf503477bebbc395848b6ef781d771a363c85c275ea9"
+    },
+    "rumi_git_read_pack": {
+      "pack_id": "rumi_git_read_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:a7aad472395ee1ad5e33c8cc7c176f95167c7f6136e2eef6154a88db8ae83179",
+      "target_digest": "sha256:2bcbb019fac7f2b21d2fa67b7bd79f392e7c10d60a1bb39664aef6b8387dab9f",
+      "semantic_record_digest": "sha256:8b6e0985c518affdcb2c1031f96235683dab9e718a87fa3a62e98683db02a392",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:843fb8de029d7470ca8dd1bb81316d7d8fdee140cf516260f4774ee4292cc3bd"
+    },
+    "rumi_job_action_broker_pack": {
+      "pack_id": "rumi_job_action_broker_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:3b72e9a00bf24369e0e58cb1376b087ded805dc89beb85ca24b9e093128b6c02",
+      "target_digest": "sha256:43757a9f974acf5cd42934af7d0795e19722cae0b2cf195e1999e793006c0bad",
+      "semantic_record_digest": "sha256:a3268e924d06cf90e72c00dfb88dcd0d8ba372d92eba065747f0db247bcd4520",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:868481942d4be98e247dd3da1d9ff3101e9e8f9dac26f402e21f05537fa4509a"
+    },
+    "rumi_kanban_conversation_adapter_pack": {
+      "pack_id": "rumi_kanban_conversation_adapter_pack",
+      "source_kind": "independent-curated",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "source_digest": "sha256:f6416793570f397e312137433b22b854d9bdf9a57c997cf2af06bbae7c0ff532",
+      "target_digest": "sha256:a7d9809777a75d9b99ac09638b0bb90eb735e8964b03126a5d1c60954af57bd1",
+      "semantic_record_digest": "sha256:93eb21117e5d7ec37abe1ad0696c90b4a50656cf65298fd4ac6e62cc2dd21f75",
+      "review_basis": {
+        "method": "independent-file-by-file-review.v1",
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ]
+      },
+      "review_attestation_digest": "sha256:3a64b99114f9873ad6130bdee369d78e1cd0e753611ef8331e5aa7c6380c9908"
+    }
+  }
 }

@@ -1182,10 +1182,16 @@ def _entry_with_curated_semantics(
         or review.get("source_digest") != source.get("digest")
     ):
         return entry
+    semantic_record = review.get("semantic_record")
+    if semantic_record is None:
+        generated_semantic = entry.get("semantic_comparison")
+        if review.get("semantic_record_digest") != _proof_digest(generated_semantic):
+            return entry
+        return {**entry, "status": "semantically-reviewed"}
     return {
         **entry,
         "status": "semantically-reviewed",
-        "semantic_comparison": review["semantic_record"],
+        "semantic_comparison": semantic_record,
     }
 
 

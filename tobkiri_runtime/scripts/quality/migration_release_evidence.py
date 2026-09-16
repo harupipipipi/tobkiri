@@ -125,23 +125,38 @@ def load_curated_reviews(path: Path) -> dict[str, Mapping[str, Any]]:
         if not isinstance(pack_id, str) or not pack_id or not isinstance(review, Mapping):
             raise MigrationReleaseEvidenceError("curated review identity is invalid")
         semantic = review.get("semantic_record")
-        _validate_semantic_record(semantic)
+        if semantic is not None:
+            _validate_semantic_record(semantic)
+        review_basis = review.get("review_basis")
         if (
             review.get("pack_id") != pack_id
-            or review.get("source_kind") != "human-curated"
+            or review.get("source_kind") != "independent-curated"
             or review.get("reviewer_id") in {None, "", PROOF_GENERATOR_ID}
             or not isinstance(review.get("reviewed_at"), str)
             or not review["reviewed_at"].strip()
             or not _is_digest(review.get("target_digest"))
-            or review.get("semantic_record_digest")
-            != semantic.get("semantic_record_digest")
+            or not _is_digest(review.get("semantic_record_digest"))
+            or (
+                isinstance(semantic, Mapping)
+                and review.get("semantic_record_digest")
+                != semantic.get("semantic_record_digest")
+            )
+            or not isinstance(review_basis, Mapping)
+            or review_basis.get("method") != "independent-file-by-file-review.v1"
+            or not isinstance(review_basis.get("evidence_paths"), list)
+            or len(review_basis["evidence_paths"]) < 5
+            or not isinstance(review_basis.get("verified_claims"), list)
+            or not review_basis["verified_claims"]
+            or not isinstance(review_basis.get("excluded_claims"), list)
+            or "release readiness" not in review_basis["excluded_claims"]
             or not _exact_digest(review, "review_attestation_digest")
         ):
             raise MigrationReleaseEvidenceError(f"curated review is invalid: {pack_id}")
         source_digest = review.get("source_digest")
-        if semantic.get("kind") == "operation-mapping" and not _is_digest(source_digest):
+        semantic_kind = semantic.get("kind") if isinstance(semantic, Mapping) else None
+        if semantic_kind != "admission-only" and not _is_digest(source_digest):
             raise MigrationReleaseEvidenceError(f"review source digest is invalid: {pack_id}")
-        if semantic.get("kind") == "admission-only" and source_digest is not None:
+        if semantic_kind == "admission-only" and source_digest is not None:
             raise MigrationReleaseEvidenceError(
                 f"admission-only review must not invent a legacy source: {pack_id}"
             )

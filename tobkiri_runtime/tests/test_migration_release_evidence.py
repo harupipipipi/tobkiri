@@ -42,13 +42,19 @@ def _admission_only_review(pack_id: str, target_digest: str) -> dict[str, Any]:
     return _with_digest(
         {
             "pack_id": pack_id,
-            "source_kind": "human-curated",
+            "source_kind": "independent-curated",
             "reviewer_id": "reviewer:test",
             "reviewed_at": "2026-09-16T00:00:00Z",
             "source_digest": None,
             "target_digest": target_digest,
             "semantic_record": semantic,
             "semantic_record_digest": semantic["semantic_record_digest"],
+            "review_basis": {
+                "method": "independent-file-by-file-review.v1",
+                "evidence_paths": ["a", "b", "c", "d", "e"],
+                "verified_claims": ["zero-operation semantics"],
+                "excluded_claims": ["release readiness"],
+            },
         },
         "review_attestation_digest",
     )
@@ -232,3 +238,41 @@ def test_runtime_receipt_rejects_target_digest_substitution(tmp_path: Path) -> N
     with pytest.raises(MigrationReleaseEvidenceError, match="runtime receipt is invalid"):
         load_runtime_receipts(path)
 
+
+def test_checked_in_curated_reviews_bind_exact_generated_semantics() -> None:
+    """All checked-in reviews bind exact source, target, and semantic digests."""
+
+    reviews = load_curated_reviews(complete_gate.MIGRATION_REVIEW_PATH)
+    proof, findings = complete_gate._load_independent_migration_proof()
+
+    assert not findings
+    assert len(reviews) == 10
+    for pack_id, review in reviews.items():
+        entry = {**proof[pack_id], "status": "generated-draft"}
+        effective = complete_gate._entry_with_curated_semantics(entry, review)
+        assert effective["status"] == "semantically-reviewed"
+        tampered_review = {
+            **review,
+            "semantic_record_digest": "sha256:" + "f" * 64,
+        }
+        assert complete_gate._entry_with_curated_semantics(
+            entry, tampered_review
+        )["status"] == "generated-draft"
+
+
+def test_shared_contract_owner_mismatches_are_not_curated() -> None:
+    """Generator-reviewed shared Contracts remain gaps when owner is another Pack."""
+
+    reviews = load_curated_reviews(complete_gate.MIGRATION_REVIEW_PATH)
+    mismatched = {
+        "rumi_connector_turn_adapter_pack",
+        "rumi_email_connector_pack",
+        "rumi_generic_webhook_connector_pack",
+    }
+
+    assert mismatched.isdisjoint(reviews)
+    for pack_id in mismatched:
+        contracts = complete_gate._load_json(
+            complete_gate.ECOSYSTEM / pack_id / "contracts.v4.json"
+        )["contracts"]
+        assert all(contract["owner"] != pack_id for contract in contracts)
