@@ -213,6 +213,15 @@ class DefaultspackHTTPPresentation:
         if (
             target.contribution_id, target.contract_id, target.operation_id,
             target.provider_id, target.function_id,
+        ) == TURN_EVENT_TARGET:
+            session.assert_current()
+            return normalize_turn_event_read(
+                payload, profile_id=str(getattr(session, "profile_id", "")),
+            )
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
         ) == (
             "defaults.conversations.send", "tobkiri.action.turn.saved.v1",
             "rumi_turn_runtime_pack.turn-saved",

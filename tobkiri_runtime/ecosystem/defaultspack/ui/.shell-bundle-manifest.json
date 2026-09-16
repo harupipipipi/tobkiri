@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 343533,
-        "sha256": "7f3047022405afe62bc140443ab5fb7c3255f620144d1ab4fb892c2b375224d5"
+        "size": 343613,
+        "sha256": "fb1eeabbf9051bc8ed09b0d381985147fbb4663d75fa430565326de4607d3656"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",

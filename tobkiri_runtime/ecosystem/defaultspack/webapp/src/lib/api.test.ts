@@ -96,6 +96,51 @@ test("saved turn reconciliation is a read with no replay or caller Profile", asy
   assert.equal(calls, 2);
 });
 
+test("saved turn event polling is finite, identity-bound, and never resends", async (context) => {
+  const originalFetch = globalThis.fetch;
+  context.after(() => { globalThis.fetch = originalFetch; });
+  let calls = 0;
+  const identity = {
+    turn_id: "turn-1", conversation_id: "conversation-1",
+    operation_id: "turn-1", request_id: "saved-turn.request-1", turn_revision: 3,
+  };
+  const turn = {
+    id: "turn-1", conversation_id: "conversation-1", status: "running", revision: 3,
+  };
+  const snapshot = {
+    ...identity, status: "running", turn,
+    events: [{
+      ...identity, sequence: 0, name: "turn.queued", at: 1, details: {},
+    }],
+    terminal: null,
+  };
+  globalThis.fetch = async (url, init) => {
+    calls += 1;
+    assert.equal(String(url), `/api/contracts/defaultspack/${encodeURIComponent(
+      "GET /api/chat/turn/events?turn_id=turn-1&conversation_id=conversation-1",
+    )}`);
+    assert.equal(init?.method ?? "GET", "GET");
+    assert.equal(init?.body, undefined);
+    assert.equal(init?.cache, "no-store");
+    return new Response(JSON.stringify({ success: true, data: snapshot }));
+  };
+  assert.deepEqual(await api.getSavedTurnEvents("turn-1", "conversation-1"), snapshot);
+  assert.equal(calls, 1);
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ success: true, data: {
+      ...snapshot,
+      events: [{ ...snapshot.events[0], conversation_id: "foreign" }],
+    } }));
+  };
+  await assert.rejects(
+    api.getSavedTurnEvents("turn-1", "conversation-1"),
+    /do not match/,
+  );
+  assert.equal(calls, 2);
+});
+
 test("saved reconciliation posts only an existing turn ID, never the original input", async (context) => {
   const originalFetch = globalThis.fetch;
   context.after(() => { globalThis.fetch = originalFetch; });

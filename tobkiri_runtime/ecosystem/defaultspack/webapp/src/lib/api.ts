@@ -95,6 +95,37 @@ export type SavedTurnResult = {
   };
 };
 
+export type SavedTurnEventSnapshot = {
+  turn_id: string;
+  conversation_id: string;
+  operation_id: string;
+  request_id: string;
+  status: string;
+  turn_revision: number;
+  events: Array<{
+    turn_id: string;
+    conversation_id: string;
+    operation_id: string;
+    request_id: string;
+    turn_revision: number;
+    sequence: number;
+    name: string;
+    at: number;
+    details: Record<string, unknown>;
+  }>;
+  terminal: null | {
+    turn_id: string;
+    conversation_id: string;
+    operation_id: string;
+    request_id: string;
+    turn_revision: number;
+    status: string;
+    result_reference?: SavedTurnResult["turn"]["result_reference"];
+    error?: unknown;
+  };
+  turn: SavedTurnResult["turn"];
+};
+
 export type TokenizerInfo = {
   available?: boolean;
   fallback?: boolean;
@@ -3695,6 +3726,40 @@ export const api = {
       throw new Error("Saved turn read does not match the pending conversation.");
     }
     return turn;
+  },
+
+  async getSavedTurnEvents(turnId: string, conversationId: string): Promise<SavedTurnEventSnapshot> {
+    const stableId = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+    if (!stableId.test(turnId) || !stableId.test(conversationId)) {
+      throw new Error("Stable turn and conversation IDs are required for event reads.");
+    }
+    const snapshot = await request<SavedTurnEventSnapshot>(
+      withQuery(defaultspackContractRoute("api/chat/turn/events"), {
+        turn_id: turnId,
+        conversation_id: conversationId,
+      }),
+      { cache: "no-store" },
+    );
+    const matches = (value: {
+      turn_id?: string; conversation_id?: string; operation_id?: string;
+      request_id?: string; turn_revision?: number;
+    }) => value.turn_id === turnId && value.conversation_id === conversationId
+      && value.operation_id === turnId && stableId.test(value.request_id ?? "")
+      && Number.isSafeInteger(value.turn_revision) && (value.turn_revision ?? 0) >= 1;
+    if (!snapshot || !matches(snapshot)
+      || snapshot.turn.id !== turnId || snapshot.turn.conversation_id !== conversationId
+      || snapshot.turn.revision !== snapshot.turn_revision
+      || snapshot.turn.status !== snapshot.status
+      || !Array.isArray(snapshot.events)
+      || snapshot.events.some((event, sequence) => !matches(event)
+        || event.sequence !== sequence || !event.name.startsWith("turn."))
+      || (snapshot.terminal !== null && (!matches(snapshot.terminal)
+        || snapshot.terminal.status !== snapshot.status
+        || !["completed", "failed", "cancelled"].includes(snapshot.status)))
+      || (snapshot.terminal === null && ["completed", "failed", "cancelled"].includes(snapshot.status))) {
+      throw new Error("Saved turn events do not match the pending operation.");
+    }
+    return snapshot;
   },
 
   async reconcileSavedTurn(turnId: string, conversationId: string): Promise<SavedTurnResult["turn"]> {

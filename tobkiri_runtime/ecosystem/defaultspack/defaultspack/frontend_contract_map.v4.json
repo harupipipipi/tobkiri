@@ -262,6 +262,19 @@
     },
     {
       "method": "GET",
+      "path": "/api/chat/turn/events",
+      "presentation": "turn_events",
+      "targets": [{
+        "contribution_id": "defaults.conversations.turn.events",
+        "contract_id": "tobkiri.event.turn.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-events",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+        "allowed_payload_keys": ["turn_id", "conversation_id"]
+      }]
+    },
+    {
+      "method": "GET",
       "path": "/api/ui/full-catalog",
       "presentation": "broker_result",
       "targets": [

@@ -4123,7 +4123,12 @@ export function ChatApp() {
         if (disposed) return;
         if (pendingRequest?.savedTurn) {
           if (!pendingRequest.operationId) throw new Error("送信IDが未確認です。自動再送せず確認を待ちます。");
-          let turn = await api.getSavedTurn(pendingRequest.operationId, activeConversationId);
+          let turn = (
+            await api.getSavedTurnEvents(
+              pendingRequest.operationId,
+              activeConversationId,
+            )
+          ).turn;
           if (disposed) return;
           if (turn.status === "running" || turn.status === "waiting") {
             turn = await api.reconcileSavedTurn(pendingRequest.operationId, activeConversationId);

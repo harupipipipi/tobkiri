@@ -143,10 +143,17 @@ class TurnHostFactoryV4:
             }
             if self.kind != "lifecycle":
                 if action == "get":
-                    _fields(values, {"turn_id"})
+                    required = {"turn_id", "conversation_id"} if self.kind == "events" else {"turn_id"}
+                    _fields(values, required)
                     record = store.get(_identifier(values["turn_id"]))
                     if record is None:
                         raise KeyError("turn is unavailable")
+                    if (
+                        self.kind == "events"
+                        and record.get("conversation_id")
+                        != _identifier(values["conversation_id"])
+                    ):
+                        raise PermissionError("turn does not belong to conversation")
                     return record
                 if action == "list":
                     _fields(values, set(), {"limit", "conversation_id"})

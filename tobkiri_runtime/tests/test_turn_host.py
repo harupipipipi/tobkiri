@@ -146,7 +146,10 @@ def test_recaptured_actions_resources_events_share_real_store(tmp_path: Path) ->
     assert running["revision"] == 2
     assert _invoke(tmp_path, "lifecycle", **BEGIN) == running
     for kind in ("resource", "events"):
-        assert _invoke(tmp_path, kind, operation="get", turn_id="turn") == running
+        read = {"operation": "get", "turn_id": "turn"}
+        if kind == "events":
+            read["conversation_id"] = "conversation"
+        assert _invoke(tmp_path, kind, **read) == running
         assert _invoke(tmp_path, kind, operation="list", conversation_id="conversation") == {
             "turns": [running]
         }
@@ -298,6 +301,29 @@ def test_captured_begin_retains_input_identity_without_restarting(tmp_path: Path
         _invoke(tmp_path, "lifecycle", **BEGIN, input_digest=changed_digest)
     assert _invoke(tmp_path, "resource", operation="get", turn_id="turn") == before
     assert before["status"] == "queued"
+
+
+def test_event_owner_requires_matching_conversation_and_returns_same_snapshot(
+    tmp_path: Path,
+) -> None:
+    before = _invoke(tmp_path, "lifecycle", **BEGIN)
+    assert _invoke(
+        tmp_path,
+        "events",
+        operation="get",
+        turn_id="turn",
+        conversation_id="conversation",
+    ) == before
+    with pytest.raises(PermissionError, match="does not belong"):
+        _invoke(
+            tmp_path,
+            "events",
+            operation="get",
+            turn_id="turn",
+            conversation_id="foreign",
+        )
+    with pytest.raises(PermissionError, match="fields"):
+        _invoke(tmp_path, "events", operation="get", turn_id="turn")
 
 
 SAVED_INPUT = {"request": {
