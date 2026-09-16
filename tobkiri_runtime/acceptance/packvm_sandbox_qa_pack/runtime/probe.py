@@ -12,9 +12,11 @@ import time
 from typing import Any, Callable, Mapping
 
 CONTRACT_ID = "tobkiri.acceptance.packvm.sandbox.v1"
-OPERATIONS = frozenset(
+OPERATION_PREFIX = "tobkiri_packvm_sandbox_qa_pack."
+SCENARIOS = frozenset(
     {
         "probe_isolation",
+        "stdin_overflow",
         "stdout_overflow",
         "stderr_overflow",
         "deadline_hold",
@@ -40,9 +42,11 @@ def tobkiri_packvm_invoke(
 ) -> dict[str, Any]:
     """Run one exact acceptance scenario inside the isolated Pack child."""
 
-    if operation_id not in OPERATIONS:
+    scenario = operation_id.removeprefix(OPERATION_PREFIX)
+    if scenario not in SCENARIOS:
         raise ValueError("unsupported PackVM acceptance operation")
-    if not isinstance(payload, Mapping) or set(payload) - {"nonce"}:
+    allowed_fields = {"nonce", "fill"} if scenario == "stdin_overflow" else {"nonce"}
+    if not isinstance(payload, Mapping) or set(payload) - allowed_fields:
         raise ValueError("PackVM acceptance payload fields are invalid")
     nonce = payload.get("nonce")
     if not isinstance(nonce, str) or len(nonce) != 64:
@@ -52,18 +56,23 @@ def tobkiri_packvm_invoke(
     if os.geteuid() == 0:
         raise RuntimeError("PackVM acceptance refuses a root process")
 
-    if operation_id == "probe_isolation":
+    if scenario == "stdin_overflow":
+        fill = payload.get("fill")
+        if not isinstance(fill, str) or len(fill) <= 1024 * 1024:
+            raise RuntimeError("stdin limit was not exercised")
+        raise RuntimeError("stdin limit was not enforced")
+    if scenario == "probe_isolation":
         return _probe_isolation(nonce)
-    if operation_id == "stdout_overflow":
+    if scenario == "stdout_overflow":
         os.write(sys.stdout.fileno(), b"x" * _OVERFLOW_BYTES)
         raise RuntimeError("stdout limit was not enforced")
-    if operation_id == "stderr_overflow":
+    if scenario == "stderr_overflow":
         os.write(sys.stderr.fileno(), b"x" * _OVERFLOW_BYTES)
         raise RuntimeError("stderr limit was not enforced")
-    if operation_id in {"deadline_hold", "cancel_hold"}:
+    if scenario in {"deadline_hold", "cancel_hold"}:
         while True:
             time.sleep(0.05)
-    if operation_id == "abnormal_exit":
+    if scenario == "abnormal_exit":
         os._exit(73)
     raise AssertionError("unreachable PackVM acceptance operation")
 

@@ -80,6 +80,22 @@ def _payload_keys(contract_id: str, operation_id: str) -> frozenset[str]:
         return frozenset(
             {"name", "path", "encoding", "max_bytes", "start_line", "end_line"}
         )
+    if contract_id == "tobkiri.acceptance.packvm.sandbox.v1":
+        prefix = "tobkiri_packvm_sandbox_qa_pack."
+        scenarios = {
+            "probe_isolation",
+            "stdin_overflow",
+            "stdout_overflow",
+            "stderr_overflow",
+            "deadline_hold",
+            "cancel_hold",
+            "abnormal_exit",
+        }
+        scenario = operation_id.removeprefix(prefix)
+        if operation_id.startswith(prefix) and scenario in scenarios:
+            if scenario == "stdin_overflow":
+                return frozenset({"nonce", "fill"})
+            return frozenset({"nonce"})
     if contract_id == "tobkiri.workflow.v4":
         workflow_payloads = {
             "definition.list": frozenset(),

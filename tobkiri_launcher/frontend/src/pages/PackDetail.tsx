@@ -13,6 +13,7 @@ import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
 import { FileInspectOperation } from '@/src/components/packs/FileInspectOperation';
 import { PackDiagnostics } from '@/src/components/packs/PackDiagnostics';
 import { PackVMLifecyclePanel } from '@/src/components/packs/PackVMLifecyclePanel';
+import { PackVMAcceptanceOperation } from '@/src/components/packs/PackVMAcceptanceOperation';
 import { PackScopeSummary } from '@/src/components/packs/PackScopeSummary';
 import { userSafePackVMError } from '@/src/lib/packvmLifecycle';
 import { isPackInCatalogScope } from '@/src/lib/packScope';
@@ -469,6 +470,23 @@ export function PackDetail() {
         {operations.map((operation) => operation.operationId === 'rumi_file_inspect_pack.file-inspect' ? (
           <FileInspectOperation
             key={`${operation.operationId}-surface`}
+            operation={operation}
+            pack={pack}
+            contributionVerified={Boolean(contributionForOperation(operation.operationId, operation.contractId))
+              && packScopeAuthoritative
+              && !backendUnavailableForOperation(operation.operationId)
+              && !frontendCatalog?.quarantined_pack_ids.includes(pack.id)}
+            pending={Boolean(packOperationPending[`${pack.id}:${operation.operationId}`])
+              || Object.values(packOperationUnknown).some((record) => (
+                record.metadata.pack_id === pack.id
+                && record.metadata.operation_id === operation.operationId
+              ))}
+            onInvoke={(payload) => invokePackOperation(pack.id, operation.operationId, payload)}
+          />
+        ) : null)}
+        {operations.map((operation) => operation.operationId === 'tobkiri_packvm_sandbox_qa_pack.probe_isolation' ? (
+          <PackVMAcceptanceOperation
+            key={`${operation.operationId}-acceptance-surface`}
             operation={operation}
             pack={pack}
             contributionVerified={Boolean(contributionForOperation(operation.operationId, operation.contractId))

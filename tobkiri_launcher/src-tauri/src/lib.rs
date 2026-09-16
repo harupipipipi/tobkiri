@@ -17,6 +17,8 @@ mod host_broker_types;
 mod host_contract;
 mod host_contract_contributions;
 mod kernel_manager;
+#[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+mod packvm_acceptance;
 mod presentation;
 mod process_utils;
 mod python_env;
@@ -80,6 +82,10 @@ const HOST_PERMISSIONS_WINDOW_TITLE: &str = "Tobkiri Launcher Host Permissions";
 const AUTHORITY_UI_OPERATOR_TTL_SECONDS: u64 = 180;
 const PANEL_SESSION_CALLER_DENIED: &str =
     "panel session renewal is unavailable from this Launcher window";
+#[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+const PACKVM_ACCEPTANCE_ENABLE_ENV: &str = "TOBKIRI_PACKVM_ACCEPTANCE_ENABLE";
+#[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+const PACKVM_ACCEPTANCE_DIGEST_ENV: &str = "TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST";
 const AUXILIARY_PRESENTATION_CALLER_DENIED: &str =
     "presentation launch is unavailable from this Launcher window";
 #[cfg(any(debug_assertions, test))]
@@ -1065,6 +1071,124 @@ fn debug_pending_interactive_request_id(value: &serde_json::Value) -> Option<&st
         .get("approval_request_id")
         .and_then(serde_json::Value::as_str)
         .filter(|request_id| valid_authority_request_id(request_id))
+}
+
+#[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+fn maybe_start_packvm_acceptance_adapter(
+    app_identifier: &str,
+    config: &AppConfig,
+    bootstrap_secret: &str,
+) -> AnyResult<Option<PathBuf>> {
+    if !truthy_env_flag(PACKVM_ACCEPTANCE_ENABLE_ENV) {
+        return Ok(None);
+    }
+    if app_identifier != ci_e2e_app_data::CI_E2E_BUNDLE_IDENTIFIER
+        || std::env::var_os(ci_e2e_app_data::CI_E2E_APP_DATA_ROOT_ENV).is_none()
+    {
+        bail!("PackVM acceptance requires an isolated non-publishable CI/E2E app");
+    }
+    let expected_digest = std::env::var(PACKVM_ACCEPTANCE_DIGEST_ENV)
+        .context("PackVM acceptance requires the exact signed QA fixture digest")?;
+    if expected_digest.len() != 71
+        || !expected_digest.starts_with("sha256:")
+        || !expected_digest[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        bail!("PackVM acceptance QA fixture digest is invalid");
+    }
+    let base_url = format!("http://127.0.0.1:{}", active_defaultspack_http_port());
+    let secret = bootstrap_secret.to_string();
+    let exact_digest = expected_digest;
+    let handler: Arc<packvm_acceptance::AcceptanceHandler> = Arc::new(move |request| {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(90))
+            .build()
+            .context("PackVM acceptance HTTP client is unavailable")?;
+        let session = debug_panel_session(&client, &base_url, &secret)?;
+        let catalog =
+            debug_contract_request(&client, &base_url, &session, "GET", "/api/ui/catalog", None)?;
+        let pack = catalog
+            .get("packs")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|packs| {
+                packs.iter().find(|pack| {
+                    pack.get("pack_id").and_then(serde_json::Value::as_str)
+                        == Some("tobkiri_packvm_sandbox_qa_pack")
+                })
+            })
+            .context("signed PackVM QA Pack is not admitted by the active QA Profile")?;
+        if pack
+            .get("artifact_digest")
+            .and_then(serde_json::Value::as_str)
+            != Some(exact_digest.as_str())
+        {
+            bail!("active QA Profile does not contain the exact signed fixture digest");
+        }
+        if pack.get("approved").and_then(serde_json::Value::as_bool) != Some(true)
+            || pack.get("enabled").and_then(serde_json::Value::as_bool) != Some(true)
+        {
+            bail!("PackVM QA Pack is not explicitly approved and enabled");
+        }
+        let operation_id = format!(
+            "tobkiri_packvm_sandbox_qa_pack.{}",
+            match request.scenario.as_str() {
+                "original_deadline" => "deadline_hold",
+                "cancel" => "cancel_hold",
+                "resource_cleanup" => "probe_isolation",
+                scenario => scenario,
+            }
+        );
+        let operation = pack
+            .get("operations")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|operations| {
+                operations.iter().find(|operation| {
+                    operation
+                        .get("operation_id")
+                        .and_then(serde_json::Value::as_str)
+                        == Some(operation_id.as_str())
+                        && operation
+                            .get("invokable")
+                            .and_then(serde_json::Value::as_bool)
+                            == Some(true)
+                })
+            })
+            .context("PackVM QA operation is not a verified invokable contribution")?;
+        let dynamic = catalog
+            .get("dynamic_host")
+            .and_then(serde_json::Value::as_object)
+            .context("PackVM QA Profile binding is unavailable")?;
+        let payload = if request.scenario == "stdin_overflow" {
+            serde_json::json!({"nonce": request.nonce, "fill": "x".repeat(1024 * 1024 + 1)})
+        } else {
+            serde_json::json!({"nonce": request.nonce})
+        };
+        // This returns only the canonical Broker result.  Timeout, cancellation,
+        // and abnormal-exit evidence still needs a dedicated Host projection;
+        // the outer validator will reject ordinary or sanitized error payloads.
+        debug_contract_request(
+            &client,
+            &base_url,
+            &session,
+            "POST",
+            "/api/ui/capability/invoke",
+            Some(serde_json::json!({
+                "request_id": debug_contract_request_id(),
+                "expires_at": unix_now_seconds() + 90,
+                "profile_id": dynamic.get("profile_id"),
+                "profile_revision": dynamic.get("profile_revision"),
+                "activation_id": dynamic.get("activation_id"),
+                "plan_hash": dynamic.get("plan_hash"),
+                "catalog_hash": dynamic.get("catalog_hash"),
+                "contribution_id": format!("pack.tobkiri_packvm_sandbox_qa_pack.{operation_id}"),
+                "owner_pack_id": "tobkiri_packvm_sandbox_qa_pack",
+                "contract_id": operation.get("contract_id"),
+                "payload": payload,
+            })),
+        )
+    });
+    packvm_acceptance::start(&config.user_data_dir, handler).map(Some)
 }
 
 #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
@@ -3057,6 +3181,17 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             let defaultspack_manager_for_monitor = Arc::clone(&defaultspack_manager);
             app.manage(defaultspack_manager);
 
+            #[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+            if let Some(socket_path) = maybe_start_packvm_acceptance_adapter(
+                &app_identifier,
+                &config,
+                &panel_bootstrap_secret,
+            )? {
+                info!(
+                    "PackVM acceptance adapter is waiting for an explicit QA request at {}",
+                    socket_path.display()
+                );
+            }
             app.manage(config.clone());
 
             if let Some(win) = app.get_webview_window("main") {

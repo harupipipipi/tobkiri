@@ -199,6 +199,51 @@ def test_workflow_authoring_dynamic_targets_admit_only_the_finite_v4_payloads() 
     assert all(target.contribution_id.startswith("pack.tobkiri_workflow_pack.") for target in targets)
 
 
+def test_packvm_acceptance_bridge_has_only_finite_qa_payload_keys() -> None:
+    binding = FrontendContractBinding(
+        method="POST",
+        path="/api/ui/capability/invoke",
+        presentation="capability_result",
+        targets=(),
+    )
+    prefix = "tobkiri_packvm_sandbox_qa_pack."
+    operation_ids = (
+        "probe_isolation",
+        "stdin_overflow",
+        "stdout_overflow",
+        "stderr_overflow",
+        "deadline_hold",
+        "cancel_hold",
+        "abnormal_exit",
+    )
+    catalog = {
+        "packs": [{
+            "pack_id": "tobkiri_packvm_sandbox_qa_pack",
+            "artifact_digest": "sha256:" + "a" * 64,
+            "enabled": True,
+            "approved": True,
+            "operations": [{
+                "invokable": True,
+                "contract_id": "tobkiri.acceptance.packvm.sandbox.v1",
+                "operation_id": prefix + operation_id,
+                "provider_id": "tobkiri.packvm.sandbox-acceptance.provider",
+            } for operation_id in (*operation_ids, "not_admitted")],
+        }],
+    }
+
+    targets = defaultspack_dynamic_capability_targets(binding, catalog=catalog)
+    allowed = {target.operation_id: target.allowed_payload_keys for target in targets}
+
+    assert allowed[prefix + "stdin_overflow"] == frozenset({"nonce", "fill"})
+    assert allowed[prefix + "probe_isolation"] == frozenset({"nonce"})
+    assert allowed[prefix + "not_admitted"] == frozenset()
+    assert all(
+        keys <= {"nonce", "fill"}
+        for operation_id, keys in allowed.items()
+        if operation_id.startswith(prefix)
+    )
+
+
 def test_desktop_resolver_selects_the_application_from_the_verified_plan() -> None:
     from defaultspack import desktop_app
 

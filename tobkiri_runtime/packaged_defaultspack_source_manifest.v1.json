@@ -105,8 +105,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_dynamic_targets.py",
       "type": "regular-file",
-      "size": 3825,
-      "sha256": "01116f917c20183fb0f31e16c68dab88df2c4a7e234d087f818c0e99040a28c8",
+      "size": 4438,
+      "sha256": "bc78241ce90b163f783d4e9db7860377d9d2ad4a4b30632fece4fe12f70f2277",
       "executable": false
     },
     {

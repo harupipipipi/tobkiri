@@ -121,6 +121,22 @@ def test_acceptance_pack_rejects_unknown_operation_before_probe() -> None:
         probe.tobkiri_packvm_invoke("other", {"nonce": "a" * 64})
 
 
+def test_acceptance_pack_accepts_namespaced_canonical_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(probe.sys, "platform", "linux")
+    monkeypatch.setattr(probe.os, "geteuid", lambda: 65534)
+    monkeypatch.setattr(
+        probe,
+        "_probe_isolation",
+        lambda nonce: {"scenario": "probe_isolation", "nonce": nonce},
+    )
+    assert probe.tobkiri_packvm_invoke(
+        probe.OPERATION_PREFIX + "probe_isolation",
+        {"nonce": "a" * 64},
+    ) == {"scenario": "probe_isolation", "nonce": "a" * 64}
+
+
 def test_acceptance_pack_source_stays_outside_production_catalog() -> None:
     root = Path(__file__).resolve().parents[1]
     fixture = root / "acceptance" / "packvm_sandbox_qa_pack"
