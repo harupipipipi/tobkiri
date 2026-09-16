@@ -3449,6 +3449,13 @@
       "executable": false
     },
     {
+      "path": "scripts/run_packvm_sandbox_acceptance.py",
+      "type": "regular-file",
+      "size": 3688,
+      "sha256": "5aede02dd56bd73a179883b4499231a492a8f08cee94f2a1c58942708d268ff7",
+      "executable": false
+    },
+    {
       "path": "scripts/setup_local_whisper.py",
       "type": "regular-file",
       "size": 4296,
