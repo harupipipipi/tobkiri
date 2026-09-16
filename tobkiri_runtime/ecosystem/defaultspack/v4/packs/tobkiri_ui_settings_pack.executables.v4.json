@@ -1,7 +1,7 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:7463118fdba9a22128acfc54b4c7c46b5af1515c6b3946bdc6580c708bf62828",
+  "source_identity": "sha256:6ca0596ab7912790de6bcf91721d9abccecb6775c5db9cf282e07ee1c56d5708",
   "variants": [
     {
       "variant_id": "tobkiri.project.state.read.python",
@@ -143,6 +143,116 @@
           },
           "effect_class": "privileged",
           "timeout_default_ms": 120000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.model-state.read.python",
+      "function_id": "tobkiri.ui.model-state.read",
+      "implementation_path": "runtime/state_changes.py",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.model-state.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:d24028c9659f3d43753ff03cd5706fcda20cdab5149ca947c87dcfc66e1a6618",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.model-state.write.python",
+      "function_id": "tobkiri.ui.model-state.write",
+      "implementation_path": "runtime/state_changes.py",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.model-state.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:52597556ddb2d74c77f9a7244acdbed20935612cd28b3ee2aaed5e2251da19d2",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-write",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "preferred_model",
+                  "thinking_level",
+                  "deepthink_enabled"
+                ],
+                "type": "string"
+              },
+              "mutation_id": {
+                "maxLength": 256,
+                "minLength": 8,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [
+              "profile_id",
+              "kind",
+              "value",
+              "expected_revision",
+              "mutation_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000,
           "idempotency": "none"
         }
@@ -314,6 +424,212 @@
       ]
     },
     {
+      "variant_id": "tobkiri.ui.recovery-diagnostic.read.python",
+      "function_id": "tobkiri.ui.recovery-diagnostic.read",
+      "implementation_path": "runtime/state_changes.py",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:45320eb949a53cfac1206f4dca8e2b01583b81f09ed1b4c5da8b9365cda2c9a0",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "tobkiri.ui.recovery-diagnostic.write.python",
+      "function_id": "tobkiri.ui.recovery-diagnostic.write",
+      "implementation_path": "runtime/state_changes.py",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:647f16b2650f887dac5349746617b4081c68c31118ee3486aba4c8b5ac4421ea",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "diagnostic": {
+                "additionalProperties": false,
+                "maxProperties": 12,
+                "properties": {
+                  "category": {
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "context_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "detail": {
+                    "additionalProperties": false,
+                    "maxProperties": 10,
+                    "properties": {
+                      "column": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "component_stack": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "error_code": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "error_name": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "frame_count": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "http_status": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "line": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "reason_type": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "route": {
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
+                      "stack": {
+                        "maxLength": 8192,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "fingerprint": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "level": {
+                    "maxLength": 24,
+                    "type": "string"
+                  },
+                  "message": {
+                    "maxLength": 2048,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "privacy_mode": {
+                    "const": "standard",
+                    "type": "string"
+                  },
+                  "schema_version": {
+                    "const": "rumi.client_diagnostic.v2",
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source": {
+                    "maxLength": 80,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schema_version",
+                  "event_id",
+                  "session_id",
+                  "fingerprint",
+                  "privacy_mode",
+                  "message"
+                ],
+                "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mutation_id": {
+                "maxLength": 256,
+                "minLength": 8,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "diagnostic",
+              "expected_revision",
+              "mutation_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
       "variant_id": "tobkiri.ui.settings.read.python",
       "function_id": "tobkiri.ui.settings.read",
       "implementation_path": "runtime/settings.py",
@@ -348,6 +664,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:ca0c1bdf42e3aa788574b016979333af866b6732025747a70c905b723d55449e",
-  "catalog_digest": "sha256:c83547c825aff496e8a0aa69baf18624f228c4398ee9cab2c309e9e03349dd02"
+  "materialization_catalog_digest": "sha256:32a34e6257554041f31b9fe5ad168e01857a213e0826bb4b356efe9478cc73ed",
+  "catalog_digest": "sha256:9d20101f3ccbbc02f531a9df3d5ffe011cada79340fedad139a1ac37c2bb940f"
 }

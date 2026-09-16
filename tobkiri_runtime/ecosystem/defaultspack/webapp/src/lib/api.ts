@@ -4012,6 +4012,30 @@ export const api = {
     );
   },
 
+  async updateModelState(kind: "preferred_model" | "thinking_level" | "deepthink_enabled", value: unknown) {
+    const snapshot = await request<{ namespace: string; revision: number; values: Record<string, unknown> }>(
+      defaultspackContractRoute("api/ui/model-state"), { cache: "no-store" },
+      (candidate): candidate is { namespace: string; revision: number; values: Record<string, unknown> } => {
+        const record = objectRecord(candidate);
+        return typeof record?.namespace === "string" && Number.isSafeInteger(record.revision)
+          && (record.revision as number) >= 0 && objectRecord(record.values) !== null;
+      },
+    );
+    const mutationId = crypto.randomUUID();
+    return request<{ kind: string; value: unknown; revision: number; mutation_id: string; receipt: string }>(
+      defaultspackContractRoute("api/ui/model-state"), {
+        method: "PUT",
+        body: JSON.stringify({ kind, value, expected_revision: snapshot.revision, mutation_id: mutationId }),
+      },
+      (candidate): candidate is { kind: string; value: unknown; revision: number; mutation_id: string; receipt: string } => {
+        const record = objectRecord(candidate);
+        return record?.kind === kind && record.value === value && record.mutation_id === mutationId
+          && record.revision === snapshot.revision + 1
+          && typeof record.receipt === "string" && /^sha256:[0-9a-f]{64}$/.test(record.receipt);
+      },
+    );
+  },
+
   uiCommands() {
     return request<{ commands: ComposerCommandItem[] }>(defaultspackContractRoute("api/ui/commands"));
   },
@@ -4469,7 +4493,7 @@ export const api = {
     });
   },
 
-  reportClientEvent(payload: {
+  async reportClientEvent(payload: {
     source?: string;
     category?: string;
     level?: string;
@@ -4478,10 +4502,25 @@ export const api = {
     conversation_id?: string;
     detail?: unknown;
   }) {
-    return request<{ recorded: boolean; diagnostic_id?: string }>(defaultspackContractRoute("api/ui/client-events"), {
+    const snapshot = await request<{ namespace: string; revision: number; record_count: number }>(
+      defaultspackContractRoute("api/ui/recovery-diagnostics"), { cache: "no-store" },
+      (candidate): candidate is { namespace: string; revision: number; record_count: number } => {
+        const record = objectRecord(candidate);
+        return typeof record?.namespace === "string" && Number.isSafeInteger(record.revision)
+          && (record.revision as number) >= 0 && Number.isSafeInteger(record.record_count);
+      },
+    );
+    const mutationId = crypto.randomUUID();
+    const acknowledgement = await request<{ recorded: boolean; diagnostic_id?: string; revision: number; mutation_id: string; receipt: string }>(defaultspackContractRoute("api/ui/client-events"), {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ diagnostic: payload, expected_revision: snapshot.revision, mutation_id: mutationId }),
+    }, (candidate): candidate is { recorded: boolean; diagnostic_id?: string; revision: number; mutation_id: string; receipt: string } => {
+      const record = objectRecord(candidate);
+      return record?.recorded === true && typeof record.diagnostic_id === "string" && Boolean(record.diagnostic_id)
+        && record.revision === snapshot.revision + 1 && record.mutation_id === mutationId
+        && typeof record.receipt === "string" && /^sha256:[0-9a-f]{64}$/.test(record.receipt);
     });
+    return { recorded: acknowledgement.recorded, diagnostic_id: acknowledgement.diagnostic_id };
   },
 
   async saveProviderApiKey(providerId: string, value: string, options?: {

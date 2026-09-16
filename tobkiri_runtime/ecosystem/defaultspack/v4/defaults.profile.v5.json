@@ -1047,6 +1047,90 @@
       "target_provider_id": "tobkiri.project.state.replace"
     },
     {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.ui.model-state.v1",
+      "operation_id": "tobkiri_ui_settings_pack.model-state-read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:d24028c9659f3d43753ff03cd5706fcda20cdab5149ca947c87dcfc66e1a6618",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ui.model-state.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.model-state-read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.model-state.read"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.ui.model-state.v1",
+      "operation_id": "tobkiri_ui_settings_pack.model-state-write",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:52597556ddb2d74c77f9a7244acdbed20935612cd28b3ee2aaed5e2251da19d2",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.ui.model-state.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.model-state-write"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.model-state.write"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
+      "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:45320eb949a53cfac1206f4dca8e2b01583b81f09ed1b4c5da8b9365cda2c9a0",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ui.recovery-diagnostic.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.recovery-diagnostic-read"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.recovery-diagnostic.read"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+      "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:647f16b2650f887dac5349746617b4081c68c31118ee3486aba4c8b5ac4421ea",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.ui.recovery-diagnostic.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.recovery-diagnostic-write"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.recovery-diagnostic.write"
+    },
+    {
       "caller_function_id": "tobkiri.ui.settings.read",
       "contract_id": "tobkiri.resource.ai.model.profile.v1",
       "operation_id": "rumi_model_registry_pack.model-profile-resource",

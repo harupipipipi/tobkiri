@@ -3150,15 +3150,15 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 12415,
-      "sha256": "7201979e5371845cc029a883ec2c27e007f3addb0e5e085b84f2081b5750a129",
+      "size": 23142,
+      "sha256": "f65d22ef9b628c1c48e0b344b827e51726133b3e9f348aa71f9091f5be0f3d8c",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 9913,
-      "sha256": "ba7d2332801895edee8bca70f9e9d864fbaf729b168add3abc5811a74643d35e",
+      "size": 15418,
+      "sha256": "38df42a25ec740a5241bea7a013d04fdc25d92b25e63eb517f5cbbc1e00981bc",
       "executable": false
     },
     {

@@ -2769,9 +2769,19 @@ test("reportClientEvent posts diagnostics to the UI contract endpoint", async ()
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     requestUrl = requestTarget(input);
     requestBody = String(init?.body ?? "");
+    if (requestUrl === routeKey("api/ui/recovery-diagnostics")) {
+      return new Response(JSON.stringify({
+        status: "ok",
+        data: { namespace: "sha256:test", revision: 3, record_count: 1 },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    const submitted = JSON.parse(requestBody) as { mutation_id: string };
     return new Response(JSON.stringify({
       status: "ok",
-      data: { recorded: true, diagnostic_id: "diag-1" },
+      data: {
+        recorded: true, diagnostic_id: "diag-1", revision: 4,
+        mutation_id: submitted.mutation_id, receipt: `sha256:${"a".repeat(64)}`,
+      },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
 
@@ -2782,6 +2792,7 @@ test("reportClientEvent posts diagnostics to the UI contract endpoint", async ()
     });
     assert.equal(requestUrl, routeKey("api/ui/client-events"));
     assert.match(requestBody, /Renderer crashed/);
+    assert.match(requestBody, /"expected_revision":3/);
     assert.equal(result.recorded, true);
   } finally {
     globalThis.fetch = originalFetch;

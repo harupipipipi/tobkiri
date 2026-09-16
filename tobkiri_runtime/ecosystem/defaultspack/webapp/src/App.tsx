@@ -4700,11 +4700,20 @@ export function ChatApp() {
         const changedPatches = Object.entries(sectionPatch)
           .filter(([field, nextValue]) => currentSection[field] !== nextValue)
           .map(([field, nextValue]) => ({ section: sectionId, field, value: nextValue }));
-        void persistSettingsValues(
-          next,
-          `${sectionId}.${fieldId}`,
-          changedPatches,
-        ).catch(() => undefined);
+        if (sectionId === "models" && ["preferred_model", "thinking_level", "deepthink_enabled"].includes(fieldId)) {
+          void api.updateModelState(
+            fieldId as "preferred_model" | "thinking_level" | "deepthink_enabled",
+            sectionPatch[fieldId],
+          ).catch((modelError) => {
+            setError(settingsErrorMessage(modelError, "Failed to save model state."));
+          });
+        } else {
+          void persistSettingsValues(
+            next,
+            `${sectionId}.${fieldId}`,
+            changedPatches,
+          ).catch(() => undefined);
+        }
       }
       applySettingsValues(next);
     }
@@ -4731,11 +4740,18 @@ export function ChatApp() {
       },
     });
     applySettingsValues(next);
-    void persistSettingsValues(
-      next,
-      preferredModelUpdate ? "models.preferred_model" : "models",
-      Object.entries(normalizedUpdates).map(([field, value]) => ({ section: "models", field, value })),
-    ).catch(() => undefined);
+    const modelMutation = preferredModelUpdate
+      ? ["preferred_model", preferredModelUpdate] as const
+      : Object.prototype.hasOwnProperty.call(normalizedUpdates, "thinking_level")
+        ? ["thinking_level", normalizedUpdates.thinking_level] as const
+        : Object.prototype.hasOwnProperty.call(normalizedUpdates, "deepthink_enabled")
+          ? ["deepthink_enabled", normalizedUpdates.deepthink_enabled] as const
+          : null;
+    if (modelMutation) {
+      void api.updateModelState(modelMutation[0], modelMutation[1]).catch((modelError) => {
+        setError(settingsErrorMessage(modelError, "Failed to save model state."));
+      });
+    }
   };
 
   const handleModelProfileSelect = (profileId: string) => {

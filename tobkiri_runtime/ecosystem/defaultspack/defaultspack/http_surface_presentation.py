@@ -63,6 +63,26 @@ _PROJECT_WRITE_TARGET = (
     "tobkiri_ui_settings_pack.projects-replace", "tobkiri.project.state.replace",
     "tobkiri.project.state.replace",
 )
+_MODEL_STATE_READ_TARGET = (
+    "defaults.ui.model-state.read", "tobkiri.resource.ui.model-state.v1",
+    "tobkiri_ui_settings_pack.model-state-read", "tobkiri.ui.model-state.read",
+    "tobkiri.ui.model-state.read",
+)
+_MODEL_STATE_WRITE_TARGET = (
+    "defaults.ui.model-state.write", "tobkiri.action.ui.model-state.v1",
+    "tobkiri_ui_settings_pack.model-state-write", "tobkiri.ui.model-state.write",
+    "tobkiri.ui.model-state.write",
+)
+_DIAGNOSTIC_READ_TARGET = (
+    "defaults.ui.recovery-diagnostic.read", "tobkiri.resource.ui.recovery-diagnostic.v1",
+    "tobkiri_ui_settings_pack.recovery-diagnostic-read", "tobkiri.ui.recovery-diagnostic.read",
+    "tobkiri.ui.recovery-diagnostic.read",
+)
+_DIAGNOSTIC_WRITE_TARGET = (
+    "defaults.ui.recovery-diagnostic.write", "tobkiri.action.ui.recovery-diagnostic.v1",
+    "tobkiri_ui_settings_pack.recovery-diagnostic-write", "tobkiri.ui.recovery-diagnostic.write",
+    "tobkiri.ui.recovery-diagnostic.write",
+)
 
 
 _CONVERSATION_TARGET = (
@@ -190,6 +210,27 @@ class DefaultspackHTTPPresentation:
                 "projects", "expected_revision", "mutation_id",
             } <= set(payload):
                 raise ValueError("Project replace request is invalid")
+            return {**dict(payload), "profile_id": profile_id}
+
+        if identity in {
+            _MODEL_STATE_READ_TARGET, _MODEL_STATE_WRITE_TARGET,
+            _DIAGNOSTIC_READ_TARGET, _DIAGNOSTIC_WRITE_TARGET,
+        }:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("UI state operation requires a captured Profile")
+            if identity in {_MODEL_STATE_READ_TARGET, _DIAGNOSTIC_READ_TARGET}:
+                if payload:
+                    raise ValueError("UI state read accepts no client identity")
+                return {"profile_id": profile_id}
+            allowed = (
+                {"kind", "value", "expected_revision", "mutation_id"}
+                if identity == _MODEL_STATE_WRITE_TARGET
+                else {"diagnostic", "expected_revision", "mutation_id"}
+            )
+            if set(payload) != allowed:
+                raise ValueError("UI state write request is invalid")
             return {**dict(payload), "profile_id": profile_id}
 
         if target.contribution_id == "defaults.providers.configure":

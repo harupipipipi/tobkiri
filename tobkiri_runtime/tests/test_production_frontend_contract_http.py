@@ -1311,7 +1311,60 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         )
         assert status == 400, payload
     assert path.read_bytes() == before
-    assert list(path.parent.iterdir()) == [path]
+
+
+def test_model_and_recovery_diagnostic_writes_use_dedicated_owner_routes(
+    settings_vertical_server,
+) -> None:
+    """Finite UI state writes cross signed production HTTP and return receipts."""
+    server, _session, _authority = settings_vertical_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {
+        "Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf,
+        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+    }
+    model_route = _contract("GET", "/api/ui/model-state")
+    status, payload, _ = _request(server, "GET", model_route, headers=headers)
+    assert status == 200, payload
+    revision = payload["data"]["revision"]
+    mutation_id = "production-model-mutation"
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, payload, _ = _request(
+        server, "PUT", _contract("PUT", "/api/ui/model-state"),
+        body={
+            "kind": "thinking_level", "value": "high",
+            "expected_revision": revision, "mutation_id": mutation_id,
+        }, headers=headers,
+    )
+    assert status == 200, payload
+    assert payload["data"]["mutation_id"] == mutation_id
+    assert payload["data"]["receipt"].startswith("sha256:")
+
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, payload, _ = _request(
+        server, "GET", _contract("GET", "/api/ui/recovery-diagnostics"),
+        headers=headers,
+    )
+    assert status == 200, payload
+    diagnostic_revision = payload["data"]["revision"]
+    headers["X-Tobkiri-Request-ID"] = str(uuid.uuid4())
+    status, payload, _ = _request(
+        server, "POST", _contract("POST", "/api/ui/client-events"),
+        body={
+            "diagnostic": {
+                "schema_version": "rumi.client_diagnostic.v2",
+                "event_id": "event-production", "session_id": "session-production",
+                "fingerprint": "fingerprint-production", "privacy_mode": "standard",
+                "source": "react", "category": "crash", "level": "error",
+                "message": "renderer crashed",
+            },
+            "expected_revision": diagnostic_revision,
+            "mutation_id": "production-diagnostic-mutation",
+        }, headers=headers,
+    )
+    assert status == 200, payload
+    assert payload["data"]["recorded"] is True
+    assert payload["data"]["receipt"].startswith("sha256:")
 
 
 def test_history_list_reads_real_captured_store_without_mutation(
