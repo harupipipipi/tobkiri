@@ -1154,11 +1154,13 @@ def test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture(
 
     def app_capture_inputs(_active: object | None = None) -> RuntimeCaptureInputs:
         del _active
+        acceptance_receipts = object()
         return RuntimeCaptureInputs(
             bundle_root=Path("/bundle"),
             ecosystem_root=Path("/runtime"),
             contract_bindings=(),
             packvm_backend_factory=app_selected_backend_factory,
+            acceptance_receipts=acceptance_receipts,
         )
 
     server._runtime_capture_factory = app_capture_inputs
@@ -1179,6 +1181,7 @@ def test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture(
         server.stop()
 
     assert seen["packvm_provisioner"] is app_selected_backend_factory
+    assert seen["acceptance_receipts"] is not None
     readiness = seen["packvm_readiness_reader"]
     assert callable(readiness)
     assert readiness() == {"ready": True}

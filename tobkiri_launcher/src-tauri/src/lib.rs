@@ -1234,7 +1234,7 @@ fn maybe_start_packvm_acceptance_adapter(
                 scenario => scenario,
             }
         );
-        let operation = pack
+        let _operation = pack
             .get("operations")
             .and_then(serde_json::Value::as_array)
             .and_then(|operations| {
