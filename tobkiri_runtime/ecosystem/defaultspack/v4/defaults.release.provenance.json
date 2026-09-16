@@ -1,8 +1,8 @@
 {
   "schema": "io.tobkiri.profile-release-provenance.v1",
   "profile_id": "defaults",
-  "profile_revision": "sha256:b5ad541ecb6a650188a86a3cb14eb90ffb22b0374ae15b4c2cd217896e5fd8c4",
-  "profile_definition_digest": "sha256:975355d1574a0507a5f1a1961ad1e1e98c6cefb65da57aab87041be1f2615a46",
+  "profile_revision": "sha256:b442d44b433ab794e2200f431700aa76e9caec8a871aef59d7ba154eaf90c2ea",
+  "profile_definition_digest": "sha256:14534a21f2d97515b18ea0c66916b0477874a7e58bf207b7b4abaff31b7b3000",
   "source_inputs": [
     {
       "path": "core_runtime/profile_content_projection.py",
@@ -14,7 +14,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
-      "digest": "sha256:612c3b644a47f8f326860329c1bf865a38461f61e667528d4d1173d042c5e22a"
+      "digest": "sha256:ed8cd62b27bea7a0b6df6b7f46b4ed3f7c20f5864640ddbcee5c4502d7c13d16"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/defaults-basepack.pack.v4.json",
@@ -1114,7 +1114,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
-      "digest": "sha256:e5dbd564e11cb0a4633e0a4e8504e1e4ec6ba8d58bca385ee49b964e93356232"
+      "digest": "sha256:3c6e8fd73e7b9bdac2cd0f249aef53a9e2598c8ba102bf575d6320d895a18154"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/search_home_pack.executables.v4.json",
@@ -1337,19 +1337,19 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:0f4190f471d49511707690a0a33a9cc9d4d8c238e780ac5ea807f89c247a6676",
-    "catalog_revision": "sha256:0b2056baba1650b2abbc32b48b01dabb450055f1a7605daa6a5cb25b0c47ea44",
-    "closure_digest": "sha256:5f51fbcb00fcdeb68d0cec54bb27dd65817700735a319a98b037ab2fb15a448f"
+    "bundle_digest": "sha256:edda62b9ea64d438283578a96d6560078b75f6201828ac361c1ad6d89947696f",
+    "catalog_revision": "sha256:3c826cb948c66dd4c67ee78d1aa4c66cc7646c112afa5140f8e9b4c451a79ff9",
+    "closure_digest": "sha256:0b8eac2d597ac36d9660e709074b38e154e5f92fafaf86d97b74343c1591fc1f"
   },
   "outputs": [
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-      "digest": "sha256:d23621df2f014b100f5a53cf2467eb52b2b47f0138408e79b8410b00477fb1be"
+      "digest": "sha256:646ececec117390a7a4d217c6ef5ae0f3e1e36ac865c9eeb15e038c31d595bc9"
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:bb73ebc77a7e5da48ccd0fff715969b58abe73daffc70e62537e0cf69c6d87ed"
+      "digest": "sha256:ec6ec21106d5975a75ca0517c7b248528469c336e5e4eaf7205af2f816282f1a"
     }
   ],
-  "release_digest": "sha256:485885a76138f81a77f40c2600c401dc260f8807a13ae625cc2f1fd93e9e0889"
+  "release_digest": "sha256:b158fdafc48efc9de1db914bf46fab3555d12dc0621bf1ce74804be499f70d14"
 }

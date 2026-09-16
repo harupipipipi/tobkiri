@@ -529,7 +529,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_tool_result_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:d23621df2f014b100f5a53cf2467eb52b2b47f0138408e79b8410b00477fb1be",
+  "default_profile_digest": "sha256:646ececec117390a7a4d217c6ef5ae0f3e1e36ac865c9eeb15e038c31d595bc9",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
   "default_selection": {
@@ -731,7 +731,7 @@
     "rumi_tool_validation_pack": "sha256:12ced20353b9342b71d34b5f321894abc4e128ce5d37fcf3d2f418cb3df36090",
     "rumi_turn_runtime_pack": "sha256:a385c33250531fee150b5d792883040d2d73887685ae62a31c0ba1dd0a4693e4",
     "rumi_workspace_mount_pack": "sha256:677cd5139415bbe9580a6994f27c2136f2a72c85c4ef6120731d479f8b9a2b23",
-    "runtime.tauri.application.default": "sha256:e5dbd564e11cb0a4633e0a4e8504e1e4ec6ba8d58bca385ee49b964e93356232",
+    "runtime.tauri.application.default": "sha256:3c6e8fd73e7b9bdac2cd0f249aef53a9e2598c8ba102bf575d6320d895a18154",
     "shell.tauri.default": "sha256:1abaf30122ccbc6d96aa209f05557aab9a0ce6c16baca3700e98a3a8292edf0f",
     "tobkiri_host_pack_control": "sha256:b1c19e075016604cbbd2da5731594d67bddb18edf3edd403c5cdc409a56a03e8",
     "tobkiri_ui_settings_pack": "sha256:ba7d2332801895edee8bca70f9e9d864fbaf729b168add3abc5811a74643d35e"

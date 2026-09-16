@@ -4464,57 +4464,6 @@
       ],
       "variant_id": "rumi_command_protocol_pack.catalog.read.python"
     },
-    "rumi_command_protocol_pack.command.invoke": {
-      "contract_id": "tobkiri.action.command.invoke.v1",
-      "contract_version": "1.0.0",
-      "error_schema": {
-        "type": "object"
-      },
-      "execution_kind": "source-verified",
-      "function_id": "rumi_command_protocol_pack.command.invoke",
-      "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
-      "implementation_path": "runtime/invoke.py",
-      "input_schema": {
-        "type": "object"
-      },
-      "operation_id": "command.invoke",
-      "operations": [
-        {
-          "contract_id": "tobkiri.action.command.invoke.v1",
-          "contract_version": "1.0.0",
-          "entrypoint_id": "command.invoke",
-          "error_schema": {
-            "type": "object"
-          },
-          "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
-          "implementation_path": "runtime/invoke.py",
-          "input_schema": {
-            "type": "object"
-          },
-          "kind": "canonical-v4-runtime",
-          "operation_id": "command.invoke",
-          "output_schema": {
-            "type": "object"
-          },
-          "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/invoke.py",
-          "symbol": "HOST_PROVIDER_FACTORY"
-        }
-      ],
-      "output_schema": {
-        "type": "object"
-      },
-      "owner": "rumi_command_protocol_pack",
-      "pack_id": "rumi_command_protocol_pack",
-      "source": [
-        {
-          "entrypoint_id": "command.invoke",
-          "kind": "canonical-v4-runtime",
-          "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/invoke.py",
-          "symbol": "HOST_PROVIDER_FACTORY"
-        }
-      ],
-      "variant_id": "rumi_command_protocol_pack.command.invoke.python"
-    },
     "rumi_command_protocol_pack.high-risk-command.service": {
       "contract_id": "tobkiri.service.command.high-risk.v1",
       "contract_version": "1.0.0",
