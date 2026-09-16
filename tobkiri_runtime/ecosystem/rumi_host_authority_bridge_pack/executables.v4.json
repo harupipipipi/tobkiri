@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:426cafeb2540e4fbe7c1645b0f260e94da251184364cf9e1dfc554cf91203ae4",
+  "catalog_digest": "sha256:ca5105a493bbb18ffe659888f0cbd8989b6fc194cd42aca0845e521b2b023d4b",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:d2f0aef0ca466915e110fe2eab4ec946da91a982650cca009637b493644d6f08",
+  "source_identity": "sha256:52e66cde915ca1d83ba6267b720500bac29237da6b3ad2ffaf2f7b71f863dd57",
   "variants": [
     {
       "architecture": "any",
@@ -10,7 +10,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-      "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
       "implementation_path": "runtime/bridge.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -62,7 +62,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "implementation_digest": "sha256:779f5e2805617929548587b1dc79d868506b4884f831b57a2f288d67c4e94bbe",
+      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
       "implementation_path": "runtime/bridge.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -159,7 +159,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-      "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
       "implementation_path": "runtime/bridge.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -306,7 +306,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
       "implementation_path": "runtime/bridge.py",
       "materialization_mode": "on_demand",
       "operations": [

@@ -7304,7 +7304,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-      "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -7318,7 +7318,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -7349,6 +7349,148 @@
       ],
       "variant_id": "rumi_host_authority_bridge_pack.host-authority.authorize.python"
     },
+    "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation": {
+      "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
+      "implementation_path": "runtime/bridge.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "request_id": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "resume_id": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "ui_operator": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "request_id",
+          "conversation_id"
+        ],
+        "type": "object"
+      },
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "chat_approval.approve",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
+          "implementation_path": "runtime/bridge.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "conversation_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "resume_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "ui_operator": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "request_id",
+              "conversation_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "chat_approval.approve",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "chat_approval.resume",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
+          "implementation_path": "runtime/bridge.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "conversation_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "resume_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "ui_operator": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "request_id",
+              "conversation_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "chat_approval.resume",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "rumi_host_authority_bridge_pack",
+      "pack_id": "rumi_host_authority_bridge_pack",
+      "source": [
+        {
+          "entrypoint_id": "chat_approval.approve",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        },
+        {
+          "entrypoint_id": "chat_approval.resume",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "rumi_host_authority_bridge_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation.python"
+    },
     "rumi_host_authority_bridge_pack.host-authority.interactive-approval": {
       "contract_id": "tobkiri.service.interactive-approval.v1",
       "contract_version": "1.0.0",
@@ -7357,7 +7499,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-      "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -7370,7 +7512,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -7390,7 +7532,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -7410,7 +7552,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -7430,7 +7572,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -7485,7 +7627,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-      "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
       "implementation_path": "runtime/bridge.py",
       "input_schema": {
         "type": "object"
@@ -7499,7 +7641,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
+          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
           "implementation_path": "runtime/bridge.py",
           "input_schema": {
             "type": "object"
@@ -14011,6 +14153,192 @@
       ],
       "variant_id": "tobkiri.ui.catalog.read.python"
     },
+    "tobkiri.ui.model-state.read": {
+      "contract_id": "tobkiri.resource.ui.model-state.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.ui.model-state.read",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "implementation_path": "runtime/state_changes.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.model-state-read",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.model-state.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.model-state-read",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "implementation_path": "runtime/state_changes.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.model-state-read",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.ui.model-state.read.python"
+    },
+    "tobkiri.ui.model-state.write": {
+      "contract_id": "tobkiri.action.ui.model-state.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.ui.model-state.write",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "implementation_path": "runtime/state_changes.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "preferred_model",
+              "thinking_level",
+              "deepthink_enabled"
+            ],
+            "type": "string"
+          },
+          "mutation_id": {
+            "maxLength": 256,
+            "minLength": 8,
+            "type": "string"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "value": {}
+        },
+        "required": [
+          "profile_id",
+          "kind",
+          "value",
+          "expected_revision",
+          "mutation_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.model-state-write",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.model-state.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.model-state-write",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "implementation_path": "runtime/state_changes.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "preferred_model",
+                  "thinking_level",
+                  "deepthink_enabled"
+                ],
+                "type": "string"
+              },
+              "mutation_id": {
+                "maxLength": 256,
+                "minLength": 8,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [
+              "profile_id",
+              "kind",
+              "value",
+              "expected_revision",
+              "mutation_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-write",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.model-state-write",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.ui.model-state.write.python"
+    },
     "tobkiri.ui.preferences.write": {
       "contract_id": "tobkiri.action.ui.preferences.v1",
       "contract_version": "1.0.0",
@@ -14323,6 +14651,384 @@
         }
       ],
       "variant_id": "tobkiri.ui.preferences.write.python"
+    },
+    "tobkiri.ui.recovery-diagnostic.read": {
+      "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.ui.recovery-diagnostic.read",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "implementation_path": "runtime/state_changes.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "profile_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "implementation_path": "runtime/state_changes.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.ui.recovery-diagnostic.read.python"
+    },
+    "tobkiri.ui.recovery-diagnostic.write": {
+      "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {
+        "type": "object"
+      },
+      "execution_kind": "source-verified",
+      "function_id": "tobkiri.ui.recovery-diagnostic.write",
+      "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+      "implementation_path": "runtime/state_changes.py",
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostic": {
+            "additionalProperties": false,
+            "maxProperties": 12,
+            "properties": {
+              "category": {
+                "maxLength": 80,
+                "type": "string"
+              },
+              "context_id": {
+                "maxLength": 256,
+                "type": "string"
+              },
+              "detail": {
+                "additionalProperties": false,
+                "maxProperties": 10,
+                "properties": {
+                  "column": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "component_stack": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "maxLength": 240,
+                    "type": "string"
+                  },
+                  "error_name": {
+                    "maxLength": 240,
+                    "type": "string"
+                  },
+                  "frame_count": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "http_status": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "line": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "reason_type": {
+                    "maxLength": 240,
+                    "type": "string"
+                  },
+                  "route": {
+                    "maxLength": 1024,
+                    "type": "string"
+                  },
+                  "stack": {
+                    "maxLength": 8192,
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "event_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "fingerprint": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "level": {
+                "maxLength": 24,
+                "type": "string"
+              },
+              "message": {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              "privacy_mode": {
+                "const": "standard",
+                "type": "string"
+              },
+              "schema_version": {
+                "const": "rumi.client_diagnostic.v2",
+                "type": "string"
+              },
+              "session_id": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "source": {
+                "maxLength": 80,
+                "type": "string"
+              }
+            },
+            "required": [
+              "schema_version",
+              "event_id",
+              "session_id",
+              "fingerprint",
+              "privacy_mode",
+              "message"
+            ],
+            "type": "object"
+          },
+          "expected_revision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mutation_id": {
+            "maxLength": 256,
+            "minLength": 8,
+            "type": "string"
+          },
+          "profile_id": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "diagnostic",
+          "expected_revision",
+          "mutation_id"
+        ],
+        "type": "object"
+      },
+      "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+          "contract_version": "1.0.0",
+          "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+          "error_schema": {
+            "type": "object"
+          },
+          "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
+          "implementation_path": "runtime/state_changes.py",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "diagnostic": {
+                "additionalProperties": false,
+                "maxProperties": 12,
+                "properties": {
+                  "category": {
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "context_id": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "detail": {
+                    "additionalProperties": false,
+                    "maxProperties": 10,
+                    "properties": {
+                      "column": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "component_stack": {
+                        "maxLength": 4096,
+                        "type": "string"
+                      },
+                      "error_code": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "error_name": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "frame_count": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "http_status": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "line": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "reason_type": {
+                        "maxLength": 240,
+                        "type": "string"
+                      },
+                      "route": {
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
+                      "stack": {
+                        "maxLength": 8192,
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "fingerprint": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "level": {
+                    "maxLength": 24,
+                    "type": "string"
+                  },
+                  "message": {
+                    "maxLength": 2048,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "privacy_mode": {
+                    "const": "standard",
+                    "type": "string"
+                  },
+                  "schema_version": {
+                    "const": "rumi.client_diagnostic.v2",
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "source": {
+                    "maxLength": 80,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "schema_version",
+                  "event_id",
+                  "session_id",
+                  "fingerprint",
+                  "privacy_mode",
+                  "message"
+                ],
+                "type": "object"
+              },
+              "expected_revision": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mutation_id": {
+                "maxLength": 256,
+                "minLength": 8,
+                "type": "string"
+              },
+              "profile_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "profile_id",
+              "diagnostic",
+              "expected_revision",
+              "mutation_id"
+            ],
+            "type": "object"
+          },
+          "kind": "legacy-explicit-entrypoint",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+          "output_schema": {
+            "type": "object"
+          },
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "output_schema": {
+        "type": "object"
+      },
+      "owner": "tobkiri_ui_settings_pack",
+      "pack_id": "tobkiri_ui_settings_pack",
+      "source": [
+        {
+          "entrypoint_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+          "kind": "legacy-explicit-entrypoint",
+          "pack_source_id": "tobkiri_ui_settings_pack",
+          "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
+        }
+      ],
+      "variant_id": "tobkiri.ui.recovery-diagnostic.write.python"
     },
     "tobkiri.ui.settings.read": {
       "contract_id": "tobkiri.resource.ui.settings.v1",
@@ -14925,7 +15631,7 @@
     "generator": "tobkiri.scripts.generate_executable_source_registry_v1",
     "generator_version": "1.0.0",
     "input_count": 202,
-    "input_digest": "sha256:9a0bf3856fb7b774c22ebb44782c54fdd8b43879ee270544181b8c681ef74bcf",
+    "input_digest": "sha256:80b8af91a32d826f4e4f7a64b3c51ded34c787520856a964ee5fb046360a60ae",
     "input_paths": [
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/host.py",
       "tobkiri_runtime/ecosystem/rumi_conversation_store_pack/runtime/manage_host.py",
@@ -15392,7 +16098,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:0e79edb893f5a687dc63cc11b8c95ac55225b89393e98f3f88ecd95f45f83903",
+        "digest": "sha256:fb945345aea95a12ea7d741ad9bd47e61ff29deb38701048e9bbb18865c83fc6",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-manifest.json"
       },
@@ -15662,7 +16368,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:24d91b0cc454838c440069316f4584e9479b99ef0977f48eac7de6023ca803ed",
+        "digest": "sha256:eb07d1571284edfacc551a63c08bb6ebd36b9ac22e8e4c3551285307f61b0794",
         "kind": "legacy-explicit-fixture",
         "path": "tobkiri_runtime/tests/fixtures/legacy_executable_sources.v1.json"
       },
@@ -15872,7 +16578,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:60a4754b005ebff6de9cf4ce14f30a4fb07ec8ef8e97896f4b9cec982f1d3040",
+        "digest": "sha256:564c19851a0737bae2e18a0a1501f0d9d4cf1aeed541ad1f94fbb917beb67131",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/rumi.pack.v3.json"
       },
@@ -16132,7 +16838,7 @@
         "path": "tobkiri_runtime/ecosystem/rumi_tool_validation_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:d9b005ac81a8ada42888f55ecee329090a6d437b218478ddd4b76dc72ea5d9fe",
+        "digest": "sha256:e065951fa9f26f2dd76d1f65836c6c1d950321bfc4c8aadefbe763d34e0968af",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_turn_runtime_pack/rumi.pack.v3.json"
       },

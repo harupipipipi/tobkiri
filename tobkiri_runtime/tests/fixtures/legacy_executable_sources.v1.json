@@ -1089,6 +1089,18 @@
     "rumi_host_authority_bridge_pack": {
       "entries": [
         {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "operation_ids": ["chat_approval.approve", "chat_approval.resume"],
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/bridge.py",
+          "schemas": {
+            "input": {"additionalProperties": false, "properties": {"conversation_id": {"maxLength": 255, "type": "string"}, "request_id": {"maxLength": 255, "type": "string"}, "resume_id": {"maxLength": 255, "type": "string"}, "ui_operator": {"type": "object"}}, "required": ["request_id", "conversation_id"], "type": "object"},
+            "output": {"type": "object"},
+            "error": {"type": "object"}
+          }
+        },
+        {
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
           "operation_ids": [
             "interactive_approval.get",
@@ -1251,6 +1263,42 @@
     },
     "tobkiri_ui_settings_pack": {
       "entries": [
+        {
+          "function_id": "tobkiri.ui.model-state.read",
+          "operation_ids": ["tobkiri_ui_settings_pack.model-state-read"],
+          "contract_id": "tobkiri.resource.ui.model-state.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/state_changes.py",
+          "schemas": {"input": {"additionalProperties": false, "properties": {"profile_id": {"minLength": 1, "type": "string"}}, "required": ["profile_id"], "type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "tobkiri.ui.model-state.write",
+          "operation_ids": ["tobkiri_ui_settings_pack.model-state-write"],
+          "contract_id": "tobkiri.action.ui.model-state.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/state_changes.py",
+          "schemas": {"input": {"additionalProperties": false, "properties": {"expected_revision": {"minimum": 0, "type": "integer"}, "kind": {"enum": ["preferred_model", "thinking_level", "deepthink_enabled"], "type": "string"}, "mutation_id": {"maxLength": 256, "minLength": 8, "type": "string"}, "profile_id": {"minLength": 1, "type": "string"}, "value": {}}, "required": ["profile_id", "kind", "value", "expected_revision", "mutation_id"], "type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "tobkiri.ui.recovery-diagnostic.read",
+          "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-read"],
+          "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/state_changes.py",
+          "schemas": {"input": {"additionalProperties": false, "properties": {"profile_id": {"minLength": 1, "type": "string"}}, "required": ["profile_id"], "type": "object"}, "output": {"type": "object"}, "error": {"type": "object"}}
+        },
+        {
+          "function_id": "tobkiri.ui.recovery-diagnostic.write",
+          "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-write"],
+          "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/state_changes.py",
+          "schemas": {
+            "input": {"additionalProperties": false, "properties": {"diagnostic": {"additionalProperties": false, "maxProperties": 12, "properties": {"category": {"maxLength": 80, "type": "string"}, "context_id": {"maxLength": 256, "type": "string"}, "detail": {"additionalProperties": false, "maxProperties": 10, "properties": {"column": {"minimum": 0, "type": "integer"}, "component_stack": {"maxLength": 4096, "type": "string"}, "error_code": {"maxLength": 240, "type": "string"}, "error_name": {"maxLength": 240, "type": "string"}, "frame_count": {"minimum": 0, "type": "integer"}, "http_status": {"minimum": 0, "type": "integer"}, "line": {"minimum": 0, "type": "integer"}, "reason_type": {"maxLength": 240, "type": "string"}, "route": {"maxLength": 1024, "type": "string"}, "stack": {"maxLength": 8192, "type": "string"}}, "type": "object"}, "event_id": {"maxLength": 256, "minLength": 1, "type": "string"}, "fingerprint": {"maxLength": 256, "minLength": 1, "type": "string"}, "level": {"maxLength": 24, "type": "string"}, "message": {"maxLength": 2048, "minLength": 1, "type": "string"}, "privacy_mode": {"const": "standard", "type": "string"}, "schema_version": {"const": "rumi.client_diagnostic.v2", "type": "string"}, "session_id": {"maxLength": 256, "minLength": 1, "type": "string"}, "source": {"maxLength": 80, "type": "string"}}, "required": ["schema_version", "event_id", "session_id", "fingerprint", "privacy_mode", "message"], "type": "object"}, "expected_revision": {"minimum": 0, "type": "integer"}, "mutation_id": {"maxLength": 256, "minLength": 8, "type": "string"}, "profile_id": {"minLength": 1, "type": "string"}}, "required": ["profile_id", "diagnostic", "expected_revision", "mutation_id"], "type": "object"},
+            "output": {"type": "object"},
+            "error": {"type": "object"}
+          }
+        },
         {
           "function_id": "tobkiri.project.state.read",
           "operation_ids": [

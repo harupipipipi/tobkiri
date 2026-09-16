@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:cedb10ee3e21a07983a6cccb3d26d7a70ab9485fb678df764d7504c88ec65ec2
+// Raw source digest: sha256:3f2d77cfaef802266e0f39bcf5f20b0838c9e9846d142ec83fd4dd666e4f86ac
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:cedb10ee3e21a07983a6cccb3d26d7a70ab9485fb678df764d7504c88ec65ec2" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:3f2d77cfaef802266e0f39bcf5f20b0838c9e9846d142ec83fd4dd666e4f86ac" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:cedb10ee3e21a07983a6cccb3d26d7a70ab9485fb678df764d7504c88ec65ec2",
+  "artifact_digest": "sha256:3f2d77cfaef802266e0f39bcf5f20b0838c9e9846d142ec83fd4dd666e4f86ac",
   "routes": [
     {
       "method": "GET",
@@ -173,6 +173,44 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       ]
     },
     {
+      "method": "POST",
+      "path": "/api/chat/approval/approve",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.chat.approval.approve",
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "operation_id": "chat_approval.approve",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "allowed_payload_keys": [
+            "request_id",
+            "conversation_id",
+            "ui_operator"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/approval/resume",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.chat.approval.resume",
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "operation_id": "chat_approval.resume",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+          "allowed_payload_keys": [
+            "request_id",
+            "conversation_id",
+            "resume_id"
+          ]
+        }
+      ]
+    },
+    {
       "method": "GET",
       "path": "/api/command-protocol/v1/catalog",
       "presentation": "broker_result",
@@ -256,6 +294,75 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "provider_id": "tobkiri.project.state.read",
           "function_id": "tobkiri.project.state.read",
           "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/model-state",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.model-state.read",
+          "contract_id": "tobkiri.resource.ui.model-state.v1",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-read",
+          "provider_id": "tobkiri.ui.model-state.read",
+          "function_id": "tobkiri.ui.model-state.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/ui/model-state",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.model-state.write",
+          "contract_id": "tobkiri.action.ui.model-state.v1",
+          "operation_id": "tobkiri_ui_settings_pack.model-state-write",
+          "provider_id": "tobkiri.ui.model-state.write",
+          "function_id": "tobkiri.ui.model-state.write",
+          "allowed_payload_keys": [
+            "kind",
+            "value",
+            "expected_revision",
+            "mutation_id"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/recovery-diagnostics",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.recovery-diagnostic.read",
+          "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+          "provider_id": "tobkiri.ui.recovery-diagnostic.read",
+          "function_id": "tobkiri.ui.recovery-diagnostic.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/client-events",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.recovery-diagnostic.write",
+          "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+          "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+          "provider_id": "tobkiri.ui.recovery-diagnostic.write",
+          "function_id": "tobkiri.ui.recovery-diagnostic.write",
+          "allowed_payload_keys": [
+            "diagnostic",
+            "expected_revision",
+            "mutation_id"
+          ]
         }
       ]
     },
@@ -1149,6 +1256,40 @@ const EXPECTED_ROUTES = {
       }
     ]
   },
+  "POST /api/chat/approval/approve": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.chat.approval.approve",
+        "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+        "operation_id": "chat_approval.approve",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "allowed_payload_keys": [
+          "request_id",
+          "conversation_id",
+          "ui_operator"
+        ]
+      }
+    ]
+  },
+  "POST /api/chat/approval/resume": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.chat.approval.resume",
+        "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+        "operation_id": "chat_approval.resume",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "allowed_payload_keys": [
+          "request_id",
+          "conversation_id",
+          "resume_id"
+        ]
+      }
+    ]
+  },
   "GET /api/command-protocol/v1/catalog": {
     "presentation": "broker_result",
     "targets": [
@@ -1223,6 +1364,67 @@ const EXPECTED_ROUTES = {
         "provider_id": "tobkiri.project.state.read",
         "function_id": "tobkiri.project.state.read",
         "allowed_payload_keys": []
+      }
+    ]
+  },
+  "GET /api/ui/model-state": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.ui.model-state.read",
+        "contract_id": "tobkiri.resource.ui.model-state.v1",
+        "operation_id": "tobkiri_ui_settings_pack.model-state-read",
+        "provider_id": "tobkiri.ui.model-state.read",
+        "function_id": "tobkiri.ui.model-state.read",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "PUT /api/ui/model-state": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.ui.model-state.write",
+        "contract_id": "tobkiri.action.ui.model-state.v1",
+        "operation_id": "tobkiri_ui_settings_pack.model-state-write",
+        "provider_id": "tobkiri.ui.model-state.write",
+        "function_id": "tobkiri.ui.model-state.write",
+        "allowed_payload_keys": [
+          "kind",
+          "value",
+          "expected_revision",
+          "mutation_id"
+        ]
+      }
+    ]
+  },
+  "GET /api/ui/recovery-diagnostics": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.ui.recovery-diagnostic.read",
+        "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
+        "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
+        "provider_id": "tobkiri.ui.recovery-diagnostic.read",
+        "function_id": "tobkiri.ui.recovery-diagnostic.read",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "POST /api/ui/client-events": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.ui.recovery-diagnostic.write",
+        "contract_id": "tobkiri.action.ui.recovery-diagnostic.v1",
+        "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-write",
+        "provider_id": "tobkiri.ui.recovery-diagnostic.write",
+        "function_id": "tobkiri.ui.recovery-diagnostic.write",
+        "allowed_payload_keys": [
+          "diagnostic",
+          "expected_revision",
+          "mutation_id"
+        ]
       }
     ]
   },

@@ -91,8 +91,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json",
       "type": "regular-file",
-      "size": 34621,
-      "sha256": "cedb10ee3e21a07983a6cccb3d26d7a70ab9485fb678df764d7504c88ec65ec2",
+      "size": 37925,
+      "sha256": "3f2d77cfaef802266e0f39bcf5f20b0838c9e9846d142ec83fd4dd666e4f86ac",
       "executable": false
     },
     {
@@ -112,8 +112,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/http_surface_presentation.py",
       "type": "regular-file",
-      "size": 26081,
-      "sha256": "523fc98ff1b5d6e35e62e06ba07dbad3b4482a10251b87fce12de1e45ae0ba92",
+      "size": 28075,
+      "sha256": "caf17f6aa0abbc559205dd2e580148165efd731fa645a2592df3bf30a5e835ff",
       "executable": false
     },
     {
@@ -1128,7 +1128,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57698,
-      "sha256": "edda62b9ea64d438283578a96d6560078b75f6201828ac361c1ad6d89947696f",
+      "sha256": "d80555f0f8c4c20e5da5001bfecf6bbe2e9cd3c6fae3953ba143210543c93852",
       "executable": false
     },
     {
@@ -1141,29 +1141,29 @@
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json",
       "type": "regular-file",
-      "size": 95174,
-      "sha256": "ed8cd62b27bea7a0b6df6b7f46b4ed3f7c20f5864640ddbcee5c4502d7c13d16",
+      "size": 98710,
+      "sha256": "f71db06a70408434ea583416fcf5d833e2144add6e75248dd00601acc1992552",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
-      "size": 44232,
-      "sha256": "ec6ec21106d5975a75ca0517c7b248528469c336e5e4eaf7205af2f816282f1a",
+      "size": 47008,
+      "sha256": "2900a3058e40a953ecf2e5c1675add3bf87b9d054dad525fe191e7713f90cfc5",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
       "type": "regular-file",
-      "size": 111101,
-      "sha256": "646ececec117390a7a4d217c6ef5ae0f3e1e36ac865c9eeb15e038c31d595bc9",
+      "size": 115727,
+      "sha256": "55c742ca1f16a021e6af32ff6c0c3adb7c6778753bf080111795e5dfef941001",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65116,
-      "sha256": "1e0e5a2b7689b52df7c415d1390bcd9b33626d0de8ae1e4a4f0e4a61df4325fb",
+      "sha256": "07b39d66e80817d021db2c1853812b310e7a4504091a6cd951ec93c069280af9",
       "executable": false
     },
     {
@@ -1204,8 +1204,8 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json",
       "type": "regular-file",
-      "size": 9394,
-      "sha256": "6c5a6e2c07553f92eb4a84b91140b23c2e8f82ad7ed5c5bc60ff4bf9be39e72f",
+      "size": 11207,
+      "sha256": "81643fc4e801bcef4b2376aa399434fb0b1a368b7a2e181ca4b8a432d791e618",
       "executable": false
     },
     {
@@ -2079,8 +2079,8 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_host_authority_bridge_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 9464,
-      "sha256": "76794c5164c228362864b48768752c246b3289d01ddd942e936ee4ff43e6e3ac",
+      "size": 12671,
+      "sha256": "431bc09d8ddaa18eb3d21d28a1c47ca7c18c8f0dab542620b4a3bbb2ef23a5fe",
       "executable": false
     },
     {
@@ -3088,7 +3088,7 @@
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
       "type": "regular-file",
       "size": 3909,
-      "sha256": "3c6e8fd73e7b9bdac2cd0f249aef53a9e2598c8ba102bf575d6320d895a18154",
+      "sha256": "6ba18024ff215d9640f80abf4f9f938e38992234bda18d570534d38dc8011884",
       "executable": false
     },
     {
@@ -3346,8 +3346,8 @@
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
-      "size": 912154,
-      "sha256": "de1c4b51df36c09fbbd78a66ca14fae89c04347780ef76e8a3da1d4b93cc6daf",
+      "size": 912586,
+      "sha256": "ee61885b2aec0c555d392b467055a6a71d945aa4f432d2ec187a1b4e85e7eada",
       "executable": false
     },
     {
