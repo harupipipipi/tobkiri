@@ -1117,6 +1117,7 @@ pub(crate) fn spawn_defaultspack_local_server(
     })
 }
 
+#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
 fn apply_packvm_acceptance_environment(
     command: &mut crate::python_env::RoleCommand<'_>,
     config: &AppConfig,
@@ -1143,6 +1144,15 @@ fn apply_packvm_acceptance_environment(
         .env(crate::PACKVM_ACCEPTANCE_DIGEST_ENV, pack_digest)
         .env("TOBKIRI_LAUNCHER_APP_IDENTIFIER", app_identifier)
         .env(crate::ci_e2e_app_data::CI_E2E_APP_DATA_ROOT_ENV, root);
+    Ok(())
+}
+
+#[cfg(not(any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+fn apply_packvm_acceptance_environment(
+    command: &mut crate::python_env::RoleCommand<'_>,
+    config: &AppConfig,
+) -> AnyResult<()> {
+    let _ = (command, config);
     Ok(())
 }
 
