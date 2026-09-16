@@ -1367,9 +1367,9 @@ fn selected_ci_e2e_acceptance_pack_matches(
                 && value_str(item, "/artifact_digest") == Some(expected_digest)
         });
     let pin_match = selected
-        .plan
+        .lock
         .as_ref()
-        .and_then(|plan| plan.get("variant_pins"))
+        .and_then(|lock| lock.get("variant_pins"))
         .and_then(Value::as_array)
         .and_then(|pins| {
             pins.iter()
@@ -4705,8 +4705,7 @@ mod tests {
                     "artifact_digest": digest.clone(),
                 }]
             }),
-            lock: None,
-            plan: Some(serde_json::json!({
+            lock: Some(serde_json::json!({
                 "variant_pins": [{
                     "pack_id": PACKVM_ACCEPTANCE_PACK_ID,
                     "artifact_digest": digest.clone(),
@@ -4714,6 +4713,7 @@ mod tests {
                     "domain_kind": "dedicated_process",
                 }]
             })),
+            plan: Some(serde_json::json!({})),
             profile_id: "defaults".into(),
             profile_digest: format!("sha256:{}", "b".repeat(64)),
             profile_revision: None,
@@ -4745,7 +4745,7 @@ mod tests {
             &format!("sha256:{}", "c".repeat(64)),
         ));
 
-        selected.plan.as_mut().unwrap()["variant_pins"][0]["execution_kind"] =
+        selected.lock.as_mut().unwrap()["variant_pins"][0]["execution_kind"] =
             serde_json::json!("host");
         assert!(!selected_ci_e2e_acceptance_pack_matches(
             &selected,
