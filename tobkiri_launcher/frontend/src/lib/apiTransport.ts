@@ -13,6 +13,7 @@ import {
   writeSafeStorageValue,
 } from './safeStorage';
 import {loadTauriInvoke} from './desktopHost';
+import {setPanelJournalScope} from './panelJournalScope';
 
 const API_BASE_URL =
   (import.meta as ImportMeta & {env?: Record<string, string>}).env?.VITE_API_BASE_URL ?? '';
@@ -95,12 +96,13 @@ async function exchangePanelBootstrapCode(
     throw new Error(errorMessage);
   }
 
-  const envelope: ApiResponse<{csrf_token: string}> = await response.json();
-  if (!envelope.success || !envelope.data?.csrf_token) {
+  const envelope: ApiResponse<{csrf_token: string; journal_scope: string}> = await response.json();
+  if (!envelope.success || !envelope.data?.csrf_token || !envelope.data.journal_scope) {
     throw new Error(envelope.error || 'Panel bootstrap failed');
   }
 
   setStoredPanelCsrfToken(envelope.data.csrf_token);
+  setPanelJournalScope(envelope.data.journal_scope);
   getRequestCoordinator.invalidate({preserveSignal: currentRequestSignal});
   url.searchParams.delete('code');
   window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);

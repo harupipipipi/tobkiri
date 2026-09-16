@@ -1875,6 +1875,7 @@ class PackAPIHandler(
                 data={
                     "csrf_token": exchange["csrf_token"],
                     "expires_in": exchange["expires_in"],
+                    "journal_scope": exchange["journal_scope"],
                 },
             ),
             extra_headers=[("Set-Cookie", cookie)],

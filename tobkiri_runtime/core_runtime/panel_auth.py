@@ -45,6 +45,15 @@ class PanelAuthManager:
         session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS,
     ) -> None:
         self._bootstrap_secret = bootstrap_secret or ""
+        self._journal_scope = (
+            "sha256:"
+            + hashlib.sha256(
+                b"tobkiri.panel.mutation-journal.v1\0"
+                + self._bootstrap_secret.encode("utf-8")
+            ).hexdigest()
+            if self._bootstrap_secret
+            else ""
+        )
         self._code_ttl_seconds = max(15, int(code_ttl_seconds))
         self._session_ttl_seconds = max(300, int(session_ttl_seconds))
         self._lock = threading.Lock()
@@ -165,6 +174,7 @@ class PanelAuthManager:
             "session_id": session_id,
             "csrf_token": csrf_token,
             "expires_in": self._session_ttl_seconds,
+            "journal_scope": self._journal_scope,
         }
 
     def verify_session(

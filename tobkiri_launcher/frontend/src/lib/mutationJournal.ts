@@ -4,8 +4,10 @@ import {
   readSafeStorageValue,
   writeSafeStorageValue,
 } from './safeStorage';
+import {getPanelJournalScope} from './panelJournalScope';
 
-const MUTATION_JOURNAL_STORAGE_KEY = 'tobkiri-launcher-mutation-journal-v1';
+const LEGACY_MUTATION_JOURNAL_STORAGE_KEY = 'tobkiri-launcher-mutation-journal-v1';
+const SCOPED_MUTATION_JOURNAL_STORAGE_PREFIX = 'tobkiri-launcher-mutation-journal-v2';
 
 export type MutationJournalState = 'pending' | 'unknown' | 'invalid';
 
@@ -43,6 +45,7 @@ export class MutationBlockedError extends MutationResultUnknownError {
 
 const memoryJournal = new Map<string, MutationJournalRecord>();
 let observedStorage: unknown = null;
+let observedStorageKey = '';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -57,17 +60,21 @@ function currentStorage(): Storage | null {
   return getBrowserStorage('local');
 }
 
-function synchronizeStorageContext(storage: Storage | null): void {
-  if (storage === observedStorage) return;
-  memoryJournal.clear();
-  observedStorage = storage;
+function currentStorageKey(): string {
+  const scope = getPanelJournalScope();
+  return scope
+    ? `${SCOPED_MUTATION_JOURNAL_STORAGE_PREFIX}:${scope}`
+    : LEGACY_MUTATION_JOURNAL_STORAGE_KEY;
 }
 
-function readStoredRecords(): MutationJournalRecord[] {
-  const raw = readSafeStorageValue(
-    currentStorage(),
-    MUTATION_JOURNAL_STORAGE_KEY,
-  );
+function synchronizeStorageContext(storage: Storage | null, storageKey: string): void {
+  if (storage === observedStorage && storageKey === observedStorageKey) return;
+  memoryJournal.clear();
+  observedStorage = storage;
+  observedStorageKey = storageKey;
+}
+
+function parseStoredRecords(raw: string | null): MutationJournalRecord[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -120,12 +127,39 @@ function readStoredRecords(): MutationJournalRecord[] {
   }
 }
 
+function readStoredRecords(storage: Storage | null, storageKey: string): MutationJournalRecord[] {
+  const scoped = parseStoredRecords(readSafeStorageValue(storage, storageKey));
+  if (storageKey === LEGACY_MUTATION_JOURNAL_STORAGE_KEY) return scoped;
+  // A legacy unknown is conservatively adopted by the first authenticated
+  // app-data scope that sees it. It is never discarded or retried merely
+  // because the browser now has a stable scope.
+  const legacy = parseStoredRecords(readSafeStorageValue(
+    storage,
+    LEGACY_MUTATION_JOURNAL_STORAGE_KEY,
+  ));
+  return [...scoped, ...legacy];
+}
+
 function allRecords(): MutationJournalRecord[] {
   const storage = currentStorage();
-  synchronizeStorageContext(storage);
-  const storedRecords = readStoredRecords();
+  const storageKey = currentStorageKey();
+  synchronizeStorageContext(storage, storageKey);
+  const storedRecords = readStoredRecords(storage, storageKey);
   const merged = new Map<string, MutationJournalRecord>();
-  for (const record of storedRecords) merged.set(record.key, record);
+  for (const record of storedRecords) {
+    const previous = merged.get(record.key);
+    if (previous && previous.requestId !== record.requestId) {
+      merged.set(record.key, {
+        key: record.key,
+        requestId: '',
+        state: 'invalid',
+        createdAt: Math.min(previous.createdAt, record.createdAt),
+        metadata: {},
+      });
+    } else {
+      merged.set(record.key, record);
+    }
+  }
   // A fresh browsing context can replace localStorage while this module's
   // in-memory map is still reachable in a test harness. Treat persisted
   // storage as authoritative whenever it exists so stale memory cannot
@@ -148,14 +182,22 @@ function allRecords(): MutationJournalRecord[] {
 
 function persist(records: MutationJournalRecord[]): void {
   const storage = currentStorage();
-  synchronizeStorageContext(storage);
+  const storageKey = currentStorageKey();
+  synchronizeStorageContext(storage, storageKey);
   for (const record of records) memoryJournal.set(record.key, record);
   if (!storage) return;
-  if (!writeSafeStorageValue(storage, MUTATION_JOURNAL_STORAGE_KEY, JSON.stringify(records))) {
+  if (!writeSafeStorageValue(storage, storageKey, JSON.stringify(records))) {
     recordClientDiagnostic({
       code: 'mutation.journal.memory_fallback',
       operation: 'mutation.journal.persist',
     });
+    return;
+  }
+  if (storageKey !== LEGACY_MUTATION_JOURNAL_STORAGE_KEY) {
+    // Clear only after the exact records have been durably adopted by the
+    // root-scoped key. This prevents the old global origin key from leaking
+    // the same mutation into a different Launcher app-data root.
+    writeSafeStorageValue(storage, LEGACY_MUTATION_JOURNAL_STORAGE_KEY, '[]');
   }
 }
 

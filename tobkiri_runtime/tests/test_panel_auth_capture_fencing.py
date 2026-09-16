@@ -50,6 +50,32 @@ def test_codes_and_sessions_are_bound_to_exact_current_capture() -> None:
     assert manager.verify_session(str(current["session_id"]), epoch_b) is not None
 
 
+def test_panel_journal_scope_is_stable_per_launcher_bootstrap_secret() -> None:
+    binding = _binding(activation_id="activation:scope", security_epoch=3)
+    first = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    second = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    other = PanelAuthManager(bootstrap_secret="other-bootstrap")
+
+    first_exchange = first.exchange_code(
+        str(first.issue_login_code(binding)["code"]), binding
+    )
+    second_exchange = second.exchange_code(
+        str(second.issue_login_code(binding)["code"]), binding
+    )
+    other_exchange = other.exchange_code(
+        str(other.issue_login_code(binding)["code"]), binding
+    )
+    assert first_exchange is not None
+    assert second_exchange is not None
+    assert other_exchange is not None
+    scope = first_exchange["journal_scope"]
+    assert scope == second_exchange["journal_scope"]
+    assert scope != other_exchange["journal_scope"]
+    assert isinstance(scope, str)
+    assert scope.startswith("sha256:") and len(scope) == 71
+    assert "desktop-bootstrap" not in scope
+
+
 @dataclass(frozen=True)
 class _CapturedDispatch:
     binding: PanelAuthBinding

@@ -62,3 +62,88 @@ test('a pending request becomes unknown in a fresh storage context', () => {
     });
   }
 });
+
+test('authenticated app-data scopes isolate mutation journals on one browser origin', () => {
+  const globals = globalThis as typeof globalThis & {
+    localStorage?: unknown;
+    sessionStorage?: unknown;
+  };
+  const previousLocalStorage = globals.localStorage;
+  const previousSessionStorage = globals.sessionStorage;
+  const localValues = new Map<string, string>();
+  const sessionValues = new Map<string, string>();
+  const makeStorage = (values: Map<string, string>) => ({
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  });
+  const scopeA = `sha256:${'a'.repeat(64)}`;
+  const scopeB = `sha256:${'b'.repeat(64)}`;
+  const key = `test:scope:${Date.now()}:${Math.random()}`;
+  try {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: makeStorage(localValues), configurable: true,
+    });
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      value: makeStorage(sessionValues), configurable: true,
+    });
+    sessionValues.set('tobkiri-panel-journal-scope-v1', scopeA);
+    beginMutation(key, {}, {primary: '44444444-4444-4444-8444-444444444444'});
+    assert.equal(listMutationJournal().some((item) => item.key === key), true);
+
+    sessionValues.set('tobkiri-panel-journal-scope-v1', scopeB);
+    assert.equal(listMutationJournal().some((item) => item.key === key), false);
+
+    sessionValues.set('tobkiri-panel-journal-scope-v1', scopeA);
+    assert.equal(listMutationJournal().find((item) => item.key === key)?.state, 'unknown');
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: previousLocalStorage, configurable: true,
+    });
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      value: previousSessionStorage, configurable: true,
+    });
+  }
+});
+
+test('a legacy unknown is adopted once without being discarded or leaked', () => {
+  const globals = globalThis as typeof globalThis & {
+    localStorage?: unknown;
+    sessionStorage?: unknown;
+  };
+  const previousLocalStorage = globals.localStorage;
+  const previousSessionStorage = globals.sessionStorage;
+  const localValues = new Map<string, string>();
+  const sessionValues = new Map<string, string>();
+  const makeStorage = (values: Map<string, string>) => ({
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  });
+  const key = `test:legacy:${Date.now()}:${Math.random()}`;
+  const requestId = '55555555-5555-4555-8555-555555555555';
+  try {
+    localValues.set('tobkiri-launcher-mutation-journal-v1', JSON.stringify([{
+      key, requestId, state: 'unknown', createdAt: Date.now(), metadata: {kind: 'test'},
+    }]));
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: makeStorage(localValues), configurable: true,
+    });
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      value: makeStorage(sessionValues), configurable: true,
+    });
+    sessionValues.set('tobkiri-panel-journal-scope-v1', `sha256:${'c'.repeat(64)}`);
+    assert.throws(() => beginMutation(key), MutationBlockedError);
+    assert.equal(localValues.get('tobkiri-launcher-mutation-journal-v1'), '[]');
+
+    sessionValues.set('tobkiri-panel-journal-scope-v1', `sha256:${'d'.repeat(64)}`);
+    assert.equal(listMutationJournal().some((item) => item.key === key), false);
+  } finally {
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: previousLocalStorage, configurable: true,
+    });
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      value: previousSessionStorage, configurable: true,
+    });
+  }
+});

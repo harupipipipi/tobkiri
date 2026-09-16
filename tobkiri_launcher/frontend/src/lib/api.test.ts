@@ -131,7 +131,10 @@ function installFetchMock(): void {
     if (lastFetchUrl === '/api/panel/auth/exchange') {
       exchangeCount += 1;
       return new Response(JSON.stringify({
-        data: {csrf_token: 'csrf-from-server'},
+        data: {
+          csrf_token: 'csrf-from-server',
+          journal_scope: `sha256:${'a'.repeat(64)}`,
+        },
         success: true,
       }), {headers: {'Content-Type': 'application/json'}});
     }
