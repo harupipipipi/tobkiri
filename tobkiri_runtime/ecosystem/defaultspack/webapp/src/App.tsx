@@ -77,7 +77,7 @@ import {
   sanitizeAssistantAuthorityBoilerplate,
 } from "./lib/authorityApproval";
 import { subscribeAuthorityApprovalSettlements } from "./lib/authorityApprovalEvents";
-import { browserApprovalRuntimeContent, pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, type BrowserApproval, type RuntimeApproval, type StaleRuntimeApproval } from "./lib/browserApproval";
+import { pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, type BrowserApproval, type RuntimeApproval, type StaleRuntimeApproval } from "./lib/browserApproval";
 import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewModel } from "./lib/approvalPresentation";
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
 import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, messageToText, orderConversationMessages } from "./lib/chat";
@@ -1689,23 +1689,6 @@ function canvasPreviewIdentity(preview: ToolPreviewItem): string {
   if (data.type === "image") return `image:${data.path || data.url || data.alt}`;
   if (data.type === "file") return `file:${data.path || data.url || `${data.filename}:${data.content ?? ""}`}`;
   return `code:${data.filename}:${data.diff ?? data.content ?? ""}`;
-}
-
-function runtimeApprovalRuntimeContent(approval: RuntimeApproval, token?: string): string {
-  const payload = approvalPayloadPreview({
-    ...approval.payload,
-    ...(token ? { approval_token: token } : {}),
-  });
-  return [
-    "The user approved the pending server-side tool operation.",
-    "Continue by calling the exact pending tool once with the approved arguments below.",
-    "Do not ask the user for the same approval again unless the tool returns a new approval_request_id.",
-    `Tool: ${approval.toolName}`,
-    `Operation: ${approval.operation}`,
-    `Approval request id: ${approval.requestId}`,
-    "Approved arguments JSON:",
-    payload,
-  ].join("\n");
 }
 
 type PendingCommandApproval = {
@@ -5942,49 +5925,22 @@ export function ChatApp() {
       toolNames: approvalToolIds,
     });
     try {
-      const approvalWorkspace = workspaceContextFromConversation(activeConversation);
-      let approvalToken = currentApproval.token ?? "";
-      if (currentApproval.requestId) {
-        const decision = await api.approveCodingApproval(currentApproval.requestId);
-        if (!decision.approved) {
-          throw new Error(decision.reason || "approval failed");
-        }
-        approvalToken = decision.token ?? "";
-        settleBrowserApproval(currentApproval);
+      if (!currentApproval.requestId) {
+        throw new Error("A request-backed approval is required to continue safely.");
       }
-      await api.streamMessage(activeConversationId, "ユーザーが許可しました。承認済みの操作を踏まえて続行してください。", {
-        tool_choice: "required",
-        tool_policy: {
-          ...templatePolicyReferencePayload,
-          action_approval_mode: actionApprovalMode,
-          // Delegated approval is reviewed server-side; only full access uses yolo.
-          ...(ultraYoloMode ? { yolo_mode: true, allow_shell: true, allow_file_write: true, write_actions_require_approval: false } : {}),
-          ...(ultraYoloMode ? { full_access: true } : {}),
-          ...(approvalWorkspace.workspaceId ? { workspace_id: approvalWorkspace.workspaceId } : {}),
-          ...(effectiveDisabledToolIds.length ? { disabled_tools: effectiveDisabledToolIds } : {}),
-          ...(approvalToolIds.length ? { selected_tools: approvalToolIds } : {}),
-        },
-        tools: approvalToolIds.length ? approvalToolIds : undefined,
-        metadata: {
-          mode,
-          ...(approvalWorkspace.workspaceId ? {
-            workspace_id: approvalWorkspace.workspaceId,
-            workspace_label: approvalWorkspace.workspaceLabel,
-            workspace_root: approvalWorkspace.workspaceRoot,
-          } : {}),
-          approval_followup: {
-            action: currentApproval.action,
-            operation: currentApproval.action,
-            approval_token: approvalToken,
-            payload: currentApproval.payload,
-            request_id: currentApproval.requestId,
-            tool_call_id: currentApproval.toolCallId,
-            tool_name: currentApproval.toolName,
-          },
-          runtime_content: browserApprovalRuntimeContent(currentApproval, approvalToken),
-          selected_tools: approvalToolIds,
-        },
-      });
+      const decision = await api.approveCodingApprovalForContinuation(
+        currentApproval.requestId,
+        activeConversationId,
+      );
+      if (!decision.approved || !decision.resume_id) {
+        throw new Error(decision.reason || "approval continuation is unavailable");
+      }
+      await api.resumeCodingApproval(
+        currentApproval.requestId,
+        decision.resume_id,
+        activeConversationId,
+      );
+      settleBrowserApproval(currentApproval);
       forgetPendingRequest(activeConversationId);
       replaceChatIdInUrl(activeConversationId, false);
       await loadConversation(activeConversationId, false);
@@ -6049,46 +6005,21 @@ export function ChatApp() {
       toolStartedAt: { [runtimeApproval.toolName]: Date.now() },
     });
     try {
-      const approvalWorkspace = workspaceContextFromConversation(activeConversation);
-      const decision = await api.approveCodingApproval(runtimeApproval.requestId);
-      if (!decision.approved) {
-        throw new Error(decision.reason || "approval failed");
+      const decision = await api.approveCodingApprovalForContinuation(
+        runtimeApproval.requestId,
+        activeConversationId,
+      );
+      if (!decision.approved || !decision.resume_id) {
+        throw new Error(decision.reason || "approval continuation is unavailable");
       }
       setSettledRuntimeApprovalIds((ids) => (
         ids.includes(runtimeApproval.requestId) ? ids : [...ids, runtimeApproval.requestId].slice(-50)
       ));
-      await api.streamMessage(activeConversationId, "ユーザーが許可しました。承認済みの操作を続行してください。", {
-        tool_choice: "required",
-        tool_policy: {
-          ...templatePolicyReferencePayload,
-          action_approval_mode: actionApprovalMode,
-          ...(ultraYoloMode ? { yolo_mode: true, allow_shell: true, allow_file_write: true, write_actions_require_approval: false } : {}),
-          ...(ultraYoloMode ? { full_access: true } : {}),
-          ...(approvalWorkspace.workspaceId ? { workspace_id: approvalWorkspace.workspaceId } : {}),
-          ...(effectiveDisabledToolIds.length ? { disabled_tools: effectiveDisabledToolIds } : {}),
-          selected_tools: [runtimeApproval.toolName],
-        },
-        tools: [runtimeApproval.toolName],
-        metadata: {
-          mode,
-          ...(approvalWorkspace.workspaceId ? {
-            workspace_id: approvalWorkspace.workspaceId,
-            workspace_label: approvalWorkspace.workspaceLabel,
-            workspace_root: approvalWorkspace.workspaceRoot,
-          } : {}),
-          approval_followup: {
-            action: runtimeApproval.action,
-            operation: runtimeApproval.operation,
-            approval_token: decision.token,
-            payload: runtimeApproval.payload,
-            request_id: runtimeApproval.requestId,
-            tool_call_id: runtimeApproval.toolCallId,
-            tool_name: runtimeApproval.toolName,
-          },
-          runtime_content: runtimeApprovalRuntimeContent(runtimeApproval, decision.token),
-          selected_tools: [runtimeApproval.toolName],
-        },
-      });
+      await api.resumeCodingApproval(
+        runtimeApproval.requestId,
+        decision.resume_id,
+        activeConversationId,
+      );
       forgetPendingRequest(activeConversationId);
       replaceChatIdInUrl(activeConversationId, false);
       await loadConversation(activeConversationId, false);

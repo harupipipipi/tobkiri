@@ -31,6 +31,7 @@ _RUNTIME_SECRET = (
 persist_runtime_secret_for_broker(_RUNTIME_SECRET)
 _LOCK = threading.RLock()
 _DEBUG_RESUME_HANDLES: dict[str, dict[str, Any]] = {}
+_NATIVE_RESUME_HANDLES: dict[str, dict[str, Any]] = {}
 _REQUESTS: dict[str, "ApprovalRequest"] = {}
 _USED_TOKEN_IDS: set[str] = set()
 
@@ -547,6 +548,70 @@ def resolve_debug_resume_handle(handle: str, request_id: str) -> str:
         ):
             return ""
         return str(record.get("token") or "")
+
+
+def _native_resume_binding(request: dict[str, Any]) -> dict[str, str]:
+    """Return the immutable server-owned identity of one approved replay."""
+
+    details = request.get("details") if isinstance(request.get("details"), dict) else {}
+    return {
+        "request_id": str(request.get("request_id") or ""),
+        "operation": str(request.get("operation") or ""),
+        "args_hash": str(request.get("args_hash") or ""),
+        "conversation_id": str(
+            request.get("conversation_id") or details.get("conversation_id") or ""
+        ),
+        "tool_name": str(details.get("tool_name") or details.get("function_id") or ""),
+        "tool_call_id": str(details.get("tool_call_id") or ""),
+        "profile_id": str(request.get("profile_id") or details.get("profile_id") or ""),
+    }
+
+
+def register_native_resume_handle(
+    request: dict[str, Any],
+    token: str,
+) -> str:
+    """Keep an approval token server-side behind an exact, one-shot binding."""
+
+    binding = _native_resume_binding(request)
+    if (
+        request.get("status") != "approved"
+        or not token
+        or not binding["request_id"]
+        or not binding["operation"]
+        or not binding["args_hash"]
+        or not binding["conversation_id"]
+        or not binding["tool_name"]
+    ):
+        raise ValueError("native approval resume binding is incomplete")
+    handle = "native_resume_" + uuid.uuid4().hex
+    with _LOCK:
+        _NATIVE_RESUME_HANDLES[handle] = {
+            **binding,
+            "token": str(token),
+            "expires_at": int(request.get("expires_at") or 0),
+        }
+    return handle
+
+
+def claim_native_resume_handle(
+    handle: str,
+    request: dict[str, Any],
+) -> str:
+    """Atomically consume a native resume handle if every binding still matches."""
+
+    with _LOCK:
+        record = _NATIVE_RESUME_HANDLES.pop(str(handle), None)
+    if not isinstance(record, dict):
+        return ""
+    expected = _native_resume_binding(request)
+    if (
+        request.get("status") != "approved"
+        or int(record.get("expires_at") or 0) <= _now()
+        or any(str(record.get(key) or "") != value for key, value in expected.items())
+    ):
+        return ""
+    return str(record.get("token") or "")
 
 
 def approve_with_extended_expiry(

@@ -3457,6 +3457,8 @@ def _approval_required_tool_response(tool_def, arguments, context=None, *, displ
             "function_id": operation,
             "pack_id": str(context.get("owner_pack") or context.get("pack_id") or context.get("_source_pack_id") or "defaultspack"),
             "conversation_id": str(context.get("conversation_id") or context.get("conversation_turn_id") or ""),
+            "tool_call_id": str(context.get("tool_call_id") or ""),
+            "profile_id": str(context.get("profile_id") or ""),
             "arguments": args,
         },
     )

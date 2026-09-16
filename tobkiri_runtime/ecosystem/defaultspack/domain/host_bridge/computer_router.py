@@ -412,6 +412,8 @@ def _approval_required_response(
             "payload": dict(payload or {}),
             "pack_id": pack_id,
             "conversation_id": conversation_id,
+            "tool_call_id": _context_value(context, "tool_call_id"),
+            "profile_id": _context_value(context, "profile_id"),
             "permission_subject": "Rumi Viewer",
         },
     )

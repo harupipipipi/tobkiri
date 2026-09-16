@@ -3438,6 +3438,53 @@ test("interactive approval helpers use fixed tokenless routes and exact bodies",
   ]);
 });
 
+test("chat approval continuation sends only server-owned resume identities", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTauri = (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__;
+  const seen: Array<{ input: string; body?: unknown }> = [];
+  (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = {
+    core: { invoke: async () => ({ signed: true }) },
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const target = requestTarget(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    seen.push({ input: target, body });
+    const data = target.includes("api/coding/approvals?")
+      ? { requests: [{ request_id: "apr-1", args_hash: "a".repeat(64) }], pending: [] }
+      : target.includes("/approve")
+      ? { request_id: "apr-1", status: "approved", approved: true, resume_id: "native_resume_1" }
+      : { resumed: true, terminal_event: "tool_call_completed", tool: "computer_use" };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    const decision = await api.approveCodingApprovalForContinuation("apr-1", "conversation-1");
+    assert.equal(decision.resume_id, "native_resume_1");
+    await api.resumeCodingApproval("apr-1", decision.resume_id!, "conversation-1");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTauri === undefined) {
+      delete (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__;
+    } else {
+      (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = originalTauri;
+    }
+  }
+
+  assert.equal(seen.length, 3);
+  assert.equal(seen[1].input, routeKey("api/coding/approvals/approve"));
+  assert.equal((seen[1].body as Record<string, unknown>).continuation_conversation_id, "conversation-1");
+  assert.equal(seen[2].input, routeKey("api/coding/approvals/resume"));
+  assert.deepEqual(seen[2].body, {
+    request_id: "apr-1",
+    resume_id: "native_resume_1",
+    conversation_id: "conversation-1",
+  });
+  assert.doesNotMatch(JSON.stringify(seen), /approval_token|payload|tool_name/);
+});
+
 test("coding context, branch, and workspace read helpers use existing API routes", async () => {
   const seen: Array<{ input: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;

@@ -471,6 +471,7 @@ export type CodingApprovalDecision = {
   status: string;
   approved: boolean;
   token?: string;
+  resume_id?: string;
   expires_at?: number | null;
   reason?: string;
 };
@@ -5759,11 +5760,38 @@ export const api = {
     });
   },
 
+  async approveCodingApprovalForContinuation(requestId: string, conversationId: string) {
+    const uiOperator = await nativeCodingApprovalOperator(requestId, "approve");
+    return request<CodingApprovalDecision>(defaultspackContractRoute("api/coding/approvals/approve"), {
+      method: "POST",
+      body: JSON.stringify({
+        approval_request_id: requestId,
+        continuation_conversation_id: conversationId,
+        ui_operator: uiOperator,
+      }),
+    });
+  },
+
   async denyCodingApproval(requestId: string, reason?: string) {
     const uiOperator = await nativeCodingApprovalOperator(requestId, "deny");
     return request<Record<string, unknown>>(defaultspackContractRoute("api/coding/approvals/deny"), {
       method: "POST",
       body: JSON.stringify({ approval_request_id: requestId, reason, ui_operator: uiOperator }),
+    });
+  },
+
+  resumeCodingApproval(requestId: string, resumeId: string, conversationId: string) {
+    return request<{
+      resumed: true;
+      terminal_event: "tool_call_completed";
+      tool: string;
+    }>(defaultspackContractRoute("api/coding/approvals/resume"), {
+      method: "POST",
+      body: JSON.stringify({
+        request_id: requestId,
+        resume_id: resumeId,
+        conversation_id: conversationId,
+      }),
     });
   },
 
