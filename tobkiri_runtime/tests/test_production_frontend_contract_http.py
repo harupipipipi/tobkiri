@@ -600,6 +600,178 @@ def test_chat_approval_continuation_uses_captured_host_provider_once(
     assert forged_status == 400
 
 
+def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pending high-risk tools stay inert while one exact browser call resumes once."""
+
+    from ecosystem.defaultspack.domain.safety import approval, chat_continuation
+
+    server, _session, _authority = production_server
+    approval.reset_approval_state_for_tests()
+    monkeypatch.setattr(
+        chat_continuation,
+        "verify_coding_ui_operator",
+        lambda *_args, **_kwargs: None,
+    )
+    executions: list[tuple[str, dict[str, object], str]] = []
+
+    def execute(
+        function_id: str,
+        payload: dict[str, object],
+        context: dict[str, object],
+    ) -> dict[str, object]:
+        token = str(payload.get("approval_token") or "")
+        stored = next(
+            item
+            for item in approval.list_approval_requests(include_expired=True)
+            if item["details"].get("function_id") == function_id
+            and item["status"] == "approved"
+        )
+        verification = approval.verify_execution_token(
+            token,
+            str(stored["operation"]),
+            str(stored["args_hash"]),
+            consume=True,
+        )
+        assert verification.valid is True
+        executions.append(
+            (
+                function_id,
+                {
+                    key: value
+                    for key, value in payload.items()
+                    if key != "approval_token"
+                },
+                str(context["conversation_id"]),
+            )
+        )
+        return {"status": "ok", "data": {"executed": True}}
+
+    monkeypatch.setattr(chat_continuation, "run_defaultspack_function", execute)
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    def post(path: str, body: Mapping[str, object]) -> tuple[int, dict[str, object]]:
+        status, response, _ = _request(
+            server,
+            "POST",
+            _contract("POST", path),
+            body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        return status, response
+
+    cases = (
+        ("file.write", "coding_file_write", {"path": "note.txt", "content": "safe"}),
+        (
+            "terminal.exec",
+            "coding_terminal_exec",
+            {"command": ["true"], "cwd": "."},
+        ),
+        ("git.commit", "coding_git_commit", {"message": "not executed"}),
+        (
+            "computer.click",
+            "computer_use",
+            {"action": "click", "x": 4, "y": 8},
+        ),
+        (
+            "browser.navigate",
+            "browser_computer",
+            {"action": "navigate", "url": "https://example.invalid/approved"},
+        ),
+    )
+    requests: dict[str, dict[str, object]] = {}
+    for operation, function_id, arguments in cases:
+        request = approval.create_approval_request(
+            operation,
+            "high",
+            arguments,
+            expires_in=120,
+            details={
+                "arguments": arguments,
+                "conversation_id": "approval-matrix",
+                "function_id": function_id,
+                "profile_id": "defaults",
+                "scope": "once",
+                "target": str(
+                    arguments.get("path") or arguments.get("url") or function_id
+                ),
+                "tool_call_id": f"call-{function_id}",
+                "tool_name": function_id,
+            },
+        )
+        requests[operation] = request
+        assert request["operation"] == operation
+        assert request["details"]["scope"] == "once"
+        assert request["details"]["target"]
+        assert int(request["expires_at"]) > int(time.time())
+
+    # A client cannot execute any pending operation by inventing a resume id.
+    for operation, _function_id, _arguments in cases:
+        status, rejected = post(
+            "/api/chat/approval/resume",
+            {
+                "request_id": requests[operation]["request_id"],
+                "resume_id": f"host_resume_unapproved_{operation}",
+                "conversation_id": "approval-matrix",
+            },
+        )
+        assert status != 200, rejected
+    assert executions == []
+
+    allowed = requests["browser.navigate"]
+    status, approved = post(
+        "/api/chat/approval/approve",
+        {
+            "request_id": allowed["request_id"],
+            "conversation_id": "approval-matrix",
+            "ui_operator": {"signed": True},
+        },
+    )
+    assert status == 200, approved
+    resume_id = str(approved["data"]["resume_id"])
+    assert "token" not in approved["data"]
+    status, completed = post(
+        "/api/chat/approval/resume",
+        {
+            "request_id": allowed["request_id"],
+            "resume_id": resume_id,
+            "conversation_id": "approval-matrix",
+        },
+    )
+    assert status == 200, completed
+    assert completed["data"]["resumed"] is True
+    assert executions == [
+        (
+            "browser_computer",
+            {"action": "navigate", "url": "https://example.invalid/approved"},
+            "approval-matrix",
+        )
+    ]
+
+    # The one-shot is consumed, and every unrelated operation remains pending.
+    status, replay = post(
+        "/api/chat/approval/resume",
+        {
+            "request_id": allowed["request_id"],
+            "resume_id": resume_id,
+            "conversation_id": "approval-matrix",
+        },
+    )
+    assert status != 200, replay
+    assert len(executions) == 1
+    assert approval.get_approval_request(str(allowed["request_id"]))["status"] == "consumed"
+    for operation, _function_id, _arguments in cases:
+        if operation != "browser.navigate":
+            assert approval.get_approval_request(
+                str(requests[operation]["request_id"])
+            )["status"] == "pending"
+
+    approval.reset_approval_state_for_tests()
+
+
 @pytest.mark.parametrize(
     "completion",
     [
@@ -2138,6 +2310,57 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
         },
     }
     path = "/api/ai/provider-key"
+
+    # A separately denied secret-use request never stores either configuration
+    # or credential material, and its redacted approval view never echoes the
+    # secret.  The later allow-once request has a different correlation/effect.
+    denied_request = {
+        **request,
+        "correlation_id": str(uuid.uuid4()),
+        "request": {
+            **request["request"],
+            "connection_name": "fixture-denied",
+        },
+    }
+    status, denied_pending = post(path, denied_request)
+    assert status == 200, denied_pending
+    denied_effect = denied_pending["data"]
+    assert denied_effect["state"] == "approval_pending"
+    assert secret not in json.dumps(denied_pending)
+    denied_approval_id = str(denied_effect["approval_request_id"])
+    status, denied_detail = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": denied_approval_id},
+    )
+    assert status == 200, denied_detail
+    assert secret not in json.dumps(denied_detail)
+    status, denied = post(
+        "/api/interactive-approval/v1/deny",
+        {
+            "request_id": denied_approval_id,
+            "ui_operator": sign_ui_operator(
+                denied_approval_id,
+                nonce="provider-configuration-denial",
+                decision="deny",
+                request_snapshot_digest=denied_detail["data"][
+                    "request_snapshot_digest"
+                ],
+                typed_confirmation_digest=None,
+            ),
+        },
+    )
+    assert status == 200, denied
+    assert denied["data"]["state"] == "denied"
+    status, denied_result = post(
+        path,
+        {"phase": "resume", "effect_id": denied_effect["effect_id"]},
+    )
+    assert status == 200, denied_result
+    assert denied_result["data"]["state"] == "cancelled"
+    assert secret not in json.dumps(denied_result)
+    assert not registry.path.exists()
+    assert not (root / "credentials/material-store/credentials.store.json").exists()
+
     status, rejected = post(path, {**request, "effect_kind": "shell_execute"})
     assert status == 400, rejected
     assert not registry.path.exists()
@@ -2216,10 +2439,10 @@ def test_provider_configuration_http_requires_approval_and_saves_once(
     assert secret not in stored.read_text()
     assert len(json.loads(stored.read_text())["credentials"]) == 1
     assert secret not in json.dumps(authority.audit_events(), default=str)
-    assert len(provider_owners) == 2
-    assert provider_owners[0][1:3] == provider_owners[1][1:3]
+    assert len(provider_owners) == 3
+    assert len({item[1:3] for item in provider_owners}) == 1
     # The originating UI owner survives the approved coordinator resume.
-    assert provider_owners[1][1] != provider_owners[1][3]
+    assert provider_owners[-1][1] != provider_owners[-1][3]
 
 
 @pytest.mark.parametrize("text_blocks", [False, True])
@@ -2390,7 +2613,7 @@ def test_all_high_risk_commands_http_require_host_approval_and_run_once(
     from core_runtime.authority.ui_operator import sign_ui_operator
     from ecosystem.rumi_workspace_mount_pack.runtime.mounts import WorkspaceMountStore
 
-    server, session, _authority = command_vertical_server
+    server, session, authority = command_vertical_server
     workspace = tmp_path / "workspace"
     remote = tmp_path / "vertical-remote.git"
     workspace.mkdir()
@@ -2523,6 +2746,37 @@ def test_all_high_risk_commands_http_require_host_approval_and_run_once(
         assert status == 200, approved
         assert approved["data"]["state"] == "approved"
 
+        decision = authority.get_interactive_approval_decision(approval_request_id)
+        assert decision is not None
+        grant = authority.get_grant(str(decision.grant_id))
+        assert grant is not None
+        assert grant.lifetime.value == "one_shot"
+        assert grant.max_uses == 1
+        assert grant.scope.exact_request_digest
+
+    def deny(approval_request_id: str, nonce: str) -> None:
+        status, approval = post(
+            "/api/interactive-approval/v1/get",
+            {"request_id": approval_request_id},
+        )
+        assert status == 200, approval
+        approval_data = approval["data"]
+        status, denied = post(
+            "/api/interactive-approval/v1/deny",
+            {
+                "request_id": approval_request_id,
+                "ui_operator": sign_ui_operator(
+                    approval_request_id,
+                    nonce=nonce,
+                    decision="deny",
+                    request_snapshot_digest=approval_data["request_snapshot_digest"],
+                    typed_confirmation_digest=None,
+                ),
+            },
+        )
+        assert status == 200, denied
+        assert denied["data"]["state"] == "denied"
+
     def exercise(
         command_ref: str,
         arguments: Mapping[str, object],
@@ -2540,6 +2794,47 @@ def test_all_high_risk_commands_http_require_host_approval_and_run_once(
             "presentation": {"title": "Untrusted copy", "summary": "Run command"},
         }
         expected_before = before_effect()
+
+        # Denial is a separate durable request and cannot be turned into a
+        # later execution.  The approval detail comes from the Host-prepared
+        # invocation, not the untrusted presentation copy above.
+        denied_request = {
+            **request,
+            "invocation_id": f"{invocation_id}-denied",
+        }
+        status, denied_pending = post(
+            "/api/command-protocol/v1/high-risk", denied_request
+        )
+        assert status == 200, denied_pending
+        denied_effect = denied_pending["data"]
+        assert denied_effect["state"] == "approval_pending"
+        assert int(denied_effect["expires_at"]) > int(time.time())
+        assert set(denied_effect["redacted_metadata"]) == {
+            "action",
+            "summary",
+            "detail",
+            "confirmation_phrase",
+        }
+        assert denied_effect["redacted_metadata"]["action"]
+        assert denied_effect["redacted_metadata"]["detail"]
+        assert denied_effect["redacted_metadata"]["confirmation_phrase"] == "EXECUTE"
+        denied_approval_id = str(denied_effect["approval_request_id"])
+        status, detail = post(
+            "/api/interactive-approval/v1/get",
+            {"request_id": denied_approval_id},
+        )
+        assert status == 200, detail
+        assert detail["data"]["request_id"] == denied_approval_id
+        assert detail["data"]["expires_at"] == denied_effect["expires_at"]
+        assert detail["data"]["redacted_metadata"] == denied_effect["redacted_metadata"]
+        deny(denied_approval_id, f"{invocation_id}-deny")
+        status, denied_result = post(
+            "/api/command-protocol/v1/high-risk",
+            {"phase": "resume", "invocation_id": denied_request["invocation_id"]},
+        )
+        assert status == 200, denied_result
+        assert denied_result["data"]["state"] == "cancelled"
+        assert before_effect() == expected_before
 
         for suffix, forbidden in enumerate(
             (
