@@ -10,6 +10,8 @@ import {
 } from '@/src/store';
 import type {ApiPackVMDoctor} from '@/src/lib/apiTypes';
 import {setRuntimeDispatchStatus} from '@/src/lib/runtimeDispatchGate';
+import {setPanelJournalScope} from '@/src/lib/panelJournalScope';
+import {PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST} from '@/src/lib/generatedFrontendContractMap';
 
 const samplePack: Pack = {
   id: 'research-pack',
@@ -594,6 +596,72 @@ test('delayed restart reconciliation is quiescent before jsdom cleanup', async (
   assert.deepEqual(errors, [
     'The request result is unknown. Refresh the authoritative projection before trying again; no new request will be sent automatically.',
   ]);
+});
+
+test('an adopted legacy lock is recoverable only after typed current-root absence', async () => {
+  const scope = `sha256:${'c'.repeat(64)}`;
+  const requestId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const key = `pack:toggle:${samplePack.id}:disable`;
+  setPanelJournalScope(scope);
+  localStorage.setItem('tobkiri-launcher-mutation-journal-v1', JSON.stringify([{
+    key,
+    requestId,
+    state: 'unknown',
+    createdAt: 1,
+    metadata: {
+      kind: 'pack.toggle',
+      pack_id: samplePack.id,
+      expected_enabled: false,
+      operation_id: 'pack.disable',
+      contract_id: 'tobkiri.host.pack-control.v4',
+      contract_map_digest: PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST,
+      request_ids: {primary: requestId},
+    },
+  }]));
+  const routes = installFetch(async (route) => {
+    if (route === 'GET /api/pack-control/catalog') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {...binding(), packs: [catalogPack(true)], count: 1},
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    assert.match(route, /^GET \/api\/runtime-surface\/operation-status\?/);
+    return new Response(JSON.stringify({
+      success: false,
+      data: {
+        host_operation_api_version: 'io.tobkiri.host.operation.v1',
+        state: 'error',
+        code: 'OPERATION_NOT_FOUND',
+        message: 'The operation is absent from the current data root',
+        retryable: false,
+        write_set: [],
+      },
+      error: 'The operation is absent from the current data root',
+    }), {status: 404, headers: {'Content-Type': 'application/json'}});
+  });
+  const errors: string[] = [];
+  setStore(errors);
+  useAppStore.setState({packMutationUnknown: {}, packLegacyRecovery: {}});
+
+  await useAppStore.getState().loadPacks(true);
+  await waitForPackMutationReconciliation();
+
+  const recovery = useAppStore.getState().packLegacyRecovery[key];
+  assert.ok(recovery);
+  assert.equal(recovery.requestId, requestId);
+  assert.equal(recovery.metadata.journal_migration, 'legacy-unscoped-v1');
+  assert.deepEqual(routes.map(normalizeOperationStatusRoute), [
+    'GET /api/pack-control/catalog',
+    'GET /api/runtime-surface/operation-status',
+  ]);
+  useAppStore.getState().clearAbsentLegacyPackMutation(key, requestId);
+  assert.equal(useAppStore.getState().packMutationUnknown[key], undefined);
+  assert.equal(useAppStore.getState().packLegacyRecovery[key], undefined);
+  assert.equal(
+    localStorage.getItem(`tobkiri-launcher-mutation-journal-v2:${scope}`),
+    '[]',
+  );
+  assert.deepEqual(errors, []);
 });
 
 test('disable ignores a response for the wrong Pack or requested state', async () => {
