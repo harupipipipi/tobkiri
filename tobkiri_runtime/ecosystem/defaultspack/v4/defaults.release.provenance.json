@@ -1337,8 +1337,8 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:7cbcd4e3f135a47e73369ef3e6cc94b9af1fcb8dd6e0411aafffa74c3aeb1172",
-    "catalog_revision": "sha256:c785a04d99329402ae7f158f2845b18aec5c41cae86bab52fd4e9dac1cbba06f",
+    "bundle_digest": "sha256:fc62c69bb1a713a71e2014f3e35013713db4f5cb95deb02e0e8b0cea23ea64d1",
+    "catalog_revision": "sha256:a165938fc14d414539765d24e1b614640ec95f0cb7b993fcecf9100edd339e0e",
     "closure_digest": "sha256:c00238e6db2ae8ec41bda27b2700ab3cc03bca9a83e4c16d86ba7464a62c76c2"
   },
   "outputs": [
@@ -1348,8 +1348,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:c13ee5c524dc904be2c6371e29a86debfd7f840dc52711883b6bc0cde9a6aef9"
+      "digest": "sha256:2defb534a6acdd57c453e5cb2919374148f0f38b6738f6ad39acbe03fa7e08bc"
     }
   ],
-  "release_digest": "sha256:e113a9efdb6ab93650d3b2cf4a5d4d8b78fcc40029c245da8ab0c36acda17983"
+  "release_digest": "sha256:04376c31634a754ae686488410a7c04bcf5b5f26388677a45fc68c084bca8550"
 }

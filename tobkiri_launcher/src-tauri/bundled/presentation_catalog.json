@@ -511,7 +511,7 @@
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_tool_result_pack.pack.v4.json"
     }
   ],
-  "default_profile_digest": "sha256:01a91de3f8241e9136231ae9014ce9ed0b089a9ed708204c742fe195b8f4752a",
+  "default_profile_digest": "sha256:a7c432eeb813c8793914b07d9680f73a97863ead76c482f14e1c26decb23816c",
   "default_profile_id": "defaults",
   "default_profile_source": "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json",
   "default_selection": {
@@ -543,6 +543,7 @@
           "tobkiri.resource.tool.definition.v1",
           "tobkiri.resource.turn.v1",
           "tobkiri.resource.ui.settings.v1",
+          "tobkiri.resource.workspace.v1",
           "tobkiri.service.command.high-risk.v1",
           "tobkiri.service.interactive-approval.v1",
           "tobkiri.service.interactive-effect.v1"
@@ -640,6 +641,7 @@
       ],
       "consumes_contracts": [
         "conversation.turn.v1",
+        "tobkiri.resource.workspace.v1",
         "tobkiri.resource.tool.definition.v1",
         "tobkiri.action.ai.model.profile.manage.v1",
         "tobkiri.resource.ai.provider.registry.v1",
@@ -703,7 +705,7 @@
     "rumi_tool_validation_pack": "sha256:12ced20353b9342b71d34b5f321894abc4e128ce5d37fcf3d2f418cb3df36090",
     "rumi_turn_runtime_pack": "sha256:603fd2802350e84eb0e170797b0c37d0dffab0a1a2f8d8a580b2f912c4b81b74",
     "rumi_workspace_mount_pack": "sha256:677cd5139415bbe9580a6994f27c2136f2a72c85c4ef6120731d479f8b9a2b23",
-    "runtime.tauri.application.default": "sha256:e45f534fe78e87ef50972ba54492541b3c4d31253bbc4f80a3b31fc6b2d4058e",
+    "runtime.tauri.application.default": "sha256:64af2aa2ff108694e117aa28b44224c944a33e040c6eba81a59234204c5625e4",
     "shell.tauri.default": "sha256:1abaf30122ccbc6d96aa209f05557aab9a0ce6c16baca3700e98a3a8292edf0f",
     "tobkiri_host_pack_control": "sha256:b1c19e075016604cbbd2da5731594d67bddb18edf3edd403c5cdc409a56a03e8",
     "tobkiri_ui_settings_pack": "sha256:68dbbd039213738f89e7a8e811ff68135b857b56352e62e334dd27524fac264e"
