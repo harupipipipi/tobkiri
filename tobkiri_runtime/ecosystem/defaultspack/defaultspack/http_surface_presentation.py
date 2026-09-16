@@ -51,6 +51,7 @@ from .workspace_presentation import (
     present_workspace_list,
     present_workspace_record,
 )
+from .turn_event_presentation import TURN_EVENT_TARGET, normalize_turn_event_read
 
 _PROJECT_READ_TARGET = (
     "defaults.projects.read", "tobkiri.resource.project.state.v1",
