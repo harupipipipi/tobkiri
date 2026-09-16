@@ -104,7 +104,7 @@
     },
     {
       "contract_id": "tobkiri.action.command.invoke.v1",
-      "digest": "sha256:40c93af117eee362339659ee697125a33ebee82c195acc7b9f44b4beab707e7c",
+      "digest": "sha256:801ad3b21f4782d3d03c237d5c0dfd907cf5a437bc24910954f32f4addbfa2db",
       "revision": "1.0.0",
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.pack.v4.json"
     },
@@ -309,6 +309,18 @@
     {
       "contract_id": "tobkiri.resource.command.catalog.v1",
       "digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
+      "revision": "1.0.0",
+      "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.pack.v4.json"
+    },
+    {
+      "contract_id": "tobkiri.resource.command.datasource.v1",
+      "digest": "sha256:0e660d5b3ebc6ebcdff186a95ab831dd056a354ce6278a5661d771701a0a4647",
+      "revision": "1.0.0",
+      "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.pack.v4.json"
+    },
+    {
+      "contract_id": "tobkiri.resource.command.state.v1",
+      "digest": "sha256:5561eccef0ab7444420f23455aeb029b4a7b2400b96ba3df92aafa0c465aa815",
       "revision": "1.0.0",
       "source_path": "tobkiri_runtime/ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.pack.v4.json"
     },
@@ -593,6 +605,8 @@
           "tobkiri.resource.ai.model.profile.v1",
           "tobkiri.resource.ai.provider.registry.v1",
           "tobkiri.resource.command.catalog.v1",
+          "tobkiri.resource.command.datasource.v1",
+          "tobkiri.resource.command.state.v1",
           "tobkiri.resource.conversation.v1",
           "tobkiri.resource.project.state.v1",
           "tobkiri.resource.tool.definition.v1",
@@ -747,7 +761,7 @@
     "rumi_ai_usage_pack": "sha256:d5080ec84501c313110adbfd73a2ab27aed874307f5ab92a4c5c020abfba7dc2",
     "rumi_browser_host_service_pack": "sha256:7d740ffbd5764dca3fb7ff156da298c87dab922272d8c74dc45361605c09c50a",
     "rumi_clipboard_host_service_pack": "sha256:2b5530d870dd83a4b91c4c2526a75f177fb7f596a0c734a238ed13b55f367092",
-    "rumi_command_protocol_pack": "sha256:4d8e099b067bdf9f05247eceafef64d6a70b0f3f9396df6ba965d82538433635",
+    "rumi_command_protocol_pack": "sha256:e2e779d973dab6492890a87a349fc8cda7f15e4b8c19b3ba836966e1dae7752f",
     "rumi_conversation_store_pack": "sha256:db487ce389d0f6f38daaaef86692093cb539ce72fe7dc5196e83cdc6d3a7dd78",
     "rumi_credential_broker_pack": "sha256:8cdfba1621a51bf24986bf0599aed797661b12465b78e79113326915fa41b63f",
     "rumi_default_tools_pack": "sha256:8f9807905f3d435861f5af21fd49318d8dc7c71c5dda0c1100d9a673440ce251",

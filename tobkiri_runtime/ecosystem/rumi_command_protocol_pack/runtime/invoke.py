@@ -1,7 +1,7 @@
-"""Invoke the minimal ordinary Command Protocol surface.
+"""Invoke a finite allowlist of low-risk ordinary Command Protocol actions.
 
-This provider deliberately owns only ``/help``.  Approval-gated terminal,
-git, and file mutations remain isolated in ``high_risk_adapter.py``.
+Approval-gated terminal, git, and file mutations remain isolated in
+``high_risk_adapter.py``. No request can supply or select a frontend action.
 """
 
 from __future__ import annotations
@@ -24,8 +24,29 @@ from tobkiri_protocol.canonical import canonical_digest
 FUNCTION_ID = "rumi_command_protocol_pack.command.invoke"
 CONTRACT_ID = "tobkiri.action.command.invoke.v1"
 OPERATION_ID = "command.invoke"
-_COMMAND_REF = "defaultspack:help"
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
+_ALL_MODES = frozenset({"chat", "coding", "agent"})
+_COMMANDS: dict[str, tuple[str, frozenset[str], frozenset[str]]] = {
+    "defaultspack:help": ("open_command_help", _ALL_MODES, frozenset()),
+    "defaultspack:new": ("new_conversation", _ALL_MODES, frozenset()),
+    "defaultspack:clear": ("clear_composer_state", _ALL_MODES, frozenset()),
+    "defaultspack:tools": ("open_tool_picker", _ALL_MODES, frozenset({"query"})),
+    "defaultspack:status": ("show_status", _ALL_MODES, frozenset()),
+    "defaultspack:settings": ("open_settings", _ALL_MODES, frozenset({"section"})),
+    "defaultspack:history": ("open_history", _ALL_MODES, frozenset()),
+    "defaultspack:context": ("open_context_viewer", _ALL_MODES, frozenset()),
+    "defaultspack:permissions": ("open_permissions", _ALL_MODES, frozenset()),
+    "defaultspack:approvals": ("open_approvals", _ALL_MODES, frozenset()),
+    "defaultspack:usage": ("show_usage", _ALL_MODES, frozenset()),
+    "defaultspack:theme": ("open_theme_settings", _ALL_MODES, frozenset()),
+    "defaultspack:keymap": ("open_keymap_settings", _ALL_MODES, frozenset()),
+    "defaultspack:plugins": ("open_plugins", _ALL_MODES, frozenset()),
+    "defaultspack:mcp": ("open_mcp", _ALL_MODES, frozenset()),
+    "defaultspack:skills": ("open_skills", _ALL_MODES, frozenset()),
+    "defaultspack:hooks": ("open_hooks", _ALL_MODES, frozenset()),
+    "defaultspack:diff": ("open_diff_preview", frozenset({"coding"}), frozenset()),
+    "defaultspack:files": ("open_file_search", frozenset({"coding"}), frozenset({"query"})),
+}
 _ALLOWED_FIELDS = frozenset(
     {
         "profile_id",
@@ -61,23 +82,29 @@ def _owner_identity(value: object, field: str) -> str:
     return text
 
 
-def _public_result(invocation_id: str) -> dict[str, Any]:
+def _public_result(
+    invocation_id: str,
+    command_ref: str,
+    action: str,
+    args: Mapping[str, Any],
+) -> dict[str, Any]:
+    command_id = command_ref.removeprefix("defaultspack:")
     return {
         "api_version": "tobkiri.commands/v1",
         "operation_id": invocation_id,
         "status": "succeeded",
-        "command_ref": _COMMAND_REF,
+        "command_ref": command_ref,
         "state_changes": [],
         "legacy_result": {
             "command": {
-                "id": "help",
-                "name": "help",
-                "label": "Help",
+                "id": command_id,
+                "name": command_id,
+                "label": command_id,
             },
             "executed": False,
             "requires_approval": False,
-            "action": "open_command_help",
-            "args": {},
+            "action": action,
+            "args": dict(args),
         },
     }
 
@@ -225,9 +252,22 @@ class CommandInvokeHostFactoryV4:
                 raise PermissionError("command invocation request is invalid")
             if payload.get("profile_id") != context.profile_id:
                 raise PermissionError("command invocation Profile is invalid")
-            if payload.get("command_ref") != _COMMAND_REF or payload.get("args") != {}:
+            command_ref = payload.get("command_ref")
+            command = _COMMANDS.get(command_ref) if isinstance(command_ref, str) else None
+            args = payload.get("args")
+            if command is None or not isinstance(args, Mapping):
                 raise PermissionError("ordinary command is not owned by this provider")
-            if payload.get("mode") not in {"chat", "coding", "agent"}:
+            action, modes, allowed_args = command
+            if set(args) - allowed_args:
+                raise PermissionError("ordinary command arguments are not permitted")
+            if any(
+                not isinstance(value, str)
+                or len(value) > 200
+                or any(ord(character) < 0x20 for character in value)
+                for value in args.values()
+            ):
+                raise ValueError("ordinary command argument is invalid")
+            if payload.get("mode") not in modes:
                 raise ValueError("command mode is invalid")
             conversation_id = payload.get("conversation_id")
             if conversation_id is not None and (
@@ -266,7 +306,7 @@ class CommandInvokeHostFactoryV4:
                     "request": request,
                 }
             )
-            result = _public_result(invocation_id)
+            result = _public_result(invocation_id, command_ref, action, args)
             if client_sequence is not None:
                 result["client_sequence"] = client_sequence
             return journal.invoke_once(

@@ -311,6 +311,43 @@
       ]
     },
     {
+      "method": "POST",
+      "path": "/api/command-protocol/v1/states/query",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.commands.state.query",
+          "contract_id": "tobkiri.resource.command.state.v1",
+          "operation_id": "command.state.query",
+          "provider_id": "rumi_command_protocol_pack.command.state",
+          "function_id": "rumi_command_protocol_pack.command.state",
+          "allowed_payload_keys": ["state_refs"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/command-protocol/v1/datasources/query",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.commands.datasource.query",
+          "contract_id": "tobkiri.resource.command.datasource.v1",
+          "operation_id": "command.datasource.query",
+          "provider_id": "rumi_command_protocol_pack.command.datasource",
+          "function_id": "rumi_command_protocol_pack.command.datasource",
+          "allowed_payload_keys": [
+            "datasource_ref",
+            "query",
+            "cursor",
+            "limit",
+            "selected_values",
+            "request_id"
+          ]
+        }
+      ]
+    },
+    {
       "method": "GET",
       "path": "/api/chat/turn/events",
       "presentation": "turn_events",

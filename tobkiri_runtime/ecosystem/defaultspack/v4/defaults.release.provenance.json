@@ -246,11 +246,11 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.executables.v4.json",
-      "digest": "sha256:ae3e2a9676c9fffb613138069cdff138d5a05ec20733b0a6f562631a5a29925d"
+      "digest": "sha256:7d7fa7785741f800f6d704b8bfc0e509c91d8c1dcb2389ae2383216c64548172"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.pack.v4.json",
-      "digest": "sha256:4d8e099b067bdf9f05247eceafef64d6a70b0f3f9396df6ba965d82538433635"
+      "digest": "sha256:e2e779d973dab6492890a87a349fc8cda7f15e4b8c19b3ba836966e1dae7752f"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_company_agent_adapter_pack.executables.v4.json",

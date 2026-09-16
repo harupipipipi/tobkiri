@@ -329,6 +329,33 @@ class DefaultspackHTTPPresentation:
             target.function_id,
         ) in {
             (
+                "defaults.commands.state.query",
+                "tobkiri.resource.command.state.v1",
+                "command.state.query",
+                "rumi_command_protocol_pack.command.state",
+                "rumi_command_protocol_pack.command.state",
+            ),
+            (
+                "defaults.commands.datasource.query",
+                "tobkiri.resource.command.datasource.v1",
+                "command.datasource.query",
+                "rumi_command_protocol_pack.command.datasource",
+                "rumi_command_protocol_pack.command.datasource",
+            ),
+        }:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("command query requires a captured identity")
+            return {**dict(payload), "profile_id": profile_id}
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
+        ) in {
+            (
                 "defaults.ui.settings.read",
                 "tobkiri.resource.ui.settings.v1",
                 "tobkiri_ui_settings_pack.settings-read",

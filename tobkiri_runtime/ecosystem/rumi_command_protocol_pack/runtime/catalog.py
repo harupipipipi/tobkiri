@@ -37,12 +37,47 @@ _INVOKE_TARGET = (
     "tobkiri.action.command.invoke.v1",
     "command.invoke",
 )
+_STATE_TARGET = (
+    "rumi_command_protocol_pack.command.state",
+    "tobkiri.resource.command.state.v1",
+    "command.state.query",
+)
+_DATASOURCE_TARGET = (
+    "rumi_command_protocol_pack.command.datasource",
+    "tobkiri.resource.command.datasource.v1",
+    "command.datasource.query",
+)
+_ORDINARY_COMMANDS = frozenset(
+    {
+        "host:open_command_help",
+        "host:new_conversation",
+        "host:clear_composer_state",
+        "host:open_tool_picker",
+        "host:show_status",
+        "host:open_settings",
+        "host:open_history",
+        "host:open_context_viewer",
+        "host:open_permissions",
+        "host:open_approvals",
+        "host:show_usage",
+        "host:open_theme_settings",
+        "host:open_keymap_settings",
+        "host:open_plugins",
+        "host:open_mcp",
+        "host:open_skills",
+        "host:open_hooks",
+        "host:open_diff_preview",
+        "host:open_file_search",
+    }
+)
 
 
 def _catalog(
     definitions: Mapping[str, Any],
     high_risk_available: bool,
     invoke_available: bool,
+    state_available: bool,
+    datasource_available: bool,
 ) -> dict[str, Any]:
     if set(definitions) != {"commands", "diagnostics", "pack_generation"}:
         raise ValueError("command presentation fields are invalid")
@@ -66,7 +101,7 @@ def _catalog(
             }
         available = (
             high_risk_available and operation_ref in _APPROVAL_COMMANDS
-        ) or (invoke_available and operation_ref == "host:open_command_help")
+        ) or (invoke_available and operation_ref in _ORDINARY_COMMANDS)
         command["availability"] = (
             {"status": "available"}
             if available else {
@@ -87,10 +122,12 @@ def _catalog(
             "legacy_execution_enabled": False,
         },
         "commands": commands,
-        # No state/datasource providers are bound by this read-only adapter.
-        # Unconnected commands remain visible as unavailable, not executable.
-        "states": [],
-        "datasources": [],
+        "states": ([{"state_ref": "defaultspack:models.deepthink_enabled"}]
+                   if state_available else []),
+        "datasources": ([
+            {"datasource_ref": "tobkiri:model_catalog"},
+            {"datasource_ref": "tobkiri:provider_catalog"},
+        ] if datasource_available else []),
         "state_snapshots": [],
         "diagnostics": diagnostics,
     }
@@ -129,6 +166,16 @@ class CommandCatalogHostFactoryV4:
             == _INVOKE_TARGET
             for item in context.catalog_bindings
         )
+        state_available = any(
+            (item.function.function_id, item.operation.contract_id, item.operation.operation_id)
+            == _STATE_TARGET
+            for item in context.catalog_bindings
+        )
+        datasource_available = any(
+            (item.function.function_id, item.operation.contract_id, item.operation.operation_id)
+            == _DATASOURCE_TARGET
+            for item in context.catalog_bindings
+        )
 
         def invoke(
             operation_id: str,
@@ -151,7 +198,13 @@ class CommandCatalogHostFactoryV4:
             )
             if not isinstance(definitions, Mapping):
                 raise ValueError("command presentation is unavailable")
-            return _catalog(definitions, high_risk_available, invoke_available)
+            return _catalog(
+                definitions,
+                high_risk_available,
+                invoke_available,
+                state_available,
+                datasource_available,
+            )
 
         return CapturedHostProviderV4(
             (

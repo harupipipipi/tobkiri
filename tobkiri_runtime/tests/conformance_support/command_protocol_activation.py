@@ -50,12 +50,34 @@ _INVOKE_PAYLOAD_KEYS = frozenset(
         "client_sequence",
     }
 )
+_STATE_ROUTE = f"{_COMMAND_NAMESPACE}/states/query"
+_STATE_TARGET = {
+    "contribution_id": "defaults.commands.state.query",
+    "contract_id": "tobkiri.resource.command.state.v1",
+    "operation_id": "command.state.query",
+    "provider_id": "rumi_command_protocol_pack.command.state",
+    "function_id": "rumi_command_protocol_pack.command.state",
+}
+_STATE_PAYLOAD_KEYS = frozenset({"state_refs"})
+_DATASOURCE_ROUTE = f"{_COMMAND_NAMESPACE}/datasources/query"
+_DATASOURCE_TARGET = {
+    "contribution_id": "defaults.commands.datasource.query",
+    "contract_id": "tobkiri.resource.command.datasource.v1",
+    "operation_id": "command.datasource.query",
+    "provider_id": "rumi_command_protocol_pack.command.datasource",
+    "function_id": "rumi_command_protocol_pack.command.datasource",
+}
+_DATASOURCE_PAYLOAD_KEYS = frozenset(
+    {"datasource_ref", "query", "cursor", "limit", "selected_values", "request_id"}
+)
 
 # These aliases are conservative test policy, not production URL rewriting.
 COMMAND_PROTOCOL_HTTP_CASES = (
     ("GET", "/api/command-protocol/v1", None),
     ("GET", "/api/%63ommand-protocol/v1/catalog", None),
     ("POST", "/api/command-protocol/v1/invoke", {"command_ref": "help"}),
+    ("POST", "/api/command-protocol/v1/states/query", {"state_refs": []}),
+    ("POST", "/api/command-protocol/v1/datasources/query", {"datasource_ref": "x"}),
     ("POST", "/api/command-protocol%2fv1/invoke", {}),
     ("POST", "/api/command-protocol/v1/resume", {"invocation_id": "test"}),
     ("POST", "/api/command-protocol/v1/%72esume", {}),
@@ -254,7 +276,31 @@ def command_protocol_binding_findings(
             and getattr(targets[0], "allowed_payload_keys", None)
             == _INVOKE_PAYLOAD_KEYS
         )
-        if exact_high_risk or exact_catalog or exact_invoke:
+        exact_state = (
+            getattr(binding, "method", "").upper() == "POST"
+            and path == _STATE_ROUTE
+            and getattr(binding, "presentation", None) == "broker_result"
+            and len(targets) == 1
+            and all(
+                getattr(targets[0], field, None) == expected
+                for field, expected in _STATE_TARGET.items()
+            )
+            and getattr(targets[0], "allowed_payload_keys", None)
+            == _STATE_PAYLOAD_KEYS
+        )
+        exact_datasource = (
+            getattr(binding, "method", "").upper() == "POST"
+            and path == _DATASOURCE_ROUTE
+            and getattr(binding, "presentation", None) == "broker_result"
+            and len(targets) == 1
+            and all(
+                getattr(targets[0], field, None) == expected
+                for field, expected in _DATASOURCE_TARGET.items()
+            )
+            and getattr(targets[0], "allowed_payload_keys", None)
+            == _DATASOURCE_PAYLOAD_KEYS
+        )
+        if exact_high_risk or exact_catalog or exact_invoke or exact_state or exact_datasource:
             continue
         findings.append(
             {

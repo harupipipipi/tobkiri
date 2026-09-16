@@ -163,7 +163,7 @@
     {
       "role": "pack",
       "identity": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82"
+      "artifact_digest": "sha256:5543bfd14a1fe140408a9221ba10e8ad41499b848e2d3e7638d4dbe57abd412b"
     },
     {
       "role": "pack",
@@ -370,8 +370,8 @@
     },
     {
       "pack_id": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
-      "executable_catalog_digest": "sha256:55ecc8932a7f13e50ca037217a9b21d68fa15652537db94d0d7314fdcc51aecd",
+      "artifact_digest": "sha256:5543bfd14a1fe140408a9221ba10e8ad41499b848e2d3e7638d4dbe57abd412b",
+      "executable_catalog_digest": "sha256:0b3cb9a1f4bde79a68a142a7fc0053dc6a2322317699a626f0ab0480514dc6cd",
       "variant_id": "rumi_command_protocol_pack.catalog.read.python",
       "platform": "any",
       "architecture": "any",
@@ -382,8 +382,20 @@
     },
     {
       "pack_id": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
-      "executable_catalog_digest": "sha256:55ecc8932a7f13e50ca037217a9b21d68fa15652537db94d0d7314fdcc51aecd",
+      "artifact_digest": "sha256:5543bfd14a1fe140408a9221ba10e8ad41499b848e2d3e7638d4dbe57abd412b",
+      "executable_catalog_digest": "sha256:0b3cb9a1f4bde79a68a142a7fc0053dc6a2322317699a626f0ab0480514dc6cd",
+      "variant_id": "rumi_command_protocol_pack.command.datasource.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:5543bfd14a1fe140408a9221ba10e8ad41499b848e2d3e7638d4dbe57abd412b",
+      "executable_catalog_digest": "sha256:0b3cb9a1f4bde79a68a142a7fc0053dc6a2322317699a626f0ab0480514dc6cd",
       "variant_id": "rumi_command_protocol_pack.command.invoke.python",
       "platform": "any",
       "architecture": "any",
@@ -394,8 +406,20 @@
     },
     {
       "pack_id": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
-      "executable_catalog_digest": "sha256:55ecc8932a7f13e50ca037217a9b21d68fa15652537db94d0d7314fdcc51aecd",
+      "artifact_digest": "sha256:5543bfd14a1fe140408a9221ba10e8ad41499b848e2d3e7638d4dbe57abd412b",
+      "executable_catalog_digest": "sha256:0b3cb9a1f4bde79a68a142a7fc0053dc6a2322317699a626f0ab0480514dc6cd",
+      "variant_id": "rumi_command_protocol_pack.command.state.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:5543bfd14a1fe140408a9221ba10e8ad41499b848e2d3e7638d4dbe57abd412b",
+      "executable_catalog_digest": "sha256:0b3cb9a1f4bde79a68a142a7fc0053dc6a2322317699a626f0ab0480514dc6cd",
       "variant_id": "rumi_command_protocol_pack.high-risk-command.service.python",
       "platform": "any",
       "architecture": "any",

@@ -87,14 +87,14 @@ def test_invocation_id_reuse_with_a_different_request_fails_closed(tmp_path):
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
-        ({"command_ref": "defaultspack:status"}, "not owned"),
+        ({"command_ref": "defaultspack:terminal"}, "not owned"),
         ({"command_ref": "terminal"}, "not owned"),
-        ({"args": {"cmd": "true"}}, "not owned"),
+        ({"args": {"cmd": "true"}}, "not permitted"),
         ({"idempotency_key": "another-id"}, "must equal"),
         ({"mode": "admin"}, "mode is invalid"),
     ],
 )
-def test_non_help_and_identity_expansion_are_rejected(tmp_path, changes, message):
+def test_unowned_commands_and_identity_expansion_are_rejected(tmp_path, changes, message):
     contribution = _capture(tmp_path)
     with pytest.raises((PermissionError, ValueError), match=message):
         contribution.invoke(OPERATION_ID, _payload(**changes), Invocation())
@@ -103,3 +103,42 @@ def test_non_help_and_identity_expansion_are_rejected(tmp_path, changes, message
 def test_capture_does_not_create_durable_state(tmp_path):
     _capture(tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("command_ref", "mode", "args", "action"),
+    [
+        ("defaultspack:help", "chat", {}, "open_command_help"),
+        ("defaultspack:new", "agent", {}, "new_conversation"),
+        ("defaultspack:status", "coding", {}, "show_status"),
+        ("defaultspack:tools", "chat", {"query": "git"}, "open_tool_picker"),
+        ("defaultspack:settings", "chat", {"section": "general"}, "open_settings"),
+        ("defaultspack:diff", "coding", {}, "open_diff_preview"),
+        ("defaultspack:files", "coding", {"query": "py"}, "open_file_search"),
+        ("defaultspack:hooks", "agent", {}, "open_hooks"),
+    ],
+)
+def test_allowlisted_ordinary_commands_return_only_fixed_actions(
+    tmp_path, command_ref, mode, args, action,
+):
+    result = _capture(tmp_path).invoke(
+        OPERATION_ID,
+        _payload(
+            command_ref=command_ref,
+            mode=mode,
+            args=args,
+            invocation_id=f"ordinary-{command_ref.rsplit(':', 1)[-1]}",
+        ),
+        Invocation(),
+    )
+    assert result["legacy_result"]["action"] == action
+    assert result["legacy_result"]["args"] == args
+
+
+def test_coding_only_command_fails_closed_in_chat_mode(tmp_path):
+    with pytest.raises(ValueError, match="mode is invalid"):
+        _capture(tmp_path).invoke(
+            OPERATION_ID,
+            _payload(command_ref="defaultspack:diff", mode="chat"),
+            Invocation(),
+        )

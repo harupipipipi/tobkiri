@@ -1887,8 +1887,12 @@ def test_command_protocol_paths_are_inert_in_captured_production_http(
         "X-Rumi-CSRF": csrf,
     }
     for method, path, body in COMMAND_PROTOCOL_HTTP_CASES:
-        if method == "POST" and path == "/api/command-protocol/v1/invoke":
-            # The one exact ordinary command route is covered separately.
+        if method == "POST" and path in {
+            "/api/command-protocol/v1/invoke",
+            "/api/command-protocol/v1/states/query",
+            "/api/command-protocol/v1/datasources/query",
+        }:
+            # Exact canonical command routes are covered separately.
             continue
         status, payload, _ = _request(
             server,
@@ -1958,7 +1962,7 @@ def test_help_command_invokes_the_exact_owner_and_replays_durably(
     assert status == 200, replay
     assert replay["data"] == first["data"]
 
-    rejected = {**request, "command_ref": "defaultspack:status"}
+    rejected = {**request, "command_ref": "defaultspack:terminal"}
     status, payload, _ = _request(
         server,
         "POST",
@@ -1968,6 +1972,44 @@ def test_help_command_invokes_the_exact_owner_and_replays_durably(
     )
     assert status == 503, payload
     assert payload["error"] == "The runtime operation is unavailable"
+
+
+def test_command_state_and_datasource_queries_reach_exact_canonical_owners(
+    production_server,
+) -> None:
+    server, _session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {
+        "Cookie": cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": csrf,
+        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+    }
+    status, state_result, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/command-protocol/v1/states/query"),
+        body={"state_refs": ["defaultspack:models.deepthink_enabled"]},
+        headers=headers,
+    )
+    assert status == 200, state_result
+    assert state_result["data"]["states"][0]["state_ref"] == (
+        "defaultspack:models.deepthink_enabled"
+    )
+    assert state_result["data"]["states"][0]["freshness"] == "authoritative"
+
+    for datasource_ref in ("tobkiri:model_catalog", "tobkiri:provider_catalog"):
+        status, datasource_result, _ = _request(
+            server,
+            "POST",
+            _contract("POST", "/api/command-protocol/v1/datasources/query"),
+            body={"datasource_ref": datasource_ref},
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert status == 200, datasource_result
+        assert datasource_result["data"]["status"] == "succeeded"
+        assert datasource_result["data"]["datasource_ref"] == datasource_ref
+        assert datasource_result["data"]["revision"]
 
 
 def test_provider_configuration_http_requires_approval_and_saves_once(

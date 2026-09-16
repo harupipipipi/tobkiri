@@ -90,7 +90,10 @@ def test_settings_read_rejects_invalid_owner_revision(tmp_path, monkeypatch, rev
     assert list(tmp_path.iterdir()) == []
 
 
-def _context(root, function, contract, operation, *, high_risk=False, invoke=False):
+def _context(
+    root, function, contract, operation, *,
+    high_risk=False, invoke=False, state=False, datasource=False,
+):
     binding = SimpleNamespace(
         function=SimpleNamespace(function_id=function, implementation_digest="impl"),
         operation=SimpleNamespace(
@@ -117,12 +120,35 @@ def _context(root, function, contract, operation, *, high_risk=False, invoke=Fal
             operation_id="command.invoke",
         ),
     )
+    state_binding = SimpleNamespace(
+        function=SimpleNamespace(
+            function_id="rumi_command_protocol_pack.command.state"
+        ),
+        operation=SimpleNamespace(
+            contract_id="tobkiri.resource.command.state.v1",
+            operation_id="command.state.query",
+        ),
+    )
+    datasource_binding = SimpleNamespace(
+        function=SimpleNamespace(
+            function_id="rumi_command_protocol_pack.command.datasource"
+        ),
+        operation=SimpleNamespace(
+            contract_id="tobkiri.resource.command.datasource.v1",
+            operation_id="command.datasource.query",
+        ),
+    )
     return SimpleNamespace(
         profile_id="defaults",
         user_data_root=root,
         provider_bindings=(binding,),
         domain_ids={(contract, operation, "principal"): "domain"},
-        catalog_bindings=(high,) * high_risk + (ordinary,) * invoke,
+        catalog_bindings=(
+            (high,) * high_risk
+            + (ordinary,) * invoke
+            + (state_binding,) * state
+            + (datasource_binding,) * datasource
+        ),
     )
 
 
@@ -146,17 +172,21 @@ def test_command_consumer_keeps_host_approval_policy(
     ]
     assert {item["identity"]["id"] for item in available} == (
         ({"terminal", "commit", "push", "patch", "restore"} if high_risk else set())
-        | ({"help"} if invoke else set())
+        | ({
+            "help", "new", "clear", "tools", "status", "settings", "diff", "files",
+            "history", "context", "permissions", "approvals", "usage", "theme",
+            "keymap", "plugins", "mcp", "skills", "hooks",
+        } if invoke else set())
     )
     assert all(
         item["authorization"]["approval_required"]
         for item in available
-        if item["identity"]["id"] != "help"
+        if item["identity"]["id"] in {"terminal", "commit", "push", "patch", "restore"}
     )
     assert all(
         item["authorization"]["permissions"] == ["host.process.exec_guarded"]
         for item in available
-        if item["identity"]["id"] != "help"
+        if item["identity"]["id"] in {"terminal", "commit", "push", "patch", "restore"}
     )
     assert client.scopes == [
         {
@@ -166,6 +196,27 @@ def test_command_consumer_keeps_host_approval_policy(
     ]
     assert len(client.calls) == 1
     assert list(tmp_path.iterdir()) == []
+
+
+def test_command_catalog_publishes_only_bound_state_and_datasource_definitions(
+    tmp_path: Path,
+) -> None:
+    captured = CommandCatalogHostFactoryV4().capture(
+        _context(
+            tmp_path, COMMAND_FUNCTION, COMMAND_CONTRACT, COMMAND_OPERATION,
+            state=True, datasource=True,
+        )
+    )
+    result = captured.contributions[0].invoke(
+        COMMAND_OPERATION, {"profile_id": "defaults"}, Client(),
+    )
+    assert result["states"] == [
+        {"state_ref": "defaultspack:models.deepthink_enabled"}
+    ]
+    assert result["datasources"] == [
+        {"datasource_ref": "tobkiri:model_catalog"},
+        {"datasource_ref": "tobkiri:provider_catalog"},
+    ]
 
 
 def test_settings_consumer_joins_models_and_public_saved_values(tmp_path: Path) -> None:

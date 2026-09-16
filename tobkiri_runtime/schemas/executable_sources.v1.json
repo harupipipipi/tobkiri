@@ -4421,7 +4421,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_command_protocol_pack.catalog.read",
-      "implementation_digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
+      "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
       "implementation_path": "runtime/catalog.py",
       "input_schema": {
         "type": "object"
@@ -4435,7 +4435,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
+          "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
           "implementation_path": "runtime/catalog.py",
           "input_schema": {
             "type": "object"
@@ -4472,7 +4472,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_command_protocol_pack.command.invoke",
-      "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+      "implementation_digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
       "implementation_path": "runtime/invoke.py",
       "input_schema": {
         "additionalProperties": false,
@@ -4538,7 +4538,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+          "implementation_digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
           "implementation_path": "runtime/invoke.py",
           "input_schema": {
             "additionalProperties": false,
@@ -4618,6 +4618,76 @@
         }
       ],
       "variant_id": "rumi_command_protocol_pack.command.invoke.python"
+    },
+    "rumi_command_protocol_pack.command.datasource": {
+      "contract_id": "tobkiri.resource.command.datasource.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {"type": "object"},
+      "execution_kind": "source-verified",
+      "function_id": "rumi_command_protocol_pack.command.datasource",
+      "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "implementation_path": "runtime/datasource.py",
+      "input_schema": {"type": "object"},
+      "operation_id": "command.datasource.query",
+      "operations": [{
+        "contract_id": "tobkiri.resource.command.datasource.v1",
+        "contract_version": "1.0.0",
+        "entrypoint_id": "command.datasource.query",
+        "error_schema": {"type": "object"},
+        "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+        "implementation_path": "runtime/datasource.py",
+        "input_schema": {"type": "object"},
+        "kind": "canonical-v4-runtime",
+        "operation_id": "command.datasource.query",
+        "output_schema": {"type": "object"},
+        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/datasource.py",
+        "symbol": "HOST_PROVIDER_FACTORY"
+      }],
+      "output_schema": {"type": "object"},
+      "owner": "rumi_command_protocol_pack",
+      "pack_id": "rumi_command_protocol_pack",
+      "source": [{
+        "entrypoint_id": "command.datasource.query",
+        "kind": "canonical-v4-runtime",
+        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/datasource.py",
+        "symbol": "HOST_PROVIDER_FACTORY"
+      }],
+      "variant_id": "rumi_command_protocol_pack.command.datasource.python"
+    },
+    "rumi_command_protocol_pack.command.state": {
+      "contract_id": "tobkiri.resource.command.state.v1",
+      "contract_version": "1.0.0",
+      "error_schema": {"type": "object"},
+      "execution_kind": "source-verified",
+      "function_id": "rumi_command_protocol_pack.command.state",
+      "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+      "implementation_path": "runtime/state.py",
+      "input_schema": {"type": "object"},
+      "operation_id": "command.state.query",
+      "operations": [{
+        "contract_id": "tobkiri.resource.command.state.v1",
+        "contract_version": "1.0.0",
+        "entrypoint_id": "command.state.query",
+        "error_schema": {"type": "object"},
+        "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+        "implementation_path": "runtime/state.py",
+        "input_schema": {"type": "object"},
+        "kind": "canonical-v4-runtime",
+        "operation_id": "command.state.query",
+        "output_schema": {"type": "object"},
+        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/state.py",
+        "symbol": "HOST_PROVIDER_FACTORY"
+      }],
+      "output_schema": {"type": "object"},
+      "owner": "rumi_command_protocol_pack",
+      "pack_id": "rumi_command_protocol_pack",
+      "source": [{
+        "entrypoint_id": "command.state.query",
+        "kind": "canonical-v4-runtime",
+        "path": "tobkiri_runtime/ecosystem/rumi_command_protocol_pack/runtime/state.py",
+        "symbol": "HOST_PROVIDER_FACTORY"
+      }],
+      "variant_id": "rumi_command_protocol_pack.command.state.python"
     },
     "rumi_command_protocol_pack.high-risk-command.service": {
       "contract_id": "tobkiri.service.command.high-risk.v1",

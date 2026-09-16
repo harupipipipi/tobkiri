@@ -1,13 +1,13 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
   "pack_id": "rumi_command_protocol_pack",
-  "source_identity": "sha256:cc7d22a7e8cf1d35da6c28d3497808869bc8cde2103e9f51cd4221024e124bc8",
+  "source_identity": "sha256:e9daa05e8e81f4dbddd2ef97afadcdecf3a9cf910be02062a50288e907775459",
   "variants": [
     {
       "variant_id": "rumi_command_protocol_pack.catalog.read.python",
       "function_id": "rumi_command_protocol_pack.catalog.read",
       "implementation_path": "runtime/catalog.py",
-      "implementation_digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
+      "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -38,10 +38,90 @@
       ]
     },
     {
+      "variant_id": "rumi_command_protocol_pack.command.datasource.python",
+      "function_id": "rumi_command_protocol_pack.command.datasource",
+      "implementation_path": "runtime/datasource.py",
+      "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.command.datasource.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:0e660d5b3ebc6ebcdff186a95ab831dd056a354ce6278a5661d771701a0a4647",
+          "operation_id": "command.datasource.query",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "cursor": {
+                "maxLength": 8,
+                "pattern": "^[0-9]+$",
+                "type": "string"
+              },
+              "datasource_ref": {
+                "enum": [
+                  "tobkiri:model_catalog",
+                  "tobkiri:provider_catalog"
+                ]
+              },
+              "limit": {
+                "maximum": 100,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "query": {
+                "maxLength": 200,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "selected_values": {
+                "items": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 100,
+                "type": "array"
+              }
+            },
+            "required": [
+              "profile_id",
+              "datasource_ref"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
       "variant_id": "rumi_command_protocol_pack.command.invoke.python",
       "function_id": "rumi_command_protocol_pack.command.invoke",
       "implementation_path": "runtime/invoke.py",
-      "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+      "implementation_digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
       "execution_kind": "host_extension",
       "platform": "any",
       "architecture": "any",
@@ -53,13 +133,24 @@
         {
           "contract_id": "tobkiri.action.command.invoke.v1",
           "contract_version": "1.0.0",
-          "revision_digest": "sha256:40c93af117eee362339659ee697125a33ebee82c195acc7b9f44b4beab707e7c",
+          "revision_digest": "sha256:801ad3b21f4782d3d03c237d5c0dfd907cf5a437bc24910954f32f4addbfa2db",
           "operation_id": "command.invoke",
           "input_schema": {
             "additionalProperties": false,
             "properties": {
               "args": {
-                "maxProperties": 0,
+                "additionalProperties": false,
+                "maxProperties": 1,
+                "properties": {
+                  "query": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "section": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                },
                 "type": "object"
               },
               "catalog_revision": {
@@ -71,7 +162,27 @@
                 "type": "integer"
               },
               "command_ref": {
-                "const": "defaultspack:help"
+                "enum": [
+                  "defaultspack:help",
+                  "defaultspack:new",
+                  "defaultspack:clear",
+                  "defaultspack:tools",
+                  "defaultspack:status",
+                  "defaultspack:settings",
+                  "defaultspack:history",
+                  "defaultspack:context",
+                  "defaultspack:permissions",
+                  "defaultspack:approvals",
+                  "defaultspack:usage",
+                  "defaultspack:theme",
+                  "defaultspack:keymap",
+                  "defaultspack:plugins",
+                  "defaultspack:mcp",
+                  "defaultspack:skills",
+                  "defaultspack:hooks",
+                  "defaultspack:diff",
+                  "defaultspack:files"
+                ]
               },
               "conversation_id": {
                 "maxLength": 256,
@@ -107,6 +218,60 @@
               "args",
               "invocation_id",
               "mode"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_command_protocol_pack.command.state.python",
+      "function_id": "rumi_command_protocol_pack.command.state",
+      "implementation_path": "runtime/state.py",
+      "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.command.state.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:5561eccef0ab7444420f23455aeb029b4a7b2400b96ba3df92aafa0c465aa815",
+          "operation_id": "command.state.query",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "profile_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "state_refs": {
+                "items": {
+                  "const": "defaultspack:models.deepthink_enabled"
+                },
+                "maxItems": 16,
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "profile_id",
+              "state_refs"
             ],
             "type": "object"
           },
@@ -189,6 +354,6 @@
       ]
     }
   ],
-  "materialization_catalog_digest": "sha256:55ecc8932a7f13e50ca037217a9b21d68fa15652537db94d0d7314fdcc51aecd",
-  "catalog_digest": "sha256:e8135fbde09935e95abe6cef16a3349ae823a585f4e304cd324cf47a0c00e518"
+  "materialization_catalog_digest": "sha256:0b3cb9a1f4bde79a68a142a7fc0053dc6a2322317699a626f0ab0480514dc6cd",
+  "catalog_digest": "sha256:7a77df47cefe10cb0a70e87622219e03d4d652251c2b8fc94689eaf810a83e9f"
 }

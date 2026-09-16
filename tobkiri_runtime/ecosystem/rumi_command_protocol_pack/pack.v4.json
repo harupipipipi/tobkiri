@@ -1,14 +1,19 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:63acc321d00f33dce160353608626684aff120f302808d1894a69e861a4626a6",
+      "digest": "sha256:41a154fca26c4579610c6db570e6e5acb6abf2b4ea95ee556688aacbbcc9e08c",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
+      "digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
       "kind": "executable",
       "path": "runtime/catalog.py"
+    },
+    {
+      "digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "kind": "executable",
+      "path": "runtime/datasource.py"
     },
     {
       "digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
@@ -16,9 +21,14 @@
       "path": "runtime/high_risk_adapter.py"
     },
     {
-      "digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+      "digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
       "kind": "executable",
       "path": "runtime/invoke.py"
+    },
+    {
+      "digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+      "kind": "executable",
+      "path": "runtime/state.py"
     },
     {
       "digest": "sha256:745eb8d6b16e46284feafa8a76fd26f1f74d25a1eca6cfc3f303908dee9ebe7a",
@@ -32,7 +42,21 @@
       "operations": [
         "command.invoke"
       ],
-      "revision_digest": "sha256:40c93af117eee362339659ee697125a33ebee82c195acc7b9f44b4beab707e7c"
+      "revision_digest": "sha256:801ad3b21f4782d3d03c237d5c0dfd907cf5a437bc24910954f32f4addbfa2db"
+    },
+    {
+      "contract_id": "tobkiri.resource.command.state.v1",
+      "operations": [
+        "command.state.query"
+      ],
+      "revision_digest": "sha256:5561eccef0ab7444420f23455aeb029b4a7b2400b96ba3df92aafa0c465aa815"
+    },
+    {
+      "contract_id": "tobkiri.resource.command.datasource.v1",
+      "operations": [
+        "command.datasource.query"
+      ],
+      "revision_digest": "sha256:0e660d5b3ebc6ebcdff186a95ab831dd056a354ce6278a5661d771701a0a4647"
     },
     {
       "contract_id": "tobkiri.service.command.high-risk.v1",
@@ -53,7 +77,7 @@
     {
       "contract_revision_digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
       "id": "rumi_command_protocol_pack.catalog.read",
-      "implementation_digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
+      "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
       "isolation": "dedicated_process",
       "operations": [
         "command.catalog.read"
@@ -61,12 +85,32 @@
       "role": "host_capability_provider"
     },
     {
-      "contract_revision_digest": "sha256:40c93af117eee362339659ee697125a33ebee82c195acc7b9f44b4beab707e7c",
+      "contract_revision_digest": "sha256:0e660d5b3ebc6ebcdff186a95ab831dd056a354ce6278a5661d771701a0a4647",
+      "id": "rumi_command_protocol_pack.command.datasource",
+      "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "isolation": "dedicated_process",
+      "operations": [
+        "command.datasource.query"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:801ad3b21f4782d3d03c237d5c0dfd907cf5a437bc24910954f32f4addbfa2db",
       "id": "rumi_command_protocol_pack.command.invoke",
-      "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+      "implementation_digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
       "isolation": "dedicated_process",
       "operations": [
         "command.invoke"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:5561eccef0ab7444420f23455aeb029b4a7b2400b96ba3df92aafa0c465aa815",
+      "id": "rumi_command_protocol_pack.command.state",
+      "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+      "isolation": "dedicated_process",
+      "operations": [
+        "command.state.query"
       ],
       "role": "host_capability_provider"
     },
@@ -82,9 +126,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
-    "contract_catalog_digest": "sha256:da1d5e40c31adaf114d9acee7c05ac32dc44e2b553a5cc7645c653adb229c09c",
-    "source_identity": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313"
+    "artifact_set_digest": "sha256:5543bfd14a1fe140408a9221ba10e8ad41499b848e2d3e7638d4dbe57abd412b",
+    "contract_catalog_digest": "sha256:1d865db181804a69b2f46d8d68ca99ace1b82939269012927af85c5511827f43",
+    "source_identity": "sha256:e22790b31578427db723012e6745120bad80b6ea10fea272ce7c9ec8239d5b2b"
   },
   "migration": {
     "compatibility": "none",
@@ -108,6 +152,17 @@
       "source_kind": "canonical_v4_contract"
     },
     {
+      "contract_reference": "tobkiri.resource.command.datasource.v1",
+      "effect_ceiling": [
+        "capability:command.catalog.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "command.datasource.query",
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.datasource",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
       "contract_reference": "tobkiri.action.command.invoke.v1",
       "effect_ceiling": [
         "host:brokered-execution",
@@ -116,6 +171,17 @@
       "operation_id": "command.invoke",
       "owner": "rumi_command_protocol_pack",
       "provider_id": "rumi_command_protocol_pack.command.invoke",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.command.state.v1",
+      "effect_ceiling": [
+        "capability:command.catalog.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "command.state.query",
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.state",
       "source_kind": "canonical_v4_contract"
     },
     {
@@ -131,7 +197,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
+    "artifact_digest": "sha256:5543bfd14a1fe140408a9221ba10e8ad41499b848e2d3e7638d4dbe57abd412b",
     "display_name": "Tobkiri Command Protocol",
     "id": "rumi_command_protocol_pack",
     "kind": "host_extension",
@@ -141,7 +207,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
+        "digest": "sha256:e22790b31578427db723012e6745120bad80b6ea10fea272ce7c9ec8239d5b2b",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -152,7 +218,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
+    "source_digest": "sha256:e22790b31578427db723012e6745120bad80b6ea10fea272ce7c9ec8239d5b2b",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_command_protocol_pack"
   },
@@ -166,12 +232,28 @@
       "provider_id": "rumi_command_protocol_pack.catalog.read"
     },
     {
+      "contract_reference": "tobkiri.resource.command.datasource.v1",
+      "operations": [
+        "command.datasource.query"
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.datasource"
+    },
+    {
       "contract_reference": "tobkiri.action.command.invoke.v1",
       "operations": [
         "command.invoke"
       ],
       "owner": "rumi_command_protocol_pack",
       "provider_id": "rumi_command_protocol_pack.command.invoke"
+    },
+    {
+      "contract_reference": "tobkiri.resource.command.state.v1",
+      "operations": [
+        "command.state.query"
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.state"
     },
     {
       "contract_reference": "tobkiri.service.command.high-risk.v1",
@@ -186,6 +268,8 @@
     "approval_policy": "capability_gated",
     "capabilities": [
       "command.invoke",
+      "command.state.query",
+      "command.datasource.query",
       "host.authority.consume",
       "command.catalog.read"
     ],
@@ -199,6 +283,18 @@
       {
         "cardinality": "one",
         "contract_id": "tobkiri.resource.application.presentation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
         "optional": false,
         "version_range": ">=1.0.0 <2.0.0"
       }
