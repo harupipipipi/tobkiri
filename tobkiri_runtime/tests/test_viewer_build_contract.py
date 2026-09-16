@@ -192,6 +192,7 @@ def test_shell_runtime_is_presentation_only_and_cannot_inherit_launcher_authorit
         assert forbidden not in shell_runtime
     assert "consume_shell_handoff" in shell_runtime
     assert "navigation_is_allowed" in shell_runtime
+    assert "env_logger::try_init()" in shell_runtime
 
     launcher_runtime = LAUNCHER_RUNTIME.read_text(encoding="utf-8")
     assert "context.config().identifier == shell_handoff::SHELL_BUNDLE_IDENTIFIER" in launcher_runtime

@@ -450,6 +450,11 @@ where
 }
 
 pub(crate) fn run(context: tauri::Context<tauri::Wry>) {
+    // The presentation Shell is a distinct process and does not pass through
+    // the Launcher's logger initialization. Without its own initialization,
+    // fail-closed handoff rejection and lifetime diagnostics disappear,
+    // leaving the Launcher with only a receipt timeout.
+    let _ = env_logger::try_init();
     let navigation_state = Arc::new(Mutex::new(ShellNavigationState::default()));
     let lifecycle = Arc::new(Mutex::new(ShellHandoffLifecycle::default()));
     let state_for_navigation_guard = Arc::clone(&navigation_state);
