@@ -269,9 +269,13 @@ class RuntimeEvidence:
     attestation_digest: str | None = None
     domain_lease_id: str | None = None
     resource_reservation_id: str | None = None
+    guest_artifact_identity: str | None = None
+    guest_execution_boundary: str | None = None
 
     def __post_init__(self) -> None:
         require_digest(self.executable_digest, "evidence executable")
         require_digest(self.backend_digest, "evidence backend")
         if self.attestation_digest is not None:
             require_digest(self.attestation_digest, "evidence attestation")
+        if self.guest_artifact_identity is not None:
+            require_digest(self.guest_artifact_identity, "guest artifact identity")

@@ -435,6 +435,8 @@ class ProductionIsolationBackend:
             attestation_digest=attestation.attestation_digest,
             domain_lease_id=attestation.lease_id,
             resource_reservation_id=attestation.reservation_id,
+            guest_artifact_identity=attestation.guest_artifact_identity,
+            guest_execution_boundary="linux-packvm-guest",
         )
 
     def invoke_with_nested_cancellation_proof(

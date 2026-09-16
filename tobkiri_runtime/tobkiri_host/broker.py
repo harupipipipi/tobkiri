@@ -14,6 +14,7 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, Protocol, Sequence, cast
 
 from .admission import AdmissionEstimate, QueueScope, ResourceReservation
+from .acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
 from .backends import BackendRegistry, ExecutionBackend, RequestScopedBackend
 from .contracts import (
     AdapterExecutor,
@@ -317,6 +318,7 @@ class RequestBroker:
         reconciliation: ReconciliationStore,
         production: bool = True,
         max_workers: int = 16,
+        acceptance_receipts: AcceptanceReceiptPort | None = None,
     ) -> None:
         self._catalog = catalog
         self._adapters = adapters
@@ -327,6 +329,9 @@ class RequestBroker:
         self._authority = authority
         self._audit = audit
         self._reconciliation = reconciliation
+        if acceptance_receipts is not None and type(acceptance_receipts) is not AcceptanceReceiptPort:
+            raise TypeError("acceptance receipt port is invalid")
+        self._acceptance_receipts = acceptance_receipts
         # Host-owned test/conformance mode; never caller-controlled request data.
         self._production = production
         self._lifecycle_lock = threading.RLock()
@@ -337,6 +342,13 @@ class RequestBroker:
             max_workers=max_workers,
             thread_name_prefix="tobkiri-v4-request",
         )
+
+    def take_acceptance_receipt(self, request_id: str, nonce: str) -> AcceptanceReceipt:
+        """Consume Host-owned QA evidence when the non-publishable port is enabled."""
+
+        if self._acceptance_receipts is None:
+            raise PermissionError("PackVM acceptance receipt port is unavailable")
+        return self._acceptance_receipts.take(request_id, nonce)
 
     def invoke(
         self,
@@ -524,15 +536,24 @@ class RequestBroker:
             self._active_requests[active_request_id] = active_request
         lease_issued = False
         background_requests: list[Future[object]] = []
+        acceptance_request_id: str | None = None
 
         def release_resources(_completed: Future[object] | None = None) -> None:
+            materialization_released = not isinstance(backend, RequestScopedBackend)
             if isinstance(backend, RequestScopedBackend):
                 try:
                     backend.release_materialization(ticket.reservation.reservation_id)
+                    materialization_released = True
                 except Exception:
                     self._authority.fence_request(context.request_id)
                     raise
             self._admission.release(ticket)
+            if acceptance_request_id is not None and self._acceptance_receipts is not None:
+                self._acceptance_receipts.record_resources_released(
+                    acceptance_request_id,
+                    reservation=True,
+                    materialization=materialization_released,
+                )
             with self._lifecycle_lock:
                 self._active_requests.pop(active_request_id, None)
             active_request.completed.set()
@@ -554,6 +575,28 @@ class RequestBroker:
                 ticket.reservation.reservation_id,
             )
             self._validate_evidence(binding, backend, evidence)
+            if (
+                self._acceptance_receipts is not None
+                and self._acceptance_receipts.is_candidate(
+                    binding.artifact.pack_id,
+                    binding.artifact.digest,
+                    binding.operation.operation_id,
+                )
+            ):
+                nonce = payload.get("nonce")
+                if not isinstance(nonce, str):
+                    raise AuthorizationError("PackVM acceptance nonce is invalid")
+                acceptance_request_id = context.request_id
+                self._acceptance_receipts.begin(
+                    request_id=context.request_id,
+                    pack_id=binding.artifact.pack_id,
+                    pack_digest=binding.artifact.digest,
+                    operation_id=binding.operation.operation_id,
+                    nonce=nonce,
+                    evidence=evidence,
+                    request_digest=request_digest,
+                    original_deadline_ns=int(deadline * 1_000_000_000),
+                )
             lease = self._authorize(
                 context,
                 binding.principal_ref,
@@ -594,6 +637,7 @@ class RequestBroker:
                 before_dispatch,
                 background_requests,
                 nested_cancellation_proof,
+                acceptance_request_id,
             )
         except Exception:
             if lease_issued:
@@ -778,6 +822,7 @@ class RequestBroker:
         before_dispatch: Callable[[], None] | None,
         background_requests: list[Future[object]],
         nested_cancellation_proof: NestedCancellationProof | None,
+        acceptance_request_id: str | None,
     ) -> Mapping[str, Any]:
         future: Future[object] | None = None
         proof = nested_cancellation_proof
@@ -843,6 +888,14 @@ class RequestBroker:
                 raise
             if proof is not None and child_id is not None:
                 proof.bind_child(child_id, future)
+            receipt_port = self._acceptance_receipts
+            if acceptance_request_id is not None and receipt_port is not None:
+                receipt_request_id = acceptance_request_id
+                future.add_done_callback(
+                    lambda _future: receipt_port.record_invocation_reaped(
+                        receipt_request_id
+                    )
+                )
             while True:
                 if envelope.cancellation_requested.is_set():
                     raise RequestCancellationRequestedError("request cancellation was requested")
@@ -882,6 +935,8 @@ class RequestBroker:
                     audit_reservation,
                     _digest(payload),
                 )
+            if acceptance_request_id is not None and self._acceptance_receipts is not None:
+                self._acceptance_receipts.record_completed(acceptance_request_id)
             return payload
         except (TimeoutError, RequestCancellationRequestedError) as exc:
             cancellation_error: Exception | None = None
@@ -898,6 +953,16 @@ class RequestBroker:
                             proof.record_queued_cancellation(child_id, future)
                     else:
                         backend.cancel(envelope.context.request_id)
+                        if (
+                            acceptance_request_id is not None
+                            and self._acceptance_receipts is not None
+                        ):
+                            self._acceptance_receipts.record_authenticated_cancel(
+                                acceptance_request_id,
+                                deadline=not isinstance(
+                                    exc, RequestCancellationRequestedError
+                                ),
+                            )
                         if proof is not None and child_id is not None:
                             proof.record_backend_cancellation(child_id, future)
             except Exception as cancel_exc:
@@ -925,6 +990,13 @@ class RequestBroker:
         except AmbiguousEffectError:
             raise
         except Exception as exc:
+            if acceptance_request_id is not None and self._acceptance_receipts is not None:
+                exit_status = getattr(backend, "acceptance_exit_code", None)
+                if callable(exit_status):
+                    self._acceptance_receipts.record_abnormal_exit(
+                        acceptance_request_id,
+                        exit_status(envelope.context.request_id),
+                    )
             self._record_audit_failure(audit_reservation, ambiguous=False)
             raise ProviderExecutionError("provider execution failed") from exc
         finally:
