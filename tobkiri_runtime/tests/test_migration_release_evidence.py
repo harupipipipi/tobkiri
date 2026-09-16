@@ -246,7 +246,7 @@ def test_checked_in_curated_reviews_bind_exact_generated_semantics() -> None:
     proof, findings = complete_gate._load_independent_migration_proof()
 
     assert not findings
-    assert len(reviews) == 20
+    assert len(reviews) == 29
     for pack_id, review in reviews.items():
         entry = {**proof[pack_id], "status": "generated-draft"}
         effective = complete_gate._entry_with_curated_semantics(entry, review)
