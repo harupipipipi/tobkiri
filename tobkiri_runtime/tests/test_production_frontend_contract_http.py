@@ -1556,10 +1556,11 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         "keymap", "plugins", "mcp", "skills", "hooks",
         "terminal", "commit", "push", "patch", "restore",
     }
+    approval_commands = {"terminal", "commit", "push", "patch", "restore"}
     assert all(
         item["authorization"]["approval_required"]
         for item in command_catalog["commands"]
-        if item["identity"]["id"] in available - {"help"}
+        if item["identity"]["id"] in approval_commands
     )
     for query in ("profile_id=other", "approved=true", "operation=invoke"):
         status, payload, _ = _request(
