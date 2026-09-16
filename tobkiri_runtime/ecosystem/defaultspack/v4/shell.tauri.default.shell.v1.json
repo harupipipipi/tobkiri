@@ -4,7 +4,7 @@
   "pack_id": "shell.tauri.default",
   "availability": "build_required",
   "artifact_digest": null,
-  "definition_revision": "sha256:95af278b3e4f0c846b6ffc032fdfe557a4b5f57d921cb11289ba80aacfa64317",
+  "definition_revision": "sha256:7192c7c04a3cab88514de21194c5f7990994d54b00692ae46d8582d8c8bbbacc",
   "contract_id": "app.shell.v1",
   "presentation": {
     "family": "graphical",
@@ -69,7 +69,7 @@
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/shell.tauri.default.shell.v1.json",
     "source_digest": "sha256:adfce4f931ce59d98056f6f4a7f2956a48c666067f3b7033a54d0c2bbc631fef",
-    "repository_commit": "working-tree",
+    "repository_commit": "906cf97f2387c0ea05e5003e65d314c45a85893f",
     "repository_commit_trusted": false,
     "content_root_digest": "sha256:3af60c272cf1bbce57fb78fdcd5f6c9405c95768e89577538634911ad58040a0",
     "generator": "defaultspack-v4-core",

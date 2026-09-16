@@ -8,7 +8,7 @@
     ],
     "required_contracts": []
   },
-  "definition_revision": "sha256:a931d2395ed1733eafd168ee58d4c458f8d3449c292a84595022410fdc4e444c",
+  "definition_revision": "sha256:f6135ea516f9cefef5f16556feca96d8b16527a4095bcd729d3f4a2fcb63b33f",
   "dependencies": [],
   "pack_id": "defaults-basepack",
   "policy_foundation": {
@@ -21,7 +21,7 @@
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults-basepack.base.v1.json",
     "source_digest": "sha256:d77ab5ddd24c978e196c451cca7cac67608606de3d6f23ef124de77820c18fca",
-    "repository_commit": "working-tree",
+    "repository_commit": "906cf97f2387c0ea05e5003e65d314c45a85893f",
     "repository_commit_trusted": false,
     "content_root_digest": "sha256:4be2545764eefeaa13404e13944275485b0f32de74b02e5cd937423044d5b3eb",
     "generator": "defaultspack-v4-core",

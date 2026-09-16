@@ -4019,7 +4019,7 @@
         {
           "contract_id": "tobkiri.resource.command.state.v1",
           "function_id": "rumi_command_protocol_pack.command.state",
-          "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+          "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
           "operation_ids": [
             "command.state.query"
           ]
@@ -4179,7 +4179,7 @@
           "operations": [{
             "entrypoint_id": "command.state.query",
             "id": "command.state.query",
-            "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8"
+            "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4"
           }],
           "owner": "rumi_command_protocol_pack",
           "provider_id": "rumi_command_protocol_pack.command.state",
@@ -4380,7 +4380,7 @@
           "path": "runtime/invoke.py"
         },
         {
-          "digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+          "digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
           "kind": "executable",
           "path": "runtime/state.py"
         },

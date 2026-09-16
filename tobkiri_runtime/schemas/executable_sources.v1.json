@@ -4770,7 +4770,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "rumi_command_protocol_pack.command.state",
-      "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+      "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
       "implementation_path": "runtime/state.py",
       "input_schema": {
         "additionalProperties": false,
@@ -4804,7 +4804,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:296f5aa71172d4ce8f9f839fa8b1bd15d205bd4cb425dde6ed2da8d585e3cee8",
+          "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
           "implementation_path": "runtime/state.py",
           "input_schema": {
             "additionalProperties": false,
