@@ -28,6 +28,27 @@ export function ModelRouteErrorNotices({
   </>;
 }
 
+export function ProviderReadiness({
+  connection,
+}: {
+  connection: RegisteredProviderConnection;
+}) {
+  const credential = connection.credential_status === "configured"
+    ? "資格情報: 設定済み"
+    : "資格情報: 未設定";
+  const reachability = connection.reachability === "available"
+    ? "到達性: 利用可能"
+    : connection.reachability === "unavailable"
+      ? "到達性: 利用不可"
+      : "到達性: 未確認";
+  const health = connection.health_status === "verified"
+    ? "検証済み"
+    : "未検証";
+  return <p className="text-xs text-zinc-400">
+    {credential} / {reachability}（{health}）
+  </p>;
+}
+
 /** Configure a model independently of credential creation or rotation. */
 export function ModelRouteSetup() {
   const [id, setId] = useState("");
@@ -104,7 +125,10 @@ export function ModelRouteSetup() {
         {connections.map((connection) => <option key={connection.provider_instance_id} value={connection.provider_instance_id}>{connection.display_name} — {connection.provider_instance_id}</option>)}
       </select>
     </label>
-    {selectedConnection && <p className="font-mono text-xs text-zinc-400">使用する接続ID: {selectedConnection.provider_instance_id}</p>}
+    {selectedConnection && <>
+      <p className="font-mono text-xs text-zinc-400">使用する接続ID: {selectedConnection.provider_instance_id}</p>
+      <ProviderReadiness connection={selectedConnection} />
+    </>}
     <ModelRouteErrorNotices
       connectionsError={connectionsError}
       saveError={saveError}

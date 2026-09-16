@@ -1944,11 +1944,19 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
             provider_instance_id: "connection/openai:main",
             display_name: "OpenAI main",
             enabled: true,
+            credential_status: "configured",
+            health_status: "verified",
+            reachability: "available",
+            observed_at: 123.5,
           },
           {
             provider_instance_id: "disabled/connection",
             display_name: "Disabled connection",
             enabled: false,
+            credential_status: "missing",
+            health_status: "unverified",
+            reachability: "unknown",
+            observed_at: null,
           },
         ],
       };
@@ -1963,6 +1971,10 @@ test("listProviderConnections uses the captured registry's exact opaque connecti
       connections: [{
         provider_instance_id: "connection/openai:main",
         display_name: "OpenAI main",
+        credential_status: "configured",
+        health_status: "verified",
+        reachability: "available",
+        observed_at: 123.5,
       }],
     });
     assert.equal(calls[0]?.target, routeKey("api/ui/catalog"));

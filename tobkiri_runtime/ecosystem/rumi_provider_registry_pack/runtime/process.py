@@ -185,7 +185,7 @@ class ProviderRegistryHostFactoryV4:
 def _provider_connection_snapshot(
     snapshot: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Project UI-safe Provider connection identities from an owner snapshot."""
+    """Project UI-safe Provider identities and conservative readiness facts."""
     revision = snapshot.get("revision")
     providers = snapshot.get("providers")
     if type(revision) is not int or revision < 0 or not isinstance(providers, list):
@@ -197,6 +197,20 @@ def _provider_connection_snapshot(
         provider_instance_id = item.get("provider_instance_id")
         display_name = item.get("display_name")
         enabled = item.get("enabled")
+        credential_handle = item.get("credential_handle")
+        evidence = item.get("health_evidence")
+        evidence = evidence if isinstance(evidence, Mapping) else {}
+        health_verified = evidence.get("verified") is True
+        reachability = evidence.get("status")
+        if not health_verified or reachability not in {
+            "available", "unavailable",
+        }:
+            reachability = "unknown"
+        observed_at = evidence.get("observed_at") if health_verified else None
+        if not isinstance(observed_at, (float, int)) or isinstance(
+            observed_at, bool
+        ):
+            observed_at = None
         if (
             not isinstance(provider_instance_id, str)
             or not provider_instance_id
@@ -209,6 +223,14 @@ def _provider_connection_snapshot(
             "provider_instance_id": provider_instance_id,
             "display_name": display_name,
             "enabled": enabled,
+            "credential_status": (
+                "configured"
+                if isinstance(credential_handle, str) and credential_handle
+                else "missing"
+            ),
+            "health_status": "verified" if health_verified else "unverified",
+            "reachability": reachability,
+            "observed_at": observed_at,
         })
     return {"revision": revision, "providers": projected}
 

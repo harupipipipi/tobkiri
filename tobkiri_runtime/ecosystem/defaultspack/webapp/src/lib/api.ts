@@ -1442,6 +1442,10 @@ export type ModelProfile = {
 export type RegisteredProviderConnection = {
   provider_instance_id: string;
   display_name: string;
+  credential_status: "configured" | "missing";
+  health_status: "verified" | "unverified";
+  reachability: "available" | "unavailable" | "unknown";
+  observed_at: number | null;
 };
 
 export type ProviderConnectionSnapshot = {
@@ -2450,6 +2454,10 @@ function isProviderConnectionSnapshot(
     provider_instance_id: string;
     display_name: string;
     enabled: boolean;
+    credential_status: "configured" | "missing";
+    health_status: "verified" | "unverified";
+    reachability: "available" | "unavailable" | "unknown";
+    observed_at: number | null;
   }>;
 } {
   const record = objectRecord(value);
@@ -2466,10 +2474,18 @@ function isProviderConnectionSnapshot(
     const item = objectRecord(provider);
     return Boolean(
       item
-      && Object.keys(item).length === 3
+      && Object.keys(item).length === 7
       && hasNonEmptyString(item, "provider_instance_id")
       && hasNonEmptyString(item, "display_name")
-      && typeof item.enabled === "boolean",
+      && typeof item.enabled === "boolean"
+      && (item.credential_status === "configured"
+        || item.credential_status === "missing")
+      && (item.health_status === "verified"
+        || item.health_status === "unverified")
+      && ["available", "unavailable", "unknown"].includes(String(item.reachability))
+      && (item.observed_at === null
+        || (typeof item.observed_at === "number"
+          && Number.isFinite(item.observed_at)))
     );
   });
 }
@@ -3822,6 +3838,10 @@ export const api = {
         provider_instance_id: string;
         display_name: string;
         enabled: boolean;
+        credential_status: "configured" | "missing";
+        health_status: "verified" | "unverified";
+        reachability: "available" | "unavailable" | "unknown";
+        observed_at: number | null;
       }>;
     }>(defaultspackContractRoute("api/ui/capability/invoke"), {
       method: "POST",
@@ -3847,6 +3867,10 @@ export const api = {
         return [{
           provider_instance_id: provider.provider_instance_id,
           display_name: provider.display_name,
+          credential_status: provider.credential_status,
+          health_status: provider.health_status,
+          reachability: provider.reachability,
+          observed_at: provider.observed_at,
         }];
       }),
     };

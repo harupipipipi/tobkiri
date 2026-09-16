@@ -12722,7 +12722,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-registry.manage",
-          "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
+          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-manage"
           ]
@@ -12730,7 +12730,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-configure.prepare",
-          "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
+          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-configure-prepare"
           ]
@@ -12738,7 +12738,7 @@
         {
           "contract_id": "tobkiri.action.ai.provider.registry.manage.v1",
           "function_id": "rumi_provider_registry_pack.provider-configure.execute",
-          "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
+          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-configure"
           ]
@@ -12746,7 +12746,7 @@
         {
           "contract_id": "tobkiri.resource.ai.provider.registry.v1",
           "function_id": "rumi_provider_registry_pack.provider-registry.resource",
-          "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
+          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
           "operation_ids": [
             "rumi_provider_registry_pack.provider-registry-resource",
             "rumi_provider_registry_pack.provider-registry-resource.generate",
@@ -12799,17 +12799,17 @@
             {
               "entrypoint_id": "provider-registry-manage",
               "id": "rumi_provider_registry_pack.provider-registry-manage",
-              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
+          "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
             },
             {
               "entrypoint_id": "provider-configure-prepare",
               "id": "rumi_provider_registry_pack.provider-configure-prepare",
-              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
+              "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
             },
             {
               "entrypoint_id": "provider-configure",
               "id": "rumi_provider_registry_pack.provider-configure",
-              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
+              "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -12887,17 +12887,17 @@
             {
               "entrypoint_id": "provider-registry-resource",
               "id": "rumi_provider_registry_pack.provider-registry-resource",
-              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
+              "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
             },
             {
               "entrypoint_id": "provider-registry-resource.generate",
               "id": "rumi_provider_registry_pack.provider-registry-resource.generate",
-              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
+              "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
             },
             {
               "entrypoint_id": "provider-registry-resource.stream",
               "id": "rumi_provider_registry_pack.provider-registry-resource.stream",
-              "implementation_digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44"
+              "implementation_digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd"
             }
           ],
           "owner": "rumi_provider_registry_pack",
@@ -12937,7 +12937,7 @@
           "path": "runtime/health_process.py"
         },
         {
-          "digest": "sha256:f0ebb47215c54cca23bc1a4dc2eaa98ee431dbf1b41a7261ea04fe1650fcba44",
+          "digest": "sha256:83d31f411866f5caf80a960cac6175775f2063ad366ac74860dc11dad4df22dd",
           "kind": "executable",
           "path": "runtime/process.py"
         },

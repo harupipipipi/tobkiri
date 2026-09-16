@@ -3,7 +3,11 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { userFacingModelProfiles, profileNeedsApiKey } from "../../App";
-import { ModelRouteErrorNotices, ModelRouteSetup } from "./ModelRouteSetup";
+import {
+  ModelRouteErrorNotices,
+  ModelRouteSetup,
+  ProviderReadiness,
+} from "./ModelRouteSetup";
 
 import {
   buildVisibleModelOptions,
@@ -54,6 +58,23 @@ test("model route setup errors keep severity icons separate from stable copy act
   assert.match(html, /data-error-icon="model-route-save"/);
   assert.match(html, /aria-label="モデルルート保存エラーをコピー"/);
   assert.match(html, /data-copy-icon=""/);
+});
+
+test("provider readiness distinguishes credential, health, and reachability", () => {
+  const html = renderToStaticMarkup(createElement(ProviderReadiness, {
+    connection: {
+      provider_instance_id: "provider.example",
+      display_name: "Example",
+      credential_status: "missing",
+      health_status: "unverified",
+      reachability: "unknown",
+      observed_at: null,
+    },
+  }));
+
+  assert.match(html, /資格情報: 未設定/);
+  assert.match(html, /到達性: 未確認/);
+  assert.match(html, /未検証/);
 });
 
 function makeModelOption(index: number): ModelSelectOption {

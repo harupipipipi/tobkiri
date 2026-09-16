@@ -55,6 +55,10 @@ def test_provider_connection_snapshot_projects_only_safe_exact_identities() -> N
                 "enabled": True,
                 "credential_handle": "credential:must-not-reach-ui",
                 "endpoint": "https://provider.example/v1",
+                "health_evidence": {
+                    "status": "available", "verified": True,
+                    "observed_at": 123.5,
+                },
                 "metadata": {"legacy_api_id": "main"},
             },
             {
@@ -62,6 +66,10 @@ def test_provider_connection_snapshot_projects_only_safe_exact_identities() -> N
                 "display_name": "Disabled connection",
                 "enabled": False,
                 "credential_handle": None,
+                "health_evidence": {
+                    "status": "available", "verified": False,
+                    "observed_at": 456.0,
+                },
             },
         ],
     })
@@ -73,11 +81,19 @@ def test_provider_connection_snapshot_projects_only_safe_exact_identities() -> N
                 "provider_instance_id": "connection/openai:main",
                 "display_name": "OpenAI main",
                 "enabled": True,
+                "credential_status": "configured",
+                "health_status": "verified",
+                "reachability": "available",
+                "observed_at": 123.5,
             },
             {
                 "provider_instance_id": "disabled/connection",
                 "display_name": "Disabled connection",
                 "enabled": False,
+                "credential_status": "missing",
+                "health_status": "unverified",
+                "reachability": "unknown",
+                "observed_at": None,
             },
         ],
     }

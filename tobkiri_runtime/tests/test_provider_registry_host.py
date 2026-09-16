@@ -96,6 +96,10 @@ def test_captured_configuration_save_read_delete_and_revision_conflict(
                     "provider_instance_id": "provider.fixture",
                     "display_name": "provider.fixture",
                     "enabled": True,
+                    "credential_status": "configured",
+                    "health_status": "unverified",
+                    "reachability": "unknown",
+                    "observed_at": None,
                 }],
             }
             assert "credential_handle" not in str(result)
