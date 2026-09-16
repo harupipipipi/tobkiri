@@ -31,8 +31,31 @@ from tobkiri_host.effects import InMemoryReconciliationStore, ProviderOutcome
 from tobkiri_host.errors import BackendUnavailableError, ProviderExecutionError
 from tobkiri_host.materialization import MaterializationCoordinator
 from tobkiri_host.ports import OpaqueInvocationLease
+from tobkiri_host.resource_controller import ResourceControllerStatus
+from tobkiri_host import wasm_backend
 from tobkiri_host.wasm_backend import WasmComponentBackend, production_wasm_backend
 from tobkiri_protocol.canonical import canonical_digest
+
+
+class _TestControllerLease:
+    def child_setup(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class _TestHardController:
+    status = ResourceControllerStatus(
+        controller_id="test-hard-controller",
+        production_eligible=True,
+        hard_physical_memory_limit=True,
+        detail="test-owned hard controller",
+    )
+
+    def prepare(self, memory_limit_bytes: int) -> _TestControllerLease:
+        assert memory_limit_bytes > 0
+        return _TestControllerLease()
 
 
 def _binding_and_bytes(binary: bytes | None = None):
@@ -72,6 +95,7 @@ def _backend(binary: bytes | None = None, command: tuple[str, ...] | None = None
         worker_command_digest=canonical_digest(list(command)),
         worker_runtime_digest=canonical_digest({"fixture": "wasmtime-runtime"}),
         memory_reservation_bytes=256 * 1024 * 1024,
+        resource_controller=_TestHardController(),
     )
     binding, materialized = _binding_and_bytes(binary)
     backend.bind_artifact_resolver(lambda selected: materialized)
@@ -286,7 +310,32 @@ def test_worker_command_digest_must_match_trusted_argv() -> None:
         )
 
 
-def test_production_factory_captures_pinned_runtime_files() -> None:
+def test_missing_hard_resource_controller_is_conformance_only() -> None:
+    command = worker_command()
+    backend = WasmComponentBackend(
+        command,
+        worker_command_digest=canonical_digest(list(command)),
+        worker_runtime_digest=canonical_digest({"fixture": "wasmtime-runtime"}),
+    )
+    assert not backend.status.ready_for_production
+    assert backend.status.conformance_only
+    assert "resource_controller" not in backend.status.satisfied_gates
+    assert "not a hard physical-memory limit" in (
+        backend.status.unavailable_reason or ""
+    )
+    with pytest.raises(BackendUnavailableError, match="hard physical-memory"):
+        BackendRegistry((backend,)).select(_binding_and_bytes()[0])
+
+
+def test_production_factory_captures_pinned_runtime_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller = _TestHardController()
+    monkeypatch.setattr(
+        wasm_backend,
+        "detect_production_resource_controller",
+        lambda: (controller, controller.status),
+    )
     backend = production_wasm_backend()
     assert backend.status.ready_for_production
     assert backend.status.backend_id == "tobkiri.wasmtime-pulley-v1"
@@ -294,3 +343,4 @@ def test_production_factory_captures_pinned_runtime_files() -> None:
     bootstrap = backend._worker_command[4]
     assert "tobkiri_host.wasm_component" in bootstrap
     assert str(Path(__file__).resolve().parents[1]) in bootstrap
+    assert backend.resource_controller_status.controller_id == "test-hard-controller"

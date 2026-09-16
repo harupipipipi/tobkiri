@@ -15,6 +15,7 @@ import pytest
 from tobkiri_host.errors import ProviderExecutionError
 from tobkiri_host import wasm_worker
 from tobkiri_host.wasm_worker import ComponentWorker
+from tobkiri_host.resource_controller import ResourceControllerStatus
 
 _REAL_POPEN = subprocess.Popen
 
@@ -59,7 +60,9 @@ def test_success_is_reaped_and_cannot_be_reused(children: list) -> None:
 def test_deadline_covers_blocked_input_and_reaps_child(children: list) -> None:
     owned = worker("import time; time.sleep(60)")
     with pytest.raises(ProviderExecutionError, match="deadline"):
-        owned.invoke({"input": "x" * (1024 * 1024)}, cancelled=threading.Event(), timeout=0.2)
+        owned.invoke(
+            {"input": "x" * (1024 * 1024)}, cancelled=threading.Event(), timeout=0.2
+        )
     assert len(children) == 1 and children[0].returncode is not None
     assert owned._process is None
 
@@ -71,7 +74,9 @@ def test_deadline_still_applies_after_process_exit(
     stage: str,
 ) -> None:
     """A timely child reply cannot extend the budget for cleanup or validation."""
-    owned = worker('import sys; sys.stdin.buffer.read(); print(\'{"status":"ok","data":{}}\')')
+    owned = worker(
+        'import sys; sys.stdin.buffer.read(); print(\'{"status":"ok","data":{}}\')'
+    )
     clock = wasm_worker.time.monotonic
     expired = threading.Event()
     monkeypatch.setattr(
@@ -121,7 +126,9 @@ def test_cancel_reaps_live_child(children: list) -> None:
 
 
 @pytest.mark.parametrize("descriptor", [1, 2])
-def test_output_flood_is_bounded_and_child_reaped(children: list, descriptor: int) -> None:
+def test_output_flood_is_bounded_and_child_reaped(
+    children: list, descriptor: int
+) -> None:
     owned = worker(
         "import os, sys; sys.stdin.buffer.read(); "
         f"chunk = b'x' * 65536\nwhile True: os.write({descriptor}, chunk)"
@@ -239,6 +246,44 @@ def test_trusted_resident_limit_is_forwarded_to_worker() -> None:
         rss_limit=123_456_789,
     )
     assert owned.invoke({}, cancelled=threading.Event()) == {"limit": "123456789"}
+
+
+def test_hard_controller_lease_wraps_worker_lifecycle() -> None:
+    events: list[object] = []
+
+    class Lease:
+        def child_setup(self) -> None:
+            return None
+
+        def close(self) -> None:
+            events.append("closed")
+
+    class Controller:
+        status = ResourceControllerStatus(
+            controller_id="test-hard-controller",
+            production_eligible=True,
+            hard_physical_memory_limit=True,
+            detail="test-only hard controller",
+        )
+
+        def prepare(self, memory_limit_bytes: int) -> Lease:
+            events.append(memory_limit_bytes)
+            return Lease()
+
+    owned = ComponentWorker(
+        (
+            sys.executable,
+            "-I",
+            "-B",
+            "-c",
+            "import sys; sys.stdin.buffer.read(); "
+            'print(\'{"status":"ok","data":{}}\')',
+        ),
+        rss_limit=123_456_789,
+        resource_controller=Controller(),
+    )
+    assert owned.invoke({}, cancelled=threading.Event()) == {}
+    assert events == [123_456_789, "closed"]
 
 
 @pytest.mark.parametrize("timeout", [True, 0, -1, 61, float("nan"), float("inf")])

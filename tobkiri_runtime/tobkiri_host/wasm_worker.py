@@ -19,6 +19,7 @@ from tobkiri_protocol.canonical import canonical_json, strict_loads
 
 from .bounded_child_io import communicate_bounded
 from .errors import ProviderExecutionError
+from .resource_controller import ResourceControllerLease, WorkerResourceController
 
 _INPUT_LIMIT = 45 * 1024 * 1024
 _OUTPUT_LIMIT = 2 * 1024 * 1024
@@ -40,6 +41,7 @@ class ComponentWorker:
         command: tuple[str, ...],
         *,
         rss_limit: int = _DEFAULT_RSS_LIMIT,
+        resource_controller: WorkerResourceController | None = None,
     ) -> None:
         if not command or not all(isinstance(arg, str) and arg for arg in command):
             raise ValueError("Wasm worker command is invalid")
@@ -49,6 +51,8 @@ class ComponentWorker:
             raise ValueError("Wasm worker resident memory limit is invalid")
         self._command = tuple(command)
         self._rss_limit = rss_limit
+        self._resource_controller = resource_controller
+        self._controller_lease: ResourceControllerLease | None = None
         self._claimed = threading.Lock()
         self._process: subprocess.Popen[bytes] | None = None
 
@@ -71,11 +75,19 @@ class ComponentWorker:
         if len(encoded) > _INPUT_LIMIT:
             raise ValueError("Wasm worker input exceeds the limit")
         if not self._claimed.acquire(blocking=False):
-            raise ProviderExecutionError("Wasm worker request has already been consumed")
+            raise ProviderExecutionError(
+                "Wasm worker request has already been consumed"
+            )
         deadline = time.monotonic() + timeout
         if cancelled.is_set():
             raise ProviderExecutionError("Wasm worker request was cancelled")
         try:
+            controller_lease = (
+                None
+                if self._resource_controller is None
+                else self._resource_controller.prepare(self._rss_limit)
+            )
+            self._controller_lease = controller_lease
             self._process = subprocess.Popen(
                 self._command,
                 stdin=subprocess.PIPE,
@@ -88,6 +100,9 @@ class ComponentWorker:
                 close_fds=True,
                 cwd="/",
                 start_new_session=True,
+                preexec_fn=(
+                    None if controller_lease is None else controller_lease.child_setup
+                ),
             )
             output = communicate_bounded(
                 self._process,
@@ -110,8 +125,10 @@ class ComponentWorker:
         except MemoryError:
             raise ProviderExecutionError("Wasm worker memory limit exceeded") from None
         except ValueError:
-            raise ProviderExecutionError("Wasm worker output exceeds the limit") from None
-        except OSError:
+            raise ProviderExecutionError(
+                "Wasm worker output exceeds the limit"
+            ) from None
+        except (OSError, subprocess.SubprocessError):
             raise ProviderExecutionError("Wasm worker transport failed") from None
         finally:
             self.close()
@@ -139,15 +156,25 @@ class ComponentWorker:
         The caller must retain this object and retry, not reconstruct a PID.
         """
         process = self._process
-        if process is None:
-            return
-        try:
-            if process.poll() is None:
-                process.kill()
-            process.wait(timeout=2)
-        except (OSError, subprocess.TimeoutExpired):
-            raise ProviderExecutionError("Wasm worker termination is unconfirmed") from None
-        for pipe in (process.stdin, process.stdout, process.stderr):
-            if pipe is not None:
-                pipe.close()
-        self._process = None
+        if process is not None:
+            try:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=2)
+            except (OSError, subprocess.TimeoutExpired):
+                raise ProviderExecutionError(
+                    "Wasm worker termination is unconfirmed"
+                ) from None
+            for pipe in (process.stdin, process.stdout, process.stderr):
+                if pipe is not None:
+                    pipe.close()
+            self._process = None
+        controller_lease = self._controller_lease
+        if controller_lease is not None:
+            try:
+                controller_lease.close()
+            except OSError:
+                raise ProviderExecutionError(
+                    "Wasm worker resource-controller release is unconfirmed"
+                ) from None
+            self._controller_lease = None

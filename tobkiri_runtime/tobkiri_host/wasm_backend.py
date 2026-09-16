@@ -1,4 +1,8 @@
-"""Request-scoped production backend for import-free Wasm components."""
+"""Request-scoped backend for import-free Wasm components.
+
+Production readiness additionally requires a proven hard resource controller;
+otherwise the same worker remains available for conformance-only execution.
+"""
 
 from __future__ import annotations
 
@@ -22,8 +26,12 @@ from .contracts import ResolvedOperationBinding
 from .effects import ProviderOutcome
 from .errors import BackendUnavailableError, ProviderExecutionError
 from .models import ExecutionKind, OpaqueAuthorityRef, RuntimeEvidence, require_digest
+from .resource_controller import (
+    ResourceControllerStatus,
+    WorkerResourceController,
+    detect_production_resource_controller,
+)
 from .wasm_worker import ComponentWorker
-
 
 WASMTIME_PULLEY_BACKEND = "tobkiri.wasmtime-pulley-v1"
 
@@ -38,11 +46,12 @@ class _ReservationWorker:
 
 
 class WasmComponentBackend:
-    """Run one verified component in one physically bounded worker process.
+    """Run one verified component in one request-scoped worker process.
 
     The composition root supplies an authenticated worker command and its
     digest. The command is never accepted from a Pack, request, environment,
-    or mutable manifest. Each Broker reservation owns exactly one worker.
+    or mutable manifest. Each Broker reservation owns exactly one worker. The
+    backend claims production readiness only when a hard controller is bound.
     """
 
     def __init__(
@@ -53,6 +62,8 @@ class WasmComponentBackend:
         worker_runtime_digest: str,
         memory_reservation_bytes: int = 512 * 1024 * 1024,
         backend_id: str = WASMTIME_PULLEY_BACKEND,
+        resource_controller: WorkerResourceController | None = None,
+        resource_controller_status: ResourceControllerStatus | None = None,
     ) -> None:
         require_digest(worker_command_digest, "Wasm worker command")
         require_digest(worker_runtime_digest, "Wasm worker runtime")
@@ -67,14 +78,48 @@ class WasmComponentBackend:
         probe = ComponentWorker(
             worker_command,
             rss_limit=memory_reservation_bytes,
+            resource_controller=resource_controller,
         )
         probe.close()
         self._worker_command = tuple(worker_command)
+        self._resource_controller = resource_controller
+        if resource_controller is not None:
+            if (
+                resource_controller_status is not None
+                and resource_controller_status != resource_controller.status
+            ):
+                raise ValueError("Wasm resource-controller status mismatch")
+            self.resource_controller_status = resource_controller.status
+        else:
+            if resource_controller_status is not None and (
+                resource_controller_status.production_eligible
+                or resource_controller_status.hard_physical_memory_limit
+            ):
+                raise ValueError("Wasm hard resource controller is missing")
+            self.resource_controller_status = (
+                resource_controller_status
+                or ResourceControllerStatus(
+                    controller_id="development-rss-sampler",
+                    production_eligible=False,
+                    hard_physical_memory_limit=False,
+                    detail=(
+                        "direct-child RSS sampling is a development/conformance "
+                        "diagnostic, not a hard physical-memory limit"
+                    ),
+                )
+            )
+        controller_ready = (
+            resource_controller is not None
+            and self.resource_controller_status.production_eligible
+            and self.resource_controller_status.hard_physical_memory_limit
+        )
         self.memory_reservation_bytes = memory_reservation_bytes
-        self._artifact_resolver: Callable[
-            [ResolvedOperationBinding], MaterializedPackArtifact
-        ] | None = None
-        self._target_domain_resolver: Callable[[ResolvedOperationBinding], str] | None = None
+        self._artifact_resolver: (
+            Callable[[ResolvedOperationBinding], MaterializedPackArtifact] | None
+        ) = None
+        self._target_domain_resolver: (
+            Callable[[ResolvedOperationBinding], str] | None
+        ) = None
         self._reservations: dict[str, _ReservationWorker] = {}
         self._requests: dict[str, str] = {}
         self._lock = threading.RLock()
@@ -91,11 +136,23 @@ class WasmComponentBackend:
                     "abi": "component-v1",
                     "engine": "wasmtime-pulley",
                     "wasi": False,
+                    "resource_controller": {
+                        "controller_id": self.resource_controller_status.controller_id,
+                        "hard_physical_memory_limit": self.resource_controller_status.hard_physical_memory_limit,
+                        "production_eligible": self.resource_controller_status.production_eligible,
+                    },
                 }
             ),
-            production_enabled=True,
-            conformance_only=False,
-            satisfied_gates=REQUIRED_PRODUCTION_GATES,
+            production_enabled=controller_ready,
+            conformance_only=not controller_ready,
+            satisfied_gates=(
+                REQUIRED_PRODUCTION_GATES
+                if controller_ready
+                else REQUIRED_PRODUCTION_GATES - {"resource_controller"}
+            ),
+            unavailable_reason=(
+                None if controller_ready else self.resource_controller_status.detail
+            ),
             enforces_platform=False,
             requires_platform_attestation=False,
         )
@@ -120,7 +177,10 @@ class WasmComponentBackend:
                 raise BackendUnavailableError(
                     "Wasm artifact resolver cannot change after materialization"
                 )
-            if self._artifact_resolver is not None and self._artifact_resolver is not resolver:
+            if (
+                self._artifact_resolver is not None
+                and self._artifact_resolver is not resolver
+            ):
                 raise BackendUnavailableError("Wasm artifact resolver is already bound")
             self._artifact_resolver = resolver
 
@@ -139,7 +199,9 @@ class WasmComponentBackend:
                 self._target_domain_resolver is not None
                 and self._target_domain_resolver is not resolver
             ):
-                raise BackendUnavailableError("Wasm target domain resolver is already bound")
+                raise BackendUnavailableError(
+                    "Wasm target domain resolver is already bound"
+                )
             self._target_domain_resolver = resolver
 
     def materialize(
@@ -161,7 +223,9 @@ class WasmComponentBackend:
             artifact = resolver(binding)
             domain_id = domain_resolver(binding)
         except Exception as exc:
-            raise BackendUnavailableError("Wasm materialization capture failed") from exc
+            raise BackendUnavailableError(
+                "Wasm materialization capture failed"
+            ) from exc
         if (
             artifact.pack_id != binding.artifact.pack_id
             or artifact.artifact_digest != binding.artifact.digest
@@ -182,10 +246,13 @@ class WasmComponentBackend:
         worker = ComponentWorker(
             self._worker_command,
             rss_limit=self.memory_reservation_bytes,
+            resource_controller=self._resource_controller,
         )
         with self._lock:
             if reservation_id in self._reservations:
-                raise BackendUnavailableError("Wasm reservation is already materialized")
+                raise BackendUnavailableError(
+                    "Wasm reservation is already materialized"
+                )
             self._reservations[reservation_id] = _ReservationWorker(
                 binding=binding,
                 domain_id=domain_id,
@@ -285,7 +352,9 @@ class WasmComponentBackend:
             except Exception as exc:
                 failures.append(exc)
         if failures:
-            raise BackendUnavailableError("Wasm worker termination is unconfirmed") from failures[0]
+            raise BackendUnavailableError(
+                "Wasm worker termination is unconfirmed"
+            ) from failures[0]
 
 
 def production_wasm_backend() -> WasmComponentBackend:
@@ -317,7 +386,9 @@ def production_wasm_backend() -> WasmComponentBackend:
     for relative in sorted(wasmtime_files, key=str):
         located = Path(str(distribution.locate_file(relative)))
         if located.is_symlink():
-            raise BackendUnavailableError("the pinned Wasmtime runtime contains a symlink")
+            raise BackendUnavailableError(
+                "the pinned Wasmtime runtime contains a symlink"
+            )
         path = located.resolve(strict=True)
         if not path.is_file():
             raise BackendUnavailableError("the pinned Wasmtime runtime file is invalid")
@@ -360,9 +431,7 @@ def production_wasm_backend() -> WasmComponentBackend:
         "sys.modules['tobkiri_host']=package;"
         "runpy.run_module('tobkiri_host.wasm_component',run_name='__main__',alter_sys=True)"
     )
-    runtime_digest = canonical_digest(
-        runtime_files
-    )
+    runtime_digest = canonical_digest(runtime_files)
     command = (
         str(interpreter),
         "-I",
@@ -370,10 +439,13 @@ def production_wasm_backend() -> WasmComponentBackend:
         "-c",
         worker_bootstrap,
     )
+    resource_controller, controller_status = detect_production_resource_controller()
     return WasmComponentBackend(
         command,
         worker_command_digest=canonical_digest(list(command)),
         worker_runtime_digest=runtime_digest,
+        resource_controller=resource_controller,
+        resource_controller_status=controller_status,
     )
 
 

@@ -20,7 +20,6 @@ from tobkiri_host.errors import ProviderExecutionError
 from tobkiri_host.wasm_component import PureComponent
 from tobkiri_host.wasm_backend import production_wasm_backend
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PACK = ROOT / "ecosystem" / "rumi_scheduler_tool_adapter_pack"
 COMPONENT = PACK / "runtime" / "definitions_component.wasm"
@@ -79,7 +78,9 @@ def test_component_and_previous_python_catalog_both_reject_unknown_operation() -
 
 def test_wasm_definition_operation_keeps_its_read_only_contract_ceiling() -> None:
     catalog = json.loads((PACK / "executables.v4.json").read_text(encoding="utf-8"))
-    variant = next(item for item in catalog["variants"] if item["function_id"] == FUNCTION)
+    variant = next(
+        item for item in catalog["variants"] if item["function_id"] == FUNCTION
+    )
     assert len(variant["operations"]) == 1
     assert variant["operations"][0]["operation_id"] == OPERATION
     assert variant["operations"][0]["effect_class"] == "read"
@@ -111,6 +112,8 @@ def test_production_profile_authority_and_broker_invoke_scheduler_component(
         },
     }
     backend = production_wasm_backend()
+    if not backend.status.ready_for_production:
+        pytest.skip(backend.status.unavailable_reason or "hard controller unavailable")
     with captured_host_profile(
         tmp_path,
         monkeypatch,
@@ -141,6 +144,6 @@ def test_production_profile_authority_and_broker_invoke_scheduler_component(
     expected_ids = {item["tool_id"] for item in expected["definitions"]}
     actual_ids = {item["tool_id"] for item in actual["definitions"]}
     assert expected_ids <= actual_ids
-    assert {
-        item["provider_instance_id"] for item in actual["contributions"]
-    } == {"tool-definitions.scheduler"}
+    assert {item["provider_instance_id"] for item in actual["contributions"]} == {
+        "tool-definitions.scheduler"
+    }

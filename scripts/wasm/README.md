@@ -63,7 +63,14 @@ fenced. Concurrent reservations cannot share materialization evidence.
 The backend's positive `memory_reservation_bytes` floor is applied before queue
 admission and materialization; higher existing estimates remain in force.
 This is accounting, not an OS memory limit: the supervisor must also enforce
-its worker budget. Do not report a reservation as proof of physical containment.
+its worker budget. Production registration now requires a writable delegated
+cgroup v2 subtree with `memory` and `pids` controllers on Linux; every worker
+is attached before `exec` and receives `memory.max`, `memory.swap.max` when
+available, and `pids.max`. If that delegation is absent, the backend fails
+closed as conformance-only. Direct-process RSS sampling on macOS is diagnostic
+only and cannot satisfy the resource-controller gate; macOS production requires
+a VZ/PackVM hard boundary. Do not report a reservation, RSS sample, RLIMIT_RSS,
+or RLIMIT_AS as proof of physical containment.
 
 References: [Wasmtime sandboxing](https://docs.wasmtime.dev/security.html) and
 [componentize-py](https://github.com/bytecodealliance/componentize-py).
