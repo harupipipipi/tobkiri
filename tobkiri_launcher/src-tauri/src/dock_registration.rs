@@ -1099,6 +1099,7 @@ pub(crate) fn spawn_defaultspack_local_server(
                     .env("RUMI_DEFAULTSPACK_DEBUG_ISOLATION", "1")
                     .env("RUMI_DEFAULTSPACK_REQUIRE_OWN_BIND", "1");
             }
+            apply_packvm_acceptance_environment(command, config)?;
             command
                 .env("RUMI_DEFAULTSPACK_OPEN_BROWSER", "0")
                 .env("PYTHONDONTWRITEBYTECODE", "1");
@@ -1114,6 +1115,35 @@ pub(crate) fn spawn_defaultspack_local_server(
             config.venv_python().display()
         )
     })
+}
+
+fn apply_packvm_acceptance_environment(
+    command: &mut crate::python_env::RoleCommand<'_>,
+    config: &AppConfig,
+) -> AnyResult<()> {
+    if !crate::truthy_env_flag(crate::PACKVM_ACCEPTANCE_ENABLE_ENV) {
+        return Ok(());
+    }
+    let app_identifier = std::env::var("TOBKIRI_LAUNCHER_APP_IDENTIFIER")
+        .context("PackVM acceptance requires the native app identifier")?;
+    if app_identifier != crate::ci_e2e_app_data::CI_E2E_BUNDLE_IDENTIFIER {
+        bail!("PackVM acceptance environment is limited to the CI/E2E app");
+    }
+    let root = std::env::var_os(crate::ci_e2e_app_data::CI_E2E_APP_DATA_ROOT_ENV)
+        .context("PackVM acceptance requires isolated CI/E2E app data")?;
+    crate::ci_e2e_app_data::ci_e2e_shell_launch_environment(
+        &app_identifier,
+        &config.user_data_dir,
+    )?
+    .context("PackVM acceptance CI/E2E app data is not active")?;
+    let pack_digest = std::env::var(crate::PACKVM_ACCEPTANCE_DIGEST_ENV)
+        .context("PackVM acceptance requires the signed QA fixture digest")?;
+    command
+        .env(crate::PACKVM_ACCEPTANCE_ENABLE_ENV, "1")
+        .env(crate::PACKVM_ACCEPTANCE_DIGEST_ENV, pack_digest)
+        .env("TOBKIRI_LAUNCHER_APP_IDENTIFIER", app_identifier)
+        .env(crate::ci_e2e_app_data::CI_E2E_APP_DATA_ROOT_ENV, root);
+    Ok(())
 }
 
 fn apply_defaultspack_metadata_environment(

@@ -249,6 +249,10 @@ fn packaged_environment_key_allowed(role: PythonRole, key: &OsStr) -> bool {
             "RUMI_DEFAULTSPACK_DEBUG_ISOLATION",
             "RUMI_DEFAULTSPACK_REQUIRE_OWN_BIND",
             "RUMI_DEFAULTSPACK_OPEN_BROWSER",
+            "TOBKIRI_CI_E2E_APP_DATA_ROOT",
+            "TOBKIRI_LAUNCHER_APP_IDENTIFIER",
+            "TOBKIRI_PACKVM_ACCEPTANCE_ENABLE",
+            "TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST",
         ]
         .contains(&key),
         PythonRole::HostHelper => ["RUMI_DEFAULTSPACK_CHAT_STORE_PATH"].contains(&key),
@@ -3755,6 +3759,16 @@ mod tests {
                 .env(
                     "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
                     "/trusted/user-data/defaultspack/shared",
+                )
+                .env("TOBKIRI_PACKVM_ACCEPTANCE_ENABLE", "1")
+                .env("TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST", digest('a'))
+                .env(
+                    "TOBKIRI_CI_E2E_APP_DATA_ROOT",
+                    "/private/ci/ci-e2e-app-data",
+                )
+                .env(
+                    "TOBKIRI_LAUNCHER_APP_IDENTIFIER",
+                    "dev.tobkiri.launcher.ci-e2e",
                 );
             role.finish().unwrap();
         }
@@ -3772,6 +3786,10 @@ mod tests {
             Some(&Some(OsString::from(
                 "/trusted/user-data/defaultspack/shared"
             )))
+        );
+        assert_eq!(
+            environment.get(OsStr::new("TOBKIRI_PACKVM_ACCEPTANCE_ENABLE")),
+            Some(&Some(OsString::from("1")))
         );
 
         for key in [
