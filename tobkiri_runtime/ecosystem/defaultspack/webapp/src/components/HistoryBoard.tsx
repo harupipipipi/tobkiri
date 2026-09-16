@@ -309,7 +309,7 @@ export function loadCustomGroups(): CustomGroupInfo[] {
 }
 
 function saveCustomGroups(groups: CustomGroupInfo[]) {
-  saveProjects(groups);
+  return saveProjects(groups);
 }
 
 function collectGroupIds(groups: ChatGroup[], ids = new Set<string>()): Set<string> {
@@ -1671,12 +1671,16 @@ export function HistoryBoard({
   };
 
   // --- Actions ---
-  const handleRenameGroup = (id: string, newTitle: string) => {
+  const handleRenameGroup = async (id: string, newTitle: string) => {
     const sourceGroupId = findGroupById(groups, id)?.sourceGroupId ?? id;
-    setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, title: newTitle } : g));
     const nextCustomGroups = customGroups.map((group) => group.id === sourceGroupId ? { ...group, title: newTitle } : group);
-    saveCustomGroups(nextCustomGroups);
-    setCustomGroups(nextCustomGroups);
+    try {
+      const saved = await saveCustomGroups(nextCustomGroups);
+      setCustomGroups(saved);
+      setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, title: newTitle } : g));
+    } catch (error) {
+      setNewGroupError(error instanceof Error ? error.message : "Failed to rename project.");
+    }
   };
 
   const handleToggleCollapse = (id: string) => {
@@ -1742,10 +1746,10 @@ export function HistoryBoard({
     onMinimize?.();
   };
 
-  const createCustomGroup = (customGroup: CustomGroupInfo) => {
+  const createCustomGroup = async (customGroup: CustomGroupInfo) => {
     const nextCustomGroups = [...customGroups, customGroup];
-    saveCustomGroups(nextCustomGroups);
-    setCustomGroups(nextCustomGroups);
+    const saved = await saveCustomGroups(nextCustomGroups);
+    setCustomGroups(saved);
     const newGroup: ChatGroup = {
       ...customGroup,
       chats: [],
@@ -1843,7 +1847,7 @@ export function HistoryBoard({
         workspaceRoot: workspace?.root_path ?? null,
         rumiDataPath,
       };
-      createCustomGroup(customGroup);
+      await createCustomGroup(customGroup);
       setIsCreateGroupOpen(false);
     } catch (error) {
       setNewGroupError(error instanceof Error ? error.message : "Failed to create project.");

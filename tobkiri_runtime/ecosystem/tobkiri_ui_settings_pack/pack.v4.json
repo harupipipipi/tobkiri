@@ -1,9 +1,14 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:03f5319c5bc848154fe7853684ccbff62e4b917f06490916ecd89e1e8297471c",
+      "digest": "sha256:ba1137733e620f45a76ab2bfe05c85e036a1efa2be233e42eb040e35a5f9164d",
       "kind": "sidecar",
       "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "kind": "executable",
+      "path": "runtime/projects.py"
     },
     {
       "digest": "sha256:340b88316d3063444cdb1b0ab107bb38e699c96940d69eb72c0866836719df61",
@@ -36,9 +41,43 @@
         "tobkiri_ui_settings_pack.preferences-write"
       ],
       "revision_digest": "sha256:b6b206893f8c5572441a519b534b4366e6be1f041d181f00f3f7ae74edd145ee"
+    },
+    {
+      "contract_id": "tobkiri.resource.project.state.v1",
+      "operations": [
+        "tobkiri_ui_settings_pack.projects-read"
+      ],
+      "revision_digest": "sha256:4e89da11c1bf29bb2c6baa9b27e1cc3a7b399ea20d8e2d7178f5bdeda435870d"
+    },
+    {
+      "contract_id": "tobkiri.action.project.state.v1",
+      "operations": [
+        "tobkiri_ui_settings_pack.projects-replace"
+      ],
+      "revision_digest": "sha256:20841ef7bc7bcfe05bbe9720c154a34af3e68ba611e9aec178bff7a2a94c413e"
     }
   ],
   "functions": [
+    {
+      "contract_revision_digest": "sha256:4e89da11c1bf29bb2c6baa9b27e1cc3a7b399ea20d8e2d7178f5bdeda435870d",
+      "id": "tobkiri.project.state.read",
+      "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_ui_settings_pack.projects-read"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:20841ef7bc7bcfe05bbe9720c154a34af3e68ba611e9aec178bff7a2a94c413e",
+      "id": "tobkiri.project.state.replace",
+      "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+      "isolation": "dedicated_process",
+      "operations": [
+        "tobkiri_ui_settings_pack.projects-replace"
+      ],
+      "role": "host_capability_provider"
+    },
     {
       "contract_revision_digest": "sha256:bf2a86f5787194c8301e93586e03495ed4b5d2c6537c9227870943754a5f416c",
       "id": "tobkiri.ui.catalog.read",
@@ -71,9 +110,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:25a472257a8703b78ad358fd6e275d0a644feef4d4a7575928b68f01af3e6d30",
-    "contract_catalog_digest": "sha256:e3cf7221e44fa10d6e7b8aadf7edbf028e1435deb72c49e2f33b2233137b011b",
-    "source_identity": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65"
+    "artifact_set_digest": "sha256:1ea530af095e80b5855ee239bf6d1012c6203562ad3b5ae3e128ea3697c9eeb6",
+    "contract_catalog_digest": "sha256:72968be7dcf1dd649e34305788f8076fcb886a35651d2c3b88685919197cac29",
+    "source_identity": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165"
   },
   "migration": {
     "compatibility": "none",
@@ -105,6 +144,28 @@
       "source_kind": "canonical_v4_contract"
     },
     {
+      "contract_reference": "tobkiri.resource.project.state.v1",
+      "effect_ceiling": [
+        "capability:ui.projects.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_ui_settings_pack.projects-read",
+      "owner": "tobkiri_ui_settings_pack",
+      "provider_id": "tobkiri.project.state.read",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.project.state.v1",
+      "effect_ceiling": [
+        "capability:ui.projects.write",
+        "host:brokered-execution"
+      ],
+      "operation_id": "tobkiri_ui_settings_pack.projects-replace",
+      "owner": "tobkiri_ui_settings_pack",
+      "provider_id": "tobkiri.project.state.replace",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
       "contract_reference": "tobkiri.resource.ui.settings.v1",
       "effect_ceiling": [
         "capability:ui.settings.read",
@@ -117,7 +178,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:25a472257a8703b78ad358fd6e275d0a644feef4d4a7575928b68f01af3e6d30",
+    "artifact_digest": "sha256:1ea530af095e80b5855ee239bf6d1012c6203562ad3b5ae3e128ea3697c9eeb6",
     "display_name": "Tobkiri UI Settings",
     "id": "tobkiri_ui_settings_pack",
     "kind": "host_extension",
@@ -127,7 +188,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65",
+        "digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -138,11 +199,27 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65",
+    "source_digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
   },
   "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.resource.project.state.v1",
+      "operations": [
+        "tobkiri_ui_settings_pack.projects-read"
+      ],
+      "owner": "tobkiri_ui_settings_pack",
+      "provider_id": "tobkiri.project.state.read"
+    },
+    {
+      "contract_reference": "tobkiri.action.project.state.v1",
+      "operations": [
+        "tobkiri_ui_settings_pack.projects-replace"
+      ],
+      "owner": "tobkiri_ui_settings_pack",
+      "provider_id": "tobkiri.project.state.replace"
+    },
     {
       "contract_reference": "tobkiri.resource.ui.settings.v1",
       "operations": [
@@ -172,7 +249,9 @@
     "approval_policy": "capability_gated",
     "capabilities": [
       "ui.settings.read",
-      "ui.preferences.write"
+      "ui.preferences.write",
+      "ui.projects.read",
+      "ui.projects.write"
     ],
     "contract_dependencies": [
       {

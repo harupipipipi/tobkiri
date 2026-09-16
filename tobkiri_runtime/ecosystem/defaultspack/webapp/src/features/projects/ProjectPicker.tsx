@@ -106,7 +106,7 @@ export function ProjectPicker({
         workspaceRoot: workspace?.root_path ?? (folderPath || null),
         rumiDataPath,
       };
-      addProject(project);
+      await addProject(project);
       onSelect(project);
       resetCreate();
       setOpen(false);

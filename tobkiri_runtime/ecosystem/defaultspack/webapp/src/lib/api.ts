@@ -4016,6 +4016,29 @@ export const api = {
     return request<{ commands: ComposerCommandItem[] }>(defaultspackContractRoute("api/ui/commands"));
   },
 
+  projects() {
+    return request<ProjectStateSnapshot>(defaultspackContractRoute("api/projects"), {
+      cache: "no-store",
+    }, isProjectStateSnapshot);
+  },
+
+  replaceProjects(input: {
+    projects: ProjectStateRecord[];
+    expected_revision: number;
+    mutation_id: string;
+    migration_digest?: string;
+  }) {
+    return request<ProjectStateSnapshot>(defaultspackContractRoute("api/projects"), {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }, (value): value is ProjectStateSnapshot => {
+      const record = objectRecord(value);
+      return isProjectStateSnapshot(value)
+        && typeof record?.receipt === "string" && /^sha256:[0-9a-f]{64}$/.test(record.receipt)
+        && record.mutation_id === input.mutation_id;
+    });
+  },
+
   commandProtocolCatalog() {
     return request<ResolvedCommandCatalog>(defaultspackContractRoute("api/command-protocol/v1/catalog"), {
       cache: "no-store",

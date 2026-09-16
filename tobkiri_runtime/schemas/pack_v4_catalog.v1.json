@@ -18813,7 +18813,9 @@
       "authority": "v4-authoritative",
       "capabilities": [
         "ui.settings.read",
-        "ui.preferences.write"
+        "ui.preferences.write",
+        "ui.projects.read",
+        "ui.projects.write"
       ],
       "dependencies": {},
       "description": "Captured settings presentation and capability-gated display preference changes.",
@@ -18842,6 +18844,22 @@
           "implementation_digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
           "operation_ids": [
             "tobkiri_ui_settings_pack.preferences-write"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.resource.project.state.v1",
+          "function_id": "tobkiri.project.state.read",
+          "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.projects-read"
+          ]
+        },
+        {
+          "contract_id": "tobkiri.action.project.state.v1",
+          "function_id": "tobkiri.project.state.replace",
+          "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.projects-replace"
           ]
         }
       ],
@@ -19061,6 +19079,71 @@
           },
           "security": "sensitive",
           "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.project.state.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [{
+            "entrypoint_id": "tobkiri_ui_settings_pack.projects-read",
+            "id": "tobkiri_ui_settings_pack.projects-read",
+            "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
+          }],
+          "owner": "tobkiri_ui_settings_pack",
+          "provider_id": "tobkiri.project.state.read",
+          "required_capabilities": ["ui.projects.read"],
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {"profile_id": {"minLength": 1, "type": "string"}},
+              "required": ["profile_id"],
+              "type": "object"
+            },
+            "output": {"type": "object"}
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.project.state.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [{
+            "entrypoint_id": "tobkiri_ui_settings_pack.projects-replace",
+            "id": "tobkiri_ui_settings_pack.projects-replace",
+            "implementation_digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea"
+          }],
+          "owner": "tobkiri_ui_settings_pack",
+          "provider_id": "tobkiri.project.state.replace",
+          "required_capabilities": ["ui.projects.write"],
+          "schemas": {
+            "error": {"type": "object"},
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "expected_revision": {"minimum": 0, "type": "integer"},
+                "migration_digest": {"pattern": "^sha256:[0-9a-f]{64}$", "type": "string"},
+                "mutation_id": {"maxLength": 256, "minLength": 1, "type": "string"},
+                "profile_id": {"minLength": 1, "type": "string"},
+                "projects": {"items": {"type": "object"}, "maxItems": 256, "type": "array"}
+              },
+              "required": ["profile_id", "projects", "expected_revision", "mutation_id"],
+              "type": "object"
+            },
+            "output": {"type": "object"}
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
         }
       ],
       "required_contracts": [
@@ -19078,6 +19161,11 @@
         }
       ],
       "runtime_artifacts": [
+        {
+          "digest": "sha256:5d909cd427cd94bca279d5dbc45c3565e0feeff71ac44177643978fd21b132ea",
+          "kind": "executable",
+          "path": "runtime/projects.py"
+        },
         {
           "digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
           "kind": "executable",

@@ -38,7 +38,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65",
+            "digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -49,7 +49,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65",
+        "source_digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
       },
@@ -99,7 +99,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65",
+            "digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -110,7 +110,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65",
+        "source_digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
       },
@@ -273,8 +273,179 @@
       },
       "status": "accepted",
       "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.project.state.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:ui.projects.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:267881e9b51012ead0f2b319aea0d818b4b38a2a50d889f72ab434f8fcc517ee",
+          "operation_id": "tobkiri_ui_settings_pack.projects-read",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_ui_settings_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri.project.state.read",
+        "required_capabilities": [
+          "ui.projects.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:4e89da11c1bf29bb2c6baa9b27e1cc3a7b399ea20d8e2d7178f5bdeda435870d",
+      "schema_catalog": {
+        "sha256:267881e9b51012ead0f2b319aea0d818b4b38a2a50d889f72ab434f8fcc517ee": {
+          "additionalProperties": false,
+          "properties": {
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.project.state.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:ui.projects.write",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:af16e348503c9beb4dd59223e7856094b7169a464d6607ce3e7c0290eb724802",
+          "operation_id": "tobkiri_ui_settings_pack.projects-replace",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_ui_settings_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_ui_settings_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri.project.state.replace",
+        "required_capabilities": [
+          "ui.projects.write"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:20841ef7bc7bcfe05bbe9720c154a34af3e68ba611e9aec178bff7a2a94c413e",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:af16e348503c9beb4dd59223e7856094b7169a464d6607ce3e7c0290eb724802": {
+          "additionalProperties": false,
+          "properties": {
+            "expected_revision": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "migration_digest": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "mutation_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "profile_id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "projects": {
+              "items": {
+                "type": "object"
+              },
+              "maxItems": 256,
+              "type": "array"
+            }
+          },
+          "required": [
+            "profile_id",
+            "projects",
+            "expected_revision",
+            "mutation_id"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
     }
   ],
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:44ce4803d25e5f62ab9a8db1d64fa1108339553d46a79d099c05accd34c0bb65"
+  "source_identity": "sha256:923523d91262e8e9865a1ccf4d3fb0581f9131c34e16fdd4594f8eed4ab98165"
 }

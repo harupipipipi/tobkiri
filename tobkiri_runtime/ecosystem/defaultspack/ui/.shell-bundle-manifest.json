@@ -390,13 +390,13 @@
       },
       {
         "path": "src/components/HistoryBoard.test.ts",
-        "size": 12864,
-        "sha256": "78425b6cf023e8b9e5c95fec583f48e5994faaba3c61436d145d8669de0cc1c4"
+        "size": 12982,
+        "sha256": "b98aa22c870d0df3ad3a4e5f524d1800d3844a712034b1f5d1b916901aef4180"
       },
       {
         "path": "src/components/HistoryBoard.tsx",
-        "size": 93301,
-        "sha256": "7708cdfebacb2289aa54c4aef397a472fd3301790d1e7ef1c8c082a73f3020bf"
+        "size": 93482,
+        "sha256": "cbfd3912f711eefbea4426f7662c9f3756f377c234f0bdb8ae1dcaaeaa6c762b"
       },
       {
         "path": "src/components/MobilePairingApproval.tsx",
@@ -900,13 +900,13 @@
       },
       {
         "path": "src/features/projects/ProjectPicker.tsx",
-        "size": 10911,
-        "sha256": "449859956ea365c6ba9ad102258371198ccbffc7fe7763ca6c73855e30e40503"
+        "size": 10917,
+        "sha256": "13fef82a58d79bed04b499c7ce0f7fea88afd8fa1320b33018eadd13dca02c74"
       },
       {
         "path": "src/features/projects/projectStorage.ts",
-        "size": 2968,
-        "sha256": "5cf32afd6c99d1e11367f578ea20ad663e913ea8f6b6860c06b408a79790a7a4"
+        "size": 5997,
+        "sha256": "90418afc5330ea1740ace211f79ece500115371a07da79da71e9b2ae6c012627"
       },
       {
         "path": "src/features/prompts/resources/promptResources.ts",

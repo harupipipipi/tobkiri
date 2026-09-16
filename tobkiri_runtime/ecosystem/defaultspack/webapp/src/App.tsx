@@ -59,6 +59,7 @@ import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/com
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
 import {
   PROJECTS_CHANGED_EVENT,
+  bootstrapProjects,
   loadProjects,
   projectTaskContext,
   type ProjectInfo,
@@ -2704,10 +2705,11 @@ export function ChatApp() {
   useEffect(() => {
     const refreshProjects = () => setProjects(loadProjects());
     window.addEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
-    window.addEventListener("storage", refreshProjects);
+    void bootstrapProjects().then(setProjects).catch((reason) => {
+      setError(reason instanceof Error ? reason.message : "Project state is unavailable.");
+    });
     return () => {
       window.removeEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
-      window.removeEventListener("storage", refreshProjects);
     };
   }, []);
 

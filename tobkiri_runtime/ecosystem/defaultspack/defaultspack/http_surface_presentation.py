@@ -52,6 +52,17 @@ from .workspace_presentation import (
     present_workspace_record,
 )
 
+_PROJECT_READ_TARGET = (
+    "defaults.projects.read", "tobkiri.resource.project.state.v1",
+    "tobkiri_ui_settings_pack.projects-read", "tobkiri.project.state.read",
+    "tobkiri.project.state.read",
+)
+_PROJECT_WRITE_TARGET = (
+    "defaults.projects.replace", "tobkiri.action.project.state.v1",
+    "tobkiri_ui_settings_pack.projects-replace", "tobkiri.project.state.replace",
+    "tobkiri.project.state.replace",
+)
+
 
 _CONVERSATION_TARGET = (
     "defaults.conversation.complete",
@@ -159,6 +170,26 @@ class DefaultspackHTTPPresentation:
         workspace_binding_resolver: WorkspaceBindingResolver | None,
     ) -> Mapping[str, object]:
         """Bind model reads and media paths to the captured Profile."""
+
+        identity = (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
+        )
+        if identity in {_PROJECT_READ_TARGET, _PROJECT_WRITE_TARGET}:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("Project state requires a captured Profile")
+            if identity == _PROJECT_READ_TARGET:
+                if payload:
+                    raise ValueError("Project read accepts no client identity")
+                return {"profile_id": profile_id}
+            allowed = {"projects", "expected_revision", "mutation_id", "migration_digest"}
+            if set(payload) - allowed or not {
+                "projects", "expected_revision", "mutation_id",
+            } <= set(payload):
+                raise ValueError("Project replace request is invalid")
+            return {**dict(payload), "profile_id": profile_id}
 
         if target.contribution_id == "defaults.providers.configure":
             phase = payload.get("phase")
