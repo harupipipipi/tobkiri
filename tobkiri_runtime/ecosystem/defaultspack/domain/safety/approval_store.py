@@ -22,6 +22,15 @@ def default_approval_db_path() -> Path:
     override = os.getenv("RUMI_DEFAULTSPACK_APPROVAL_DB_PATH")
     if override:
         return Path(override)
+    user_data = os.getenv("RUMI_USER_DATA")
+    if user_data:
+        return (
+            Path(user_data)
+            / "defaultspack"
+            / "shared"
+            / "safety"
+            / "approval.sqlite3"
+        )
     return _pack_root() / "user_data" / "safety" / "approval.sqlite3"
 
 

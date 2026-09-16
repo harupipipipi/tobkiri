@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from typing import Any
 
 from .approval_state_json import (
@@ -24,11 +25,6 @@ from core_runtime.host_contract import host_contract_value
 
 _TOKEN_VERSION = "v1"
 _DEFAULT_EXPIRES_IN_SECONDS = 300
-_RUNTIME_SECRET = (
-    host_contract_value("approval_runtime_secret")
-    or get_approval_store().get_or_create_runtime_secret()
-)
-persist_runtime_secret_for_broker(_RUNTIME_SECRET)
 _LOCK = threading.RLock()
 _DEBUG_RESUME_HANDLES: dict[str, dict[str, Any]] = {}
 _NATIVE_RESUME_HANDLES: dict[str, dict[str, Any]] = {}
@@ -45,6 +41,17 @@ _ARG_HASH_IGNORE_KEYS = {
     "_raw_body",
     "_raw_body_base64",
 }
+
+
+@lru_cache(maxsize=1)
+def _runtime_secret() -> str:
+    """Load and publish the approval secret only when token work begins."""
+    secret = (
+        host_contract_value("approval_runtime_secret")
+        or get_approval_store().get_or_create_runtime_secret()
+    )
+    persist_runtime_secret_for_broker(secret)
+    return secret
 
 
 @dataclass
@@ -731,7 +738,7 @@ def issue_execution_token(
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     encoded = _b64url_encode(body)
     signature = hmac.new(
-        _RUNTIME_SECRET.encode("utf-8"),
+        _runtime_secret().encode("utf-8"),
         encoded.encode("ascii"),
         hashlib.sha256,
     ).digest()
@@ -753,7 +760,11 @@ def verify_execution_token(
         return TokenVerification(False, "APPROVAL_TOKEN_MISSING", "approval token is required")
     encoded, supplied_signature = token.rsplit(".", 1)
     expected_signature = _b64url_encode(
-        hmac.new(_RUNTIME_SECRET.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
+        hmac.new(
+            _runtime_secret().encode("utf-8"),
+            encoded.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
     )
     if not hmac.compare_digest(supplied_signature, expected_signature):
         return TokenVerification(

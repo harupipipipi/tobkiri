@@ -6,6 +6,7 @@ import importlib.util
 import json
 import plistlib
 import signal
+import stat
 import sys
 import threading
 import time
@@ -152,6 +153,7 @@ def _bundle_and_config(
 
     app_data_parent = tmp_path / "Application Support"
     app_data_parent.mkdir()
+    app_data_parent.chmod(0o700)
     diagnostics = tmp_path / "diagnostics"
     diagnostics.mkdir()
     config = VERIFY.ColdBootConfig(
@@ -347,6 +349,10 @@ def test_cold_boot_requires_embedded_broker_then_owned_kernel_and_panel(
         (config.kernel_port, "POST", VERIFY.PANEL_AUTH_EXCHANGE_PATH),
     ]
     assert launched_environment["RUMI_VIEWER_BROKER_PORT"] == "18770"
+    assert launched_environment[VERIFY.CI_APP_DATA_ROOT_ENV] == str(
+        config.app_data_dir
+    )
+    assert stat.S_IMODE(config.app_data_dir.stat().st_mode) == 0o700
     assert launched_environment["HTTPS_PROXY"] == "http://127.0.0.1:9"
     assert launched_environment["NO_PROXY"] == "127.0.0.1,localhost"
     assert "CI_TEST_SECRET" not in launched_environment

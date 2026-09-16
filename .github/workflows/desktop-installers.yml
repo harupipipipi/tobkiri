@@ -542,10 +542,11 @@ jobs:
         run: |
           set -euo pipefail
           app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
-          app_data_dir="$HOME/Library/Application Support/dev.tobkiri.launcher.ci-e2e"
+          app_data_parent="$RUNNER_TEMP/tobkiri-launcher-cold-boot-data-${{ matrix.target }}-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN"
+          app_data_dir="$app_data_parent/ci-e2e-app-data"
           diagnostics_dir="$RUNNER_TEMP/tobkiri-launcher-cold-boot-${{ matrix.target }}"
           test -d "$app"
-          test -d "$(dirname "$app_data_dir")"
+          /bin/mkdir -m 700 "$app_data_parent"
           test ! -e "$app_data_dir"
           /bin/mkdir -m 700 "$diagnostics_dir"
           /usr/bin/python3 -B tobkiri_launcher/scripts/verify_macos_launcher_cold_boot.py \

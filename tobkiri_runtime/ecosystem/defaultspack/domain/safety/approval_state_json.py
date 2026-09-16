@@ -23,6 +23,9 @@ def default_chat_dir() -> Path:
     override = os.environ.get("RUMI_DEFAULTSPACK_CHAT_STORE_PATH")
     if override:
         return Path(override).parent
+    user_data = os.environ.get("RUMI_USER_DATA")
+    if user_data:
+        return Path(user_data) / "defaultspack" / "shared" / "chat"
     return _pack_root() / "user_data" / "shared" / "chat"
 
 

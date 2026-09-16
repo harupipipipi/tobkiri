@@ -35,7 +35,8 @@ from typing import Any, Optional
 
 
 CI_BUNDLE_IDENTIFIER = "dev.tobkiri.launcher.ci-e2e"
-CI_APP_DATA_DIRECTORY_NAME = CI_BUNDLE_IDENTIFIER
+CI_APP_DATA_DIRECTORY_NAME = "ci-e2e-app-data"
+CI_APP_DATA_ROOT_ENV = "TOBKIRI_CI_E2E_APP_DATA_ROOT"
 CI_APP_NAME = "Tobkiri Launcher CI E2E.app"
 CI_EXECUTABLE_NAME = "tobkiri-launcher"
 EXECUTABLE_DIRECTORY_RELATIVE = Path("Contents/MacOS")
@@ -237,10 +238,43 @@ def _validate_fresh_app_data(app_data_dir: Path) -> Path:
         raise ColdBootError("application-data directory must be absolute")
     if app_data_dir.name != CI_APP_DATA_DIRECTORY_NAME:
         raise ColdBootError("application-data directory is not the CI/E2E directory")
-    _canonical_directory(app_data_dir.parent, "application-data parent directory")
+    parent = _canonical_directory(
+        app_data_dir.parent,
+        "application-data parent directory",
+    )
+    parent_metadata = parent.lstat()
+    if (
+        parent_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(parent_metadata.st_mode) != 0o700
+    ):
+        raise ColdBootError(
+            "application-data parent directory must be owned and private"
+        )
     if app_data_dir.exists() or app_data_dir.is_symlink():
         raise ColdBootError("CI/E2E application-data directory must be fresh")
     return app_data_dir
+
+
+def _create_fresh_app_data(app_data_dir: Path) -> None:
+    """Create the validated CI/E2E root without permitting path substitution."""
+    try:
+        app_data_dir.mkdir(mode=0o700)
+        metadata = app_data_dir.lstat()
+        resolved = app_data_dir.resolve(strict=True)
+    except OSError as error:
+        raise ColdBootError(
+            "CI/E2E application-data directory could not be created"
+        ) from error
+    if (
+        resolved != app_data_dir
+        or app_data_dir.is_symlink()
+        or not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise ColdBootError(
+            "CI/E2E application-data directory is not owned and private"
+        )
 
 
 def _validate_config(config: ColdBootConfig) -> tuple[ColdBootConfig, Path]:
@@ -420,6 +454,7 @@ def _system_probes() -> ColdBootProbes:
 def _local_only_environment(
     base_environment: Mapping[str, str],
     broker_port: int,
+    app_data_dir: Path,
 ) -> dict[str, str]:
     """Return a minimal child environment with cloud traffic looped locally."""
     allowed = (
@@ -455,6 +490,7 @@ def _local_only_environment(
             "HTTPS_PROXY": local_proxy,
             "NO_PROXY": "127.0.0.1,localhost",
             "RUMI_VIEWER_BROKER_PORT": str(broker_port),
+            CI_APP_DATA_ROOT_ENV: str(app_data_dir),
             "PYTHONDONTWRITEBYTECODE": "1",
             "all_proxy": local_proxy,
             "http_proxy": local_proxy,
@@ -896,10 +932,11 @@ def verify_cold_boot(
             raise ColdBootError("broker port must differ from configured Kernel port")
         if not probes.port_available(broker_port):
             raise ColdBootError("reserved broker port became unavailable before cold boot")
+        _create_fresh_app_data(config.app_data_dir)
         process = launch(
             executable,
             config.app_bundle,
-            _local_only_environment(environment, broker_port),
+            _local_only_environment(environment, broker_port, config.app_data_dir),
         )
         collector = _OutputCollector(process)
         return _wait_for_readiness(config, probes, process, broker_port)
