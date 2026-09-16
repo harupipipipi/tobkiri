@@ -414,6 +414,7 @@ def _captured_production_server(
         MAP_PATH,
         catalog.packs["runtime.tauri.application.default"],
     )
+    composition = defaultspack_runtime_capture_inputs(active)
     session = capture_production_dispatch(
         active,
         bundle_root=bundle_root,
@@ -426,6 +427,8 @@ def _captured_production_server(
         runtime_surface_factory=create_runtime_surface_services,
         capability_binding_snapshot_factory=defaultspack_capability_snapshot_mapping,
         capability_binding_selector=defaultspack_capability_binding,
+        chat_continuation_approve=composition.chat_continuation_approve,
+        chat_continuation_resume=composition.chat_continuation_resume,
     )
     server = PackAPIServer(
         port=0,

@@ -20,6 +20,28 @@ if TYPE_CHECKING:
     from core_runtime.bootstrap.runtime import Kernel
 
 
+def _approve_chat_continuation(
+    request_id: str,
+    conversation_id: str,
+    ui_operator: Mapping[str, object],
+) -> Mapping[str, object]:
+    """Resolve the Defaultspack-owned approval operation at invocation time."""
+
+    return chat_continuation.approve_continuation(
+        request_id, conversation_id, ui_operator,
+    )
+
+
+def _resume_chat_continuation(
+    binding: Mapping[str, object],
+    token: str,
+    conversation_id: str,
+) -> Mapping[str, object]:
+    """Resolve the Defaultspack-owned resume operation at invocation time."""
+
+    return chat_continuation.resume_continuation(binding, token, conversation_id)
+
+
 def defaultspack_activation_snapshot_loader(
     *,
     active: object,
@@ -108,8 +130,8 @@ def defaultspack_runtime_capture_inputs(
         ),
         credential_store_factory=credential_store_factory,
         acceptance_receipts=_packvm_acceptance_receipts(),
-        chat_continuation_approve=chat_continuation.approve_continuation,
-        chat_continuation_resume=chat_continuation.resume_continuation,
+        chat_continuation_approve=_approve_chat_continuation,
+        chat_continuation_resume=_resume_chat_continuation,
     )
 
 
