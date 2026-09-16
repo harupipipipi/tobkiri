@@ -35,6 +35,14 @@
         "interactive_effect.manage"
       ],
       "revision_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f"
+    },
+    {
+      "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+      "operations": [
+        "chat_approval.approve",
+        "chat_approval.resume"
+      ],
+      "revision_digest": "sha256:457316f83ad0eb3fb84cb76008fc6c9081efc82f6fa16747d69c81f0988df952"
     }
   ],
   "functions": [
@@ -45,6 +53,17 @@
       "isolation": "dedicated_process",
       "operations": [
         "rumi_host_authority_bridge_pack.host-authority"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:457316f83ad0eb3fb84cb76008fc6c9081efc82f6fa16747d69c81f0988df952",
+      "id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+      "implementation_digest": "sha256:779f5e2805617929548587b1dc79d868506b4884f831b57a2f288d67c4e94bbe",
+      "isolation": "dedicated_process",
+      "operations": [
+        "chat_approval.approve",
+        "chat_approval.resume"
       ],
       "role": "host_capability_provider"
     },
@@ -88,6 +107,28 @@
     "sunset_at": "2027-12-31"
   },
   "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.chat.approval-continuation.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:host.authority.consume"
+      ],
+      "operation_id": "chat_approval.approve",
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.chat.approval-continuation.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:host.authority.consume"
+      ],
+      "operation_id": "chat_approval.resume",
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+      "source_kind": "canonical_v4_contract"
+    },
     {
       "contract_reference": "tobkiri.service.interactive-approval.v1",
       "effect_ceiling": [
@@ -189,6 +230,15 @@
       ],
       "owner": "rumi_host_authority_bridge_pack",
       "provider_id": "rumi_host_authority_bridge_pack.host-authority.authorize"
+    },
+    {
+      "contract_reference": "tobkiri.action.chat.approval-continuation.v1",
+      "operations": [
+        "chat_approval.approve",
+        "chat_approval.resume"
+      ],
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation"
     },
     {
       "contract_reference": "tobkiri.service.interactive-approval.v1",

@@ -3526,6 +3526,26 @@ async function nativeCodingApprovalOperator(
   });
 }
 
+async function nativeCodingApprovalOperatorForDigest(
+  requestId: string,
+  expectedDigest: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[a-f0-9]{64}$/i.test(expectedDigest)) {
+    throw new Error("The coding approval snapshot is unavailable.");
+  }
+  const tauri = (globalThis as typeof globalThis & {
+    __TAURI__?: { core?: { invoke?: (command: string, args?: Record<string, unknown>) => Promise<Record<string, unknown>> } };
+  }).__TAURI__;
+  if (typeof tauri?.core?.invoke !== "function") {
+    throw new Error("Coding approval requires the focused Tobkiri Launcher window.");
+  }
+  return tauri.core.invoke("coding_approval_operator", {
+    requestId,
+    expectedDigest,
+    decision: "approve",
+  });
+}
+
 export const api = {
   listConversations(options?: ConversationListOptions) {
     return request<{ conversations: Conversation[]; total: number }>(
@@ -5760,13 +5780,13 @@ export const api = {
     });
   },
 
-  async approveCodingApprovalForContinuation(requestId: string, conversationId: string) {
-    const uiOperator = await nativeCodingApprovalOperator(requestId, "approve");
-    return request<CodingApprovalDecision>(defaultspackContractRoute("api/coding/approvals/approve"), {
+  async approveCodingApprovalForContinuation(requestId: string, conversationId: string, argsHash: string) {
+    const uiOperator = await nativeCodingApprovalOperatorForDigest(requestId, argsHash);
+    return request<CodingApprovalDecision>(defaultspackContractRoute("api/chat/approval/approve"), {
       method: "POST",
       body: JSON.stringify({
-        approval_request_id: requestId,
-        continuation_conversation_id: conversationId,
+        request_id: requestId,
+        conversation_id: conversationId,
         ui_operator: uiOperator,
       }),
     });
@@ -5785,7 +5805,7 @@ export const api = {
       resumed: true;
       terminal_event: "tool_call_completed";
       tool: string;
-    }>(defaultspackContractRoute("api/coding/approvals/resume"), {
+    }>(defaultspackContractRoute("api/chat/approval/resume"), {
       method: "POST",
       body: JSON.stringify({
         request_id: requestId,

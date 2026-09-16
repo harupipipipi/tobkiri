@@ -239,6 +239,35 @@ class InteractiveApprovalPort(Protocol):
 
 
 @dataclass(frozen=True)
+class ChatApprovalContinuationCommand:
+    """Exact presentation-owned identity for one legacy chat continuation phase."""
+
+    context: RequestContext
+    request_id: str
+    conversation_id: str
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    ui_operator: Mapping[str, Any] | None = None
+    resume_id: str = ""
+
+
+class ChatApprovalContinuationPort(Protocol):
+    """Host-owned opaque continuation handles over narrow execution callbacks."""
+
+    def approve_chat_continuation(
+        self,
+        command: ChatApprovalContinuationCommand,
+    ) -> Mapping[str, Any]:
+        """Approve one exact pending request and retain its token inside Host state."""
+
+    def resume_chat_continuation(
+        self,
+        command: ChatApprovalContinuationCommand,
+    ) -> Mapping[str, Any]:
+        """Atomically claim and execute one exact approved continuation."""
+
+
+@dataclass(frozen=True)
 class InteractiveEffectPrepareCommand:
     """Narrow request to prepare one Host-owned future effect.
 

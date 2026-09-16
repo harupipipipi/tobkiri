@@ -32,6 +32,8 @@ from core_runtime.runtime_locks import NamedLock
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.models import OpaqueAuthorityRef, RequestContext
 from tobkiri_host.ports import (
+    ChatApprovalContinuationCommand,
+    ChatApprovalContinuationPort,
     InteractiveApprovalDecisionCommand,
     InteractiveApprovalGetQuery,
     InteractiveApprovalListQuery,
@@ -415,6 +417,13 @@ _V4_GET_OPERATION = "interactive_approval.get"
 _V4_LIST_OPERATION = "interactive_approval.list"
 _V4_APPROVE_OPERATION = "interactive_approval.approve"
 _V4_DENY_OPERATION = "interactive_approval.deny"
+_CHAT_CONTINUATION_FUNCTION_ID = (
+    "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation"
+)
+_CHAT_CONTINUATION_CONTRACT_ID = "tobkiri.action.chat.approval-continuation.v1"
+_CHAT_CONTINUATION_OPERATIONS = frozenset(
+    {"chat_approval.approve", "chat_approval.resume"}
+)
 _V4_OPERATIONS = frozenset(
     {
         _V4_GET_OPERATION,
@@ -646,6 +655,104 @@ class InteractiveApprovalBridgeFactoryV4:
                 )
             )
         return CapturedHostProviderV4(tuple(contributions), bridge.close)
+
+
+class ChatApprovalContinuationFactoryV4:
+    """Capture the exact Host-owned approve/resume port for chat UI only."""
+
+    function_id = _CHAT_CONTINUATION_FUNCTION_ID
+
+    def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
+        port = context.chat_approval_continuation_port
+        bindings = tuple(context.provider_bindings)
+        if (
+            port is None
+            or {binding.operation.operation_id for binding in bindings}
+            != _CHAT_CONTINUATION_OPERATIONS
+            or any(
+                binding.function.function_id != self.function_id
+                or binding.operation.contract_id != _CHAT_CONTINUATION_CONTRACT_ID
+                for binding in bindings
+            )
+        ):
+            raise PermissionError("chat approval continuation capture is incomplete")
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if operation_id not in _CHAT_CONTINUATION_OPERATIONS:
+                raise PermissionError("chat approval continuation operation is invalid")
+            envelope = invocation.envelope
+            if not isinstance(envelope, RequestEnvelope):
+                raise PermissionError("chat approval continuation envelope is invalid")
+            binding = next(
+                item for item in bindings if item.operation.operation_id == operation_id
+            )
+            if (
+                envelope.contract_id != _CHAT_CONTINUATION_CONTRACT_ID
+                or envelope.operation_id != operation_id
+                or envelope.target_principal.value != binding.principal_ref.value
+                or envelope.context.profile_id != context.profile_id
+                or envelope.context.plan_digest != context.plan_digest
+                or envelope.context.security_epoch != context.security_epoch
+            ):
+                raise PermissionError("chat approval continuation capture changed")
+            required = {"request_id", "conversation_id"}
+            if operation_id == "chat_approval.approve":
+                required.add("ui_operator")
+            else:
+                required.add("resume_id")
+            _require_exact_payload_keys(payload, required)
+            command = ChatApprovalContinuationCommand(
+                context=envelope.context,
+                request_id=_payload_id(payload, "request_id"),
+                conversation_id=_payload_id(payload, "conversation_id"),
+                presentation_owner_principal_id=(
+                    invocation.presentation_owner_principal_id
+                ),
+                presentation_owner_session_id=(
+                    invocation.presentation_owner_session_id
+                ),
+                ui_operator=(
+                    dict(payload["ui_operator"])
+                    if isinstance(payload.get("ui_operator"), Mapping)
+                    else None
+                ),
+                resume_id=(
+                    _payload_id(payload, "resume_id")
+                    if operation_id == "chat_approval.resume"
+                    else ""
+                ),
+            )
+            if operation_id == "chat_approval.approve":
+                return port.approve_chat_continuation(command)
+            return port.resume_chat_continuation(command)
+
+        contributions = []
+        for binding in bindings:
+            key = (
+                binding.operation.contract_id,
+                binding.operation.operation_id,
+                binding.principal_ref.value,
+            )
+            domain_id = context.domain_ids.get(key)
+            if domain_id is None:
+                raise PermissionError("chat approval continuation domain is unavailable")
+            contributions.append(
+                HostProviderContributionV4(
+                    contract_id=binding.operation.contract_id,
+                    contract_version=binding.operation.contract_version,
+                    operation_id=binding.operation.operation_id,
+                    principal_id=binding.principal_ref.value,
+                    artifact_digest=binding.artifact.digest,
+                    implementation_digest=binding.function.implementation_digest,
+                    domain_id=domain_id,
+                    invoke=invoke,
+                )
+            )
+        return CapturedHostProviderV4(tuple(contributions), lambda: None)
 
 
 class InteractiveEffectCoordinatorBridgeV4:
@@ -982,4 +1089,5 @@ def _reject_effect_request_authority(value: object) -> None:
 HOST_PROVIDER_FACTORY = {
     _V4_FUNCTION_ID: InteractiveApprovalBridgeFactoryV4(),
     _EFFECT_FUNCTION_ID: InteractiveEffectCoordinatorFactoryV4(),
+    _CHAT_CONTINUATION_FUNCTION_ID: ChatApprovalContinuationFactoryV4(),
 }

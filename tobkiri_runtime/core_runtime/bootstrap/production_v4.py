@@ -31,6 +31,9 @@ from tobkiri_host.broker import (
     RequestAdmissionPort,
 )
 from tobkiri_host.composition import AuthorityCeilings
+from tobkiri_host.chat_approval_continuation import (
+    ChatApprovalContinuationController,
+)
 from tobkiri_host.contracts import (
     AdapterPlanner,
     ResolvedOperationBinding,
@@ -1559,6 +1562,33 @@ def capture_production_dispatch(
                 pass
     target_backend_digests = dict(target_backend_digests or {})
     authority_control = runtime.composition.authority_adapter(authority_store)
+
+    def approve_chat_continuation(
+        request_id: str,
+        conversation_id: str,
+        ui_operator: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        from ecosystem.defaultspack.domain.safety.chat_continuation import (
+            approve_continuation,
+        )
+
+        return approve_continuation(request_id, conversation_id, ui_operator)
+
+    def resume_chat_continuation(
+        binding: Mapping[str, Any],
+        token: str,
+        conversation_id: str,
+    ) -> Mapping[str, Any]:
+        from ecosystem.defaultspack.domain.safety.chat_continuation import (
+            resume_continuation,
+        )
+
+        return resume_continuation(binding, token, conversation_id)
+
+    chat_approval_continuation = ChatApprovalContinuationController(
+        approve=approve_chat_continuation,
+        resume=resume_chat_continuation,
+    )
     control_targets: dict[tuple[str, str], tuple[str, str, str]] = {}
     control_backend: PackControlBackendV4 | None = None
     control_session: Any | None = None
@@ -2509,6 +2539,7 @@ def capture_production_dispatch(
             domain_ids=dynamic_domain_ids,
             user_data_root=authority_user_data,
             interactive_approval_port=authority_control,
+            chat_approval_continuation_port=chat_approval_continuation,
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
             declared_pack_data=declared_pack_data,

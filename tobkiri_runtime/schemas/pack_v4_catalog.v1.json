@@ -8815,14 +8815,23 @@
             "interactive_approval.deny"
           ]
         },
-        {
-          "contract_id": "tobkiri.service.interactive-effect.v1",
+    {
+      "contract_id": "tobkiri.service.interactive-effect.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
           "implementation_digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
           "operation_ids": [
             "interactive_effect.manage"
-          ]
-        }
+      ]
+    },
+    {
+      "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+      "implementation_digest": "sha256:779f5e2805617929548587b1dc79d868506b4884f831b57a2f288d67c4e94bbe",
+      "operation_ids": [
+        "chat_approval.approve",
+        "chat_approval.resume"
+      ]
+    }
       ],
       "kind": "host_extension",
       "legacy_ids": [
@@ -8978,9 +8987,9 @@
           "security": "restricted",
           "version": "1.0.0"
         },
-        {
-          "cardinality": "one",
-          "contract_id": "tobkiri.service.interactive-effect.v1",
+    {
+      "cardinality": "one",
+      "contract_id": "tobkiri.service.interactive-effect.v1",
           "failure": "fail_closed",
           "isolation": "process",
           "lifecycle": {
@@ -9049,9 +9058,61 @@
               "type": "object"
             }
           },
-          "security": "restricted",
-          "version": "1.0.0"
+      "security": "restricted",
+      "version": "1.0.0"
+    },
+    {
+      "cardinality": "one",
+      "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+      "failure": "fail_closed",
+      "isolation": "process",
+      "lifecycle": {
+        "deprecated": false,
+        "introduced": "1.0.0"
+      },
+      "operations": [
+        {
+          "effect_ceiling": [
+            "host:brokered-execution",
+            "capability:host.authority.consume"
+          ],
+          "entrypoint_id": "approve",
+          "id": "chat_approval.approve",
+          "implementation_digest": "sha256:779f5e2805617929548587b1dc79d868506b4884f831b57a2f288d67c4e94bbe"
+        },
+        {
+          "effect_ceiling": [
+            "host:brokered-execution",
+            "capability:host.authority.consume"
+          ],
+          "entrypoint_id": "resume",
+          "id": "chat_approval.resume",
+          "implementation_digest": "sha256:779f5e2805617929548587b1dc79d868506b4884f831b57a2f288d67c4e94bbe"
         }
+      ],
+      "owner": "rumi_host_authority_bridge_pack",
+      "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+      "required_capabilities": [
+        "host.authority.consume"
+      ],
+      "schemas": {
+        "error": {"type": "object"},
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "conversation_id": {"maxLength": 255, "type": "string"},
+            "request_id": {"maxLength": 255, "type": "string"},
+            "resume_id": {"maxLength": 255, "type": "string"},
+            "ui_operator": {"type": "object"}
+          },
+          "required": ["request_id", "conversation_id"],
+          "type": "object"
+        },
+        "output": {"type": "object"}
+      },
+      "security": "restricted",
+      "version": "1.0.0"
+    }
       ],
       "required_contracts": [
         {

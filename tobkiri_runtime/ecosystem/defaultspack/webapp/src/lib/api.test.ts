@@ -3449,9 +3449,7 @@ test("chat approval continuation sends only server-owned resume identities", asy
     const target = requestTarget(input);
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     seen.push({ input: target, body });
-    const data = target.includes("api/coding/approvals?")
-      ? { requests: [{ request_id: "apr-1", args_hash: "a".repeat(64) }], pending: [] }
-      : target.includes("/approve")
+    const data = target.includes("/approve")
       ? { request_id: "apr-1", status: "approved", approved: true, resume_id: "native_resume_1" }
       : { resumed: true, terminal_event: "tool_call_completed", tool: "computer_use" };
     return new Response(JSON.stringify({ status: "ok", data }), {
@@ -3461,7 +3459,11 @@ test("chat approval continuation sends only server-owned resume identities", asy
   }) as typeof fetch;
 
   try {
-    const decision = await api.approveCodingApprovalForContinuation("apr-1", "conversation-1");
+    const decision = await api.approveCodingApprovalForContinuation(
+      "apr-1",
+      "conversation-1",
+      "a".repeat(64),
+    );
     assert.equal(decision.resume_id, "native_resume_1");
     await api.resumeCodingApproval("apr-1", decision.resume_id!, "conversation-1");
   } finally {
@@ -3473,11 +3475,11 @@ test("chat approval continuation sends only server-owned resume identities", asy
     }
   }
 
-  assert.equal(seen.length, 3);
-  assert.equal(seen[1].input, routeKey("api/coding/approvals/approve"));
-  assert.equal((seen[1].body as Record<string, unknown>).continuation_conversation_id, "conversation-1");
-  assert.equal(seen[2].input, routeKey("api/coding/approvals/resume"));
-  assert.deepEqual(seen[2].body, {
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].input, routeKey("api/chat/approval/approve"));
+  assert.equal((seen[0].body as Record<string, unknown>).conversation_id, "conversation-1");
+  assert.equal(seen[1].input, routeKey("api/chat/approval/resume"));
+  assert.deepEqual(seen[1].body, {
     request_id: "apr-1",
     resume_id: "native_resume_1",
     conversation_id: "conversation-1",

@@ -246,6 +246,32 @@
       }]
     },
     {
+      "method": "POST",
+      "path": "/api/chat/approval/approve",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.chat.approval.approve",
+        "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+        "operation_id": "chat_approval.approve",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "allowed_payload_keys": ["request_id", "conversation_id", "ui_operator"]
+      }]
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/approval/resume",
+      "presentation": "broker_result",
+      "targets": [{
+        "contribution_id": "defaults.chat.approval.resume",
+        "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+        "operation_id": "chat_approval.resume",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "allowed_payload_keys": ["request_id", "conversation_id", "resume_id"]
+      }]
+    },
+    {
       "method": "GET",
       "path": "/api/command-protocol/v1/catalog",
       "presentation": "broker_result",

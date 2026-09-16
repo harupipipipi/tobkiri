@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import time
+
+import pytest
+
+from tobkiri_host.chat_approval_continuation import (
+    ChatApprovalContinuationController,
+)
+from tobkiri_host.models import OpaqueAuthorityRef, RequestContext
+from tobkiri_host.ports import ChatApprovalContinuationCommand
+
+
+def _context(*, session: str = "session-1") -> RequestContext:
+    digest = "sha256:" + "a" * 64
+    return RequestContext(
+        request_id="outer-request",
+        trace_id="trace-1",
+        caller_principal=OpaqueAuthorityRef("shell.tauri.default"),
+        profile_id="defaults",
+        activation_id="activation-1",
+        activation_digest=digest,
+        plan_digest=digest,
+        security_epoch=1,
+        caller_session_id=session,
+        caller_domain_id="domain-shell",
+        caller_boot_epoch=1,
+        target_domain_id="domain-continuation",
+        target_boot_epoch=1,
+        target_backend_digest=digest,
+        profile_authority_digest=digest,
+        fencing_token=1,
+        handle_namespace="handles",
+        profile_revision=digest,
+    )
+
+
+def _command(**patch) -> ChatApprovalContinuationCommand:
+    values = {
+        "context": _context(),
+        "request_id": "apr-1",
+        "conversation_id": "conversation-1",
+        "presentation_owner_principal_id": "shell.tauri.default",
+        "presentation_owner_session_id": "session-1",
+        "ui_operator": {"signed": True},
+    }
+    values.update(patch)
+    return ChatApprovalContinuationCommand(**values)
+
+
+def _binding() -> dict[str, str]:
+    return {
+        "request_id": "apr-1",
+        "conversation_id": "conversation-1",
+        "operation": "computer.click",
+        "args_hash": "b" * 64,
+        "tool_name": "computer_use",
+        "tool_call_id": "call-1",
+        "profile_id": "defaults",
+    }
+
+
+def test_host_continuation_retains_token_and_claims_once():
+    resumes = []
+    controller = ChatApprovalContinuationController(
+        approve=lambda *_args: {
+            "request_id": "apr-1",
+            "approved": True,
+            "status": "approved",
+            "token": "host-secret",
+            "expires_at": int(time.time()) + 60,
+            "binding": _binding(),
+        },
+        resume=lambda binding, token, conversation: resumes.append(
+            (binding, token, conversation)
+        ) or {"resumed": True},
+    )
+    approved = controller.approve_chat_continuation(_command())
+    assert "token" not in approved
+    resume = _command(ui_operator=None, resume_id=approved["resume_id"])
+
+    assert controller.resume_chat_continuation(resume) == {"resumed": True}
+    assert resumes == [(_binding(), "host-secret", "conversation-1")]
+    with pytest.raises(PermissionError):
+        controller.resume_chat_continuation(resume)
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"conversation_id": "foreign-conversation"},
+        {"context": _context(session="foreign-session")},
+        {"presentation_owner_session_id": "foreign-session"},
+    ],
+)
+def test_host_continuation_rejects_foreign_binding(patch):
+    controller = ChatApprovalContinuationController(
+        approve=lambda *_args: {
+            "request_id": "apr-1",
+            "approved": True,
+            "status": "approved",
+            "token": "host-secret",
+            "expires_at": int(time.time()) + 60,
+            "binding": _binding(),
+        },
+        resume=lambda *_args: pytest.fail("foreign continuation executed"),
+    )
+    approved = controller.approve_chat_continuation(_command())
+    with pytest.raises(PermissionError):
+        controller.resume_chat_continuation(
+            _command(ui_operator=None, resume_id=approved["resume_id"], **patch)
+        )
+
+
+def test_host_continuation_rejects_stale_approval():
+    controller = ChatApprovalContinuationController(
+        approve=lambda *_args: {
+            "request_id": "apr-1",
+            "approved": True,
+            "status": "approved",
+            "token": "host-secret",
+            "expires_at": int(time.time()) - 1,
+            "binding": _binding(),
+        },
+        resume=lambda *_args: pytest.fail("stale continuation executed"),
+    )
+    with pytest.raises(PermissionError):
+        controller.approve_chat_continuation(_command())

@@ -502,6 +502,104 @@ def settings_vertical_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     )
 
 
+def test_chat_approval_continuation_uses_captured_host_provider_once(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real HTTP/Broker/provider; narrow legacy callbacks are deterministic doubles."""
+
+    from ecosystem.defaultspack.domain.safety import chat_continuation
+
+    server, _session, _authority = production_server
+    resumed: list[tuple[Mapping[str, object], str, str]] = []
+
+    def approve(request_id, conversation_id, _operator):
+        return {
+            "request_id": request_id,
+            "approved": True,
+            "status": "approved",
+            "token": "host-only-token",
+            "expires_at": int(time.time()) + 60,
+            "binding": {
+                "request_id": request_id,
+                "conversation_id": conversation_id,
+                "operation": "computer.click",
+                "args_hash": "b" * 64,
+                "tool_name": "computer_use",
+                "tool_call_id": "call-1",
+                "profile_id": "defaults",
+            },
+        }
+
+    def resume(binding, token, conversation_id):
+        resumed.append((binding, token, conversation_id))
+        return {
+            "resumed": True,
+            "terminal_event": "tool_call_completed",
+            "tool": "computer_use",
+        }
+
+    monkeypatch.setattr(chat_continuation, "approve_continuation", approve)
+    monkeypatch.setattr(chat_continuation, "resume_continuation", resume)
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    def post(path, body):
+        return _request(
+            server,
+            "POST",
+            _contract("POST", path),
+            body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+
+    status, approved, _ = post(
+        "/api/chat/approval/approve",
+        {
+            "request_id": "apr-1",
+            "conversation_id": "conversation-1",
+            "ui_operator": {"signed": True},
+        },
+    )
+    assert status == 200, approved
+    decision = approved["data"]
+    assert decision["resume_id"].startswith("host_resume_")
+    assert "token" not in decision
+
+    status, completed, _ = post(
+        "/api/chat/approval/resume",
+        {
+            "request_id": "apr-1",
+            "conversation_id": "conversation-1",
+            "resume_id": decision["resume_id"],
+        },
+    )
+    assert status == 200, completed
+    assert completed["data"]["resumed"] is True
+    assert resumed[0][1:] == ("host-only-token", "conversation-1")
+
+    reused_status, _, _ = post(
+        "/api/chat/approval/resume",
+        {
+            "request_id": "apr-1",
+            "conversation_id": "conversation-1",
+            "resume_id": decision["resume_id"],
+        },
+    )
+    assert reused_status in {403, 409, 503}
+
+    forged_status, _, _ = post(
+        "/api/chat/approval/approve",
+        {
+            "request_id": "apr-2",
+            "conversation_id": "conversation-1",
+            "ui_operator": {"signed": True},
+            "approval_token": "forged",
+        },
+    )
+    assert forged_status == 400
+
+
 @pytest.mark.parametrize(
     "completion",
     [

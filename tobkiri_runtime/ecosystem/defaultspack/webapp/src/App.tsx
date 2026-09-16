@@ -5931,6 +5931,7 @@ export function ChatApp() {
       const decision = await api.approveCodingApprovalForContinuation(
         currentApproval.requestId,
         activeConversationId,
+        currentApproval.argsHash ?? "",
       );
       if (!decision.approved || !decision.resume_id) {
         throw new Error(decision.reason || "approval continuation is unavailable");
@@ -6008,6 +6009,7 @@ export function ChatApp() {
       const decision = await api.approveCodingApprovalForContinuation(
         runtimeApproval.requestId,
         activeConversationId,
+        runtimeApproval.argsHash ?? "",
       );
       if (!decision.approved || !decision.resume_id) {
         throw new Error(decision.reason || "approval continuation is unavailable");
