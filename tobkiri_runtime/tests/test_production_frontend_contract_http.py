@@ -3835,17 +3835,22 @@ def test_mutation_status_reconciles_lost_response_and_exact_approval_retry(
     ]
     assert len(commits) == 1
 
-    for unknown_id in (
-        "00000000-0000-4000-8000-000000000000",
-        request_id + "-tampered",
-    ):
-        status, rejected, _ = _request(
-            server,
-            "GET",
-            f"{status_path}?request_id={unknown_id}",
-            headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
-        )
-        assert status == 409, rejected
+    status, rejected, _ = _request(
+        server,
+        "GET",
+        f"{status_path}?request_id=00000000-0000-4000-8000-000000000000",
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 404, rejected
+    assert rejected["data"]["code"] == "OPERATION_NOT_FOUND"
+
+    status, rejected, _ = _request(
+        server,
+        "GET",
+        f"{status_path}?request_id={request_id}-tampered",
+        headers={"Cookie": cookie, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 409, rejected
 
 
 def test_contract_replay_unknown_and_stale_capture_fail_closed(
