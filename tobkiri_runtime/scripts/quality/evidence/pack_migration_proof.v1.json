@@ -5218,19 +5218,19 @@
         "status": "unverified"
       },
       "source": {
-        "digest": "sha256:4804594e46f9b42eac51be218cc35a8cad1aa8c8279f40bf6d658e33c393771b",
+        "digest": "sha256:c401d7aa3082f5cd153daac210fa87f7e92d805291456a3e854bc23aea858013",
         "executable_source_registry": {
-          "digest": "sha256:fb236114dd36864c23a2a8af611a12dac3ca907341e2ad62459a2f3f7d90333a",
+          "digest": "sha256:cc9438905f80db6b95ad6e37c1e868917c98629d139f2553ba4e58f1bcc6691f",
           "path": "tobkiri_runtime/schemas/executable_sources.v1.json",
           "record_count": 3
         },
         "files": [
           {
-            "digest": "sha256:03408ff08d7e520ddc7135024dbc38dc3b218ed313ba83f3d2aa66d523540dab",
+            "digest": "sha256:60a4754b005ebff6de9cf4ce14f30a4fb07ec8ef8e97896f4b9cec982f1d3040",
             "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/rumi.pack.v3.json"
           },
           {
-            "digest": "sha256:6fec15f0c3dcb910622a093c3740c34fbd50f94e00426910d9f4e6ceb3385f22",
+            "digest": "sha256:0e79edb893f5a687dc63cc11b8c95ac55225b89393e98f3f88ecd95f45f83903",
             "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-manifest.json"
           }
         ],
@@ -5242,18 +5242,18 @@
       "target": {
         "artifact_verification": {
           "artifact_count": 4,
-          "artifact_index_digest": "sha256:1844e850eb947030ab13e947a7420916bc468bfa0b0a3abc2215ddd19e7aeca5",
-          "artifact_set_digest": "sha256:bb8dd4775610a4cb0534dceea917bfc24db30f5701bb7f040c3a79db9178ee74",
-          "executable_catalog_digest": "sha256:48e227acf4743ab87b38b8c6633da6bf51b3dfea0de88513ce52d92be83ac71a",
+          "artifact_index_digest": "sha256:0473dd6aa23843000ff1e0ce15a53a8aeb485e0ca086558bb6a5216ef9907c9b",
+          "artifact_set_digest": "sha256:b68659dcb40c712f2c8451e01bef4d92bab684ece5d5e4596462aff5d215093d",
+          "executable_catalog_digest": "sha256:426cafeb2540e4fbe7c1645b0f260e94da251184364cf9e1dfc554cf91203ae4",
           "pack_id": "rumi_host_authority_bridge_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:1844e850eb947030ab13e947a7420916bc468bfa0b0a3abc2215ddd19e7aeca5",
-            "contracts.v4.json": "sha256:19621d255ae57ce1e9a13d9cb52ecde07f05562892588187f858af699d86c0bd",
-            "executables.v4.json": "sha256:13f55235e13d2cbee4e0348eb62fb072e00a65eab3d9dade76c88347b1b1f4ca",
-            "pack.v4.json": "sha256:41603ca6a32e04f9d63b96039cfe64add1cf7588172da1faab05cd06556f7798"
+            "artifact-index.v4.json": "sha256:0473dd6aa23843000ff1e0ce15a53a8aeb485e0ca086558bb6a5216ef9907c9b",
+            "contracts.v4.json": "sha256:098bc792115f22768d99e97351bb03d63a643d24f6e437627d6874b1f3ce7aea",
+            "executables.v4.json": "sha256:86c398bd2786ea3bb2f961d3d98b82f575a3db34763c0f4a3b9391ed2e6ce1cb",
+            "pack.v4.json": "sha256:6a47b40a985e9b3922d321fb7e608089ade5b7bc341e066b14c9dd685872d788"
           }
         },
-        "digest": "sha256:bb8dd4775610a4cb0534dceea917bfc24db30f5701bb7f040c3a79db9178ee74",
+        "digest": "sha256:b68659dcb40c712f2c8451e01bef4d92bab684ece5d5e4596462aff5d215093d",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "rumi_host_authority_bridge_pack",
         "status": "artifact-integrity-verified"
@@ -11666,7 +11666,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:544b978b6913326243616dc2829e502155f7668b007e8a02ac063462b1a45001",
+    "content_digest": "sha256:8b46ca0db3f8e9770f24e22718e77fce00bd9a952a07581b0d6ea9fbf907a5a6",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 39,
@@ -11908,7 +11908,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:3229aafaf2403decbfc37120196099193786b9fade5dcfe0f1828c5e18f65f00",
+    "input_digest": "sha256:26f9b80eb94f0272cfc238ddc4179dedf01d281027af42f34c21d84cb69e7bd3",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -15924,37 +15924,37 @@
         "path": "tobkiri_runtime/ecosystem/rumi_git_write_pack/runtime/write.py"
       },
       {
-        "digest": "sha256:1844e850eb947030ab13e947a7420916bc468bfa0b0a3abc2215ddd19e7aeca5",
+        "digest": "sha256:0473dd6aa23843000ff1e0ce15a53a8aeb485e0ca086558bb6a5216ef9907c9b",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-index.v4.json"
       },
       {
-        "digest": "sha256:6fec15f0c3dcb910622a093c3740c34fbd50f94e00426910d9f4e6ceb3385f22",
+        "digest": "sha256:0e79edb893f5a687dc63cc11b8c95ac55225b89393e98f3f88ecd95f45f83903",
         "kind": "legacy-artifact-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/artifact-manifest.json"
       },
       {
-        "digest": "sha256:19621d255ae57ce1e9a13d9cb52ecde07f05562892588187f858af699d86c0bd",
+        "digest": "sha256:098bc792115f22768d99e97351bb03d63a643d24f6e437627d6874b1f3ce7aea",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:13f55235e13d2cbee4e0348eb62fb072e00a65eab3d9dade76c88347b1b1f4ca",
+        "digest": "sha256:86c398bd2786ea3bb2f961d3d98b82f575a3db34763c0f4a3b9391ed2e6ce1cb",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:41603ca6a32e04f9d63b96039cfe64add1cf7588172da1faab05cd06556f7798",
+        "digest": "sha256:6a47b40a985e9b3922d321fb7e608089ade5b7bc341e066b14c9dd685872d788",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/pack.v4.json"
       },
       {
-        "digest": "sha256:03408ff08d7e520ddc7135024dbc38dc3b218ed313ba83f3d2aa66d523540dab",
+        "digest": "sha256:60a4754b005ebff6de9cf4ce14f30a4fb07ec8ef8e97896f4b9cec982f1d3040",
         "kind": "legacy-v3-manifest",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/rumi.pack.v3.json"
       },
       {
-        "digest": "sha256:fdb96ddcdfe64f7b1ff52837b12c7e5a0c65ae77e8b94ba98445b6371078ef91",
+        "digest": "sha256:0f1e4f32ae6fd588f06c071a43c625002e99706bbabf6617906ea2de16872145",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/runtime/bridge.py"
       },
@@ -18674,7 +18674,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_workflow_pack/schemas/workflow-result.v4.schema.json"
       },
       {
-        "digest": "sha256:2332954a7cf159af0d80e8982b630ea62ba13f740397fc68843e69b44f55a2f5",
+        "digest": "sha256:a533e93d3126a6c446ebf5685ad753bec1ac2dc552a9009d2936fcd83b4d68aa",
         "kind": "hardened-executable-source-registry",
         "path": "tobkiri_runtime/schemas/executable_sources.v1.json"
       },
@@ -18735,7 +18735,7 @@
       "release-verified": 0,
       "semantically-reviewed": 39
     },
-    "observed_head_sha": "e6e240a225c8cbc424ff0d9c2c91a5c88402b455",
+    "observed_head_sha": "7c66cf6be1e04a5ec4d5dfb39e7fc708fecf59f7",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {

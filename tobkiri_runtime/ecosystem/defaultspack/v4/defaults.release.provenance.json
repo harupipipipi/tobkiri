@@ -38,7 +38,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-host-authority-bridge.pack.v4.json",
-      "digest": "sha256:68b98b0f950929ebbc8d93aa054eedc607ad16c80c7da60d4a91b72e80e93b19"
+      "digest": "sha256:6c5a6e2c07553f92eb4a84b91140b23c2e8f82ad7ed5c5bc60ff4bf9be39e72f"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi-workspace-mount.pack.v4.json",
@@ -538,7 +538,7 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_host_authority_bridge_pack.executables.v4.json",
-      "digest": "sha256:fcacd8ba035d4ab48e7f85c3adce028b8e98036b8236e2628f98adeb7fe5943e"
+      "digest": "sha256:76794c5164c228362864b48768752c246b3289d01ddd942e936ee4ff43e6e3ac"
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_host_capabilities_pack.executables.v4.json",
@@ -1337,9 +1337,9 @@
   },
   "catalog": {
     "bundle_lock_path": "ecosystem/defaultspack/v4/bundle.lock.json",
-    "bundle_digest": "sha256:c47f53c32cf679b31c12b73f026bb446c3952f880416e77d61894de9cd8a19db",
-    "catalog_revision": "sha256:b7689e8632ac2475ef90d85b4a23762bf99a17ae8364a28ad89bcb33fb95e7f0",
-    "closure_digest": "sha256:1c8ca40af7dffa369262b323bd79c4f1e0ae457659764991932e211d40816b98"
+    "bundle_digest": "sha256:7cbcd4e3f135a47e73369ef3e6cc94b9af1fcb8dd6e0411aafffa74c3aeb1172",
+    "catalog_revision": "sha256:c785a04d99329402ae7f158f2845b18aec5c41cae86bab52fd4e9dac1cbba06f",
+    "closure_digest": "sha256:c00238e6db2ae8ec41bda27b2700ab3cc03bca9a83e4c16d86ba7464a62c76c2"
   },
   "outputs": [
     {
@@ -1348,8 +1348,8 @@
     },
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
-      "digest": "sha256:5fd189b237d0a3a200afd8fb4c7129204a66657b99d5d2601a7f35c0825e99d6"
+      "digest": "sha256:c13ee5c524dc904be2c6371e29a86debfd7f840dc52711883b6bc0cde9a6aef9"
     }
   ],
-  "release_digest": "sha256:340e7e73a564c9546f96d4d9269d1dc9fe2954b373b24d9536cca6b83dfcd036"
+  "release_digest": "sha256:e113a9efdb6ab93650d3b2cf4a5d4d8b78fcc40029c245da8ab0c36acda17983"
 }
