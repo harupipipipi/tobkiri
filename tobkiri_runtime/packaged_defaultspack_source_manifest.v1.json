@@ -1568,15 +1568,15 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.executables.v4.json",
       "type": "regular-file",
-      "size": 3805,
-      "sha256": "194f99d9b904db026d4480dae1142ecc17d97b6c171071b4847a474aee498c69",
+      "size": 6511,
+      "sha256": "ae3e2a9676c9fffb613138069cdff138d5a05ec20733b0a6f562631a5a29925d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/rumi_command_protocol_pack.pack.v4.json",
       "type": "regular-file",
-      "size": 6360,
-      "sha256": "b33fc77e2ed867779b9aad03e1ec203ceb5b16eef5f55a0a26d9528d8e70ff69",
+      "size": 7741,
+      "sha256": "4d8e099b067bdf9f05247eceafef64d6a70b0f3f9396df6ba965d82538433635",
       "executable": false
     },
     {

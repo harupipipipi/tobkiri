@@ -324,6 +324,24 @@ class DefaultspackHTTPPresentation:
             target.operation_id,
             target.provider_id,
             target.function_id,
+        ) == (
+            "defaults.commands.invoke",
+            "tobkiri.action.command.invoke.v1",
+            "command.invoke",
+            "rumi_command_protocol_pack.command.invoke",
+            "rumi_command_protocol_pack.command.invoke",
+        ):
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id:
+                raise ValueError("command invocation requires a captured identity")
+            return {**dict(payload), "profile_id": profile_id}
+        if (
+            target.contribution_id,
+            target.contract_id,
+            target.operation_id,
+            target.provider_id,
+            target.function_id,
         ) in {MODEL_PROFILE_LIST_TARGET, CONVERSATION_LIST_TARGET, TOOL_CATALOG_TARGET}:
             session.assert_current()
             profile_id = str(getattr(session, "profile_id", ""))

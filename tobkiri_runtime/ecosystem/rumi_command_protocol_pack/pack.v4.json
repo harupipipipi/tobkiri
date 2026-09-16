@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:77e6ccc23027a9eab6125e1fd30a811d7442b452aa62bc450be81625ed31c43f",
+      "digest": "sha256:63acc321d00f33dce160353608626684aff120f302808d1894a69e861a4626a6",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
+      "digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
       "kind": "executable",
       "path": "runtime/catalog.py"
     },
@@ -16,12 +16,24 @@
       "path": "runtime/high_risk_adapter.py"
     },
     {
+      "digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+      "kind": "executable",
+      "path": "runtime/invoke.py"
+    },
+    {
       "digest": "sha256:745eb8d6b16e46284feafa8a76fd26f1f74d25a1eca6cfc3f303908dee9ebe7a",
       "kind": "schema",
       "path": "schemas/command-protocol-v1.schema.json"
     }
   ],
   "contracts": [
+    {
+      "contract_id": "tobkiri.action.command.invoke.v1",
+      "operations": [
+        "command.invoke"
+      ],
+      "revision_digest": "sha256:40c93af117eee362339659ee697125a33ebee82c195acc7b9f44b4beab707e7c"
+    },
     {
       "contract_id": "tobkiri.service.command.high-risk.v1",
       "operations": [
@@ -41,10 +53,20 @@
     {
       "contract_revision_digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
       "id": "rumi_command_protocol_pack.catalog.read",
-      "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
+      "implementation_digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
       "isolation": "dedicated_process",
       "operations": [
         "command.catalog.read"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:40c93af117eee362339659ee697125a33ebee82c195acc7b9f44b4beab707e7c",
+      "id": "rumi_command_protocol_pack.command.invoke",
+      "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+      "isolation": "dedicated_process",
+      "operations": [
+        "command.invoke"
       ],
       "role": "host_capability_provider"
     },
@@ -60,9 +82,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:90e5d5960a66a8f78fa06c8d4b30e06b5da7f0fab4bfebaa3814a2969c1c98ea",
-    "contract_catalog_digest": "sha256:cc20426f67ecaf9d94ca87dde44f7201b67a5ab07b26f94d7fc0815038b821f9",
-    "source_identity": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9"
+    "artifact_set_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
+    "contract_catalog_digest": "sha256:da1d5e40c31adaf114d9acee7c05ac32dc44e2b553a5cc7645c653adb229c09c",
+    "source_identity": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313"
   },
   "migration": {
     "compatibility": "none",
@@ -86,6 +108,17 @@
       "source_kind": "canonical_v4_contract"
     },
     {
+      "contract_reference": "tobkiri.action.command.invoke.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:command.invoke"
+      ],
+      "operation_id": "command.invoke",
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.invoke",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
       "contract_reference": "tobkiri.service.command.high-risk.v1",
       "effect_ceiling": [
         "host:brokered-execution",
@@ -98,7 +131,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:90e5d5960a66a8f78fa06c8d4b30e06b5da7f0fab4bfebaa3814a2969c1c98ea",
+    "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
     "display_name": "Tobkiri Command Protocol",
     "id": "rumi_command_protocol_pack",
     "kind": "host_extension",
@@ -108,7 +141,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9",
+        "digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -119,7 +152,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9",
+    "source_digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_command_protocol_pack"
   },
@@ -133,6 +166,14 @@
       "provider_id": "rumi_command_protocol_pack.catalog.read"
     },
     {
+      "contract_reference": "tobkiri.action.command.invoke.v1",
+      "operations": [
+        "command.invoke"
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.invoke"
+    },
+    {
       "contract_reference": "tobkiri.service.command.high-risk.v1",
       "operations": [
         "high_risk_command.manage"
@@ -144,6 +185,7 @@
   "requirements": {
     "approval_policy": "capability_gated",
     "capabilities": [
+      "command.invoke",
       "host.authority.consume",
       "command.catalog.read"
     ],

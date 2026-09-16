@@ -30,6 +30,26 @@ _CATALOG_TARGET = {
     "provider_id": "rumi_command_protocol_pack.catalog.read",
     "function_id": "rumi_command_protocol_pack.catalog.read",
 }
+_INVOKE_ROUTE = f"{_COMMAND_NAMESPACE}/invoke"
+_INVOKE_TARGET = {
+    "contribution_id": "defaults.commands.invoke",
+    "contract_id": "tobkiri.action.command.invoke.v1",
+    "operation_id": "command.invoke",
+    "provider_id": "rumi_command_protocol_pack.command.invoke",
+    "function_id": "rumi_command_protocol_pack.command.invoke",
+}
+_INVOKE_PAYLOAD_KEYS = frozenset(
+    {
+        "command_ref",
+        "args",
+        "invocation_id",
+        "mode",
+        "conversation_id",
+        "catalog_revision",
+        "idempotency_key",
+        "client_sequence",
+    }
+)
 
 # These aliases are conservative test policy, not production URL rewriting.
 COMMAND_PROTOCOL_HTTP_CASES = (
@@ -222,7 +242,19 @@ def command_protocol_binding_findings(
             )
             and getattr(targets[0], "allowed_payload_keys", None) == frozenset()
         )
-        if exact_high_risk or exact_catalog:
+        exact_invoke = (
+            getattr(binding, "method", "").upper() == "POST"
+            and path == _INVOKE_ROUTE
+            and getattr(binding, "presentation", None) == "broker_result"
+            and len(targets) == 1
+            and all(
+                getattr(targets[0], field, None) == expected
+                for field, expected in _INVOKE_TARGET.items()
+            )
+            and getattr(targets[0], "allowed_payload_keys", None)
+            == _INVOKE_PAYLOAD_KEYS
+        )
+        if exact_high_risk or exact_catalog or exact_invoke:
             continue
         findings.append(
             {

@@ -3995,6 +3995,7 @@
       "approval_policy": "capability_gated",
       "authority": "v4-authoritative",
       "capabilities": [
+        "command.invoke",
         "host.authority.consume",
         "command.catalog.read"
       ],
@@ -4006,6 +4007,14 @@
       "execution_boundary": "host_brokered",
       "functions": [
         {
+          "contract_id": "tobkiri.action.command.invoke.v1",
+          "function_id": "rumi_command_protocol_pack.command.invoke",
+          "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+          "operation_ids": [
+            "command.invoke"
+          ]
+        },
+        {
           "contract_id": "tobkiri.service.command.high-risk.v1",
           "function_id": "rumi_command_protocol_pack.high-risk-command.service",
           "implementation_digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
@@ -4016,7 +4025,7 @@
         {
           "contract_id": "tobkiri.resource.command.catalog.v1",
           "function_id": "rumi_command_protocol_pack.catalog.read",
-          "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
+          "implementation_digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
           "operation_ids": [
             "command.catalog.read"
           ]
@@ -4039,6 +4048,97 @@
       },
       "pack_id": "rumi_command_protocol_pack",
       "provided_contracts": [
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.action.command.invoke.v1",
+          "failure": "fail_closed",
+          "isolation": "process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "effect_ceiling": [
+                "host:brokered-execution",
+                "capability:command.invoke"
+              ],
+              "entrypoint_id": "command.invoke",
+              "id": "command.invoke",
+              "implementation_digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4"
+            }
+          ],
+          "owner": "rumi_command_protocol_pack",
+          "provider_id": "rumi_command_protocol_pack.command.invoke",
+          "required_capabilities": [
+            "command.invoke"
+          ],
+          "schemas": {
+            "error": {
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "args": {
+                  "maxProperties": 0,
+                  "type": "object"
+                },
+                "catalog_revision": {
+                  "maxLength": 160,
+                  "type": "string"
+                },
+                "client_sequence": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "command_ref": {
+                  "const": "defaultspack:help"
+                },
+                "conversation_id": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "idempotency_key": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "invocation_id": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "mode": {
+                  "enum": [
+                    "chat",
+                    "coding",
+                    "agent"
+                  ]
+                },
+                "profile_id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "profile_id",
+                "command_ref",
+                "args",
+                "invocation_id",
+                "mode"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
         {
           "cardinality": "one",
           "contract_id": "tobkiri.service.command.high-risk.v1",
@@ -4122,7 +4222,7 @@
             {
               "entrypoint_id": "command.catalog.read",
               "id": "command.catalog.read",
-              "implementation_digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e"
+              "implementation_digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97"
             }
           ],
           "owner": "rumi_command_protocol_pack",
@@ -4158,12 +4258,17 @@
       ],
       "runtime_artifacts": [
         {
+          "digest": "sha256:3bed5e56f38cb81a267bb72e1b39c5e5008629030f37ad6be5a6f6c67e2066d4",
+          "kind": "executable",
+          "path": "runtime/invoke.py"
+        },
+        {
           "digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
           "kind": "executable",
           "path": "runtime/high_risk_adapter.py"
         },
         {
-          "digest": "sha256:0adcf832c5223e2642468b4b4178e0bb2141b017b463af23aa017f310f86889e",
+          "digest": "sha256:7ced57d2e85d6144ca66356d5d15687235cfd53e57539295a22bf1d703de5e97",
           "kind": "executable",
           "path": "runtime/catalog.py"
         },
@@ -4176,7 +4281,7 @@
       "secrets": [],
       "source_evidence": [
         {
-          "digest": "sha256:521e986437ad9886c0085bfe13b37559ee0234d92298c60f51d17ddd04fc30e8",
+          "digest": "sha256:c5cf4149737f38bc44f62931cf63be166cf5a88bc6ad56c906eeda2ffa8d4c7b",
           "path": "schemas/executable_sources.v1.json",
           "rule_id": "canonical-bundled-v4-source"
         }

@@ -261,6 +261,30 @@
       ]
     },
     {
+      "method": "POST",
+      "path": "/api/command-protocol/v1/invoke",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.commands.invoke",
+          "contract_id": "tobkiri.action.command.invoke.v1",
+          "operation_id": "command.invoke",
+          "provider_id": "rumi_command_protocol_pack.command.invoke",
+          "function_id": "rumi_command_protocol_pack.command.invoke",
+          "allowed_payload_keys": [
+            "command_ref",
+            "args",
+            "invocation_id",
+            "mode",
+            "conversation_id",
+            "catalog_revision",
+            "idempotency_key",
+            "client_sequence"
+          ]
+        }
+      ]
+    },
+    {
       "method": "GET",
       "path": "/api/chat/turn/events",
       "presentation": "turn_events",

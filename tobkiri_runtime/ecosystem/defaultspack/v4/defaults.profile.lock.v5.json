@@ -163,7 +163,7 @@
     {
       "role": "pack",
       "identity": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:90e5d5960a66a8f78fa06c8d4b30e06b5da7f0fab4bfebaa3814a2969c1c98ea"
+      "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82"
     },
     {
       "role": "pack",
@@ -370,8 +370,8 @@
     },
     {
       "pack_id": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:90e5d5960a66a8f78fa06c8d4b30e06b5da7f0fab4bfebaa3814a2969c1c98ea",
-      "executable_catalog_digest": "sha256:357db319ac98a5159faddc5abea3793169816c82beb096b983263289280f501e",
+      "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
+      "executable_catalog_digest": "sha256:55ecc8932a7f13e50ca037217a9b21d68fa15652537db94d0d7314fdcc51aecd",
       "variant_id": "rumi_command_protocol_pack.catalog.read.python",
       "platform": "any",
       "architecture": "any",
@@ -382,8 +382,20 @@
     },
     {
       "pack_id": "rumi_command_protocol_pack",
-      "artifact_digest": "sha256:90e5d5960a66a8f78fa06c8d4b30e06b5da7f0fab4bfebaa3814a2969c1c98ea",
-      "executable_catalog_digest": "sha256:357db319ac98a5159faddc5abea3793169816c82beb096b983263289280f501e",
+      "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
+      "executable_catalog_digest": "sha256:55ecc8932a7f13e50ca037217a9b21d68fa15652537db94d0d7314fdcc51aecd",
+      "variant_id": "rumi_command_protocol_pack.command.invoke.python",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "execution_kind": "host_extension",
+      "domain_kind": "dedicated_process"
+    },
+    {
+      "pack_id": "rumi_command_protocol_pack",
+      "artifact_digest": "sha256:ff6e3470c3cad0cd751861ae9636a07b2298048233b935b0922138c4266e4c82",
+      "executable_catalog_digest": "sha256:55ecc8932a7f13e50ca037217a9b21d68fa15652537db94d0d7314fdcc51aecd",
       "variant_id": "rumi_command_protocol_pack.high-risk-command.service.python",
       "platform": "any",
       "architecture": "any",

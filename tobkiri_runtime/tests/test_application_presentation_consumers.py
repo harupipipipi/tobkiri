@@ -90,7 +90,7 @@ def test_settings_read_rejects_invalid_owner_revision(tmp_path, monkeypatch, rev
     assert list(tmp_path.iterdir()) == []
 
 
-def _context(root, function, contract, operation, *, high_risk=False):
+def _context(root, function, contract, operation, *, high_risk=False, invoke=False):
     binding = SimpleNamespace(
         function=SimpleNamespace(function_id=function, implementation_digest="impl"),
         operation=SimpleNamespace(
@@ -108,21 +108,34 @@ def _context(root, function, contract, operation, *, high_risk=False):
             operation_id="high_risk_command.manage",
         ),
     )
+    ordinary = SimpleNamespace(
+        function=SimpleNamespace(
+            function_id="rumi_command_protocol_pack.command.invoke"
+        ),
+        operation=SimpleNamespace(
+            contract_id="tobkiri.action.command.invoke.v1",
+            operation_id="command.invoke",
+        ),
+    )
     return SimpleNamespace(
         profile_id="defaults",
         user_data_root=root,
         provider_bindings=(binding,),
         domain_ids={(contract, operation, "principal"): "domain"},
-        catalog_bindings=(high,) if high_risk else (),
+        catalog_bindings=(high,) * high_risk + (ordinary,) * invoke,
     )
 
 
 @pytest.mark.parametrize("high_risk", [False, True])
-def test_command_consumer_keeps_host_approval_policy(tmp_path: Path, high_risk: bool) -> None:
+@pytest.mark.parametrize("invoke", [False, True])
+def test_command_consumer_keeps_host_approval_policy(
+    tmp_path: Path, high_risk: bool, invoke: bool,
+) -> None:
     factory = CommandCatalogHostFactoryV4()
     captured = factory.capture(
         _context(
-            tmp_path, COMMAND_FUNCTION, COMMAND_CONTRACT, COMMAND_OPERATION, high_risk=high_risk
+            tmp_path, COMMAND_FUNCTION, COMMAND_CONTRACT, COMMAND_OPERATION,
+            high_risk=high_risk, invoke=invoke,
         )
     )
     client = Client()
@@ -131,10 +144,19 @@ def test_command_consumer_keeps_host_approval_policy(tmp_path: Path, high_risk: 
     available = [
         item for item in result["commands"] if item["availability"]["status"] == "available"
     ]
-    assert bool(available) is high_risk
-    assert all(item["authorization"]["approval_required"] for item in available)
+    assert {item["identity"]["id"] for item in available} == (
+        ({"terminal", "commit", "push", "patch", "restore"} if high_risk else set())
+        | ({"help"} if invoke else set())
+    )
     assert all(
-        item["authorization"]["permissions"] == ["host.process.exec_guarded"] for item in available
+        item["authorization"]["approval_required"]
+        for item in available
+        if item["identity"]["id"] != "help"
+    )
+    assert all(
+        item["authorization"]["permissions"] == ["host.process.exec_guarded"]
+        for item in available
+        if item["identity"]["id"] != "help"
     )
     assert client.scopes == [
         {

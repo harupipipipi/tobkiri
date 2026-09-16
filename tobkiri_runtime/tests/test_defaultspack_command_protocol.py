@@ -751,6 +751,34 @@ def test_only_captured_command_protocol_route_is_not_legacy_transport() -> None:
             ),
         )
     )
+    invoke = next(
+        binding for binding in bindings if binding.path == "/api/command-protocol/v1/invoke"
+    )
+    assert command_protocol_binding_findings(
+        (
+            replace(
+                invoke,
+                targets=(
+                    replace(invoke.targets[0], function_id="untrusted.function"),
+                ),
+            ),
+        )
+    )
+    assert command_protocol_binding_findings(
+        (
+            replace(
+                invoke,
+                targets=(
+                    replace(
+                        invoke.targets[0],
+                        allowed_payload_keys=(
+                            invoke.targets[0].allowed_payload_keys | {"approved"}
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
 
 
 def test_command_catalog_route_policy_rejects_widening() -> None:

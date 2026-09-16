@@ -3,6 +3,122 @@
   "contracts": [
     {
       "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.command.invoke.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "host:brokered-execution",
+            "capability:command.invoke"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:cbe091713e400f17723409d22f9374f2dff0694d215d5ca96b959b449ae3334e",
+          "operation_id": "command.invoke",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_command_protocol_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_command_protocol_pack.command.invoke",
+        "required_capabilities": [
+          "command.invoke"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:40c93af117eee362339659ee697125a33ebee82c195acc7b9f44b4beab707e7c",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:cbe091713e400f17723409d22f9374f2dff0694d215d5ca96b959b449ae3334e": {
+          "additionalProperties": false,
+          "properties": {
+            "args": {
+              "maxProperties": 0,
+              "type": "object"
+            },
+            "catalog_revision": {
+              "maxLength": 160,
+              "type": "string"
+            },
+            "client_sequence": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "command_ref": {
+              "const": "defaultspack:help"
+            },
+            "conversation_id": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "idempotency_key": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "invocation_id": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "mode": {
+              "enum": [
+                "chat",
+                "coding",
+                "agent"
+              ]
+            },
+            "profile_id": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile_id",
+            "command_ref",
+            "args",
+            "invocation_id",
+            "mode"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
       "contract_id": "tobkiri.service.command.high-risk.v1",
       "operations": [
         {
@@ -24,7 +140,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9",
+            "digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -35,7 +151,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9",
+        "source_digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_command_protocol_pack"
       },
@@ -119,7 +235,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9",
+            "digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -130,7 +246,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9",
+        "source_digest": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_command_protocol_pack"
       },
@@ -159,5 +275,5 @@
     }
   ],
   "pack_id": "rumi_command_protocol_pack",
-  "source_identity": "sha256:97b8927dd322fdb241354bdd6b469272cdd003211732da0e58951bfec68877e9"
+  "source_identity": "sha256:163075e2d5e142eb341291371f57a42c13d7e28a3607bc26d46424740b26d313"
 }

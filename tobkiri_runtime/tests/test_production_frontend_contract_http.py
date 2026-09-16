@@ -1249,11 +1249,11 @@ def test_settings_reads_saved_values_and_models_through_real_broker(
         for item in command_catalog["commands"]
         if item["availability"]["status"] == "available"
     }
-    assert available == {"terminal", "commit", "push", "patch", "restore"}
+    assert available == {"help", "terminal", "commit", "push", "patch", "restore"}
     assert all(
         item["authorization"]["approval_required"]
         for item in command_catalog["commands"]
-        if item["identity"]["id"] in available
+        if item["identity"]["id"] in available - {"help"}
     )
     for query in ("profile_id=other", "approved=true", "operation=invoke"):
         status, payload, _ = _request(
@@ -1705,6 +1705,9 @@ def test_command_protocol_paths_are_inert_in_captured_production_http(
         "X-Rumi-CSRF": csrf,
     }
     for method, path, body in COMMAND_PROTOCOL_HTTP_CASES:
+        if method == "POST" and path == "/api/command-protocol/v1/invoke":
+            # The one exact ordinary command route is covered separately.
+            continue
         status, payload, _ = _request(
             server,
             method,
@@ -1728,6 +1731,61 @@ def test_command_protocol_paths_are_inert_in_captured_production_http(
     assert file_snapshot(offline_queue_path) is None
     assert len(authority.audit_events()) == audit_count
     assert session.broker._executor._work_queue.empty()
+
+
+def test_help_command_invokes_the_exact_owner_and_replays_durably(
+    production_server,
+) -> None:
+    """Only canonical /help reaches the ordinary command Function."""
+
+    server, _session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    invocation_id = f"help-{uuid.uuid4()}"
+    request = {
+        "command_ref": "defaultspack:help",
+        "args": {},
+        "invocation_id": invocation_id,
+        "mode": "chat",
+    }
+    headers = {
+        "Cookie": cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": csrf,
+    }
+
+    status, first, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/command-protocol/v1/invoke"),
+        body=request,
+        headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, first
+    assert first["data"]["operation_id"] == invocation_id
+    assert first["data"]["status"] == "succeeded"
+    assert first["data"]["legacy_result"]["action"] == "open_command_help"
+    assert first["data"]["legacy_result"]["requires_approval"] is False
+
+    status, replay, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/command-protocol/v1/invoke"),
+        body=request,
+        headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, replay
+    assert replay["data"] == first["data"]
+
+    rejected = {**request, "command_ref": "defaultspack:status"}
+    status, payload, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/command-protocol/v1/invoke"),
+        body=rejected,
+        headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 503, payload
+    assert payload["error"] == "The runtime operation is unavailable"
 
 
 def test_provider_configuration_http_requires_approval_and_saves_once(

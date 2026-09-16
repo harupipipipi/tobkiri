@@ -32,9 +32,18 @@ _HIGH_RISK_TARGET = (
     "tobkiri.service.command.high-risk.v1",
     "high_risk_command.manage",
 )
+_INVOKE_TARGET = (
+    "rumi_command_protocol_pack.command.invoke",
+    "tobkiri.action.command.invoke.v1",
+    "command.invoke",
+)
 
 
-def _catalog(definitions: Mapping[str, Any], high_risk_available: bool) -> dict[str, Any]:
+def _catalog(
+    definitions: Mapping[str, Any],
+    high_risk_available: bool,
+    invoke_available: bool,
+) -> dict[str, Any]:
     if set(definitions) != {"commands", "diagnostics", "pack_generation"}:
         raise ValueError("command presentation fields are invalid")
     generation = definitions["pack_generation"]
@@ -55,9 +64,12 @@ def _catalog(definitions: Mapping[str, Any], high_risk_available: bool) -> dict[
                 "approval_required": True, "approval_policy": "required",
                 "executor_policy_ref": "tobkiri.command.human_approved",
             }
+        available = (
+            high_risk_available and operation_ref in _APPROVAL_COMMANDS
+        ) or (invoke_available and operation_ref == "host:open_command_help")
         command["availability"] = (
             {"status": "available"}
-            if high_risk_available and operation_ref in _APPROVAL_COMMANDS else {
+            if available else {
                 "status": "unavailable",
                 "reason_code": "canonical_binding_missing",
                 "reason": "This command's canonical execution binding is not connected.",
@@ -112,6 +124,11 @@ class CommandCatalogHostFactoryV4:
             == _HIGH_RISK_TARGET
             for item in context.catalog_bindings
         )
+        invoke_available = any(
+            (item.function.function_id, item.operation.contract_id, item.operation.operation_id)
+            == _INVOKE_TARGET
+            for item in context.catalog_bindings
+        )
 
         def invoke(
             operation_id: str,
@@ -134,7 +151,7 @@ class CommandCatalogHostFactoryV4:
             )
             if not isinstance(definitions, Mapping):
                 raise ValueError("command presentation is unavailable")
-            return _catalog(definitions, high_risk_available)
+            return _catalog(definitions, high_risk_available, invoke_available)
 
         return CapturedHostProviderV4(
             (
