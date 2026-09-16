@@ -12,7 +12,7 @@ const MAP_PATH = resolve(
 const OUTPUT_PATH = resolve(FRONTEND_ROOT, "src/lib/generatedFrontendContractMap.ts");
 const MAP_ARTIFACT_PATH = "defaultspack/frontend_contract_map.v4.json";
 const PINNED_ARTIFACT_DIGEST =
-  "sha256:09b267370dfde74a002321cf77af0140bec0059413eebb8d87b2066178831645";
+  "sha256:cedb10ee3e21a07983a6cccb3d26d7a70ab9485fb678df764d7504c88ec65ec2";
 
 const RUNTIME_TARGET_SPECS = [
   {

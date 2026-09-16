@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:09b267370dfde74a002321cf77af0140bec0059413eebb8d87b2066178831645
+// Raw source digest: sha256:cedb10ee3e21a07983a6cccb3d26d7a70ab9485fb678df764d7504c88ec65ec2
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,14 +28,46 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:09b267370dfde74a002321cf77af0140bec0059413eebb8d87b2066178831645" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:cedb10ee3e21a07983a6cccb3d26d7a70ab9485fb678df764d7504c88ec65ec2" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:09b267370dfde74a002321cf77af0140bec0059413eebb8d87b2066178831645",
+  "artifact_digest": "sha256:cedb10ee3e21a07983a6cccb3d26d7a70ab9485fb678df764d7504c88ec65ec2",
   "routes": [
+    {
+      "method": "GET",
+      "path": "/api/coding/workspaces",
+      "presentation": "workspace_list",
+      "targets": [
+        {
+          "contribution_id": "defaults.workspaces.list",
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+          "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/coding/workspaces/get",
+      "presentation": "workspace_record",
+      "targets": [
+        {
+          "contribution_id": "defaults.workspaces.get",
+          "contract_id": "tobkiri.resource.workspace.v1",
+          "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+          "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+          "allowed_payload_keys": [
+            "workspace_id"
+          ]
+        }
+      ]
+    },
     {
       "method": "GET",
       "path": "/api/tools/catalog",
@@ -156,6 +188,48 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
       ]
     },
     {
+      "method": "POST",
+      "path": "/api/command-protocol/v1/invoke",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.commands.invoke",
+          "contract_id": "tobkiri.action.command.invoke.v1",
+          "operation_id": "command.invoke",
+          "provider_id": "rumi_command_protocol_pack.command.invoke",
+          "function_id": "rumi_command_protocol_pack.command.invoke",
+          "allowed_payload_keys": [
+            "command_ref",
+            "args",
+            "invocation_id",
+            "mode",
+            "conversation_id",
+            "catalog_revision",
+            "idempotency_key",
+            "client_sequence"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/chat/turn/events",
+      "presentation": "turn_events",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversations.turn.events",
+          "contract_id": "tobkiri.event.turn.v1",
+          "operation_id": "rumi_turn_runtime_pack.turn-events",
+          "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
+          "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+          "allowed_payload_keys": [
+            "turn_id",
+            "conversation_id"
+          ]
+        }
+      ]
+    },
+    {
       "method": "GET",
       "path": "/api/ui/full-catalog",
       "presentation": "broker_result",
@@ -167,6 +241,41 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "provider_id": "tobkiri.ui.catalog.read",
           "function_id": "tobkiri.ui.catalog.read",
           "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.projects.read",
+          "contract_id": "tobkiri.resource.project.state.v1",
+          "operation_id": "tobkiri_ui_settings_pack.projects-read",
+          "provider_id": "tobkiri.project.state.read",
+          "function_id": "tobkiri.project.state.read",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/projects",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.projects.replace",
+          "contract_id": "tobkiri.action.project.state.v1",
+          "operation_id": "tobkiri_ui_settings_pack.projects-replace",
+          "provider_id": "tobkiri.project.state.replace",
+          "function_id": "tobkiri.project.state.replace",
+          "allowed_payload_keys": [
+            "projects",
+            "expected_revision",
+            "mutation_id",
+            "migration_digest"
+          ]
         }
       ]
     },
@@ -920,6 +1029,34 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
 };
 
 const EXPECTED_ROUTES = {
+  "GET /api/coding/workspaces": {
+    "presentation": "workspace_list",
+    "targets": [
+      {
+        "contribution_id": "defaults.workspaces.list",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+        "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+        "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "GET /api/coding/workspaces/get": {
+    "presentation": "workspace_record",
+    "targets": [
+      {
+        "contribution_id": "defaults.workspaces.get",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "operation_id": "rumi_workspace_mount_pack.workspace-resource",
+        "provider_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+        "function_id": "rumi_workspace_mount_pack.workspace-mount.resource",
+        "allowed_payload_keys": [
+          "workspace_id"
+        ]
+      }
+    ]
+  },
   "GET /api/tools/catalog": {
     "presentation": "tool_catalog",
     "targets": [
@@ -1025,6 +1162,44 @@ const EXPECTED_ROUTES = {
       }
     ]
   },
+  "POST /api/command-protocol/v1/invoke": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.commands.invoke",
+        "contract_id": "tobkiri.action.command.invoke.v1",
+        "operation_id": "command.invoke",
+        "provider_id": "rumi_command_protocol_pack.command.invoke",
+        "function_id": "rumi_command_protocol_pack.command.invoke",
+        "allowed_payload_keys": [
+          "command_ref",
+          "args",
+          "invocation_id",
+          "mode",
+          "conversation_id",
+          "catalog_revision",
+          "idempotency_key",
+          "client_sequence"
+        ]
+      }
+    ]
+  },
+  "GET /api/chat/turn/events": {
+    "presentation": "turn_events",
+    "targets": [
+      {
+        "contribution_id": "defaults.conversations.turn.events",
+        "contract_id": "tobkiri.event.turn.v1",
+        "operation_id": "rumi_turn_runtime_pack.turn-events",
+        "provider_id": "rumi_turn_runtime_pack.turn-runtime.events",
+        "function_id": "rumi_turn_runtime_pack.turn-runtime.events",
+        "allowed_payload_keys": [
+          "turn_id",
+          "conversation_id"
+        ]
+      }
+    ]
+  },
   "GET /api/ui/full-catalog": {
     "presentation": "broker_result",
     "targets": [
@@ -1035,6 +1210,37 @@ const EXPECTED_ROUTES = {
         "provider_id": "tobkiri.ui.catalog.read",
         "function_id": "tobkiri.ui.catalog.read",
         "allowed_payload_keys": []
+      }
+    ]
+  },
+  "GET /api/projects": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.projects.read",
+        "contract_id": "tobkiri.resource.project.state.v1",
+        "operation_id": "tobkiri_ui_settings_pack.projects-read",
+        "provider_id": "tobkiri.project.state.read",
+        "function_id": "tobkiri.project.state.read",
+        "allowed_payload_keys": []
+      }
+    ]
+  },
+  "PUT /api/projects": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.projects.replace",
+        "contract_id": "tobkiri.action.project.state.v1",
+        "operation_id": "tobkiri_ui_settings_pack.projects-replace",
+        "provider_id": "tobkiri.project.state.replace",
+        "function_id": "tobkiri.project.state.replace",
+        "allowed_payload_keys": [
+          "projects",
+          "expected_revision",
+          "mutation_id",
+          "migration_digest"
+        ]
       }
     ]
   },
