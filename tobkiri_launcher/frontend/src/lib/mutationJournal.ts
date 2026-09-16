@@ -8,6 +8,7 @@ import {getPanelJournalScope} from './panelJournalScope';
 
 const LEGACY_MUTATION_JOURNAL_STORAGE_KEY = 'tobkiri-launcher-mutation-journal-v1';
 const SCOPED_MUTATION_JOURNAL_STORAGE_PREFIX = 'tobkiri-launcher-mutation-journal-v2';
+const LEGACY_ADOPTION_MARKER = 'legacy-unscoped-v1';
 
 export type MutationJournalState = 'pending' | 'unknown' | 'invalid';
 
@@ -136,7 +137,13 @@ function readStoredRecords(storage: Storage | null, storageKey: string): Mutatio
   const legacy = parseStoredRecords(readSafeStorageValue(
     storage,
     LEGACY_MUTATION_JOURNAL_STORAGE_KEY,
-  ));
+  )).map((record) => ({
+    ...record,
+    metadata: {
+      ...record.metadata,
+      journal_migration: LEGACY_ADOPTION_MARKER,
+    },
+  }));
   return [...scoped, ...legacy];
 }
 
@@ -209,6 +216,11 @@ export function listMutationJournal(): MutationJournalRecord[] {
   const records = allRecords();
   persist(records);
   return records;
+}
+
+/** Return true only for an unscoped v1 record adopted by this authenticated root. */
+export function isLegacyAdoptedMutation(record: MutationJournalRecord): boolean {
+  return record.metadata.journal_migration === LEGACY_ADOPTION_MARKER;
 }
 
 /**

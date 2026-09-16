@@ -215,6 +215,51 @@ test('unknown Pack mutations expose a distinct status icon and stable error-copy
   }
 });
 
+test('verified legacy absence requires confirmation and clears only the exact local lock', serialTestOptions, async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  const record = {
+    key: 'pack:toggle:research-pack:disable',
+    requestId: 'e9e7f7fb-e8db-4f21-bb5a-81b8f0f6ae02',
+    state: 'unknown' as const,
+    createdAt: 1,
+    metadata: {
+      kind: 'pack.toggle',
+      pack_id: samplePack.id,
+      expected_enabled: false,
+      journal_migration: 'legacy-unscoped-v1',
+    },
+  };
+  const cleared: Array<[string, string]> = [];
+  useAppStore.setState({
+    packs: [samplePack],
+    packCatalogBinding: activePackBinding,
+    dialog: null,
+    packMutationUnknown: {[record.key]: record},
+    packLegacyRecovery: {[record.key]: record},
+    loadPacks: async () => {},
+    clearAbsentLegacyPackMutation: (key, requestId) => {
+      cleared.push([key, requestId]);
+    },
+  });
+
+  try {
+    await renderSurface(root);
+    assert.match(container.textContent ?? '', /absent from the current data root/);
+    await act(async () => buttonWithText(container, 'Review recovery').click());
+    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', /does not install, approve, enable, disable/);
+    assert.deepEqual(cleared, []);
+    await act(async () => buttonWithText(dialog, 'Clear local lock').click());
+    assert.deepEqual(cleared, [[record.key, record.requestId]]);
+  } finally {
+    await act(async () => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
 test('failed Pack approval revocation stays approved and surfaces the typed failure', serialTestOptions, async () => {
   const previousState = useAppStore.getState();
   const {dom, container, root} = createSurface();

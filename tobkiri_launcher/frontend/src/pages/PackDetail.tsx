@@ -29,6 +29,7 @@ export function PackDetail() {
   const packInstallPending = useAppStore(state => state.packInstallPending);
   const packApprovalPending = useAppStore(state => state.packApprovalPending);
   const packMutationUnknown = useAppStore(state => state.packMutationUnknown);
+  const packLegacyRecovery = useAppStore(state => state.packLegacyRecovery);
   const packOperationUnknown = useAppStore(state => state.packOperationUnknown);
   const frontendCatalog = useAppStore(state => state.frontendCatalog);
   const frontendCatalogLoading = useAppStore(state => state.frontendCatalogLoading);
@@ -44,13 +45,22 @@ export function PackDetail() {
   const showDialog = useAppStore(state => state.showDialog);
   const togglePack = useAppStore(state => state.togglePack);
   const addToast = useAppStore(state => state.addToast);
+  const clearAbsentLegacyPackMutation = useAppStore(
+    state => state.clearAbsentLegacyPackMutation,
+  );
   const [installing, setInstalling] = useState(false);
   const [approving, setApproving] = useState(false);
 
   const pack = packs.find(p => p.id === id);
+  const unknownPackMutation = pack
+    ? Object.values(packMutationUnknown).find((record) => record.metadata.pack_id === pack.id)
+    : undefined;
+  const legacyRecovery = unknownPackMutation
+    ? packLegacyRecovery[unknownPackMutation.key]
+    : undefined;
   const mutationResultUnknown = Boolean(
     pack && (
-      Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)
+      unknownPackMutation
       || Object.values(packOperationUnknown).some((record) => record.metadata.pack_id === pack.id)
     ),
   );
@@ -269,8 +279,31 @@ export function PackDetail() {
         {mutationResultUnknown ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300/70 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
             <CircleHelp className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="pack-mutation-unknown" />
-            <span className="min-w-0 flex-1">The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.</span>
+            <span className="min-w-0 flex-1">
+              {legacyRecovery
+                ? 'This legacy recovery lock is absent from the current data root and contradicts the authoritative catalog.'
+                : 'The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.'}
+            </span>
             <CopyErrorButton label="Copy unknown Pack mutation result" text="The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again." />
+            {legacyRecovery ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => showDialog({
+                  title: 'Clear stale recovery lock?',
+                  message: 'Tobkiri verified that this legacy request does not exist in the current data root and that the authoritative catalog does not show its expected result. Clearing removes only this exact local recovery lock. It does not install, approve, enable, disable, or send any Pack request.',
+                  confirmText: 'Clear local lock',
+                  cancelText: 'Keep lock',
+                  onConfirm: () => clearAbsentLegacyPackMutation(
+                    legacyRecovery.key,
+                    legacyRecovery.requestId,
+                  ),
+                })}
+              >
+                Review recovery
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" size="sm" onClick={() => void loadPacks(true)}>Refresh catalog</Button>
           </div>
         ) : null}

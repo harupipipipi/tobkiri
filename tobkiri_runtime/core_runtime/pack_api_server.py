@@ -28,6 +28,7 @@ from .control_reconciliation_v4 import (
     ControlReconciliationCapacityError,
     ControlReconciliationConflictError,
     ControlReconciliationError,
+    ControlReconciliationNotFoundError,
     ControlReconciliationStore,
     ControlReconciliationUnavailableError,
 )
@@ -69,6 +70,7 @@ class HTTPRuntimeErrorCode(str, Enum):
     PROFILE_NOT_ACTIVE = "PROFILE_NOT_ACTIVE"
     STALE_REVISION = "STALE_REVISION"
     DIGEST_MISMATCH = "DIGEST_MISMATCH"
+    OPERATION_NOT_FOUND = "OPERATION_NOT_FOUND"
     UNAPPROVED = "UNAPPROVED"
     TIMEOUT = "TIMEOUT"
     INVALID_REQUEST = "INVALID_REQUEST"
@@ -80,6 +82,9 @@ _PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
     HTTPRuntimeErrorCode.PROFILE_NOT_ACTIVE.value: "The active Profile is unavailable",
     HTTPRuntimeErrorCode.STALE_REVISION.value: "The Profile revision is stale",
     HTTPRuntimeErrorCode.DIGEST_MISMATCH.value: "The request binding does not match",
+    HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value: (
+        "The operation is absent from the current data root"
+    ),
     HTTPRuntimeErrorCode.UNAPPROVED.value: "Host approval is required",
     HTTPRuntimeErrorCode.TIMEOUT.value: "The runtime operation timed out",
     HTTPRuntimeErrorCode.API_FAILURE.value: "The runtime operation is unavailable",
@@ -90,6 +95,7 @@ _PUBLIC_ERROR_STATUS: Mapping[str, int] = {
     HTTPRuntimeErrorCode.PROFILE_NOT_ACTIVE.value: 409,
     HTTPRuntimeErrorCode.STALE_REVISION.value: 409,
     HTTPRuntimeErrorCode.DIGEST_MISMATCH.value: 409,
+    HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value: 404,
     HTTPRuntimeErrorCode.UNAPPROVED.value: 403,
     HTTPRuntimeErrorCode.TIMEOUT.value: 504,
     HTTPRuntimeErrorCode.API_FAILURE.value: 503,
@@ -104,6 +110,7 @@ _ERROR_CODE_ALIASES: Mapping[str, str] = {
     "pack_control_conflict": HTTPRuntimeErrorCode.STALE_REVISION.value,
     "pack_control_stale_revision": HTTPRuntimeErrorCode.STALE_REVISION.value,
     "pack_control_digest_mismatch": HTTPRuntimeErrorCode.DIGEST_MISMATCH.value,
+    "pack_control_operation_not_found": HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value,
     "pack_control_unapproved": HTTPRuntimeErrorCode.UNAPPROVED.value,
     "pack_control_unavailable": HTTPRuntimeErrorCode.API_FAILURE.value,
     "pack_control_timeout": HTTPRuntimeErrorCode.TIMEOUT.value,
@@ -159,6 +166,8 @@ def _exception_error_code(error: BaseException) -> str:
             normalized = _public_error_code(captured_code)
             if normalized != HTTPRuntimeErrorCode.API_FAILURE.value:
                 return normalized
+        if isinstance(current, ControlReconciliationNotFoundError):
+            return HTTPRuntimeErrorCode.OPERATION_NOT_FOUND.value
         if isinstance(current, ControlReconciliationConflictError):
             return HTTPRuntimeErrorCode.DIGEST_MISMATCH.value
         if isinstance(current, ControlReconciliationUnavailableError):

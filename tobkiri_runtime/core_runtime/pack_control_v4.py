@@ -182,6 +182,12 @@ class PackControlDigestMismatch(PackControlConflict):
     code = "pack_control_digest_mismatch"
 
 
+class PackControlOperationNotFound(PackControlConflict):
+    """An operation identity is absent from the current captured data root."""
+
+    code = "pack_control_operation_not_found"
+
+
 class PackControlUnapproved(PackControlDenied):
     """A Pack control request lacks Host-owned approval evidence."""
 
@@ -687,6 +693,7 @@ class CapturedPackControlSession:
                 from .control_reconciliation_v4 import (
                     ControlReconciliationConflictError,
                     ControlReconciliationError,
+                    ControlReconciliationNotFoundError,
                     ControlReconciliationStore,
                     ControlReconciliationUnavailableError,
                 )
@@ -698,6 +705,10 @@ class CapturedPackControlSession:
                         request_id,
                         session_id=_panel_session_root(session_id),
                     )
+                except ControlReconciliationNotFoundError as error:
+                    raise PackControlOperationNotFound(
+                        "operation request is absent from the current data root"
+                    ) from error
                 except ControlReconciliationConflictError as error:
                     raise PackControlConflict(
                         "operation status conflicts with its session binding"

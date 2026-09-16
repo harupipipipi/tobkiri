@@ -4,6 +4,7 @@ import {test} from 'node:test';
 import {
   beginMutation,
   completeMutation,
+  isLegacyAdoptedMutation,
   listMutationJournal,
   markMutationUnknown,
   MutationBlockedError,
@@ -134,6 +135,10 @@ test('a legacy unknown is adopted once without being discarded or leaked', () =>
     });
     sessionValues.set('tobkiri-panel-journal-scope-v1', `sha256:${'c'.repeat(64)}`);
     assert.throws(() => beginMutation(key), MutationBlockedError);
+    const adopted = listMutationJournal().find((item) => item.key === key);
+    assert.ok(adopted);
+    assert.equal(isLegacyAdoptedMutation(adopted), true);
+    assert.equal(adopted.metadata.journal_migration, 'legacy-unscoped-v1');
     assert.equal(localValues.get('tobkiri-launcher-mutation-journal-v1'), '[]');
 
     sessionValues.set('tobkiri-panel-journal-scope-v1', `sha256:${'d'.repeat(64)}`);

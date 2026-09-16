@@ -18,6 +18,7 @@ import core_runtime.control_reconciliation_v4 as reconciliation
 import core_runtime.process_identity as process_identity
 from core_runtime.control_reconciliation_v4 import (
     ControlReconciliationError,
+    ControlReconciliationNotFoundError,
     ControlReconciliationStore,
     ControlReconciliationUnavailableError,
     ProcessIdentityEvidence,
@@ -1076,7 +1077,7 @@ def test_operation_status_rejects_unknown_cross_session_and_tampered_replay(
     digest = canonical_digest({"payload": "exact"})
     _begin(store, request_id, request_digest=digest)
 
-    with pytest.raises(ControlReconciliationError, match="unknown"):
+    with pytest.raises(ControlReconciliationNotFoundError, match="unknown"):
         store.operation_status(
             "55555555-5555-4555-8555-555555555555",
             session_id="session-a",

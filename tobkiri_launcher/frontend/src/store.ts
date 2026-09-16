@@ -37,6 +37,7 @@ import {formatPackVMRecoveryError} from './lib/packvmLifecycle';
 import {
   beginMutation,
   completeMutation,
+  isLegacyAdoptedMutation,
   isMutationResultUnknown,
   listMutationJournal,
   markMutationUnknown,
@@ -48,6 +49,7 @@ import {
 } from './lib/mutationJournal';
 import {
   reconcileMutationStatus,
+  OperationStatusNotFoundError,
   type OperationStatus,
   type OperationStatusState,
 } from './lib/operationStatus';
@@ -206,6 +208,7 @@ interface AppState {
   frontendCatalogError: string | null;
   packOperationPending: Record<string, boolean>;
   packMutationUnknown: Record<string, MutationJournalRecord>;
+  packLegacyRecovery: Record<string, MutationJournalRecord>;
   packOperationUnknown: Record<string, MutationJournalRecord>;
   packVmDoctor: ApiPackVMDoctor | null;
   packVmDoctorLoading: boolean;
@@ -228,6 +231,7 @@ interface AppState {
   approvePack: (id: string) => Promise<void>;
   revokePackApproval: (id: string) => Promise<void>;
   togglePack: (id: string) => Promise<boolean>;
+  clearAbsentLegacyPackMutation: (key: string, requestId: string) => void;
   profile: Profile;
   updateLocalProfile: (profile: Partial<Pick<Profile, 'avatar' | 'username' | 'language' | 'job'>>) => void;
 }
@@ -541,6 +545,35 @@ function scheduleHydratedPackStatusReconciliation(
           clearPackUnknownState(set, record);
         }
       } catch (error) {
+        if (error instanceof OperationStatusNotFoundError && isLegacyAdoptedMutation(record)) {
+          const current = listMutationJournal().find((candidate) => (
+            candidate.key === record.key && candidate.requestId === record.requestId
+          ));
+          const packId = current?.metadata.pack_id;
+          const pack = typeof packId === 'string'
+            ? get().packs.find((candidate) => candidate.id === packId)
+            : undefined;
+          if (
+            current
+            && current.state === 'unknown'
+            && isLegacyAdoptedMutation(current)
+            && pack
+            && !matchingPackMutation(current, pack)
+          ) {
+            set((state) => ({
+              packLegacyRecovery: {
+                ...state.packLegacyRecovery,
+                [current.key]: current,
+              },
+            }));
+            recordClientDiagnostic({
+              code: 'pack.mutation.legacy_absent_from_current_root',
+              operation: 'hydrate.pack.mutation',
+              error,
+            });
+            return;
+          }
+        }
         recordClientDiagnostic({
           code: 'pack.mutation.reconciliation_failed',
           operation: 'hydrate.pack.mutation',
@@ -730,6 +763,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   frontendCatalogError: null,
   packOperationPending: {},
   packMutationUnknown: journalRecordsForKind(null),
+  packLegacyRecovery: {},
   packOperationUnknown: journalRecordsForKind('pack.operation'),
   packVmDoctor: null,
   packVmDoctorLoading: false,
@@ -797,6 +831,18 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
           packsError: null,
           packMutationUnknown: reconciledPackUnknown,
+          packLegacyRecovery: Object.fromEntries(
+            Object.entries(get().packLegacyRecovery).filter(([, record]) => {
+              const current = reconciledPackUnknown[record.key];
+              const packId = record.metadata.pack_id;
+              const pack = typeof packId === 'string'
+                ? packs.find((candidate) => candidate.id === packId)
+                : undefined;
+              return current?.requestId === record.requestId
+                && isLegacyAdoptedMutation(current)
+                && Boolean(pack && !matchingPackMutation(current, pack));
+            }),
+          ),
         });
         if (!options.skipMutationReconciliation) {
           scheduleHydratedPackStatusReconciliation(get, set);
@@ -878,6 +924,36 @@ export const useAppStore = create<AppState>((set, get) => ({
             || 'PackVM catalog access is blocked until healthy attestation.',
         }),
     });
+  },
+
+  clearAbsentLegacyPackMutation: (key, requestId) => {
+    const eligible = get().packLegacyRecovery[key];
+    const current = listMutationJournal().find((record) => (
+      record.key === key && record.requestId === requestId
+    ));
+    const packId = current?.metadata.pack_id;
+    const pack = typeof packId === 'string'
+      ? get().packs.find((candidate) => candidate.id === packId)
+      : undefined;
+    if (
+      eligible?.requestId !== requestId
+      || !current
+      || current.state !== 'unknown'
+      || !isLegacyAdoptedMutation(current)
+      || !pack
+      || matchingPackMutation(current, pack)
+    ) {
+      get().addToast('The stale recovery lock could not be cleared safely.', 'error');
+      return;
+    }
+    completeMutation(key, requestId);
+    clearPackUnknownState(set, current);
+    set((state) => {
+      const next = {...state.packLegacyRecovery};
+      delete next[key];
+      return {packLegacyRecovery: next};
+    });
+    get().addToast('The stale local recovery lock was cleared. No Pack request was sent.', 'success');
   },
 
   refreshPackVMDoctor: (options = {}) => {

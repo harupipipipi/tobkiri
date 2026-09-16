@@ -13,7 +13,10 @@ from pathlib import Path
 
 import pytest
 
-from core_runtime.control_reconciliation_v4 import ControlReconciliationStore
+from core_runtime.control_reconciliation_v4 import (
+    ControlReconciliationNotFoundError,
+    ControlReconciliationStore,
+)
 from core_runtime.global_contracts.http_contract_dispatch import (
     HTTPContractBinding as FrontendContractBinding,
     HTTPContractTarget,
@@ -28,6 +31,7 @@ from core_runtime.pack_api_server import (
 from core_runtime.pack_control_v4 import (
     PackControlConflict,
     PackControlDigestMismatch,
+    PackControlOperationNotFound,
     PackControlTimedOut,
     PackControlUnavailable,
     PackControlUnapproved,
@@ -391,6 +395,7 @@ def test_profile_activation_refresh_requires_durable_success_result() -> None:
         ("UNAPPROVED", 403),
         ("STALE_REVISION", 409),
         ("DIGEST_MISMATCH", 409),
+        ("OPERATION_NOT_FOUND", 404),
         ("TIMEOUT", 504),
         ("API_FAILURE", 503),
         ("backend_unavailable", 503),
@@ -507,6 +512,7 @@ def test_typed_error_initial_lost_response_and_restart_replay_are_exact(
     [
         (PackControlConflict, "STALE_REVISION", 409, False),
         (PackControlDigestMismatch, "DIGEST_MISMATCH", 409, False),
+        (PackControlOperationNotFound, "OPERATION_NOT_FOUND", 404, False),
         (PackControlUnapproved, "UNAPPROVED", 403, False),
         (PackControlUnavailable, "API_FAILURE", 503, True),
         (PackControlTimedOut, "TIMEOUT", 504, True),
@@ -534,6 +540,26 @@ def test_pack_control_exception_cause_chain_keeps_semantic_status_and_sanitizes(
     assert safe["retryable"] is retryable
     serialized = json.dumps(safe).lower()
     for secret in ("sqlite", "/private", "sha256:", "provider-controlled"):
+        assert secret not in serialized
+
+
+def test_absent_operation_has_distinct_public_code_without_leaking_detail() -> None:
+    """Current-root absence is distinct from a cross-session digest mismatch."""
+
+    from core_runtime.pack_api_server import _exception_error_code
+
+    error = ControlReconciliationNotFoundError(
+        "sqlite /private/token.db request secret is unknown"
+    )
+    safe = PackAPIHandler._safe_contract_result(
+        {"state": "error", "code": _exception_error_code(error), "message": str(error)}
+    )
+
+    assert safe["code"] == "OPERATION_NOT_FOUND"
+    assert PackAPIHandler._contract_result_status(safe) == 404
+    assert safe["retryable"] is False
+    serialized = json.dumps(safe).lower()
+    for secret in ("sqlite", "/private", "token", "secret"):
         assert secret not in serialized
 
 

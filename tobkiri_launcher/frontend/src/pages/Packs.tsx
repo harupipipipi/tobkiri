@@ -69,6 +69,7 @@ export function Packs() {
   const packTogglePending = useAppStore(state => state.packTogglePending);
   const packApprovalPending = useAppStore(state => state.packApprovalPending);
   const packMutationUnknown = useAppStore(state => state.packMutationUnknown);
+  const packLegacyRecovery = useAppStore(state => state.packLegacyRecovery);
   const loadPacks = useAppStore(state => state.loadPacks);
   const installPack = useAppStore(state => state.installPack);
   const approvePack = useAppStore(state => state.approvePack);
@@ -76,6 +77,9 @@ export function Packs() {
   const addToast = useAppStore(state => state.addToast);
   const showDialog = useAppStore(state => state.showDialog);
   const togglePack = useAppStore(state => state.togglePack);
+  const clearAbsentLegacyPackMutation = useAppStore(
+    state => state.clearAbsentLegacyPackMutation,
+  );
   const [search, setSearch] = useState('');
   const [installingPackId, setInstallingPackId] = useState<string | null>(null);
   const [approvingPackId, setApprovingPackId] = useState<string | null>(null);
@@ -186,13 +190,42 @@ export function Packs() {
             {filteredPacks.map(pack => {
               const packScopeAuthoritative = isPackInCatalogScope(pack, packCatalogBinding);
               const scopedProfileId = packCatalogBinding?.profile_id ?? 'unavailable';
+              const unknownMutation = Object.values(packMutationUnknown).find(
+                (record) => record.metadata.pack_id === pack.id,
+              );
+              const legacyRecovery = unknownMutation
+                ? packLegacyRecovery[unknownMutation.key]
+                : undefined;
               return (
               <Card key={pack.id} className="transition-all hover:shadow-[var(--shadow-md)] focus-within:shadow-[var(--shadow-md)]">
-                {Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id) ? (
+                {unknownMutation ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-300/60 bg-amber-50/60 px-5 py-3 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
                     <CircleHelp className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="pack-mutation-unknown" />
-                    <span className="min-w-0 flex-1">The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.</span>
+                    <span className="min-w-0 flex-1">
+                      {legacyRecovery
+                        ? 'This legacy recovery lock is absent from the current data root and contradicts the authoritative catalog.'
+                        : 'The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.'}
+                    </span>
                     <CopyErrorButton label="Copy unknown Pack mutation result" text="The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again." />
+                    {legacyRecovery ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => showDialog({
+                          title: 'Clear stale recovery lock?',
+                          message: 'Tobkiri verified that this legacy request does not exist in the current data root and that the authoritative catalog does not show its expected result. Clearing removes only this exact local recovery lock. It does not install, approve, enable, disable, or send any Pack request.',
+                          confirmText: 'Clear local lock',
+                          cancelText: 'Keep lock',
+                          onConfirm: () => clearAbsentLegacyPackMutation(
+                            legacyRecovery.key,
+                            legacyRecovery.requestId,
+                          ),
+                        })}
+                      >
+                        Review recovery
+                      </Button>
+                    ) : null}
                     <Button type="button" size="sm" variant="outline" onClick={() => void loadPacks(true)}>Refresh catalog</Button>
                   </div>
                 ) : null}

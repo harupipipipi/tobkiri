@@ -70,6 +70,10 @@ class ControlReconciliationConflictError(ControlReconciliationError):
     """Raised when a request conflicts with durable reconciliation state."""
 
 
+class ControlReconciliationNotFoundError(ControlReconciliationConflictError):
+    """Raised when an exact request identity is absent from the current store."""
+
+
 class ControlReconciliationUnavailableError(ControlReconciliationError):
     """Raised when durable reconciliation state is not safely available."""
 
@@ -1696,7 +1700,7 @@ class ControlReconciliationStore:
         row = self._read_live_operation(request_id)
         record = _operation_record(row)
         if record is None:
-            raise ControlReconciliationConflictError("operation request is unknown")
+            raise ControlReconciliationNotFoundError("operation request is unknown")
         if record["session_digest"] != self.session_digest(session_id):
             raise ControlReconciliationConflictError("operation request belongs to another session")
         return self._operation_projection(record)
