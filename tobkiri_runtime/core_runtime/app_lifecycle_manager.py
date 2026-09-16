@@ -271,6 +271,9 @@ class AppLifecycleManager:
                     capability_binding_snapshot_factory=(inputs.capability_binding_snapshot_factory),
                     capability_binding_selector=inputs.capability_binding_selector,
                     credential_store_factory=inputs.credential_store_factory,
+                    acceptance_receipts=inputs.acceptance_receipts,
+                    chat_continuation_approve=inputs.chat_continuation_approve,
+                    chat_continuation_resume=inputs.chat_continuation_resume,
                 )
             except Exception as error:
                 from .activation_handoff import ActivationCommittedError

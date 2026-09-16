@@ -14,6 +14,7 @@ from core_runtime.pack_api_server import RuntimeCaptureInputs
 from tobkiri_host.backends import ExecutionBackend
 from tobkiri_host.credential_store import host_credential_store_factory
 from tobkiri_host.acceptance_receipts import AcceptanceReceiptPort
+from ecosystem.defaultspack.domain.safety import chat_continuation
 
 if TYPE_CHECKING:
     from core_runtime.bootstrap.runtime import Kernel
@@ -107,6 +108,8 @@ def defaultspack_runtime_capture_inputs(
         ),
         credential_store_factory=credential_store_factory,
         acceptance_receipts=_packvm_acceptance_receipts(),
+        chat_continuation_approve=chat_continuation.approve_continuation,
+        chat_continuation_resume=chat_continuation.resume_continuation,
     )
 
 

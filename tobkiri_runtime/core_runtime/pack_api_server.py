@@ -305,6 +305,8 @@ class RuntimeCaptureInputs:
     packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None
     credential_store_factory: CredentialMaterialStoreFactory | None = None
     acceptance_receipts: object | None = None
+    chat_continuation_approve: Callable[..., Mapping[str, object]] | None = None
+    chat_continuation_resume: Callable[..., Mapping[str, object]] | None = None
 
 
 class ActivationSnapshotLoader(Protocol):
@@ -2826,6 +2828,8 @@ class PackAPIServer:
                         capability_binding_selector=inputs.capability_binding_selector,
                         credential_store_factory=inputs.credential_store_factory,
                         acceptance_receipts=inputs.acceptance_receipts,
+                        chat_continuation_approve=inputs.chat_continuation_approve,
+                        chat_continuation_resume=inputs.chat_continuation_resume,
                     )
                 except Exception:
                     authority.close()

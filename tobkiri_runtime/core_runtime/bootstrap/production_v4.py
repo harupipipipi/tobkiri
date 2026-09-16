@@ -1313,6 +1313,8 @@ def capture_production_dispatch(
     capability_binding_selector: CapabilityBindingSelector | None = None,
     credential_store_factory: CredentialMaterialStoreFactory | None = None,
     acceptance_receipts: object | None = None,
+    chat_continuation_approve: Callable[..., Mapping[str, Any]] | None = None,
+    chat_continuation_resume: Callable[..., Mapping[str, Any]] | None = None,
 ) -> V4DispatchSession:
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
@@ -1564,31 +1566,12 @@ def capture_production_dispatch(
     target_backend_digests = dict(target_backend_digests or {})
     authority_control = runtime.composition.authority_adapter(authority_store)
 
-    def approve_chat_continuation(
-        request_id: str,
-        conversation_id: str,
-        ui_operator: Mapping[str, Any],
-    ) -> Mapping[str, Any]:
-        from ecosystem.defaultspack.domain.safety.chat_continuation import (
-            approve_continuation,
-        )
-
-        return approve_continuation(request_id, conversation_id, ui_operator)
-
-    def resume_chat_continuation(
-        binding: Mapping[str, Any],
-        token: str,
-        conversation_id: str,
-    ) -> Mapping[str, Any]:
-        from ecosystem.defaultspack.domain.safety.chat_continuation import (
-            resume_continuation,
-        )
-
-        return resume_continuation(binding, token, conversation_id)
+    def unavailable_chat_continuation(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:
+        raise PermissionError("chat approval continuation is unavailable")
 
     chat_approval_continuation = ChatApprovalContinuationController(
-        approve=approve_chat_continuation,
-        resume=resume_chat_continuation,
+        approve=chat_continuation_approve or unavailable_chat_continuation,
+        resume=chat_continuation_resume or unavailable_chat_continuation,
     )
     control_targets: dict[tuple[str, str], tuple[str, str, str]] = {}
     control_backend: PackControlBackendV4 | None = None

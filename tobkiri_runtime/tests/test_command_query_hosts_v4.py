@@ -33,6 +33,12 @@ class _Client:
 
     def invoke(self, contract_id, operation_id, payload):
         self.calls.append((contract_id, operation_id, payload))
+        if contract_id == state.MODEL_STATE_CONTRACT:
+            return {
+                "namespace": "captured",
+                "revision": 7,
+                "values": {"deepthink_enabled": True},
+            }
         if contract_id == datasource.MODEL_CONTRACT:
             return {
                 "revision": 4,
@@ -75,14 +81,7 @@ class _Invocation:
         return self.client
 
 
-def test_state_query_reads_the_profile_bound_canonical_settings_store(tmp_path):
-    settings_path = tmp_path / "defaultspack/shared/frontend_settings.json"
-    settings_path.parent.mkdir(parents=True)
-    settings_path.write_text(
-        '{"models":{"deepthink_enabled":true},'
-        '"_state_revisions":{"defaultspack:models.deepthink_enabled":7}}',
-        encoding="utf-8",
-    )
+def test_state_query_reads_the_profile_bound_model_state_owner(tmp_path):
     contribution = _capture(
         state.CommandStateHostFactoryV4(),
         state.FUNCTION_ID,
@@ -103,7 +102,15 @@ def test_state_query_reads_the_profile_bound_canonical_settings_store(tmp_path):
         "freshness": "authoritative",
     }]
     assert invocation.assertions == 2
-    assert invocation.scopes == []
+    assert invocation.scopes == [{
+        "allowed_contract_ids": frozenset({state.MODEL_STATE_CONTRACT}),
+        "consumer_pack_id": "rumi_command_protocol_pack",
+    }]
+    assert invocation.client.calls == [(
+        state.MODEL_STATE_CONTRACT,
+        state.MODEL_STATE_OPERATION,
+        {"profile_id": "defaults"},
+    )]
 
 
 def test_state_query_rejects_unknown_state_without_calling_owner(tmp_path):

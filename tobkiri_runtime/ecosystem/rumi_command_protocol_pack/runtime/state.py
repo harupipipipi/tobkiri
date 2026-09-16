@@ -10,13 +10,13 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
-from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
-from tobkiri_protocol.settings_state import settings_state_revision
 
 FUNCTION_ID = "rumi_command_protocol_pack.command.state"
 CONTRACT_ID = "tobkiri.resource.command.state.v1"
 OPERATION_ID = "command.state.query"
 STATE_REF = "defaultspack:models.deepthink_enabled"
+MODEL_STATE_CONTRACT = "tobkiri.resource.ui.model-state.v1"
+MODEL_STATE_OPERATION = "tobkiri_ui_settings_pack.model-state-read"
 _ALLOWED_FIELDS = frozenset({"profile_id", "state_refs", "_session_id"})
 
 
@@ -58,13 +58,6 @@ class CommandStateHostFactoryV4:
         domain_id = context.domain_ids.get(key)
         if domain_id is None:
             raise PermissionError("command state domain is unavailable")
-        store = FrontendSettingsStore(
-            context.user_data_root
-            / "defaultspack"
-            / "shared"
-            / "frontend_settings.json"
-        )
-
         def invoke(
             operation_id: str,
             payload: Mapping[str, Any],
@@ -93,17 +86,25 @@ class CommandStateHostFactoryV4:
                 or len(set(refs)) != len(refs)
             ):
                 raise PermissionError("command state references are invalid")
-            settings = store.read_snapshot()
-            invocation.assert_current()
-            models = settings.get("models")
-            enabled = (
-                models.get("deepthink_enabled")
-                if isinstance(models, Mapping)
-                else False
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset({MODEL_STATE_CONTRACT}),
+                consumer_pack_id="rumi_command_protocol_pack",
             )
-            revision = settings_state_revision(settings, STATE_REF)
-            if not isinstance(enabled, bool):
-                raise ValueError("settings state is invalid")
+            state = client.invoke(
+                MODEL_STATE_CONTRACT,
+                MODEL_STATE_OPERATION,
+                {"profile_id": context.profile_id},
+            )
+            invocation.assert_current()
+            values = state.get("values") if isinstance(state, Mapping) else None
+            revision = state.get("revision") if isinstance(state, Mapping) else None
+            enabled = (
+                values.get("deepthink_enabled")
+                if isinstance(values, Mapping)
+                else None
+            )
+            if type(enabled) is not bool or type(revision) is not int or revision < 0:
+                raise ValueError("model state owner returned invalid state")
             return {
                 "api_version": "tobkiri.commands/v1",
                 "states": [

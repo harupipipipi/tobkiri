@@ -195,6 +195,13 @@ class Kernel:
                             credential_store_factory=(
                                 inputs.credential_store_factory
                             ),
+                            acceptance_receipts=inputs.acceptance_receipts,
+                            chat_continuation_approve=(
+                                inputs.chat_continuation_approve
+                            ),
+                            chat_continuation_resume=(
+                                inputs.chat_continuation_resume
+                            ),
                         )
                     except Exception:
                         authority_store.close()
