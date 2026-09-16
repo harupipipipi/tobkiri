@@ -29,6 +29,9 @@ const MAX_CANONICAL_JSON_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CANONICAL_JSON_DEPTH: usize = 64;
 const MAX_SAFE_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
 const BUNDLE_SCHEMA: &str = "io.tobkiri.defaultspack-bundle-lock.v1";
+const PACKVM_ACCEPTANCE_PACK_ID: &str = "tobkiri_packvm_sandbox_qa_pack";
+const PACKVM_ACCEPTANCE_ENABLE_ENV: &str = "TOBKIRI_PACKVM_ACCEPTANCE_ENABLE";
+const PACKVM_ACCEPTANCE_DIGEST_ENV: &str = "TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST";
 
 // These values are test-fixture coordinates, not production authority.  Keep
 // them scoped to the fixture helpers so a future Pack cannot accidentally be
@@ -1283,7 +1286,13 @@ fn validate_profile_pack_closure(
     identities.insert(selected.base_pack_id.clone());
     identities.insert(selected.shell_pack_id.clone());
     for pack_id in identities {
-        let path = bundle_pack_path(bundle_root, bundle_lock, &pack_id)?;
+        let Some(relative) = bundle_lock.pack_paths.get(&pack_id) else {
+            if ci_e2e_external_pack_is_admissible(selected, &pack_id) {
+                continue;
+            }
+            bail!("selected Profile Pack is not in the signed bundle: {pack_id}");
+        };
+        let path = bundle_root.join(safe_relative(relative)?);
         let pack = read_json(&path, "selected Profile Pack")?;
         if value_str(&pack, "/pack/id") != Some(pack_id.as_str())
             || value_str(&pack, "/pack_api_version") != Some("io.tobkiri.pack.v4")
@@ -1334,6 +1343,62 @@ fn validate_profile_pack_closure(
         }
     }
     Ok(())
+}
+
+fn selected_ci_e2e_acceptance_pack_matches(
+    selected: &SelectedProfileAuthority,
+    pack_id: &str,
+    expected_digest: &str,
+) -> bool {
+    if pack_id != PACKVM_ACCEPTANCE_PACK_ID || !valid_digest(expected_digest) {
+        return false;
+    }
+    let profile_match = selected
+        .profile
+        .get("packs")
+        .and_then(Value::as_array)
+        .and_then(|packs| {
+            packs
+                .iter()
+                .find(|item| value_str(item, "/pack_id") == Some(pack_id))
+        })
+        .is_some_and(|item| {
+            value_str(item, "/role") == Some("provider")
+                && value_str(item, "/artifact_digest") == Some(expected_digest)
+        });
+    let pin_match = selected
+        .plan
+        .as_ref()
+        .and_then(|plan| plan.get("variant_pins"))
+        .and_then(Value::as_array)
+        .and_then(|pins| {
+            pins.iter()
+                .find(|item| value_str(item, "/pack_id") == Some(pack_id))
+        })
+        .is_some_and(|item| {
+            value_str(item, "/artifact_digest") == Some(expected_digest)
+                && value_str(item, "/execution_kind") == Some("pack_vm")
+                && value_str(item, "/domain_kind") == Some("dedicated_process")
+        });
+    profile_match && pin_match
+}
+
+fn ci_e2e_external_pack_is_admissible(selected: &SelectedProfileAuthority, pack_id: &str) -> bool {
+    #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
+    {
+        let enabled = std::env::var(PACKVM_ACCEPTANCE_ENABLE_ENV)
+            .ok()
+            .is_some_and(|value| matches!(value.trim(), "1" | "true" | "yes" | "on"));
+        let Ok(expected_digest) = std::env::var(PACKVM_ACCEPTANCE_DIGEST_ENV) else {
+            return false;
+        };
+        enabled && selected_ci_e2e_acceptance_pack_matches(selected, pack_id, &expected_digest)
+    }
+    #[cfg(not(any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+    {
+        let _ = (selected, pack_id);
+        false
+    }
 }
 
 fn validate_selected_pack_artifact_digest(expected: &str, actual: Option<&str>) -> Result<()> {
@@ -4627,6 +4692,66 @@ mod tests {
         assert!(ensure_materialized_pack_selected("application.alpha", &selected).is_ok());
         assert!(ensure_materialized_pack_selected("provider.alpha", &selected).is_ok());
         assert!(ensure_materialized_pack_selected("provider.foreign", &selected).is_err());
+    }
+
+    #[test]
+    fn ci_e2e_external_acceptance_pack_requires_exact_profile_and_packvm_pin() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let mut selected = SelectedProfileAuthority {
+            profile: serde_json::json!({
+                "packs": [{
+                    "pack_id": PACKVM_ACCEPTANCE_PACK_ID,
+                    "role": "provider",
+                    "artifact_digest": digest.clone(),
+                }]
+            }),
+            lock: None,
+            plan: Some(serde_json::json!({
+                "variant_pins": [{
+                    "pack_id": PACKVM_ACCEPTANCE_PACK_ID,
+                    "artifact_digest": digest.clone(),
+                    "execution_kind": "pack_vm",
+                    "domain_kind": "dedicated_process",
+                }]
+            })),
+            profile_id: "defaults".into(),
+            profile_digest: format!("sha256:{}", "b".repeat(64)),
+            profile_revision: None,
+            activation_id: None,
+            plan_digest: None,
+            lock_digest: None,
+            base_pack_id: "defaults-basepack".into(),
+            shell_provider_id: "shell.tauri.default".into(),
+            shell_pack_id: "shell.tauri.default".into(),
+            application_pack_id: "runtime.tauri.application.default".into(),
+            application_artifact_digest: None,
+            launch_contribution: None,
+            pack_ids: BTreeSet::from([PACKVM_ACCEPTANCE_PACK_ID.into()]),
+        };
+
+        assert!(selected_ci_e2e_acceptance_pack_matches(
+            &selected,
+            PACKVM_ACCEPTANCE_PACK_ID,
+            &digest,
+        ));
+        assert!(!selected_ci_e2e_acceptance_pack_matches(
+            &selected,
+            "external.unrelated",
+            &digest,
+        ));
+        assert!(!selected_ci_e2e_acceptance_pack_matches(
+            &selected,
+            PACKVM_ACCEPTANCE_PACK_ID,
+            &format!("sha256:{}", "c".repeat(64)),
+        ));
+
+        selected.plan.as_mut().unwrap()["variant_pins"][0]["execution_kind"] =
+            serde_json::json!("host");
+        assert!(!selected_ci_e2e_acceptance_pack_matches(
+            &selected,
+            PACKVM_ACCEPTANCE_PACK_ID,
+            &digest,
+        ));
     }
 
     #[test]
