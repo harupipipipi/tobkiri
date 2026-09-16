@@ -3337,6 +3337,20 @@
       "executable": false
     },
     {
+      "path": "scripts/quality/evidence/pack_migration_reviews.v1.json",
+      "type": "regular-file",
+      "size": 137,
+      "sha256": "99d5eeff50151bdfccd6aa03c65fe03951e055c811b9927f31cd78b66b77678c",
+      "executable": false
+    },
+    {
+      "path": "scripts/quality/evidence/pack_migration_runtime_receipts.v1.json",
+      "type": "regular-file",
+      "size": 154,
+      "sha256": "72851dd1bfbeb4c5050c5b2410ccdc9b14517e220eed8dd9fe421f21e250e770",
+      "executable": false
+    },
+    {
       "path": "scripts/quality/legacy_manifest_v3.py",
       "type": "regular-file",
       "size": 5461,
@@ -3355,6 +3369,13 @@
       "type": "regular-file",
       "size": 1399,
       "sha256": "854b3b35804d25f148360aded1b905a9b79d7b9ec77da0993eff4b9b6ca8e453",
+      "executable": false
+    },
+    {
+      "path": "scripts/quality/migration_release_evidence.py",
+      "type": "regular-file",
+      "size": 12252,
+      "sha256": "279941a4adca57dc7248af1cbfc820823ded2d9803e78ed8b3aee33224d6fe36",
       "executable": false
     },
     {

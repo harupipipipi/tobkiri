@@ -76,7 +76,8 @@ def test_complete_gate_runs_generator_check_and_rejects_drift(
     """A checked-in proof edit is caught by the generator invoked by the gate."""
 
     payload = json.loads(complete_gate.MIGRATION_PROOF_PATH.read_text(encoding="utf-8"))
-    payload["packs"]["defaults"]["semantic_comparison"]["reason"] = "drifted"
+    pack_id = next(iter(payload["packs"]))
+    payload["packs"][pack_id]["semantic_comparison"]["reason"] = "drifted"
     drifted = tmp_path / "pack_migration_proof.v1.json"
     drifted.write_text(json.dumps(payload), encoding="utf-8")
     monkeypatch.setattr(complete_gate, "MIGRATION_PROOF_PATH", drifted)
@@ -151,12 +152,12 @@ def test_pack_feasibility_audit_is_specific_and_separate_from_profile_receipt() 
         status: sum(entry["status"] == status for entry in proof["packs"].values())
         for status in ("semantically-reviewed", "generated-draft")
     }
-    assert statuses == {"semantically-reviewed": 39, "generated-draft": 103}
+    assert statuses == {"semantically-reviewed": 39, "generated-draft": 102}
     assert proof["source"]["unproved_pack_count"] == len(proof["packs"])
-    assert proof["source"]["semantic_unproved_pack_count"] == 103
+    assert proof["source"]["semantic_unproved_pack_count"] == 102
     unresolved = proof["source"]["feasibility_audit"]["unresolved"]
-    assert unresolved["non_executable_pack_semantics_unmodeled"]["count"] == 49
-    assert unresolved["pack_specific_legacy_source_missing"]["count"] == 40
+    assert unresolved["non_executable_pack_semantics_unmodeled"]["count"] == 48
+    assert unresolved["pack_specific_legacy_source_missing"]["count"] == 39
     assert unresolved["pack_specific_authority_source_missing"]["count"] == 7
     assert unresolved["legacy_artifact_role_missing"]["count"] == 38
     assert unresolved["parameter_schema_mapping_mismatch"]["count"] == 1

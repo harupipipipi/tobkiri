@@ -33,6 +33,12 @@ from tests.conformance_support.command_protocol_activation import (
     load_current_signed_application_bindings,
     route_pattern_exposes_command_protocol,
 )
+from scripts.quality.migration_release_evidence import (
+    MigrationReleaseEvidenceError,
+    load_curated_reviews,
+    load_runtime_receipts,
+    release_evidence_errors,
+)
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.validation import load_schema, validate_file
 
@@ -254,6 +260,16 @@ MIGRATION_PROOF_PATH = (
     ROOT / "tobkiri_runtime" / "scripts" / "quality" / "evidence" / "pack_migration_proof.v1.json"
 )
 MIGRATION_PROOF_GENERATOR = RUNTIME / "scripts" / "quality" / "run_independent_migration_proof.py"
+MIGRATION_REVIEW_PATH = (
+    RUNTIME / "scripts" / "quality" / "evidence" / "pack_migration_reviews.v1.json"
+)
+MIGRATION_RUNTIME_RECEIPT_PATH = (
+    RUNTIME
+    / "scripts"
+    / "quality"
+    / "evidence"
+    / "pack_migration_runtime_receipts.v1.json"
+)
 
 
 def _production_files() -> tuple[Path, ...]:
@@ -1084,7 +1100,7 @@ def _load_independent_migration_proof() -> tuple[
             target.get("artifact_verification") if isinstance(target, Mapping) else None
         )
         if (
-            entry.get("status") not in MIGRATION_STAGES
+            entry.get("status") not in {"generated-draft", "semantically-reviewed"}
             or not isinstance(source_record, Mapping)
             or source_record.get("pack_id") != pack_id
             or source_record.get("status") not in {"available", "missing"}
@@ -1114,23 +1130,100 @@ def _load_independent_migration_proof() -> tuple[
     return entries, []
 
 
+def _load_release_evidence() -> tuple[
+    dict[str, Mapping[str, Any]],
+    dict[str, Mapping[str, Any]],
+    list[dict[str, Any]],
+]:
+    """Load curated reviews and Host receipts as separate authorities."""
+
+    findings: list[dict[str, Any]] = []
+    try:
+        reviews = load_curated_reviews(MIGRATION_REVIEW_PATH)
+    except MigrationReleaseEvidenceError as error:
+        reviews = {}
+        findings.append(
+            _finding(
+                MIGRATION_REVIEW_PATH,
+                1,
+                "curated_migration_review_ledger_invalid",
+                error=str(error)[:240],
+            )
+        )
+    try:
+        receipts = load_runtime_receipts(MIGRATION_RUNTIME_RECEIPT_PATH)
+    except MigrationReleaseEvidenceError as error:
+        receipts = {}
+        findings.append(
+            _finding(
+                MIGRATION_RUNTIME_RECEIPT_PATH,
+                1,
+                "migration_runtime_receipt_ledger_invalid",
+                error=str(error)[:240],
+            )
+        )
+    return reviews, receipts, findings
+
+
+def _entry_with_curated_semantics(
+    entry: Mapping[str, Any],
+    review: Mapping[str, Any] | None,
+) -> Mapping[str, Any]:
+    """Overlay only a separately validated semantic record onto generator data."""
+
+    if review is None:
+        return entry
+    target = entry.get("target")
+    source = entry.get("source")
+    if (
+        not isinstance(target, Mapping)
+        or not isinstance(source, Mapping)
+        or review.get("target_digest") != target.get("digest")
+        or review.get("source_digest") != source.get("digest")
+    ):
+        return entry
+    return {
+        **entry,
+        "status": "semantically-reviewed",
+        "semantic_comparison": review["semantic_record"],
+    }
+
+
 def _pack_release_proof_errors(
     pack_id: str,
     entry: Mapping[str, Any],
     *,
     profile_transaction_receipt: str | None = None,
+    curated_reviews: Mapping[str, Mapping[str, Any]] | None = None,
+    runtime_receipts: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[str]:
     """Return missing Pack-specific requirements for release verification."""
 
     if entry.get("status") != "release-verified":
         return []
-    errors = _pack_semantic_review_errors(pack_id, entry)
+    if curated_reviews is None or runtime_receipts is None:
+        loaded_reviews, loaded_receipts, _ = _load_release_evidence()
+        curated_reviews = loaded_reviews if curated_reviews is None else curated_reviews
+        runtime_receipts = loaded_receipts if runtime_receipts is None else runtime_receipts
+    review = curated_reviews.get(pack_id)
+    runtime = runtime_receipts.get(pack_id)
+    effective_entry = _entry_with_curated_semantics(entry, review)
+    errors = _pack_semantic_review_errors(pack_id, effective_entry)
+    errors.extend(release_evidence_errors(pack_id, entry, review, runtime))
     source = entry.get("source")
     target = entry.get("target")
-    semantic = entry.get("semantic_comparison")
-    if not isinstance(source, Mapping) or source.get("status") != "available":
+    semantic = effective_entry.get("semantic_comparison")
+    admission_only = (
+        isinstance(semantic, Mapping) and semantic.get("kind") == "admission-only"
+    )
+    if (
+        not admission_only
+        and (not isinstance(source, Mapping) or source.get("status") != "available")
+    ):
         errors.append("pack_specific_legacy_source_missing")
-    elif source.get("pack_id") != pack_id or not isinstance(source.get("digest"), str):
+    elif not admission_only and (
+        source.get("pack_id") != pack_id or not isinstance(source.get("digest"), str)
+    ):
         errors.append("pack_specific_legacy_source_invalid")
     if not isinstance(target, Mapping) or target.get("pack_id") != pack_id:
         errors.append("pack_specific_v4_target_missing")
@@ -1140,7 +1233,11 @@ def _pack_release_proof_errors(
     if (
         semantic.get("status") != "verified"
         or semantic.get("equivalent") is not True
-        or semantic.get("method") != "legacy-to-v4-semantic-comparator.v1"
+        or semantic.get("method")
+        not in {
+            "legacy-to-v4-semantic-comparator.v1",
+            "curated-admission-only-review.v1",
+        }
     ):
         errors.append("pack_specific_semantic_comparison_unverified")
     inventory = semantic.get("operation_inventory")
@@ -1193,22 +1290,25 @@ def _pack_release_proof_errors(
             ):
                 errors.append("pack_specific_authority_mapping_missing")
                 break
-    receipt = entry.get("migration_receipt_digest")
-    if not isinstance(receipt, str):
-        errors.append("pack_specific_migration_receipt_missing")
-    elif receipt == profile_transaction_receipt:
-        errors.append("profile_transaction_receipt_reused_for_pack")
-    elif isinstance(source, Mapping) and isinstance(target, Mapping):
-        expected_receipt = _proof_digest(
+    generated_receipt = entry.get("migration_receipt_digest")
+    if isinstance(generated_receipt, str) and isinstance(source, Mapping) and isinstance(
+        target, Mapping
+    ):
+        expected_generated_receipt = _proof_digest(
             {
                 "pack_id": pack_id,
                 "source_digest": source.get("digest"),
                 "target_digest": target.get("digest"),
-                "semantic_comparison": semantic,
+                "semantic_comparison": entry.get("semantic_comparison"),
             }
         )
-        if receipt != expected_receipt:
+        if generated_receipt != expected_generated_receipt:
             errors.append("pack_specific_migration_receipt_invalid")
+    receipt = runtime.get("release_receipt_digest") if isinstance(runtime, Mapping) else None
+    if not isinstance(receipt, str):
+        errors.append("pack_specific_migration_receipt_missing")
+    elif receipt == profile_transaction_receipt:
+        errors.append("profile_transaction_receipt_reused_for_pack")
     return errors
 
 
@@ -1229,11 +1329,17 @@ def _pack_semantic_review_errors(
     source = entry.get("source")
     target = entry.get("target")
     semantic = entry.get("semantic_comparison")
+    admission_only = (
+        isinstance(semantic, Mapping) and semantic.get("kind") == "admission-only"
+    )
     if (
-        not isinstance(source, Mapping)
-        or source.get("status") != "available"
-        or source.get("pack_id") != pack_id
-        or not isinstance(source.get("digest"), str)
+        not admission_only
+        and (
+            not isinstance(source, Mapping)
+            or source.get("status") != "available"
+            or source.get("pack_id") != pack_id
+            or not isinstance(source.get("digest"), str)
+        )
     ):
         errors.append("pack_specific_legacy_source_missing")
     if (
@@ -1248,7 +1354,11 @@ def _pack_semantic_review_errors(
     if (
         semantic.get("status") != "verified"
         or semantic.get("equivalent") is not True
-        or semantic.get("method") != "legacy-to-v4-semantic-comparator.v1"
+        or semantic.get("method")
+        not in {
+            "legacy-to-v4-semantic-comparator.v1",
+            "curated-admission-only-review.v1",
+        }
     ):
         errors.append("pack_specific_semantic_comparison_unverified")
     inventory = semantic.get("operation_inventory")
@@ -1260,7 +1370,20 @@ def _pack_semantic_review_errors(
         or not isinstance(mappings, list)
         or inventory.get("legacy_count") != inventory.get("v4_count")
         or len(mappings) != inventory.get("v4_count")
-        or not mappings
+        or (
+            not mappings
+            and not (
+                admission_only
+                and inventory.get("legacy_count") == 0
+                and inventory.get("v4_count") == 0
+                and isinstance(semantic.get("no_operations_reason"), str)
+                and semantic["no_operations_reason"].strip()
+                and isinstance(semantic.get("behavior_review"), Mapping)
+                and semantic["behavior_review"].get("status") == "verified"
+                and isinstance(semantic.get("authority_review"), Mapping)
+                and semantic["authority_review"].get("status") == "verified"
+            )
+        )
     ):
         errors.append("pack_specific_operation_mapping_missing")
     if isinstance(mappings, list):
@@ -1291,8 +1414,11 @@ def _pack_semantic_review_errors(
             ):
                 errors.append("pack_specific_authority_mapping_missing")
                 break
+    curated_receipt = semantic.get("semantic_record_digest")
     receipt = entry.get("migration_receipt_digest")
-    if not isinstance(receipt, str):
+    if isinstance(curated_receipt, str):
+        pass
+    elif not isinstance(receipt, str):
         errors.append("pack_specific_migration_receipt_missing")
     elif isinstance(source, Mapping) and isinstance(target, Mapping):
         expected = _proof_digest(
@@ -1389,7 +1515,7 @@ def _migration_status(
     if not isinstance(entry, Mapping):
         return "generated-draft"
     status = entry.get("status")
-    if status not in MIGRATION_STAGES:
+    if status not in {"generated-draft", "semantically-reviewed"}:
         return "generated-draft"
     target = entry.get("target")
     if not isinstance(target, Mapping):
@@ -1400,11 +1526,26 @@ def _migration_status(
     )
     if target.get("digest") != artifact_digest:
         return "generated-draft"
-    if _pack_semantic_review_errors(pack_id, entry):
+    reviews, receipts, evidence_findings = _load_release_evidence()
+    if evidence_findings:
+        reviews = {}
+        receipts = {}
+    review = reviews.get(pack_id)
+    effective_entry = _entry_with_curated_semantics(entry, review)
+    effective_status = effective_entry.get("status")
+    if _pack_semantic_review_errors(pack_id, effective_entry):
         return "generated-draft"
-    if status == "release-verified" and _pack_release_proof_errors(pack_id, entry):
+    if effective_status != "semantically-reviewed":
         return "generated-draft"
-    return str(status)
+    release_entry = {**effective_entry, "status": "release-verified"}
+    if review is not None and not _pack_release_proof_errors(
+        pack_id,
+        release_entry,
+        curated_reviews=reviews,
+        runtime_receipts=receipts,
+    ):
+        return "release-verified"
+    return "semantically-reviewed"
 
 
 def _manifest_authority_counts() -> tuple[Counter[str], list[dict[str, Any]]]:
@@ -1458,6 +1599,10 @@ def _migration_evidence_findings() -> list[dict[str, Any]]:
     """Fail until generator output is fresh and every Pack has semantic proof."""
     proof, findings = _load_independent_migration_proof()
     findings.extend(_migration_proof_generator_findings())
+    curated_reviews, runtime_receipts, release_evidence_findings = (
+        _load_release_evidence()
+    )
+    findings.extend(release_evidence_findings)
     statuses = {
         path.name: _migration_status(path.name, path, proof) for path in _production_pack_dirs()
     }
@@ -1474,6 +1619,21 @@ def _migration_evidence_findings() -> list[dict[str, Any]]:
                 extra=sorted(proof_ids - pack_ids),
             )
         )
+    for path, rule, evidence_ids in (
+        (
+            MIGRATION_REVIEW_PATH,
+            "curated_migration_review_scope_mismatch",
+            set(curated_reviews),
+        ),
+        (
+            MIGRATION_RUNTIME_RECEIPT_PATH,
+            "migration_runtime_receipt_scope_mismatch",
+            set(runtime_receipts),
+        ),
+    ):
+        extra = sorted(evidence_ids - pack_ids)
+        if extra:
+            findings.append(_finding(path, 1, rule, extra=extra))
     profile_receipt: str | None = None
     try:
         proof_document = _load_json(MIGRATION_PROOF_PATH)
@@ -1505,8 +1665,12 @@ def _migration_evidence_findings() -> list[dict[str, Any]]:
             )
         release_errors = _pack_release_proof_errors(
             pack_id,
-            entry,
+            {**entry, "status": "release-verified"}
+            if pack_id in runtime_receipts
+            else entry,
             profile_transaction_receipt=profile_receipt,
+            curated_reviews=curated_reviews,
+            runtime_receipts=runtime_receipts,
         )
         if release_errors:
             findings.append(
