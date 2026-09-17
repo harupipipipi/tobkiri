@@ -69,6 +69,7 @@ const PRIMARY_WINDOW_LABELS: [&str; 2] = ["panel", "main"];
 const DEFAULTSPACK_RESERVED_PORT: u16 = 8766;
 const DEFAULTSPACK_MAIN_WINDOW_LABEL: &str = "defaultspack-main";
 const AUTHORITY_APPROVAL_WINDOW_LABEL: &str = "authority-approval";
+const AUTHORITY_APPROVAL_ARGUMENT: &str = "--tobkiri-open-authority-approval";
 const AUTHORITY_APPROVAL_WINDOW_TITLE: &str = "Tobkiriの許可";
 const AMBIENT_TRIGGER_WINDOW_LABEL: &str = "ambient-trigger";
 const AMBIENT_TRIGGER_WINDOW_TITLE: &str = "合図待ち";
@@ -458,6 +459,32 @@ fn authority_approval_url(request_id: &str) -> Result<Url, String> {
         &[("request_id", request_id.trim())],
     )
     .map_err(|error| format!("failed to build approval window URL: {error}"))
+}
+
+fn authority_approval_request_from_args(args: &[String]) -> Option<String> {
+    let mut matches = args
+        .windows(2)
+        .filter(|pair| pair[0] == AUTHORITY_APPROVAL_ARGUMENT)
+        .map(|pair| pair[1].trim());
+    let request_id = matches.next()?;
+    if matches.next().is_some() || !valid_authority_request_id(request_id) {
+        return None;
+    }
+    Some(request_id.to_string())
+}
+
+fn handle_duplicate_launcher_args(app: &AppHandle, args: Vec<String>) {
+    if let Some(request_id) = authority_approval_request_from_args(&args) {
+        let config = app.state::<AppConfig>();
+        if let Err(error) = open_authority_approval_window_for_app(app, config.inner(), &request_id)
+        {
+            error!("Failed to open requested authority approval window: {error}");
+        }
+        return;
+    }
+    if let Err(error) = show_primary_window(app) {
+        error!("Failed to focus existing Tobkiri window after duplicate launch: {error}");
+    }
 }
 
 fn ambient_trigger_url() -> Result<Url, String> {
@@ -3124,18 +3151,14 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
         );
         tauri::Builder::default()
     } else {
-        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Err(error) = show_primary_window(app) {
-                error!("Failed to focus existing Rumi window after duplicate launch: {error}");
-            }
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            handle_duplicate_launcher_args(app, args);
         }))
     };
     #[cfg(not(debug_assertions))]
     let builder =
-        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Err(error) = show_primary_window(app) {
-                error!("Failed to focus existing Rumi window after duplicate launch: {error}");
-            }
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            handle_duplicate_launcher_args(app, args);
         }));
 
     record_startup_stage(&startup_stage, "builder_configured");
@@ -4386,7 +4409,12 @@ mod tests {
                 .unwrap();
         assert_eq!(
             open["windows"],
-            serde_json::json!(["defaultspack-main", "ambient-trigger", "finger-recording"])
+            serde_json::json!([
+                "defaultspack-main",
+                "ambient-trigger",
+                "finger-recording",
+                "main"
+            ])
         );
         assert_eq!(
             open["remote"]["urls"],
@@ -4433,6 +4461,32 @@ mod tests {
                 "allow-close-current-window"
             ])
         );
+    }
+
+    #[test]
+    fn duplicate_launcher_arguments_accept_one_valid_approval_request() {
+        assert_eq!(
+            authority_approval_request_from_args(&[
+                "tobkiri-launcher".into(),
+                AUTHORITY_APPROVAL_ARGUMENT.into(),
+                "interactive-effect-123".into(),
+            ]),
+            Some("interactive-effect-123".into())
+        );
+        assert!(authority_approval_request_from_args(&[
+            "tobkiri-launcher".into(),
+            AUTHORITY_APPROVAL_ARGUMENT.into(),
+            "../invalid".into(),
+        ])
+        .is_none());
+        assert!(authority_approval_request_from_args(&[
+            "tobkiri-launcher".into(),
+            AUTHORITY_APPROVAL_ARGUMENT.into(),
+            "first".into(),
+            AUTHORITY_APPROVAL_ARGUMENT.into(),
+            "second".into(),
+        ])
+        .is_none());
     }
 
     #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]

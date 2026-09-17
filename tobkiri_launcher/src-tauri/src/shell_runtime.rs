@@ -6,7 +6,8 @@
 //! origin in its WebView.
 
 use std::ffi::OsString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -22,6 +23,7 @@ use crate::shell_handoff::{
 };
 
 const SHELL_ADMISSION_TIMEOUT: Duration = Duration::from_secs(15);
+const AUTHORITY_APPROVAL_ARGUMENT: &str = "--tobkiri-open-authority-approval";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ShellRuntimeBinding {
@@ -36,6 +38,106 @@ struct ShellRuntimeBinding {
 struct ShellNavigationState {
     binding: Option<ShellRuntimeBinding>,
     allowed_runtime_ports: Vec<u16>,
+}
+
+fn launcher_executable_from_shell(shell_executable: &Path) -> Result<PathBuf> {
+    let launcher_name = if cfg!(windows) {
+        "tobkiri-launcher.exe"
+    } else {
+        "tobkiri-launcher"
+    };
+    for ancestor in shell_executable.ancestors().skip(1).take(16) {
+        let candidates = [
+            ancestor.join(launcher_name),
+            ancestor.join("Contents").join("MacOS").join(launcher_name),
+        ];
+        for candidate in candidates {
+            if candidate.is_file() && candidate != shell_executable {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(anyhow!(
+        "verified Launcher executable is unavailable from the Shell artifact"
+    ))
+}
+
+fn validate_approval_request_caller(
+    state: &ShellNavigationState,
+    window_label: &str,
+    focused: bool,
+    current_url: &tauri::Url,
+    request_id: &str,
+) -> Result<()> {
+    if !crate::valid_authority_request_id(request_id) {
+        return Err(anyhow!("invalid authority request id"));
+    }
+    if window_label != "main" || !focused {
+        return Err(anyhow!(
+            "opening an approval window requires the focused Shell window"
+        ));
+    }
+    let binding = state
+        .binding
+        .as_ref()
+        .context("approval window requires an admitted Shell binding")?;
+    let profile = crate::health_check::encode_profile_path_segment(&binding.identity.profile_id)
+        .context("approval window requires a valid active Profile")?;
+    let profile_prefix = format!("/p/{profile}/");
+    if current_url.scheme() != "http"
+        || current_url.host_str() != Some("127.0.0.1")
+        || current_url.port_or_known_default() != Some(binding.runtime_port)
+        || !current_url.path().starts_with(&profile_prefix)
+        || current_url.fragment().is_some()
+        || !crate::authority_application_query_is_safe(current_url)
+    {
+        return Err(anyhow!(
+            "approval window is unavailable from this Shell route"
+        ));
+    }
+    if crate::shell_handoff::process_identity(binding.launcher_process.pid)?
+        != binding.launcher_process
+    {
+        return Err(anyhow!("Launcher process identity changed"));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_authority_approval_window(
+    window: tauri::WebviewWindow,
+    navigation_state: tauri::State<'_, Arc<Mutex<ShellNavigationState>>>,
+    request_id: String,
+) -> Result<(), String> {
+    let focused = window
+        .is_focused()
+        .map_err(|error| format!("failed to inspect approval caller focus: {error}"))?;
+    let current_url = window
+        .url()
+        .map_err(|error| format!("failed to inspect approval caller URL: {error}"))?;
+    let state = navigation_state
+        .lock()
+        .map_err(|error| format!("Shell navigation state lock is poisoned: {error}"))?;
+    validate_approval_request_caller(
+        &state,
+        window.label(),
+        focused,
+        &current_url,
+        request_id.trim(),
+    )
+    .map_err(|error| error.to_string())?;
+    drop(state);
+
+    let shell_executable = std::env::current_exe()
+        .map_err(|error| format!("failed to locate the Shell executable: {error}"))?;
+    let launcher_executable =
+        launcher_executable_from_shell(&shell_executable).map_err(|error| error.to_string())?;
+    Command::new(launcher_executable)
+        .arg(AUTHORITY_APPROVAL_ARGUMENT)
+        .arg(request_id.trim())
+        .spawn()
+        .map_err(|error| format!("failed to notify Tobkiri Launcher: {error}"))?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -496,6 +598,8 @@ pub(crate) fn run(context: tauri::Context<tauri::Wry>) {
                 })
                 .build(),
         )
+        .manage(Arc::clone(&navigation_state))
+        .invoke_handler(tauri::generate_handler![open_authority_approval_window])
         .setup(move |app| {
             match handoff_path_from_os_args(initial_args.clone()).and_then(|path| {
                 apply_handoff(
@@ -607,6 +711,59 @@ mod tests {
             Arc::new(Mutex::new(ShellNavigationState::default())),
             Arc::new(Mutex::new(ShellHandoffLifecycle::Idle)),
         )
+    }
+
+    #[test]
+    fn launcher_executable_is_resolved_only_from_a_shell_ancestor() {
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-shell-launcher-path-{}",
+            std::process::id()
+        ));
+        let shell = root.join(
+            "Outer.app/Contents/Resources/app/bundled/Tobkiri.app/Contents/MacOS/tobkiri-shell",
+        );
+        let launcher = root.join("Outer.app/Contents/MacOS/tobkiri-launcher");
+        std::fs::create_dir_all(shell.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(launcher.parent().unwrap()).unwrap();
+        std::fs::write(&shell, b"shell").unwrap();
+        std::fs::write(&launcher, b"launcher").unwrap();
+        assert_eq!(launcher_executable_from_shell(&shell).unwrap(), launcher);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn approval_request_requires_focused_admitted_profile_route() {
+        let (navigation, _lifecycle) = states();
+        let mut admitted = handoff('a', 'R');
+        admitted.launcher_process =
+            crate::shell_handoff::process_identity(std::process::id()).unwrap();
+        navigation.lock().unwrap().stage_initial(&admitted);
+        let url = tauri::Url::parse("http://127.0.0.1:8766/p/profile-a/chat").unwrap();
+        validate_approval_request_caller(
+            &navigation.lock().unwrap(),
+            "main",
+            true,
+            &url,
+            "interactive-effect-123",
+        )
+        .unwrap();
+        assert!(validate_approval_request_caller(
+            &navigation.lock().unwrap(),
+            "main",
+            false,
+            &url,
+            "interactive-effect-123",
+        )
+        .is_err());
+        assert!(validate_approval_request_caller(
+            &navigation.lock().unwrap(),
+            "main",
+            true,
+            &tauri::Url::parse("http://127.0.0.1:8766/approval").unwrap(),
+            "interactive-effect-123",
+        )
+        .is_err());
     }
 
     fn bound_states() -> (

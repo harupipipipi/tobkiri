@@ -3,7 +3,7 @@
   "identifier": "authority-approval-open",
   "description": "Opens the dedicated one-shot approval window from Tobkiri-owned Defaultspack surfaces",
   "local": false,
-  "windows": ["defaultspack-main", "ambient-trigger", "finger-recording"],
+  "windows": ["defaultspack-main", "ambient-trigger", "finger-recording", "main"],
   "remote": {
     "urls": [
       "http://127.0.0.1:*/*"
