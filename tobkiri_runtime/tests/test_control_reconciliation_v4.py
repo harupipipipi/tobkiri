@@ -163,13 +163,27 @@ def test_read_only_status_on_missing_journal_is_filesystem_immutable(
     root = tmp_path / "absent"
     store = ControlReconciliationStore(root / "control" / "reconciliation-v4.sqlite3")
 
-    with pytest.raises(ControlReconciliationError, match="unavailable"):
+    with pytest.raises(ControlReconciliationNotFoundError, match="unknown"):
         store.operation_status(
             "00000000-0000-4000-8000-000000000000",
             session_id="session-a",
         )
 
     assert not root.exists()
+
+
+def test_read_only_status_rejects_dangling_ancestor_symlink(
+    tmp_path: Path,
+) -> None:
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path / "missing-target", target_is_directory=True)
+    store = ControlReconciliationStore(alias / "control" / "reconciliation-v4.sqlite3")
+
+    with pytest.raises(ControlReconciliationUnavailableError, match="unsafe"):
+        store.operation_status(
+            "00000000-0000-4000-8000-000000000000",
+            session_id="session-a",
+        )
 
 
 def test_first_authorized_operation_initializes_and_recovers_durable_state(
