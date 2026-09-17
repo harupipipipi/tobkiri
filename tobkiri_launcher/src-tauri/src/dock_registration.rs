@@ -24,7 +24,11 @@ use crate::kernel_manager::{detect_port_listener, terminate_external_listener, P
 use crate::process_utils;
 
 const DEFAULTSPACK_DEFAULT_PORT: u16 = 8766;
-const DEFAULTSPACK_READY_TIMEOUT: Duration = Duration::from_secs(60);
+// A cold packaged launch may spend close to a minute materializing and
+// verifying the sealed Python environment before the HTTP server can bind.
+// Keep this finite, but leave enough room for that authenticated bootstrap so
+// the Launcher does not terminate a healthy child just as it starts serving.
+const DEFAULTSPACK_READY_TIMEOUT: Duration = Duration::from_secs(120);
 const DEFAULTSPACK_READY_POLL_INTERVAL: Duration = Duration::from_millis(250);
 static DEFAULTSPACK_LAUNCH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
