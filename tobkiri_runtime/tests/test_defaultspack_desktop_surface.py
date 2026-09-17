@@ -633,13 +633,22 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
 
         sleeps = []
 
-        with patch.object(desktop_app.urllib.request, "urlopen", return_value=FakeResponse()):
+        with patch.object(
+            desktop_app.urllib.request,
+            "urlopen",
+            return_value=FakeResponse(),
+        ) as urlopen:
             with patch.object(desktop_app.time, "time", side_effect=[0.0, 0.0, 0.1, 0.3]):
                 with patch.object(desktop_app.time, "sleep", side_effect=sleeps.append):
                     result = desktop_app._wait_until_chat_ready("http://localhost:8766/chat", timeout=0.25)
 
         self.assertFalse(result)
         self.assertEqual(sleeps, [0.2, 0.2])
+        self.assertEqual(urlopen.call_count, 2)
+        urlopen.assert_called_with(
+            "http://localhost:8766/chat",
+            timeout=0.25,
+        )
 
     def test_wait_until_ready_does_not_flood_slow_profile_verification(self):
         from defaultspack import desktop_app

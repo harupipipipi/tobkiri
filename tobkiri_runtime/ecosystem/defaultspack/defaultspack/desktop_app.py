@@ -636,7 +636,13 @@ def _wait_until_chat_ready(url: str, timeout: float = 10.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=1.0) as response:
+            # The first authenticated application render can spend several
+            # seconds verifying the active Profile on a cold start.  A
+            # one-second per-request timeout closes the client socket while
+            # the single HTTP server is still producing a valid page, then
+            # queues another doomed probe behind it.  Give the request the
+            # same bounded budget as the readiness check itself.
+            with urllib.request.urlopen(url, timeout=timeout) as response:
                 body = response.read(2048).decode("utf-8", "ignore")
                 if 200 <= response.status < 300 and ("<title>" in body or 'id="root"' in body):
                     return True
