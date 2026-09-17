@@ -2598,19 +2598,19 @@ def _parse_bubblewrap_descriptor(
         or set(descriptor) != {"schema", "package", "version", "architecture", "source"}
         or descriptor.get("schema") != "io.tobkiri.packvm-vz-bubblewrap-descriptor.v1"
         or descriptor.get("package") != "bubblewrap"
-        or descriptor.get("version") != "0.11.0-2+deb13u1"
+        or descriptor.get("version") != "0.12.0-1~deb13u1"
         or descriptor.get("architecture") != "arm64"
         or not isinstance(source, Mapping)
         or set(source) != {"url", "size_bytes", "sha256"}
         or source.get("url")
         != "https://deb.debian.org/debian/pool/main/b/bubblewrap/"
-        "bubblewrap_0.11.0-2+deb13u1_arm64.deb"
-        or source.get("size_bytes") != 50132
+        "bubblewrap_0.12.0-1~deb13u1_arm64.deb"
+        or source.get("size_bytes") != 54820
         or source.get("sha256")
-        != "sha256:c838daebddb7fe169ebb461612e90b1fcb981de838f81bfbecf26d45ab5a71ee"
+        != "sha256:d1ac1d0d81c815fc15842b9f04fdf414830ed14a0a602bf6344740f90bb36c00"
     ):
         raise ValueError("PackVM VZ bubblewrap descriptor is invalid")
-    return {"size_bytes": 50132, "sha256": str(source["sha256"])}
+    return {"size_bytes": 54820, "sha256": str(source["sha256"])}
 
 
 def _parse_guest_service_template(

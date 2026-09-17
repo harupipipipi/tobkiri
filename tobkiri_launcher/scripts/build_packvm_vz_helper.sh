@@ -126,7 +126,7 @@ if (
     or set(descriptor) != {"schema", "package", "version", "architecture", "source"}
     or descriptor["schema"] != "io.tobkiri.packvm-vz-bubblewrap-descriptor.v1"
     or descriptor["package"] != "bubblewrap"
-    or descriptor["version"] != "0.11.0-2+deb13u1"
+    or descriptor["version"] != "0.12.0-1~deb13u1"
     or descriptor["architecture"] != "arm64"
     or not isinstance(descriptor["source"], dict)
     or set(descriptor["source"]) != {"url", "size_bytes", "sha256"}
