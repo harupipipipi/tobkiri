@@ -513,8 +513,19 @@ def test_macos_python_archive_authority_is_exact_and_offline_after_download(
 def test_formal_packaging_lock_selection_is_target_bound() -> None:
     """ARM uses its reviewed wheel lock while Intel publication fails closed."""
     arm = BUILDER.target_spec("aarch64-apple-darwin")
-    assert BUILDER.packaging_requirements_relative(arm) == Path(
+    arm_lock_relative = BUILDER.packaging_requirements_relative(arm)
+    assert arm_lock_relative == Path(
         "tobkiri_runtime/requirements-packaging-aarch64-apple-darwin.txt"
+    )
+    arm_lock = (ROOT / arm_lock_relative).read_text(encoding="utf-8")
+    assert "wasmtime==48.0.0" in arm_lock
+    assert (
+        "sha256:ea69889a3c51702e9da5f5f441027ca934f7758f8926a4ed167b0d6877f092e8"
+        in arm_lock
+    )
+    assert (
+        "sha256:49c9ee43e9cf59ad7453ac65dce0cc4b885837904dd3cfd45faafe930defe14a"
+        not in arm_lock
     )
 
     intel = BUILDER.target_spec("x86_64-apple-darwin")
