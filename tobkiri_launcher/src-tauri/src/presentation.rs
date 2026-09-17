@@ -1005,7 +1005,12 @@ fn launch_verified_artifact(
         .args(&spec.args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        // The Shell emits only fail-closed lifecycle diagnostics at the
+        // default log level. Preserve those in the Launcher's existing log
+        // sink so an early handoff rejection is actionable instead of being
+        // indistinguishable from a receipt timeout. Standard output remains
+        // closed because it is not part of the authenticated protocol.
+        .stderr(Stdio::inherit())
         .spawn()
         .with_context(|| {
             format!(
