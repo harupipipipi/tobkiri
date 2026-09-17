@@ -1169,6 +1169,13 @@ fn debug_pending_interactive_request_id(value: &serde_json::Value) -> Option<&st
 }
 
 #[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+fn acceptance_pack_matches_exact_artifact(pack: &serde_json::Value, expected_digest: &str) -> bool {
+    pack.get("pack_artifact_digest")
+        .and_then(serde_json::Value::as_str)
+        == Some(expected_digest)
+}
+
+#[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
 fn maybe_start_packvm_acceptance_adapter(
     app_identifier: &str,
     config: &AppConfig,
@@ -1213,11 +1220,7 @@ fn maybe_start_packvm_acceptance_adapter(
                 })
             })
             .context("signed PackVM QA Pack is not admitted by the active QA Profile")?;
-        if pack
-            .get("artifact_digest")
-            .and_then(serde_json::Value::as_str)
-            != Some(exact_digest.as_str())
-        {
+        if !acceptance_pack_matches_exact_artifact(pack, exact_digest.as_str()) {
             bail!("active QA Profile does not contain the exact signed fixture digest");
         }
         if pack.get("approved").and_then(serde_json::Value::as_bool) != Some(true)
@@ -3489,6 +3492,25 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn packvm_acceptance_uses_the_executable_pack_artifact_identity() {
+        let expected = format!("sha256:{}", "a".repeat(64));
+        let pack = serde_json::json!({
+            "artifact_digest": format!("sha256:{}", "b".repeat(64)),
+            "pack_artifact_digest": expected,
+        });
+
+        assert!(super::acceptance_pack_matches_exact_artifact(
+            &pack,
+            pack["pack_artifact_digest"].as_str().unwrap(),
+        ));
+        assert!(!super::acceptance_pack_matches_exact_artifact(
+            &pack,
+            pack["artifact_digest"].as_str().unwrap(),
+        ));
+    }
+
     #[test]
     fn shutdown_claim_is_single_use() {
         let shutdown_flag = std::sync::atomic::AtomicBool::new(false);
