@@ -1988,7 +1988,10 @@ if(!code){{document.body.textContent='Tobkiri Launcher authentication required';
 else fetch('/api/panel/auth/exchange',{{method:'POST',credentials:'same-origin',
 headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
 .then(r=>{{if(!r.ok)throw new Error('authentication failed');return r.json()}})
-.then(v=>{{sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);location.replace({target_literal})}})
+.then(v=>{{if(!v.data?.csrf_token||!v.data?.journal_scope)throw new Error('authentication failed');
+sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);
+sessionStorage.setItem('tobkiri-panel-journal-scope-v1',v.data.journal_scope);
+location.replace({target_literal})}})
 .catch(()=>{{document.body.textContent='Tobkiri Launcher authentication failed';}});
 }});
 </script>""".encode("utf-8")

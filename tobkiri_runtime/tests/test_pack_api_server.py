@@ -2060,6 +2060,11 @@ def test_profile_screen_bootstrap_preserves_exact_captured_route(
         connection.close()
         assert response.status == 200
         assert 'location.replace("/p/defaults/chat")' in document
+        assert "v.data?.csrf_token||!v.data?.journal_scope" in document
+        assert (
+            "sessionStorage.setItem('tobkiri-panel-journal-scope-v1',"
+            "v.data.journal_scope)"
+        ) in document
         assert code not in document
 
         origin = f"http://127.0.0.1:{server.port}"
