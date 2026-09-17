@@ -68,6 +68,8 @@ import {
 export type {ColorMode, Theme} from './lib/appearance';
 export {AVATAR_OPTIONS} from './lib/avatar';
 
+const PACK_MUTATION_TIMEOUT_MS = 30_000;
+
 function readLocalStorage(key: string): string | null {
   return readSafeStorageValue(getBrowserStorage('local'), key);
 }
@@ -1166,7 +1168,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((current) => ({packInstallPending: {...current.packInstallPending, [id]: true}}));
     let responseAccepted = false;
     try {
-      const response = await apiInstallPack(id, {requestId: mutation.requestId});
+      const response = await apiInstallPack(id, {
+        requestId: mutation.requestId,
+        timeoutMs: PACK_MUTATION_TIMEOUT_MS,
+      });
       if (response.pack_id !== id || response.installed !== true) {
         throw new Error('Tobkiri did not confirm Pack installation.');
       }
@@ -1275,6 +1280,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const response = await apiApprovePack(id, {
         candidateRequestId: mutationRequestId(mutation, 'candidate'),
         approvalRequestId: mutationRequestId(mutation, 'approval'),
+        timeoutMs: PACK_MUTATION_TIMEOUT_MS,
       });
       if (
         response.pack_id !== id
@@ -1389,7 +1395,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
     let responseAccepted = false;
     try {
-      const response = await apiRevokePackApproval(id, {requestId: mutation.requestId});
+      const response = await apiRevokePackApproval(id, {
+        requestId: mutation.requestId,
+        timeoutMs: PACK_MUTATION_TIMEOUT_MS,
+      });
       if (
         response.pack_id !== id
         || response.approved
@@ -1507,8 +1516,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       const response = pack.enabled
-        ? await apiDisablePack(id, {requestId: mutation.requestId})
-        : await apiEnablePack(id, {requestId: mutation.requestId});
+        ? await apiDisablePack(id, {
+          requestId: mutation.requestId,
+          timeoutMs: PACK_MUTATION_TIMEOUT_MS,
+        })
+        : await apiEnablePack(id, {
+          requestId: mutation.requestId,
+          timeoutMs: PACK_MUTATION_TIMEOUT_MS,
+        });
       if (response.pack_id !== id || response.enabled !== expectedEnabled) {
         throw new Error('Tobkiri did not confirm the requested Pack state.');
       }
