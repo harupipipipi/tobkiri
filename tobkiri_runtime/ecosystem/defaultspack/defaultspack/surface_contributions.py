@@ -122,6 +122,14 @@ def defaultspack_web_mounts(pack_root: Path) -> tuple[dict[str, Any], ...]:
             "auth_required": True,
             "auth_bootstrap": True,
         },
+        {
+            "path_prefix": "/approval",
+            "web_root": ui_root,
+            "spa_fallback": True,
+            "index_file": "shell.html",
+            "auth_required": True,
+            "auth_bootstrap": True,
+        },
     )
 
 

@@ -56,6 +56,7 @@ def test_defaultspack_web_mounts_keep_the_pack_owned_legacy_alias(tmp_path):
         "/chat",
         "/static",
         "/desktops",
+        "/approval",
     }
     profile_routes = next(mount for mount in mounts if mount["path_prefix"] == "/p")
     assert profile_routes["web_root"] == (tmp_path / "defaultspack" / "ui").resolve()
@@ -65,6 +66,10 @@ def test_defaultspack_web_mounts_keep_the_pack_owned_legacy_alias(tmp_path):
     assert desktops["web_root"] == (tmp_path / "defaultspack" / "ui").resolve()
     assert desktops["auth_required"] is True
     assert desktops["auth_bootstrap"] is True
+    approval = next(mount for mount in mounts if mount["path_prefix"] == "/approval")
+    assert approval["web_root"] == (tmp_path / "defaultspack" / "ui").resolve()
+    assert approval["auth_required"] is True
+    assert approval["auth_bootstrap"] is True
     static = next(mount for mount in mounts if mount["path_prefix"] == "/static")
     assert static["auth_bootstrap"] is False
 
