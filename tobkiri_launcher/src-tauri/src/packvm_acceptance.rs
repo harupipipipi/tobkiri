@@ -8,6 +8,7 @@
 #![cfg(unix)]
 
 use std::fs;
+use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -85,9 +86,7 @@ pub(crate) fn start(user_data_root: &Path, handler: Arc<AcceptanceHandler>) -> R
     let root = user_data_root.join("packvm-acceptance");
     prepare_private_root(user_data_root, &root)?;
     let socket_path = root.join("adapter.sock");
-    if fs::symlink_metadata(&socket_path).is_ok() {
-        bail!("PackVM acceptance socket path already exists");
-    }
+    reclaim_stale_socket(&socket_path)?;
     let listener = UnixListener::bind(&socket_path)
         .context("failed to bind PackVM acceptance adapter socket")?;
     fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))
@@ -110,6 +109,57 @@ pub(crate) fn start(user_data_root: &Path, handler: Arc<AcceptanceHandler>) -> R
         })
         .context("failed to start PackVM acceptance adapter")?;
     Ok(socket_path)
+}
+
+fn reclaim_stale_socket(path: &Path) -> Result<()> {
+    let initial = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error).context("failed to inspect PackVM acceptance socket path"),
+    };
+    verify_reclaimable_socket(&initial)?;
+
+    match UnixStream::connect(path) {
+        Ok(_) => bail!("PackVM acceptance socket is already active"),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == ErrorKind::ConnectionRefused => {}
+        Err(error) => {
+            return Err(error).context("failed to probe existing PackVM acceptance socket")
+        }
+    }
+
+    let current = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error).context("failed to recheck PackVM acceptance socket path"),
+    };
+    verify_reclaimable_socket(&current)?;
+    if socket_identity(&initial) != socket_identity(&current) {
+        bail!("PackVM acceptance socket changed during stale recovery");
+    }
+    fs::remove_file(path).context("failed to remove stale PackVM acceptance socket")
+}
+
+fn verify_reclaimable_socket(metadata: &fs::Metadata) -> Result<()> {
+    if metadata.file_type().is_symlink()
+        || !metadata.file_type().is_socket()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.nlink() != 1
+        || metadata.permissions().mode() & 0o077 != 0
+    {
+        bail!("PackVM acceptance socket path is not a private owned socket");
+    }
+    Ok(())
+}
+
+fn socket_identity(metadata: &fs::Metadata) -> (u64, u64, u32, u64, u32) {
+    (
+        metadata.dev(),
+        metadata.ino(),
+        metadata.mode(),
+        metadata.nlink(),
+        metadata.uid(),
+    )
 }
 
 fn prepare_private_root(user_data_root: &Path, root: &Path) -> Result<()> {
@@ -278,6 +328,49 @@ fn validate_request(request: &AcceptanceRequest) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temporary_directory(label: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "tobkiri-packvm-acceptance-{label}-{}",
+            std::process::id()
+        ));
+        fs::create_dir(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn stale_private_socket_is_reclaimed() {
+        let temporary = temporary_directory("stale");
+        let socket_path = temporary.join("adapter.sock");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600)).unwrap();
+        drop(listener);
+
+        reclaim_stale_socket(&socket_path).unwrap();
+
+        assert!(!socket_path.exists());
+        fs::remove_dir(temporary).unwrap();
+    }
+
+    #[test]
+    fn live_or_non_socket_paths_are_never_reclaimed() {
+        let temporary = temporary_directory("live");
+        let socket_path = temporary.join("adapter.sock");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(reclaim_stale_socket(&socket_path).is_err());
+        assert!(socket_path.exists());
+
+        let file_path = temporary.join("ordinary-file");
+        fs::write(&file_path, b"not a socket").unwrap();
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(reclaim_stale_socket(&file_path).is_err());
+        assert_eq!(fs::read(&file_path).unwrap(), b"not a socket");
+        drop(listener);
+        fs::remove_file(socket_path).unwrap();
+        fs::remove_file(file_path).unwrap();
+        fs::remove_dir(temporary).unwrap();
+    }
 
     #[test]
     fn request_is_finite_and_nonce_bound() {
