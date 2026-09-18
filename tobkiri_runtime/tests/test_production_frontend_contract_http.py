@@ -516,7 +516,7 @@ def test_chat_approval_continuation_uses_captured_host_provider_once(
     server, _session, _authority = production_server
     resumed: list[tuple[Mapping[str, object], str, str]] = []
 
-    def approve(request_id, conversation_id, _operator):
+    def approve(request_id, conversation_id, _operator, turn_id):
         return {
             "request_id": request_id,
             "approved": True,
@@ -526,6 +526,7 @@ def test_chat_approval_continuation_uses_captured_host_provider_once(
             "binding": {
                 "request_id": request_id,
                 "conversation_id": conversation_id,
+                "turn_id": turn_id,
                 "operation": "computer.click",
                 "args_hash": "b" * 64,
                 "tool_name": "computer_use",
@@ -561,6 +562,7 @@ def test_chat_approval_continuation_uses_captured_host_provider_once(
         {
             "request_id": "apr-1",
             "conversation_id": "conversation-1",
+            "turn_id": "turn-1",
             "ui_operator": {"signed": True},
         },
     )
@@ -568,17 +570,23 @@ def test_chat_approval_continuation_uses_captured_host_provider_once(
     decision = approved["data"]
     assert decision["resume_id"].startswith("host_resume_")
     assert "token" not in decision
+    assert decision["turn_id"] == "turn-1"
+    assert decision["operation_id"] == "turn-1"
+    assert decision["terminal"] is None
 
     status, completed, _ = post(
         "/api/chat/approval/resume",
         {
             "request_id": "apr-1",
             "conversation_id": "conversation-1",
+            "turn_id": "turn-1",
             "resume_id": decision["resume_id"],
         },
     )
     assert status == 200, completed
     assert completed["data"]["resumed"] is True
+    assert completed["data"]["turn_id"] == "turn-1"
+    assert completed["data"]["terminal"]["status"] == "completed"
     assert resumed[0][1:] == ("host-only-token", "conversation-1")
 
     reused_status, _, _ = post(
@@ -586,21 +594,44 @@ def test_chat_approval_continuation_uses_captured_host_provider_once(
         {
             "request_id": "apr-1",
             "conversation_id": "conversation-1",
+            "turn_id": "turn-1",
             "resume_id": decision["resume_id"],
         },
     )
     assert reused_status in {403, 409, 503}
+
+    foreign_status, _, _ = post(
+        "/api/chat/approval/resume",
+        {
+            "request_id": "apr-1",
+            "conversation_id": "conversation-1",
+            "turn_id": "foreign-turn",
+            "resume_id": decision["resume_id"],
+        },
+    )
+    assert foreign_status in {403, 409, 503}
 
     forged_status, _, _ = post(
         "/api/chat/approval/approve",
         {
             "request_id": "apr-2",
             "conversation_id": "conversation-1",
+            "turn_id": "turn-1",
             "ui_operator": {"signed": True},
             "approval_token": "forged",
         },
     )
     assert forged_status == 400
+
+    missing_turn_status, _, _ = post(
+        "/api/chat/approval/approve",
+        {
+            "request_id": "apr-2",
+            "conversation_id": "conversation-1",
+            "ui_operator": {"signed": True},
+        },
+    )
+    assert missing_turn_status == 400
 
 
 def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
@@ -719,6 +750,7 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
                 "request_id": requests[operation]["request_id"],
                 "resume_id": f"host_resume_unapproved_{operation}",
                 "conversation_id": "approval-matrix",
+                "turn_id": "",
             },
         )
         assert status != 200, rejected
@@ -730,22 +762,27 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
         {
             "request_id": allowed["request_id"],
             "conversation_id": "approval-matrix",
+            "turn_id": "",
             "ui_operator": {"signed": True},
         },
     )
     assert status == 200, approved
     resume_id = str(approved["data"]["resume_id"])
     assert "token" not in approved["data"]
+    assert approved["data"]["turn_id"] == ""
     status, completed = post(
         "/api/chat/approval/resume",
         {
             "request_id": allowed["request_id"],
             "resume_id": resume_id,
             "conversation_id": "approval-matrix",
+            "turn_id": "",
         },
     )
     assert status == 200, completed
     assert completed["data"]["resumed"] is True
+    assert completed["data"]["turn_id"] == ""
+    assert completed["data"]["terminal"]["status"] == "completed"
     assert executions == [
         (
             "browser_computer",
@@ -754,6 +791,30 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
         )
     ]
 
+    # A client cannot claim a canonical turn the approval was never bound to.
+    status, foreign_turn = post(
+        "/api/chat/approval/approve",
+        {
+            "request_id": requests["git.commit"]["request_id"],
+            "conversation_id": "approval-matrix",
+            "turn_id": "foreign-turn",
+            "ui_operator": {"signed": True},
+        },
+    )
+    assert foreign_turn["data"]["turn_id"] == "foreign-turn"
+    assert status == 200
+    status, foreign_resume = post(
+        "/api/chat/approval/resume",
+        {
+            "request_id": requests["git.commit"]["request_id"],
+            "resume_id": foreign_turn["data"]["resume_id"],
+            "conversation_id": "approval-matrix",
+            "turn_id": "different-turn",
+        },
+    )
+    assert status != 200, foreign_resume
+    assert len(executions) == 1
+
     # The one-shot is consumed, and every unrelated operation remains pending.
     status, replay = post(
         "/api/chat/approval/resume",
@@ -761,16 +822,19 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
             "request_id": allowed["request_id"],
             "resume_id": resume_id,
             "conversation_id": "approval-matrix",
+            "turn_id": "",
         },
     )
     assert status != 200, replay
     assert len(executions) == 1
     assert approval.get_approval_request(str(allowed["request_id"]))["status"] == "consumed"
     for operation, _function_id, _arguments in cases:
-        if operation != "browser.navigate":
-            assert approval.get_approval_request(
-                str(requests[operation]["request_id"])
-            )["status"] == "pending"
+        if operation == "browser.navigate":
+            continue
+        expected = "approved" if operation == "git.commit" else "pending"
+        assert approval.get_approval_request(
+            str(requests[operation]["request_id"])
+        )["status"] == expected
 
     approval.reset_approval_state_for_tests()
 

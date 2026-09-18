@@ -17,7 +17,9 @@ class ChatApprovalContinuationController:
     def __init__(
         self,
         *,
-        approve: Callable[[str, str, Mapping[str, Any]], Mapping[str, Any]],
+        approve: Callable[
+            [str, str, Mapping[str, Any], str], Mapping[str, Any]
+        ],
         resume: Callable[[Mapping[str, Any], str, str], Mapping[str, Any]],
     ) -> None:
         self._approve = approve
@@ -38,6 +40,7 @@ class ChatApprovalContinuationController:
                 command.request_id,
                 command.conversation_id,
                 command.ui_operator,
+                command.turn_id,
             )
         )
         token = str(approved.pop("token", "") or "")
@@ -59,7 +62,12 @@ class ChatApprovalContinuationController:
                 "binding": dict(binding),
                 "expires_at": expires_at,
             }
-        return {**approved, "resume_id": handle}
+        return {
+            **approved,
+            "resume_id": handle,
+            **_continuation_identity(command, expected["turn_id"]),
+            "terminal": None,
+        }
 
     def resume_chat_continuation(
         self,
@@ -77,11 +85,57 @@ class ChatApprovalContinuationController:
         expected = _binding(command, binding)
         if any(record.get(key) != value for key, value in expected.items()):
             raise PermissionError("chat approval continuation is unavailable")
-        return self._resume(
-            dict(binding),
-            str(record.get("token") or ""),
-            command.conversation_id,
+        result = dict(
+            self._resume(
+                dict(binding),
+                str(record.get("token") or ""),
+                command.conversation_id,
+            )
         )
+        identity = _continuation_identity(command, expected["turn_id"])
+        return {
+            **result,
+            **identity,
+            "terminal": _continuation_terminal(identity, result),
+        }
+
+
+def _continuation_identity(
+    command: ChatApprovalContinuationCommand,
+    turn_id: str,
+) -> dict[str, str]:
+    """Project the canonical identities the bound continuation packet carries."""
+
+    return {
+        "turn_id": turn_id,
+        "conversation_id": command.conversation_id,
+        "operation_id": turn_id,
+        "request_id": command.request_id,
+    }
+
+
+def _continuation_terminal(
+    identity: Mapping[str, str],
+    result: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project the continuation outcome as a canonical turn terminal receipt."""
+
+    if result.get("resumed") is True:
+        return {
+            **identity,
+            "status": "completed",
+            "result_reference": {
+                "tool": str(result.get("tool") or ""),
+                "terminal_event": str(result.get("terminal_event") or ""),
+            },
+            "error": None,
+        }
+    return {
+        **identity,
+        "status": "failed",
+        "result_reference": None,
+        "error": dict(result),
+    }
 
 
 def _binding(
@@ -89,14 +143,17 @@ def _binding(
     snapshot: Mapping[str, Any],
 ) -> dict[str, Any]:
     context = command.context
+    recorded_turn = str(snapshot.get("turn_id") or "")
     if (
         snapshot.get("request_id") != command.request_id
         or snapshot.get("conversation_id") != command.conversation_id
+        or (recorded_turn and recorded_turn != command.turn_id)
     ):
         raise PermissionError("chat approval binding changed")
     return {
         "request_id": command.request_id,
         "conversation_id": command.conversation_id,
+        "turn_id": recorded_turn or str(command.turn_id or ""),
         "operation": str(snapshot.get("operation") or ""),
         "args_hash": str(snapshot.get("args_hash") or ""),
         "tool_name": str(snapshot.get("tool_name") or ""),

@@ -14,6 +14,10 @@ test("chat approval handlers use the one-shot server continuation instead of leg
 
   assert.match(handlers, /api\.approveCodingApprovalForContinuation/);
   assert.match(handlers, /api\.resumeCodingApproval/);
+  // Continuation packets must be bound to the exact pending saved turn so
+  // they can never be projected onto a newer or unrelated pending request.
+  assert.match(handlers, /pendingRequests\[activeConversationId\]\?\.savedTurn/);
+  assert.match(handlers, /pendingTurnId/);
   assert.doesNotMatch(handlers, /api\.streamMessage/);
   assert.doesNotMatch(handlers, /approval_token|runtime_content|tool_policy/);
 });

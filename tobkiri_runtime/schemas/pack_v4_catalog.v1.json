@@ -8926,7 +8926,7 @@
         {
           "contract_id": "tobkiri.service.host.authorize.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
+          "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9",
           "operation_ids": [
             "rumi_host_authority_bridge_pack.host-authority"
           ]
@@ -8934,7 +8934,7 @@
         {
           "contract_id": "tobkiri.service.interactive-approval.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
-          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
+          "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9",
           "operation_ids": [
             "interactive_approval.get",
             "interactive_approval.list",
@@ -8945,7 +8945,7 @@
     {
       "contract_id": "tobkiri.service.interactive-effect.v1",
           "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
-          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
+          "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9",
           "operation_ids": [
             "interactive_effect.manage"
       ]
@@ -8953,7 +8953,7 @@
     {
       "contract_id": "tobkiri.action.chat.approval-continuation.v1",
       "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
-      "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
+      "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9",
       "operation_ids": [
         "chat_approval.approve",
         "chat_approval.resume"
@@ -8994,7 +8994,7 @@
               ],
               "entrypoint_id": "host-authority",
               "id": "rumi_host_authority_bridge_pack.host-authority",
-              "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898"
+              "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -9051,7 +9051,7 @@
               ],
               "entrypoint_id": "get",
               "id": "interactive_approval.get",
-              "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898"
+              "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9"
             },
             {
               "effect_ceiling": [
@@ -9060,7 +9060,7 @@
               ],
               "entrypoint_id": "list",
               "id": "interactive_approval.list",
-              "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898"
+              "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9"
             },
             {
               "effect_ceiling": [
@@ -9069,7 +9069,7 @@
               ],
               "entrypoint_id": "approve",
               "id": "interactive_approval.approve",
-              "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898"
+              "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9"
             },
             {
               "effect_ceiling": [
@@ -9078,7 +9078,7 @@
               ],
               "entrypoint_id": "deny",
               "id": "interactive_approval.deny",
-              "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898"
+              "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -9131,7 +9131,7 @@
               ],
               "entrypoint_id": "manage",
               "id": "interactive_effect.manage",
-              "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898"
+              "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9"
             }
           ],
           "owner": "rumi_host_authority_bridge_pack",
@@ -9205,7 +9205,7 @@
           ],
           "entrypoint_id": "approve",
           "id": "chat_approval.approve",
-          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898"
+          "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9"
         },
         {
           "effect_ceiling": [
@@ -9214,7 +9214,7 @@
           ],
           "entrypoint_id": "resume",
           "id": "chat_approval.resume",
-          "implementation_digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898"
+          "implementation_digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9"
         }
       ],
       "owner": "rumi_host_authority_bridge_pack",
@@ -9230,9 +9230,10 @@
             "conversation_id": {"maxLength": 255, "type": "string"},
             "request_id": {"maxLength": 255, "type": "string"},
             "resume_id": {"maxLength": 255, "type": "string"},
+            "turn_id": {"maxLength": 255, "type": "string"},
             "ui_operator": {"type": "object"}
           },
-          "required": ["request_id", "conversation_id"],
+          "required": ["request_id", "conversation_id", "turn_id"],
           "type": "object"
         },
         "output": {"type": "object"}
@@ -9269,7 +9270,7 @@
       ],
       "runtime_artifacts": [
         {
-          "digest": "sha256:1c7d20a161a58e6437420d921d0cace5ec5defeb5464644eb305e0dc30394898",
+          "digest": "sha256:d0f5cce92efa14f57391dbb1da3eb63f2228836c98163df3bfae909baa707ea9",
           "kind": "executable",
           "path": "runtime/bridge.py"
         }

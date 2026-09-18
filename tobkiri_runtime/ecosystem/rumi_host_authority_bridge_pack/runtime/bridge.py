@@ -699,16 +699,26 @@ class ChatApprovalContinuationFactoryV4:
                 or envelope.context.security_epoch != context.security_epoch
             ):
                 raise PermissionError("chat approval continuation capture changed")
-            required = {"request_id", "conversation_id"}
+            required = {"request_id", "conversation_id", "turn_id"}
             if operation_id == "chat_approval.approve":
                 required.add("ui_operator")
             else:
                 required.add("resume_id")
             _require_exact_payload_keys(payload, required)
+            turn_id = payload.get("turn_id")
+            if (
+                not isinstance(turn_id, str)
+                or len(turn_id) > 255
+                or turn_id.strip() != turn_id
+            ):
+                raise PermissionError(
+                    "chat approval continuation turn identity is invalid"
+                )
             command = ChatApprovalContinuationCommand(
                 context=envelope.context,
                 request_id=_payload_id(payload, "request_id"),
                 conversation_id=_payload_id(payload, "conversation_id"),
+                turn_id=turn_id,
                 presentation_owner_principal_id=(
                     invocation.presentation_owner_principal_id
                 ),

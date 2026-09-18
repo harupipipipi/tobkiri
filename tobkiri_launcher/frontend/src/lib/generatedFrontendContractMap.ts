@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:1fde9cefa29e7d0835d8d690f5f3a23e3a823b3905ff122221c32f8c10cd5fca
+// Raw source digest: sha256:89bb759d16fdddae5b9b6537565806253ca1dfdf289b3bea62064d6b5ef05029
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:1fde9cefa29e7d0835d8d690f5f3a23e3a823b3905ff122221c32f8c10cd5fca" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:89bb759d16fdddae5b9b6537565806253ca1dfdf289b3bea62064d6b5ef05029" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:1fde9cefa29e7d0835d8d690f5f3a23e3a823b3905ff122221c32f8c10cd5fca",
+  "artifact_digest": "sha256:89bb759d16fdddae5b9b6537565806253ca1dfdf289b3bea62064d6b5ef05029",
   "routes": [
     {
       "method": "GET",
@@ -175,7 +175,7 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
     {
       "method": "POST",
       "path": "/api/chat/approval/approve",
-      "presentation": "broker_result",
+      "presentation": "chat_continuation",
       "targets": [
         {
           "contribution_id": "defaults.chat.approval.approve",
@@ -186,7 +186,8 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "allowed_payload_keys": [
             "request_id",
             "conversation_id",
-            "ui_operator"
+            "ui_operator",
+            "turn_id"
           ]
         }
       ]
@@ -194,7 +195,7 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
     {
       "method": "POST",
       "path": "/api/chat/approval/resume",
-      "presentation": "broker_result",
+      "presentation": "chat_continuation",
       "targets": [
         {
           "contribution_id": "defaults.chat.approval.resume",
@@ -205,7 +206,8 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "allowed_payload_keys": [
             "request_id",
             "conversation_id",
-            "resume_id"
+            "resume_id",
+            "turn_id"
           ]
         }
       ]
@@ -1311,7 +1313,7 @@ const EXPECTED_ROUTES = {
     ]
   },
   "POST /api/chat/approval/approve": {
-    "presentation": "broker_result",
+    "presentation": "chat_continuation",
     "targets": [
       {
         "contribution_id": "defaults.chat.approval.approve",
@@ -1322,13 +1324,14 @@ const EXPECTED_ROUTES = {
         "allowed_payload_keys": [
           "request_id",
           "conversation_id",
-          "ui_operator"
+          "ui_operator",
+          "turn_id"
         ]
       }
     ]
   },
   "POST /api/chat/approval/resume": {
-    "presentation": "broker_result",
+    "presentation": "chat_continuation",
     "targets": [
       {
         "contribution_id": "defaults.chat.approval.resume",
@@ -1339,7 +1342,8 @@ const EXPECTED_ROUTES = {
         "allowed_payload_keys": [
           "request_id",
           "conversation_id",
-          "resume_id"
+          "resume_id",
+          "turn_id"
         ]
       }
     ]

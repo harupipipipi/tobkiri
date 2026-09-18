@@ -56,6 +56,11 @@ from .turn_event_presentation import (
     normalize_turn_event_read,
     present_turn_events,
 )
+from .chat_continuation_presentation import (
+    CHAT_CONTINUATION_TARGETS,
+    normalize_chat_continuation,
+    present_chat_continuation,
+)
 
 _PROJECT_READ_TARGET = (
     "defaults.projects.read", "tobkiri.resource.project.state.v1",
@@ -312,6 +317,13 @@ class DefaultspackHTTPPresentation:
         if (
             target.contribution_id, target.contract_id, target.operation_id,
             target.provider_id, target.function_id,
+        ) in CHAT_CONTINUATION_TARGETS:
+            session.assert_current()
+            return normalize_chat_continuation(payload)
+
+        if (
+            target.contribution_id, target.contract_id, target.operation_id,
+            target.provider_id, target.function_id,
         ) == (
             "defaults.conversations.send", "tobkiri.action.turn.saved.v1",
             "rumi_turn_runtime_pack.turn-saved",
@@ -550,6 +562,8 @@ class DefaultspackHTTPPresentation:
             return present_workspace_record(result)
         if binding.presentation == "turn_events":
             return present_turn_events(result)
+        if binding.presentation == "chat_continuation":
+            return present_chat_continuation(result)
         if binding.presentation != "dynamic_pack_catalog":
             return dict(result)
         capability_binding = routes.get(("POST", "/api/ui/capability/invoke"))

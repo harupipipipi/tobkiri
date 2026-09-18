@@ -1,4 +1,35 @@
-import type { ChatMessage, Conversation, SavedTurnResult } from "./api";
+import type { ChatContinuationPacket, ChatMessage, Conversation, SavedTurnResult } from "./api";
+
+const STABLE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+
+/**
+ * Fail-closed identity check for a Host-bound approval-continuation packet.
+ *
+ * A continuation packet may only be projected onto the exact saved turn it
+ * was bound to: ``turn_id`` and ``operation_id`` must both equal the pending
+ * ``turnId`` (``""`` for an unbound continuation), the conversation and
+ * approval request identities must match exactly, and a terminal receipt
+ * must carry the same identities with a canonical terminal status.
+ */
+export function chatContinuationPacketMatchesTurn(
+  packet: Partial<ChatContinuationPacket> | null | undefined,
+  turnId: string,
+  conversationId: string,
+  requestId: string,
+): boolean {
+  if (!STABLE_ID_PATTERN.test(conversationId) || !STABLE_ID_PATTERN.test(requestId)
+    || (turnId !== "" && !STABLE_ID_PATTERN.test(turnId))) return false;
+  const matches = (value: {
+    turn_id?: string; conversation_id?: string; operation_id?: string; request_id?: string;
+  } | null | undefined) => Boolean(value)
+    && value!.turn_id === turnId && value!.operation_id === turnId
+    && value!.conversation_id === conversationId && value!.request_id === requestId;
+  if (!matches(packet)) return false;
+  const terminal = packet?.terminal;
+  return terminal === null || (typeof terminal === "object" && terminal !== null
+    && matches(terminal)
+    && ["completed", "failed", "cancelled"].includes(String(terminal.status)));
+}
 
 export function savedTurnSnapshotState(
   turn: SavedTurnResult["turn"],

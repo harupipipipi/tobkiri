@@ -18,11 +18,22 @@ def approve_continuation(
     request_id: str,
     conversation_id: str,
     ui_operator: Mapping[str, Any],
+    turn_id: str = "",
 ) -> Mapping[str, Any]:
-    """Settle only an exact pending request and return a Host-only snapshot."""
+    """Settle only an exact pending request and return a Host-only snapshot.
+
+    ``turn_id`` is the canonical saved turn declared by the presentation
+    owner.  When the request record itself carries a canonical turn the
+    declared value must match it before any approval state settles; an
+    unrecorded request still binds the declared turn into the Host handle so
+    a later phase presenting a different turn is rejected there.
+    """
 
     request = approval.get_approval_request(request_id)
     binding = _request_binding(request, conversation_id)
+    recorded_turn = binding["turn_id"]
+    if recorded_turn and recorded_turn != turn_id:
+        raise PermissionError("approval continuation turn binding changed")
     verify_coding_ui_operator(
         dict(ui_operator),
         request_id=request_id,
@@ -60,7 +71,11 @@ def resume_continuation(
     result = run_defaultspack_function(
         tool_name,
         {**arguments, "approval_token": token},
-        {"conversation_id": conversation_id, "approval_replay": True},
+        {
+            "conversation_id": conversation_id,
+            "turn_id": current["turn_id"],
+            "approval_replay": True,
+        },
     )
     if result.get("status") != "ok":
         return result
@@ -111,6 +126,7 @@ def _request_binding(
     return {
         "request_id": str(request.get("request_id") or ""),
         "conversation_id": stored_conversation,
+        "turn_id": str(details.get("turn_id") or ""),
         "operation": operation,
         "args_hash": args_hash,
         "tool_name": tool_name,

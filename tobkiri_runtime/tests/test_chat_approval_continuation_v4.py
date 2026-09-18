@@ -40,6 +40,7 @@ def _command(**patch) -> ChatApprovalContinuationCommand:
         "context": _context(),
         "request_id": "apr-1",
         "conversation_id": "conversation-1",
+        "turn_id": "turn-1",
         "presentation_owner_principal_id": "shell.tauri.default",
         "presentation_owner_session_id": "session-1",
         "ui_operator": {"signed": True},
@@ -48,16 +49,28 @@ def _command(**patch) -> ChatApprovalContinuationCommand:
     return ChatApprovalContinuationCommand(**values)
 
 
-def _binding() -> dict[str, str]:
+def _binding(turn_id: str = "") -> dict[str, str]:
     return {
         "request_id": "apr-1",
         "conversation_id": "conversation-1",
+        "turn_id": turn_id,
         "operation": "computer.click",
         "args_hash": "b" * 64,
         "tool_name": "computer_use",
         "tool_call_id": "call-1",
         "profile_id": "defaults",
     }
+
+
+def _packet(**patch) -> dict[str, object]:
+    packet = {
+        "turn_id": "turn-1",
+        "conversation_id": "conversation-1",
+        "operation_id": "turn-1",
+        "request_id": "apr-1",
+    }
+    packet.update(patch)
+    return packet
 
 
 def test_host_continuation_retains_token_and_claims_once():
@@ -73,13 +86,31 @@ def test_host_continuation_retains_token_and_claims_once():
         },
         resume=lambda binding, token, conversation: resumes.append(
             (binding, token, conversation)
-        ) or {"resumed": True},
+        ) or {"resumed": True, "tool": "computer_use",
+              "terminal_event": "tool_call_completed"},
     )
     approved = controller.approve_chat_continuation(_command())
     assert "token" not in approved
+    assert approved["turn_id"] == "turn-1"
+    assert approved["operation_id"] == "turn-1"
+    assert approved["terminal"] is None
     resume = _command(ui_operator=None, resume_id=approved["resume_id"])
 
-    assert controller.resume_chat_continuation(resume) == {"resumed": True}
+    assert controller.resume_chat_continuation(resume) == {
+        "resumed": True,
+        "tool": "computer_use",
+        "terminal_event": "tool_call_completed",
+        **_packet(),
+        "terminal": {
+            **_packet(),
+            "status": "completed",
+            "result_reference": {
+                "tool": "computer_use",
+                "terminal_event": "tool_call_completed",
+            },
+            "error": None,
+        },
+    }
     assert resumes == [(_binding(), "host-secret", "conversation-1")]
     with pytest.raises(PermissionError):
         controller.resume_chat_continuation(resume)
@@ -89,6 +120,8 @@ def test_host_continuation_retains_token_and_claims_once():
     "patch",
     [
         {"conversation_id": "foreign-conversation"},
+        {"turn_id": "foreign-turn"},
+        {"turn_id": ""},
         {"context": _context(session="foreign-session")},
         {"presentation_owner_session_id": "foreign-session"},
     ],
@@ -110,6 +143,31 @@ def test_host_continuation_rejects_foreign_binding(patch):
         controller.resume_chat_continuation(
             _command(ui_operator=None, resume_id=approved["resume_id"], **patch)
         )
+
+
+def test_host_continuation_binds_saved_turn_recorded_at_approve():
+    controller = ChatApprovalContinuationController(
+        approve=lambda *_args: {
+            "request_id": "apr-1",
+            "approved": True,
+            "status": "approved",
+            "token": "host-secret",
+            "expires_at": int(time.time()) + 60,
+            "binding": _binding(turn_id="turn-1"),
+        },
+        resume=lambda *_args: {"resumed": True},
+    )
+
+    approved = controller.approve_chat_continuation(_command())
+    assert approved["turn_id"] == "turn-1"
+    with pytest.raises(PermissionError):
+        controller.resume_chat_continuation(
+            _command(ui_operator=None, resume_id=approved["resume_id"],
+                     turn_id="foreign-turn")
+        )
+
+    with pytest.raises(PermissionError):
+        controller.approve_chat_continuation(_command(turn_id="foreign-turn"))
 
 
 def test_host_continuation_rejects_stale_approval():
