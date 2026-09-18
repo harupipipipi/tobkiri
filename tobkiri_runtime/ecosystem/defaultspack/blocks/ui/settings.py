@@ -7,7 +7,11 @@ from _common import ok, error
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.frontend.registry import FrontendRegistry
-from domain.frontend_settings_store import MUTATION_RECEIPTS_KEY, STATE_REVISIONS_KEY
+from domain.frontend_settings_store import (
+    MUTATION_RECEIPTS_KEY,
+    OWNER_MIGRATIONS_KEY,
+    STATE_REVISIONS_KEY,
+)
 from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 
@@ -62,5 +66,6 @@ def run(
         updated = registry.update_settings(values)
         updated.pop(MUTATION_RECEIPTS_KEY, None)
         updated.pop(STATE_REVISIONS_KEY, None)
+        updated.pop(OWNER_MIGRATIONS_KEY, None)
         return ok({"values": updated})
     return error("unsupported method", "METHOD_NOT_ALLOWED")

@@ -156,6 +156,26 @@ development or isolated tests. A reviewed typed operation must also replace
 legacy callable transforms: arbitrary Python callbacks cannot cross the Pack
 boundary as a write capability.
 
+`adopt_legacy_document` is now that reviewed typed operation at source level.
+The unbound legacy client reaches it only through the explicit owner port
+(`migrate_to_owner`), still fails closed without one, and forwards typed data
+plus its bound path — never a request payload or callback. The owner requires
+a bounded `migration_id`, an explicit `legacy_writer_state` attestation
+(`stopped` or `authorization_revoked`) supplied by trusted Host/maintenance
+code, and a pinned exact integer source revision; an optional pinned
+destination revision yields an honest conflict rather than a source-path
+error. The commit is a single owner transaction that preserves legacy
+sections, private fields, logical revisions and receipts, records a bounded
+`_owner_migrations` replay record, and only then retires a distinct source
+beside its bytes (a same-path transfer retires nothing; retirement outcome is
+reported, not rolled back or hidden). `_owner_migrations` is owner metadata:
+field/document CAS cannot write it, the captured read exposes only allowlisted
+public fields, and the legacy settings block strips it from UI responses.
+Symlink, missing, directory and owner control-file sources are rejected; a
+corrupt source is never repaired. Migration is not a request-reachable HTTP or
+PackVM operation, performs no live user-data movement in tests, and does not
+prove native startup or live-file cutover.
+
 The local data-only document/state CAS port is not a public PackVM API. A full
 legacy document can contain private fields, arbitrary extension namespaces and
 internal receipts. Exporting that document to the application and accepting an
