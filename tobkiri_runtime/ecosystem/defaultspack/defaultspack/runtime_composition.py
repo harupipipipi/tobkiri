@@ -40,7 +40,13 @@ def _resume_chat_continuation(
 ) -> Mapping[str, object]:
     """Resolve the Defaultspack-owned resume operation at invocation time."""
 
-    return chat_continuation.resume_continuation(binding, token, conversation_id)
+    from ecosystem.defaultspack.domain.function_runtime.dispatcher import (
+        run_defaultspack_function,
+    )
+
+    return chat_continuation.resume_continuation(
+        binding, token, conversation_id, run_defaultspack_function
+    )
 
 
 def defaultspack_activation_snapshot_loader(

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
-from ..function_runtime.dispatcher import run_defaultspack_function
 from . import approval
 from .coding_ui_operator import verify_coding_ui_operator
 
@@ -50,8 +49,13 @@ def resume_continuation(
     binding: Mapping[str, Any],
     token: str,
     conversation_id: str,
+    run_function: Callable[..., Mapping[str, Any]],
 ) -> Mapping[str, Any]:
-    """Execute stored arguments once after rechecking request and token identity."""
+    """Execute stored arguments once after rechecking request and token identity.
+
+    ``run_function`` is the function-runtime dispatcher injected by the
+    composition layer; safety must not import the runtime domain directly.
+    """
 
     request = approval.get_approval_request(str(binding.get("request_id") or ""))
     if request is None:
@@ -70,7 +74,7 @@ def resume_continuation(
     details = request["details"]
     arguments = dict(details["arguments"])
     tool_name = current["tool_name"]
-    result = run_defaultspack_function(
+    result = run_function(
         tool_name,
         {**arguments, "approval_token": token},
         {

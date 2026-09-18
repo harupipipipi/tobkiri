@@ -535,7 +535,7 @@ def test_chat_approval_continuation_uses_captured_host_provider_once(
             },
         }
 
-    def resume(binding, token, conversation_id):
+    def resume(binding, token, conversation_id, _run_function):
         resumed.append((binding, token, conversation_id))
         return {
             "resumed": True,
