@@ -566,7 +566,7 @@ class FrontendSettingsStore:
                     "settings.document", expected_source_revision, source_revision
                 )
             adopted = deepcopy(document)
-            result = {
+            result: dict[str, Any] = {
                 "migration_id": normalized_id,
                 "mode": "same_path" if same_path else "adopted",
                 "source_digest": source_digest,
@@ -594,10 +594,12 @@ class FrontendSettingsStore:
             )
             self._atomic_write(adopted, preserve_backup=True)
 
-        response = {**result, "idempotent_replay": False}
-        if same_path:
-            response["legacy_retired"] = None
-        else:
+        response: dict[str, Any] = {
+            **result,
+            "idempotent_replay": False,
+            "legacy_retired": None,
+        }
+        if not same_path:
             # The commit is durable before the source is fenced. A retire
             # failure is reported, never silently hidden or rolled back.
             retired = resolved_source.with_name(
