@@ -246,22 +246,28 @@ def test_checked_in_curated_reviews_bind_exact_generated_semantics() -> None:
     proof, findings = complete_gate._load_independent_migration_proof()
 
     assert not findings
-    assert len(reviews) == 29
+    assert len(reviews) == 78
     for pack_id, review in reviews.items():
         entry = {**proof[pack_id], "status": "generated-draft"}
         effective = complete_gate._entry_with_curated_semantics(entry, review)
         assert effective["status"] == "semantically-reviewed"
-        tampered_review = {
-            **review,
-            "semantic_record_digest": "sha256:" + "f" * 64,
-        }
+        if review.get("semantic_record") is None:
+            tampered_review = {
+                **review,
+                "semantic_record_digest": "sha256:" + "f" * 64,
+            }
+        else:
+            tampered_review = {
+                **review,
+                "target_digest": "sha256:" + "f" * 64,
+            }
         assert complete_gate._entry_with_curated_semantics(
             entry, tampered_review
         )["status"] == "generated-draft"
 
 
-def test_corrected_shared_contract_owners_remain_uncurated_without_review() -> None:
-    """Corrected ownership alone does not manufacture an independent review."""
+def test_corrected_shared_contract_owners_are_independently_reviewed() -> None:
+    """Corrected ownership only counts once an independent review exists."""
 
     reviews = load_curated_reviews(complete_gate.MIGRATION_REVIEW_PATH)
     corrected = {
@@ -270,7 +276,7 @@ def test_corrected_shared_contract_owners_remain_uncurated_without_review() -> N
         "rumi_generic_webhook_connector_pack",
     }
 
-    assert corrected.isdisjoint(reviews)
+    assert corrected.issubset(reviews)
     for pack_id in corrected:
         contracts = complete_gate._load_json(
             complete_gate.ECOSYSTEM / pack_id / "contracts.v4.json"
