@@ -1753,7 +1753,7 @@
       "evidence": [
         {
           "path": "tobkiri_runtime/ecosystem/rumi_host_authority_bridge_pack/ecosystem.json",
-          "sha256": "9323da78e8cc2ae9f85a640a28ed0862bdff5849a14e0a47694fce5a497479fd"
+          "sha256": "cbdba30aedffc5449e8aca8a44e37744a2a5619fb948b8a332d61d8997c1f284"
         }
       ]
     },
