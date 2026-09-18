@@ -240,11 +240,19 @@ class InteractiveApprovalPort(Protocol):
 
 @dataclass(frozen=True)
 class ChatApprovalContinuationCommand:
-    """Exact presentation-owned identity for one legacy chat continuation phase."""
+    """Exact presentation-owned identity for one legacy chat continuation phase.
+
+    ``turn_id`` is the canonical saved turn the presentation owner declares
+    for this continuation, or ``""`` when the operation is not turn-bound.
+    The declared value is bound into the one-shot Host handle, so a later
+    phase presenting a different turn is rejected; when the approval request
+    record itself carries a canonical turn the declared value must match it.
+    """
 
     context: RequestContext
     request_id: str
     conversation_id: str
+    turn_id: str
     presentation_owner_principal_id: str
     presentation_owner_session_id: str
     ui_operator: Mapping[str, Any] | None = None

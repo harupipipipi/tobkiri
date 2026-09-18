@@ -3422,13 +3422,36 @@ test("chat approval continuation sends only server-owned resume identities", asy
   (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = {
     core: { invoke: async () => ({ signed: true }) },
   };
+  const identity = {
+    turn_id: "turn-1",
+    conversation_id: "conversation-1",
+    operation_id: "turn-1",
+    request_id: "apr-1",
+  };
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const target = requestTarget(input);
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     seen.push({ input: target, body });
     const data = target.includes("/approve")
-      ? { request_id: "apr-1", status: "approved", approved: true, resume_id: "native_resume_1" }
-      : { resumed: true, terminal_event: "tool_call_completed", tool: "computer_use" };
+      ? {
+          status: "approved",
+          approved: true,
+          resume_id: "native_resume_1",
+          ...identity,
+          terminal: null,
+        }
+      : {
+          resumed: true,
+          terminal_event: "tool_call_completed",
+          tool: "computer_use",
+          ...identity,
+          terminal: {
+            ...identity,
+            status: "completed",
+            result_reference: { tool: "computer_use" },
+            error: null,
+          },
+        };
     return new Response(JSON.stringify({ status: "ok", data }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -3440,9 +3463,15 @@ test("chat approval continuation sends only server-owned resume identities", asy
       "apr-1",
       "conversation-1",
       "a".repeat(64),
+      "turn-1",
     );
     assert.equal(decision.resume_id, "native_resume_1");
-    await api.resumeCodingApproval("apr-1", decision.resume_id!, "conversation-1");
+    await api.resumeCodingApproval(
+      "apr-1",
+      decision.resume_id!,
+      "conversation-1",
+      "turn-1",
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (originalTauri === undefined) {
@@ -3455,13 +3484,68 @@ test("chat approval continuation sends only server-owned resume identities", asy
   assert.equal(seen.length, 2);
   assert.equal(seen[0].input, routeKey("api/chat/approval/approve"));
   assert.equal((seen[0].body as Record<string, unknown>).conversation_id, "conversation-1");
+  assert.equal((seen[0].body as Record<string, unknown>).turn_id, "turn-1");
   assert.equal(seen[1].input, routeKey("api/chat/approval/resume"));
   assert.deepEqual(seen[1].body, {
     request_id: "apr-1",
     resume_id: "native_resume_1",
     conversation_id: "conversation-1",
+    turn_id: "turn-1",
   });
   assert.doesNotMatch(JSON.stringify(seen), /approval_token|payload|tool_name/);
+});
+
+test("chat approval continuation rejects packets from a foreign turn", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTauri = (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__;
+  const identity = {
+    turn_id: "foreign-turn",
+    conversation_id: "conversation-1",
+    operation_id: "foreign-turn",
+    request_id: "apr-1",
+  };
+  (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = {
+    core: { invoke: async () => ({ signed: true }) },
+  };
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const target = requestTarget(input);
+    const data = target.includes("/approve")
+      ? {
+          status: "approved",
+          approved: true,
+          resume_id: "native_resume_1",
+          ...identity,
+          terminal: null,
+        }
+      : { resumed: true, ...identity, terminal: { ...identity, status: "completed" } };
+    return new Response(JSON.stringify({ status: "ok", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      api.approveCodingApprovalForContinuation(
+        "apr-1",
+        "conversation-1",
+        "a".repeat(64),
+        "turn-1",
+      ),
+      /saved turn/,
+    );
+    await assert.rejects(
+      api.resumeCodingApproval("apr-1", "native_resume_1", "conversation-1", "turn-1"),
+      /saved turn/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTauri === undefined) {
+      delete (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__;
+    } else {
+      (globalThis as typeof globalThis & { __TAURI__?: unknown }).__TAURI__ = originalTauri;
+    }
+  }
 });
 
 test("coding context, branch, and workspace read helpers use existing API routes", async () => {

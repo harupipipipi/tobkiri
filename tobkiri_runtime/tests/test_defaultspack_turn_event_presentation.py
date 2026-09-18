@@ -11,6 +11,10 @@ from ecosystem.defaultspack.defaultspack.turn_event_presentation import (
     normalize_turn_event_read,
     present_turn_events,
 )
+from ecosystem.defaultspack.defaultspack.chat_continuation_presentation import (
+    normalize_chat_continuation,
+    present_chat_continuation,
+)
 from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
     DefaultspackHTTPPresentation,
 )
@@ -136,6 +140,113 @@ def test_turn_event_projection_rejects_non_contiguous_owner_events() -> None:
     turn["events"][1]["sequence"] = 4
     with pytest.raises(ValueError, match="non-contiguous"):
         present_turn_events(turn)
+
+
+def _continuation_packet(**patch) -> dict[str, object]:
+    packet = {
+        "resumed": True,
+        "terminal_event": "tool_call_completed",
+        "tool": "computer_use",
+        "turn_id": "turn-1",
+        "conversation_id": "conversation-1",
+        "operation_id": "turn-1",
+        "request_id": "apr-1",
+        "terminal": {
+            "turn_id": "turn-1",
+            "conversation_id": "conversation-1",
+            "operation_id": "turn-1",
+            "request_id": "apr-1",
+            "status": "completed",
+            "result_reference": {"tool": "computer_use"},
+            "error": None,
+        },
+    }
+    packet.update(patch)
+    return packet
+
+
+def test_chat_continuation_payload_requires_declared_turn_identity() -> None:
+    payload = {
+        "request_id": "apr-1",
+        "conversation_id": "conversation-1",
+        "turn_id": "turn-1",
+        "ui_operator": {"signed": True},
+    }
+    assert normalize_chat_continuation(payload) == payload
+    assert normalize_chat_continuation({**payload, "turn_id": ""})["turn_id"] == ""
+    for turn_id in (None, 7, " forged ", "turn" * 100, "turn\n1"):
+        with pytest.raises(ValueError, match="turn identity"):
+            normalize_chat_continuation({**payload, "turn_id": turn_id})
+
+
+def test_chat_continuation_projection_preserves_canonical_terminal() -> None:
+    projected = present_chat_continuation(_continuation_packet())
+    assert projected["turn_id"] == "turn-1"
+    assert projected["operation_id"] == "turn-1"
+    assert projected["terminal"]["status"] == "completed"
+    assert projected["terminal"]["turn_id"] == "turn-1"
+
+    waiting = present_chat_continuation(
+        _continuation_packet(resumed=False, terminal=None)
+    )
+    assert waiting["terminal"] is None
+
+
+def test_chat_continuation_projection_rejects_foreign_or_incoherent_packets() -> None:
+    for patch in (
+        {"turn_id": "turn-2"},
+        {"turn_id": None},
+        {"operation_id": "turn-2"},
+        {"conversation_id": "conversation-2"},
+        {"request_id": "apr-2"},
+        {"terminal": "done"},
+    ):
+        with pytest.raises(ValueError, match="continuation"):
+            present_chat_continuation(_continuation_packet(**patch))
+
+    foreign_terminal = _continuation_packet()
+    foreign_terminal["terminal"] = {
+        **_continuation_packet()["terminal"],
+        "turn_id": "turn-2",
+        "operation_id": "turn-2",
+    }
+    with pytest.raises(ValueError, match="terminal"):
+        present_chat_continuation(foreign_terminal)
+
+    running_terminal = _continuation_packet()
+    running_terminal["terminal"] = {
+        **_continuation_packet()["terminal"],
+        "status": "running",
+    }
+    with pytest.raises(ValueError, match="terminal"):
+        present_chat_continuation(running_terminal)
+
+
+def test_http_presentation_applies_chat_continuation_projection() -> None:
+    binding = HTTPContractBinding(
+        method="POST",
+        path="/api/chat/approval/resume",
+        presentation="chat_continuation",
+        targets=(),
+    )
+    projected = DefaultspackHTTPPresentation().present_result(
+        binding,
+        _continuation_packet(),
+        session=None,
+        routes={},
+        capability_snapshot=lambda *_args, **_kwargs: None,
+    )
+    assert projected["turn_id"] == "turn-1"
+    assert projected["terminal"]["status"] == "completed"
+
+    with pytest.raises(ValueError, match="continuation"):
+        DefaultspackHTTPPresentation().present_result(
+            binding,
+            _continuation_packet(turn_id="turn-2"),
+            session=None,
+            routes={},
+            capability_snapshot=lambda *_args, **_kwargs: None,
+        )
 
 
 def test_fixed_frontend_map_and_profile_select_the_event_owner() -> None:

@@ -1,6 +1,7 @@
 import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { CommandInvocationRequest } from "../generated/commandProtocolModels";
 import type { AuthorityApprovalScope } from "./authorityApproval";
+import { chatContinuationPacketMatchesTurn } from "./pendingChat";
 import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
 import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
 import { openAuthorityApprovalWindow } from "./desktopApproval";
@@ -510,6 +511,29 @@ export type CodingApprovalDecision = {
   resume_id?: string;
   expires_at?: number | null;
   reason?: string;
+};
+
+/**
+ * A Host-bound approval-continuation packet, projected with the same
+ * canonical identity model as saved-turn events: ``turn_id`` equals the
+ * exact saved turn the continuation belongs to (``""`` when the operation
+ * is not turn-bound), ``operation_id`` always equals ``turn_id``, and
+ * ``terminal`` is ``null`` while unsettled or a canonical terminal receipt.
+ */
+export type ChatContinuationPacket = {
+  turn_id: string;
+  conversation_id: string;
+  operation_id: string;
+  request_id: string;
+  terminal: null | {
+    turn_id: string;
+    conversation_id: string;
+    operation_id: string;
+    request_id: string;
+    status: "completed" | "failed" | "cancelled";
+    result_reference?: unknown;
+    error?: unknown;
+  };
 };
 
 export type AuthorityApprovalDecision = {
@@ -5769,16 +5793,30 @@ export const api = {
     });
   },
 
-  async approveCodingApprovalForContinuation(requestId: string, conversationId: string, argsHash: string) {
+  async approveCodingApprovalForContinuation(
+    requestId: string,
+    conversationId: string,
+    argsHash: string,
+    turnId = "",
+  ) {
     const uiOperator = await nativeCodingApprovalOperatorForDigest(requestId, argsHash);
-    return request<CodingApprovalDecision>(defaultspackContractRoute("api/chat/approval/approve"), {
-      method: "POST",
-      body: JSON.stringify({
-        request_id: requestId,
-        conversation_id: conversationId,
-        ui_operator: uiOperator,
-      }),
-    });
+    const decision = await request<CodingApprovalDecision & ChatContinuationPacket>(
+      defaultspackContractRoute("api/chat/approval/approve"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: requestId,
+          conversation_id: conversationId,
+          ui_operator: uiOperator,
+          turn_id: turnId,
+        }),
+      },
+    );
+    if (!chatContinuationPacketMatchesTurn(decision, turnId, conversationId, requestId)
+      || decision.terminal !== null) {
+      throw new Error("Approval continuation does not match the pending saved turn.");
+    }
+    return decision;
   },
 
   async denyCodingApproval(requestId: string, reason?: string) {
@@ -5789,19 +5827,30 @@ export const api = {
     });
   },
 
-  resumeCodingApproval(requestId: string, resumeId: string, conversationId: string) {
-    return request<{
-      resumed: true;
-      terminal_event: "tool_call_completed";
-      tool: string;
+  async resumeCodingApproval(
+    requestId: string,
+    resumeId: string,
+    conversationId: string,
+    turnId = "",
+  ) {
+    const packet = await request<ChatContinuationPacket & {
+      resumed?: boolean;
+      terminal_event?: string;
+      tool?: string;
     }>(defaultspackContractRoute("api/chat/approval/resume"), {
       method: "POST",
       body: JSON.stringify({
         request_id: requestId,
         resume_id: resumeId,
         conversation_id: conversationId,
+        turn_id: turnId,
       }),
     });
+    if (!chatContinuationPacketMatchesTurn(packet, turnId, conversationId, requestId)
+      || packet.terminal === null) {
+      throw new Error("Approval continuation result does not match the pending saved turn.");
+    }
+    return packet;
   },
 
   listAuthorityRequests(options?: { status?: "all" | "pending" | "approved" | "denied" | "expired" | string }) {

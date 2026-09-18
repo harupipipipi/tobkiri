@@ -5913,17 +5913,35 @@ export function ChatApp() {
     if (!browserApproval) return;
     if (!activeConversationId) return;
     const currentApproval = browserApproval;
+    // Bind the continuation to the exact pending saved turn, if any, so its
+    // packets can never be projected onto a different turn.
+    const pendingTurnId = pendingRequests[activeConversationId]?.savedTurn
+      ? pendingRequests[activeConversationId].operationId ?? ""
+      : "";
     setError(null);
     setIsGenerating(true);
     const approvalToolIds = selectedToolIds.length
       ? selectedToolIds
       : [currentApproval.toolName].filter(Boolean);
     rememberPendingRequest({
+      ...pendingRequests[activeConversationId],
       conversationId: activeConversationId,
       startedAt: Date.now(),
       status: "ユーザー承認をAIへ伝えています",
       toolNames: approvalToolIds,
     });
+    const settlePendingContinuation = (status: string) => {
+      if (pendingTurnId) {
+        // The continuation belongs to the pending saved turn; keep its entry
+        // so the canonical reconcile loop keeps tracking that exact turn.
+        updatePendingRequests((current) => {
+          const entry = current[activeConversationId];
+          return entry ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+        });
+      } else {
+        forgetPendingRequest(activeConversationId);
+      }
+    };
     try {
       if (!currentApproval.requestId) {
         throw new Error("A request-backed approval is required to continue safely.");
@@ -5932,6 +5950,7 @@ export function ChatApp() {
         currentApproval.requestId,
         activeConversationId,
         currentApproval.argsHash ?? "",
+        pendingTurnId,
       );
       if (!decision.approved || !decision.resume_id) {
         throw new Error(decision.reason || "approval continuation is unavailable");
@@ -5940,14 +5959,15 @@ export function ChatApp() {
         currentApproval.requestId,
         decision.resume_id,
         activeConversationId,
+        pendingTurnId,
       );
       settleBrowserApproval(currentApproval);
-      forgetPendingRequest(activeConversationId);
+      settlePendingContinuation("承認済みの操作を保存済みの送信結果と照合しています。");
       replaceChatIdInUrl(activeConversationId, false);
       await loadConversation(activeConversationId, false);
       await refreshConversations(activeConversationId);
     } catch (approvalError) {
-      forgetPendingRequest(activeConversationId);
+      settlePendingContinuation("承認後の照合を確認できませんでした。送信結果の照合を続けます。");
       const staleMessage = currentApproval.requestId ? approvalStaleUiMessage(approvalError) : null;
       if (staleMessage) {
         settleBrowserApproval(currentApproval);
@@ -5996,20 +6016,39 @@ export function ChatApp() {
     if (!activeConversationId) return;
     if (activeRuntimeApprovalActionRef.current === runtimeApproval.requestId) return;
     activeRuntimeApprovalActionRef.current = runtimeApproval.requestId;
+    // Bind the continuation to the exact pending saved turn, if any, so its
+    // packets can never be projected onto a different turn.
+    const pendingTurnId = pendingRequests[activeConversationId]?.savedTurn
+      ? pendingRequests[activeConversationId].operationId ?? ""
+      : "";
     setError(null);
     setIsGenerating(true);
     rememberPendingRequest({
+      ...pendingRequests[activeConversationId],
       conversationId: activeConversationId,
       startedAt: Date.now(),
       status: "承認済みの操作を続行しています",
       toolNames: [runtimeApproval.toolName],
       toolStartedAt: { [runtimeApproval.toolName]: Date.now() },
     });
+    const settlePendingContinuation = (status: string) => {
+      if (pendingTurnId) {
+        // The continuation belongs to the pending saved turn; keep its entry
+        // so the canonical reconcile loop keeps tracking that exact turn.
+        updatePendingRequests((current) => {
+          const entry = current[activeConversationId];
+          return entry ? { ...current, [activeConversationId]: { ...entry, status } } : current;
+        });
+      } else {
+        forgetPendingRequest(activeConversationId);
+      }
+    };
     try {
       const decision = await api.approveCodingApprovalForContinuation(
         runtimeApproval.requestId,
         activeConversationId,
         runtimeApproval.argsHash ?? "",
+        pendingTurnId,
       );
       if (!decision.approved || !decision.resume_id) {
         throw new Error(decision.reason || "approval continuation is unavailable");
@@ -6021,13 +6060,14 @@ export function ChatApp() {
         runtimeApproval.requestId,
         decision.resume_id,
         activeConversationId,
+        pendingTurnId,
       );
-      forgetPendingRequest(activeConversationId);
+      settlePendingContinuation("承認済みの操作を保存済みの送信結果と照合しています。");
       replaceChatIdInUrl(activeConversationId, false);
       await loadConversation(activeConversationId, false);
       await refreshConversations(activeConversationId);
     } catch (approvalError) {
-      forgetPendingRequest(activeConversationId);
+      settlePendingContinuation("承認後の照合を確認できませんでした。送信結果の照合を続けます。");
       const staleMessage = approvalStaleUiMessage(approvalError);
       if (staleMessage) {
         setSettledRuntimeApprovalIds((ids) => (

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import type { ChatMessage, SavedTurnResult } from "./api";
 import {
   PENDING_USER_ONLY_GRACE_MS,
+  chatContinuationPacketMatchesTurn,
   savedTurnSnapshotState,
   savedTurnSnapshotNotice,
   savedTurnProgressNotice,
@@ -226,4 +227,91 @@ test("poll transport failures preserve the operation id until an explicit termin
   assert.equal(shouldForgetPendingAfterPollError(new Error("HTTP 404 Not Found\nconversation missing")), true);
   assert.equal(shouldForgetPendingAfterPollError(new Error("HTTP 410 Gone (EXPIRED)")), true);
   assert.equal(shouldForgetPendingAfterPollError(new Error("NOT_FOUND")), true);
+});
+
+test("continuation packets bind to the exact pending saved turn", () => {
+  const packet = {
+    turn_id: "turn-1",
+    conversation_id: "c1",
+    operation_id: "turn-1",
+    request_id: "apr-1",
+    terminal: null,
+  };
+  assert.equal(
+    chatContinuationPacketMatchesTurn(packet, "turn-1", "c1", "apr-1"),
+    true,
+  );
+  const completed = {
+    ...packet,
+    terminal: {
+      turn_id: "turn-1",
+      conversation_id: "c1",
+      operation_id: "turn-1",
+      request_id: "apr-1",
+      status: "completed" as const,
+    },
+  };
+  assert.equal(
+    chatContinuationPacketMatchesTurn(completed, "turn-1", "c1", "apr-1"),
+    true,
+  );
+});
+
+test("continuation packets from foreign identities are rejected", () => {
+  const base = {
+    turn_id: "turn-1",
+    conversation_id: "c1",
+    operation_id: "turn-1",
+    request_id: "apr-1",
+    terminal: null,
+  };
+  for (const packet of [
+    { ...base, turn_id: "foreign-turn" },
+    { ...base, turn_id: undefined },
+    { ...base, conversation_id: "c2" },
+    { ...base, operation_id: "turn-2" },
+    { ...base, request_id: "apr-2" },
+    { ...base, terminal: undefined },
+    {
+      ...base,
+      terminal: { ...base, status: "running" },
+    } as unknown as Parameters<typeof chatContinuationPacketMatchesTurn>[0],
+    {
+      ...base,
+      terminal: {
+        turn_id: "turn-2",
+        conversation_id: "c1",
+        operation_id: "turn-2",
+        request_id: "apr-1",
+        status: "completed" as const,
+      },
+    },
+  ]) {
+    assert.equal(
+      chatContinuationPacketMatchesTurn(packet, "turn-1", "c1", "apr-1"),
+      false,
+      JSON.stringify(packet),
+    );
+  }
+  // A packet bound to one turn can never be projected onto another pending turn.
+  assert.equal(
+    chatContinuationPacketMatchesTurn(base, "turn-2", "c1", "apr-1"),
+    false,
+  );
+});
+
+test("unbound continuation packets require an explicit empty turn", () => {
+  const packet = {
+    turn_id: "",
+    conversation_id: "c1",
+    operation_id: "",
+    request_id: "apr-1",
+    terminal: null,
+  };
+  assert.equal(chatContinuationPacketMatchesTurn(packet, "", "c1", "apr-1"), true);
+  assert.equal(chatContinuationPacketMatchesTurn(packet, "turn-1", "c1", "apr-1"), false);
+  assert.equal(
+    chatContinuationPacketMatchesTurn({ ...packet, turn_id: "turn-1" }, "", "c1", "apr-1"),
+    false,
+  );
 });

@@ -24,11 +24,12 @@ def _approve_chat_continuation(
     request_id: str,
     conversation_id: str,
     ui_operator: Mapping[str, object],
+    turn_id: str = "",
 ) -> Mapping[str, object]:
     """Resolve the Defaultspack-owned approval operation at invocation time."""
 
     return chat_continuation.approve_continuation(
-        request_id, conversation_id, ui_operator,
+        request_id, conversation_id, ui_operator, turn_id,
     )
 
 
