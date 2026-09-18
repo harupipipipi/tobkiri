@@ -49,8 +49,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/chat_continuation_presentation.py",
       "type": "regular-file",
-      "size": 4369,
-      "sha256": "ec0c250fd529ca77047427fcd26e07fa87399c26c884803f05e1d2b78a14f3ce",
+      "size": 4584,
+      "sha256": "ade88d625c18af85ad5392163c271d01d9f52b9181af9e5416da9dfefdc3d348",
       "executable": false
     },
     {

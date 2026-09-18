@@ -63,8 +63,12 @@ def present_chat_continuation(result: Mapping[str, object]) -> dict[str, object]
     The projection refuses packets whose identities are malformed, whose
     ``operation_id`` does not equal ``turn_id``, or whose terminal receipt
     disagrees with the packet identity or the canonical terminal set.
+    A sanitized public error envelope is not a continuation packet and is
+    returned unchanged so the bounded rejection still reaches the caller.
     """
 
+    if result.get("state") == "error":
+        return dict(result)
     identity = _continuation_identity(result)
     terminal = result.get("terminal")
     if terminal is not None:
