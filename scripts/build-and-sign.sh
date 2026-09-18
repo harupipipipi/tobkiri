@@ -200,7 +200,7 @@ python3 "$LAUNCHER_ROOT/scripts/prepare_viewer_runtime.py" \
 
 if [[ "$mode" == "local-dev" ]]; then
   echo "=== Building LOCAL-DEV ONLY Tobkiri Launcher package ($target) ==="
-  local_args=("${forwarded_args[@]}")
+  local_args=(${forwarded_args[@]+"${forwarded_args[@]}"})
   if [[ "$has_bundles" == "0" ]]; then
     local_args+=(--bundles "$shell_bundles")
   fi
@@ -260,7 +260,7 @@ python3 "$LAUNCHER_ROOT/scripts/package_presentation_artifact.py" \
   --repository-root "$REPO_ROOT" \
   --output-dir "$release_root"
 
-outer_args=("${forwarded_args[@]}")
+outer_args=(${forwarded_args[@]+"${forwarded_args[@]}"})
 outer_args+=(--target "$target")
 
 echo "=== Building sealed Tobkiri Launcher package ($target) ==="
