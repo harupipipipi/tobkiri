@@ -36,6 +36,7 @@ from domain.frontend_settings_store import (
     FrontendSettingsCorruptError,
     FrontendSettingsStore,
     MUTATION_RECEIPTS_KEY,
+    OWNER_MIGRATIONS_KEY,
     STATE_REVISIONS_KEY,
     defaultspack_frontend_settings_path,
 )
@@ -1570,6 +1571,7 @@ class FrontendRegistry:
             saved = dict(saved)
             saved.pop(MUTATION_RECEIPTS_KEY, None)
             saved.pop(STATE_REVISIONS_KEY, None)
+            saved.pop(OWNER_MIGRATIONS_KEY, None)
             saved = self._settings_with_legacy_tool_version(saved)
             values = self._deep_merge(values, saved)
         return self._refresh_derived_settings(values)

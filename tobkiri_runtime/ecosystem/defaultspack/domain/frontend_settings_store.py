@@ -12,6 +12,7 @@ from tobkiri_protocol.settings_state import (
     FrontendSettingsRevisionConflict as FrontendSettingsRevisionConflict,
     MAX_MUTATION_RECEIPTS as MAX_MUTATION_RECEIPTS,
     MUTATION_RECEIPTS_KEY as MUTATION_RECEIPTS_KEY,
+    OWNER_MIGRATIONS_KEY as OWNER_MIGRATIONS_KEY,
     REVISION_KEY as REVISION_KEY,
     STATE_REVISIONS_KEY as STATE_REVISIONS_KEY,
     SettingsOwnerPort,
@@ -95,6 +96,29 @@ class FrontendSettingsStore:
             expected_document_revision=expected_document_revision,
             expected_revision=expected_revision, idempotency_key=idempotency_key,
             request_fingerprint=request_fingerprint,
+        )
+
+    def migrate_to_owner(
+        self, *, migration_id: str, legacy_writer_state: str,
+        expected_source_revision: int,
+        expected_destination_revision: int | None = None,
+    ) -> dict[str, Any]:
+        """Request the typed storage-owner cutover for this client's document.
+
+        This is the only migration seam: it forwards typed data plus the path
+        this client was explicitly bound to — never a request payload, never a
+        callback. The caller must have established the documented precondition
+        (old writer stopped or authorization revoked) and declares it through
+        ``legacy_writer_state``. Without an owner the client still fails
+        closed before any storage access; the owner performs and audits the
+        actual transfer.
+        """
+        return self._require_owner().adopt_legacy_document(
+            migration_id=migration_id,
+            legacy_writer_state=legacy_writer_state,
+            expected_source_revision=expected_source_revision,
+            expected_destination_revision=expected_destination_revision,
+            legacy_path=self.path,
         )
 
     def state_revision(self, state_ref: str) -> int:

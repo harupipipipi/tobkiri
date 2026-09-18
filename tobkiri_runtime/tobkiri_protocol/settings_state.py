@@ -8,6 +8,14 @@ REVISION_KEY = "_settings_revision"
 STATE_REVISIONS_KEY = "_state_revisions"
 MUTATION_RECEIPTS_KEY = "_mutation_receipts"
 MAX_MUTATION_RECEIPTS = 64
+# Durable, bounded owner-side record of storage-owner migrations. Like the
+# other underscore control keys it is owner metadata and never a writable
+# section or public value.
+OWNER_MIGRATIONS_KEY = "_owner_migrations"
+MAX_OWNER_MIGRATIONS = 16
+# The only attestations a caller may supply for the documented cutover
+# precondition that legacy writers are stopped or no longer authorized.
+LEGACY_WRITER_STATES = frozenset({"stopped", "authorization_revoked"})
 
 
 def settings_state_revision(snapshot: Mapping[str, Any], state_ref: str) -> int:
@@ -59,3 +67,22 @@ class SettingsOwnerPort(Protocol):
         idempotency_key: str | None = None, request_fingerprint: str = "",
     ) -> dict[str, Any]:
         """Commit one logical-state proposal and its idempotent result."""
+
+    def adopt_legacy_document(
+        self, *,
+        migration_id: str,
+        legacy_writer_state: str,
+        expected_source_revision: int,
+        expected_destination_revision: int | None = None,
+        legacy_path: Any = None,
+    ) -> dict[str, Any]:
+        """Adopt one legacy document under the explicit cutover preconditions.
+
+        This is the reviewed typed operation replacing a snapshot copy or a
+        Python callback for the storage-owner transfer. It neither stops a
+        foreign writer nor grants authorization: the trusted caller must
+        establish and declare ``legacy_writer_state`` as one of
+        ``LEGACY_WRITER_STATES`` before the owner commits anything. The
+        operation is idempotent by ``migration_id`` and records the cutover in
+        owner metadata; it is never a request-reachable or read-path operation.
+        """

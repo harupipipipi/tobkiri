@@ -217,8 +217,8 @@
     {
       "path": "ecosystem/defaultspack/domain/frontend_settings_store.py",
       "type": "regular-file",
-      "size": 4035,
-      "sha256": "117e398e93a86f1439f92ef1bd42f7a1c50d32e7f86f973d503375deb9383276",
+      "size": 5211,
+      "sha256": "9046ce3645b6c8e6f9fe56718647c5b9981664afb18c8b596294a07468484381",
       "executable": false
     },
     {
@@ -1135,7 +1135,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 57698,
-      "sha256": "f1a5eff59131e05f0c0e4942c885e50137832d7f6391d678d332b471a708dec2",
+      "sha256": "576bc6c9ab0bdc983a692652396f2145960911daabf10226c8d2e32a88545c95",
       "executable": false
     },
     {
@@ -1156,7 +1156,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.profile.lock.v5.json",
       "type": "regular-file",
       "size": 48125,
-      "sha256": "d0f54ffd63c942ba51936920832c4a235358ab26d0394f05b9f4e82361c682b8",
+      "sha256": "c6557a09df5cebdfab00d653597af267061c26c2d3c12c31c52b16cd5ba1b524",
       "executable": false
     },
     {
@@ -1170,7 +1170,7 @@
       "path": "ecosystem/defaultspack/v4/defaults.release.provenance.json",
       "type": "regular-file",
       "size": 65116,
-      "sha256": "139367ccbbb03e718089fc7b519de0ae3767fc6ca8eeb0a5080345f0510ad3bc",
+      "sha256": "77725666013819eba7b4ee03c005e976ee1a0af5e5e4a01c1650707a2319f200",
       "executable": false
     },
     {
@@ -3158,14 +3158,14 @@
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.executables.v4.json",
       "type": "regular-file",
       "size": 23142,
-      "sha256": "f65d22ef9b628c1c48e0b344b827e51726133b3e9f348aa71f9091f5be0f3d8c",
+      "sha256": "da901339190cc2ef3d9400f4f0f333034a059dc2ca303e9abcd7754f61ed609a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_ui_settings_pack.pack.v4.json",
       "type": "regular-file",
       "size": 15418,
-      "sha256": "38df42a25ec740a5241bea7a013d04fdc25d92b25e63eb517f5cbbc1e00981bc",
+      "sha256": "2bcd412eaf13076f848baee757ccb129d981a2eddc7c45d9e6bdb79b42cf7e8b",
       "executable": false
     },
     {
@@ -3955,8 +3955,8 @@
     {
       "path": "tobkiri_protocol/settings_state.py",
       "type": "regular-file",
-      "size": 2380,
-      "sha256": "f1cc00f71061591b2ce229b63f4bf6ce864276142112d99b8934393ad794ccb6",
+      "size": 3715,
+      "sha256": "8f0555026ceaab7b243d72f6e1df427eaa0d4d3f22be9aa1c1567e3399530fae",
       "executable": false
     },
     {
