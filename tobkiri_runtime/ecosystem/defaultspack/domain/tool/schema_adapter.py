@@ -463,7 +463,7 @@ def resolve_runtime_profile_context(context: Dict[str, Any]) -> Dict[str, Any]:
                 resolved["_runtime_profile_key"] = key
                 return resolved
     try:
-        from core_runtime.runtime_profile_resolver import resolve_runtime_profile_context as core_resolve
+        from core_runtime.runtime_profile_context import resolve_runtime_profile_context as core_resolve
 
         return core_resolve(resolved, interface_registry=registry)
     except Exception:

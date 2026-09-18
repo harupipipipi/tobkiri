@@ -215,7 +215,7 @@ def _active_debug_binding(details: dict[str, Any]) -> dict[str, Any]:
     status = response.get("status") if isinstance(response, dict) else None
     if not isinstance(status, dict) or status.get("state") != "active":
         return {}
-    required = {
+    required: dict[str, Any] = {
         "debug_session_id": str(status.get("session_id") or ""),
         "lease_epoch": int(status.get("lease_epoch") or 0),
         "debug_run_id": str(status.get("run_id") or ""),
@@ -560,7 +560,8 @@ def resolve_debug_resume_handle(handle: str, request_id: str) -> str:
 def _native_resume_binding(request: dict[str, Any]) -> dict[str, str]:
     """Return the immutable server-owned identity of one approved replay."""
 
-    details = request.get("details") if isinstance(request.get("details"), dict) else {}
+    raw_details = request.get("details")
+    details = raw_details if isinstance(raw_details, dict) else {}
     return {
         "request_id": str(request.get("request_id") or ""),
         "operation": str(request.get("operation") or ""),
@@ -969,17 +970,20 @@ def list_approval_requests(
 
     merged: dict[str, dict[str, Any]] = {}
     for item in load_approval_state_requests():
-        request = normalize_json_approval_request(item)
-        if request is None:
+        normalized = normalize_json_approval_request(item)
+        if normalized is None:
             continue
-        if request.get("status") == "pending" and int(request.get("expires_at") or 0) < now:
-            request["status"] = "expired"
-            request["decision_at"] = now
-        request["display_summary"] = display_summary(
-            str(request.get("operation") or ""),
-            request.get("details") if isinstance(request.get("details"), dict) else {},
+        if normalized.get("status") == "pending" and int(
+            normalized.get("expires_at") or 0
+        ) < now:
+            normalized["status"] = "expired"
+            normalized["decision_at"] = now
+        raw_details = normalized.get("details")
+        normalized["display_summary"] = display_summary(
+            str(normalized.get("operation") or ""),
+            raw_details if isinstance(raw_details, dict) else {},
         )
-        merged[request["request_id"]] = request
+        merged[normalized["request_id"]] = normalized
     merged.update(sqlite_by_id)
 
     result = [

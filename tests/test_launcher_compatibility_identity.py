@@ -32,6 +32,7 @@ ALLOWED_DERIVED_IDENTIFIERS = {
             "tobkiri_launcher/src-tauri/src/sealed_python.rs",
             "tobkiri_launcher/src-tauri/src/shell_handoff.rs",
             "tobkiri_launcher/src-tauri/tauri.macos.ci-e2e.conf.json",
+            "tobkiri_runtime/tobkiri_host/acceptance_receipts.py",
         }
     ),
     "dev.tobkiri.local-launcher": frozenset(

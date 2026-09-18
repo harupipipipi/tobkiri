@@ -136,7 +136,11 @@ class ApprovalStore:
 
     def save_request(self, request: Any) -> dict[str, Any]:
         self._ensure_schema()
-        data = asdict(request) if is_dataclass(request) else dict(request)
+        data = (
+            asdict(request)
+            if is_dataclass(request) and not isinstance(request, type)
+            else dict(request)
+        )
         with self._lock, self._connect() as conn:
             conn.execute(
                 """

@@ -139,6 +139,7 @@ def normalize_request(value: Any) -> dict[str, Any] | None:
 
 
 def _requests_from_payload(payload: Any) -> list[dict[str, Any]]:
+    raw_requests: Any
     if isinstance(payload, list):
         raw_requests = payload
     elif isinstance(payload, dict):

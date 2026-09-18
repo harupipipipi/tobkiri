@@ -50,14 +50,11 @@ def run(input_data, context=None):
             result["_http_status"] = 403
             return result
         if continuation_conversation_id:
-            details = (
-                request.get("details")
-                if isinstance(request, dict)
-                and isinstance(request.get("details"), dict)
-                else {}
-            )
+            request_map = request if isinstance(request, dict) else {}
+            raw_details = request_map.get("details")
+            details = raw_details if isinstance(raw_details, dict) else {}
             request_conversation_id = str(
-                (request or {}).get("conversation_id")
+                request_map.get("conversation_id")
                 or details.get("conversation_id")
                 or ""
             ).strip()

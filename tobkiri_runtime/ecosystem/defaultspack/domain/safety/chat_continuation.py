@@ -43,6 +43,8 @@ def resume_continuation(
     """Execute stored arguments once after rechecking request and token identity."""
 
     request = approval.get_approval_request(str(binding.get("request_id") or ""))
+    if request is None:
+        raise PermissionError("approval continuation request is unavailable")
     current = _request_binding(request, conversation_id)
     if current != dict(binding) or request.get("status") != "approved":
         raise PermissionError("approval continuation binding changed")

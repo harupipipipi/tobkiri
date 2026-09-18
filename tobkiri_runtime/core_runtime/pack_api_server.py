@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol, cast
+from typing import Any, Callable, Mapping, Protocol, cast, runtime_checkable
 from urllib.parse import parse_qs, quote, urlparse
 
 from .api.api_response import APIResponse
@@ -43,6 +43,7 @@ from .global_contracts.http_contract_dispatch import (
     resolve_contract_route,
 )
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_host.acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
 from tobkiri_host.backends import ExecutionBackend
 from .host_contract import (
     ExecutionProfileIdentity,
@@ -291,6 +292,20 @@ class DispatchSession(Protocol):
         """Return the exact captured Authority security epoch."""
 
 
+@runtime_checkable
+class PackVMAcceptanceSession(Protocol):
+    """Dispatch session that can run finite PackVM QA acceptance scenarios."""
+
+    def run_packvm_acceptance(
+        self,
+        scenario: str,
+        nonce: str,
+        *,
+        session_id: str,
+    ) -> AcceptanceReceipt:
+        """Run one finite CI/E2E scenario and return its Broker-owned receipt."""
+
+
 @dataclass(frozen=True)
 class RuntimeCaptureInputs:
     """App-supplied immutable inputs needed to recapture a HTTP runtime."""
@@ -304,7 +319,7 @@ class RuntimeCaptureInputs:
     capability_binding_selector: CapabilityBindingSelector | None = None
     packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None
     credential_store_factory: CredentialMaterialStoreFactory | None = None
-    acceptance_receipts: object | None = None
+    acceptance_receipts: AcceptanceReceiptPort | None = None
     chat_continuation_approve: Callable[..., Mapping[str, object]] | None = None
     chat_continuation_resume: Callable[..., Mapping[str, object]] | None = None
 
@@ -966,8 +981,18 @@ class PackAPIHandler(
         nonce = body.get("nonce")
         panel_session = self._panel_session or {}
         session_id = panel_session.get("session_id")
-        if not all(isinstance(item, str) for item in (scenario, nonce, session_id)):
+        if not (
+            isinstance(scenario, str)
+            and isinstance(nonce, str)
+            and isinstance(session_id, str)
+        ):
             self._send_response(APIResponse(False, error="Invalid request"), 400)
+            return True
+        if not isinstance(session, PackVMAcceptanceSession):
+            self._send_response(
+                APIResponse(False, error="PackVM acceptance evidence is unavailable"),
+                503,
+            )
             return True
         try:
             from tobkiri_host.acceptance_receipts import acceptance_receipt_mapping

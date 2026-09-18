@@ -49,7 +49,7 @@ def verify_coding_ui_operator(
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise CodingUiOperatorError("native ui_operator is required")
-    normalized = {
+    normalized: dict[str, Any] = {
         "version": payload.get("version"),
         "kind": str(payload.get("kind") or ""),
         "origin": str(payload.get("origin") or ""),

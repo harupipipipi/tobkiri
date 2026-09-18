@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Protocol
+from tobkiri_host.acceptance_receipts import AcceptanceReceiptPort
 from tobkiri_host.admission import (
     AdmissionEstimate,
     DurableResourceLedger,
@@ -1312,7 +1313,7 @@ def capture_production_dispatch(
     capability_binding_snapshot_factory: CapabilityBindingSnapshotFactory | None = None,
     capability_binding_selector: CapabilityBindingSelector | None = None,
     credential_store_factory: CredentialMaterialStoreFactory | None = None,
-    acceptance_receipts: object | None = None,
+    acceptance_receipts: AcceptanceReceiptPort | None = None,
     chat_continuation_approve: Callable[..., Mapping[str, Any]] | None = None,
     chat_continuation_resume: Callable[..., Mapping[str, Any]] | None = None,
 ) -> V4DispatchSession:
