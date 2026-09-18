@@ -11591,18 +11591,18 @@
       "target": {
         "artifact_verification": {
           "artifact_count": 8,
-          "artifact_index_digest": "sha256:72782f5b22eff41da9c68fe790e69bc549e4870a81e9421f06d014aed222b211",
-          "artifact_set_digest": "sha256:84eada1297108434661565eb05fdc66875e08775b6a8c315c8df048be1a5cfa8",
-          "executable_catalog_digest": "sha256:32a34e6257554041f31b9fe5ad168e01857a213e0826bb4b356efe9478cc73ed",
+          "artifact_index_digest": "sha256:ec4a7109f40e9a467c8bc937fcf2313805595c753065b2bca51fb5aabed1837e",
+          "artifact_set_digest": "sha256:b69e369d2a7e819a05b5c45b68cb91113e5a4a6e44d12f34e7b0eda297f6b3dd",
+          "executable_catalog_digest": "sha256:d781d9d1d6ee290594d5303066fc87a7f8263eb792c40018d8022d06ea10fbec",
           "pack_id": "tobkiri_ui_settings_pack",
           "quartet": {
-            "artifact-index.v4.json": "sha256:72782f5b22eff41da9c68fe790e69bc549e4870a81e9421f06d014aed222b211",
-            "contracts.v4.json": "sha256:3937f10c7176ec6245987e77c857432646f95b737a327254eebbb9d4a6c76522",
-            "executables.v4.json": "sha256:bb93b7bd3f10226e0d88207107ee4a02a70247b666ef476c21baa3e258353eb2",
-            "pack.v4.json": "sha256:6ca0596ab7912790de6bcf91721d9abccecb6775c5db9cf282e07ee1c56d5708"
+            "artifact-index.v4.json": "sha256:ec4a7109f40e9a467c8bc937fcf2313805595c753065b2bca51fb5aabed1837e",
+            "contracts.v4.json": "sha256:ea1923fd2f00c5d30cb7d1a6fd5fe3967dbd3d9907095d73ece160adaa3413f8",
+            "executables.v4.json": "sha256:5ca5925e7597b044beb5b1bff2ce8acfdbab3427b2eb87f350f46509a7c19283",
+            "pack.v4.json": "sha256:d33b3fdd0f8e4427e38e7fcad853fbeb5edf451b54c53eb554a5226b7ae8fffe"
           }
         },
-        "digest": "sha256:84eada1297108434661565eb05fdc66875e08775b6a8c315c8df048be1a5cfa8",
+        "digest": "sha256:b69e369d2a7e819a05b5c45b68cb91113e5a4a6e44d12f34e7b0eda297f6b3dd",
         "format": "tobkiri-pack-v4-quartet",
         "pack_id": "tobkiri_ui_settings_pack",
         "status": "artifact-integrity-verified"
@@ -11667,7 +11667,7 @@
   "source": {
     "attestation": "none",
     "authority": "evidence-only",
-    "content_digest": "sha256:0e6c6aae698dd95315c5d16bd34768bff30e5cb10ad3b33a7ce4771c239c6a98",
+    "content_digest": "sha256:048aae5ee00c7bd50e3f92eb3a01fcdf57b3a09f8bbdb2b6a2333db4754ec290",
     "feasibility_audit": {
       "semantically_reviewed": {
         "count": 39,
@@ -11909,7 +11909,7 @@
     "freshness_basis": "exact-input-digests-and-deterministic-recomputation",
     "generator_id": "tobkiri.quality.migration-proof-generator",
     "generator_version": "2.1.0",
-    "input_digest": "sha256:172898b82b18ec2e1d0cd7d9d87f7094b9997fc5a51c055fb49bf2e353fc5061",
+    "input_digest": "sha256:5aef4faa98330d749ff4b7073a33b8cd5c5a1681ceab0d73f7525fc38761c50d",
     "input_paths": [
       "tobkiri_runtime/core_runtime/profile_definition_store_v4.py",
       "tobkiri_runtime/ecosystem/defaultspack/artifact-index.v4.json",
@@ -18600,22 +18600,22 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_mcp_connection_pack/runtime/host.py"
       },
       {
-        "digest": "sha256:72782f5b22eff41da9c68fe790e69bc549e4870a81e9421f06d014aed222b211",
+        "digest": "sha256:ec4a7109f40e9a467c8bc937fcf2313805595c753065b2bca51fb5aabed1837e",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/artifact-index.v4.json"
       },
       {
-        "digest": "sha256:3937f10c7176ec6245987e77c857432646f95b737a327254eebbb9d4a6c76522",
+        "digest": "sha256:ea1923fd2f00c5d30cb7d1a6fd5fe3967dbd3d9907095d73ece160adaa3413f8",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/contracts.v4.json"
       },
       {
-        "digest": "sha256:bb93b7bd3f10226e0d88207107ee4a02a70247b666ef476c21baa3e258353eb2",
+        "digest": "sha256:5ca5925e7597b044beb5b1bff2ce8acfdbab3427b2eb87f350f46509a7c19283",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/executables.v4.json"
       },
       {
-        "digest": "sha256:6ca0596ab7912790de6bcf91721d9abccecb6775c5db9cf282e07ee1c56d5708",
+        "digest": "sha256:d33b3fdd0f8e4427e38e7fcad853fbeb5edf451b54c53eb554a5226b7ae8fffe",
         "kind": "v4-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/pack.v4.json"
       },
@@ -18640,7 +18640,7 @@
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/state_changes.py"
       },
       {
-        "digest": "sha256:dbb7bc43c0d6277bd13fac05ccb5d0d8341e7b305de330c772c1b8b8c994cd62",
+        "digest": "sha256:4b1813a4c9059254dcbd7b23234ca4b7ddcae1184aa806ffdcb3d290b1e223b2",
         "kind": "v4-indexed-artifact",
         "path": "tobkiri_runtime/ecosystem/tobkiri_ui_settings_pack/runtime/store.py"
       },
@@ -18766,7 +18766,7 @@
       "release-verified": 0,
       "semantically-reviewed": 39
     },
-    "observed_head_sha": "0075d1a4e7cd718a3f3c86f66446d2a0efb2ca27",
+    "observed_head_sha": "70f66c547d102598715e57961c5cda080cd07f17",
     "pack_count": 141,
     "profile_collection_proof": {
       "identity_proof": {
