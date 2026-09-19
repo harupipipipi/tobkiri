@@ -324,7 +324,14 @@ test("Viewer authenticates every dedicated Defaultspack window and rejects unsaf
   const viewerSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "lib.rs");
   const dockSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "dock_registration.rs");
 
-  assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, authority_approval_url/);
+  // `/approval` is an auth_bootstrap mount: it only serves the page after the
+  // one-time `?code=` exchange mints a `rumi_panel_session` cookie, so the
+  // approval window must use the bootstrap-code URL builder rather than the
+  // fragment-based helper (a `rumi_local_auth` fragment never reaches the
+  // server on the initial navigation).
+  assert.match(viewerSource, /authority_approval_bootstrap_window_url\(config, &request_id\)/);
+  assert.match(viewerSource, /request_panel_bootstrap_code_with_retry\(active_defaultspack_http_port\(\)/);
+  assert.match(viewerSource, /dock_registration::add_defaultspack_bootstrap_code\(url, &code\)/);
   assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, ambient_trigger_url/);
   assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, finger_recording_url/);
   assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, defaults_console_url/);
