@@ -183,7 +183,7 @@ fn encode_url_fragment_value(value: &str) -> String {
     encoded
 }
 
-fn add_defaultspack_bootstrap_code(mut url: Url, code: &str) -> AnyResult<Url> {
+pub(crate) fn add_defaultspack_bootstrap_code(mut url: Url, code: &str) -> AnyResult<Url> {
     if code.is_empty() {
         bail!("Defaultspack panel bootstrap code must not be empty");
     }

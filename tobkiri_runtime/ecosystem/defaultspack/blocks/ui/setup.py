@@ -169,6 +169,12 @@ def run(context):
         ("GET", "/desktops", _static_shell, {}),
         ("GET", "/approval", _static_shell, {}),
         ("POST", "/api/authority/browser-ui-operator", _authority_browser_ui_operator, {}),
+        (
+            "POST",
+            "/api/authority/approval-window",
+            _lazy("blocks.authority.approval_window"),
+            {},
+        ),
         ("GET", "/ambient", _static_shell, {}),
         ("GET", "/ambient-debug", _static_shell, {}),
         ("GET", "/finger-recording", _static_shell, {}),

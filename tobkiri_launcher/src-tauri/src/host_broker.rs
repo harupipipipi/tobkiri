@@ -26,9 +26,9 @@ use crate::debug_approval::{
 use crate::desktop_system_info;
 use crate::host_audit::{now_epoch_seconds, summarize_args, write_audit_log, HostAuditEntry};
 use crate::host_broker_types::{
-    canonical_type_semantic_error_code, HostBrokerComputerRunRequest,
-    HostBrokerComputerRunResponse, HostBrokerConnectionInfo, HostBrokerError,
-    HostBrokerIntentRequest, HostBrokerIntentResponse, HostBrokerStatus,
+    canonical_type_semantic_error_code, HostBrokerAuthorityApprovalOpenRequest,
+    HostBrokerComputerRunRequest, HostBrokerComputerRunResponse, HostBrokerConnectionInfo,
+    HostBrokerError, HostBrokerIntentRequest, HostBrokerIntentResponse, HostBrokerStatus,
     HostBrokerStreamStopRequest,
 };
 
@@ -51,6 +51,7 @@ const DEBUG_OPERATOR_PATH: &str = "/api/host/debug/approval/operator";
 const DEBUG_OPERATOR_VERIFY_PATH: &str = "/api/host/debug/approval/verify";
 const DEBUG_OPERATOR_SETTLE_PATH: &str = "/api/host/debug/approval/settle";
 const DEBUG_EXECUTION_CONSUME_PATH: &str = "/api/host/debug/execution/consume";
+const AUTHORITY_APPROVAL_OPEN_PATH: &str = "/api/host/authority-approval/open";
 const RESPONSE_NONCE_HEADER: &str = "x-rumi-launcher-response-nonce";
 const PERMISSION_SUBJECT: &str = "Tobkiri Launcher";
 const MAX_CONCURRENT_REQUESTS: usize = 16;
@@ -92,6 +93,7 @@ struct HostBrokerShared {
     active_host_streams: Mutex<HashMap<String, HostStreamSession>>,
     used_approval_tokens: Mutex<HashMap<String, u64>>,
     attestation: BrokerAttestationIdentity,
+    authority_approval_window_opener: Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
 }
 
 #[derive(Debug, Clone)]
@@ -167,8 +169,13 @@ impl Drop for RequestSlot {
 }
 
 impl HostBrokerRuntime {
-    pub fn start(config: &AppConfig, debug_approval: Arc<DebugApprovalManager>) -> Result<Self> {
+    pub fn start(
+        config: &AppConfig,
+        debug_approval: Arc<DebugApprovalManager>,
+        app: tauri::AppHandle,
+    ) -> Result<Self> {
         let attestation = BrokerAttestationIdentity::generate();
+        let authority_approval_window_opener = Self::authority_approval_window_opener(app, config);
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             return Ok(Self {
@@ -181,6 +188,7 @@ impl HostBrokerRuntime {
                     active_host_streams: Mutex::new(HashMap::new()),
                     used_approval_tokens: Mutex::new(HashMap::new()),
                     attestation,
+                    authority_approval_window_opener,
                 }),
             });
         }
@@ -240,6 +248,7 @@ impl HostBrokerRuntime {
                     active_requests: Mutex::new(0),
                     active_host_streams: Mutex::new(HashMap::new()),
                     used_approval_tokens: Mutex::new(HashMap::new()),
+                    authority_approval_window_opener,
                     attestation,
                 }),
             };
@@ -275,6 +284,30 @@ impl HostBrokerRuntime {
 
             Ok(runtime)
         }
+    }
+
+    fn authority_approval_window_opener(
+        app: tauri::AppHandle,
+        config: &AppConfig,
+    ) -> Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync> {
+        let config = config.clone();
+        Arc::new(move |request_id: &str| {
+            let request_id = request_id.to_string();
+            let config = config.clone();
+            let (result_tx, result_rx) = std::sync::mpsc::channel();
+            let app_for_thread = app.clone();
+            app.run_on_main_thread(move || {
+                let _ = result_tx.send(crate::open_authority_approval_window_for_app(
+                    &app_for_thread,
+                    &config,
+                    &request_id,
+                ));
+            })
+            .map_err(|error| format!("failed to schedule approval window open: {error}"))?;
+            result_rx
+                .recv_timeout(Duration::from_secs(15))
+                .map_err(|error| format!("approval window open did not respond: {error}"))?
+        })
     }
 
     pub fn status_snapshot(&self) -> HostBrokerStatus {
@@ -671,6 +704,28 @@ fn route_request(request: &ParsedRequest, shared: &Arc<HostBrokerShared>) -> (u1
                 }
             })
         }
+        ("POST", AUTHORITY_APPROVAL_OPEN_PATH) => handle_authorized_json(
+            request,
+            shared,
+            |payload: HostBrokerAuthorityApprovalOpenRequest| {
+                let request_id = payload.request_id.trim().to_string();
+                if !crate::valid_authority_request_id(&request_id) {
+                    return json!({
+                        "ok": false,
+                        "opened": false,
+                        "error": {"code": "AUTHORITY_APPROVAL_REQUEST_INVALID", "message": "invalid approval request id"}
+                    });
+                }
+                match (shared.authority_approval_window_opener)(&request_id) {
+                    Ok(()) => json!({"ok": true, "opened": true, "request_id": request_id}),
+                    Err(error) => json!({
+                        "ok": false,
+                        "opened": false,
+                        "error": {"code": "AUTHORITY_APPROVAL_OPEN_FAILED", "message": error}
+                    }),
+                }
+            },
+        ),
         ("POST", COMPUTER_RUN_PATH) => handle_authorized_json(request, shared, |run_request| {
             execute_computer_run(shared, run_request)
         }),
@@ -3507,6 +3562,7 @@ mod tests {
             active_requests: Mutex::new(0),
             active_host_streams: Mutex::new(HashMap::new()),
             used_approval_tokens: Mutex::new(HashMap::new()),
+            authority_approval_window_opener: Arc::new(|_| Ok(())),
             attestation: BrokerAttestationIdentity::generate(),
         }
     }

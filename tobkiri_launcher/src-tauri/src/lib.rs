@@ -528,6 +528,26 @@ fn authenticated_defaultspack_window_url(
         .map_err(|error| format!("failed to authenticate Defaultspack window URL: {error:#}"))
 }
 
+fn authority_approval_bootstrap_window_url(
+    config: &AppConfig,
+    request_id: &str,
+) -> Result<Url, String> {
+    let url = authority_approval_url(request_id)?;
+    // `/approval` is an `auth_bootstrap` mount: its page is only served once a
+    // verified `rumi_panel_session` cookie exists, which the one-time `?code=`
+    // exchange mints. A `rumi_local_auth` fragment never reaches the server on
+    // the initial navigation, so it cannot open this surface.
+    let bootstrap_secret = load_or_create_panel_bootstrap_secret(config)
+        .map_err(|error| format!("failed to load panel bootstrap secret: {error:#}"))?;
+    let code =
+        request_panel_bootstrap_code_with_retry(active_defaultspack_http_port(), &bootstrap_secret)
+            .map_err(|error| {
+                format!("failed to issue authority approval bootstrap code: {error:#}")
+            })?;
+    dock_registration::add_defaultspack_bootstrap_code(url, &code)
+        .map_err(|error| format!("failed to attach authority approval bootstrap code: {error:#}"))
+}
+
 fn focus_authority_approval_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     window
         .unminimize()
@@ -549,8 +569,7 @@ fn open_authority_approval_window_for_app(
     request_id: &str,
 ) -> Result<(), String> {
     let request_id = request_id.trim().to_string();
-    let approval_url =
-        authenticated_defaultspack_window_url(config, authority_approval_url(&request_id))?;
+    let approval_url = authority_approval_bootstrap_window_url(config, &request_id)?;
     if let Some(window) = app.get_webview_window(AUTHORITY_APPROVAL_WINDOW_LABEL) {
         window
             .navigate(approval_url)
@@ -3229,9 +3248,12 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
                 config.log_dir.join("debug-approval-audit.jsonl"),
             ));
             record_startup_stage(&setup_startup_stage, "starting_host_broker");
-            let host_broker =
-                HostBrokerRuntime::start(&config, Arc::clone(&debug_approval))
-                .context("failed to start Viewer host broker")?;
+            let host_broker = HostBrokerRuntime::start(
+                &config,
+                Arc::clone(&debug_approval),
+                app.handle().clone(),
+            )
+            .context("failed to start Viewer host broker")?;
             let broker_attestation = host_broker.attestation_identity();
             record_startup_stage(&setup_startup_stage, "host_broker_running");
             app.manage(host_broker.clone());

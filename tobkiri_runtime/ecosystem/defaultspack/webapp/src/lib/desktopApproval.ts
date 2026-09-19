@@ -3,8 +3,27 @@ import { loadTauriInvoke } from "./desktopTransport";
 
 export async function openAuthorityApprovalWindow(requestId: string): Promise<boolean> {
   const invoke = await loadTauriInvoke();
-  if (!invoke) return false;
-  await invoke("open_authority_approval_window", { requestId });
+  if (invoke) {
+    try {
+      await invoke("open_authority_approval_window", { requestId });
+      return true;
+    } catch {
+      // The presentation Shell exposes no invoke surface; fall through to the
+      // authenticated host-broker route, which opens the same Launcher window.
+    }
+  }
+  const { defaultspackApiFetch, defaultspackContractRoute } = await import("./api");
+  const response = await defaultspackApiFetch(
+    defaultspackContractRoute("api/authority/approval-window"),
+    { method: "POST", body: JSON.stringify({ request_id: requestId }) },
+  ).catch(() => null);
+  if (!response || !response.ok) return false;
+  const payload = await response.json().catch(() => null);
+  if (payload && typeof payload === "object") {
+    const record = payload as Record<string, unknown>;
+    if (record.status === "error") return false;
+    if (record.success === false) return false;
+  }
   return true;
 }
 
