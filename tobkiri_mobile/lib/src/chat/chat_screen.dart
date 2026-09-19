@@ -1170,9 +1170,17 @@ class _ChatScreenState extends State<ChatScreen>
           builder: (_) => ModelSelectionScreen.pc(
             profiles: profiles,
             activeModelId: _activeModelId(),
+            onRefreshPcProfiles: () async {
+              _pcCatalog = null;
+              return _pcProfilesForSelection(await _ensurePcCatalog());
+            },
           ),
         ),
       );
+      if (selected?.kind == ModelSelectionKind.openSettings) {
+        _openSettings();
+        return;
+      }
       if (selected?.pcProfileId?.trim().isNotEmpty == true) {
         await _setPcModel(selected!.pcProfileId!.trim());
       }
@@ -1189,6 +1197,12 @@ class _ChatScreenState extends State<ChatScreen>
           providers: selectableProviders,
           activeModelId: _activeModelId(),
           activeProviderId: _apiConfig?.providerId ?? '',
+          onRefreshMobileProviders: () async {
+            final refreshed = (await widget.configStore.loadProviderConfigs())
+                .where((provider) => provider.isConfigured)
+                .toList();
+            return _mobileProvidersForSelection(refreshed);
+          },
         ),
       ),
     );
@@ -1200,9 +1214,17 @@ class _ChatScreenState extends State<ChatScreen>
         return;
       case ModelSelectionKind.localModel:
         final model = selected.localModel?.trim();
+        final current = _apiConfig ?? await widget.configStore.loadApi();
+        if (selected.localProviderId != current.providerId) {
+          _showSnack('プロバイダー設定が変わりました。モデルを選び直してください');
+          return;
+        }
         if (model != null && model.isNotEmpty) await _setLocalModel(model);
         return;
       case ModelSelectionKind.pcProfile:
+        return;
+      case ModelSelectionKind.openSettings:
+        _openSettings();
         return;
     }
   }
@@ -1237,6 +1259,16 @@ class _ChatScreenState extends State<ChatScreen>
           ),
         )
         .toList();
+    final activeProviderId = _apiConfig?.providerId ?? '';
+    final activeModelId = _apiConfig?.model ?? '';
+    for (final provider in providers) {
+      if (provider.providerId == activeProviderId &&
+          provider.model == activeModelId &&
+          !favorites.contains(provider)) {
+        favorites.add(provider);
+        break;
+      }
+    }
     return favorites.isNotEmpty ? favorites : providers;
   }
 
