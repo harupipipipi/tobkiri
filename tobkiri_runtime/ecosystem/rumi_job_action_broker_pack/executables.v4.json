@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:0c58add9150cbcda94747a84623b68e7b05ffd12ae5972ed958017a7691b05d2",
+  "pack_id": "rumi_job_action_broker_pack",
+  "source_identity": "sha256:e3813b73fc0b5c599ba9a1075f10d81b89fcaed9796690d768ad02b66bc881b4",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_job_action_broker_pack.job-action.broker",
+      "implementation_digest": "sha256:741ba3bb0e01cbd0a485cb63baa3c5ba5b5635a85ede9289d214ea71a73711ac",
+      "implementation_path": "runtime/broker.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.job.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_job_action_broker_pack.job-action-broker",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:b14b031e9b4d5498b9d1d2476f8d573af7d1bdd87444b95d8cac251b3cc70d83",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_job_action_broker_pack.job-action.broker.python"
+    }
+  ]
+}

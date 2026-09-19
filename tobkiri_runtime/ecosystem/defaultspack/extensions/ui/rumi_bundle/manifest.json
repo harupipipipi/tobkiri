@@ -2,7 +2,7 @@
   "id": "rumi_bundle",
   "category": "ui_surface",
   "version": "1",
-  "display_name": "Rumi Bundle",
+  "display_name": "Tobkiri Bundle",
   "description": "Standalone defaultspack desktop-app bundle metadata kept inside the bundled ecosystem tree.",
   "enabled": true,
   "config": {
@@ -17,7 +17,7 @@
     },
     "app": {
       "id": "defaultspack",
-      "name": "rumi DP",
+      "name": "Tobkiri",
       "icon": "/static/assets/icons/defaultspack-icon.png"
     },
     "shell_layout": {

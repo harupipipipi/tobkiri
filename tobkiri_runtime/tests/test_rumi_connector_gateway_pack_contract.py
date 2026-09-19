@@ -39,6 +39,9 @@ def test_connector_gateway_required_assets_and_metadata() -> None:
     assert ecosystem["metadata"]["executable_code"] is False
     available = {item.pack_id for item in PackSelector(ROOT / "ecosystem").scan_candidates()}
     assert {item["pack_id"] for item in ecosystem["metadata"]["optional_integrations"]} <= available
+    assert "rumi_local_agent_pack" not in {
+        item["pack_id"] for item in ecosystem["metadata"]["optional_integrations"]
+    }
 
 
 def test_connector_gateway_yaml_parses_and_routes_to_owners() -> None:
@@ -59,7 +62,7 @@ def test_connector_gateway_setup_pack_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["connector_execution"] == "do_not_override_installed_connector_tools"
     assert candidate.overlap_policy["mcp_gateway"] == "mcp_servers_use_defaultspack_mcp_registry"
     assert candidate.overlap_policy["workflow_delivery"] == "handoff_schedules_to_defaultspack_scheduler"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
 
 
 def test_connector_gateway_docs_no_secrets_and_boundary_notes() -> None:
@@ -67,8 +70,25 @@ def test_connector_gateway_docs_no_secrets_and_boundary_notes() -> None:
         (PACK_DIR / path).read_text(encoding="utf-8")
         for path in ["README.md", "docs/interfaces.md", "docs/operations.md"]
     )
-    for expected in ["Required Secrets", "None", "defaultspack", "rumi_local_agent_pack", "scheduler", "untrusted"]:
+    for expected in [
+        "Required Secrets",
+        "None",
+        "defaultspack",
+        "tobkiri.profile-content.local-agent.v1",
+        "not an installable Pack",
+        "scheduler",
+        "untrusted",
+    ]:
         assert expected in docs
+    example = yaml.safe_load(
+        (PACK_DIR / "examples" / "github_pr_triage.example.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        example["expected_handoff"]["delivery_target"]
+        == "tobkiri.profile-content.local-agent.v1"
+    )
     pattern = re.compile(
         r"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{12,}"
     )

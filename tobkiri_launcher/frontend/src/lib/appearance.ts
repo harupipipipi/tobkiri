@@ -1,4 +1,4 @@
-export const VALID_THEMES = ['Minimal', 'Rounded'] as const;
+export const VALID_THEMES = ['Rounded', 'Minimal'] as const;
 export type Theme = (typeof VALID_THEMES)[number];
 
 export const VALID_COLOR_MODES = ['light', 'dark'] as const;
@@ -14,8 +14,8 @@ export interface Appearance {
   colorMode: ColorMode;
 }
 
-// Remove legacy classes too so a stored Rumi/Standard selection cannot leave
-// stale styling on the document after it migrates to Rounded.
+// Remove legacy classes so an older Rumi/Standard selection cannot leave stale
+// styling on the document after it migrates to Rounded.
 export const THEME_CLASS_NAMES = ['theme-rumi', 'theme-minimal', 'theme-standard', 'theme-rounded'];
 
 export function themeClassName(theme: Theme): string {

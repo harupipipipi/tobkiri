@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "io.tobkiri.sealed-python-attestation.v1",
+  "title": "Tobkiri sealed Python runtime attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "nonce",
+    "role",
+    "environment_digest",
+    "executable",
+    "prefix",
+    "base_prefix",
+    "sys_path",
+    "stdlib_sha256",
+    "site_packages_sha256",
+    "native_sha256",
+    "lifetime_lease"
+  ],
+  "properties": {
+    "schema": {
+      "const": "io.tobkiri.sealed-python-attestation.v1"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "role": {
+      "enum": ["typed", "defaultspack", "host_helper"]
+    },
+    "environment_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "executable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prefix": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_prefix": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sys_path": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "stdlib_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "site_packages_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "native_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "lifetime_lease": {
+      "const": true
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$comment": "sys_path is the exact manifest-bound fixed import-root set: application root, runtime stdlib and dynload roots, venv site-packages, plus the runtime pythonXY.zip only when that regular file is inventoried. Relative, empty, duplicate, user-site, cwd, external, linked, and unmanifested entries are forbidden."
+}

@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import shutil
 import sys
@@ -24,8 +23,7 @@ class TestPackApiServerSyntax(TestCase):
     def test_compiles(self):
         import py_compile
         src = PROJECT_ROOT / "core_runtime" / "pack_api_server.py"
-        if not src.exists():
-            self.skipTest("not found")
+        self.assertTrue(src.is_file(), f"required source is absent: {src}")
         try:
             py_compile.compile(str(src), doraise=True)
         except py_compile.PyCompileError as e:
@@ -57,9 +55,10 @@ class TestNetworkGrantManager(TestCase):
 class TestDiagnosticsNoPartial(TestCase):
     def test_no_partial(self):
         p = PROJECT_ROOT / "core_runtime" / "kernel_handlers_system.py"
-        if not p.exists():
-            self.skipTest("not found")
-        self.assertNotIn('status="partial"', p.read_text("utf-8"))
+        self.assertFalse(
+            p.exists(),
+            f"retired core_runtime.kernel_handlers_system must remain absent: {p}",
+        )
 
 
 class TestActiveEcosystemConfig(TestCase):
@@ -97,13 +96,15 @@ class TestOverridesIntegration(TestCase):
 
 class TestInterfaceRegistryGetByOwner(TestCase):
     def test_get_by_owner(self):
-        from core_runtime.interface_registry import InterfaceRegistry
-        ir = InterfaceRegistry()
-        ir.register("io.http.server", "sa", meta={"owner_pack": "pa"})
-        ir.register("io.http.server", "sb", meta={"owner_pack": "pb"})
-        self.assertEqual(ir.get_by_owner("io.http.server", "pa"), "sa")
-        self.assertEqual(ir.get_by_owner("io.http.server", "pb"), "sb")
-        self.assertEqual(ir.get_by_owner("io.http.server", "unknown"), "sb")
+        from tests.legacy_authority_contracts import (
+            assert_profile_resolver_requires_authority_snapshot,
+            assert_retired_module_absent,
+        )
+        from tests.v4_batch_support import assert_legacy_registry_fails_closed
+
+        assert_retired_module_absent("core_runtime.interface_registry")
+        assert_legacy_registry_fails_closed()
+        assert_profile_resolver_requires_authority_snapshot()
 
 
 class TestBuiltinHandlerRegistry(TestCase):
@@ -189,65 +190,30 @@ class TestInboxSendHandler(TestCase):
         os.chdir(self._orig)
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def _load(self):
-        p = (
-            PROJECT_ROOT / "core_runtime"
-            / "builtin_capability_handlers" / "inbox_send" / "handler.py"
+    def _assert_retired_handler_absent(self):
+        handler = (
+            PROJECT_ROOT
+            / "core_runtime"
+            / "builtin_capability_handlers"
+            / "inbox_send"
+            / "handler.py"
         )
-        if not p.exists():
-            self.skipTest("handler not found")
-        spec = importlib.util.spec_from_file_location("_ih", str(p))
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
+        self.assertFalse(
+            handler.exists(),
+            f"retired inbox_send handler must remain physically absent: {handler}",
+        )
 
     def test_missing_to_pack_id(self):
-        r = self._load().execute(
-            {"principal_id": "pa", "grant_config": {}},
-            {"to_pack_id": "", "target_component": {}, "payload": {}},
-        )
-        self.assertFalse(r["success"])
+        self._assert_retired_handler_absent()
 
     def test_policy_denied(self):
-        r = self._load().execute(
-            {"principal_id": "pa", "grant_config": {"allowed_target_packs": ["pb"]}},
-            {
-                "to_pack_id": "pb",
-                "target_component": {"type": "fe", "id": "ui"},
-                "payload": {
-                    "kind": "manifest_json_patch",
-                    "patch": [{"op": "add", "path": "/x", "value": 1}],
-                },
-            },
-        )
-        self.assertFalse(r["success"])
+        self._assert_retired_handler_absent()
 
     def test_file_replace_default_denied(self):
-        r = self._load().execute(
-            {"principal_id": "pa", "grant_config": {"allowed_target_packs": ["pb"]}},
-            {
-                "to_pack_id": "pb",
-                "target_component": {"type": "fe", "id": "ui"},
-                "payload": {"kind": "file_replace_json", "file": "c.json", "json": {}},
-            },
-        )
-        self.assertFalse(r["success"])
-        self.assertEqual(r["error_type"], "grant_denied")
+        self._assert_retired_handler_absent()
 
     def test_path_traversal(self):
-        r = self._load().execute(
-            {"principal_id": "pa", "grant_config": {}},
-            {
-                "to_pack_id": "../etc",
-                "target_component": {"type": "fe", "id": "ui"},
-                "payload": {
-                    "kind": "manifest_json_patch",
-                    "patch": [{"op": "add", "path": "/x", "value": 1}],
-                },
-            },
-        )
-        self.assertFalse(r["success"])
-        self.assertEqual(r["error_type"], "validation_error")
+        self._assert_retired_handler_absent()
 
 
 if __name__ == "__main__":

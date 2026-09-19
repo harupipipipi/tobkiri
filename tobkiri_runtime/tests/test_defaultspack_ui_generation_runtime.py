@@ -11,6 +11,7 @@ from domain.tool.ui_compiler_tools import ui_build_recursive
 from domain.tool.ui_compiler_tools import ui_generate_foundation, ui_render_matrix
 from domain.tool.ui_compiler_runtime.foundation_generator import FOUNDATION_SPECIALIST_ROLES
 from domain.tool.ui_compiler_runtime.orchestrator import PIPELINE_SPECIALIST_TASKS
+import domain.tool.ui_compiler_runtime.render_matrix as render_matrix_runtime
 from domain.tool.ui_compiler_runtime.render_matrix import _browser_executable_path
 from domain.tool_policy.internal_context import mark_tool_server_approval_context
 from domain.ui_compiler import RecursiveUIPlanner
@@ -71,8 +72,10 @@ def test_stage_tools_stop_after_the_requested_runtime_stage(tmp_path: Path) -> N
 
 
 def test_render_matrix_uses_browser_when_local_chrome_is_available(tmp_path: Path) -> None:
-    if not _browser_executable_path():
-        pytest.skip("local Chrome or Chromium is not installed")
+    pytest.importorskip("playwright.sync_api", reason="optional Playwright Python package is unavailable")
+    executable_path = _browser_executable_path()
+    if not executable_path:
+        pytest.skip("no local Chrome, Chromium, or installed Playwright browser is available")
     write_pass_package(tmp_path / "project")
     args = build_args("browser-render")
     args["options"]["browserRender"] = True
@@ -94,6 +97,92 @@ def test_render_matrix_uses_browser_when_local_chrome_is_available(tmp_path: Pat
     assert result["status"] == "ok"
     assert dom["renderer"] == "playwright"
     assert dom["dom"]["document"]["clientWidth"] == 390
+    assert dom["metrics"]["browserExecutablePath"] == executable_path
+    assert dom["metrics"]["browserExecutableSource"] in {"system", "playwright-cache"}
+    assert dom["metrics"]["browserVersion"]
+    assert dom["metrics"]["browserTimeoutMs"] == 10_000
+    assert dom["metrics"]["browserSandbox"] == "enabled"
+    assert dom["metrics"]["browserCleanup"] == "context-and-browser-closed"
+    image_path = dom_path.with_name(dom_path.name.removeprefix("dom-")).with_suffix(".png")
+    assert image_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_render_matrix_falls_back_to_synthetic_without_a_browser(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(render_matrix_runtime, "_browser_executable_path", lambda: "")
+    write_pass_package(tmp_path / "project")
+    args = build_args("synthetic-render")
+    args["options"]["browserRender"] = True
+
+    result = ui_render_matrix(args, fake_context(tmp_path))
+    render_root = (
+        tmp_path
+        / ".rumi"
+        / "ui"
+        / "runs"
+        / "synthetic-render"
+        / "candidates"
+        / "reply-composer"
+        / "candidate-1"
+        / "renders"
+    )
+    dom_path = next(render_root.glob("dom-390-default-text-*.json"))
+    dom = json.loads(dom_path.read_text(encoding="utf-8"))
+
+    assert result["status"] == "ok"
+    assert dom["renderer"] == "synthetic"
+    assert dom["metrics"]["browserRenderFallback"] is True
+    assert dom["metrics"]["browserRenderFallbackReason"] == "local Chromium executable not found"
+    assert dom["metrics"]["browserExecutablePath"] is None
+    assert dom["metrics"]["browserCleanup"] == "not-started"
+
+
+def test_browser_discovery_uses_platform_path_candidates(tmp_path: Path, monkeypatch) -> None:
+    executable = tmp_path / "google-chrome"
+    executable.write_bytes(b"browser")
+    executable.chmod(0o755)
+    monkeypatch.setattr(render_matrix_runtime.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        render_matrix_runtime.shutil,
+        "which",
+        lambda name: str(executable) if name == "google-chrome" else None,
+    )
+    monkeypatch.setattr(render_matrix_runtime, "_playwright_browser_executable_path", lambda: "")
+
+    assert _browser_executable_path() == str(executable.resolve())
+
+
+def test_browser_discovery_uses_macos_application_bundle(tmp_path: Path, monkeypatch) -> None:
+    executable = tmp_path / "Applications" / "Google Chrome.app" / "Contents" / "MacOS" / "Google Chrome"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"browser")
+    executable.chmod(0o755)
+    monkeypatch.setattr(render_matrix_runtime.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(render_matrix_runtime.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(render_matrix_runtime.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        render_matrix_runtime,
+        "_validated_executable_path",
+        lambda candidate: str(executable.resolve()) if str(candidate) == str(executable) else "",
+    )
+    monkeypatch.setattr(render_matrix_runtime, "_playwright_browser_executable_path", lambda: "")
+
+    assert _browser_executable_path() == str(executable.resolve())
+
+
+def test_browser_discovery_uses_windows_installation_roots(tmp_path: Path, monkeypatch) -> None:
+    program_files = tmp_path / "Program Files"
+    executable = program_files / "Google" / "Chrome" / "Application" / "chrome.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"browser")
+    monkeypatch.setattr(render_matrix_runtime.platform, "system", lambda: "Windows")
+    monkeypatch.setenv("PROGRAMFILES", str(program_files))
+    monkeypatch.delenv("PROGRAMFILES(X86)", raising=False)
+    monkeypatch.delenv("PROGRAMW6432", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(render_matrix_runtime.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(render_matrix_runtime, "_playwright_browser_executable_path", lambda: "")
+
+    assert _browser_executable_path() == str(executable.resolve())
 
 
 def test_candidate_count_output_dirs_are_isolated_and_do_not_include_previous_source(tmp_path: Path) -> None:

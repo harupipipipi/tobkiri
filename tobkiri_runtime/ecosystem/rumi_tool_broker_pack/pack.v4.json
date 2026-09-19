@@ -1,0 +1,139 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:34d1788b50825d0c6aac38078f45bb85299ecb9d9cf0fa9afb10f94c24801563",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
+      "kind": "executable",
+      "path": "runtime/broker.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.tool.invoke.v1",
+      "operations": [
+        "rumi_tool_broker_pack.tool-invoke"
+      ],
+      "revision_digest": "sha256:158048cd75aff7396e9d7eb4a80f777f679c3217398cfa26f2fbc3f3d9375a89"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:158048cd75aff7396e9d7eb4a80f777f679c3217398cfa26f2fbc3f3d9375a89",
+      "id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "implementation_digest": "sha256:b2427cb917f0e036a58281e2b2d83761c6ee547af4062b9c93882d734a9f963b",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_broker_pack.tool-invoke"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:4deadadded20a201ca62a26b6aaf6c6b1b6f2ba9289f0fbabf547152039894d3",
+    "contract_catalog_digest": "sha256:144c3b171a3faa37444acc32c782a4ffc84a2c265dbc2138e893a2702f594272",
+    "source_identity": "sha256:0d9f478b2caff62bfe4c3f4f416e02d9fa5f1ac74934940790be3a3cddf44534"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.tool.invoke.v1",
+      "rumi:ecosystem/rumi_tool_broker_pack",
+      "rumi_tool_broker_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.invoke.v1",
+      "effect_ceiling": [
+        "capability:tool.invoke",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_tool_broker_pack.tool-invoke",
+      "owner": "rumi_tool_broker_pack",
+      "provider_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:4deadadded20a201ca62a26b6aaf6c6b1b6f2ba9289f0fbabf547152039894d3",
+    "display_name": "Rumi Tool Broker",
+    "id": "rumi_tool_broker_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:0d9f478b2caff62bfe4c3f4f416e02d9fa5f1ac74934940790be3a3cddf44534",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:0d9f478b2caff62bfe4c3f4f416e02d9fa5f1ac74934940790be3a3cddf44534",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_broker_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.tool.invoke.v1",
+      "operations": [
+        "rumi_tool_broker_pack.tool-invoke"
+      ],
+      "owner": "rumi_tool_broker_pack",
+      "provider_id": "rumi_tool_broker_pack.tool-broker.invoke"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "tool.invoke"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.tool.definition.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.tool.arguments.validate.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.tool.execute.v1",
+        "optional": true,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.tool.result.normalize.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

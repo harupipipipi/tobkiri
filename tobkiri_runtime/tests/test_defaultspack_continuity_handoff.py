@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 
 import pytest
-import yaml
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -215,21 +214,12 @@ def test_json_file_store_update_is_cross_process_atomic(continuity_env):
     assert JsonFileStore(path).read()["value"] == 2
 
 
-def test_continuity_routes_and_ai_functions_are_registered():
-    from domain.function_runtime.registry import get_spec
-    from transport.registry import canonical_http_route_specs
+def test_continuity_requires_captured_handoff_operation():
+    from tests.v4_batch_support import assert_route_cutover
 
-    assert get_spec("continuity_handoff") is None
-    assert get_spec("continuity_return_to_device") is None
-    assert get_spec("continuity_plan_handoff").block_module == "blocks.continuity.api"
-
-    routes = {(spec.method, spec.pattern, spec.function_id) for spec in canonical_http_route_specs()}
-    assert ("GET", "/api/continuity/nodes", "continuity_list_nodes") in routes
-    assert ("POST", "/api/continuity/handoffs", "continuity_handoff") not in routes
-    assert ("POST", "/api/continuity/handoffs/{operation_id}/return", "continuity_return_to_device") not in routes
-    assert ("POST", "/api/continuity/provider-routes/{route_id}/probe", "continuity_probe_provider_route") in routes
-
-    aliases = yaml.safe_load((DEFAULTSPACK_ROOT / "compat_aliases.yaml").read_text(encoding="utf-8"))["aliases"]
-    assert "defaults.continuity.handoff" not in aliases
-    assert "defaults.continuity.return.to.device" not in aliases
-    assert "defaults.continuity.return_to_device" not in aliases
+    assert_route_cutover(
+        "GET",
+        "/api/continuity/nodes",
+        "tobkiri.continuity.v1",
+        "defaultspack.continuity.list-nodes",
+    )

@@ -7,7 +7,7 @@ import importlib.util
 import re
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from blocks._common import ok, error, gen_id, timestamp
+from blocks._common import error, ok
 
 from .context import FlowContext
 from .result import FlowResult
@@ -460,14 +460,10 @@ class FlowEngine:
         return bool(value)
 
     def _invoke_function_step(self, function_name, step_input, flow_context):
-        from domain.function_runtime.bridge import invoke_function
-
-        context = flow_context._parent_context if isinstance(flow_context._parent_context, dict) else {}
-        return invoke_function(
-            function_name,
-            step_input if isinstance(step_input, dict) else {"value": step_input},
-            context,
-            principal_id="defaultspack",
+        del step_input, flow_context
+        return error(
+            f"Legacy function step {function_name!r} has no Pack v4 operation",
+            "V4_OPERATION_UNAVAILABLE",
         )
 
     def _result_is_error(self, result):

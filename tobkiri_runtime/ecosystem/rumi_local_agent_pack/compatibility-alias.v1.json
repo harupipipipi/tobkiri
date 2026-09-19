@@ -1,0 +1,12 @@
+{
+  "artifact_root": "profile_projections/local-agent",
+  "compatibility_release": "v1.10.3",
+  "content_digest": "sha256:2a83294fb4f3d32c24f85c168d3465cc2c249db2604640c9e6e19c56cd78d3d9",
+  "legacy_pack_id": "rumi_local_agent_pack",
+  "projection_id": "tobkiri.profile-content.local-agent.v1",
+  "read_only": true,
+  "remove_no_earlier_than_release": "v1.10.4",
+  "runtime_authority": false,
+  "schema": "io.tobkiri.profile-projection-compatibility-alias.v1",
+  "sunset_at": "2026-10-31"
+}

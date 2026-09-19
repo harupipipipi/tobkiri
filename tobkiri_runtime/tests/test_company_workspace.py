@@ -133,7 +133,7 @@ def test_company_status_bootstraps_employee_group_for_conversation(tmp_path, mon
     assert first["data"]["bootstrapped"] is True
     assert first["data"]["company_id"].startswith("chat-team-chat-main-1")
     assert first["data"]["company"]["metadata"]["conversation_id"] == "chat-main-1"
-    assert first["data"]["company"]["agents"]["client_manager"]["display_name"] == "President"
+    assert first["data"]["company"]["agents"]["client_manager"]["display_name"] == "Main Agent"
     assert second["data"]["company_id"] == first["data"]["company_id"]
     assert default["data"]["company"]["id"] == "operations-company"
     assert scoped["data"]["company"]["id"].startswith("chat-team-chat-main-2")
@@ -158,7 +158,7 @@ def test_conversation_employee_group_inherits_main_chat_model(tmp_path, monkeypa
 
 
 def test_mentions_create_queued_tasks_and_dispatches_agent_runs(tmp_path, monkeypatch):
-    from blocks.company import bootstrap, dispatch, mention, tasks
+    from blocks.company import bootstrap, dispatch, mention, tasks as tasks_block
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
@@ -166,15 +166,6 @@ def test_mentions_create_queued_tasks_and_dispatches_agent_runs(tmp_path, monkey
 
     bootstrapped = bootstrap.run({}, {})
     company_id = bootstrapped["data"]["company"]["id"]
-
-    def fake_dispatch(envelope, context):
-        return {
-            "status": "queued",
-            "delegate": {"execution_id": "run_" + envelope.target["agent_id"], "status": "queued"},
-            "result": {"status": "queued"},
-        }
-
-    monkeypatch.setattr("domain.company.run_dispatcher.dispatch_input", fake_dispatch)
 
     resolved = mention.run(
         {
@@ -198,136 +189,63 @@ def test_mentions_create_queued_tasks_and_dispatches_agent_runs(tmp_path, monkey
         },
         {},
     )
-    task = created["data"]["task"]
-    assert task["status"] == "queued"
-    assert task["source"] == "mention"
-    assert task["target_agent_ids"] == ["project_manager"]
-    assert created["data"]["message"]["task_ids"] == [route["task_id"] for route in created["data"]["routes"]]
-    assert {route["agent_id"] for route in created["data"]["routes"]} == {"project_manager", "coding_engineer", "reviewer"}
+    mention_tasks = created["data"]["tasks"]
+    assert {task["status"] for task in mention_tasks} == {"queued"}
+    assert {task["source"] for task in mention_tasks} == {"mention"}
+    assert {tuple(task["target_agent_ids"]) for task in mention_tasks} == {
+        ("project_manager",),
+        ("coding_engineer",),
+        ("reviewer",),
+    }
+    assert created["data"]["message"]["metadata"]["task_ids"] == [
+        task["id"] for task in mention_tasks
+    ]
 
     dispatched = dispatch.run(
         {
             "company_id": company_id,
-            "task_id": task["id"],
+            "task_id": mention_tasks[0]["id"],
             "requested_by": "test",
             "policy": {"direct_tool_execution": True, "mode": "execute_now"},
         },
         {},
     )
-    assert dispatched["data"]["dispatch"]["status"] == "queued"
-    assert dispatched["data"]["dispatch"]["policy"]["mode"] == "agent_delegate"
-    assert dispatched["data"]["dispatch"]["policy"]["direct_tool_execution"] is False
-    assert dispatched["data"]["run_links"]
+    assert dispatched["status"] == "error"
+    assert dispatched["error"]["code"] == "COMPANY_DISPATCH_ERROR"
 
-    listed = tasks.run({"company_id": company_id, "status": "queued"}, {})
-    assert listed["data"]["total"] >= 3
+    listed = tasks_block.run({"company_id": company_id, "status": "queued"}, {})
+    assert listed["data"]["total"] == 3
 
     all_mentions = mention.run({"action": "resolve", "company_id": company_id, "content": "@all"}, {})
     assert len(all_mentions["data"]["resolved_agent_ids"]) == 9
 
 
-def test_company_runs_include_agent_model_and_result_preview(tmp_path, monkeypatch):
+def test_company_runs_are_explicit_runtime_route_sunset(tmp_path, monkeypatch):
     from blocks.company import runs
-    from domain.agent_runtime.models import AgentRun
-    from domain.agent_runtime.run_store import AgentRunStore
-    from domain.company.runtime_store import CompanyRuntimeStore
 
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_AGENT_RUNTIME_DIR", str(tmp_path / "agent_runtime"))
-    _reset_company_store()
+    result = runs.run({"company_id": "acme", "limit": 5}, {})
 
-    run_store = AgentRunStore()
-    run_store.upsert_run(
-        AgentRun(
-            run_id="agent_preview",
-            session_key="company:acme",
-            agent_id="minimax_worker",
-            task="Smoke",
-            status="completed",
-            model="stub/default",
-            current_transcript_id="tr_agent_preview",
-            result_json=[
-                {"type": "thinking", "thinking": "hidden chain"},
-                {"type": "text", "text": "Visible MiniMax result"},
-            ],
-        )
-    )
-    run_store.replace_messages(
-        "agent_preview",
-        "tr_agent_preview",
-        [
-            {"role": "user", "content": "Please confirm the Company Workspace task is actually delegated."},
-            {"role": "assistant", "content": [{"type": "text", "text": "Visible MiniMax result"}]},
-        ],
-    )
-    CompanyRuntimeStore().record_agent_run(
-        "acme",
-        agent_id="minimax_worker",
-        run_id="agent_preview",
-        task_id="task_preview",
-        status="completed",
-    )
-
-    result = runs.run({"company_id": "acme"}, {})
-
-    assert result["status"] == "ok"
-    agent_run = result["data"]["runs"][0]["agent_run"]
-    assert agent_run["model"] == "stub/default"
-    assert agent_run["status"] == "completed"
-    assert agent_run["result_preview"] == "Visible MiniMax result"
-    assert agent_run["conversation"] == [
-        {
-            "role": "user",
-            "label": "Assignment",
-            "content": "Please confirm the Company Workspace task is actually delegated.",
-        },
-        {
-            "role": "assistant",
-            "label": "Agent reply",
-            "content": "Visible MiniMax result",
-        },
-    ]
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "COMPANY_RUNTIME_ROUTE_SUNSET"
 
 
-def test_company_runs_accept_string_limit_and_offset(tmp_path, monkeypatch):
+def test_company_runs_do_not_reopen_legacy_runtime_store(tmp_path, monkeypatch):
     from blocks.company import runs
-    from domain.company.runtime_store import CompanyRuntimeStore
 
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
-    _reset_company_store()
+    listed = runs.run(
+        {"company_id": "acme", "limit": "2", "offset": "1"}, {}
+    )
 
-    runtime_store = CompanyRuntimeStore()
-    for index in range(3):
-        runtime_store.record_agent_run(
-            "acme",
-            agent_id="worker",
-            run_id=f"run_{index}",
-            task_id=f"task_{index}",
-            status="completed",
-        )
-
-    listed = runs.run({"company_id": "acme", "limit": "2", "offset": "1"}, {})
-
-    assert listed["status"] == "ok"
-    assert listed["data"]["total"] == 3
-    assert len(listed["data"]["runs"]) == 2
+    assert listed["status"] == "error"
+    assert listed["error"]["code"] == "COMPANY_RUNTIME_ROUTE_SUNSET"
 
 
-def test_inbound_routes_ingest_message_and_queue_task(tmp_path, monkeypatch):
+def test_inbound_routes_ingest_into_selected_company_state(tmp_path, monkeypatch):
     from blocks.company import bootstrap, inbound_routes, messages
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
     _reset_company_store()
-
-    def fake_dispatch(envelope, context):
-        return {
-            "status": "queued",
-            "delegate": {"execution_id": "run_" + envelope.target["agent_id"], "status": "queued"},
-            "result": {"status": "queued"},
-        }
-
-    monkeypatch.setattr("domain.company.run_dispatcher.dispatch_input", fake_dispatch)
 
     company_id = bootstrap.run({}, {})["data"]["company"]["id"]
     route = inbound_routes.run(
@@ -356,12 +274,13 @@ def test_inbound_routes_ingest_message_and_queue_task(tmp_path, monkeypatch):
     listed_messages = messages.run({"company_id": company_id, "channel_id": "ops-company"}, {})
 
     assert route["data"]["id"] == "slack-team"
-    assert ingested["data"]["task"]["target_agent_ids"] == ["reviewer"]
-    assert listed_messages["data"]["total"] == 1
-    assert listed_messages["data"]["messages"][0]["metadata"]["route_id"] == "slack-team"
+    assert ingested["data"]["actor_id"] == "U123"
+    assert ingested["data"]["text"] == "@reviewer check the latest build notes"
+    assert ingested["data"]["metadata"]["route_id"] == "slack-team"
+    assert listed_messages["data"]["total"] == 0
 
 
-def test_company_channels_include_runtime_message_counts(tmp_path, monkeypatch):
+def test_company_channels_use_selected_state_without_runtime_counts(tmp_path, monkeypatch):
     from blocks.company import bootstrap, channels, messages
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
@@ -369,6 +288,14 @@ def test_company_channels_include_runtime_message_counts(tmp_path, monkeypatch):
     _reset_company_store()
 
     company_id = bootstrap.run({}, {})["data"]["company"]["id"]
+    channel = channels.run(
+        {
+            "action": "upsert",
+            "company_id": company_id,
+            "channel": {"id": "ops-company", "name": "ops-company", "visibility": "team"},
+        },
+        {},
+    )
     created = messages.run(
         {
             "action": "create",
@@ -392,46 +319,36 @@ def test_company_channels_include_runtime_message_counts(tmp_path, monkeypatch):
     listed = channels.run({"company_id": company_id}, {})
     fetched = channels.run({"action": "get", "company_id": company_id, "channel_id": "ops-company"}, {})
 
+    assert channel["status"] == "ok"
     assert created["status"] == "ok"
     assert latest_created["status"] == "ok"
     ops_channel = next(channel for channel in listed["data"]["channels"] if channel["id"] == "ops-company")
-    latest_created_at = latest_created["data"]["message"]["created_at"]
-    assert ops_channel["message_count"] == 2
-    assert ops_channel["last_message_at"] == latest_created_at
-    assert fetched["data"]["message_count"] == 2
-    assert fetched["data"]["last_message_at"] == ops_channel["last_message_at"]
+    assert ops_channel["name"] == "ops-company"
+    assert "message_count" not in ops_channel
+    assert "last_message_at" not in ops_channel
+    assert fetched["data"]["id"] == "ops-company"
+    assert "message_count" not in fetched["data"]
 
 
-def test_mimo_company_channels_use_lightweight_sync_and_keep_runtime_counts(tmp_path, monkeypatch):
-    from blocks.company import channels, messages
-    from domain.company.store import CompanyStore
+def test_company_channels_do_not_sync_mimo_runtime_state(tmp_path, monkeypatch):
+    from blocks.company import bootstrap, channels
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
     _reset_company_store()
 
-    company_id = "mimo-coding-company"
-    CompanyStore().ensure_company(
-        company_id=company_id,
-        name="MiMo Coding Company",
-        description="Test MiMo company",
-        metadata={"profile_id": "defaultspack.mimo_coding_company"},
-        conversation_group_id="company:mimo-coding-company",
-    )
-    sync_calls = []
-
-    def fake_sync_mimo_company_workspace(company_id_arg, **kwargs):
-        sync_calls.append((company_id_arg, kwargs))
-        return {"status": "ok"}
-
-    monkeypatch.setattr(channels, "sync_mimo_company_workspace", fake_sync_mimo_company_workspace)
-    created = messages.run(
+    company_id = bootstrap.run(
         {
-            "action": "create",
+            "conversation_id": "mimo-channel-test",
+            "scope": "conversation",
+        },
+        {},
+    )["data"]["company"]["id"]
+    created = channels.run(
+        {
+            "action": "upsert",
             "company_id": company_id,
-            "channel_id": "ops-company",
-            "sender_id": "scheduler",
-            "content": "MiMo lightweight channel count check",
+            "channel": {"id": "qa", "name": "qa", "visibility": "team"},
         },
         {},
     )
@@ -439,12 +356,10 @@ def test_mimo_company_channels_use_lightweight_sync_and_keep_runtime_counts(tmp_
     fetched = channels.run({"action": "get", "company_id": company_id, "channel_id": "ops-company"}, {})
 
     assert created["status"] == "ok"
-    assert [call[1].get("sync_observability") for call in sync_calls] == [False, False]
-    ops_channel = next(channel for channel in listed["data"]["channels"] if channel["id"] == "ops-company")
-    assert ops_channel["message_count"] == 1
-    assert ops_channel["last_message_at"] == created["data"]["message"]["created_at"]
-    assert fetched["data"]["message_count"] == 1
-    assert fetched["data"]["last_message_at"] == ops_channel["last_message_at"]
+    assert listed["data"]["channels"] == [created["data"]]
+    assert "message_count" not in created["data"]
+    assert fetched["status"] == "error"
+    assert fetched["error"]["code"] == "NOT_FOUND"
 
 
 def test_company_messages_accept_string_limit_and_offset(tmp_path, monkeypatch):
@@ -498,7 +413,7 @@ def test_company_messages_tail_returns_latest_messages_in_chronological_order(tm
 
     assert listed["status"] == "ok"
     assert listed["data"]["total"] == 100
-    assert [message["content"] for message in listed["data"]["messages"]] == [
+    assert [message["text"] for message in listed["data"]["messages"]] == [
         "MiMo long-run message 95",
         "MiMo long-run message 96",
         "MiMo long-run message 97",
@@ -531,21 +446,30 @@ def test_company_messages_order_desc_returns_newest_first(tmp_path, monkeypatch)
 
     assert listed["status"] == "ok"
     assert listed["data"]["total"] == 6
-    assert [message["content"] for message in listed["data"]["messages"]] == [
+    assert [message["text"] for message in listed["data"]["messages"]] == [
         "MiMo ordered message 5",
         "MiMo ordered message 4",
         "MiMo ordered message 3",
     ]
 
 
-def test_company_get_and_status_include_runtime_workspace_counts(tmp_path, monkeypatch):
+def test_company_get_and_status_project_selected_state_only(tmp_path, monkeypatch):
     from blocks.company import bootstrap, get, messages, status
+    from blocks.company import channels
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
     _reset_company_store()
 
     company_id = bootstrap.run({}, {})["data"]["company"]["id"]
+    channels.run(
+        {
+            "action": "upsert",
+            "company_id": company_id,
+            "channel": {"id": "ops-company", "name": "ops-company", "visibility": "team"},
+        },
+        {},
+    )
     created = messages.run(
         {
             "action": "create",
@@ -561,15 +485,15 @@ def test_company_get_and_status_include_runtime_workspace_counts(tmp_path, monke
     runtime_status = status.run({"company_id": company_id}, {})
 
     assert created["status"] == "ok"
-    assert fetched["data"]["message_count"] == 1
-    assert fetched["data"]["runtime_counts"]["messages"] == 1
-    assert fetched["data"]["channels"]["ops-company"]["message_count"] == 1
-    assert fetched["data"]["channels"]["ops-company"]["last_message_at"]
-    assert runtime_status["data"]["company"]["message_count"] == 1
-    assert runtime_status["data"]["company"]["channels"]["ops-company"]["message_count"] == 1
+    assert fetched["data"]["channels"]["ops-company"]["id"] == "ops-company"
+    assert "message_count" not in fetched["data"]
+    assert "runtime_counts" not in fetched["data"]
+    assert runtime_status["data"]["runtime"]["messages"] == 1
+    assert runtime_status["data"]["runtime"]["tasks"] == 0
+    assert "message_count" not in runtime_status["data"]["company"]
 
 
-def test_company_status_counts_match_runtime_task_and_message_lists(tmp_path, monkeypatch):
+def test_company_status_counts_selected_state_records(tmp_path, monkeypatch):
     from blocks.company import bootstrap, messages, status, tasks
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
@@ -622,17 +546,13 @@ def test_company_status_counts_match_runtime_task_and_message_lists(tmp_path, mo
         runtime_status["data"]["runtime"]["messages"]
         == listed_messages["data"]["total"]
     )
-    assert company["tasks"] == {}
-    assert company["messages"] == {}
-    assert company["task_count"] == listed_tasks["data"]["total"]
-    assert company["message_count"] == listed_messages["data"]["total"]
-    assert (
-        company["channels"]["ops-company"]["message_count"]
-        == listed_messages["data"]["total"]
-    )
+    assert "tasks" not in company
+    assert "messages" not in company
+    assert "task_count" not in company
+    assert "message_count" not in company
 
 
-def test_company_get_and_status_include_runtime_only_channels(tmp_path, monkeypatch):
+def test_company_get_and_status_include_selected_channels(tmp_path, monkeypatch):
     from blocks.company import bootstrap, channels, get, messages, status
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
@@ -640,6 +560,14 @@ def test_company_get_and_status_include_runtime_only_channels(tmp_path, monkeypa
     _reset_company_store()
 
     company_id = bootstrap.run({}, {})["data"]["company"]["id"]
+    created_channel = channels.run(
+        {
+            "action": "upsert",
+            "company_id": company_id,
+            "channel": {"id": "qa-findings", "name": "QA Findings", "visibility": "team"},
+        },
+        {},
+    )
     created = messages.run(
         {
             "action": "create",
@@ -658,41 +586,37 @@ def test_company_get_and_status_include_runtime_only_channels(tmp_path, monkeypa
 
     assert created["status"] == "ok"
     listed_channel = next(channel for channel in listed["data"]["channels"] if channel["id"] == "qa-findings")
-    assert listed_channel["message_count"] == 1
-    assert channel_get["data"]["message_count"] == 1
-    assert fetched["data"]["message_count"] == 1
+    assert listed_channel == created_channel["data"]
+    assert "message_count" not in listed_channel
+    assert "message_count" not in channel_get["data"]
+    assert "message_count" not in fetched["data"]
     assert fetched["data"]["channels"]["qa-findings"]["id"] == "qa-findings"
-    assert fetched["data"]["channels"]["qa-findings"]["message_count"] == 1
-    assert fetched["data"]["channels"]["qa-findings"]["last_message_at"]
-    assert fetched["data"]["channel_count"] == 2
-    assert runtime_status["data"]["company"]["channel_count"] == 2
-    assert runtime_status["data"]["company"]["channels"]["qa-findings"]["message_count"] == 1
+    assert runtime_status["data"]["runtime"]["messages"] == 1
+    assert runtime_status["data"]["company"]["channels"]["qa-findings"]["id"] == "qa-findings"
 
 
-def test_company_runtime_only_channel_get_requires_existing_company(tmp_path, monkeypatch):
-    from blocks.company import bootstrap, channels, messages
-    from domain.company.service import CompanyService
+def test_company_channel_get_requires_selected_company_record(tmp_path, monkeypatch):
+    from blocks.company import bootstrap, channels, delete
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", str(tmp_path / "companies"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", str(tmp_path / "company_runtime.db"))
     _reset_company_store()
 
     company_id = bootstrap.run({}, {})["data"]["company"]["id"]
-    created = messages.run(
+    created = channels.run(
         {
-            "action": "create",
+            "action": "upsert",
             "company_id": company_id,
-            "channel_id": "qa-findings",
-            "sender_id": "mimo",
-            "content": "MiMo runtime-only channel finding",
+            "channel": {"id": "qa-findings", "name": "QA Findings", "visibility": "team"},
         },
         {},
     )
-    deleted = CompanyService().delete_company(company_id)
+    deleted = delete.run({"company_id": company_id}, {})
     fetched = channels.run({"action": "get", "company_id": company_id, "channel_id": "qa-findings"}, {})
 
     assert created["status"] == "ok"
-    assert deleted is True
+    assert deleted["status"] == "ok"
+    assert deleted["data"]["deleted"] is True
     assert fetched["status"] == "error"
     assert fetched["error"]["code"] == "NOT_FOUND"
 
@@ -716,7 +640,7 @@ def test_operations_company_runtime_syncs_default_company_record(tmp_path, monke
     assert status["company"]["metadata"]["legacy_org_id"] == status["org_id"]
     assert status["company"]["metadata"]["conversation_id"] == status["conversation_id"]
     assert status["company"]["agents"]["project_manager"]["system_prompt"]
-    assert "do not write production code" in status["company"]["agents"]["project_manager"]["system_prompt"]
+    assert "task decomposition" in status["company"]["agents"]["project_manager"]["system_prompt"]
 
     conversation = ChatStore().get_conversation(status["conversation_id"])
     assert conversation["group_id"] == "company:operations-company"
