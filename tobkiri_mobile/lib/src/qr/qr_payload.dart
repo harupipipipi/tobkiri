@@ -54,14 +54,25 @@ class QrUrl extends QrPayload {
   final String url;
 }
 
+class QrRejected extends QrPayload {
+  const QrRejected(this.reason);
+  final String reason;
+}
+
 class QrUnknown extends QrPayload {
   const QrUnknown(this.raw);
   final String raw;
 }
 
+const _maxQrPayloadBytes = 64 * 1024;
+
 QrPayload parseQrPayload(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty) return const QrUnknown('');
+  if (trimmed.length > _maxQrPayloadBytes ||
+      utf8.encode(trimmed).length > _maxQrPayloadBytes) {
+    return const QrRejected('QRデータが大きすぎるため取り込めません');
+  }
   if (trimmed.startsWith('{')) {
     try {
       final json = jsonDecode(trimmed) as Map<String, dynamic>;
@@ -73,19 +84,9 @@ QrPayload parseQrPayload(String raw) {
             token: (json['token'] as String?)?.trim() ?? '',
           );
         case 'rumi_api':
-          return QrApiImport(
-            baseUrl: (json['baseUrl'] as String?)?.trim() ?? '',
-            apiKey: (json['apiKey'] as String?)?.trim() ??
-                (json['api_key'] as String?)?.trim() ??
-                '',
-            providerId: (json['providerId'] as String?)?.trim() ??
-                (json['provider_id'] as String?)?.trim(),
-            apiId: (json['apiId'] as String?)?.trim() ??
-                (json['api_id'] as String?)?.trim(),
-            model: (json['model'] as String?)?.trim(),
-            label: (json['label'] as String?)?.trim(),
-            apiCompatibility: (json['apiCompatibility'] as String?)?.trim() ??
-                (json['api_compatibility'] as String?)?.trim(),
+          return const QrRejected(
+            'APIキーを含む旧式QRは安全のため取り込めません。'
+            '端末に紐づく短時間・一回限りの安全な転送を使用してください。',
           );
         case 'rumi_mobile_pair_v1':
         case 'rumi_pair_v2':
