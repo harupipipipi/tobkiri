@@ -19,12 +19,13 @@ export async function openAuthorityApprovalWindow(requestId: string): Promise<bo
   ).catch(() => null);
   if (!response || !response.ok) return false;
   const payload = await response.json().catch(() => null);
-  if (payload && typeof payload === "object") {
-    const record = payload as Record<string, unknown>;
-    if (record.status === "error") return false;
-    if (record.success === false) return false;
-  }
-  return true;
+  if (!payload || typeof payload !== "object") return false;
+  const record = payload as Record<string, unknown>;
+  const data =
+    record.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : null;
+  return record.success === true && data?.opened === true;
 }
 
 export async function openAmbientTriggerWindow(): Promise<boolean> {
