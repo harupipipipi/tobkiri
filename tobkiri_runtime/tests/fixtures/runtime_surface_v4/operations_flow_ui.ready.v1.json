@@ -48,7 +48,7 @@
         "operation_id": "rumi_provider_registry_pack.provider-registry-resource",
         "contract_id": "tobkiri.resource.ai.provider.registry.v1",
         "owner_pack_id": "rumi_provider_registry_pack",
-        "contribution_id": "operation::f59758608f33c685f9358e3504e5030b42734715b45f4ce69b5fddc32979391a",
+        "contribution_id": "operation::688926bafa58cc267d9de0069db78a4bce2e44f3824c6b94b5e96c9c42c8e552",
         "target_provider_id": "rumi_provider_registry_pack.provider-registry.resource",
         "artifact_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
         "invocation_contribution_id": "pack.rumi_provider_registry_pack.rumi_provider_registry_pack.provider-registry-resource",

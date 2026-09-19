@@ -640,6 +640,7 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
 ) -> None:
     """Pending high-risk tools stay inert while one exact browser call resumes once."""
 
+    from ecosystem.defaultspack.domain.function_runtime import dispatcher
     from ecosystem.defaultspack.domain.safety import approval, chat_continuation
 
     server, _session, _authority = production_server
@@ -683,7 +684,7 @@ def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
         )
         return {"status": "ok", "data": {"executed": True}}
 
-    monkeypatch.setattr(chat_continuation, "run_defaultspack_function", execute)
+    monkeypatch.setattr(dispatcher, "run_defaultspack_function", execute)
     cookie, csrf, origin = _authenticate(server)
     headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
 

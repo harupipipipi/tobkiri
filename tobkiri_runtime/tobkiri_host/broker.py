@@ -661,7 +661,15 @@ class RequestBroker:
                 # stopped. Keep admission and materialization charged until
                 # the provider Future actually exits, even after returning
                 # an error or reconciliation record to the caller.
-                background_requests[0].add_done_callback(release_resources)
+                completed_request = background_requests[0]
+                if completed_request.done():
+                    # Future.add_done_callback only logs callback
+                    # exceptions instead of raising them.  Drain a
+                    # finished Future inline so release failures still
+                    # reach the caller and keep the exact child binding.
+                    release_resources(completed_request)
+                else:
+                    completed_request.add_done_callback(release_resources)
             else:
                 release_resources()
 
@@ -1034,7 +1042,7 @@ class RequestBroker:
                 future.cancel()
                 # Resource release must be tied to this exact submitted child,
                 # including already-completed and queued-cancelled Futures.
-                # The done callback runs immediately for completed Futures.
+                # A completed Future drains inline at the invoke boundary.
                 background_requests.append(future)
 
     def _record_audit_failure(

@@ -5580,6 +5580,15 @@ fn copy_file(src: &Path, dst: &Path) -> io::Result<u64> {
     if let Some(parent) = dst.parent() {
         fs::create_dir_all(parent)?;
     }
+    // fs::copy preserves read-only permissions, so a second staging pass over
+    // an existing destination (for example bundled helper executables such as
+    // `uv`) fails to reopen it for writing. Remove the stale entry first; only
+    // the parent directory needs to be writable for that.
+    if let Err(error) = fs::remove_file(dst) {
+        if error.kind() != io::ErrorKind::NotFound {
+            return Err(error);
+        }
+    }
     let bytes = fs::copy(src, dst)?;
     if let Ok(permissions) = fs::metadata(src).map(|metadata| metadata.permissions()) {
         let _ = fs::set_permissions(dst, permissions);
