@@ -3566,4 +3566,90 @@ mod tests {
             attestation: BrokerAttestationIdentity::generate(),
         }
     }
+
+    fn authority_approval_open_request(token: Option<&str>, body: Value) -> ParsedRequest {
+        let mut headers = HashMap::new();
+        if let Some(token) = token {
+            headers.insert("authorization".to_string(), format!("Bearer {token}"));
+        }
+        ParsedRequest {
+            method: "POST".to_string(),
+            path: AUTHORITY_APPROVAL_OPEN_PATH.to_string(),
+            headers,
+            body: serde_json::to_vec(&body).unwrap(),
+        }
+    }
+
+    #[test]
+    fn authority_approval_open_requires_broker_token() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let shared = Arc::new(test_shared(config));
+
+        let (status, response) = route_request(
+            &authority_approval_open_request(None, json!({"request_id": "req-1"})),
+            &shared,
+        );
+
+        assert_eq!(status, 401);
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn authority_approval_open_rejects_invalid_request_id() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let shared = Arc::new(test_shared(config));
+
+        let (status, response) = route_request(
+            &authority_approval_open_request(
+                Some("broker-token"),
+                json!({"request_id": "bad id with spaces!"}),
+            ),
+            &shared,
+        );
+
+        assert_eq!(status, 200);
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            response.pointer("/error/code").and_then(Value::as_str),
+            Some("AUTHORITY_APPROVAL_REQUEST_INVALID")
+        );
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn authority_approval_open_invokes_opener_with_request_id() {
+        let (config, temp_dir) = test_config_with_approval_secret("secret");
+        let opened = Arc::new(Mutex::new(Vec::<String>::new()));
+        let opener = {
+            let opened = Arc::clone(&opened);
+            Arc::new(move |request_id: &str| {
+                opened.lock().unwrap().push(request_id.to_string());
+                Ok(())
+            }) as Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>
+        };
+        let mut shared = test_shared(config);
+        shared.authority_approval_window_opener = opener;
+        let shared = Arc::new(shared);
+
+        let (status, response) = route_request(
+            &authority_approval_open_request(
+                Some("broker-token"),
+                json!({"request_id": "interactive-effect-abc123"}),
+            ),
+            &shared,
+        );
+
+        assert_eq!(status, 200);
+        assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            response.get("opened").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            opened.lock().unwrap().as_slice(),
+            &["interactive-effect-abc123".to_string()]
+        );
+        let _ = fs::remove_dir_all(temp_dir);
+    }
 }
