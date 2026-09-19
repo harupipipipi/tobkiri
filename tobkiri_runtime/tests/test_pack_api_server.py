@@ -2089,6 +2089,87 @@ def test_profile_screen_bootstrap_preserves_exact_captured_route(
         server.stop()
 
 
+def test_approval_bootstrap_preserves_request_id_and_strips_code(
+    tmp_path: Path,
+) -> None:
+    """The approval bootstrap redirect keeps non-code params and cleans the URL."""
+
+    web_root = tmp_path / "ui"
+    web_root.mkdir()
+    (web_root / "shell.html").write_text("approval application", encoding="utf-8")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+        web_mounts=(
+            {
+                "path_prefix": "/approval",
+                "web_root": web_root,
+                "spa_fallback": True,
+                "index_file": "shell.html",
+                "auth_required": True,
+                "auth_bootstrap": True,
+            },
+        ),
+    )
+    server.start()
+    try:
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "verified-desktop"},
+        )
+        assert status == 200
+        code = str(bootstrap["data"]["code"])
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+        connection.request(
+            "GET",
+            f"/approval?request_id=req-1&code={code}",
+        )
+        response = connection.getresponse()
+        document = response.read().decode("utf-8")
+        connection.close()
+        assert response.status == 200
+        assert 'location.replace("/approval?request_id=req-1")' in document
+
+        origin = f"http://127.0.0.1:{server.port}"
+        status, _exchange, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={"code": code},
+            headers={"Origin": origin},
+        )
+        assert status == 200
+        cookie = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        ).split(";", 1)[0]
+
+        for url, expected in (
+            (f"/approval?request_id=req-1&code={code}", "/approval?request_id=req-1"),
+            (f"/approval?code={code}", "/approval"),
+            ("/approval?request_id=req-1", "/approval?request_id=req-1"),
+        ):
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.port, timeout=5
+            )
+            connection.request("GET", url, headers={"Cookie": cookie})
+            response = connection.getresponse()
+            if url == "/approval?request_id=req-1":
+                assert response.read() == b"approval application"
+                assert response.status == 200
+            else:
+                response.read()
+                assert response.status == 302
+                assert response.getheader("Location") == expected
+            connection.close()
+    finally:
+        server.stop()
+
+
 def test_panel_exchange_rejects_foreign_origin(
     live_server: tuple[PackAPIServer, _Dispatch],
 ) -> None:

@@ -570,6 +570,15 @@ fn open_authority_approval_window_for_app(
 ) -> Result<(), String> {
     let request_id = request_id.trim().to_string();
     let approval_url = authority_approval_bootstrap_window_url(config, &request_id)?;
+    open_authority_approval_window_at_url(app, approval_url)
+}
+
+// Window create/navigate/focus only. The caller computes the bootstrap URL
+// first so the blocking `?code=` exchange request stays off the UI thread.
+pub(crate) fn open_authority_approval_window_at_url(
+    app: &AppHandle,
+    approval_url: Url,
+) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(AUTHORITY_APPROVAL_WINDOW_LABEL) {
         window
             .navigate(approval_url)

@@ -15,7 +15,7 @@ from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, cast, runtime_checkable
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urlparse
 
 from .api.api_response import APIResponse
 from .api.auth_gate import AuthGateMixin
@@ -2004,6 +2004,9 @@ class PackAPIHandler(
         safe_target = target
         if safe_target == index_path:
             safe_target = f"{prefix}/"
+        kept_query = self._bootstrap_query_without_code()
+        if kept_query:
+            safe_target = f"{safe_target}?{kept_query}"
         target_literal = json.dumps(safe_target)
         document = f"""<!doctype html><meta charset=\"utf-8\"><title>Tobkiri</title>
 <script>
@@ -2029,6 +2032,13 @@ location.replace({target_literal})}})
             self.wfile.write(document)
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
             self.close_connection = True
+
+    def _bootstrap_query_without_code(self) -> str | None:
+        """Return the request query minus the consumed one-time `code` param."""
+        pairs = parse_qsl(urlparse(self.path).query, keep_blank_values=True)
+        if not any(key == "code" for key, _ in pairs):
+            return None
+        return urlencode([(key, value) for key, value in pairs if key != "code"])
 
     @classmethod
     def _mount_bootstrap_target(
@@ -2316,6 +2326,15 @@ location.replace({target_literal})}})
                 else:
                     self._send_response(APIResponse(False, error="Unauthorized"), 401)
                 return
+            if mount.get("auth_bootstrap", False):
+                kept_query = self._bootstrap_query_without_code()
+                if kept_query is not None:
+                    cleaned = f"{path}?{kept_query}" if kept_query else path
+                    self.send_response(302)
+                    self.send_header("Location", cleaned)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
             self._serve_static_file(path, mount)
             return
         if self._retired_api_path(path):

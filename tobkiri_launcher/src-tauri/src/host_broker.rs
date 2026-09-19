@@ -292,15 +292,18 @@ impl HostBrokerRuntime {
     ) -> Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync> {
         let config = config.clone();
         Arc::new(move |request_id: &str| {
-            let request_id = request_id.to_string();
-            let config = config.clone();
+            let request_id = request_id.trim().to_string();
+            // The bootstrap `?code=` exchange is a blocking HTTP call with
+            // retries; keep it on this broker thread and hand only the window
+            // create/navigate/focus work to the UI thread.
+            let approval_url =
+                crate::authority_approval_bootstrap_window_url(&config, &request_id)?;
             let (result_tx, result_rx) = std::sync::mpsc::channel();
             let app_for_thread = app.clone();
             app.run_on_main_thread(move || {
-                let _ = result_tx.send(crate::open_authority_approval_window_for_app(
+                let _ = result_tx.send(crate::open_authority_approval_window_at_url(
                     &app_for_thread,
-                    &config,
-                    &request_id,
+                    approval_url,
                 ));
             })
             .map_err(|error| format!("failed to schedule approval window open: {error}"))?;
@@ -3642,10 +3645,7 @@ mod tests {
 
         assert_eq!(status, 200);
         assert_eq!(response.get("ok").and_then(Value::as_bool), Some(true));
-        assert_eq!(
-            response.get("opened").and_then(Value::as_bool),
-            Some(true)
-        );
+        assert_eq!(response.get("opened").and_then(Value::as_bool), Some(true));
         assert_eq!(
             opened.lock().unwrap().as_slice(),
             &["interactive-effect-abc123".to_string()]
