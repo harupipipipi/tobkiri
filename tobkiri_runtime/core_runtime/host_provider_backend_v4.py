@@ -18,6 +18,7 @@ from tobkiri_host.models import (
     RuntimeEvidence,
 )
 from tobkiri_host.ports import (
+    AuthorityApprovalWindowPort,
     ChatApprovalContinuationPort,
     InteractiveApprovalPort,
     InteractiveEffectPort,
@@ -116,6 +117,7 @@ class HostProviderCaptureContextV4:
     # kernel/store and workspace coordinator/handle table remain Host-owned.
     interactive_approval_port: InteractiveApprovalPort | None = None
     chat_approval_continuation_port: ChatApprovalContinuationPort | None = None
+    authority_approval_window_port: AuthorityApprovalWindowPort | None = None
     # This late-bound port is supplied only to the one verified coordinator
     # Function which declares it.  It is unavailable until production capture
     # has built the single Broker for the active Profile.

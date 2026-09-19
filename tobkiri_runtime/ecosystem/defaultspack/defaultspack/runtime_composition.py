@@ -49,6 +49,28 @@ def _resume_chat_continuation(
     )
 
 
+def _open_authority_approval_window(request_id: str) -> Mapping[str, object]:
+    """Resolve the Defaultspack-owned approval window broker at invocation time.
+
+    The Host-verified Provider supplies only an authenticated request identity.
+    All broker mediation stays inside the same viewer host-broker client the
+    legacy approval-window block uses, including its host-contract values and
+    loopback checks.
+    """
+
+    from ecosystem.defaultspack.domain.host_bridge.viewer_broker_client import (
+        ViewerBrokerClient,
+    )
+
+    client = ViewerBrokerClient.from_environment()
+    if not client.available():
+        raise PermissionError("Viewer host broker is unavailable")
+    result = client.open_authority_approval_window(request_id)
+    if not isinstance(result, Mapping) or result.get("ok") is not True:
+        raise PermissionError("Authority approval window open failed")
+    return {"opened": True}
+
+
 def defaultspack_activation_snapshot_loader(
     *,
     active: object,
@@ -139,6 +161,7 @@ def defaultspack_runtime_capture_inputs(
         acceptance_receipts=_packvm_acceptance_receipts(),
         chat_continuation_approve=_approve_chat_continuation,
         chat_continuation_resume=_resume_chat_continuation,
+        authority_approval_window_open=_open_authority_approval_window,
     )
 
 

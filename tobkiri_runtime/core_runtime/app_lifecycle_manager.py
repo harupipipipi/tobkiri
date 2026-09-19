@@ -274,6 +274,7 @@ class AppLifecycleManager:
                     acceptance_receipts=inputs.acceptance_receipts,
                     chat_continuation_approve=inputs.chat_continuation_approve,
                     chat_continuation_resume=inputs.chat_continuation_resume,
+                    authority_approval_window_open=inputs.authority_approval_window_open,
                 )
             except Exception as error:
                 from .activation_handoff import ActivationCommittedError

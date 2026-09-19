@@ -1,7 +1,7 @@
 /* eslint-disable */
 // GENERATED FILE. Do not edit by hand.
 // Source: defaultspack/frontend_contract_map.v4.json
-// Raw source digest: sha256:89bb759d16fdddae5b9b6537565806253ca1dfdf289b3bea62064d6b5ef05029
+// Raw source digest: sha256:0f166ce315f2002e5a3f35a2a4dfb6205cb20fad44614a50f219adb6a028b842
 import type {FrontendContractMethod} from './api';
 
 export interface GeneratedFrontendContractTarget {
@@ -28,13 +28,13 @@ export interface GeneratedFrontendContractMap {
   routes: GeneratedFrontendContractRoute[];
 }
 
-export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:89bb759d16fdddae5b9b6537565806253ca1dfdf289b3bea62064d6b5ef05029" as const;
+export const PINNED_FRONTEND_CONTRACT_MAP_ARTIFACT_DIGEST = "sha256:0f166ce315f2002e5a3f35a2a4dfb6205cb20fad44614a50f219adb6a028b842" as const;
 
 export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
   "schema": "io.tobkiri.frontend-contract-map.v4",
   "pack_id": "defaultspack",
   "artifact_path": "defaultspack/frontend_contract_map.v4.json",
-  "artifact_digest": "sha256:89bb759d16fdddae5b9b6537565806253ca1dfdf289b3bea62064d6b5ef05029",
+  "artifact_digest": "sha256:0f166ce315f2002e5a3f35a2a4dfb6205cb20fad44614a50f219adb6a028b842",
   "routes": [
     {
       "method": "GET",
@@ -1051,6 +1051,23 @@ export const GENERATED_FRONTEND_CONTRACT_MAP: GeneratedFrontendContractMap = {
           "allowed_payload_keys": [
             "request_id",
             "ui_operator"
+          ]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/authority/approval-window",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.authority.approval-window",
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "operation_id": "authority_approval.open",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "allowed_payload_keys": [
+            "request_id"
           ]
         }
       ]
@@ -2091,6 +2108,21 @@ const EXPECTED_ROUTES = {
         "allowed_payload_keys": [
           "request_id",
           "ui_operator"
+        ]
+      }
+    ]
+  },
+  "POST /api/authority/approval-window": {
+    "presentation": "broker_result",
+    "targets": [
+      {
+        "contribution_id": "defaults.authority.approval-window",
+        "contract_id": "tobkiri.action.authority.approval-window.v1",
+        "operation_id": "authority_approval.open",
+        "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+        "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+        "allowed_payload_keys": [
+          "request_id"
         ]
       }
     ]

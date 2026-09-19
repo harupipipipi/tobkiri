@@ -1142,6 +1142,35 @@
               "type": "object"
             }
           }
+        },
+        {
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "operation_ids": [
+            "authority_approval.open"
+          ],
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/bridge.py",
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "request_id": {
+                  "maxLength": 160,
+                  "pattern": "^[A-Za-z0-9_-]{1,160}$",
+                  "type": "string"
+                }
+              },
+              "required": ["request_id"],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
         }
       ]
     },

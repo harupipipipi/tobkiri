@@ -32,6 +32,9 @@ from tobkiri_host.broker import (
     RequestAdmissionPort,
 )
 from tobkiri_host.composition import AuthorityCeilings
+from tobkiri_host.authority_approval_window import (
+    AuthorityApprovalWindowController,
+)
 from tobkiri_host.chat_approval_continuation import (
     ChatApprovalContinuationController,
 )
@@ -1316,6 +1319,9 @@ def capture_production_dispatch(
     acceptance_receipts: AcceptanceReceiptPort | None = None,
     chat_continuation_approve: Callable[..., Mapping[str, Any]] | None = None,
     chat_continuation_resume: Callable[..., Mapping[str, Any]] | None = None,
+    authority_approval_window_open: (
+        Callable[[str], Mapping[str, Any]] | None
+    ) = None,
 ) -> V4DispatchSession:
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
@@ -1573,6 +1579,13 @@ def capture_production_dispatch(
     chat_approval_continuation = ChatApprovalContinuationController(
         approve=chat_continuation_approve or unavailable_chat_continuation,
         resume=chat_continuation_resume or unavailable_chat_continuation,
+    )
+
+    def unavailable_approval_window(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:
+        raise PermissionError("authority approval window is unavailable")
+
+    authority_approval_window = AuthorityApprovalWindowController(
+        open_window=authority_approval_window_open or unavailable_approval_window,
     )
     control_targets: dict[tuple[str, str], tuple[str, str, str]] = {}
     control_backend: PackControlBackendV4 | None = None
@@ -2525,6 +2538,7 @@ def capture_production_dispatch(
             user_data_root=authority_user_data,
             interactive_approval_port=authority_control,
             chat_approval_continuation_port=chat_approval_continuation,
+            authority_approval_window_port=authority_approval_window,
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
             declared_pack_data=declared_pack_data,

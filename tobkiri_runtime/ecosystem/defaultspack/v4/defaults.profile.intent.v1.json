@@ -2331,6 +2331,23 @@
     },
     {
       "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+      "contract_id": "tobkiri.action.authority.approval-window.v1",
+      "operation_id": "authority_approval.open",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "dimensions": {
+          "contract": ["tobkiri.action.authority.approval-window.v1"],
+          "operation": ["authority_approval.open"]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
       "target_provider_id": "rumi_command_protocol_pack.high-risk-command.service",
       "contract_id": "tobkiri.service.command.high-risk.v1",
       "operation_id": "high_risk_command.manage",

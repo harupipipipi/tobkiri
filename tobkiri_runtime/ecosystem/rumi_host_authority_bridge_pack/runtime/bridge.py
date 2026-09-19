@@ -32,6 +32,7 @@ from core_runtime.runtime_locks import NamedLock
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.models import OpaqueAuthorityRef, RequestContext
 from tobkiri_host.ports import (
+    AuthorityApprovalWindowOpenCommand,
     ChatApprovalContinuationCommand,
     ChatApprovalContinuationPort,
     InteractiveApprovalDecisionCommand,
@@ -424,6 +425,13 @@ _CHAT_CONTINUATION_CONTRACT_ID = "tobkiri.action.chat.approval-continuation.v1"
 _CHAT_CONTINUATION_OPERATIONS = frozenset(
     {"chat_approval.approve", "chat_approval.resume"}
 )
+_APPROVAL_WINDOW_FUNCTION_ID = (
+    "rumi_host_authority_bridge_pack.host-authority.approval-window"
+)
+_APPROVAL_WINDOW_CONTRACT_ID = "tobkiri.action.authority.approval-window.v1"
+_APPROVAL_WINDOW_OPERATION = "authority_approval.open"
+# The Launcher host broker only accepts this bounded request identifier shape.
+_APPROVAL_WINDOW_REQUEST_ID = re.compile(r"[A-Za-z0-9_-]{1,160}")
 _V4_OPERATIONS = frozenset(
     {
         _V4_GET_OPERATION,
@@ -765,6 +773,92 @@ class ChatApprovalContinuationFactoryV4:
         return CapturedHostProviderV4(tuple(contributions), lambda: None)
 
 
+class AuthorityApprovalWindowFactoryV4:
+    """Capture the sole approval-window Function identity for the desktop UI.
+
+    Opening the Launcher approval window is presentation only: the verified
+    Function forwards one authenticated request identity to a narrow Host port
+    and never receives authority, token, or approval material.
+    """
+
+    function_id = _APPROVAL_WINDOW_FUNCTION_ID
+
+    def capture(self, context: HostProviderCaptureContextV4) -> CapturedHostProviderV4:
+        port = context.authority_approval_window_port
+        bindings = tuple(context.provider_bindings)
+        if (
+            port is None
+            or len(bindings) != 1
+            or bindings[0].function.function_id != self.function_id
+            or bindings[0].operation.contract_id != _APPROVAL_WINDOW_CONTRACT_ID
+            or bindings[0].operation.operation_id != _APPROVAL_WINDOW_OPERATION
+        ):
+            raise PermissionError("authority approval window capture is invalid")
+        binding = bindings[0]
+        key = (
+            binding.operation.contract_id,
+            binding.operation.operation_id,
+            binding.principal_ref.value,
+        )
+        domain_id = context.domain_ids.get(key)
+        if domain_id is None:
+            raise PermissionError("authority approval window domain is unavailable")
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            if operation_id != _APPROVAL_WINDOW_OPERATION:
+                raise PermissionError("authority approval window operation is invalid")
+            envelope = invocation.envelope
+            if not isinstance(envelope, RequestEnvelope):
+                raise PermissionError("authority approval window envelope is invalid")
+            if (
+                envelope.contract_id != _APPROVAL_WINDOW_CONTRACT_ID
+                or envelope.operation_id != operation_id
+                or envelope.target_principal.value != binding.principal_ref.value
+                or envelope.context.profile_id != context.profile_id
+                or envelope.context.plan_digest != context.plan_digest
+                or envelope.context.security_epoch != context.security_epoch
+            ):
+                raise PermissionError("authority approval window capture changed")
+            if not isinstance(payload, Mapping):
+                raise PermissionError("authority approval window payload is invalid")
+            _reject_v4_client_authority(payload)
+            _require_exact_payload_keys(payload, {"request_id"})
+            request_id = payload.get("request_id")
+            if (
+                not isinstance(request_id, str)
+                or _APPROVAL_WINDOW_REQUEST_ID.fullmatch(request_id) is None
+            ):
+                raise PermissionError("authority approval window request is invalid")
+            return port.open_authority_approval_window(
+                AuthorityApprovalWindowOpenCommand(
+                    context=envelope.context,
+                    request_id=request_id,
+                    presentation_owner_principal_id=(
+                        invocation.presentation_owner_principal_id
+                    ),
+                    presentation_owner_session_id=(
+                        invocation.presentation_owner_session_id
+                    ),
+                )
+            )
+
+        contribution = HostProviderContributionV4(
+            contract_id=binding.operation.contract_id,
+            contract_version=binding.operation.contract_version,
+            operation_id=binding.operation.operation_id,
+            principal_id=binding.principal_ref.value,
+            artifact_digest=binding.artifact.digest,
+            implementation_digest=binding.function.implementation_digest,
+            domain_id=domain_id,
+            invoke=invoke,
+        )
+        return CapturedHostProviderV4((contribution,), lambda: None)
+
+
 class InteractiveEffectCoordinatorBridgeV4:
     """One Host Provider operation over the durable future-effect port.
 
@@ -1100,4 +1194,5 @@ HOST_PROVIDER_FACTORY = {
     _V4_FUNCTION_ID: InteractiveApprovalBridgeFactoryV4(),
     _EFFECT_FUNCTION_ID: InteractiveEffectCoordinatorFactoryV4(),
     _CHAT_CONTINUATION_FUNCTION_ID: ChatApprovalContinuationFactoryV4(),
+    _APPROVAL_WINDOW_FUNCTION_ID: AuthorityApprovalWindowFactoryV4(),
 }

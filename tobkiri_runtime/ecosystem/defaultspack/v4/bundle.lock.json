@@ -29,7 +29,7 @@
     {
       "path": "packs/rumi-host-authority-bridge.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:6c98fbd5732efb05337051bf126599147450f7a1262bf8931e54047cce34d489"
+      "digest": "sha256:b032eb057354f91f5a6e706455070b83f13ccd73236d0bd47f4dbdf2f0f70e0d"
     },
     {
       "path": "packs/rumi-workspace-mount.pack.v4.json",
@@ -654,7 +654,7 @@
     {
       "path": "packs/rumi_host_authority_bridge_pack.executables.v4.json",
       "kind": "executable_catalog",
-      "digest": "sha256:d41af3cc722a3b951731ca28bbf703d250062b39d2e4207130a5998f1ee4f176"
+      "digest": "sha256:0dacbf610211f0b81d48c823f19ad053e86a66192613038d9f3822b8e85eebaa"
     },
     {
       "path": "packs/rumi_host_capabilities_pack.executables.v4.json",
@@ -1374,7 +1374,7 @@
     {
       "path": "packs/runtime.tauri.application.default.pack.v4.json",
       "kind": "pack",
-      "digest": "sha256:3474d3fe879735de116023f997a491add02c20ec3b4019757d2e36ac9beffcc8"
+      "digest": "sha256:bd31ecbdce08575e2ceb5072e52dddaed2d4c60f07e5e5c1db40e88df4a2ec27"
     },
     {
       "path": "packs/search_home_pack.executables.v4.json",
@@ -1454,7 +1454,7 @@
     {
       "path": "defaults.profile.v5.json",
       "kind": "profile",
-      "digest": "sha256:428c9fb26c82829d66a4dcb728c963145b0f83909177fbfdfcaa85924f09aadd"
+      "digest": "sha256:5a1559d73c8e6a2637de89a5ed3fb3a4c76a2e9444241a4d6e1158a381c88801"
     }
   ]
 }

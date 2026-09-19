@@ -871,6 +871,21 @@
     },
     {
       "method": "POST",
+      "path": "/api/authority/approval-window",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.authority.approval-window",
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "operation_id": "authority_approval.open",
+          "provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+          "allowed_payload_keys": ["request_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/command-protocol/v1/high-risk",
       "presentation": "broker_result",
       "targets": [

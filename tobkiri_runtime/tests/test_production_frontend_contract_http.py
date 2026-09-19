@@ -429,6 +429,7 @@ def _captured_production_server(
         capability_binding_selector=defaultspack_capability_binding,
         chat_continuation_approve=composition.chat_continuation_approve,
         chat_continuation_resume=composition.chat_continuation_resume,
+        authority_approval_window_open=composition.authority_approval_window_open,
     )
     server = PackAPIServer(
         port=0,
@@ -632,6 +633,138 @@ def test_chat_approval_continuation_uses_captured_host_provider_once(
         },
     )
     assert missing_turn_status == 400
+
+
+def test_authority_approval_window_map_route_and_profile_edge_are_exact() -> None:
+    """The Launcher window request is bound to one signed provider identity."""
+
+    frontend = json.loads(MAP_PATH.read_text(encoding="utf-8"))
+    routes = {(item["method"], item["path"]): item for item in frontend["routes"]}
+    assert routes[("POST", "/api/authority/approval-window")] == {
+        "method": "POST",
+        "path": "/api/authority/approval-window",
+        "presentation": "broker_result",
+        "targets": [
+            {
+                "contribution_id": "defaults.authority.approval-window",
+                "contract_id": "tobkiri.action.authority.approval-window.v1",
+                "operation_id": "authority_approval.open",
+                "provider_id": (
+                    "rumi_host_authority_bridge_pack"
+                    ".host-authority.approval-window"
+                ),
+                "function_id": (
+                    "rumi_host_authority_bridge_pack"
+                    ".host-authority.approval-window"
+                ),
+                "allowed_payload_keys": ["request_id"],
+            }
+        ],
+    }
+
+    intent = json.loads(
+        (
+            RUNTIME_ROOT / "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    matches = [
+        edge
+        for edge in intent["requested_edges"]
+        if edge["caller_function_id"] == "shell.tauri.default"
+        and edge["target_provider_id"]
+        == "rumi_host_authority_bridge_pack.host-authority.approval-window"
+        and edge["contract_id"] == "tobkiri.action.authority.approval-window.v1"
+        and edge["operation_id"] == "authority_approval.open"
+    ]
+    assert len(matches) == 1
+    assert matches[0]["authority_mode"] == "profile_grant"
+
+
+def test_authority_approval_window_opens_through_captured_host_provider(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real HTTP/Broker/provider; the viewer broker client is a double."""
+
+    from ecosystem.defaultspack.domain.host_bridge.viewer_broker_client import (
+        ViewerBrokerClient,
+    )
+
+    server, _session, _authority = production_server
+    opened: list[str] = []
+
+    monkeypatch.setattr(ViewerBrokerClient, "available", lambda _self: True)
+
+    def fake_open(self: ViewerBrokerClient, request_id: str) -> dict[str, object]:
+        opened.append(str(request_id))
+        return {"ok": True, "request_id": request_id}
+
+    monkeypatch.setattr(
+        ViewerBrokerClient, "open_authority_approval_window", fake_open
+    )
+
+    unauthenticated, _payload, _headers = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/authority/approval-window"),
+        body={"request_id": "req-1"},
+    )
+    assert unauthenticated == 401
+    assert opened == []
+
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    def post(body):
+        return _request(
+            server,
+            "POST",
+            _contract("POST", "/api/authority/approval-window"),
+            body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+
+    status, result, _ = post({"request_id": "req-1"})
+    assert status == 200, result
+    assert result["data"] == {"opened": True, "request_id": "req-1"}
+    assert opened == ["req-1"]
+
+    invalid_status, _, _ = post({"request_id": "bad id!"})
+    assert invalid_status in {400, 403, 503}
+    assert opened == ["req-1"]
+
+    forged_status, _, _ = post(
+        {"request_id": "req-2", "approval_token": "forged"}
+    )
+    assert forged_status == 400
+    assert opened == ["req-1"]
+
+    unknown_field_status, _, _ = post({"request_id": "req-2", "ui_operator": {}})
+    assert unknown_field_status == 400
+    assert opened == ["req-1"]
+
+
+def test_authority_approval_window_fails_closed_without_broker(
+    production_server,
+) -> None:
+    """Without a viewer broker connection the route degrades, never opens."""
+
+    server, _session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    status, result, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/authority/approval-window"),
+        body={"request_id": "req-1"},
+        headers={
+            "Cookie": cookie,
+            "Origin": origin,
+            "X-Rumi-CSRF": csrf,
+            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        },
+    )
+    assert status in {403, 503}
+    assert result["success"] is False
 
 
 def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(

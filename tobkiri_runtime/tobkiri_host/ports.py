@@ -276,6 +276,32 @@ class ChatApprovalContinuationPort(Protocol):
 
 
 @dataclass(frozen=True)
+class AuthorityApprovalWindowOpenCommand:
+    """Host-authenticated request to surface one authority approval window.
+
+    ``request_id`` names the pending approval request the Launcher window must
+    present.  The command carries no authority material: opening the window is
+    presentation only and the approval decision still requires the operator
+    gesture inside that window.
+    """
+
+    context: RequestContext
+    request_id: str
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+
+
+class AuthorityApprovalWindowPort(Protocol):
+    """Narrow Host port which opens only the authority approval window."""
+
+    def open_authority_approval_window(
+        self,
+        command: AuthorityApprovalWindowOpenCommand,
+    ) -> Mapping[str, Any]:
+        """Open the Launcher approval window for one exact request."""
+
+
+@dataclass(frozen=True)
 class InteractiveEffectPrepareCommand:
     """Narrow request to prepare one Host-owned future effect.
 

@@ -202,6 +202,9 @@ class Kernel:
                             chat_continuation_resume=(
                                 inputs.chat_continuation_resume
                             ),
+                            authority_approval_window_open=(
+                                inputs.authority_approval_window_open
+                            ),
                         )
                     except Exception:
                         authority_store.close()

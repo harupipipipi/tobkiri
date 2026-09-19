@@ -168,7 +168,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:7deff307f548ac0af1c8045256e47d3bb96f3a194e1700be3d6c23eb9a17a4cb",
+    "source_digest": "sha256:7b7bd1776172f680f09663a0c3274c088748fa6fc3708c37ec6be788ac7f64d8",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -2530,6 +2530,28 @@
           ],
           "operation": [
             "chat_approval.resume"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      }
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
+      "target_provider_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
+      "contract_id": "tobkiri.action.authority.approval-window.v1",
+      "operation_id": "authority_approval.open",
+      "authority_mode": "profile_grant",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:4ab51c6dedc45d6c2915bcd416d416b312db643c536504af820afd4f8c485873",
+        "dimensions": {
+          "contract": [
+            "tobkiri.action.authority.approval-window.v1"
+          ],
+          "operation": [
+            "authority_approval.open"
           ]
         },
         "quotas": {},
