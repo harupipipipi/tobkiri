@@ -4440,12 +4440,7 @@ mod tests {
                 .unwrap();
         assert_eq!(
             open["windows"],
-            serde_json::json!([
-                "defaultspack-main",
-                "ambient-trigger",
-                "finger-recording",
-                "main"
-            ])
+            serde_json::json!(["defaultspack-main", "ambient-trigger", "finger-recording"])
         );
         assert_eq!(
             open["remote"]["urls"],
