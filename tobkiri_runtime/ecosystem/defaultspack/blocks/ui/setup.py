@@ -172,7 +172,11 @@ def run(context):
         (
             "POST",
             "/api/authority/approval-window",
-            _lazy("blocks.authority.approval_window"),
+            _lazy(
+                "blocks.authority.approval_window",
+                sensitive=True,
+                local_only=True,
+            ),
             {},
         ),
         ("GET", "/ambient", _static_shell, {}),
