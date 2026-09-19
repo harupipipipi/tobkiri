@@ -7,6 +7,7 @@
     "admission.py",
     "artifact_compiler.py",
     "artifact_materialization.py",
+    "authority_approval_window.py",
     "authority_v4.py",
     "backends.py",
     "bounded_child_io.py",
