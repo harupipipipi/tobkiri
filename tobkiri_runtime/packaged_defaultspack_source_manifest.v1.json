@@ -3360,8 +3360,8 @@
     {
       "path": "scripts/quality/evidence/pack_migration_proof.v1.json",
       "type": "regular-file",
-      "size": 913321,
-      "sha256": "5236c60a1a651dade4d50a49f4504f45f0bd81aa04cc387778e546a3d961ce86",
+      "size": 913650,
+      "sha256": "6aa1d3499f683f327ea22ea19c25b5beec4df457d98dcf2645e5078a25fbf34e",
       "executable": false
     },
     {
