@@ -767,6 +767,109 @@ def test_authority_approval_window_fails_closed_without_broker(
     assert result["success"] is False
 
 
+def test_desktop_restore_capture_binds_real_approval_window_delegate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The kernel-restart restore path must capture the live approval window.
+
+    ``desktop_app._restore_active_profile_contracts`` is the dispatch capture
+    used after a process restart.  It must bind the same Defaultspack-owned
+    delegates ``defaultspack_runtime_capture_inputs`` supplies to the fresh
+    capture path; a stub binding raises the bounded "approval window is
+    unavailable" denial for every ``authority_approval.open`` invocation.
+    """
+
+    from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
+    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
+        MacOSVZProvisioner,
+    )
+    from ecosystem.defaultspack.defaultspack import desktop_app
+    from ecosystem.defaultspack.domain.host_bridge.viewer_broker_client import (
+        ViewerBrokerClient,
+    )
+    from tests.conformance_support.packaged_profile import (
+        packaged_profile_bundle_root,
+    )
+    from tobkiri_host.credential_store import host_credential_store_factory
+
+    user_data = tmp_path / "user-data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    bundle_root = packaged_profile_bundle_root()
+    monkeypatch.setattr(
+        profile_capture, "_bundle_root", lambda _base_dir=None: bundle_root
+    )
+    active = capture_default_profile(
+        confirmation=prepare_default_profile_confirmation()
+    )
+    contract_path = user_data / "host_contract.json"
+    contract_path.write_text(
+        json.dumps(
+            host_contract(
+                profile_id=str(active.resolved.profile["profile_id"]),
+                profile_revision=str(active.resolved.plan["profile_revision"]),
+                activation_id=str(active.activation["activation_id"]),
+                plan_digest=str(active.resolved.plan["plan_digest"]),
+                values={"panel_bootstrap_secret": "desktop-bootstrap"},
+            )
+        ),
+        encoding="utf-8",
+    )
+    contract_path.chmod(0o600)
+    monkeypatch.setenv("TOBKIRI_HOST_CONTRACT_PATH", str(contract_path))
+
+    opened: list[str] = []
+    monkeypatch.setattr(ViewerBrokerClient, "available", lambda _self: True)
+
+    def fake_open(self: ViewerBrokerClient, request_id: str) -> dict[str, object]:
+        opened.append(str(request_id))
+        return {"ok": True, "request_id": request_id}
+
+    monkeypatch.setattr(
+        ViewerBrokerClient, "open_authority_approval_window", fake_open
+    )
+
+    lifecycle = PackVMLifecycleV4(
+        MacOSVZProvisioner(state_dir=tmp_path / "packvm-vz")
+    )
+    session, bindings = desktop_app._restore_active_profile_contracts(
+        lifecycle,
+        credential_store_factory=host_credential_store_factory,
+        packvm_backend_factory=lambda: None,
+    )
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="desktop-bootstrap"),
+        dispatch_session=session,
+        contract_bindings=bindings,
+        capability_snapshot_factory=defaultspack_capability_snapshot,
+        application_presentation=DefaultspackHTTPPresentation(),
+        packvm_lifecycle=lifecycle,
+    )
+    server.start()
+    try:
+        cookie, csrf, origin = _authenticate(server)
+        status, result, _ = _request(
+            server,
+            "POST",
+            _contract("POST", "/api/authority/approval-window"),
+            body={"request_id": "req-1"},
+            headers={
+                "Cookie": cookie,
+                "Origin": origin,
+                "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        assert status == 200, result
+        assert result["data"] == {"opened": True, "request_id": "req-1"}
+        assert opened == ["req-1"]
+    finally:
+        server.stop()
+        session.close()
+
+
 def test_chat_approval_matrix_allows_only_the_exact_browser_operation_once(
     production_server,
     monkeypatch: pytest.MonkeyPatch,

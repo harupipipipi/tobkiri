@@ -440,6 +440,7 @@ def _restore_active_profile_contracts(
     )
     from ecosystem.defaultspack.defaultspack.runtime_composition import (
         defaultspack_activation_snapshot_loader,
+        defaultspack_dispatch_delegates,
         defaultspack_packvm_backend_factory,
     )
     from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
@@ -465,6 +466,7 @@ def _restore_active_profile_contracts(
         artifact_root=_pack_root(),
         **context,
     )
+    delegates = defaultspack_dispatch_delegates()
     session = capture_production_dispatch(
         active,
         bundle_root=bundle_root,
@@ -481,6 +483,10 @@ def _restore_active_profile_contracts(
         capability_binding_snapshot_factory=defaultspack_capability_snapshot_mapping,
         capability_binding_selector=defaultspack_capability_binding,
         credential_store_factory=credential_store_factory,
+        acceptance_receipts=delegates.acceptance_receipts,
+        chat_continuation_approve=delegates.chat_continuation_approve,
+        chat_continuation_resume=delegates.chat_continuation_resume,
+        authority_approval_window_open=delegates.authority_approval_window_open,
     )
     install_dispatch_session(get_container(), session)
     _write_launch_event(

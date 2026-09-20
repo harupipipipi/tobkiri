@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import partial
 import os
 from pathlib import Path
@@ -144,6 +145,7 @@ def defaultspack_runtime_capture_inputs(
         **context,
     )
     _require_http_provider_selection(active, bindings)
+    delegates = defaultspack_dispatch_delegates()
     return RuntimeCaptureInputs(
         bundle_root=bundle_root,
         ecosystem_root=runtime_root / "ecosystem",
@@ -158,10 +160,10 @@ def defaultspack_runtime_capture_inputs(
             else None
         ),
         credential_store_factory=credential_store_factory,
-        acceptance_receipts=_packvm_acceptance_receipts(),
-        chat_continuation_approve=_approve_chat_continuation,
-        chat_continuation_resume=_resume_chat_continuation,
-        authority_approval_window_open=_open_authority_approval_window,
+        acceptance_receipts=delegates.acceptance_receipts,
+        chat_continuation_approve=delegates.chat_continuation_approve,
+        chat_continuation_resume=delegates.chat_continuation_resume,
+        authority_approval_window_open=delegates.authority_approval_window_open,
     )
 
 
@@ -176,6 +178,33 @@ def _packvm_acceptance_receipts() -> AcceptanceReceiptPort | None:
     return AcceptanceReceiptPort.from_host_environment(
         app_identifier=os.environ.get("TOBKIRI_LAUNCHER_APP_IDENTIFIER", ""),
         user_data_root=runtime_user_data_root(),
+    )
+
+
+@dataclass(frozen=True)
+class DefaultspackDispatchDelegates:
+    """Defaultspack-owned Host delegates for one dispatch capture boundary."""
+
+    acceptance_receipts: AcceptanceReceiptPort | None
+    chat_continuation_approve: Callable[..., Mapping[str, object]]
+    chat_continuation_resume: Callable[..., Mapping[str, object]]
+    authority_approval_window_open: Callable[[str], Mapping[str, object]]
+
+
+def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
+    """Return the exact Host delegates every dispatch capture must bind.
+
+    Fresh captures through ``defaultspack_runtime_capture_inputs`` and the
+    kernel-restart restore in ``desktop_app`` share this single source so a
+    recaptured session can never silently fall back to the bounded
+    unavailable-delegate stubs inside ``capture_production_dispatch``.
+    """
+
+    return DefaultspackDispatchDelegates(
+        acceptance_receipts=_packvm_acceptance_receipts(),
+        chat_continuation_approve=_approve_chat_continuation,
+        chat_continuation_resume=_resume_chat_continuation,
+        authority_approval_window_open=_open_authority_approval_window,
     )
 
 
@@ -343,8 +372,10 @@ def _contract_context(active: object | None) -> dict[str, str]:
 
 
 __all__ = [
-    "defaultspack_activation_snapshot_loader",
+    "DefaultspackDispatchDelegates",
     "create_defaultspack_kernel",
+    "defaultspack_activation_snapshot_loader",
+    "defaultspack_dispatch_delegates",
     "defaultspack_packvm_backend_factory",
     "defaultspack_runtime_capture_inputs",
 ]
