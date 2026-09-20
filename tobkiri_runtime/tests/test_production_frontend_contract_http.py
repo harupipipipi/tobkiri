@@ -427,6 +427,7 @@ def _captured_production_server(
         runtime_surface_factory=create_runtime_surface_services,
         capability_binding_snapshot_factory=defaultspack_capability_snapshot_mapping,
         capability_binding_selector=defaultspack_capability_binding,
+        acceptance_receipts=composition.acceptance_receipts,
         chat_continuation_approve=composition.chat_continuation_approve,
         chat_continuation_resume=composition.chat_continuation_resume,
         authority_approval_window_open=composition.authority_approval_window_open,
