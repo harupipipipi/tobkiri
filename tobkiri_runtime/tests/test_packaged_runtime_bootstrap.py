@@ -599,6 +599,122 @@ def test_clean_bootstrap_captures_and_restarts_without_legacy_profile(
     renamed_path.rename(authority_path)
 
 
+def test_kernel_start_binds_real_approval_window_delegate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kernel start over an active Profile must reach the approval delegate.
+
+    The packaged approval flow is launcher → kernel start → already-activated
+    Profile → shell → contract dispatch. ``Kernel.run_startup_until`` captures
+    the dispatch session itself; a missing ``authority_approval_window_open``
+    binding degrades to the bounded "authority approval window is unavailable"
+    stub seen in packaged CUA logs.
+    """
+
+    from core_runtime.bootstrap.profile_capture import (
+        prepare_default_profile_confirmation,
+    )
+    from ecosystem.defaultspack.domain.host_bridge.viewer_broker_client import (
+        ViewerBrokerClient,
+    )
+
+    coordination_timeout_seconds = 30
+    port = _free_port()
+    user_data = tmp_path / "user_data"
+    bootstrap_secret = "kernel-start-bootstrap"
+    monkeypatch.setenv("RUMI_PORT", str(port))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+
+    active = capture_default_profile(
+        confirmation=prepare_default_profile_confirmation()
+    )
+    contract_path = _publish_launcher_contract(
+        user_data,
+        profile_id=str(active.resolved.profile["profile_id"]),
+        profile_revision=str(active.resolved.plan["profile_revision"]),
+        activation_id=str(active.activation["activation_id"]),
+        plan_digest=str(active.resolved.plan["plan_digest"]),
+        bootstrap_secret=bootstrap_secret,
+    )
+    monkeypatch.setenv("TOBKIRI_HOST_CONTRACT_PATH", str(contract_path))
+
+    opened: list[str] = []
+    monkeypatch.setattr(ViewerBrokerClient, "available", lambda _self: True)
+
+    def fake_open(
+        self: ViewerBrokerClient, request_id: str
+    ) -> dict[str, object]:
+        opened.append(str(request_id))
+        return {"ok": True, "request_id": request_id}
+
+    monkeypatch.setattr(
+        ViewerBrokerClient, "open_authority_approval_window", fake_open
+    )
+
+    reset_container()
+    reset_panel_auth_manager_for_tests(capture_launcher_credential=True)
+    kernel = _kernel()
+    try:
+        kernel.run_startup_until("api_init")
+        assert kernel.run_startup_remaining() == {
+            "status": "ok",
+            "runtime_ready": True,
+        }
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+        )
+        bootstrap_request = Request(
+            f"http://127.0.0.1:{port}/api/panel/auth/bootstrap",
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Rumi-Desktop-Bootstrap": bootstrap_secret,
+            },
+            data=b"{}",
+        )
+        with opener.open(
+            bootstrap_request, timeout=coordination_timeout_seconds
+        ) as response:
+            login_code = json.load(response)["data"]["code"]
+        exchange_request = Request(
+            f"http://127.0.0.1:{port}/api/panel/auth/exchange",
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": f"http://127.0.0.1:{port}",
+            },
+            data=json.dumps({"code": login_code}).encode(),
+        )
+        with opener.open(
+            exchange_request, timeout=coordination_timeout_seconds
+        ) as response:
+            csrf = json.load(response)["data"]["csrf_token"]
+        approval_request = Request(
+            "http://127.0.0.1:"
+            f"{port}/api/contracts/defaultspack/"
+            + quote("POST /api/authority/approval-window", safe=""),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": f"http://127.0.0.1:{port}",
+                "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+            data=json.dumps({"request_id": "req-1"}).encode(),
+        )
+        with opener.open(
+            approval_request, timeout=coordination_timeout_seconds
+        ) as response:
+            payload = json.load(response)
+        assert payload["success"] is True
+        assert payload["data"] == {"opened": True, "request_id": "req-1"}
+        assert opened == ["req-1"]
+    finally:
+        kernel.shutdown()
+
+
 @pytest.mark.parametrize("legacy_missing", [False, True])
 def test_bootstrap_registers_selected_definition_in_existing_collection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, legacy_missing: bool
