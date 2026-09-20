@@ -302,6 +302,35 @@ class AuthorityApprovalWindowPort(Protocol):
 
 
 @dataclass(frozen=True)
+class ModelSearchCommand:
+    """Host-authenticated request to search the assembled model catalog.
+
+    ``profile_id`` is the captured signed Profile identity copied from the
+    verified Provider envelope, never a client-supplied value.  ``filters``
+    carries only the bounded filter fields admitted by the operation schema;
+    it contains no authority, credential, or settings-owner material.
+    ``profiles`` is the model-registry snapshot the verified Provider read
+    through its declared nested contract edge; the composition delegate owns
+    catalog assembly and settings binding.
+    """
+
+    context: RequestContext
+    profile_id: str
+    filters: Mapping[str, Any]
+    profiles: tuple[Mapping[str, Any], ...]
+
+
+class ModelSearchPort(Protocol):
+    """Narrow Host port which runs one bounded model catalog search."""
+
+    def search_models(
+        self,
+        command: ModelSearchCommand,
+    ) -> Mapping[str, Any]:
+        """Return the model-search projection for one exact request."""
+
+
+@dataclass(frozen=True)
 class InteractiveEffectPrepareCommand:
     """Narrow request to prepare one Host-owned future effect.
 

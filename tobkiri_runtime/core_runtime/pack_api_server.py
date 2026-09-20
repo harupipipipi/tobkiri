@@ -325,6 +325,13 @@ class RuntimeCaptureInputs:
     authority_approval_window_open: (
         Callable[[str], Mapping[str, object]] | None
     ) = None
+    model_search: (
+        Callable[
+            [Mapping[str, object], list[Mapping[str, object]]],
+            Mapping[str, object],
+        ]
+        | None
+    ) = None
 
 
 class ActivationSnapshotLoader(Protocol):
@@ -2883,6 +2890,7 @@ class PackAPIServer:
                         authority_approval_window_open=(
                             inputs.authority_approval_window_open
                         ),
+                        model_search=inputs.model_search,
                     )
                 except Exception:
                     authority.close()

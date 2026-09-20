@@ -168,7 +168,7 @@
     "schema": "io.tobkiri.provenance.v1",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/defaults.profile.v5.json",
-    "source_digest": "sha256:7b7bd1776172f680f09663a0c3274c088748fa6fc3708c37ec6be788ac7f64d8",
+    "source_digest": "sha256:8489d7161b42541c4515fc5da3a9471388aed39660f4642bb5facf0adf257b4d",
     "repository_commit": "working-tree",
     "repository_tree": "c873994334bc031353714592c0fa391f71780b036e87a26e44d4f4a6b7f19ae6",
     "generator": "tobkiri-profile-artifacts",
@@ -1090,6 +1090,27 @@
     },
     {
       "caller_function_id": "shell.tauri.default",
+      "contract_id": "tobkiri.resource.ui.model-search.v1",
+      "operation_id": "tobkiri_ui_settings_pack.model-search",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:1cca717fba9514c2b7c4947f4aefa92cf4a2e9cdbdd9a89441caff2ce2736f63",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ui.model-search.v1"
+          ],
+          "operation": [
+            "tobkiri_ui_settings_pack.model-search"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "tobkiri.ui.model-search.read"
+    },
+    {
+      "caller_function_id": "shell.tauri.default",
       "contract_id": "tobkiri.resource.ui.recovery-diagnostic.v1",
       "operation_id": "tobkiri_ui_settings_pack.recovery-diagnostic-read",
       "requested_scope_template": {
@@ -1132,6 +1153,27 @@
     },
     {
       "caller_function_id": "tobkiri.ui.settings.read",
+      "contract_id": "tobkiri.resource.ai.model.profile.v1",
+      "operation_id": "rumi_model_registry_pack.model-profile-resource",
+      "requested_scope_template": {
+        "capability": "operation.invoke",
+        "semantics_digest": "sha256:75ff08968e2f78d676df1e8d7279fa8cdebf943a76b7349c563714b077f838d0",
+        "dimensions": {
+          "contract": [
+            "tobkiri.resource.ai.model.profile.v1"
+          ],
+          "operation": [
+            "rumi_model_registry_pack.model-profile-resource"
+          ]
+        },
+        "quotas": {},
+        "exact_request_digest": null,
+        "opaque": false
+      },
+      "target_provider_id": "rumi_model_registry_pack.model-registry.profile"
+    },
+    {
+      "caller_function_id": "tobkiri.ui.model-search.read",
       "contract_id": "tobkiri.resource.ai.model.profile.v1",
       "operation_id": "rumi_model_registry_pack.model-profile-resource",
       "requested_scope_template": {

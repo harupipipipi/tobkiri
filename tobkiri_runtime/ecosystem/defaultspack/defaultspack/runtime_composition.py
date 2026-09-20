@@ -72,6 +72,56 @@ def _open_authority_approval_window(request_id: str) -> Mapping[str, object]:
     return {"opened": True}
 
 
+def _model_search(
+    filters: Mapping[str, object],
+    profiles: list[Mapping[str, object]],
+) -> Mapping[str, object]:
+    """Resolve the Defaultspack-owned model search at invocation time.
+
+    The Host-verified Provider supplies only schema-validated filter fields,
+    the captured Profile identity, and the registry snapshot it read through
+    its declared nested contract edge.  The settings read binds an explicit
+    owner port to the app-owned settings document, then reuses the same
+    domain projection the legacy ``blocks.ai.search_models`` handler used.
+    The domain modules keep their legacy ``domain.*`` import layout, so the
+    pack root must already be importable exactly as ``desktop_app`` arranges
+    at application start.
+    """
+
+    import sys
+
+    pack_root = str(Path(__file__).resolve().parents[1])
+    if pack_root not in sys.path:
+        sys.path.insert(0, pack_root)
+
+    from domain.ai_client.model_runtime_settings import (
+        ModelRuntimeSettingsService,
+    )
+    from domain.ai_client.model_search import (
+        get_profile_catalog,
+        search_models,
+    )
+    from domain.frontend_settings_store import (
+        defaultspack_frontend_settings_path,
+    )
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import (
+        FrontendSettingsStore,
+    )
+
+    owner = FrontendSettingsStore(defaultspack_frontend_settings_path())
+    settings = ModelRuntimeSettingsService(settings_owner=owner).get_settings()
+    catalog = get_profile_catalog(
+        settings=settings,
+        registry_profiles=[
+            dict(profile) for profile in profiles if isinstance(profile, Mapping)
+        ],
+    )
+    result = search_models(dict(filters), profiles=catalog, settings=settings)
+    if not isinstance(result, Mapping):
+        raise PermissionError("model search is unavailable")
+    return result
+
+
 def defaultspack_activation_snapshot_loader(
     *,
     active: object,
@@ -164,6 +214,7 @@ def defaultspack_runtime_capture_inputs(
         chat_continuation_approve=delegates.chat_continuation_approve,
         chat_continuation_resume=delegates.chat_continuation_resume,
         authority_approval_window_open=delegates.authority_approval_window_open,
+        model_search=delegates.model_search,
     )
 
 
@@ -189,6 +240,10 @@ class DefaultspackDispatchDelegates:
     chat_continuation_approve: Callable[..., Mapping[str, object]]
     chat_continuation_resume: Callable[..., Mapping[str, object]]
     authority_approval_window_open: Callable[[str], Mapping[str, object]]
+    model_search: Callable[
+        [Mapping[str, object], list[Mapping[str, object]]],
+        Mapping[str, object],
+    ]
 
 
 def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
@@ -205,6 +260,7 @@ def defaultspack_dispatch_delegates() -> DefaultspackDispatchDelegates:
         chat_continuation_approve=_approve_chat_continuation,
         chat_continuation_resume=_resume_chat_continuation,
         authority_approval_window_open=_open_authority_approval_window,
+        model_search=_model_search,
     )
 
 

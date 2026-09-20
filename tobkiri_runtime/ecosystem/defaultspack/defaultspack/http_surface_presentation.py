@@ -98,6 +98,28 @@ _CONNECTION_STATUS_TARGET = (
     "rumi_provider_registry_pack.provider-registry.resource",
     "rumi_provider_registry_pack.provider-registry.resource",
 )
+_MODEL_SEARCH_TARGET = (
+    "defaults.ui.model-search.read", "tobkiri.resource.ui.model-search.v1",
+    "tobkiri_ui_settings_pack.model-search", "tobkiri.ui.model-search.read",
+    "tobkiri.ui.model-search.read",
+)
+# Client-supplied filter fields admitted by the model-search operation schema.
+# The captured Profile identity is appended by the Host, never by the client.
+_MODEL_SEARCH_FILTER_KEYS = frozenset(
+    {
+        "query",
+        "type",
+        "model_type",
+        "requires",
+        "speed_tier",
+        "provider_id",
+        "provider",
+        "configured_only",
+        "local_only",
+        "min_knowledge_level",
+        "max_results",
+    }
+)
 
 
 _CONVERSATION_TARGET = (
@@ -254,6 +276,13 @@ class DefaultspackHTTPPresentation:
             if not profile_id or payload:
                 raise ValueError("connection status requires captured identity")
             return {"profile_id": profile_id}
+
+        if identity == _MODEL_SEARCH_TARGET:
+            session.assert_current()
+            profile_id = str(getattr(session, "profile_id", ""))
+            if not profile_id or set(payload) - _MODEL_SEARCH_FILTER_KEYS:
+                raise ValueError("model search request is invalid")
+            return {**dict(payload), "profile_id": profile_id}
 
         if target.contribution_id == "defaults.providers.configure":
             phase = payload.get("phase")

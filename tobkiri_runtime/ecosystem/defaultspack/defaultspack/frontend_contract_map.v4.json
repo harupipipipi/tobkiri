@@ -886,6 +886,21 @@
     },
     {
       "method": "POST",
+      "path": "/api/ai/models/search",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.ui.model-search.read",
+          "contract_id": "tobkiri.resource.ui.model-search.v1",
+          "operation_id": "tobkiri_ui_settings_pack.model-search",
+          "provider_id": "tobkiri.ui.model-search.read",
+          "function_id": "tobkiri.ui.model-search.read",
+          "allowed_payload_keys": ["query", "type", "model_type", "requires", "speed_tier", "provider_id", "provider", "configured_only", "local_only", "min_knowledge_level", "max_results"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
       "path": "/api/command-protocol/v1/high-risk",
       "presentation": "broker_result",
       "targets": [

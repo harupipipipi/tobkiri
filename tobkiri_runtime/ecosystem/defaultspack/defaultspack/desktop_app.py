@@ -487,6 +487,7 @@ def _restore_active_profile_contracts(
         chat_continuation_approve=delegates.chat_continuation_approve,
         chat_continuation_resume=delegates.chat_continuation_resume,
         authority_approval_window_open=delegates.authority_approval_window_open,
+        model_search=delegates.model_search,
     )
     install_dispatch_session(get_container(), session)
     _write_launch_event(

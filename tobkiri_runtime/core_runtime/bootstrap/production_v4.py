@@ -38,6 +38,7 @@ from tobkiri_host.authority_approval_window import (
 from tobkiri_host.chat_approval_continuation import (
     ChatApprovalContinuationController,
 )
+from tobkiri_host.model_search import ModelSearchController
 from tobkiri_host.contracts import (
     AdapterPlanner,
     ResolvedOperationBinding,
@@ -1322,6 +1323,13 @@ def capture_production_dispatch(
     authority_approval_window_open: (
         Callable[[str], Mapping[str, Any]] | None
     ) = None,
+    model_search: (
+        Callable[
+            [Mapping[str, Any], list[Mapping[str, Any]]],
+            Mapping[str, Any],
+        ]
+        | None
+    ) = None,
 ) -> V4DispatchSession:
     """Capture ProductionRuntimeV4 and its RequestBroker from verified records."""
 
@@ -1586,6 +1594,13 @@ def capture_production_dispatch(
 
     authority_approval_window = AuthorityApprovalWindowController(
         open_window=authority_approval_window_open or unavailable_approval_window,
+    )
+
+    def unavailable_model_search(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:
+        raise PermissionError("model search is unavailable")
+
+    model_search_controller = ModelSearchController(
+        search_models=model_search or unavailable_model_search,
     )
     control_targets: dict[tuple[str, str], tuple[str, str, str]] = {}
     control_backend: PackControlBackendV4 | None = None
@@ -2539,6 +2554,7 @@ def capture_production_dispatch(
             interactive_approval_port=authority_control,
             chat_approval_continuation_port=chat_approval_continuation,
             authority_approval_window_port=authority_approval_window,
+            model_search_port=model_search_controller,
             interactive_effect_port=interactive_effect_port,
             workspace_mutation_port=workspace_mutation_port,
             declared_pack_data=declared_pack_data,

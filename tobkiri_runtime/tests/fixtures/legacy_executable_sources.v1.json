@@ -1625,6 +1625,64 @@
               "type": "object"
             }
           }
+        },
+        {
+          "function_id": "tobkiri.ui.model-search.read",
+          "operation_ids": [
+            "tobkiri_ui_settings_pack.model-search"
+          ],
+          "contract_id": "tobkiri.resource.ui.model-search.v1",
+          "contract_version": "1.0.0",
+          "implementation_path": "runtime/model_search.py",
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "configured_only": {"type": "boolean"},
+                "local_only": {"type": "boolean"},
+                "max_results": {"maximum": 1000, "minimum": 1, "type": "integer"},
+                "min_knowledge_level": {"maximum": 1000, "minimum": 0, "type": "integer"},
+                "model_type": {"maxLength": 64, "type": "string"},
+                "profile_id": {"minLength": 1, "type": "string"},
+                "provider": {"maxLength": 256, "type": "string"},
+                "provider_id": {"maxLength": 256, "type": "string"},
+                "query": {"maxLength": 512, "type": "string"},
+                "requires": {
+                  "additionalProperties": {"type": "boolean"},
+                  "maxProperties": 64,
+                  "type": "object"
+                },
+                "speed_tier": {
+                  "anyOf": [
+                    {"maxLength": 64, "type": "string"},
+                    {
+                      "items": {"maxLength": 64, "type": "string"},
+                      "maxItems": 16,
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": {
+                  "anyOf": [
+                    {"maxLength": 64, "type": "string"},
+                    {
+                      "items": {"maxLength": 64, "type": "string"},
+                      "maxItems": 16,
+                      "type": "array"
+                    }
+                  ]
+                }
+              },
+              "required": ["profile_id"],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
+            },
+            "error": {
+              "type": "object"
+            }
+          }
         }
       ]
     },

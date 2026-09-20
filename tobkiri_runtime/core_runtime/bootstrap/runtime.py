@@ -205,6 +205,7 @@ class Kernel:
                             authority_approval_window_open=(
                                 inputs.authority_approval_window_open
                             ),
+                            model_search=inputs.model_search,
                         )
                     except Exception:
                         authority_store.close()

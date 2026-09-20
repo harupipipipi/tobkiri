@@ -435,6 +435,7 @@ def _captured_production_server(
         chat_continuation_approve=composition.chat_continuation_approve,
         chat_continuation_resume=composition.chat_continuation_resume,
         authority_approval_window_open=composition.authority_approval_window_open,
+        model_search=composition.model_search,
     )
     server = PackAPIServer(
         port=0,
@@ -2453,6 +2454,232 @@ def test_model_profile_save_http_rejects_authority_and_stale_revision(
     status, result, _ = post(payload)
     assert status != 200, result
     assert registry.path.read_bytes() == before
+
+
+def test_model_search_map_route_and_profile_edges_are_exact() -> None:
+    """The picker search route binds to one signed provider identity."""
+
+    frontend = json.loads(MAP_PATH.read_text(encoding="utf-8"))
+    routes = {(item["method"], item["path"]): item for item in frontend["routes"]}
+    assert routes[("POST", "/api/ai/models/search")] == {
+        "method": "POST",
+        "path": "/api/ai/models/search",
+        "presentation": "broker_result",
+        "targets": [
+            {
+                "contribution_id": "defaults.ui.model-search.read",
+                "contract_id": "tobkiri.resource.ui.model-search.v1",
+                "operation_id": "tobkiri_ui_settings_pack.model-search",
+                "provider_id": "tobkiri.ui.model-search.read",
+                "function_id": "tobkiri.ui.model-search.read",
+                "allowed_payload_keys": [
+                    "query",
+                    "type",
+                    "model_type",
+                    "requires",
+                    "speed_tier",
+                    "provider_id",
+                    "provider",
+                    "configured_only",
+                    "local_only",
+                    "min_knowledge_level",
+                    "max_results",
+                ],
+            }
+        ],
+    }
+
+    intent = json.loads(
+        (
+            RUNTIME_ROOT / "ecosystem/defaultspack/v4/defaults.profile.intent.v1.json"
+        ).read_text(encoding="utf-8")
+    )
+    shell_edges = [
+        edge
+        for edge in intent["requested_edges"]
+        if edge["caller_function_id"] == "shell.tauri.default"
+        and edge["target_provider_id"] == "tobkiri.ui.model-search.read"
+        and edge["contract_id"] == "tobkiri.resource.ui.model-search.v1"
+        and edge["operation_id"] == "tobkiri_ui_settings_pack.model-search"
+    ]
+    assert len(shell_edges) == 1
+    nested_edges = [
+        edge
+        for edge in intent["requested_edges"]
+        if edge["caller_function_id"] == "tobkiri.ui.model-search.read"
+        and edge["target_provider_id"]
+        == "rumi_model_registry_pack.model-registry.profile"
+        and edge["contract_id"] == "tobkiri.resource.ai.model.profile.v1"
+        and edge["operation_id"] == "rumi_model_registry_pack.model-profile-resource"
+    ]
+    assert len(nested_edges) == 1
+
+
+def test_model_search_uses_captured_provider_and_nested_profile_edge(
+    production_server,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search crosses real HTTP/Broker; the registry read uses the nested edge."""
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+
+    registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
+    registry.save(
+        {
+            "model_profile_id": "search-model",
+            "display_name": "Searchable fixture",
+            "model_id": "fixture-chat-7b",
+            "credential_handle": "opaque:test-only",
+            "metadata": {"provider_connection_id": "provider.fixture"},
+        },
+        expected_revision=0,
+    )
+    server, session, _authority = production_server
+    observed: list[RequestEnvelope] = []
+    original_dispatch = session.broker._dispatch
+
+    def observe_dispatch(backend, envelope, *args, **kwargs):
+        observed.append(envelope)
+        return original_dispatch(backend, envelope, *args, **kwargs)
+
+    monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+
+    route = _contract("POST", "/api/ai/models/search")
+    unauthenticated, payload, _ = _request(server, "POST", route, body={})
+    assert unauthenticated == 401, payload
+
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    def post(body):
+        return _request(
+            server,
+            "POST",
+            route,
+            body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+
+    status, payload, _ = post({"query": "fixture-chat"})
+    assert status == 200, payload
+    assert len(observed) == 2
+    outer, nested = observed
+    assert outer.operation_id == "tobkiri_ui_settings_pack.model-search"
+    assert outer.context.profile_id == "defaults"
+    assert nested.operation_id == "rumi_model_registry_pack.model-profile-resource"
+    assert nested.context.profile_id == "defaults"
+    assert (
+        nested.cancellation_requested is outer.cancellation_requested
+        and nested.deadline_monotonic <= outer.deadline_monotonic
+    )
+    data = payload["data"]
+    models = data["models"]
+    assert [item["profile_id"] for item in models] == ["search-model"]
+    assert models[0]["model_id"] == "fixture-chat-7b"
+    assert models[0]["provider_id"] == "provider.fixture"
+    assert models[0]["configured"] is True
+    assert "opaque:test-only" not in json.dumps(payload)
+    assert data["filters_applied"]["query"] == "fixture-chat"
+
+    observed.clear()
+    status, payload, _ = post({"query": "does-not-match-anything"})
+    assert status == 200, payload
+    assert payload["data"]["models"] == []
+
+    status, payload, _ = post({"provider_id": "provider.fixture"})
+    assert status == 200, payload
+    assert [item["profile_id"] for item in payload["data"]["models"]] == [
+        "search-model"
+    ]
+
+    status, payload, _ = post({"provider_id": "provider.other"})
+    assert status == 200, payload
+    assert payload["data"]["models"] == []
+
+
+def test_model_search_rejects_unauthorized_and_malformed_payloads(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Client identity, unknown fields, and malformed filters never dispatch."""
+
+    server, session, _authority = production_server
+    observed: list[RequestEnvelope] = []
+    original_dispatch = session.broker._dispatch
+
+    def observe_dispatch(backend, envelope, *args, **kwargs):
+        observed.append(envelope)
+        return original_dispatch(backend, envelope, *args, **kwargs)
+
+    monkeypatch.setattr(session.broker, "_dispatch", observe_dispatch)
+
+    route = _contract("POST", "/api/ai/models/search")
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    def post(body):
+        return _request(
+            server,
+            "POST",
+            route,
+            body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+
+    # Fields outside the route's admitted filter set are rejected before any
+    # dispatch; a client can never supply the captured Profile identity,
+    # approval flags, credential material, or settings-owner data.
+    for body in (
+        {"profile_id": "other"},
+        {"profile_id": "other", "query": "fixture"},
+        {"approved": True},
+        {"credential_handle": "credential:forged"},
+        {"settings_owner": {"path": "/tmp/x"}},
+        {"query": "fixture", "ui_operator": {}},
+    ):
+        status, payload, _ = post(body)
+        assert status == 400, (body, payload)
+        assert payload["data"]["code"] == "invalid_contract_payload"
+
+    # Admitted fields with values outside the operation schema are rejected
+    # by Broker-side validation before any Provider dispatch.
+    for body in (
+        {"query": 42},
+        {"type": {"kind": "chat"}},
+        {"requires": ["vision"]},
+        {"requires": {"vision": "yes"}},
+        {"configured_only": "yes"},
+        {"local_only": 1},
+        {"min_knowledge_level": -1},
+        {"min_knowledge_level": "high"},
+        {"max_results": 0},
+        {"max_results": 1001},
+        {"max_results": "many"},
+        {"speed_tier": 3},
+    ):
+        status, payload, _ = post(body)
+        assert status in {400, 403, 503}, (body, payload)
+        assert payload["success"] is False
+
+    assert observed == []
+
+
+def test_model_search_controller_fails_closed_on_invalid_composition() -> None:
+    """The Host port denies a delegate which returns an unbounded result."""
+    from tobkiri_host.model_search import ModelSearchController
+    from tobkiri_host.ports import ModelSearchCommand
+
+    controller = ModelSearchController(
+        search_models=lambda _filters, _profiles: {"unexpected": True}
+    )
+    command = ModelSearchCommand(
+        context=None,  # type: ignore[arg-type]
+        profile_id="defaults",
+        filters={},
+        profiles=(),
+    )
+    with pytest.raises(PermissionError, match="model search is unavailable"):
+        controller.search_models(command)
 
 
 def test_external_session_cannot_borrow_a_provider_only_edge(production_server) -> None:

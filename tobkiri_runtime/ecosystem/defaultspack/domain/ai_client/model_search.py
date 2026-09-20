@@ -142,10 +142,18 @@ def get_model_capabilities(
 
 
 def get_profile_catalog(
-    *, settings: dict[str, Any] | None = None
+    *,
+    settings: dict[str, Any] | None = None,
+    registry_profiles: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return the resolved model profile catalog for one runtime operation."""
-    return _profile_catalog(settings=settings)
+    """Return the resolved model profile catalog for one runtime operation.
+
+    When ``registry_profiles`` is supplied the captured model-profile snapshot
+    replaces the ambient contract read, which a verified Provider invocation
+    cannot reach; the selected catalog fallback still supplies models that
+    have no saved profile, matching the ambient degradation path.
+    """
+    return _profile_catalog(settings=settings, registry_profiles=registry_profiles)
 
 
 def recommend_model(
@@ -237,8 +245,12 @@ def _capability_dict(value: Any) -> dict[str, bool]:
 
 
 def _profile_catalog(
-    *, settings: dict[str, Any] | None = None
+    *,
+    settings: dict[str, Any] | None = None,
+    registry_profiles: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    if registry_profiles is not None:
+        return _captured_profile_catalog(registry_profiles, settings=settings)
     profiles: list[dict[str, Any]] = []
     try:
         from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_profile_catalog
@@ -261,11 +273,120 @@ def _profile_catalog(
     except Exception:
         pass
     if isinstance(settings, dict):
-        from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
-
-        service = ModelRuntimeSettingsService()
-        profiles.extend(service.runtime_defined_profiles(settings))
+        profiles.extend(_runtime_defined_profiles(settings))
     return _dedupe_profiles(profiles)
+
+
+def _captured_profile_catalog(
+    registry_profiles: list[dict[str, Any]],
+    *,
+    settings: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Assemble the picker catalog from a contract-captured registry snapshot.
+
+    A verified Provider invocation cannot use the ambient dispatch session,
+    so the captured registry snapshot arrives through the declared nested
+    edge.  The bundled catalog contribution uses the same selected-Pack
+    fallback ``list_model_catalog`` already degrades to when global contract
+    dispatch is unavailable.
+    """
+    try:
+        from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
+            _merge_model_profiles,
+            _selected_catalog_fallback,
+        )
+    except ModuleNotFoundError:
+        from backend.ai_client.provider_catalog import (
+            _merge_model_profiles,
+            _selected_catalog_fallback,
+        )
+    try:
+        catalog_models = _selected_catalog_fallback("")
+    except Exception:
+        catalog_models = []
+    try:
+        openrouter_models = _selected_catalog_fallback("openrouter")
+    except Exception:
+        openrouter_models = []
+    profiles = _merge_model_profiles(
+        _normalize_registry_profiles(registry_profiles),
+        catalog_models,
+    )
+    profiles.extend(_embedding_profiles_from_models(catalog_models))
+    profiles.extend(_openrouter_chat_reasoning_profiles(openrouter_models))
+    if isinstance(settings, dict):
+        profiles.extend(_runtime_defined_profiles(settings))
+    return _dedupe_profiles(profiles)
+
+
+def _normalize_registry_profiles(
+    registry_profiles: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project raw model-registry records into searchable profile fields.
+
+    The captured model-profile contract returns registry records keyed by
+    ``model_profile_id``; the picker projection keys on ``profile_id`` and
+    ``qualified_model_id``.  Provider routing comes only from the stored
+    connection reference, and a stored credential handle is what makes a
+    saved profile configured.
+    """
+    normalized: list[dict[str, Any]] = []
+    for raw in registry_profiles:
+        if not isinstance(raw, dict) or raw.get("enabled") is False:
+            continue
+        record = dict(raw)
+        identifier = str(
+            record.get("model_profile_id")
+            or record.get("profile_id")
+            or record.get("qualified_model_id")
+            or ""
+        ).strip()
+        if not identifier:
+            continue
+        record.setdefault("profile_id", identifier)
+        record.setdefault("qualified_model_id", identifier)
+        provider_id = str(
+            record.get("provider_id") or record.get("provider") or ""
+        ).strip()
+        if not provider_id:
+            metadata = (
+                record.get("metadata")
+                if isinstance(record.get("metadata"), dict)
+                else {}
+            )
+            requirements = (
+                record.get("requirements")
+                if isinstance(record.get("requirements"), dict)
+                else {}
+            )
+            provider_id = str(
+                metadata.get("provider_connection_id")
+                or requirements.get("preferred_provider_instance_id")
+                or ""
+            ).strip()
+            if provider_id:
+                record["provider_id"] = provider_id
+                record["provider"] = provider_id
+        if record.get("credential_handle"):
+            record.setdefault("configured", True)
+            availability = (
+                dict(record.get("availability"))
+                if isinstance(record.get("availability"), dict)
+                else {}
+            )
+            availability.setdefault("status", "configured")
+            record["availability"] = availability
+        normalized.append(record)
+    return normalized
+
+
+def _runtime_defined_profiles(settings: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return settings-defined profiles without touching the owner store."""
+
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+
+    service = ModelRuntimeSettingsService()
+    return service.runtime_defined_profiles(settings)
 
 
 def _dedupe_profiles(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:

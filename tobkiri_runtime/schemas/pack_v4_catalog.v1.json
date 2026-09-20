@@ -19161,7 +19161,8 @@
         "ui.model_state.read",
         "ui.model_state.write",
         "ui.recovery_diagnostic.read",
-        "ui.recovery_diagnostic.write"
+        "ui.recovery_diagnostic.write",
+        "ui.model_search.read"
       ],
       "dependencies": {},
       "description": "Captured settings presentation and capability-gated display preference changes.",
@@ -19231,6 +19232,12 @@
           "function_id": "tobkiri.ui.recovery-diagnostic.write",
           "implementation_digest": "sha256:d0b904910c239fa572a809163f8abbc77858f52547b2a56f560c3815abe156af",
           "operation_ids": ["tobkiri_ui_settings_pack.recovery-diagnostic-write"]
+        },
+        {
+          "contract_id": "tobkiri.resource.ui.model-search.v1",
+          "function_id": "tobkiri.ui.model-search.read",
+          "implementation_digest": "sha256:5f346a2aa442743d9a7712ca1bb166bb556eceefc5d0970ae7d3fd0dafe47164",
+          "operation_ids": ["tobkiri_ui_settings_pack.model-search"]
         }
       ],
       "kind": "host_extension",
@@ -19639,6 +19646,69 @@
           },
           "security": "sensitive",
           "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.resource.ui.model-search.v1",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {"deprecated": false, "introduced": "1.0.0"},
+          "operations": [
+            {
+              "entrypoint_id": "tobkiri_ui_settings_pack.model-search",
+              "id": "tobkiri_ui_settings_pack.model-search",
+              "implementation_digest": "sha256:5f346a2aa442743d9a7712ca1bb166bb556eceefc5d0970ae7d3fd0dafe47164"
+            }
+          ],
+          "owner": "tobkiri_ui_settings_pack",
+          "provider_id": "tobkiri.ui.model-search.read",
+          "required_capabilities": ["ui.model_search.read"],
+          "schemas": {
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "configured_only": {"type": "boolean"},
+                "local_only": {"type": "boolean"},
+                "max_results": {"maximum": 1000, "minimum": 1, "type": "integer"},
+                "min_knowledge_level": {"maximum": 1000, "minimum": 0, "type": "integer"},
+                "model_type": {"maxLength": 64, "type": "string"},
+                "profile_id": {"minLength": 1, "type": "string"},
+                "provider": {"maxLength": 256, "type": "string"},
+                "provider_id": {"maxLength": 256, "type": "string"},
+                "query": {"maxLength": 512, "type": "string"},
+                "requires": {
+                  "additionalProperties": {"type": "boolean"},
+                  "maxProperties": 64,
+                  "type": "object"
+                },
+                "speed_tier": {
+                  "anyOf": [
+                    {"maxLength": 64, "type": "string"},
+                    {
+                      "items": {"maxLength": 64, "type": "string"},
+                      "maxItems": 16,
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": {
+                  "anyOf": [
+                    {"maxLength": 64, "type": "string"},
+                    {
+                      "items": {"maxLength": 64, "type": "string"},
+                      "maxItems": 16,
+                      "type": "array"
+                    }
+                  ]
+                }
+              },
+              "required": ["profile_id"],
+              "type": "object"
+            },
+            "output": {"type": "object"}
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
         }
       ],
       "required_contracts": [
@@ -19670,6 +19740,11 @@
           "digest": "sha256:cada9909ffb21684895682226545ca818d18cf38bcd4a17d0bad6d5306d9a00e",
           "kind": "executable",
           "path": "runtime/settings.py"
+        },
+        {
+          "digest": "sha256:5f346a2aa442743d9a7712ca1bb166bb556eceefc5d0970ae7d3fd0dafe47164",
+          "kind": "executable",
+          "path": "runtime/model_search.py"
         },
         {
           "digest": "sha256:4b1813a4c9059254dcbd7b23234ca4b7ddcae1184aa806ffdcb3d290b1e223b2",
