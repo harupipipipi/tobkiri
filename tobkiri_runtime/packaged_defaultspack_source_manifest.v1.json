@@ -84,8 +84,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/desktop_app.py",
       "type": "regular-file",
-      "size": 33593,
-      "sha256": "129fb953eec67e2ff35442e77e895b52171983137dd278ee8cb1d0fef9d5e36f",
+      "size": 33964,
+      "sha256": "330de05df00d03593b6609e3847b1e276b602a3cc492d3eb66dc774cc5d89259",
       "executable": false
     },
     {
@@ -147,8 +147,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/runtime_composition.py",
       "type": "regular-file",
-      "size": 13912,
-      "sha256": "d3e1d696df1445eaf253c9419bfb8c32726a50eca9489dac5441711c5e7f079c",
+      "size": 15250,
+      "sha256": "388b94c4b767bd7fd87bdd008167a0cf90c1a171ace2290c9877d76f6cfa7aa7",
       "executable": false
     },
     {
