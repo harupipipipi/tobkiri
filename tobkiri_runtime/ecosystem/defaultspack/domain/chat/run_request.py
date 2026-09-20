@@ -262,6 +262,7 @@ class PreparedChatRun:
     provider_capabilities: dict[str, Any] = field(default_factory=dict)
     chat_references: dict[str, Any] = field(default_factory=dict)
     matched_skills: list[dict[str, Any]] = field(default_factory=list)
+    settings_owner: SettingsOwnerPort | None = None
 
 
 def validate_chat_run_input(input_data: dict[str, Any]) -> str | None:
@@ -1004,6 +1005,7 @@ def prepare_chat_run(
         provider_capabilities=provider_capabilities,
         chat_references=chat_references,
         matched_skills=matched_skills,
+        settings_owner=settings_owner,
     )
 
 
@@ -1816,7 +1818,9 @@ def prefocus_computer_use_target_window(prepared: PreparedChatRun) -> Any:
 
     from domain.tool.executor import ToolExecutor
 
-    return ToolExecutor().execute(tool_name, arguments, invoke_context)
+    return ToolExecutor(
+        settings_owner=getattr(prepared, "settings_owner", None)
+    ).execute(tool_name, arguments, invoke_context)
 
 
 def _computer_use_prefocus_is_preapproved(context: dict[str, Any] | None) -> bool:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from ..extensions.runtime import get_extension_registry
 from .executor import SubagentFactory, ToolExecutor
 from .schema_adapter import adapt_tool_definitions, tool_name_from_definition
@@ -15,9 +17,11 @@ class ToolBroker:
         executor: Optional[ToolExecutor] = None,
         *,
         subagent_factory: Optional[SubagentFactory] = None,
+        settings_owner: Optional[SettingsOwnerPort] = None,
     ) -> None:
         self._executor = executor or ToolExecutor(
-            subagent_factory=subagent_factory
+            subagent_factory=subagent_factory,
+            settings_owner=settings_owner,
         )
 
     @staticmethod

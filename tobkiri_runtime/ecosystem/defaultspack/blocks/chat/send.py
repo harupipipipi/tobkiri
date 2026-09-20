@@ -700,7 +700,13 @@ def _available_tools(context, input_data):
     return filtered, adapt_tool_definitions(filtered), resolved_context
 
 
-def _prefocus_computer_use_target_window(available_tools, base_context, *, call_handler=None):
+def _prefocus_computer_use_target_window(
+    available_tools,
+    base_context,
+    *,
+    call_handler=None,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     if not isinstance(base_context, dict) or not base_context.get("user_requested_computer_use"):
         return None
     if not _computer_use_prefocus_is_preapproved(base_context):
@@ -743,7 +749,9 @@ def _prefocus_computer_use_target_window(available_tools, base_context, *, call_
 
     from domain.tool.executor import ToolExecutor
 
-    return ToolExecutor().execute(tool_name, arguments, invoke_context)
+    if settings_owner is None:
+        settings_owner = base_context.get("_settings_owner_port")
+    return ToolExecutor(settings_owner=settings_owner).execute(tool_name, arguments, invoke_context)
 
 
 def _computer_use_prefocus_is_preapproved(context):
@@ -1887,7 +1895,13 @@ def _complete_with_tools(
             else:
                 from domain.tool.executor import ToolExecutor
 
-                executed = ToolExecutor().execute(tool_name, arguments, invoke_context)
+                executed = ToolExecutor(
+                    settings_owner=(
+                        settings_owner
+                        if settings_owner is not None
+                        else (context or {}).get("_settings_owner_port")
+                    )
+                ).execute(tool_name, arguments, invoke_context)
                 result = {"status": "ok", "data": executed}
             _raise_if_cancelled(context)
             log = {

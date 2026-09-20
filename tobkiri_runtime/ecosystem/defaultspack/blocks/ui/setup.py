@@ -71,7 +71,7 @@ def run(context):
     settings_owner = context.get("_settings_owner_port")
     owner_route = partial(_lazy, settings_owner=settings_owner)
     routes = [
-        ("GET", "/api/ui/catalog", _lazy("blocks.ui.catalog"), {}),
+        ("GET", "/api/ui/catalog", owner_route("blocks.ui.catalog"), {}),
         (
             "POST",
             "/api/ui/capability/invoke",
