@@ -341,6 +341,36 @@ test("Viewer authenticates every dedicated Defaultspack window and rejects unsaf
   assert.match(dockSource, /identify_defaultspack_listener\(&listener, metadata\)/);
 });
 
+test("approval window activates the application before ordering front", (context) => {
+  const viewerPath = resolve(REPOSITORY_ROOT, "tobkiri_launcher", "src-tauri", "src", "lib.rs");
+  if (!existsSync(viewerPath)) {
+    context.skip("Requires the sibling tobkiri_launcher repository.");
+    return;
+  }
+  const viewerSource = readRepositorySource("tobkiri_launcher", "src-tauri", "src", "lib.rs");
+
+  // AppKit warns "ordered front from a non-active application" when a window
+  // is ordered front while the app is inactive, and the approval window can
+  // stay behind the caller: activation must precede the window build (whose
+  // `focused(true)` orders front) and the explicit focus helper.
+  const openStart = viewerSource.indexOf("fn open_authority_approval_window_at_url");
+  assert.notEqual(openStart, -1);
+  const openBody = viewerSource.slice(openStart);
+  const activateAt = openBody.indexOf("activate_app_for_authority_approval()");
+  assert.notEqual(activateAt, -1, "approval window open must activate the application first");
+  for (const ordering of ["WebviewWindowBuilder::new(", "focus_authority_approval_window(&window)"]) {
+    const orderingAt = openBody.indexOf(ordering);
+    assert.notEqual(orderingAt, -1, `expected ${ordering} in the approval open path`);
+    assert.ok(activateAt < orderingAt, `activation must precede ${ordering}`);
+  }
+  const activationBody = viewerSource.slice(
+    viewerSource.indexOf("fn activate_app_for_authority_approval"),
+  );
+  assert.match(activationBody, /MainThreadMarker::new\(\)/);
+  assert.match(activationBody, /NSApplication::sharedApplication/);
+  assert.match(activationBody, /activateIgnoringOtherApps|\.activate\(\)/);
+});
+
 test("ambient model selection persists to the canonical selected conversation", () => {
   const routingSource = readSource("ambient", "useAmbientRouting.ts");
   const panelSource = readSource("ambient", "AmbientTriggerPanel.tsx");

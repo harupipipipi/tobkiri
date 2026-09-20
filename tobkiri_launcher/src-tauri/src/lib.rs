@@ -630,6 +630,28 @@ pub(crate) fn open_authority_approval_window_on_main_thread(
     })
 }
 
+/// Activate the application before the approval window is ordered front.
+///
+/// `NSWindow.orderFront`/`makeKeyAndOrderFront:` — reached through
+/// `WebviewWindowBuilder::build()` with `focused(true)` and through
+/// `Window::show()`/`set_focus()` — logs "ordered front from a non-active
+/// application" and can leave the approval window behind the caller while
+/// the app is inactive. tao's own `set_focus` activates only after ordering
+/// the window front, so the approval path must activate first.
+fn activate_app_for_authority_approval() {
+    #[cfg(target_os = "macos")]
+    match objc2::MainThreadMarker::new() {
+        Some(marker) => {
+            // `NSApplication.activate` requires macOS 14 while the launcher
+            // supports macOS 11, so use the long-standing AppKit entry point
+            // that tao's `set_focus` path relies on.
+            #[allow(deprecated)]
+            objc2_app_kit::NSApplication::sharedApplication(marker).activateIgnoringOtherApps(true);
+        }
+        None => warn!("authority approval window activation requires the main thread"),
+    }
+}
+
 fn focus_authority_approval_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     window
         .unminimize()
@@ -664,6 +686,9 @@ pub(crate) fn open_authority_approval_window_at_url(
     app: &AppHandle,
     approval_url: Url,
 ) -> Result<(), String> {
+    // The window build with `focused(true)` and every order-front below must
+    // follow application activation, never precede it.
+    activate_app_for_authority_approval();
     if let Some(window) = app.get_webview_window(AUTHORITY_APPROVAL_WINDOW_LABEL) {
         window
             .navigate(approval_url)
@@ -4187,6 +4212,14 @@ mod tests {
             url.as_str(),
             "http://127.0.0.1:8766/approval?request_id=auth_123"
         );
+    }
+
+    #[test]
+    fn authority_approval_activation_is_a_safe_noop_off_the_main_thread() {
+        // A test worker holds no MainThreadMarker, so the AppKit activation
+        // must degrade to a logged skip instead of panicking or touching the
+        // application object off the main thread.
+        activate_app_for_authority_approval();
     }
 
     #[test]
