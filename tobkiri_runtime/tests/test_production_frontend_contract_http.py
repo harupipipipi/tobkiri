@@ -5361,3 +5361,99 @@ def test_selected_desktop_entrypoint_has_no_compatibility_server_authority() -> 
     assert "DefaultsHttpServer" not in desktop
     assert "transport.http" not in desktop
     assert "build_fallback_http_routes" not in desktop
+
+
+def test_operation_status_read_releases_waiter_when_verification_exceeds_bound(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A coalesced artifact verification cannot pin a status read past its bound."""
+
+    from core_runtime.profile_runtime_port import require_profile_runtime
+
+    server, _session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {
+        "Cookie": cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": csrf,
+    }
+
+    runtime = require_profile_runtime()
+    original_activation_store = runtime.activation_store
+
+    def bounded_activation_store(**kwargs: object) -> object:
+        kwargs.setdefault("lock_timeout_seconds", 0.05)
+        return original_activation_store(**kwargs)
+
+    monkeypatch.setattr(runtime, "activation_store", bounded_activation_store)
+
+    verification_started = threading.Event()
+    release_verification = threading.Event()
+
+    def blocked_verify(
+        self: ActivationStore,
+        profile: object,
+        **kwargs: object,
+    ) -> None:
+        verification_started.set()
+        release_verification.wait(
+            timeout=EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS,
+        )
+
+    monkeypatch.setattr(
+        ActivationStore,
+        "_verify_selected_artifact",
+        blocked_verify,
+    )
+
+    status_path = _contract("GET", "/api/runtime-surface/operation-status")
+
+    def status_request() -> tuple[int, dict[str, object]]:
+        status, payload, _headers = _request(
+            server,
+            "GET",
+            f"{status_path}?request_id={uuid.uuid4()}",
+            headers={
+                **headers,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        return status, payload
+
+    leader_results: list[tuple[int, dict[str, object]]] = []
+    leader_errors: list[BaseException] = []
+
+    def leader() -> None:
+        try:
+            leader_results.append(status_request())
+        except BaseException as error:
+            leader_errors.append(error)
+
+    leader_thread = threading.Thread(target=leader, daemon=True)
+    try:
+        leader_thread.start()
+        assert verification_started.wait(timeout=FRONTEND_MUTATION_TIMEOUT_SECONDS)
+
+        waiter_started = time.monotonic()
+        waiter_status, waiter_payload = status_request()
+        waiter_elapsed = time.monotonic() - waiter_started
+
+        # The waiter fails closed inside its bounded verification wait instead
+        # of pinning the status read to the unbounded leader hash.
+        assert waiter_status == 503, waiter_payload
+        assert waiter_payload["data"]["code"] == "API_FAILURE"
+        assert waiter_payload["data"]["retryable"] is True
+        assert waiter_elapsed < FRONTEND_MUTATION_TIMEOUT_SECONDS
+        assert leader_thread.is_alive()
+    finally:
+        release_verification.set()
+
+    leader_thread.join(timeout=EVENTUAL_RECONCILIATION_TIMEOUT_SECONDS)
+    assert not leader_thread.is_alive()
+    assert not leader_errors
+    leader_status, leader_payload = leader_results[0]
+    # Once verification completes, the same status read proceeds to its typed
+    # operation outcome instead of being stranded by the released flight.
+    assert leader_status == 404, leader_payload
+    assert leader_payload["data"]["code"] == "OPERATION_NOT_FOUND"

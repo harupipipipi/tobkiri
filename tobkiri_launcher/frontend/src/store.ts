@@ -234,6 +234,7 @@ interface AppState {
   revokePackApproval: (id: string) => Promise<void>;
   togglePack: (id: string) => Promise<boolean>;
   clearAbsentLegacyPackMutation: (key: string, requestId: string) => void;
+  verifyPackMutationStatus: (key: string) => Promise<void>;
   profile: Profile;
   updateLocalProfile: (profile: Partial<Pick<Profile, 'avatar' | 'username' | 'language' | 'job'>>) => void;
 }
@@ -400,7 +401,7 @@ async function invalidatePackMutationSurfaces(get: () => AppState): Promise<void
 const PACK_CONTROL_CONTRACT = 'tobkiri.host.pack-control.v4';
 interface HydratedPackStatusTask {
   controller: AbortController;
-  promise: Promise<void>;
+  promise: Promise<Awaited<ReturnType<typeof reconcilePackMutationStatus>> | null>;
 }
 
 const hydratedPackStatusRequests = new Map<string, HydratedPackStatusTask>();
@@ -496,6 +497,108 @@ function clearPackUnknownState(
   });
 }
 
+async function reconcileHydratedPackRecord(
+  record: MutationJournalRecord,
+  get: () => AppState,
+  set: (update: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+  signal: AbortSignal,
+): Promise<Awaited<ReturnType<typeof reconcilePackMutationStatus>> | null> {
+  let reconciled: Awaited<ReturnType<typeof reconcilePackMutationStatus>>;
+  if (record.metadata.kind === 'pack.operation') {
+    const operationId = record.metadata.operation_id;
+    const contractId = record.metadata.contract_id;
+    if (typeof operationId !== 'string' || typeof contractId !== 'string') return null;
+    reconciled = await reconcilePackMutationStatus(
+      record,
+      get,
+      operationId,
+      () => true,
+      {contractId, signal},
+    );
+  } else if (record.metadata.kind === 'pack.approve') {
+    const approval = await reconcilePackApprovalStatus(record, get, signal);
+    if (approval.state === 'succeeded' || approval.state === 'failed') {
+      clearPackUnknownState(set, record);
+    }
+    return approval;
+  } else {
+    const operationId = record.metadata.operation_id;
+    if (typeof operationId !== 'string') return null;
+    reconciled = await reconcilePackMutationStatus(
+      record,
+      get,
+      operationId,
+      (status) => status.state === 'succeeded' && packMutationSuccess(record, get),
+      {signal},
+    );
+  }
+  if (reconciled.state === 'succeeded' || reconciled.state === 'failed') {
+    clearPackUnknownState(set, record);
+  }
+  return reconciled;
+}
+
+function schedulePackRecordReconciliation(
+  record: MutationJournalRecord,
+  get: () => AppState,
+  set: (update: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
+): HydratedPackStatusTask {
+  const existing = hydratedPackStatusRequests.get(record.key);
+  if (existing) return existing;
+  const controller = new AbortController();
+  const task: HydratedPackStatusTask = {
+    controller,
+    promise: Promise.resolve(null),
+  };
+  task.promise = (async () => {
+    try {
+      return await reconcileHydratedPackRecord(record, get, set, controller.signal);
+    } catch (error) {
+      if (error instanceof OperationStatusNotFoundError && isLegacyAdoptedMutation(record)) {
+        const current = listMutationJournal().find((candidate) => (
+          candidate.key === record.key && candidate.requestId === record.requestId
+        ));
+        const packId = current?.metadata.pack_id;
+        const pack = typeof packId === 'string'
+          ? get().packs.find((candidate) => candidate.id === packId)
+          : undefined;
+        if (
+          current
+          && current.state === 'unknown'
+          && isLegacyAdoptedMutation(current)
+          && pack
+          && !matchingPackMutation(current, pack)
+        ) {
+          set((state) => ({
+            packLegacyRecovery: {
+              ...state.packLegacyRecovery,
+              [current.key]: current,
+            },
+          }));
+          recordClientDiagnostic({
+            code: 'pack.mutation.legacy_absent_from_current_root',
+            operation: 'hydrate.pack.mutation',
+            error,
+          });
+          return null;
+        }
+      }
+      recordClientDiagnostic({
+        code: 'pack.mutation.reconciliation_failed',
+        operation: 'hydrate.pack.mutation',
+        error,
+      });
+      return null;
+    }
+  })().finally(() => {
+    if (hydratedPackStatusRequests.get(record.key) === task) {
+      hydratedPackStatusRequests.delete(record.key);
+    }
+  });
+  hydratedPackStatusRequests.set(record.key, task);
+  return task;
+}
+
 function scheduleHydratedPackStatusReconciliation(
   get: () => AppState,
   set: (update: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
@@ -506,88 +609,7 @@ function scheduleHydratedPackStatusReconciliation(
     && record.metadata.kind.startsWith('pack.')
   ));
   for (const record of records) {
-    if (hydratedPackStatusRequests.has(record.key)) continue;
-    const controller = new AbortController();
-    const task: HydratedPackStatusTask = {
-      controller,
-      promise: Promise.resolve(),
-    };
-    task.promise = (async () => {
-      try {
-        let reconciled: Awaited<ReturnType<typeof reconcilePackMutationStatus>>;
-        if (record.metadata.kind === 'pack.operation') {
-          const operationId = record.metadata.operation_id;
-          const contractId = record.metadata.contract_id;
-          if (typeof operationId !== 'string' || typeof contractId !== 'string') return;
-          reconciled = await reconcilePackMutationStatus(
-            record,
-            get,
-            operationId,
-            () => true,
-            {contractId, signal: controller.signal},
-          );
-        } else if (record.metadata.kind === 'pack.approve') {
-          const approval = await reconcilePackApprovalStatus(record, get, controller.signal);
-          if (approval.state === 'succeeded' || approval.state === 'failed') {
-            clearPackUnknownState(set, record);
-          }
-          return;
-        } else {
-          const operationId = record.metadata.operation_id;
-          if (typeof operationId !== 'string') return;
-          reconciled = await reconcilePackMutationStatus(
-            record,
-            get,
-            operationId,
-            (status) => status.state === 'succeeded' && packMutationSuccess(record, get),
-            {signal: controller.signal},
-          );
-        }
-        if (reconciled.state === 'succeeded' || reconciled.state === 'failed') {
-          clearPackUnknownState(set, record);
-        }
-      } catch (error) {
-        if (error instanceof OperationStatusNotFoundError && isLegacyAdoptedMutation(record)) {
-          const current = listMutationJournal().find((candidate) => (
-            candidate.key === record.key && candidate.requestId === record.requestId
-          ));
-          const packId = current?.metadata.pack_id;
-          const pack = typeof packId === 'string'
-            ? get().packs.find((candidate) => candidate.id === packId)
-            : undefined;
-          if (
-            current
-            && current.state === 'unknown'
-            && isLegacyAdoptedMutation(current)
-            && pack
-            && !matchingPackMutation(current, pack)
-          ) {
-            set((state) => ({
-              packLegacyRecovery: {
-                ...state.packLegacyRecovery,
-                [current.key]: current,
-              },
-            }));
-            recordClientDiagnostic({
-              code: 'pack.mutation.legacy_absent_from_current_root',
-              operation: 'hydrate.pack.mutation',
-              error,
-            });
-            return;
-          }
-        }
-        recordClientDiagnostic({
-          code: 'pack.mutation.reconciliation_failed',
-          operation: 'hydrate.pack.mutation',
-          error,
-        });
-      }
-    })().finally(() => {
-      if (hydratedPackStatusRequests.get(record.key) === task) {
-        hydratedPackStatusRequests.delete(record.key);
-      }
-    });
-    hydratedPackStatusRequests.set(record.key, task);
+    schedulePackRecordReconciliation(record, get, set);
   }
 }
 
@@ -956,6 +978,41 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {packLegacyRecovery: next};
     });
     get().addToast('The stale local recovery lock was cleared. No Pack request was sent.', 'success');
+  },
+
+  // Explicitly re-read the server-owned outcome of one journaled unknown Pack
+  // mutation. The journal is released only after a verified terminal status;
+  // pending, indeterminate, stale-binding, and failed reads all keep the
+  // durable record so no duplicate request is ever sent.
+  verifyPackMutationStatus: async (key) => {
+    const record = listMutationJournal().find((candidate) => (
+      candidate.key === key
+      && candidate.state === 'unknown'
+      && typeof candidate.metadata.kind === 'string'
+      && candidate.metadata.kind.startsWith('pack.')
+    ));
+    if (!record) {
+      get().addToast('The Pack mutation status could not be verified safely.', 'error');
+      return;
+    }
+    const reconciled = await schedulePackRecordReconciliation(record, get, set).promise;
+    if (reconciled?.state === 'succeeded') {
+      get().addToast('The Host confirmed the Pack mutation result.', 'success');
+      return;
+    }
+    if (reconciled?.state === 'failed') {
+      const code = reconciled.status.safe_error_code;
+      get().addToast(
+        `The Host confirmed the Pack mutation failed${code ? ` (${code})` : ''}.`,
+        'error',
+      );
+      return;
+    }
+    if (!listMutationJournal().some((candidate) => candidate.key === key)) {
+      get().addToast('The Pack mutation recovery lock was released.', 'success');
+      return;
+    }
+    get().addToast(MUTATION_UNKNOWN_MESSAGE, 'error');
   },
 
   refreshPackVMDoctor: (options = {}) => {

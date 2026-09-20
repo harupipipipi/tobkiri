@@ -513,6 +513,74 @@ test('operation status uses the canonical GET target and a fresh authenticated r
   assert.notEqual(headers['X-Tobkiri-Request-ID'], requestId);
 });
 
+test('operation status reads allow a slow bounded verification without replaying it', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  const requestId = '22222222-2222-4222-8222-222222222222';
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent('GET /api/runtime-surface/operation-status')}?request_id=${requestId}`);
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: {state: 'pending'}})),
+    ), 11_000));
+  };
+
+  const pending = fetchRuntimeOperationStatus(requestId);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(11_000);
+
+  assert.deepEqual(await pending, {state: 'pending'});
+  assert.equal(reads, 1);
+});
+
+test('operation status reads stop at their bounded status-read deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  const requestId = '22222222-2222-4222-8222-222222222222';
+  fetchHandler = async (_input, init) => {
+    reads += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+
+  const bounded = assert.rejects(
+    fetchRuntimeOperationStatus(requestId),
+    /(?:timed out after|exceeded) 30000ms/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(30_000);
+  await bounded;
+  assert.equal(reads, 1);
+});
+
+test('unrelated foreground contract GETs keep their original bounded deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async (_input, init) => {
+    reads += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+
+  const bounded = assert.rejects(
+    fetchPacks(),
+    /GET request timed out after 10000ms/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  // The consumer deadline is 10s; ticking through the shared 30s hard timeout
+  // lets the aborted in-flight entry settle instead of leaking into later reads.
+  context.mock.timers.tick(30_000);
+  await bounded;
+  assert.equal(reads, 1);
+});
+
 test('runtime operation invocation uses only its exact invocation contribution and catalog hash', async () => {
   let body: Record<string, unknown> | undefined;
   fetchHandler = async (input, init) => {

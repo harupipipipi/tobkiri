@@ -49,8 +49,10 @@ export function PackDetail() {
   const clearAbsentLegacyPackMutation = useAppStore(
     state => state.clearAbsentLegacyPackMutation,
   );
+  const verifyPackMutationStatus = useAppStore(state => state.verifyPackMutationStatus);
   const [installing, setInstalling] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [verifyingStatus, setVerifyingStatus] = useState(false);
 
   const pack = packs.find(p => p.id === id);
   const unknownPackMutation = pack
@@ -59,6 +61,14 @@ export function PackDetail() {
   const legacyRecovery = unknownPackMutation
     ? packLegacyRecovery[unknownPackMutation.key]
     : undefined;
+  const unknownPackRecords = pack
+    ? [
+      ...Object.values(packMutationUnknown),
+      ...Object.values(packOperationUnknown),
+    ].filter((record) => (
+      record.metadata.pack_id === pack.id && !packLegacyRecovery[record.key]
+    ))
+    : [];
   const mutationResultUnknown = Boolean(
     pack && (
       unknownPackMutation
@@ -145,6 +155,17 @@ export function PackDetail() {
       await approvePack(pack.id);
     } finally {
       setApproving(false);
+    }
+  };
+
+  const handleVerifyStatus = async () => {
+    setVerifyingStatus(true);
+    try {
+      for (const record of unknownPackRecords) {
+        await verifyPackMutationStatus(record.key);
+      }
+    } finally {
+      setVerifyingStatus(false);
     }
   };
 
@@ -303,6 +324,18 @@ export function PackDetail() {
                 })}
               >
                 Review recovery
+              </Button>
+            ) : null}
+            {unknownPackRecords.length > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                loading={verifyingStatus}
+                disabled={verifyingStatus}
+                onClick={() => void handleVerifyStatus()}
+              >
+                Verify status
               </Button>
             ) : null}
             <Button type="button" variant="outline" size="sm" onClick={() => void loadPacks(true)}>Refresh catalog</Button>

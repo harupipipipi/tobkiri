@@ -65,6 +65,10 @@ class ActivationLockTimeout(ProfileResolutionDenied):
     """Raised when the activation process lock is unavailable by its deadline."""
 
 
+class ArtifactVerificationTimeout(ActivationLockTimeout):
+    """Raised when a shared artifact verification misses its bounded wait."""
+
+
 class ActivationAuthority(Protocol):
     """Host-owned authority/audit port used by the fenced activation journal."""
 
@@ -1803,7 +1807,16 @@ class ActivationStore:
                 flight.complete.set()
             return
 
-        flight.complete.wait()
+        # Waiters share the leader's result only inside the same bounded wait
+        # scale used by the activation lock.  A verification that misses that
+        # deadline must fail closed with a typed error instead of pinning a
+        # status read or health check to an unbounded in-flight hash.
+        if not flight.complete.wait(self._lock_timeout_seconds):
+            with _ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+                flight.waiters -= 1
+            raise ArtifactVerificationTimeout(
+                "coalesced artifact verification deadline exceeded"
+            )
         if flight.error is not None:
             self._verify_selected_artifact(
                 active.resolved.profile,

@@ -142,6 +142,16 @@ export function fetchFrontendContractOperation<T>(
     : {}, requestPolicy);
 }
 
+/**
+ * Bounded budget for one authenticated operation-status read.
+ *
+ * Status reads recapture the active Profile on the Host, which can include a
+ * bounded artifact verification, so they need more headroom than a generic
+ * foreground GET.  The contract allows a 120-second default; this keeps the
+ * client budget deliberately tighter while still covering that server work.
+ */
+export const OPERATION_STATUS_READ_TIMEOUT_MS = 30_000;
+
 /** Read one authenticated, server-owned mutation outcome by stable request ID. */
 export function fetchRuntimeOperationStatus(requestId: string): Promise<unknown> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
@@ -151,6 +161,7 @@ export function fetchRuntimeOperationStatus(requestId: string): Promise<unknown>
     'GET',
     '/api/runtime-surface/operation-status',
     {request_id: requestId},
+    {timeoutMs: OPERATION_STATUS_READ_TIMEOUT_MS},
   );
 }
 

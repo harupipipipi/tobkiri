@@ -80,9 +80,11 @@ export function Packs() {
   const clearAbsentLegacyPackMutation = useAppStore(
     state => state.clearAbsentLegacyPackMutation,
   );
+  const verifyPackMutationStatus = useAppStore(state => state.verifyPackMutationStatus);
   const [search, setSearch] = useState('');
   const [installingPackId, setInstallingPackId] = useState<string | null>(null);
   const [approvingPackId, setApprovingPackId] = useState<string | null>(null);
+  const [verifyingMutationKey, setVerifyingMutationKey] = useState<string | null>(null);
 
   useEffect(() => {
     void loadPacks();
@@ -105,6 +107,15 @@ export function Packs() {
       await installPack(packId);
     } finally {
       setInstallingPackId(null);
+    }
+  };
+
+  const handleVerifyMutation = async (key: string) => {
+    setVerifyingMutationKey(key);
+    try {
+      await verifyPackMutationStatus(key);
+    } finally {
+      setVerifyingMutationKey(null);
     }
   };
 
@@ -224,6 +235,18 @@ export function Packs() {
                         })}
                       >
                         Review recovery
+                      </Button>
+                    ) : null}
+                    {!legacyRecovery ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        loading={verifyingMutationKey === unknownMutation.key}
+                        disabled={verifyingMutationKey !== null}
+                        onClick={() => void handleVerifyMutation(unknownMutation.key)}
+                      >
+                        Verify status
                       </Button>
                     ) : null}
                     <Button type="button" size="sm" variant="outline" onClick={() => void loadPacks(true)}>Refresh catalog</Button>
