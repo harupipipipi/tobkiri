@@ -50,7 +50,11 @@ from ecosystem.defaultspack.domain.runtime_surface_v4 import (
 )
 from core_runtime.pack_api_server import PackAPIServer
 from core_runtime.panel_auth import PanelAuthManager
-from ecosystem.defaultspack.domain.runtime_v4 import ActivationStore, BundledCatalog
+from ecosystem.defaultspack.domain.runtime_v4 import (
+    ActivationStore,
+    ArtifactVerificationTimeout,
+    BundledCatalog,
+)
 from ecosystem.rumi_shell_policy_pack.runtime import policy as shell_policy
 from tests.conformance_support.command_protocol_activation import (
     COMMAND_PROTOCOL_HTTP_CASES,
@@ -5435,15 +5439,21 @@ def test_operation_status_read_releases_waiter_when_verification_exceeds_bound(
         leader_thread.start()
         assert verification_started.wait(timeout=FRONTEND_MUTATION_TIMEOUT_SECONDS)
 
+        # The typed error propagates on the exact capture path a status read
+        # runs before its durable reconciliation lookup.
+        with pytest.raises(ArtifactVerificationTimeout):
+            profile_capture.capture_active_profile()
+
         waiter_started = time.monotonic()
         waiter_status, waiter_payload = status_request()
         waiter_elapsed = time.monotonic() - waiter_started
 
-        # The waiter fails closed inside its bounded verification wait instead
-        # of pinning the status read to the unbounded leader hash.
-        assert waiter_status == 503, waiter_payload
-        assert waiter_payload["data"]["code"] == "API_FAILURE"
-        assert waiter_payload["data"]["retryable"] is True
+        # At the HTTP surface the bounded waiter fails closed at the auth gate:
+        # its Profile capture cannot bind to an unverified activation, so the
+        # status read is rejected instead of pinning to the unbounded leader
+        # hash.  The frontend treats this as a recoverable session failure.
+        assert waiter_status == 401, waiter_payload
+        assert waiter_payload["error"] == "Unauthorized"
         assert waiter_elapsed < FRONTEND_MUTATION_TIMEOUT_SECONDS
         assert leader_thread.is_alive()
     finally:
