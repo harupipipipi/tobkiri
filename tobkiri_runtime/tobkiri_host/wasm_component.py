@@ -138,17 +138,7 @@ def worker_main() -> int:
     os.environ.clear()
     try:
         rss_limit = _parse_worker_rss_limit(raw_rss_limit)
-        # These limits apply before importing the engine or compiling the guest.
-        # RLIMIT_RSS/AS are deliberately not claimed as a macOS memory sandbox.
-        for kind, ceiling in (
-            (resource.RLIMIT_CORE, 0),
-            (resource.RLIMIT_CPU, 10),
-            (resource.RLIMIT_NOFILE, 64),
-            (resource.RLIMIT_FSIZE, 2 * 1024 * 1024),
-        ):
-            _, hard = resource.getrlimit(kind)
-            limit = ceiling if hard == resource.RLIM_INFINITY else min(ceiling, hard)
-            resource.setrlimit(kind, (limit, limit))
+        _install_worker_resource_limits(resource, sys.platform)
         request = strict_loads(
             sys.stdin.buffer.read(45 * 1024 * 1024 + 1),
             max_bytes=45 * 1024 * 1024,
@@ -187,6 +177,51 @@ def worker_main() -> int:
     return exit_code
 
 
+def _install_worker_resource_limits(resource: Any, platform: str) -> None:
+    """Apply the worker's OS-enforced ceilings before any engine import.
+
+    These limits are installed before the engine is imported or the guest is
+    compiled, so they cover the compiler as well as guest execution. Failing
+    to install any of them fails closed: the caller reports the worker as
+    failed rather than running an unbounded workload.
+
+    Honest boundary per knob:
+
+    - ``RLIMIT_CORE`` 0, ``RLIMIT_CPU`` 10 s, ``RLIMIT_NOFILE`` 64 and
+      ``RLIMIT_FSIZE`` 2 MiB are enforced by the kernel on every relevant
+      operation: CPU overage dies by SIGXCPU, descriptor exhaustion fails with
+      EMFILE, and regular-file writes past the size cap fail with EFBIG
+      (accompanied by SIGXFSZ on platforms that deliver it).
+    - ``RLIMIT_NPROC`` 0 is installed on macOS only, where it is settable and
+      enforced per process: every ``fork``/``posix_spawn`` from this worker
+      fails with EAGAIN, so the supervisor's "the worker cannot create
+      descendants" scope is real rather than assumed. It is omitted on Linux
+      because NPROC there counts threads as well as processes and a zero cap
+      would break engine-internal compilation threads; the production cgroup
+      v2 ``pids.max`` boundary covers the process tree there instead.
+    - No resident-memory rlimit is attempted. On macOS ``setrlimit`` rejects
+      ``RLIMIT_AS``, ``RLIMIT_DATA`` and ``RLIMIT_RSS`` for any value (EINVAL),
+      so there is no OS hard allocation cap for this process. Physical memory
+      is bounded only by the supervisor's sampled supervision (which stops a
+      sustained overage but cannot prevent a transient overshoot inside one
+      sampling interval) plus the post-completion peak check in
+      ``_enforce_worker_peak_rss``; a hard cap requires the Linux cgroup
+      controller or a PackVM boundary.
+    """
+    ceilings = [
+        (resource.RLIMIT_CORE, 0),
+        (resource.RLIMIT_CPU, 10),
+        (resource.RLIMIT_NOFILE, 64),
+        (resource.RLIMIT_FSIZE, 2 * 1024 * 1024),
+    ]
+    if platform == "darwin":
+        ceilings.append((resource.RLIMIT_NPROC, 0))
+    for kind, ceiling in ceilings:
+        _, hard = resource.getrlimit(kind)
+        limit = ceiling if hard == resource.RLIM_INFINITY else min(ceiling, hard)
+        resource.setrlimit(kind, (limit, limit))
+
+
 def _parse_worker_rss_limit(raw: str | None) -> int | None:
     """Parse the trusted supervisor's optional resident-memory ceiling."""
     if raw is None:
@@ -200,7 +235,15 @@ def _parse_worker_rss_limit(raw: str | None) -> int | None:
 
 
 def _enforce_worker_peak_rss(resource: Any, platform: str, limit: int | None) -> None:
-    """Reject a success whose process high-water RSS exceeded its ceiling."""
+    """Reject a success whose process high-water RSS exceeded its ceiling.
+
+    This is the post-completion complement to the supervisor's live sampling:
+    a peak that crossed the ceiling between two samples and subsided before
+    the next one is still caught here because the kernel's ``ru_maxrss``
+    high-water mark cannot regress. It rejects the result rather than
+    interrupting the workload; stopping a live overage is the supervisor's
+    sampled-kill path in ``bounded_child_io``.
+    """
     if limit is None:
         return
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss

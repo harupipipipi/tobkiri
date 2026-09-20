@@ -1,4 +1,19 @@
-"""Bounded POSIX pipe exchange; process ownership and termination stay external."""
+"""Bounded POSIX pipe exchange; process ownership and termination stay external.
+
+Honesty note on ``rss_limit``: resident-memory supervision is *sampled*, not
+an operating-system hard cap. The child is checked about once per
+``_SUPERVISION_INTERVAL_SECONDS`` (1 ms) while pipes are open and while the
+exchange waits for exit. A sustained overage is therefore detected and the
+caller stops the child, but a transient allocation spike inside one interval
+physically occurs before it can be observed, and a fast peak that subsides
+before the next sample may never be observed here at all (the worker-side
+post-completion ``ru_maxrss`` rejection in ``wasm_component`` covers that
+case for the Wasm worker). The sample also covers only the direct child:
+descendant resident bytes are outside this accounting, which is why the
+supported workers enforce a no-descendants boundary themselves. A real hard
+allocation cap requires an OS mechanism — the Linux cgroup v2 controller in
+``resource_controller`` or a PackVM boundary — not this monitor.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +26,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 
 _SUPERVISION_INTERVAL_SECONDS = 0.001
@@ -149,16 +165,15 @@ def _enforce_rss_limit(
         raise MemoryError("child resident memory exceeds size limit")
 
 
-def _resident_bytes(pid: int) -> int:
-    """Read current direct-child RSS without spawning an unbounded helper."""
-    if type(pid) is not int or pid <= 0:
-        raise ValueError("child process identity is invalid")
-    if sys.platform == "darwin":
+_LIBPROC: Any = None
+
+
+def _proc_pidinfo() -> Any:
+    """Load libproc once; per-sample cost must stay below the 1 ms interval."""
+    global _LIBPROC
+    if _LIBPROC is None:
         import ctypes
 
-        # PROC_PIDTASKINFO starts with virtual_size and resident_size. Allocate
-        # a full, forward-compatible buffer and consume only those stable fields.
-        buffer = ctypes.create_string_buffer(256)
         library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
         proc_pidinfo = library.proc_pidinfo
         proc_pidinfo.argtypes = (
@@ -169,7 +184,21 @@ def _resident_bytes(pid: int) -> int:
             ctypes.c_int,
         )
         proc_pidinfo.restype = ctypes.c_int
-        received = proc_pidinfo(pid, 4, 0, buffer, len(buffer))
+        _LIBPROC = proc_pidinfo
+    return _LIBPROC
+
+
+def _resident_bytes(pid: int) -> int:
+    """Read current direct-child RSS without spawning an unbounded helper."""
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("child process identity is invalid")
+    if sys.platform == "darwin":
+        import ctypes
+
+        # PROC_PIDTASKINFO starts with virtual_size and resident_size. Allocate
+        # a full, forward-compatible buffer and consume only those stable fields.
+        buffer = ctypes.create_string_buffer(256)
+        received = _proc_pidinfo()(pid, 4, 0, buffer, len(buffer))
         if received < 16:
             error = ctypes.get_errno()
             if error == 3:

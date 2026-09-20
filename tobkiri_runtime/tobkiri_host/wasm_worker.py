@@ -3,13 +3,16 @@
 The caller owns verified launch configuration and admission. This supervisor
 does not prove physical memory containment or establish artifact/Authority
 identity, and must not make those backend gates true. Only import-free workers
-which cannot create descendants are in scope.
+are in scope; their no-descendants boundary is enforced worker-side by
+``RLIMIT_NPROC=0`` on macOS and by the production cgroup ``pids.max`` on
+Linux, with ``close()`` stopping the whole session group as a second layer.
 """
 
 from __future__ import annotations
 
 import math
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -159,7 +162,7 @@ class ComponentWorker:
         if process is not None:
             try:
                 if process.poll() is None:
-                    process.kill()
+                    _kill_worker_group(process)
                 process.wait(timeout=2)
             except (OSError, subprocess.TimeoutExpired):
                 raise ProviderExecutionError(
@@ -178,3 +181,21 @@ class ComponentWorker:
                     "Wasm worker resource-controller release is unconfirmed"
                 ) from None
             self._controller_lease = None
+
+
+def _kill_worker_group(process: subprocess.Popen[bytes]) -> None:
+    """SIGKILL the worker's whole session group, not only its leader PID.
+
+    The child is launched with ``start_new_session=True``, so while it is
+    alive ``process.pid`` is still allocated and is a live process-group id:
+    ``killpg`` cannot hit a recycled group here. This bounds a stop to every
+    process the worker may have created before the worker-side
+    ``RLIMIT_NPROC=0`` boundary (or Linux ``pids.max``) took effect, falling
+    back to the leader alone where ``killpg`` is unavailable or the group is
+    already gone. A group kill is a *stop* mechanism; it does not by itself
+    prevent a worker from creating descendants.
+    """
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except (AttributeError, ProcessLookupError, PermissionError):
+        process.kill()
