@@ -52,10 +52,23 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   private retry = () => this.setState({ failed: false, diagnosticStatus: "idle", safeDetails: "" });
-  private stableWorkspace = () => { window.history.replaceState({}, "", profileScreenUrlFromLocation("/chat")); this.retry(); };
+  private stableWorkspace = () => {
+    try {
+      window.history.replaceState({}, "", profileScreenUrlFromLocation("/chat"));
+      this.retry();
+    } catch {
+      // Host-scoped mounts such as /approval carry no Runtime Profile
+      // identity to qualify a recovery target; stay on the boundary.
+    }
+  };
   private safeMode = () => {
-    resetAffectedClientState(typeof localStorage === "undefined" ? null : localStorage);
-    window.location.assign(profileScreenUrlFromLocation("/chat?safe_mode=1"));
+    try {
+      resetAffectedClientState(typeof localStorage === "undefined" ? null : localStorage);
+      window.location.assign(profileScreenUrlFromLocation("/chat?safe_mode=1"));
+    } catch {
+      // Same Host-scoped guard as stableWorkspace: without a Profile prefix
+      // there is no profile-qualified safe-mode destination to assign.
+    }
   };
   private exportDraft = () => {
     if (!this.state.draft) return;

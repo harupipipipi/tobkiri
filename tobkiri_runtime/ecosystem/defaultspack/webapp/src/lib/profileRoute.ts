@@ -78,6 +78,19 @@ export function profileScreenUrlFromLocation(
   return `${target.pathname}${target.search}${target.hash}`;
 }
 
+/**
+ * Host-scoped Application screens are served from dedicated top-level mounts
+ * and deliberately carry no Runtime Profile identity: the Launcher validates
+ * the exact `/approval` window path and request id before any approval
+ * context reaches this surface.
+ */
+const HOST_APPLICATION_ROUTES: ReadonlySet<string> = new Set(["/approval"]);
+
+/** Resolve the Application route for a profile-qualified or Host-scoped path. */
 export function applicationPathname(pathname: string): string | null {
-  return parseProfileScreenPath(pathname)?.applicationRoute ?? null;
+  const qualified = parseProfileScreenPath(pathname);
+  if (qualified !== null && qualified.applicationRoute !== null) {
+    return qualified.applicationRoute;
+  }
+  return HOST_APPLICATION_ROUTES.has(pathname) ? pathname : null;
 }

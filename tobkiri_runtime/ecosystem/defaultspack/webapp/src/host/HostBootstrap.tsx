@@ -8,6 +8,7 @@ import {
 import { TobkiriLoadingScreen } from "../components/TobkiriLoadingScreen";
 import { defaultspackApiFetch, defaultspackContractRoute } from "../lib/api";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { AuthorityApprovalWindow } from "../components/AuthorityApprovalWindow";
 import {
   DynamicFrontendHost,
   contributionsForRoute,
@@ -18,6 +19,7 @@ import type {
   FrontendCatalog,
 } from "./frontendContracts";
 import {
+  applicationPathname,
   parseProfileScreenPath,
   profileScreenPath,
 } from "../lib/profileRoute";
@@ -167,6 +169,12 @@ export function HostBootstrap({
   const [catalog, setCatalog] = useState<FrontendCatalog | null>(null);
   const [failed, setFailed] = useState(false);
   const requested = useMemo(() => parseProfileScreenPath(pathname), [pathname]);
+  // Host-scoped mounts such as `/approval` intentionally omit the Runtime
+  // Profile prefix; they render their sealed Application screen directly.
+  const hostRoute = useMemo(
+    () => (requested === null ? applicationPathname(pathname) : null),
+    [pathname, requested],
+  );
 
   const refreshCatalog = useCallback(async (): Promise<FrontendCatalog> => {
     const value = await fetchDynamicCatalog();
@@ -176,6 +184,7 @@ export function HostBootstrap({
   }, []);
 
   useEffect(() => {
+    if (hostRoute !== null) return undefined;
     let active = true;
     void refreshCatalog().catch(
       () => {
@@ -185,7 +194,7 @@ export function HostBootstrap({
     return () => {
       active = false;
     };
-  }, [refreshCatalog]);
+  }, [refreshCatalog, hostRoute]);
 
   const capabilities = useMemo<FrontendCapabilityInvoker>(() => {
     const invoke = async (
@@ -213,6 +222,9 @@ export function HostBootstrap({
     void refreshCatalog().catch(() => undefined);
   };
   if (!requested) {
+    if (hostRoute === "/approval") {
+      return <AuthorityApprovalWindow />;
+    }
     return (
       <HostBootstrapFallback
         onRetry={retry}

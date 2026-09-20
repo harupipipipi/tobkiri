@@ -135,9 +135,15 @@ async function returnToFingerRecordingAfterApproval(): Promise<void> {
   }
   window.close();
   window.setTimeout(() => {
-    if (!document.hidden) window.location.replace(
-      profileScreenUrlFromLocation("/finger-recording?authority_approved=1"),
-    );
+    if (document.hidden) return;
+    try {
+      window.location.replace(
+        profileScreenUrlFromLocation("/finger-recording?authority_approved=1"),
+      );
+    } catch {
+      // The dedicated /approval mount carries no Runtime Profile identity to
+      // qualify a return target; the settled approval screen stays in place.
+    }
   }, 250);
 }
 

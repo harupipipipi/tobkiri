@@ -27,6 +27,26 @@ test("profile screen paths preserve persistent IDs and declared routes", () => {
   );
 });
 
+test("the dedicated approval mount resolves as a Host-scoped Application route", () => {
+  // The Launcher opens the approval window at bare `/approval?request_id=…`
+  // and validates that exact path itself, so the route must reach the
+  // Application without a Runtime Profile prefix.
+  assert.equal(applicationPathname("/approval"), "/approval");
+  assert.equal(applicationPathname("/p/profile-a/approval"), "/approval");
+  // Identity parsing still fails closed: bare `/approval` never mints a
+  // Profile identity, and near-miss paths resolve to nothing.
+  assert.equal(parseProfileScreenPath("/approval"), null);
+  for (const path of [
+    "/approvals",
+    "/approval/extra",
+    "/approval/",
+    "/APPROVAL",
+    "/chat",
+  ]) {
+    assert.equal(applicationPathname(path), null, path);
+  }
+});
+
 test("unqualified, malformed, traversal and noncanonical paths fail closed", () => {
   for (const path of [
     "/chat",

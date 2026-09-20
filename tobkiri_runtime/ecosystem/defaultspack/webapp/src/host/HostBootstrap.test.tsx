@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   FrontendCapabilityError,
+  HostBootstrap,
   fetchDynamicCatalog,
   invokeCapability,
   resolveProfileScreenRequest,
@@ -90,6 +93,27 @@ test("screen route resolution binds URL identity and declared non-Chat entries",
     "reject",
   );
   assert.equal(resolveProfileScreenRequest("/coding", codingCatalog).kind, "reject");
+});
+
+test("HostBootstrap renders the sealed approval screen on its dedicated mount", () => {
+  // The Launcher opens bare `/approval?request_id=…`; the host route layer
+  // must render the approval window instead of the Profile-identity fallback.
+  const markup = renderToStaticMarkup(
+    createElement(HostBootstrap, { pathname: "/approval" }),
+  );
+  assert.match(markup, /role="status"/);
+  assert.match(markup, /承認リクエストを読み込み中/);
+  assert.doesNotMatch(markup, /data-frontend-unavailable/);
+});
+
+test("HostBootstrap keeps unqualified non-Application paths fail-closed", () => {
+  for (const pathname of ["/chat", "/approvals", "/approval/extra"]) {
+    const markup = renderToStaticMarkup(
+      createElement(HostBootstrap, { pathname }),
+    );
+    assert.match(markup, /data-frontend-unavailable/);
+    assert.doesNotMatch(markup, /承認リクエストを読み込み中/);
+  }
 });
 
 test("HostBootstrap accepts the canonical PackAPI success envelope", async (context) => {
