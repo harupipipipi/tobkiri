@@ -295,21 +295,11 @@ impl HostBrokerRuntime {
             let request_id = request_id.trim().to_string();
             // The bootstrap `?code=` exchange is a blocking HTTP call with
             // retries; keep it on this broker thread and hand only the window
-            // create/navigate/focus work to the UI thread.
+            // create/navigate/focus work to the UI thread through the shared
+            // bounded dispatch.
             let approval_url =
                 crate::authority_approval_bootstrap_window_url(&config, &request_id)?;
-            let (result_tx, result_rx) = std::sync::mpsc::channel();
-            let app_for_thread = app.clone();
-            app.run_on_main_thread(move || {
-                let _ = result_tx.send(crate::open_authority_approval_window_at_url(
-                    &app_for_thread,
-                    approval_url,
-                ));
-            })
-            .map_err(|error| format!("failed to schedule approval window open: {error}"))?;
-            result_rx
-                .recv_timeout(Duration::from_secs(15))
-                .map_err(|error| format!("approval window open did not respond: {error}"))?
+            crate::open_authority_approval_window_on_main_thread(&app, approval_url)
         })
     }
 

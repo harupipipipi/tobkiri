@@ -81,6 +81,11 @@ const DEFAULTS_CONSOLE_WINDOW_TITLE: &str = "詳細ログ";
 const HOST_PERMISSIONS_WINDOW_LABEL: &str = "host-permissions";
 const HOST_PERMISSIONS_WINDOW_TITLE: &str = "Tobkiri Launcher Host Permissions";
 const AUTHORITY_UI_OPERATOR_TTL_SECONDS: u64 = 180;
+/// Bounded wait for approval-window work dispatched to the Tauri main thread.
+/// The main thread can be occupied inside WebKit IPC (for example
+/// `AuxiliaryProcessProxy::connect` during WKWebView creation), so no caller
+/// may wait on it without a deadline.
+const MAIN_THREAD_UI_WORK_TIMEOUT: Duration = Duration::from_secs(15);
 const PANEL_SESSION_CALLER_DENIED: &str =
     "panel session renewal is unavailable from this Launcher window";
 #[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
@@ -474,15 +479,35 @@ fn authority_approval_request_from_args(args: &[String]) -> Option<String> {
 }
 
 fn handle_duplicate_launcher_args(app: &AppHandle, args: Vec<String>) {
-    if let Some(request_id) = authority_approval_request_from_args(&args) {
-        let config = app.state::<AppConfig>();
-        if let Err(error) = open_authority_approval_window_for_app(app, config.inner(), &request_id)
-        {
+    handle_duplicate_launcher_args_with(
+        &args,
+        |request_id| {
+            // The single-instance listener starts while plugins initialize and
+            // can fire before `setup` manages `AppConfig`; `state()` would
+            // panic on such an early duplicate launch.
+            let Some(config) = app.try_state::<AppConfig>() else {
+                return Err(
+                    "approval window is unavailable before Launcher startup completes".to_string(),
+                );
+            };
+            open_authority_approval_window_for_app(app, config.inner(), request_id)
+        },
+        || show_primary_window(app),
+    );
+}
+
+fn handle_duplicate_launcher_args_with(
+    args: &[String],
+    open_authority_approval: impl FnOnce(&str) -> Result<(), String>,
+    show_primary: impl FnOnce() -> Result<(), String>,
+) {
+    if let Some(request_id) = authority_approval_request_from_args(args) {
+        if let Err(error) = open_authority_approval(&request_id) {
             error!("Failed to open requested authority approval window: {error}");
         }
         return;
     }
-    if let Err(error) = show_primary_window(app) {
+    if let Err(error) = show_primary() {
         error!("Failed to focus existing Tobkiri window after duplicate launch: {error}");
     }
 }
@@ -548,6 +573,63 @@ fn authority_approval_bootstrap_window_url(
         .map_err(|error| format!("failed to attach authority approval bootstrap code: {error:#}"))
 }
 
+/// Sends `work` to the main thread through `schedule` and waits for its result
+/// with a bounded timeout. `WebviewWindowBuilder::build()`/focus and the wry
+/// window getters abort the process or deadlock when they run off the main
+/// thread, and an unbounded wait would hang the calling worker forever while
+/// the main thread is stuck in WebKit IPC. The `schedule` seam keeps the
+/// dispatch contract testable without an `AppHandle`.
+fn dispatch_ui_work_on_main_thread<T: Send + 'static>(
+    description: &str,
+    timeout: Duration,
+    schedule: impl FnOnce(Box<dyn FnOnce() + Send>) -> Result<(), String>,
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let (result_tx, result_rx) = std::sync::mpsc::channel();
+    schedule(Box::new(move || {
+        let _ = result_tx.send(work());
+    }))
+    .map_err(|error| format!("failed to schedule {description}: {error}"))?;
+    result_rx
+        .recv_timeout(timeout)
+        .map_err(|error| format!("{description} did not respond: {error}"))?
+}
+
+/// Runs `work` on the Tauri main thread and returns its result, failing
+/// instead of blocking forever when the main thread does not answer within
+/// [`MAIN_THREAD_UI_WORK_TIMEOUT`]. The wry runtime executes the scheduled
+/// closure inline when this is already running on the main thread, so the
+/// dispatch is also correct for main-thread callers.
+fn run_ui_work_on_main_thread<T: Send + 'static>(
+    app: &AppHandle,
+    description: &str,
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    dispatch_ui_work_on_main_thread(
+        description,
+        MAIN_THREAD_UI_WORK_TIMEOUT,
+        |task| {
+            app.run_on_main_thread(task)
+                .map_err(|error| error.to_string())
+        },
+        work,
+    )
+}
+
+/// Schedules the approval window create/navigate/focus on the Tauri main
+/// thread. `WebviewWindowBuilder::build()` aborts inside wry/WebKit when it is
+/// invoked on a tokio worker, so every caller routes through this shared
+/// bounded dispatch — the same one the host broker approval path uses.
+pub(crate) fn open_authority_approval_window_on_main_thread(
+    app: &AppHandle,
+    approval_url: Url,
+) -> Result<(), String> {
+    let app_for_thread = app.clone();
+    run_ui_work_on_main_thread(app, "approval window open", move || {
+        open_authority_approval_window_at_url(&app_for_thread, approval_url)
+    })
+}
+
 fn focus_authority_approval_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     window
         .unminimize()
@@ -569,8 +651,11 @@ fn open_authority_approval_window_for_app(
     request_id: &str,
 ) -> Result<(), String> {
     let request_id = request_id.trim().to_string();
+    // The bootstrap `?code=` exchange is a blocking HTTP call with retries;
+    // keep it on the calling thread and hand only the window
+    // create/navigate/focus work to the main thread.
     let approval_url = authority_approval_bootstrap_window_url(config, &request_id)?;
-    open_authority_approval_window_at_url(app, approval_url)
+    open_authority_approval_window_on_main_thread(app, approval_url)
 }
 
 // Window create/navigate/focus only. The caller computes the bootstrap URL
@@ -722,12 +807,20 @@ async fn open_authority_approval_window(
     config: tauri::State<'_, AppConfig>,
     request_id: String,
 ) -> Result<(), String> {
-    let focused = window
-        .is_focused()
-        .map_err(|error| format!("failed to inspect approval caller focus: {error}"))?;
-    let current_url = window
-        .url()
-        .map_err(|error| format!("failed to inspect approval caller URL: {error}"))?;
+    // `is_focused`/`url` dispatch onto the main thread and would otherwise
+    // block this tokio worker without a deadline; route them through the same
+    // bounded dispatch the window build uses.
+    let caller_window = window.clone();
+    let (focused, current_url) =
+        run_ui_work_on_main_thread(&app, "approval caller inspection", move || {
+            let focused = caller_window
+                .is_focused()
+                .map_err(|error| format!("failed to inspect approval caller focus: {error}"))?;
+            let current_url = caller_window
+                .url()
+                .map_err(|error| format!("failed to inspect approval caller URL: {error}"))?;
+            Ok((focused, current_url))
+        })?;
     let active_binding = if window.label() == DEFAULTSPACK_MAIN_WINDOW_LABEL {
         Some(active_authority_binding_for_approval(config.inner())?)
     } else {
@@ -1661,25 +1754,19 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
         }
 
         thread::sleep(Duration::from_secs(2));
-        let app_for_open = app.clone();
         let config_for_open = config;
         let request_id_for_open = request_id.clone();
-        if let Err(error) = app.run_on_main_thread(move || {
-            match open_authority_approval_window_for_app(
-                &app_for_open,
-                &config_for_open,
-                &request_id_for_open,
-            ) {
-                Ok(()) => info!(
-                    "authority smoke approval window opened on main thread for request {request_id_for_open}"
-                ),
-                Err(error) => {
-                    warn!("authority smoke approval window failed: {error}");
-                }
+        // `open_authority_approval_window_for_app` keeps the blocking bootstrap
+        // exchange on this thread and dispatches the window work to the main
+        // thread itself.
+        match open_authority_approval_window_for_app(&app, &config_for_open, &request_id_for_open) {
+            Ok(()) => {
+                info!("authority smoke approval window opened for request {request_id_for_open}")
             }
-        }) {
-            warn!("authority smoke test could not schedule approval window: {error}");
-            return;
+            Err(error) => {
+                warn!("authority smoke approval window failed: {error}");
+                return;
+            }
         }
 
         monitor_debug_authority_smoke_settlement(
@@ -4513,6 +4600,166 @@ mod tests {
             "second".into(),
         ])
         .is_none());
+    }
+
+    #[test]
+    fn duplicate_launcher_approval_args_reach_the_approval_window_opener() {
+        let opened = Arc::new(Mutex::new(Vec::<String>::new()));
+        let primary_shown = Arc::new(AtomicBool::new(false));
+        let opened_for_callback = Arc::clone(&opened);
+        let primary_for_callback = Arc::clone(&primary_shown);
+        handle_duplicate_launcher_args_with(
+            &[
+                "tobkiri-launcher".into(),
+                AUTHORITY_APPROVAL_ARGUMENT.into(),
+                "interactive-effect-123".into(),
+            ],
+            move |request_id| {
+                opened_for_callback
+                    .lock()
+                    .unwrap()
+                    .push(request_id.to_string());
+                Ok(())
+            },
+            move || {
+                primary_for_callback.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        );
+        assert_eq!(
+            opened.lock().unwrap().as_slice(),
+            &["interactive-effect-123".to_string()]
+        );
+        assert!(!primary_shown.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn duplicate_launcher_approval_failure_does_not_refocus_the_primary_window() {
+        // An approval open that fails (for example because `AppConfig` is not
+        // managed yet during early startup) must be reported as an approval
+        // failure rather than silently refocusing the primary window.
+        let primary_shown = Arc::new(AtomicBool::new(false));
+        let primary_for_callback = Arc::clone(&primary_shown);
+        handle_duplicate_launcher_args_with(
+            &[
+                "tobkiri-launcher".into(),
+                AUTHORITY_APPROVAL_ARGUMENT.into(),
+                "interactive-effect-123".into(),
+            ],
+            |_| Err("configuration not managed yet".to_string()),
+            move || {
+                primary_for_callback.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        );
+        assert!(!primary_shown.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn duplicate_launcher_plain_args_focus_the_primary_window() {
+        let approval_attempted = Arc::new(AtomicBool::new(false));
+        let primary_shown = Arc::new(AtomicBool::new(false));
+        let approval_for_callback = Arc::clone(&approval_attempted);
+        let primary_for_callback = Arc::clone(&primary_shown);
+        handle_duplicate_launcher_args_with(
+            &["tobkiri-launcher".into()],
+            move |_| {
+                approval_for_callback.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+            move || {
+                primary_for_callback.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        );
+        assert!(!approval_attempted.load(Ordering::SeqCst));
+        assert!(primary_shown.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn main_thread_dispatch_runs_ui_work_only_inside_the_scheduled_task() {
+        // The window build must never run inline on the calling worker: it
+        // executes only when the scheduler (the wry main thread) runs the
+        // queued task.
+        let work_ran = Arc::new(AtomicBool::new(false));
+        let work_for_closure = Arc::clone(&work_ran);
+        let result = dispatch_ui_work_on_main_thread(
+            "approval window open",
+            Duration::from_secs(1),
+            |task| {
+                task();
+                Ok(())
+            },
+            move || {
+                work_for_closure.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        );
+        assert!(result.is_ok());
+        assert!(work_ran.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn main_thread_dispatch_reports_schedule_failures_without_running_work() {
+        let work_ran = Arc::new(AtomicBool::new(false));
+        let work_for_closure = Arc::clone(&work_ran);
+        let error = dispatch_ui_work_on_main_thread(
+            "approval window open",
+            Duration::from_secs(1),
+            |_| Err("event loop closed".to_string()),
+            move || {
+                work_for_closure.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            "failed to schedule approval window open: event loop closed"
+        );
+        assert!(!work_ran.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn main_thread_dispatch_propagates_the_work_result() {
+        let error = dispatch_ui_work_on_main_thread::<()>(
+            "approval window open",
+            Duration::from_secs(1),
+            |task| {
+                task();
+                Ok(())
+            },
+            || Err("build rejected".to_string()),
+        )
+        .unwrap_err();
+        assert_eq!(error, "build rejected");
+
+        let value = dispatch_ui_work_on_main_thread(
+            "approval caller inspection",
+            Duration::from_secs(1),
+            |task| {
+                task();
+                Ok(())
+            },
+            || Ok(42_u8),
+        )
+        .unwrap();
+        assert_eq!(value, 42);
+    }
+
+    #[test]
+    fn main_thread_dispatch_is_bounded_when_the_task_never_runs() {
+        let error = dispatch_ui_work_on_main_thread(
+            "approval window open",
+            Duration::from_millis(20),
+            |task| {
+                std::mem::forget(task);
+                Ok(())
+            },
+            || Ok(()),
+        )
+        .unwrap_err();
+        assert!(error.contains("approval window open did not respond"));
     }
 
     #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
