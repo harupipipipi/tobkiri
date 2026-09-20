@@ -15005,7 +15005,7 @@
         "rule_id": "legacy_interface_registry"
       },
       {
-        "evidence_digest": "sha256:5797dd10dc8ba95a0b006af20751c0cca76c77192d8a94bd4374659ffd0af2e8",
+        "evidence_digest": "sha256:90c0b731fd8b0f107e4f0f9abe39645815fca5a0ca0cfbb5c4853f7069954e4c",
         "line": 4,
         "path": "tobkiri_runtime/ecosystem/defaultspack/blocks/chat/setup.py",
         "rule_id": "legacy_interface_registry"
@@ -18411,7 +18411,7 @@
     ]
   },
   "repository": {
-    "commit": "bae45cd7119407f624291286ba984ecdcbd321b1",
+    "commit": "75af0f8011d677751dcb16436510f695cb8eaea5",
     "tree_digest": "f2020e0d7867f37488dd507de72fca5335779249c1fa557fbe8662e81cbfcdc2"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
