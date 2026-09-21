@@ -5,14 +5,28 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from _common import error, ok
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from domain.frontend.command_registry import SlashCommandRegistry
+from domain.frontend.command_protocol import CommandProtocolRegistry
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 
-def run(input_data, context):
-    registry = SlashCommandRegistry()
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
+    """Run with a trusted caller-supplied owner, never one from request data."""
+    del context
+    registry = CommandProtocolRegistry(settings_owner=settings_owner)
     method = (input_data or {}).get("_method", "GET").upper()
     if method == "GET":
-        return ok({"commands": registry.list_commands(), "manifest_errors": registry.manifest_errors()})
+        catalog = registry.catalog()
+        return ok(
+            {
+                "commands": registry.legacy_read_projection(),
+                "manifest_errors": catalog["diagnostics"],
+                "deprecated": True,
+                "replacement": "/api/command-protocol/v1/catalog",
+            }
+        )
     if method == "POST":
-        return registry.execute(input_data or {}, context or {})
+        return error(
+            "legacy command execution is removed; use /api/command-protocol/v1/invoke",
+            "COMMAND_PROTOCOL_V1_REQUIRED",
+        )
     return error("unsupported method", "METHOD_NOT_ALLOWED")

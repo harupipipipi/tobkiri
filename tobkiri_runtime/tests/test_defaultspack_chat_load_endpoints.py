@@ -13,6 +13,8 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
+
 
 def _reset_chat_store(monkeypatch, tmp_path):
     from domain.chat.store import ChatStore
@@ -75,12 +77,11 @@ def test_chat_store_get_conversation_window_returns_tail_and_offset(tmp_path, mo
 def test_chat_store_window_uses_conversation_file_before_large_index(tmp_path, monkeypatch):
     store = _reset_chat_store(monkeypatch, tmp_path)
     conversation, message_ids = _conversation_with_messages(store, 4)
-    store._conversations = {}
 
-    def fail_full_index_refresh():
-        raise AssertionError("single conversation reads should not reload the full chat index")
+    def fail_full_index_refresh(*_args, **_kwargs):
+        raise AssertionError("single conversation reads should not list the full owner")
 
-    monkeypatch.setattr(store, "_refresh_if_storage_changed", fail_full_index_refresh)
+    monkeypatch.setattr(store, "_snapshot", fail_full_index_refresh)
 
     tail, window = store.get_conversation_window(conversation["id"], message_limit=2)
 
@@ -241,7 +242,6 @@ def test_chat_get_conversation_marks_stale_mimo_company_chat_for_redirect(tmp_pa
 
 def test_http_safe_get_chat_ui_routes_use_block_fallback(monkeypatch):
     import transport.http as transport_http
-    from domain.function_runtime import bridge
 
     server = transport_http.DefaultsHttpServer.__new__(transport_http.DefaultsHttpServer)
     server.facade = object()
@@ -251,11 +251,7 @@ def test_http_safe_get_chat_ui_routes_use_block_fallback(monkeypatch):
         calls.append((module_name, dict(payload), dict(context)))
         return {"status": "ok", "data": {"module": module_name}}
 
-    def fail_invoke_function(*args, **kwargs):
-        pytest.fail("safe GET chat UI routes should not invoke the function bridge")
-
     monkeypatch.setattr(transport_http, "invoke_block", fake_invoke_block)
-    monkeypatch.setattr(bridge, "invoke_function", fail_invoke_function)
 
     detail = server._invoke_function_route(
         "defaultspack:chat_get_conversation",

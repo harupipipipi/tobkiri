@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Protocol
 from uuid import uuid4
 
+from ..host_contract import host_contract_value
+
 
 @dataclass(frozen=True)
 class CredentialEnvelope:
@@ -34,7 +36,7 @@ class LocalEncryptedCredentialStore:
     def __init__(self, path: str | Path, key: str | None = None, key_version: str = "local-v1") -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.key = key or os.environ.get("RUMI_CREDENTIAL_FERNET_KEY")
+        self.key = key or host_contract_value("credential_store_key")
         self.key_version = key_version
         if not self.key:
             raise RuntimeError("RUMI_CREDENTIAL_FERNET_KEY is required for LocalEncryptedCredentialStore")

@@ -1,0 +1,71 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.ide.session.v1",
+      "rumi.resource.ide.session.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Bounded IDE session envelopes independent of chat and UI.",
+  "display_name": "Rumi IDE Bridge Service",
+  "host_execution": false,
+  "metadata": {
+    "authority_split": [
+      "observe",
+      "control"
+    ],
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:4e2274744bb75921e7587282c92ad7ec110a1840d8eb6c019fcefe8dd70659d4",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:d875a4928afdb08bb60ba631e451641c87849b11d799050fca4980d1d8d9635c"
+    },
+    "chat_or_ui_imports": false,
+    "file_shell_git_authority": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:d875a4928afdb08bb60ba631e451641c87849b11d799050fca4980d1d8d9635c"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "receipt_required": true
+  },
+  "pack_id": "rumi_ide_bridge_service_pack",
+  "pack_identity": "rumi:ecosystem/rumi_ide_bridge_service_pack",
+  "provenance": {
+    "build_identity": "rumi_ide_bridge_service_pack:1.0.0",
+    "content_hash": "sha256:ee1dfc4d2c78d4bc65ebfe1b96bf1ee41d30bb63021f25d7a61e2f31de93f1a9",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "host.authority.consume",
+    "ide.session.control",
+    "ide.session.observe",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

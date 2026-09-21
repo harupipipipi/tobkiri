@@ -1,19 +1,27 @@
 from __future__ import annotations
 
+import importlib
 import json
 import re
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from ..capability.catalog import CapabilityCatalog
 from .renderer import render
 from .resolver import PromptResolver
+from .studio_client import authored_prompt, prompt_owner_available
 from .trust import is_trusted_prompt_pack
 
 
 _VARIABLE_PATTERN = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
+
+
+def _mapping_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list_or_empty(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
 _BRACED_PATTERN = re.compile(r"\{\{(.*?)\}\}", re.DOTALL)
 _VALID_VARIABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
 _SAFE_PROMPT_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -23,8 +31,18 @@ def _read_mapping(path: Path | None) -> dict[str, Any]:
     if path is None or not path.is_file():
         return {}
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
+        yaml_module = importlib.import_module("yaml")
+    except ImportError:
+        return {}
+    safe_load = getattr(yaml_module, "safe_load", None)
+    yaml_error = getattr(yaml_module, "YAMLError", ValueError)
+    if not callable(safe_load):
+        return {}
+    try:
+        data = safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, UnicodeDecodeError):
+        return {}
+    except yaml_error:
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -120,6 +138,14 @@ def _select_existing_file(candidates: list[Path]) -> Path | None:
     return None
 
 
+def _read_prompt_file(path: Path) -> str | None:
+    """Read a prompt source without allowing a broken source to abort fallback."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 def _catalog_profile(profile_id: Any) -> dict[str, Any]:
     candidate = str(profile_id or "").strip()
     if not candidate:
@@ -132,7 +158,7 @@ def _catalog_profile(profile_id: Any) -> dict[str, Any]:
 
 
 def _source_pack_id(data: dict[str, Any], profile: dict[str, Any]) -> str:
-    metadata = profile.get("metadata") if isinstance(profile.get("metadata"), dict) else {}
+    metadata = _mapping_or_empty(profile.get("metadata"))
     raw_pack = (
         data.get("source_pack_id")
         or profile.get("source_pack_id")
@@ -183,21 +209,60 @@ def resolve_effective_prompt(input_data: dict[str, Any] | None) -> dict[str, Any
     base_pack = str(data.get("base_pack") or merged_profile.get("base_pack") or source_pack_id or "defaultspack").strip() or "defaultspack"
     source_chain: list[dict[str, Any]] = []
 
-    profile_candidates = _profile_prompt_candidates(prompts_dir, prompt_ids)
-    profile_candidate = _select_existing_file(profile_candidates)
-    if profile_candidate is not None:
+    studio_prompt = authored_prompt(
+        str(data.get("profile_id") or merged_profile.get("profile_id") or ""),
+        prompt_ids,
+    )
+    if studio_prompt is not None:
+        prompt_id = str(studio_prompt.get("prompt_id") or prompt_ids[0])
         source_chain.append(
             _chain_entry(
-                source_type="profile_override",
-                layer="workspace_prompt_file",
+                source_type="global_contract",
+                layer="prompt_authoring_owner",
                 selected=True,
-                source=str(profile_candidate),
-                candidates=profile_candidates,
-                prompt_id=prompt_ids[0],
+                source="rumi.resource.prompt.studio.v1",
+                prompt_id=prompt_id,
             )
         )
-        content = profile_candidate.read_text(encoding="utf-8")
-        return _effective_payload(data, prompt_ids[0], "profile_override", str(profile_candidate), content, source_chain)
+        return _effective_payload(
+            data,
+            prompt_id,
+            "global_contract",
+            "rumi.resource.prompt.studio.v1",
+            str(studio_prompt.get("body") or ""),
+            source_chain,
+            metadata={
+                "body_hash": studio_prompt.get("body_hash"),
+                "revision": studio_prompt.get("revision"),
+            },
+        )
+
+    owner_active = prompt_owner_available()
+    profile_candidates = (
+        [] if owner_active else _profile_prompt_candidates(prompts_dir, prompt_ids)
+    )
+    profile_candidate = _select_existing_file(profile_candidates)
+    if profile_candidate is not None:
+        content = _read_prompt_file(profile_candidate)
+        if content is not None:
+            source_chain.append(
+                _chain_entry(
+                    source_type="profile_override",
+                    layer="workspace_prompt_file",
+                    selected=True,
+                    source=str(profile_candidate),
+                    candidates=profile_candidates,
+                    prompt_id=prompt_ids[0],
+                )
+            )
+            return _effective_payload(
+                data,
+                prompt_ids[0],
+                "profile_override",
+                str(profile_candidate),
+                content,
+                source_chain,
+            )
     source_chain.append(
         _chain_entry(
             source_type="profile_override",
@@ -211,45 +276,67 @@ def resolve_effective_prompt(input_data: dict[str, Any] | None) -> dict[str, Any
     snapshot_candidates = _snapshot_prompt_candidates(snapshots_dir, base_pack, prompt_ids)
     snapshot_candidate = _select_existing_file(snapshot_candidates)
     if snapshot_candidate is not None:
+        trusted, trust_reason = is_trusted_prompt_pack(base_pack)
+        content = _read_prompt_file(snapshot_candidate)
+        if trusted and content is not None:
+            source_chain.append(
+                _chain_entry(
+                    source_type="profile_snapshot",
+                    layer="profile_snapshot",
+                    selected=True,
+                    source=str(snapshot_candidate),
+                    candidates=snapshot_candidates,
+                    prompt_id=prompt_ids[0],
+                )
+            )
+            return _effective_payload(
+                data,
+                prompt_ids[0],
+                "profile_snapshot",
+                str(snapshot_candidate),
+                content,
+                source_chain,
+                source_pack_id=base_pack,
+                source_pack_trusted=True,
+                source_pack_trust_reason=trust_reason,
+            )
         source_chain.append(
             _chain_entry(
                 source_type="profile_snapshot",
                 layer="profile_snapshot",
-                selected=True,
+                selected=False,
                 source=str(snapshot_candidate),
                 candidates=snapshot_candidates,
                 prompt_id=prompt_ids[0],
             )
         )
-        content = snapshot_candidate.read_text(encoding="utf-8")
-        trusted, trust_reason = is_trusted_prompt_pack(base_pack)
-        return _effective_payload(
-            data,
-            prompt_ids[0],
-            "profile_snapshot",
-            str(snapshot_candidate),
-            content if trusted else "",
-            source_chain,
-            source_pack_id=base_pack,
-            source_pack_trusted=trusted,
-            source_pack_trust_reason=trust_reason,
+    else:
+        source_chain.append(
+            _chain_entry(
+                source_type="profile_snapshot",
+                layer="profile_snapshot",
+                selected=False,
+                candidates=snapshot_candidates,
+                prompt_id=prompt_ids[0],
+            )
         )
-    source_chain.append(
-        _chain_entry(
-            source_type="profile_snapshot",
-            layer="profile_snapshot",
-            selected=False,
-            candidates=snapshot_candidates,
-            prompt_id=prompt_ids[0],
-        )
-    )
 
     resolver = PromptResolver()
+    requested_sources: list[str | None] = [source_pack_id or None]
+    if source_pack_id:
+        requested_sources.append(None)
     for prompt_id in prompt_ids:
-        content, resolved_pack_id = resolver.resolve_prompt(prompt_id, source_pack_id=source_pack_id or None)
-        if content is not None:
-            prompt_source_pack_id = resolved_pack_id or source_pack_id or base_pack
+        for requested_source in requested_sources:
+            content, resolved_pack_id = resolver.resolve_prompt(
+                prompt_id,
+                source_pack_id=requested_source,
+            )
+            if content is None:
+                continue
+            prompt_source_pack_id = resolved_pack_id or requested_source or base_pack
             trusted, trust_reason = is_trusted_prompt_pack(prompt_source_pack_id)
+            if not trusted:
+                continue
             source = f"{prompt_source_pack_id}.{prompt_id}"
             source_chain.append(
                 _chain_entry(
@@ -265,11 +352,11 @@ def resolve_effective_prompt(input_data: dict[str, Any] | None) -> dict[str, Any
                 prompt_id,
                 "pack_default",
                 source,
-                content if trusted else "",
+                content,
                 source_chain,
                 metadata=_prompt_manifest_metadata(resolver.get_manifest(prompt_id)),
                 source_pack_id=prompt_source_pack_id,
-                source_pack_trusted=trusted,
+                source_pack_trusted=True,
                 source_pack_trust_reason=trust_reason,
             )
 
@@ -319,8 +406,8 @@ def _effective_payload(
 def _prompt_manifest_metadata(manifest: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(manifest, dict):
         return {}
-    config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
-    metadata = manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {}
+    config = _mapping_or_empty(manifest.get("config"))
+    metadata = _mapping_or_empty(manifest.get("metadata"))
     output = dict(metadata)
     for key in ("allow_disable", "safety_boundary", "owner", "source_path"):
         if key in manifest:
@@ -373,9 +460,12 @@ def _conversation_variables(
     if isinstance(raw_variables, dict):
         variables.update(raw_variables)
 
-    messages = data.get("messages")
-    if not isinstance(messages, list):
-        messages = context.get("messages") if isinstance(context.get("messages"), list) else []
+    raw_messages = data.get("messages")
+    messages = (
+        _list_or_empty(raw_messages)
+        if isinstance(raw_messages, list)
+        else _list_or_empty(context.get("messages"))
+    )
     messages_text = json.dumps(messages, ensure_ascii=False) if messages else ""
     variables.update(
         {

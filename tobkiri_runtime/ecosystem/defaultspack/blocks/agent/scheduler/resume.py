@@ -15,13 +15,13 @@ from blocks._common import ok, error
 from domain.agent.scheduler import Scheduler
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     schedule_id = input_data.get("schedule_id") if isinstance(input_data, dict) else None
     if not schedule_id:
         return error("schedule_id is required")
 
     try:
-        scheduler = Scheduler()
+        scheduler = Scheduler(settings_owner=settings_owner)
         schedule = scheduler.resume_schedule(schedule_id)
     except Exception as exc:
         return error("failed to resume schedule: " + str(exc), "INTERNAL_ERROR")

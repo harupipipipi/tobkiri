@@ -8,7 +8,9 @@
   "config": {
     "name": "calculator",
     "summary": "計算",
-    "tags": ["math"],
+    "tags": [
+      "math"
+    ],
     "ui": {
       "group_id": "other",
       "group_label": "Other",
@@ -29,9 +31,18 @@
           "type": "select",
           "default": "auto",
           "options": [
-            {"value": "auto", "label": "Auto"},
-            {"value": "plain", "label": "Plain number"},
-            {"value": "scientific", "label": "Scientific notation"}
+            {
+              "value": "auto",
+              "label": "Auto"
+            },
+            {
+              "value": "plain",
+              "label": "Plain number"
+            },
+            {
+              "value": "scientific",
+              "label": "Scientific notation"
+            }
           ],
           "help": "Saved preference for displaying calculator results."
         }
@@ -41,9 +52,16 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "expression": {"type": "string"}
+          "expression": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          }
         },
-        "required": ["expression"]
+        "required": [
+          "expression"
+        ],
+        "additionalProperties": false
       }
     },
     "tool_category": "utility",
@@ -52,8 +70,10 @@
     "approval_policy": "allow",
     "capability_grants": [],
     "execution": {
-      "type": "rumi_function",
-      "qualified_name": "defaultspack:tool_calculator"
+      "type": "global_contract",
+      "contract_id": "tobkiri.service.tool.local.operation.v1",
+      "provider_instance_id": "rumi_default_tools_pack.calculator",
+      "operation": "rumi_default_tools_pack.calculator-evaluate"
     }
   }
 }

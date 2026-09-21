@@ -7,7 +7,7 @@ export function CompanyTree({
   activeCompanyId,
   activeTaskCount,
   busy = false,
-  emptyMessage = "No employee group loaded.",
+  emptyMessage = "No Subagent Team loaded.",
   onSelect,
   onBootstrap,
   onRefresh,
@@ -26,7 +26,7 @@ export function CompanyTree({
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Bot size={14} className="text-zinc-500" />
-          <h3 className="truncate text-[12px] font-semibold text-zinc-200">Employee Group</h3>
+          <h3 className="truncate text-[12px] font-semibold text-zinc-200">Subagent Team</h3>
         </div>
         <div className="flex items-center gap-1">
           {onRefresh && (
@@ -35,7 +35,7 @@ export function CompanyTree({
               onClick={onRefresh}
               disabled={busy}
               className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"
-              title="Refresh employees"
+              title="Refresh Subagents"
             >
               <RefreshCw size={12} />
             </button>
@@ -46,7 +46,7 @@ export function CompanyTree({
               onClick={onBootstrap}
               disabled={busy}
               className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40"
-              title="Create employee group"
+              title="Create Subagent Team"
             >
               <Plus size={13} />
             </button>
@@ -79,7 +79,7 @@ export function CompanyTree({
                 ID: {company.id}
               </span>
               <span className="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-500">
-                <span>{company.agent_count ?? Object.keys(company.agents ?? {}).length} employees</span>
+                <span>{company.agent_count ?? Object.keys(company.agents ?? {}).length} Agents</span>
                 <span>{taskCount} tasks</span>
               </span>
             </button>
@@ -87,7 +87,7 @@ export function CompanyTree({
         })}
         {companies.length === 0 && (
           <div className="rounded-md border border-zinc-800/70 bg-zinc-950/40 px-2 py-2 text-[11px] text-zinc-500">
-            {busy ? "Loading employee group..." : emptyMessage}
+            {busy ? "Loading Subagent Team..." : emptyMessage}
           </div>
         )}
       </div>

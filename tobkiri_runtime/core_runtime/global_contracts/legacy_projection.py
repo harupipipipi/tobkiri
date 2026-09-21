@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import re
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 from .canonical import content_identity
 from .models import (
@@ -16,9 +14,6 @@ from .models import (
     ProviderDescriptor,
     SecurityClassification,
 )
-from .semver import parse_version
-
-_PACK_ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$")
 
 
 class LegacyRegistry(Protocol):
@@ -33,7 +28,7 @@ class LegacyRegistry(Protocol):
 
 @dataclass(frozen=True)
 class LegacyProjectionRule:
-    """Explicit migration rule from a legacy prefix or exact key."""
+    """Explicit migration rule from a legacy prefix to a global contract."""
 
     legacy_prefix: str
     contract_id: str
@@ -41,29 +36,6 @@ class LegacyProjectionRule:
     cardinality: Cardinality = Cardinality.MANY
     removal_wave: int = 10
     sunset_at: str = "2027-12-31"
-    exact_key: bool = False
-
-    def __post_init__(self) -> None:
-        """Validate the rule through the same typed contract boundary."""
-        if not self.legacy_prefix:
-            raise ValueError("legacy_prefix must not be empty")
-        if not 0 <= self.removal_wave <= 10:
-            raise ValueError("removal_wave must be between 0 and 10")
-        if not isinstance(self.exact_key, bool):
-            raise TypeError("exact_key must be a boolean")
-        ContractDescriptor(
-            contract_id=self.contract_id,
-            version=self.version,
-            cardinality=self.cardinality,
-            security=SecurityClassification.INTERNAL,
-            failure=FailureSemantics.FAIL_CLOSED,
-            lifecycle=LifecycleMetadata(
-                introduced="3.0.0",
-                deprecated=True,
-                deprecated_at="2026-07-13",
-                sunset_at=self.sunset_at,
-            ),
-        )
 
 
 class LegacyRegistryProjection:
@@ -74,10 +46,8 @@ class LegacyRegistryProjection:
         legacy_registry: LegacyRegistry,
         rules: tuple[LegacyProjectionRule, ...],
     ) -> None:
-        if len({rule.legacy_prefix for rule in rules}) != len(rules):
-            raise ValueError("legacy projection prefixes must be unique")
         self._legacy_registry = legacy_registry
-        self._rules = tuple(rules)
+        self._rules = rules
 
     def snapshot(self) -> tuple[ProviderDescriptor, ...]:
         """Return a deterministic data-only snapshot of configured rules."""
@@ -87,23 +57,10 @@ class LegacyRegistryProjection:
                 prefix=rule.legacy_prefix,
                 include_meta=True,
             )
-            if not isinstance(entries, Mapping):
-                raise TypeError("legacy registry list result must be a mapping")
-            for raw_key, raw_entry in sorted(
-                entries.items(), key=lambda item: str(item[0])
-            ):
-                key = str(raw_key)
-                if rule.exact_key and key != rule.legacy_prefix:
-                    continue
-                entry = raw_entry if isinstance(raw_entry, Mapping) else {}
-                raw_metadata = entry.get("last_meta")
-                metadata = (
-                    raw_metadata if isinstance(raw_metadata, Mapping) else {}
-                )
-                owner = _safe_pack_id(metadata.get("_source_pack_id"))
-                source_version = _safe_version(
-                    metadata.get("_source_pack_version")
-                )
+            for key, raw_entry in sorted(entries.items()):
+                entry = raw_entry if isinstance(raw_entry, dict) else {}
+                metadata = entry.get("last_meta") or {}
+                owner = str(metadata.get("_source_pack_id", "legacy.unknown"))
                 descriptor = ContractDescriptor(
                     contract_id=rule.contract_id,
                     version=rule.version,
@@ -120,19 +77,14 @@ class LegacyRegistryProjection:
                         rollback_id=f"legacy:{key}",
                     ),
                 )
-                opaque_id = content_identity({"legacy_key": key})[7:]
                 projected.append(
                     ProviderDescriptor(
                         contract=descriptor,
-                        provider_instance_id=f"legacy:{opaque_id}",
+                        provider_instance_id=f"legacy:{key}",
                         source_pack_id=owner,
-                        source_pack_version=source_version,
+                        source_pack_version=str(metadata.get("_source_pack_version", "0.0.0")),
                         content_hash=content_identity(
-                            {
-                                "key": key,
-                                "owner": owner,
-                                "contract": rule.contract_id,
-                            }
+                            {"key": key, "owner": owner, "contract": rule.contract_id}
                         ),
                         build_identity="legacy-projection",
                         trust_class="untrusted",
@@ -143,18 +95,3 @@ class LegacyRegistryProjection:
             sorted(projected, key=lambda item: item.provider_instance_id)
         )
 
-
-def _safe_pack_id(value: Any) -> str:
-    """Return an evidence-only pack identity for untrusted legacy metadata."""
-    candidate = str(value or "legacy.unknown")
-    return candidate if _PACK_ID.fullmatch(candidate) else "legacy.unknown"
-
-
-def _safe_version(value: Any) -> str:
-    """Return a strict SemVer value for untrusted legacy metadata."""
-    candidate = str(value or "0.0.0")
-    try:
-        parse_version(candidate)
-    except ValueError:
-        return "0.0.0"
-    return candidate

@@ -1,0 +1,61 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.job.v1"
+    ],
+    "requires": [
+      "rumi.action.job.adapter.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Deterministic global job adapter routing and replay protection.",
+  "display_name": "Rumi Job Action Broker",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:43757a9f974acf5cd42934af7d0795e19722cae0b2cf195e1999e793006c0bad",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:e3813b73fc0b5c599ba9a1075f10d81b89fcaed9796690d768ad02b66bc881b4"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:e3813b73fc0b5c599ba9a1075f10d81b89fcaed9796690d768ad02b66bc881b4"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "job_dispatch_idempotency_ledger"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_job_action_broker_pack",
+  "pack_identity": "rumi:ecosystem/rumi_job_action_broker_pack",
+  "provenance": {
+    "build_identity": "rumi_job_action_broker_pack:1.0.0",
+    "content_hash": "sha256:741ba3bb0e01cbd0a485cb63baa3c5ba5b5635a85ede9289d214ea71a73711ac",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "job.adapter.invoke",
+    "job.dispatch"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

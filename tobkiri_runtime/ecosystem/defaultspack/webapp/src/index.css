@@ -9,6 +9,28 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 0;
+}
+
+html {
+  min-height: 100%;
+  overflow-y: auto;
+}
+
+body {
+  height: auto;
+  min-height: 100%;
+}
+
+#root {
+  height: 100%;
+  min-height: 0;
+}
+
 body {
   background-color: #09090b; /* zinc-950 */
   color: #fafafa; /* zinc-50 */
@@ -20,15 +42,15 @@ body {
 }
 
 /* Scroll ownership contract:
-   - document/body keep a vertical fallback so missed pane scroll handling does
-     not clip content on short/mobile/keyboard-resized viewports.
-   - .rumi-app-shell fills at least the dynamic viewport without globally
-     clipping overflow.
+   - the document keeps a vertical fallback for content outside the app shell;
+     persistent navigation remains fixed inside the shell.
+   - .rumi-app-shell owns exactly one dynamic viewport.
    - top-level panes own internal scroll with min-h-0 + overflow-auto/y-auto. */
 .rumi-app-shell {
-  min-height: 100vh;
-  min-height: 100dvh;
-  overflow-x: hidden;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* ----------------------------------
@@ -233,7 +255,10 @@ body {
 }
 
 .rumi-greeting {
-  font-family: var(--font-display);
+  /* Keep the Home wordmark distinct from the application UI typeface. */
+  font-family: "Avenir Next Rounded", "Arial Rounded MT Bold", ui-rounded,
+    "Hiragino Maru Gothic ProN", sans-serif;
+  font-weight: 700;
   font-feature-settings: "palt";
   text-wrap: balance;
 }
@@ -244,7 +269,7 @@ body {
 
 .rumi-greeting {
   animation: rumi-greeting-enter 520ms 40ms cubic-bezier(0.2, 0.82, 0.2, 1) both;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.035em;
   text-shadow: 0 14px 42px rgba(0, 0, 0, 0.4);
 }
 
@@ -293,6 +318,22 @@ body {
     box-shadow 220ms ease;
 }
 
+.rumi-composer-frame:not(.rumi-composer-new) {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #1a1b20 0%, #15161a 100%);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.rumi-composer-frame:not(.rumi-composer-new):focus-within {
+  border-color: rgba(129, 140, 248, 0.38);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.46),
+    0 0 0 3px rgba(99, 102, 241, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
 .rumi-composer-new {
   animation: rumi-composer-enter 620ms 90ms cubic-bezier(0.18, 0.9, 0.22, 1) both;
 }
@@ -326,13 +367,62 @@ body {
     transform 220ms ease;
 }
 
-.rumi-composer-new:focus-within .rumi-composer-main-panel {
-  border-color: rgba(244, 244, 245, 0.72);
-  background-color: #222224;
+/* Shared floating surface for composer menus, dropdowns and prompt popovers. */
+.rumi-popover {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.875rem;
+  background:
+    linear-gradient(180deg, rgba(32, 33, 37, 0.98), rgba(22, 23, 27, 0.98));
   box-shadow:
-    0 32px 110px rgba(0, 0, 0, 0.52),
-    0 0 0 1px rgba(244, 244, 245, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 24px 70px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Quiet ghost icon button used across the composer toolbar. */
+.rumi-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  height: 44px;
+  width: 44px;
+  flex-shrink: 0;
+  border-radius: 0.625rem;
+  color: #a1a1aa;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+.rumi-icon-button:hover:not(:disabled) {
+  color: #f4f4f5;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.rumi-icon-button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.rumi-icon-button:disabled {
+  opacity: 0.45;
+}
+
+.rumi-icon-button.is-live {
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.14);
+}
+
+.rumi-icon-button.is-live:hover:not(:disabled) {
+  color: #fecdd3;
+  background: rgba(244, 63, 94, 0.22);
+}
+
+.rumi-composer-new:focus-within .rumi-composer-main-panel {
+  border-color: rgba(255, 255, 255, 0.13);
+  background-color: #171a20;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.44), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 @container (max-width: 460px) {
@@ -505,6 +595,25 @@ body {
   user-select: text !important;
   -webkit-user-select: text !important;
   cursor: text;
+}
+
+.rumi-composer-inline-mention-layer {
+  z-index: 0;
+  pointer-events: none;
+  scrollbar-width: none;
+}
+
+.rumi-composer-inline-mention-layer::-webkit-scrollbar {
+  display: none;
+}
+
+.rumi-composer-inline-mention {
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+.rumi-composer-textarea-highlighted {
+  z-index: 1;
 }
 
 .rumi-composer-fake-caret {
@@ -1029,7 +1138,9 @@ body {
   background: rgba(39, 39, 42, 0.32);
 }
 
-/* Minimal shell: remove visual frames while preserving content and layout. */
+/* Shell framing: surfaces keep their hairline borders and elevation shadows.
+   Text fields satisfy :focus-visible after a pointer click in browsers, so the
+   runtime marks explicit Tab navigation before enabling interaction outlines. */
 html,
 body,
 #root {
@@ -1037,23 +1148,17 @@ body,
   overflow-x: hidden;
 }
 
-#root *,
-#root *::before,
-#root *::after {
-  border-width: 0 !important;
-  box-shadow: none !important;
-  text-shadow: none !important;
-}
-
 #root :is(input, textarea, select, button):focus {
   outline: none !important;
-  box-shadow: none !important;
 }
 
 #root :is(input, textarea, select, button):focus-visible {
-  outline: 2px solid rgb(56 189 248 / 85%) !important;
+  outline: none !important;
+}
+
+html.rumi-keyboard-focus #root :is(input, textarea, select, button):focus-visible {
+  outline: 2px solid rgb(129 140 248 / 90%) !important;
   outline-offset: 2px !important;
-  box-shadow: none !important;
 }
 
 .rumi-tool-activity-timeline {
@@ -1078,5 +1183,555 @@ body,
 @media (prefers-reduced-motion: reduce) {
   .rumi-tool-activity .animate-pulse {
     animation: none;
+  }
+}
+
+/* Settings control center: stable scrolling, keyboard focus, and compact-density
+   behavior without introducing a separate visual system. */
+[data-settings-modal] {
+  min-width: 0;
+  color-scheme: dark;
+}
+
+[data-settings-modal] #settings-content {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+[data-settings-modal] [data-settings-field] {
+  scroll-margin-block: 6rem;
+}
+
+[data-settings-profile-panel] {
+  min-width: 0;
+  container-type: inline-size;
+}
+
+html.rumi-keyboard-focus #root [data-settings-modal] :is(a, summary, [tabindex]):focus-visible {
+  outline: 2px solid rgb(129 140 248 / 90%) !important;
+  outline-offset: 2px !important;
+}
+
+@media (max-width: 640px) {
+  [data-settings-modal] #settings-content {
+    scrollbar-gutter: auto;
+  }
+
+  [data-settings-profile-panel] [role="listbox"] {
+    max-height: 18rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-settings-modal],
+  [data-settings-modal] *,
+  [data-settings-modal] *::before,
+  [data-settings-modal] *::after {
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  [data-settings-modal] :is(button, input, textarea, select, summary, [role="option"]) {
+    forced-color-adjust: auto;
+  }
+
+  [data-settings-modal] [aria-current="page"],
+  [data-settings-modal] [aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Defaults Profile product-quality system overrides
+   -------------------------------------------------------------------------- */
+:root {
+  color-scheme: dark;
+  --rumi-surface-base: #09090b;
+  --rumi-surface-raised: #111116;
+  --rumi-surface-overlay: #17181d;
+  --rumi-border-subtle: rgba(63, 63, 70, 0.62);
+  --rumi-border-strong: rgba(113, 113, 122, 0.78);
+  --rumi-focus-color: rgb(129 140 248 / 94%);
+  --rumi-radius-control: 0.625rem;
+  --rumi-radius-panel: 0.875rem;
+  --rumi-shadow-overlay: 0 24px 72px rgba(0, 0, 0, 0.52);
+}
+
+body {
+  line-height: 1.45;
+}
+
+.rumi-shell-body,
+.rumi-workspace-main,
+.rumi-chat-pane {
+  min-width: 0;
+  min-height: 0;
+}
+
+.rumi-history-pane {
+  contain: layout paint;
+}
+
+.rumi-composer-shell {
+  width: min(760px, calc(100% - 32px));
+  max-width: 760px;
+}
+
+.rumi-composer-shell-new {
+  width: min(680px, calc(100% - 32px));
+  max-width: 680px;
+}
+
+.rumi-composer-dock {
+  border-top: 1px solid rgba(39, 39, 42, 0.42);
+  background:
+    linear-gradient(180deg, rgba(9, 9, 11, 0.72), rgba(9, 9, 11, 0.98) 22%),
+    #09090b;
+}
+
+.rumi-composer-frame:not(.rumi-composer-new) {
+  overflow: visible;
+}
+
+.rumi-popover {
+  max-width: calc(100vw - 16px);
+  max-height: min(32rem, calc(100dvh - 24px));
+  overscroll-behavior: contain;
+}
+
+.rumi-messages-scroll {
+  scrollbar-gutter: stable;
+  scroll-padding-block: 1rem 7rem;
+  overflow-anchor: none;
+}
+
+.rumi-chat-error {
+  width: min(980px, calc(100% - 24px));
+  margin-inline: auto;
+}
+
+.rumi-workspace-tabbar {
+  scrollbar-gutter: stable;
+}
+
+.rumi-workspace-new-tab-menu {
+  max-height: min(36rem, calc(100dvh - 72px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.rumi-right-sidebar {
+  width: auto;
+  min-width: 3.25rem;
+}
+
+.rumi-right-sidebar-panel {
+  min-width: 13.75rem;
+  max-width: min(32.5rem, calc(100vw - 6rem));
+}
+
+.rumi-right-sidebar-rail,
+.rumi-right-sidebar-rail-scroll {
+  min-width: 3.25rem;
+}
+
+.rumi-kanban-columns {
+  scrollbar-gutter: stable;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+}
+
+.rumi-kanban-columns > [data-kanban-column-id] {
+  scroll-snap-align: start;
+}
+
+/* Pointer focus stays visually quiet. The runtime adds rumi-keyboard-focus
+   before Tab moves focus, so keyboard users still get the full focus ring. */
+#root :is(a, button, input, textarea, select, summary, [tabindex], [role="button"], [role="option"]):focus {
+  outline: none !important;
+}
+
+html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, [tabindex], [role="button"], [role="option"]):focus-visible {
+  outline: 2px solid var(--rumi-focus-color) !important;
+  outline-offset: 2px !important;
+}
+
+#root :is(button, input, textarea, select, [role="button"]):disabled {
+  cursor: not-allowed;
+}
+
+/* Scrollbars remain discoverable without dominating the dark shell. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  min-height: 28px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #3f3f46;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+  background-clip: padding-box;
+}
+
+[data-settings-modal] {
+  font-size: 0.875rem;
+}
+
+[data-settings-modal] :is(input, textarea, select) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-settings-modal] button {
+  text-wrap: balance;
+}
+
+[data-settings-modal] #rumi-settings-dialog-description {
+  max-width: 72rem;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1360px) {
+  .rumi-history-pane {
+    width: 252px !important;
+    min-width: 220px !important;
+    max-width: 26vw !important;
+  }
+
+  .rumi-right-sidebar {
+    width: auto;
+  }
+
+  .rumi-right-sidebar-panel {
+    /* The open panel must participate in the shell flex layout.  Keeping it
+       absolute made it cover the chat composer and intercept the send button
+       at common desktop window widths. */
+    position: relative;
+    inset: auto;
+    max-width: min(20rem, 34vw);
+    border-left: 1px solid rgba(63, 63, 70, 0.72);
+  }
+}
+
+@media (max-width: 1024px) {
+  .rumi-history-pane {
+    width: 232px !important;
+    min-width: 208px !important;
+    max-width: 29vw !important;
+  }
+
+  .rumi-chat-context-toolbar span {
+    display: none;
+  }
+
+  [data-settings-modal] #settings-content {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 820px) {
+  .rumi-shell-body {
+    position: relative;
+  }
+
+  .rumi-history-pane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(17rem, calc(100vw - 4.25rem)) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.5);
+  }
+
+  .rumi-composer-shell {
+    width: min(100%, calc(100vw - 92px));
+  }
+}
+
+@media (max-width: 720px) {
+  .rumi-composer-shell,
+  .rumi-composer-shell-new {
+    width: min(100%, calc(100vw - 16px));
+  }
+
+  .rumi-composer-dock {
+    padding-inline: 0.5rem !important;
+  }
+
+  .rumi-messages-scroll {
+    padding-inline: 0.75rem !important;
+    scrollbar-gutter: auto;
+  }
+
+  .rumi-workspace-tabbar {
+    padding-inline: 0.375rem;
+  }
+
+  .rumi-workspace-new-tab-menu {
+    left: auto;
+    right: 0;
+  }
+
+  .rumi-workspace-new-tab-menu > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rumi-chat-context-toolbar {
+    padding-inline: 0.5rem;
+  }
+
+  [data-settings-modal] header {
+    gap: 0.5rem;
+  }
+
+  [data-settings-modal] #rumi-settings-dialog-description {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  [data-settings-modal] :is(input, textarea, select) {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 520px) {
+  .rumi-workspace-new-tab-menu {
+    width: calc(100vw - 12px);
+  }
+
+  .rumi-chat-error {
+    width: calc(100% - 16px);
+  }
+
+  .rumi-kanban-columns {
+    padding-inline: 0.5rem;
+  }
+}
+
+/* Composer interaction polish: compact idle height, contained attachments and
+   a neutral recording surface shared by the Home and conversation composers. */
+.rumi-composer-attachment-strip {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 7rem;
+  padding: 0.5rem 0.75rem 0.75rem;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scroll-snap-type: x proximity;
+}
+
+.rumi-composer-attachment-strip > * {
+  scroll-snap-align: start;
+}
+
+.rumi-composer-attachment-reveal {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(0.5rem);
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.2, 0.82, 0.2, 1),
+    opacity 180ms ease,
+    transform 280ms cubic-bezier(0.2, 0.82, 0.2, 1);
+}
+
+.rumi-composer-attachment-reveal[data-attachment-state="expanded"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.rumi-composer-attachment-reveal-inner {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rumi-composer-new .rumi-composer-attachment-strip {
+  padding-inline: 0;
+  padding-top: 0;
+}
+
+.rumi-composer-frame:not(.rumi-composer-new) .rumi-composer-attachment-strip {
+  padding-inline: 0.75rem;
+}
+
+.rumi-composer-context-strip {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rumi-voice-capture {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.rumi-voice-waveform {
+  display: flex;
+  height: 1.5rem;
+  min-width: 8rem;
+  flex: 1;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.rumi-voice-waveform i {
+  display: block;
+  width: 2px;
+  height: 35%;
+  flex: 1 1 2px;
+  max-width: 3px;
+  border-radius: 999px;
+  background: rgba(228, 228, 231, 0.78);
+  transform-origin: center;
+  animation: rumi-voice-level 760ms ease-in-out infinite alternate;
+}
+
+.rumi-voice-waveform i:nth-child(3n + 1) {
+  animation-duration: 620ms;
+}
+
+.rumi-voice-waveform i:nth-child(4n + 2) {
+  animation-duration: 910ms;
+}
+
+@keyframes rumi-voice-level {
+  from { transform: scaleY(0.38); opacity: 0.58; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rumi-voice-waveform i {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, [tabindex], [role="button"], [role="option"]):focus-visible {
+    outline-color: Highlight !important;
+  }
+}
+
+/* Keep the Home composer shrinkable inside the chat pane.  Native WebView
+   zoom and an expanded history pane can otherwise let a grid item's intrinsic
+   width push the composer beneath the fixed utility rail. */
+.rumi-new-chat-stage,
+.rumi-new-chat-stage > div,
+.rumi-new-chat-stage .rumi-composer-shell-new,
+.rumi-new-chat-stage .rumi-composer-frame,
+.rumi-new-chat-stage .rumi-composer-main-panel {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.rumi-new-chat-stage {
+  overflow-x: clip;
+}
+
+/* Keep the conversation composer visually stable when the history sidebar is
+   collapsed.  The Home composer may use the wider two-row desktop surface. */
+@media (min-width: 721px) {
+  .rumi-composer-shell {
+    width: min(calc(100% - 2rem), 54rem);
+    max-width: 54rem;
+  }
+
+  .rumi-composer-shell-new {
+    width: min(calc(100% - 2rem), 46rem);
+    max-width: 46rem;
+  }
+
+  .rumi-composer-new .rumi-composer-main-panel {
+    /* A wide but short app window is still desktop-shaped.  Scale the home
+       composer against the available height so the editor does not consume
+       the lower half of the chat while the @ menu is open. */
+    min-height: clamp(6.75rem, 14dvh, 8.25rem);
+    border-radius: 2rem;
+    padding: 0.625rem 1.25rem 0.5rem;
+  }
+
+  .rumi-composer-new .rumi-composer-toolbar {
+    min-height: 2.5rem;
+    padding-top: 0.5rem;
+  }
+}
+
+/* When both side panes are visible the composer container can become narrow
+   even though the viewport still matches a desktop media query.  Keep the
+   primary send action and shed secondary trailing controls in that state. */
+@container (max-width: 560px) {
+  .rumi-composer-model-dock {
+    display: flex;
+  }
+
+  .rumi-composer-model-dock .rumi-composer-widget:not([data-composer-widget="send"]) {
+    display: none;
+  }
+}
+
+/* Keep @ candidates in the composer frame so they cannot drift with viewport
+   coordinates. The candidate list grows upward from the composer and scrolls
+   only after it reaches the available desktop height. */
+.rumi-composer-mention-menu {
+  display: flex;
+  flex-direction: column;
+  /* The composer can sit at the bottom of a conversation or around the middle
+     of a new-chat screen. Half the viewport minus the title/chrome allowance
+     is the safe space common to both placements, so the JSON maximum never
+     pushes the panel beyond the top edge. */
+  max-height: min(var(--rumi-json-list-max-height, 24rem), calc(50dvh - 6rem));
+}
+
+.rumi-composer-mention-menu > div:last-child {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+@media (max-width: 720px) {
+  .rumi-composer-new .rumi-composer-main-panel {
+    min-height: 7rem;
+    border-radius: 1.5rem;
+    padding: 0.75rem;
+  }
+
+  .rumi-composer-new .rumi-composer-toolbar {
+    min-height: 2.5rem;
   }
 }

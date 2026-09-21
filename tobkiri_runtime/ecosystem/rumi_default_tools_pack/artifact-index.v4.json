@@ -1,0 +1,192 @@
+{
+  "artifact_set_digest": "sha256:afaf7fda61ba33d093772d5741d39ff5f0d49527adb0085018ebfa964062f5aa",
+  "artifacts": [
+    {
+      "digest": "sha256:55f1f92a0c1966b4b58eb411de5781952dfd9105210ac29b4e21c88c3f8c55c6",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:b6f18ad76b5b661d9f4e30f5d53e1d68bd044068a56b55839e8422687a4e63f2",
+      "path": "domain/tool/calculator.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d85c04d931c987e1f26af24af6b0b0d0247ba12a873ec5d9ae96ec5c87240fcc",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:ef8ae5ffa668b40553758d1324b929f56f3a16977af87d17669fad25867ec1ab",
+      "path": "host_contract_contributions.v1.json",
+      "role": "host_contract_contribution"
+    },
+    {
+      "digest": "sha256:d83015374b5f8ae53a3dfd012f42edaccc8f30d4ea6c4c971f79fb7b1da50124",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:e11999254839656dccf8dcde182ed9ed329a9352518b3e3cdb359cae6f3826aa",
+      "path": "runtime/calculator.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:dd424445362407e7286d05148300c1ae4d9203633a0c29e644f216f2254503bc",
+      "path": "tools/browser_companion/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4d8964f1b89e3de6ceb2cb4386259347ccaab142de8aa4671e54e9f87a9b6868",
+      "path": "tools/browser_computer/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a70a50780d27d0e2bcce6e405ad2bbe4ab730ee24702ad62e50cba6e9d5ea7ac",
+      "path": "tools/browser_use/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:aff027a2610ea3d6dad9043bb7e3623bead1fe0a29a9d74ef25c537d635863d4",
+      "path": "tools/calculator/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:2850a5ee71e85f4cb91171e64183e12f3e91f70654592b73ecc2f8b0e1136430",
+      "path": "tools/coding_file_create/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:83f9d3f52cce0b5b5b507b95878dd09856fcc4b867f8bfcdc0d8c809a49d8f99",
+      "path": "tools/coding_file_delete/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:57406c10011a141a3b0212f9a7038b86e82b27e9d23dc152e43c1599d527a9e2",
+      "path": "tools/coding_file_list/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a58544e5c9630ef431493b80ea356bc7fa26a4b67b2288dd77e37d51268bf229",
+      "path": "tools/coding_file_patch/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1f69dd59fb22279059789d968c03657acff3945ed56ad85ee3cf59211d1cba42",
+      "path": "tools/coding_file_read/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:a15ef52451186ec549fca1d8d5dd89ffee43e8582b33cf758716a43d7a2eb0b4",
+      "path": "tools/coding_file_restore/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5bf3c5ec67d410279e108b7fe414c1087cf227b64b5607824c9aa3fcbd88385e",
+      "path": "tools/coding_file_search/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:cda92740f8be1d4154b78e7bc086cbb4525ad5091400cf4db18dacc11b11954a",
+      "path": "tools/coding_file_write/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:deca8db7f154050f0a209b89eb1b441f68c5b027d0197fea8f30eb736b6c3a0a",
+      "path": "tools/coding_git_commit/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:238d0f1db3056d93d791b58c37cfd0bd9f2a49d9a4d499bff52e98ae71b272c1",
+      "path": "tools/coding_git_diff/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:0c6d3ec594a9606d77b2de4332dfba15dae5ada8a5a7dc878dcc039ed8f28ec7",
+      "path": "tools/coding_git_push/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:1569ef8cd7c6ec477b5945694958fd8ea929477d3790e8f1a279fbd9fdfbae67",
+      "path": "tools/coding_git_status/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:4cf11d53575c446273842ca8b06b7ca0a4f1e65f87c66a7234280c8f7041b156",
+      "path": "tools/coding_terminal_exec/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5090b5750ca310341c351b68fb33c541e2c901fa420ebf9a30a1912249e614d9",
+      "path": "tools/computer_use/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:b6c40154cfbd2fd5c74410778e13a21adaee2bc8aae818a3546c517ad1d5696e",
+      "path": "tools/file_reader/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:691519a7af308c99c20885970bfc104a65d5d7d63f60c27fba8a10a795461c2f",
+      "path": "tools/reddit_search/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:d3ce97cd1aec505cc262c425b4fa9b8ad4b0b0cf6d4a79317c899efe39e58d96",
+      "path": "tools/rumi_api/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:228e5667dd383c0986c23f7b3d725fbafd047ebb69d8677197d6a0a63b629947",
+      "path": "tools/sandbox_artifact_export/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:838c36ba740c012c8950d9f1793a7d5b98f64bbc27afd35c4310280b522ddac0",
+      "path": "tools/sandbox_diff_preview/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:166bcc7eaf083a03141c9f29840de195b6b92ae1a6b4025c19804434ef680e11",
+      "path": "tools/sandbox_file_patch/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:9cae4b237205fb64bf9bb042907170bdb2bfc1041d5c40a974fbf10797bde8ca",
+      "path": "tools/sandbox_file_read/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:de1a9203a9eeb2e3e27e9a9745941b5684528d7d05c00b627621860211681891",
+      "path": "tools/sandbox_file_write/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:21cd914c42066061f9109fda55d0c51f4c850d934398ae2d36e1957102328c41",
+      "path": "tools/sandbox_terminal_exec/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:6ca93d8bbf377de2263c0e198d70085d33474f933311fe30d3af979249366d13",
+      "path": "tools/subagent/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:67985990f948ebc105adf3a0231c143e2eef832930b2be5f4c9776f26cdefd09",
+      "path": "tools/todo/manifest.json",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:f37b93bf630a0d5250ecb9ebbb94ec6ab25f97ed758440b31d57d734b91a443b",
+      "path": "tools/web_search/manifest.json",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:b1092c8e32f19b58ae42d04da1d47e36736a8ad307e9ac693654acc8aad7805b"
+  },
+  "pack_id": "rumi_default_tools_pack",
+  "source_identity": "sha256:df3e346dc453500699a22170bc2281987e24ae5379ba3ced248d31587f021751"
+}
