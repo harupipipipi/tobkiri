@@ -800,6 +800,54 @@ def test_packvm_lifecycle_routes_require_auth_csrf_and_fresh_request_id() -> Non
         server.stop()
 
 
+def test_packvm_stop_commits_response_before_slow_runtime_refresh() -> None:
+    """A stop must not inherit the runtime-capture refresh latency."""
+
+    lifecycle = _PackVMLifecycle()
+    refresh_started = threading.Event()
+    release_refresh = threading.Event()
+    refreshed: list[object] = []
+
+    def slow_refresh(session: object) -> None:
+        refresh_started.set()
+        assert release_refresh.wait(timeout=2)
+        refreshed.append(session)
+
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+        packvm_lifecycle=lifecycle,
+    )
+    server._refresh_runtime_capture = slow_refresh  # type: ignore[method-assign]
+    server.start()
+    try:
+        cookie, csrf, origin = _panel_session(server)
+        started = time.monotonic()
+        status, payload, _headers = _request(
+            server,
+            "POST",
+            "/api/v4/packvm/stop",
+            body={"confirmation": "STOP tobkiri-packvm-v4"},
+            headers={
+                "Cookie": cookie,
+                "Origin": origin,
+                "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        elapsed = time.monotonic() - started
+        assert status == 200
+        assert payload["data"] == {"ready": False}
+        assert refresh_started.wait(timeout=1)
+        assert elapsed < 1
+    finally:
+        release_refresh.set()
+        server.stop()
+
+    assert refreshed == [None]
+
+
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
 def test_runtime_http_config_canonicalizes_loopback(host: str) -> None:
     assert RuntimeHTTPConfig.verify(host, 8765).host == "127.0.0.1"

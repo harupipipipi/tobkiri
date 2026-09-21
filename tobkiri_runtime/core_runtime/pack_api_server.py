@@ -60,7 +60,10 @@ from tobkiri_host.errors import HostCoreError
 
 logger = logging.getLogger(__name__)
 
-THREAD_JOIN_TIMEOUT_SECONDS = 5
+# Leave the native Launcher enough of its five-second quit budget to reap the
+# Pack shell and kernel after a bounded HTTP drain. Chat cancellation remains a
+# separate acceptance path; a quit must not wait for that path indefinitely.
+THREAD_JOIN_TIMEOUT_SECONDS = 3
 MAX_CONCURRENT_REQUESTS = 32
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
@@ -1621,6 +1624,7 @@ class PackAPIHandler(
         if lifecycle is None:
             self._send_response(APIResponse(False, error="PackVM lifecycle is unavailable"), 503)
             return True
+        refresh_after_response = False
         try:
             if operation == "prepare":
                 if payload:
@@ -1641,11 +1645,10 @@ class PackAPIHandler(
                 result = lifecycle.cancel(payload, session_id=packvm_session_id)
             elif operation == "stop":
                 result = lifecycle.stop(payload)
+                refresh_after_response = self._runtime_refresh is not None
             else:
                 result = lifecycle.cleanup(payload, session_id=packvm_session_id)
             if operation == "doctor" and result.get("ready") is True and self._runtime_refresh:
-                self._runtime_refresh(None)
-            elif operation == "stop" and self._runtime_refresh:
                 self._runtime_refresh(None)
             elif (
                 operation == "progress"
@@ -1671,6 +1674,28 @@ class PackAPIHandler(
             )
             return True
         self._send_response(APIResponse(True, data=dict(result)))
+        if refresh_after_response:
+            refresh = self._runtime_refresh
+
+            def refresh_stopped_runtime() -> None:
+                if refresh is None:
+                    return
+                try:
+                    refresh(None)
+                except Exception:
+                    # The stop response is already committed. A refresh failure
+                    # must not turn a successful, audited stop into an HTTP
+                    # timeout or an unhandled daemon-thread exception.
+                    logger.warning(
+                        "PackVM stop runtime refresh failed",
+                        exc_info=True,
+                    )
+
+            threading.Thread(
+                target=refresh_stopped_runtime,
+                name="packvm-stop-runtime-refresh",
+                daemon=True,
+            ).start()
         return True
 
     def _refresh_after_operation(
