@@ -813,6 +813,22 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertIn("values", settings)
         self.assertIn("models", settings["values"])
 
+    def test_lightweight_settings_skip_expensive_runtime_discovery(self):
+        from domain.frontend.registry import FrontendRegistry
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = FrontendRegistry(pack_root=Path(tmpdir))
+            with patch(
+                "domain.frontend.registry.ModelRuntimeSettingsService.default_model_settings",
+                side_effect=AssertionError("bootstrap settings must not resolve model packs"),
+            ), patch(
+                "domain.frontend.registry.provider_key_status",
+                side_effect=AssertionError("bootstrap settings must not load provider credentials"),
+            ):
+                settings = registry.get_settings(lightweight=True)
+
+        self.assertEqual(settings["values"]["models"]["preferred_model"], "stub/default")
+
     def test_lightweight_catalog_does_not_hydrate_model_catalog(self):
         from domain.frontend.registry import FrontendRegistry
 
@@ -1007,7 +1023,8 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
 
         self.assertEqual(values["general"]["settings_version"], 2)
         self.assertEqual(persisted["general"]["settings_version"], 2)
-        self.assertEqual(persisted_mode, 0o640)
+        if os.name != "nt":
+            self.assertEqual(persisted_mode, 0o640)
         self.assertEqual(temporary_files, [])
 
     def test_settings_atomic_replace_failure_keeps_original(self):
@@ -1073,7 +1090,8 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                     self.assertEqual(settings_path.read_bytes(), original)
                     self.assertEqual(len(backups), 1)
                     self.assertEqual(backups[0].read_bytes(), original)
-                    self.assertEqual(backups[0].stat().st_mode & 0o777, 0o640)
+                    if os.name != "nt":
+                        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o640)
 
     def test_keyboard_navigation_explicit_false_is_preserved_and_marked(self):
         from domain.frontend.registry import FrontendRegistry
@@ -1102,7 +1120,8 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             reloaded["general"]["keyboard_button_navigation_source"],
             "user",
         )
-        self.assertEqual(settings_mode, 0o600)
+        if os.name != "nt":
+            self.assertEqual(settings_mode, 0o600)
 
     def test_keyboard_navigation_future_version_false_is_not_migrated(self):
         from domain.frontend.registry import FrontendRegistry

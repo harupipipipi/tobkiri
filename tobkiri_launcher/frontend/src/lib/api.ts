@@ -223,6 +223,15 @@ export async function launchDefaultspackDesktop(): Promise<string> {
   }
 }
 
+export async function queueDefaultspackDesktopAfterKernelRestart(): Promise<string> {
+  const invoke = await loadTauriInvoke();
+  if (!invoke) {
+    throw new Error('Defaultspack desktop launch is only available in Tobkiri Launcher.');
+  }
+
+  return invoke<string>('queue_defaultspack_desktop_after_kernel_restart');
+}
+
 async function requestDesktopPanelBootstrapCode(): Promise<string | null> {
   const invoke = await loadTauriInvoke();
   if (!invoke) {

@@ -7,6 +7,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import ssl
+from typing import Any, Dict, List
 
 from domain.ai_client.base_provider import BaseProvider
 
@@ -31,6 +32,8 @@ class GensparkProvider(BaseProvider):
         {"id": "genspark/gpt-5-codex",  "name": "GPT-5 Codex",  "provider": "genspark", "type": "chat"},
         {"id": "genspark/gpt-5.2-codex","name": "GPT-5.2 Codex","provider": "genspark", "type": "chat"},
     ]
+    # Account inventory is fetched from the OpenAI-compatible endpoint.
+    KNOWN_MODELS: List[Dict[str, Any]] = []
 
     def __init__(self):
         self._api_key = self._resolve_api_key()
@@ -105,6 +108,39 @@ class GensparkProvider(BaseProvider):
         if content_type:
             h["Content-Type"] = content_type
         return h
+
+    def list_models(self):
+        if not self._api_key:
+            return []
+        request = urllib.request.Request(
+            self._base_url + "/models",
+            headers=self._headers(content_type=None),
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, context=self._ssl_ctx, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            return []
+        records = payload.get("data") if isinstance(payload, dict) else payload.get("models") if isinstance(payload, dict) else []
+        models = []
+        for raw in records if isinstance(records, list) else []:
+            source = raw if isinstance(raw, dict) else {"id": raw}
+            model_id = str(source.get("id") or source.get("model_id") or source.get("name") or "").strip()
+            if not model_id or any(item["model_id"] == model_id for item in models):
+                continue
+            models.append({
+                "id": f"genspark/{model_id}",
+                "model_id": model_id,
+                "provider_id": "genspark",
+                "provider": "genspark",
+                "name": str(source.get("display_name") or source.get("displayName") or model_id),
+                "display_name": str(source.get("display_name") or source.get("displayName") or model_id),
+                "type": "chat",
+                "capabilities": {"chat": True, "text_input": True, "text_output": True, "streaming": True},
+                "metadata": {"source": "openai_models_endpoint", "source_endpoint": "/models", "visibility_scope": "account"},
+            })
+        return models
 
     def _request_json(self, path, body):
         """POST して JSON をパースして返す"""

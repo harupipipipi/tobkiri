@@ -40,6 +40,7 @@ mod dock_registration;
 /// Wrapper around a shared progress string, managed as Tauri State.
 pub struct SetupProgress(pub Arc<Mutex<String>>);
 pub struct ShutdownState(pub Arc<AtomicBool>);
+pub struct LaunchAfterRestartState(pub Arc<AtomicBool>);
 pub struct AllowedNavigationPorts(pub Arc<Mutex<Vec<u16>>>);
 
 const PRIMARY_WINDOW_LABELS: [&str; 2] = ["panel", "main"];
@@ -145,6 +146,17 @@ fn reauthorize_panel_session(
 ) -> Result<String, String> {
     request_fresh_panel_session_code(&config, km.inner())
         .map_err(|error| format!("panel reauthorization failed: {error}"))
+}
+
+/// Queue a Defaultspack window for the next successful kernel restart handoff.
+/// The panel webview is re-authorized during that handoff, so this state must
+/// live in the native host rather than the frontend page.
+#[tauri::command]
+fn queue_defaultspack_desktop_after_kernel_restart(
+    state: tauri::State<'_, LaunchAfterRestartState>,
+) -> Result<String, String> {
+    state.0.store(true, Ordering::SeqCst);
+    Ok("Defaultspack will open after the runtime restart is ready".into())
 }
 
 #[tauri::command]
@@ -1306,6 +1318,7 @@ fn spawn_kernel_exit_monitor(
     config: AppConfig,
     km: Arc<Mutex<KernelManager>>,
     shutdown_flag: Arc<AtomicBool>,
+    launch_after_restart: Arc<AtomicBool>,
     panel_bootstrap_secret: String,
 ) {
     thread::spawn(move || loop {
@@ -1340,20 +1353,37 @@ fn spawn_kernel_exit_monitor(
         }
 
         if restarted {
-            match health_check::wait_for_healthy(config.kernel_port, 60).and_then(|_| {
-                request_panel_bootstrap_code_with_retry(config.kernel_port, &panel_bootstrap_secret)
-            }) {
-                Ok(panel_code) => {
-                    if let Some(win) = app.get_webview_window("main") {
-                        if let Err(error) =
-                            navigate_window_to_panel_session(&win, config.kernel_port, &panel_code)
-                        {
-                            error!("Failed to refresh panel after Kernel restart: {error}");
+            match health_check::wait_for_healthy(config.kernel_port, 60) {
+                Ok(()) => {
+                    if launch_after_restart.swap(false, Ordering::SeqCst) {
+                        match dock_registration::launch_defaultspack_desktop_window_impl(&app, &config) {
+                            Ok(_) => info!("Opened Defaultspack after kernel restart handoff"),
+                            Err(error) => error!("Failed to open Defaultspack after kernel restart handoff: {error:#}"),
+                        }
+                    }
+
+                    match request_panel_bootstrap_code_with_retry(
+                        config.kernel_port,
+                        &panel_bootstrap_secret,
+                    ) {
+                        Ok(panel_code) => {
+                            if let Some(win) = app.get_webview_window("main") {
+                                if let Err(error) = navigate_window_to_panel_session(
+                                    &win,
+                                    config.kernel_port,
+                                    &panel_code,
+                                ) {
+                                    error!("Failed to refresh panel after Kernel restart: {error}");
+                                }
+                            }
+                        }
+                        Err(error) => {
+                            warn!("Kernel restarted, but panel session refresh failed: {error}");
                         }
                     }
                 }
                 Err(error) => {
-                    warn!("Kernel restarted, but panel session refresh failed: {error}");
+                    warn!("Kernel restarted, but health check failed: {error}");
                 }
             }
         }
@@ -1565,6 +1595,7 @@ pub fn run() {
             let progress_arc = progress.0.clone();
             app.manage(progress);
             app.manage(ShutdownState(Arc::new(AtomicBool::new(false))));
+            app.manage(LaunchAfterRestartState(Arc::new(AtomicBool::new(false))));
 
             let panel_bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
                 .context("failed to load persisted panel bootstrap secret")?;
@@ -1608,6 +1639,7 @@ pub fn run() {
                 config.clone(),
                 km_for_monitor,
                 Arc::clone(&app.state::<ShutdownState>().inner().0),
+                Arc::clone(&app.state::<LaunchAfterRestartState>().inner().0),
                 panel_bootstrap_secret.clone(),
             );
 
@@ -1697,6 +1729,7 @@ pub fn run() {
             get_setup_progress,
             restart_kernel,
             reauthorize_panel_session,
+            queue_defaultspack_desktop_after_kernel_restart,
             open_external_url,
             close_current_window,
             open_authority_approval_window,

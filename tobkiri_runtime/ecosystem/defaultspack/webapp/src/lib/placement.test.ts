@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 
 import {
   PLACEMENT_HTML_MAX_SOURCE_BYTES,
+  DEFAULT_RIGHT_SIDEBAR_PLACEMENTS,
   buildBuiltinPlacementManifests,
   filterPlacementCandidates,
+  initialPinnedPlacements,
   readPinnedPlacements,
   resolvePlacementHtmlRendering,
   togglePinnedPlacement,
@@ -66,6 +68,12 @@ test("pinned placements persist through storage helpers", () => {
   writePinnedPlacements(storage, next);
 
   assert.deepEqual(readPinnedPlacements(storage), [{ id: "yolo-switch", surface: "right_sidebar" }]);
+});
+
+test("new profiles and legacy empty defaults receive useful right-sidebar widgets", () => {
+  assert.deepEqual(initialPinnedPlacements(undefined), DEFAULT_RIGHT_SIDEBAR_PLACEMENTS);
+  assert.deepEqual(initialPinnedPlacements(null), DEFAULT_RIGHT_SIDEBAR_PLACEMENTS);
+  assert.deepEqual(initialPinnedPlacements([]), DEFAULT_RIGHT_SIDEBAR_PLACEMENTS);
 });
 
 test("builtin placements include yolo switch and model manager", () => {

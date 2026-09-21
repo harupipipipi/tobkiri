@@ -7,8 +7,7 @@
   "status": "stable",
   "display_name": "OpenRouter",
   "entrypoints": {
-    "adapter": "../ai_client/providers/openrouter_provider.py",
-    "models": "models.json"
+    "adapter": "../ai_client/providers/openrouter_provider.py"
   },
   "security": {
     "credential_required": true

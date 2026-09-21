@@ -155,12 +155,8 @@ def test_openrouter_chat_body_preserves_curated_gateway_params(monkeypatch):
             "type": "chat",
         },
     ]
-    monkeypatch.setattr(
-        OpenRouterProvider,
-        "_catalog_models",
-        classmethod(lambda cls: [dict(model) for model in catalog_models]),
-    )
-    provider = OpenRouterProvider()
+    provider = OpenRouterProvider(known_models=[])
+    monkeypatch.setattr(provider, "_remote_discovered_models", lambda: [dict(model) for model in catalog_models])
 
     def fake_request_json(path, body):
         captured["request"] = {"path": path, "body": body}

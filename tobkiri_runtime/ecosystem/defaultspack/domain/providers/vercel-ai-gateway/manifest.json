@@ -73,6 +73,7 @@
       "api_compatibility": "openai",
       "model_sync": "remote_merge",
       "model_list_path": "/models",
+      "model_list_requires_auth": false,
       "model_cache_ttl_seconds": 21600
     }
   },

@@ -17,6 +17,19 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
     display_name = "Vercel AI Gateway"
     DEFAULT_BASE_URL = "https://ai-gateway.vercel.sh/v1"
 
+    @classmethod
+    def from_manifest(
+        cls,
+        manifest: Dict[str, Any],
+        *,
+        model_manifests: List[Dict[str, Any]] | None = None,
+        allow_declared_models: bool = True,
+    ) -> "VercelAIGatewayProvider":
+        """Build the dedicated adapter while preserving manifest model overlays."""
+        del manifest
+        del allow_declared_models
+        return cls(known_models=model_manifests)
+
     def __init__(
         self,
         api_key: str = "",
@@ -41,9 +54,18 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
             credential_required=True,
             known_models=models,
             remote_model_discovery=True,
+            remote_model_discovery_requires_auth=False,
             remote_model_list_path="/models",
             remote_model_cache_ttl_seconds=3600,
         )
+
+    @classmethod
+    def _provider_model_id(cls, model: str) -> str:
+        model_ref = str(model or "").strip()
+        prefix = f"{cls.provider_name}/"
+        if model_ref.startswith(prefix):
+            return model_ref[len(prefix) :]
+        return model_ref
 
     @classmethod
     def _catalog_models(cls) -> List[Dict[str, Any]]:
@@ -89,10 +111,12 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
             "embeddings": "embedding",
             "rerank": "rerank",
             "reranking": "rerank",
-            "image": "image",
-            "video": "video",
-            "speech": "audio",
-            "audio": "audio",
+            "image": "image_gen",
+            "image_generation": "image_gen",
+            "video": "video_gen",
+            "video_generation": "video_gen",
+            "speech": "tts",
+            "audio": "tts",
         }
         normalized["type"] = type_aliases.get(model_type, model_type)
 
@@ -146,6 +170,11 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
                 "reasoning": supports_reasoning,
                 "structured_output": supports_structured,
                 "json_schema": bool(parameter_tokens.intersection({"json_schema", "structured_outputs"})),
+                "embeddings": normalized["type"] == "embedding",
+                "rerank": normalized["type"] == "rerank",
+                "image_generation": normalized["type"] == "image_gen",
+                "video_generation": normalized["type"] == "video_gen",
+                "tts": normalized["type"] == "tts",
             }
         )
         normalized["capabilities"] = capabilities
@@ -231,7 +260,17 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
         return routed
 
     def complete(self, model, messages, tools, params):
-        return super().complete(model, messages, tools, self._with_gateway_routing(params))
+        return super().complete(
+            self._provider_model_id(model),
+            messages,
+            tools,
+            self._with_gateway_routing(params),
+        )
 
     def stream(self, model, messages, tools, params):
-        return super().stream(model, messages, tools, self._with_gateway_routing(params))
+        return super().stream(
+            self._provider_model_id(model),
+            messages,
+            tools,
+            self._with_gateway_routing(params),
+        )

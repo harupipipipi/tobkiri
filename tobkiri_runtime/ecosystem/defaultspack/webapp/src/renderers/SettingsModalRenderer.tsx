@@ -1636,18 +1636,26 @@ function PublicUrlField({
 
 const BUILTIN_API_PROVIDER_IDS: string[] = [
   "anthropic",
+  "avian",
   "cerebras",
   "deepseek",
+  "deepinfra",
+  "fireworks",
+  "friendli",
   "gitlawb-opengateway",
   "glm",
   "google",
   "groq",
+  "hyperbolic",
+  "inference-net",
   "llama_cpp",
   "lmstudio",
   "longcat",
   "mistral",
   "moonshotai",
   "nvidia",
+  "nebius",
+  "novita",
   "ollama",
   "opencode-go",
   "opencode-zen",
@@ -1655,7 +1663,9 @@ const BUILTIN_API_PROVIDER_IDS: string[] = [
   "openai_compatible",
   "openrouter",
   "perplexity",
+  "sambanova",
   "together",
+  "upstage",
   "vllm",
   "xai",
   "xiaomi-token-plan-ams",
@@ -4475,7 +4485,15 @@ export function SettingsModalRenderer({
                         {t(locale, "settings.noFields")}
                       </div>
                     )}
-                    {!normalizedSearch && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
+                    {!normalizedSearch && settingsSections.length === 0 && (
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
+                        {localizedCopy(
+                          "Loading built-in settings and provider information…",
+                          "組み込み設定とProvider情報を読み込んでいます…",
+                        )}
+                      </div>
+                    )}
+                    {!normalizedSearch && settingsSections.length > 0 && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
                       <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
                         {localizedCopy(
                           "Pack or provider contributions for this section will appear here after registry validation.",

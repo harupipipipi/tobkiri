@@ -8,8 +8,7 @@
   "display_name": "Xiaomi MiMo Token Plan CN",
   "description": "Xiaomi MiMo Token Plan runtime for the China region.",
   "entrypoints": {
-    "adapter": "../ai_client/providers/xiaomi_mimo_token_plan_provider.py",
-    "models": "models.json"
+    "adapter": "../ai_client/providers/xiaomi_mimo_token_plan_provider.py"
   },
   "security": {
     "credential_required": true,

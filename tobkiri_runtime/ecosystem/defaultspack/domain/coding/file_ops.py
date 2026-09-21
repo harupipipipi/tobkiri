@@ -241,6 +241,8 @@ class FileOps:
             ["git"] + list(args),
             cwd=cwd or self._root,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout,
         )

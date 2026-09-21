@@ -547,6 +547,7 @@ body {
   border-radius: 999px;
   background: rgba(212, 212, 216, 0.86);
   animation: rumi-loading-bar 1.25s ease-in-out infinite;
+  animation-iteration-count: infinite;
 }
 
 .rumi-tool-activity summary::-webkit-details-marker {

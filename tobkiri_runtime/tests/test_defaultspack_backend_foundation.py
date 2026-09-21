@@ -188,6 +188,240 @@ def test_provider_catalog_and_profiles_include_local_and_collision_metadata():
     assert all(profile["metadata"]["provider_model_key"] == profile["qualified_model_id"] for profile in gpt_4o_profiles)
 
 
+def test_catalog_and_profiles_include_live_models_from_an_active_provider():
+    from ecosystem.defaultspack.domain.ai_client.client import AIClient
+
+    class _LiveOpenRouter:
+        display_name = "OpenRouter"
+
+        def list_models(self):
+            return [
+                {
+                    "id": "openrouter/acme/all-model",
+                    "model_id": "acme/all-model",
+                    "display_name": "Acme All Model",
+                    "type": "chat",
+                    "capabilities": {"chat": True, "tool_calling": True},
+                    "metadata": {"source": "openrouter_models_api"},
+                }
+            ]
+
+    AIClient().register_provider("openrouter", _LiveOpenRouter())
+
+    providers = {provider["provider_id"]: provider for provider in list_provider_catalog()}
+    models = {model["qualified_model_id"]: model for model in list_model_catalog("openrouter")}
+    profiles = {profile["profile_id"]: profile for profile in list_profile_catalog()}
+
+    assert providers["openrouter"]["availability"]["active"] is True
+    assert "openrouter/acme/all-model" in models
+    assert models["openrouter/acme/all-model"]["metadata"]["source"] == "openrouter_models_api"
+    assert "openrouter/acme/all-model" in profiles
+    assert profiles["openrouter/acme/all-model"]["availability"]["active"] is True
+
+
+def test_custom_openai_compatible_provider_discovers_and_exposes_all_live_models(monkeypatch):
+    from unittest.mock import patch
+
+    from ecosystem.defaultspack.domain.ai_client.api_key_store import set_provider_api_key
+    from ecosystem.defaultspack.domain.ai_client.client import AIClient
+    from domain.ai_client.providers.openai_compatible_provider import OpenAICompatibleProvider
+
+    saved = set_provider_api_key(
+        "acme-compatible",
+        "test-key",
+        api_id="main",
+        name="main",
+        base_url="https://api.acme.example/v1",
+    )
+    assert saved["success"] is True
+    AIClient._instance = None
+
+    live_models = [
+        {
+            "id": "acme-compatible/remote-model-a",
+            "model_id": "remote-model-a",
+            "provider": "acme-compatible",
+            "provider_id": "acme-compatible",
+            "name": "Remote Model A",
+            "display_name": "Remote Model A",
+            "type": "chat",
+            "metadata": {"source": "remote_models_endpoint"},
+        },
+        {
+            "id": "acme-compatible/remote-model-b",
+            "model_id": "remote-model-b",
+            "provider": "acme-compatible",
+            "provider_id": "acme-compatible",
+            "name": "Remote Model B",
+            "display_name": "Remote Model B",
+            "type": "chat",
+            "metadata": {"source": "remote_models_endpoint"},
+        },
+    ]
+    with (
+        patch.object(OpenAICompatibleProvider, "_load_remote_model_cache", return_value=None),
+        patch.object(OpenAICompatibleProvider, "_save_remote_model_cache"),
+        patch.object(OpenAICompatibleProvider, "_fetch_remote_models", return_value=live_models),
+    ):
+        client = AIClient()
+        provider_ids = {provider["provider_id"] for provider in client.list_providers()}
+        models = {model["qualified_model_id"]: model for model in client.list_models("acme-compatible")}
+        catalog_models = {
+            model["qualified_model_id"]
+            for model in list_model_catalog("acme-compatible")
+        }
+        catalog_profiles = {
+            profile["profile_id"]
+            for profile in list_profile_catalog()
+            if profile.get("provider_id") == "acme-compatible"
+        }
+        provider, model_name = client.resolve_provider("acme-compatible/remote-model-b")
+
+    assert "acme-compatible" in provider_ids
+    assert set(models) == {"acme-compatible/remote-model-a", "acme-compatible/remote-model-b"}
+    assert catalog_models == set(models)
+    assert catalog_profiles == set(models)
+    assert models["acme-compatible/remote-model-a"]["metadata"]["source"] == "remote_models_endpoint"
+    assert provider.provider_id == "acme-compatible"
+    assert model_name == "remote-model-b"
+    assert provider._base_url == "https://api.acme.example/v1"
+
+
+def test_every_generic_openai_compatible_provider_has_a_key_setup_path():
+    from domain.ai_client.providers.provider_catalog import OPENAI_COMPATIBLE_PROVIDER_SPECS
+
+    missing = set(OPENAI_COMPATIBLE_PROVIDER_SPECS) - set(PROVIDER_SECRET_KEYS)
+
+    assert not missing
+
+
+def test_openai_compatible_inventory_cache_is_connection_scoped_and_secret_free(tmp_path, monkeypatch):
+    from domain.ai_client.providers.openai_compatible_provider import OpenAICompatibleProvider
+
+    monkeypatch.setattr(
+        OpenAICompatibleProvider,
+        "_remote_model_cache_path",
+        lambda provider: tmp_path / f"{provider.provider_id}.{provider._inventory_scope_hash()}.json",
+    )
+    first = OpenAICompatibleProvider(
+        provider_id="shared-provider",
+        api_key="first-secret",
+        base_url="https://first.example/v1",
+        remote_model_discovery=True,
+    )
+    second = OpenAICompatibleProvider(
+        provider_id="shared-provider",
+        api_key="second-secret",
+        base_url="https://second.example/v1",
+        remote_model_discovery=True,
+    )
+
+    first._save_remote_model_cache([{"id": "first-visible-model"}], now=100)
+
+    assert first._load_remote_model_cache() is not None
+    assert second._load_remote_model_cache() is None
+    assert len(list(tmp_path.glob("*.json"))) == 1
+    assert "first-secret" not in next(tmp_path.glob("*.json")).read_text(encoding="utf-8")
+
+
+def test_openai_compatible_inventory_supports_cursor_pagination_without_model_json():
+    from domain.ai_client.providers.openai_compatible_provider import OpenAICompatibleProvider
+
+    provider = OpenAICompatibleProvider(
+        provider_id="paged-provider",
+        api_key="test-key",
+        base_url="https://api.example/v1",
+        remote_model_discovery=True,
+        remote_model_pagination={"cursor_param": "cursor", "next_cursor_field": "next"},
+    )
+
+    models, cursor = provider._remote_models_page(
+        {"data": [{"id": "visible-model"}], "next": "page-2"}
+    )
+
+    assert models == [{"id": "visible-model"}]
+    assert cursor == "page-2"
+    assert provider._remote_model_page_url("https://api.example/v1/models?limit=100", cursor) == (
+        "https://api.example/v1/models?limit=100&cursor=page-2"
+    )
+
+
+def test_provider_program_registers_every_required_identity_without_static_models():
+    from ecosystem.defaultspack.domain.ai_client.provider_program import provider_program_manifests
+
+    manifests = provider_program_manifests()
+
+    assert len(manifests) == 79
+    assert {"aws-bedrock", "cohere", "huggingface-tgi", "stability-ai", "openrouter"} <= set(manifests)
+    assert all(manifest["models"] == [] for manifest in manifests.values())
+    assert all(manifest["config"]["inventory_strategy"] for manifest in manifests.values())
+
+
+def test_provider_program_entries_are_visible_with_their_inventory_contract():
+    providers = {provider["provider_id"]: provider for provider in list_provider_catalog()}
+
+    for provider_id, inventory_strategy in {
+        "aws-bedrock": "regional_control_plane",
+        "cohere": "official_models_api_or_snapshot",
+        "huggingface-tgi": "served_models_api_or_manual",
+        "stability-ai": "generated_official_snapshot",
+    }.items():
+        provider = providers[provider_id]
+        assert provider["availability"]["catalog_only"] is True
+        assert provider["metadata"]["config"]["inventory_strategy"] == inventory_strategy
+
+
+def test_provider_program_entries_are_available_in_api_key_setup():
+    from ecosystem.defaultspack.domain.ai_client.api_key_store import (
+        builtin_provider_ids,
+        provider_key_status,
+    )
+
+    provider_ids = set(builtin_provider_ids())
+    key_rows = {row["provider_id"]: row for row in provider_key_status()}
+
+    assert {"aws-bedrock", "cohere", "huggingface-tgi", "stability-ai"} <= provider_ids
+    assert all(key_rows[provider_id]["builtin"] is True for provider_id in provider_ids)
+    assert key_rows["aws-bedrock"]["label"] == "Amazon Bedrock"
+
+
+def test_program_connection_with_an_explicit_compatible_endpoint_uses_live_inventory(tmp_path, monkeypatch):
+    from unittest.mock import patch
+
+    from ecosystem.defaultspack.domain.ai_client.api_key_store import set_provider_api_key
+    from ecosystem.defaultspack.domain.ai_client.client import AIClient
+    from domain.ai_client.providers.openai_compatible_provider import OpenAICompatibleProvider
+
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_SECRETS_DIR", str(tmp_path / "secrets"))
+    saved = set_provider_api_key(
+        "cohere",
+        "test-key",
+        api_id="compatible",
+        name="compatible",
+        base_url="https://gateway.example/v1",
+    )
+    assert saved["success"] is True
+    AIClient._instance = None
+    with (
+        patch.object(OpenAICompatibleProvider, "_load_remote_model_cache", return_value=None),
+        patch.object(
+            OpenAICompatibleProvider,
+            "_fetch_remote_models",
+            return_value=[
+                {
+                    "id": "cohere/account-visible-model",
+                    "model_id": "account-visible-model",
+                    "provider_id": "cohere",
+                    "type": "chat",
+                }
+            ],
+        ),
+    ):
+        models = list_model_catalog("cohere")
+
+    assert [model["qualified_model_id"] for model in models] == ["cohere/account-visible-model"]
+
+
 def test_provider_registry_marks_duplicate_model_names_for_ui_disambiguation(tmp_path):
     registry = ProviderRegistry(storage_dir=tmp_path / "providers")
     registry.register_profile(

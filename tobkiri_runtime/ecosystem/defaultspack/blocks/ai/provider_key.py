@@ -74,9 +74,18 @@ def run(input_data, context):
                 notes=(input_data or {}).get("notes"),
                 quota_label=(input_data or {}).get("quota_label"),
                 kind=str(kind_value or "").strip() or None,
+                credential_mode=(input_data or {}).get("credential_mode"),
             )
         if not result.get("success"):
             return error(result.get("error") or "failed to save api key", "API_KEY_SAVE_FAILED")
+        # A key can activate a remote model inventory.  Do not serve the previous
+        # 30-second Settings/composer profile cache after changing credentials.
+        try:
+            from domain.frontend.registry import FrontendRegistry
+
+            FrontendRegistry.invalidate_selectable_model_profiles()
+        except Exception:
+            pass
         payload = {key: value for key, value in result.items() if key != "error"}
         if (
             action in {"upsert", "rename"}

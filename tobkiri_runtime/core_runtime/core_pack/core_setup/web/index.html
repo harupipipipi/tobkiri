@@ -6,20 +6,20 @@
   <title>Tobkiri Setup</title>
   <style>
     :root {
-      color-scheme: light dark;
-      --bg: #f8f9fa;
-      --surface: #ffffff;
-      --surface-muted: #f3f4f6;
-      --ink: #111827;
-      --muted: #6b7280;
-      --line: #e5e7eb;
-      --accent: #4f46e5;
-      --accent-soft: #eef2ff;
-      --success: #15803d;
-      --success-soft: #f0fdf4;
-      --danger: #b91c1c;
-      --danger-soft: #fef2f2;
-      --warning: #a16207;
+      color-scheme: dark;
+      --bg: #0a0a0a;
+      --surface: #161616;
+      --surface-muted: #202024;
+      --ink: #f5f5f5;
+      --muted: #a1a1aa;
+      --line: #2e2e33;
+      --accent: #818cf8;
+      --accent-soft: #20213a;
+      --success: #4ade80;
+      --success-soft: #11291a;
+      --danger: #f87171;
+      --danger-soft: #321717;
+      --warning: #facc15;
     }
     * { box-sizing: border-box; }
     body {
@@ -36,11 +36,11 @@
       position: fixed;
       inset: 0;
       pointer-events: none;
-      background: radial-gradient(circle at 18% 0%, rgba(99, 102, 241, 0.1), transparent 34%);
+      background: radial-gradient(circle at 18% 0%, rgba(129, 140, 248, 0.16), transparent 34%);
     }
     main {
       position: relative;
-      width: min(1080px, 100%);
+      width: min(760px, 100%);
       margin: 0 auto;
     }
     .topbar {
@@ -80,16 +80,17 @@
     .grid {
       display: grid;
       gap: 20px;
-      grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+      grid-template-columns: minmax(0, 720px);
+      justify-content: center;
       align-items: start;
     }
     .panel {
       min-width: 0;
       background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 20px;
-      box-shadow: 0 24px 70px -58px rgba(17, 24, 39, 0.7);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 24px 70px -58px rgba(0, 0, 0, 0.95);
       animation: setup-rise 0.4s 0.08s ease-out both;
     }
     .panel h2 {
@@ -114,7 +115,7 @@
     }
     .pack:hover {
       border-color: #a5b4fc;
-      background: #fafaff;
+      background: #1c1c22;
     }
     .pack:has(input:focus-visible) {
       outline: 3px solid rgba(79, 70, 229, 0.24);
@@ -195,8 +196,9 @@
       background: var(--surface-muted);
       border-radius: 8px;
       padding: 14px;
-      min-height: 180px;
+      margin-top: 18px;
     }
+    .status[hidden] { display: none; }
     .status h3 {
       margin: 0 0 8px;
       color: var(--ink);
@@ -257,13 +259,14 @@
     .selection-footer {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
       gap: 14px;
       margin-top: 18px;
       padding-top: 16px;
       border-top: 1px solid var(--line);
     }
     .selection-summary { color: var(--muted); font-size: 12px; }
+    .selection-footer button { margin-left: auto; min-width: 216px; }
     @keyframes setup-rise {
       from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: none; }
@@ -283,23 +286,6 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0a0a0a;
-        --surface: #161616;
-        --surface-muted: #202024;
-        --ink: #f5f5f5;
-        --muted: #a1a1aa;
-        --line: #2e2e33;
-        --accent: #818cf8;
-        --accent-soft: #20213a;
-        --success: #4ade80;
-        --success-soft: #11291a;
-        --danger: #f87171;
-        --danger-soft: #321717;
-      }
-      .pack:hover { background: #1c1c22; border-color: #6366f1; }
-    }
   </style>
 </head>
 <body>
@@ -309,30 +295,21 @@
       <div class="setup-progress"><span>初期セットアップ</span><i></i><i></i></div>
     </div>
     <section class="hero">
-      <div class="eyebrow">Step 2 · Startup packs</div>
-      <h1>最初に使うpackを選ぶ</h1>
-      <p>起動時に読み込む機能を選択します。権限とインストール内容を確認してから適用し、あとから設定で変更できます。</p>
+      <div class="eyebrow">Step 1 · はじめる</div>
+      <h1>Tobkiri をはじめよう</h1>
+      <p>まずはおすすめの基本セットだけ入れます。ほかのpackは、必要になったときに設定から追加できます。</p>
     </section>
     <section class="grid">
       <div class="panel">
-        <h2>利用可能なpack</h2>
-        <p>複数選択できます。詳細と権限を確認してから開始してください。</p>
+        <div class="eyebrow">おすすめ</div>
+        <h2>まずはこれだけで始められます</h2>
+        <p>基本の機能をまとめて用意します。追加の広い権限は有効にしません。</p>
         <div id="pack-list" class="pack-list"></div>
         <div class="selection-footer">
-          <span id="selection-summary" class="selection-summary">packを選択してください</span>
-          <button id="install-selected" disabled>選択したpackで始める →</button>
+          <span id="selection-summary" class="selection-summary">おすすめのpackを用意しています</span>
+          <button id="install-selected" disabled>このおすすめで始める →</button>
         </div>
-      </div>
-      <div class="panel">
-        <h2>セットアップ状態</h2>
-        <div class="meta">
-          <div><strong>Selection</strong><span id="selection">Loading…</span></div>
-          <div><strong>Migration</strong><span id="migration">Loading…</span></div>
-        </div>
-        <div class="actions">
-          <button id="refresh" class="secondary">状態を再読み込み</button>
-        </div>
-        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <div id="status" class="status" role="status" aria-live="polite" hidden></div>
         <progress id="install-progress" class="progress" aria-label="Setup installation progress" hidden></progress>
       </div>
     </section>
@@ -340,8 +317,6 @@
   <script>
     const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
     const statusEl = document.getElementById("status");
-    const selectionEl = document.getElementById("selection");
-    const migrationEl = document.getElementById("migration");
     const listEl = document.getElementById("pack-list");
     const installButton = document.getElementById("install-selected");
     const selectionSummaryEl = document.getElementById("selection-summary");
@@ -349,12 +324,13 @@
     const returnTo = safeReturnTo(new URLSearchParams(window.location.search).get("return_to"));
     const selectedPackIds = new Set();
     let installInProgress = false;
-    const confirmedPrivilegedPackIds = new Set();
-    let reviewedSelectionFingerprint = "";
     let currentReviewRevision = "";
 
     function setStatus(label, payload, rows, tone = "neutral") {
-      const items = rows && rows.length ? rows : ["Waiting for setup pack selection."];
+      void payload;
+      const items = rows && rows.length ? rows : [];
+      statusEl.hidden = !label;
+      if (!label) return;
       statusEl.innerHTML = "";
       statusEl.dataset.tone = tone;
       const title = document.createElement("h3");
@@ -367,7 +343,6 @@
       }
       statusEl.appendChild(title);
       statusEl.appendChild(list);
-      renderDebugState(payload);
     }
 
     function setInstallProgress(state) {
@@ -376,33 +351,6 @@
       installButton.setAttribute("aria-busy", String(installInProgress));
       installProgress.hidden = !installInProgress;
       if (installInProgress) installProgress.removeAttribute("value");
-    }
-
-    function renderDebugState(payload) {
-      const details = document.createElement("details");
-      const summary = document.createElement("summary");
-      const pre = document.createElement("pre");
-      summary.textContent = "Advanced debug state";
-      pre.textContent = JSON.stringify(payload || {}, null, 2);
-      details.appendChild(summary);
-      details.appendChild(pre);
-      statusEl.appendChild(details);
-    }
-
-    function renderInstallSummary(packs, migration) {
-      const selectedIds = selectedSetupPackIds();
-      const selectedNames = (packs.packs || [])
-        .filter((pack) => selectedIds.includes(pack.pack_id))
-        .map((pack) => pack.display_name || pack.pack_id);
-      const allOkCount = (packs.packs || []).filter(
-        (pack) => selectedIds.includes(pack.pack_id) && pack.supports_all_ok
-      ).length;
-      return [
-        "Selected: " + (selectedNames.join(", ") || "none yet"),
-        "Install plan: choose one of the grouped cards, or open Advanced custom selection for pack-level control.",
-        "All OK impact: " + (allOkCount ? allOkCount + " selected pack(s) can receive bounded all OK grants." : "No selected pack will receive all OK grants by default."),
-        "Migration: " + setupMigrationLabel(migration),
-      ];
     }
 
     function errorMessage(error) {
@@ -437,16 +385,6 @@
       } catch {
         return "";
       }
-    }
-
-    function setupMigrationLabel(migration) {
-      if (migration && migration.available === false) {
-        if (migration.reason === "active_target_not_selected") {
-          return "no active setup pack selected";
-        }
-        return migration.reason ? "migration unavailable: " + migration.reason : "migration unavailable";
-      }
-      return migration && migration.needs_user_migration ? "user.csv migration pending" : "ready";
     }
 
     function redirectToReturnTarget(packs) {
@@ -492,28 +430,12 @@
     async function installSelectedPacks() {
       const selected = selectedSetupPackIds();
       if (!selected.length) {
-        setStatus("No setup packs checked", {}, ["Choose at least one setup profile or advanced pack before installing."]);
-        return;
-      }
-      const selectedPacks = currentPacks.filter((pack) => selected.includes(pack.pack_id));
-      const privileged = selectedPacks.filter((pack) => pack.supports_all_ok || pack.risk_level === "high");
-      const missingConfirmations = privileged.filter((pack) => !confirmedPrivilegedPackIds.has(pack.pack_id));
-      const fingerprint = JSON.stringify(selectedPacks.map((pack) => [pack.pack_id, pack.version, pack.depends_on, pack.required_permissions]));
-      if (missingConfirmations.length || reviewedSelectionFingerprint !== fingerprint) {
-        reviewedSelectionFingerprint = fingerprint;
-        renderReview(selectedPacks);
-        setStatus("Review required before install", { setup_pack_ids: selected }, [
-          "Review every selected pack and its exact source, permissions, dependencies, conflicts, and all-OK scope below.",
-          missingConfirmations.length
-            ? "Explicitly confirm privileged packs: " + missingConfirmations.map((pack) => pack.display_name || pack.pack_id).join(", ")
-            : "Review complete. Activate Install selected again to confirm this unchanged plan.",
-        ], "pending");
+        setStatus("おすすめのセットを読み込めませんでした", {}, ["もう一度アプリを起動してください。"], "error");
         return;
       }
       setInstallProgress("pending");
-      setStatus("Installing setup packs…", { setup_pack_ids: selected }, [
-        "Sending " + selected.length + " setup pack id(s): " + selected.join(", "),
-        "Installation and any required migration are now running.",
+      setStatus("おすすめを入れています…", { setup_pack_ids: selected }, [
+        "基本セットを準備しています。少しお待ちください。",
       ], "pending");
       let data;
       try {
@@ -524,15 +446,14 @@
             setup_pack_ids: selected,
             reviewed_pack_ids: selected,
             review_revision: currentReviewRevision,
-            confirmed_privileged_pack_ids: Array.from(confirmedPrivilegedPackIds),
+            confirmed_privileged_pack_ids: [],
           })
         });
       } catch (error) {
         setInstallProgress("error");
-        setStatus("Setup pack install failed", { setup_pack_ids: selected, error: errorMessage(error) }, [
-          "The install request did not complete.",
-          "Reason: " + errorMessage(error),
-          "Your previous setup selection was left unchanged.",
+        setStatus("セットアップに失敗しました", { setup_pack_ids: selected, error: errorMessage(error) }, [
+          "もう一度お試しください。",
+          "理由: " + errorMessage(error),
         ], "error");
         return;
       }
@@ -540,19 +461,10 @@
       // deliberately no longer available without authentication at that point,
       // so do not immediately issue an unauthenticated refresh request here.
       setInstallProgress("success");
-      const migrationCount = Object.keys(data.migrations || {}).length;
-      setStatus("Setup packs installed", { setup_pack_ids: selected, result: data }, [
-        "Installed: " + selected.join(", "),
-        migrationCount
-          ? migrationCount + " required migration(s) completed."
-          : "No additional data migration was required.",
-        "The setup state has been refreshed.",
+      setStatus("セットアップが完了しました", { setup_pack_ids: selected, result: data }, [
+        "Tobkiri を使い始められます。",
       ], "success");
       if (returnTo) window.setTimeout(() => window.location.assign(returnTo), 500);
-    }
-
-    function uniquePackIds(packIds) {
-      return Array.from(new Set((packIds || []).filter(Boolean)));
     }
 
     function selectedSetupPackIds() {
@@ -561,180 +473,69 @@
 
     function updateSelectionSummary() {
       const selected = selectedSetupPackIds();
-      selectionEl.textContent = selected.length
-        ? selected.length + " pack(s): " + selected.join(", ")
-        : "none";
       selectionSummaryEl.textContent = selected.length
-        ? selected.length + "個のpackを選択中"
-        : "packを選択してください";
-      for (const input of listEl.querySelectorAll("[data-profile-pack-ids]")) {
-        const packIds = parseProfilePackIds(input);
-        const selectedCount = packIds.filter((packId) => selectedPackIds.has(packId)).length;
-        input.checked = selectedCount === packIds.length && packIds.length > 0;
-        input.indeterminate = selectedCount > 0 && selectedCount < packIds.length;
-        input.setAttribute("aria-checked", input.indeterminate ? "mixed" : String(input.checked));
-        const card = input.closest(".pack");
-        if (card) card.classList.toggle("selected", selectedCount > 0);
-      }
-      for (const input of listEl.querySelectorAll("[data-select-pack]")) {
-        input.checked = selectedPackIds.has(input.dataset.selectPack || "");
-        const card = input.closest(".pack");
-        if (card) card.classList.toggle("selected", input.checked);
-      }
+        ? "おすすめの基本セットを選択中"
+        : "おすすめのpackを準備しています";
       installButton.disabled = installInProgress || selected.length === 0;
     }
 
-    function parseProfilePackIds(input) {
-      try {
-        return uniquePackIds(JSON.parse(input.dataset.profilePackIds || "[]"));
-      } catch {
-        return [];
-      }
-    }
-
-    function handleSelectionChange(event) {
-      const input = event.target;
-      if (!(input instanceof HTMLInputElement)) return;
-      if (input.matches("[data-profile-pack-ids]")) {
-        for (const packId of parseProfilePackIds(input)) {
-          if (input.checked) selectedPackIds.add(packId);
-          else selectedPackIds.delete(packId);
-        }
-      } else if (input.matches("[data-select-pack]")) {
-        const packId = input.dataset.selectPack || "";
-        if (input.checked) selectedPackIds.add(packId);
-        else selectedPackIds.delete(packId);
-      }
-      updateSelectionSummary();
-    }
-
-    let currentPacks = [];
     function renderPacks(payload) {
       listEl.innerHTML = "";
       const packs = payload.packs || [];
-      currentPacks = packs;
       currentReviewRevision = payload.review_revision || "";
       selectedPackIds.clear();
-      for (const pack of packs) {
-        if (pack.selected) {
-          selectedPackIds.add(pack.pack_id || "");
-        }
+      const recommended = packs.find((pack) => pack.pack_id === "defaultspack")
+        || packs.find((pack) => pack.recommended);
+      if (recommended && recommended.pack_id) {
+        selectedPackIds.add(recommended.pack_id);
       }
-      selectedPackIds.delete("");
-      renderAdvancedSelection(packs);
+      renderRecommendedSelection(recommended);
       updateSelectionSummary();
     }
 
-    function renderAdvancedSelection(packs) {
-      const details = document.createElement("details");
-      details.className = "advanced-selection";
-      details.open = true;
-      const summary = document.createElement("summary");
-      summary.textContent = "packを個別に選択";
-      details.appendChild(summary);
-      for (const pack of packs) {
-        const label = document.createElement("label");
-        label.className = "pack" + (pack.selected ? " selected" : "");
-        const input = document.createElement("input");
-        input.type = "checkbox";
-        input.dataset.selectPack = pack.pack_id || "";
-        input.checked = selectedPackIds.has(pack.pack_id || "");
-        input.setAttribute("aria-label", "Include " + (pack.display_name || pack.pack_id || "pack"));
-        const riskClass = pack.risk_level === "high" ? "danger" : "";
-        const allOkText = pack.supports_all_ok
-          ? "Supports selective all OK grants. For safety, all OK permissions are granted only to setup packs that explicitly support all OK."
-          : "Installs without all OK grants";
-        const header = document.createElement("header");
-        const packDetails = document.createElement("div");
-        const name = document.createElement("strong");
-        const description = document.createElement("div");
-        const allOk = document.createElement("div");
-        const pill = document.createElement("div");
-        name.textContent = pack.display_name || pack.pack_id || "";
-        description.textContent = pack.description || "";
-        allOk.textContent = allOkText;
-        packDetails.appendChild(name);
-        packDetails.appendChild(description);
-        packDetails.appendChild(allOk);
-        pill.className = "pill" + (riskClass ? " " + riskClass : "");
-        pill.textContent = "Risk: " + (pack.risk_level || "unknown");
-        header.appendChild(packDetails);
-        header.appendChild(pill);
-        const miniActions = document.createElement("div");
-        miniActions.className = "mini-actions";
-        miniActions.appendChild(input);
-        miniActions.appendChild(document.createTextNode(" Include this individual pack"));
-        label.appendChild(header);
-        label.appendChild(miniActions);
-        details.appendChild(label);
+    function renderRecommendedSelection(pack) {
+      if (!pack) {
+        listEl.textContent = "おすすめの基本セットを読み込めませんでした。";
+        return;
       }
-      listEl.appendChild(details);
-    }
-
-    function renderReview(packs) {
-      for (const existing of listEl.querySelectorAll("[data-install-review]")) existing.remove();
-      const review = document.createElement("section");
-      review.dataset.installReview = "true";
-      review.className = "advanced-selection";
-      const title = document.createElement("h3");
-      title.textContent = "Exact install plan";
-      review.appendChild(title);
-      for (const pack of packs) {
-        const item = document.createElement("article");
-        item.className = "pack";
-        const privileged = pack.supports_all_ok || pack.risk_level === "high";
-        item.textContent = [
-          pack.display_name || pack.pack_id,
-          "Source: " + (pack.source_path || "unknown"),
-          "Purpose: " + (pack.description || "not documented"),
-          "Risk: " + (pack.risk_level || "unknown"),
-          "Permissions: " + ((pack.required_permissions || []).join(", ") || "none declared"),
-          "All OK: " + (pack.supports_all_ok ? "eligible; bounded grants require separate approval" : "not eligible"),
-          "Dependencies: " + ((pack.depends_on || []).join(", ") || "none"),
-          "Conflicts: " + ((pack.conflicts_with || []).join(", ") || "none"),
-          "Version: " + (pack.version || "unknown"),
-        ].join(" · ");
-        if (privileged) {
-          const label = document.createElement("label");
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.checked = confirmedPrivilegedPackIds.has(pack.pack_id);
-          checkbox.addEventListener("change", () => {
-            if (checkbox.checked) confirmedPrivilegedPackIds.add(pack.pack_id);
-            else confirmedPrivilegedPackIds.delete(pack.pack_id);
-          });
-          label.appendChild(checkbox);
-          label.appendChild(document.createTextNode(" I explicitly confirm this privileged pack"));
-          item.appendChild(label);
-        }
-        review.appendChild(item);
-      }
-      listEl.appendChild(review);
+      const card = document.createElement("article");
+      card.className = "pack selected";
+      const header = document.createElement("header");
+      const details = document.createElement("div");
+      const name = document.createElement("strong");
+      const description = document.createElement("div");
+      const pill = document.createElement("div");
+      name.textContent = pack.display_name || "おすすめの基本セット";
+      description.textContent = "基本の機能を準備して、すぐに始められるようにします。";
+      pill.className = "pill recommended";
+      pill.textContent = "おすすめ";
+      details.appendChild(name);
+      details.appendChild(description);
+      header.appendChild(details);
+      header.appendChild(pill);
+      card.appendChild(header);
+      listEl.appendChild(card);
     }
 
     async function load(options = {}) {
       try {
         const packs = await getJson("/api/setup/packs");
-        const migration = await getJson("/api/setup/migration/status");
         renderPacks(packs);
-        migrationEl.textContent = setupMigrationLabel(migration);
         if (!options.preserveStatus) {
-          setStatus("Setup loaded", { packs, migration }, renderInstallSummary(packs, migration));
+          setStatus("", {});
         }
         if (options.redirect !== false) redirectToReturnTarget(packs);
         return true;
       } catch (error) {
         setInstallProgress("error");
-        setStatus("Setup failed", { error: errorMessage(error) }, [
-          "The setup state could not be loaded.",
-          "Reason: " + errorMessage(error),
+        setStatus("おすすめのセットを読み込めませんでした", { error: errorMessage(error) }, [
+          "アプリを再起動して、もう一度お試しください。",
+          "理由: " + errorMessage(error),
         ], "error");
         return false;
       }
     }
 
-    document.getElementById("refresh").addEventListener("click", load);
-    listEl.addEventListener("change", handleSelectionChange);
     installButton.addEventListener("click", installSelectedPacks);
     load();
   </script>

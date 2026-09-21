@@ -11,6 +11,7 @@ import {
   fetchDashboard,
   fetchStartupProfiles,
   launchDefaultspackDesktop,
+  queueDefaultspackDesktopAfterKernelRestart,
   launchStartupProfile,
   removePackFromStartupProfile,
   setStartupProfileNodeOverride,
@@ -87,6 +88,7 @@ export async function launchStartupProfileFromDashboard({
   refreshProfiles,
   refreshDashboard,
   openDesktop,
+  queueDesktopAfterRestart,
   setSuccessFeedback,
   setErrorFeedback,
   translateError,
@@ -97,12 +99,14 @@ export async function launchStartupProfileFromDashboard({
   refreshProfiles: (preferredProfileId?: string | null) => Promise<void>;
   refreshDashboard: () => Promise<void>;
   openDesktop: () => Promise<unknown>;
+  queueDesktopAfterRestart: () => Promise<unknown>;
   setSuccessFeedback: (message: string) => void;
   setErrorFeedback: (message: string) => void;
   translateError: (error: unknown, fallbackAction: string) => string;
 }): Promise<void> {
   const response = await launchProfile(profileId);
   if (response.restart_requested) {
+    await queueDesktopAfterRestart();
     setSuccessFeedback('Profile launched. Defaultspack will open after the runtime restart is ready.');
     return;
   }
@@ -391,6 +395,7 @@ export function Dashboard() {
         refreshProfiles,
         refreshDashboard,
         openDesktop: launchDefaultspackDesktop,
+        queueDesktopAfterRestart: queueDefaultspackDesktopAfterKernelRestart,
         setSuccessFeedback,
         setErrorFeedback,
         translateError: translateActionError,

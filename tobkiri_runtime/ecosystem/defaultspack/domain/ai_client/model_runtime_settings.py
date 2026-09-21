@@ -65,6 +65,28 @@ class ModelRuntimeSettingsService:
         self._settings_store.update(merge)
         return result
 
+    def update_api_bound_profiles(self, profiles: Any) -> dict[str, Any]:
+        """Persist connection-bound profiles without rebuilding provider catalogs.
+
+        Saving a key can happen while a remote inventory is still settling.  A
+        full model-settings refresh resolves Rumi packs and every provider
+        catalog, which is both slow and an unwanted discovery side effect for a
+        simple local Settings write.  The caller already owns normalized
+        provider/model ids, so update only that settings field atomically.
+        """
+        result: dict[str, Any] = {}
+
+        def merge(all_settings: dict[str, Any]) -> dict[str, Any]:
+            current = all_settings.get("models", {})
+            models = dict(current) if isinstance(current, dict) else {}
+            models["api_bound_profiles"] = self._normalize_api_bound_profiles(profiles)
+            all_settings["models"] = models
+            result.update(models)
+            return all_settings
+
+        self._settings_store.update(merge)
+        return result
+
     def get_preferred_model(self) -> str:
         return str(self.get_settings().get("preferred_model") or DEFAULT_MODEL)
 
@@ -814,8 +836,9 @@ class ModelRuntimeSettingsService:
             return False
         return default
 
-    def runtime_defined_profiles(self, settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        settings = settings if isinstance(settings, dict) else self.get_settings()
+    def api_bound_profiles(self, settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Build named-API profiles without triggering catalog or Rumi refreshes."""
+        settings = settings if isinstance(settings, dict) else self._raw_models_settings()
         model_notes = self._normalize_model_notes(settings.get("model_notes"))
         profiles: list[dict[str, Any]] = []
         for profile in self._normalize_api_bound_profiles(settings.get("api_bound_profiles")):
@@ -850,6 +873,17 @@ class ModelRuntimeSettingsService:
                     },
                 }
             )
+        return profiles
+
+    def _raw_models_settings(self) -> dict[str, Any]:
+        saved = self._settings_store.read()
+        models = saved.get("models", {}) if isinstance(saved, dict) else {}
+        return dict(models) if isinstance(models, dict) else {}
+
+    def runtime_defined_profiles(self, settings: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        settings = settings if isinstance(settings, dict) else self.get_settings()
+        model_notes = self._normalize_model_notes(settings.get("model_notes"))
+        profiles = self.api_bound_profiles(settings)
         for composite in self._normalize_composite_models(settings.get("composite_models")):
             if composite.get("enabled") is False:
                 continue

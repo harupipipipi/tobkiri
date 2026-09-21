@@ -60,6 +60,15 @@ class FrontendRegistry:
     _selectable_model_profiles_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
     _selectable_model_profiles_cache_ttl_seconds = 30.0
 
+    @classmethod
+    def invalidate_selectable_model_profiles(cls, pack_root: Path | None = None) -> None:
+        """Make provider-key changes visible without waiting for the cache TTL."""
+        with cls._selectable_model_profiles_lock:
+            if pack_root is None:
+                cls._selectable_model_profiles_cache.clear()
+            else:
+                cls._selectable_model_profiles_cache.pop(str(pack_root.resolve()), None)
+
     def __init__(self, pack_root: Path | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
         self._extensions_dir = self._pack_root / "user_data" / "shared" / "frontend_extensions"
@@ -117,7 +126,7 @@ class FrontendRegistry:
             },
             "settings": {
                 "sections": settings_sections,
-                "values": self._read_settings(),
+                "values": self._read_settings(lightweight=lightweight),
             },
             "chat_rendering": {
                 "renderers": chat_renderers,
@@ -160,7 +169,7 @@ class FrontendRegistry:
                 template_catalog.get("settings_sections", []),
                 hydrate_dynamic=not lightweight,
             ),
-            "values": self._read_settings(),
+            "values": self._read_settings(lightweight=lightweight),
         }
 
     def update_settings(self, patch: dict[str, Any] | None) -> dict[str, Any]:
@@ -2644,17 +2653,17 @@ class FrontendRegistry:
             deduped[value] = item
         return [deduped[value] for value in order]
 
-    def _read_settings(self) -> dict[str, Any]:
-        values = self._default_settings()
+    def _read_settings(self, *, lightweight: bool = False) -> dict[str, Any]:
+        values = self._default_settings(lightweight=lightweight)
         try:
             saved = self._settings_store.read()
         except FrontendSettingsCorruptError:
             try:
                 raw_settings = self._settings_path.read_bytes()
             except OSError:
-                return self._refresh_derived_settings(values)
+                return self._refresh_derived_settings(values, lightweight=lightweight)
             self._backup_corrupt_settings(raw_settings)
-            return self._refresh_derived_settings(values)
+            return self._refresh_derived_settings(values, lightweight=lightweight)
         saved, migrated = self._migrate_legacy_keyboard_navigation(saved)
         if migrated:
             saved = self._settings_store.update(
@@ -2663,7 +2672,7 @@ class FrontendRegistry:
         if saved:
             saved = self._settings_with_legacy_tool_version(saved)
             values = self._deep_merge(values, saved)
-        return self._refresh_derived_settings(values)
+        return self._refresh_derived_settings(values, lightweight=lightweight)
 
     def _backup_corrupt_settings(self, content: bytes) -> None:
         """Preserve unreadable settings without changing the original file."""
@@ -2711,11 +2720,12 @@ class FrontendRegistry:
                 temporary_file.flush()
                 os.fsync(temporary_file.fileno())
             os.replace(temporary_path, path)
-            directory_descriptor = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
+            if os.name != "nt":
+                directory_descriptor = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_descriptor)
+                finally:
+                    os.close(directory_descriptor)
         except Exception:
             try:
                 os.close(file_descriptor)
@@ -2772,7 +2782,7 @@ class FrontendRegistry:
             tools["settings_version"] = 1
         return normalized
 
-    def _default_settings(self) -> dict[str, Any]:
+    def _default_settings(self, *, lightweight: bool = False) -> dict[str, Any]:
         return {
             "general": {
                 "settings_version": _GENERAL_SETTINGS_VERSION,
@@ -2806,7 +2816,15 @@ class FrontendRegistry:
             },
             "chat_rendering": {"show_widgets": True, "unknown_block_strategy": "placeholder"},
             "models": {
-                **ModelRuntimeSettingsService(self._pack_root).default_model_settings(),
+                **(
+                    {
+                        "preferred_model": "stub/default",
+                        "model_slots": {"main": "stub/default", "lightweight": ""},
+                        "utility_models": {},
+                    }
+                    if lightweight
+                    else ModelRuntimeSettingsService(self._pack_root).default_model_settings()
+                ),
             },
             "continuity": {
                 "handoff": {
@@ -3394,7 +3412,12 @@ class FrontendRegistry:
                 _KEYBOARD_NAVIGATION_SOURCE_USER
             )
 
-    def _refresh_derived_settings(self, values: dict[str, Any]) -> dict[str, Any]:
+    def _refresh_derived_settings(
+        self,
+        values: dict[str, Any],
+        *,
+        lightweight: bool = False,
+    ) -> dict[str, Any]:
         refreshed = deepcopy(values)
         debug = refreshed.setdefault("debug", {})
         if not isinstance(debug, dict):
@@ -3677,6 +3700,13 @@ class FrontendRegistry:
             sidebar = {}
             refreshed["sidebar"] = sidebar
         sidebar["ui_placements"] = sidebar.get("ui_placements") if isinstance(sidebar.get("ui_placements"), list) else []
+
+        # Bootstrap calls only need persisted UI preferences. Provider, OAuth,
+        # model-pack, and external-service discovery can take several seconds
+        # on Windows, so keep it for the full settings request opened by the
+        # Settings modal instead of starving the initial shell.
+        if lightweight:
+            return refreshed
 
         apis = refreshed.setdefault("apis", {})
         if isinstance(apis, dict):

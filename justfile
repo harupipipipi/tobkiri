@@ -1,4 +1,4 @@
-set positional-arguments
+set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 
 # Display available commands.
 help:
@@ -10,11 +10,11 @@ health:
 
 # Run root-level contract tests.
 root-test *args:
-    pytest tests/ "$@"
+    pytest tests/ {{args}}
 
 # Run tobkiri_runtime tests. Pass pytest selectors after the recipe name.
 test *args:
-    cd tobkiri_runtime && python -m pytest "$@"
+    cd tobkiri_runtime && python -m pytest {{args}}
 
 # Run the focused defaultspack coding/tooling regression cluster.
 tooling-test:

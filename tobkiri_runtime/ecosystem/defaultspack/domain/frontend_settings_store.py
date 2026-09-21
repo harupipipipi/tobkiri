@@ -5,21 +5,11 @@ import os
 import shutil
 import tempfile
 import threading
-from collections.abc import Callable, Iterator
+import time
+from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, BinaryIO
-
-try:
-    import fcntl as _fcntl
-except ImportError:  # pragma: no cover - exercised on Windows
-    _fcntl = None  # type: ignore[assignment]
-
-try:
-    import msvcrt as _msvcrt
-except ImportError:  # pragma: no cover - exercised on POSIX
-    _msvcrt = None  # type: ignore[assignment]
-
+from typing import Any, Iterator
 
 REVISION_KEY = "_settings_revision"
 
@@ -36,30 +26,6 @@ def _thread_lock(path: Path) -> threading.RLock:
     key = str(path.resolve())
     with _locks_guard:
         return _locks.setdefault(key, threading.RLock())
-
-
-def _acquire_file_lock(lock_file: BinaryIO) -> None:
-    if _fcntl is not None:
-        _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_EX)
-        return
-    if _msvcrt is not None:
-        lock_file.seek(0, os.SEEK_END)
-        if lock_file.tell() == 0:
-            lock_file.write(b"\0")
-            lock_file.flush()
-        lock_file.seek(0)
-        _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_LOCK, 1)
-        return
-    raise RuntimeError("no supported file-locking implementation is available")
-
-
-def _release_file_lock(lock_file: BinaryIO) -> None:
-    if _fcntl is not None:
-        _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_UN)
-        return
-    if _msvcrt is not None:
-        lock_file.seek(0)
-        _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_UNLCK, 1)
 
 
 class FrontendSettingsStore:
@@ -95,12 +61,13 @@ class FrontendSettingsStore:
     @contextmanager
     def _locked(self) -> Iterator[None]:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with _thread_lock(self.path), self.lock_path.open("a+b") as lock_file:
-            _acquire_file_lock(lock_file)
-            try:
-                yield
-            finally:
-                _release_file_lock(lock_file)
+        with _thread_lock(self.path):
+            with self.lock_path.open("a+b") as lock_file:
+                _lock_file_handle(lock_file)
+                try:
+                    yield
+                finally:
+                    _unlock_file_handle(lock_file)
 
     def _read_locked(self, *, recover: bool) -> dict[str, Any]:
         if not self.path.exists():
@@ -146,25 +113,96 @@ class FrontendSettingsStore:
         )
         temp_path = Path(temp_name)
         try:
-            fchmod = getattr(os, "fchmod", None)
-            if fchmod is not None:
-                fchmod(fd, mode)
+            os.fchmod(fd, mode)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(value, handle, ensure_ascii=False, indent=2)
                 handle.write("\n")
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.replace(temp_path, self.path)
-            if os.name != "nt":
-                directory_fd = os.open(self.path.parent, os.O_RDONLY)
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+            _replace_file(temp_path, self.path)
+            self._fsync_directory(self.path.parent)
         finally:
             temp_path.unlink(missing_ok=True)
 
     @staticmethod
     def _fsync_file(path: Path) -> None:
-        with path.open("rb") as handle:
-            os.fsync(handle.fileno())
+        try:
+            with path.open("rb") as handle:
+                os.fsync(handle.fileno())
+        except OSError:
+            return
+
+    @staticmethod
+    def _fsync_directory(path: Path) -> None:
+        if os.name == "nt":
+            return
+        try:
+            directory_fd = os.open(path, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            return
+
+
+def _lock_file_handle(handle: Any) -> None:
+    if os.name == "nt":
+        try:
+            import msvcrt
+
+            _ensure_lock_byte(handle)
+            handle.seek(0)
+            for _ in range(400):
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.025)
+            else:
+                raise TimeoutError("timed out acquiring frontend settings lock")
+        except ImportError:
+            return
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    except (ImportError, OSError):
+        return
+
+
+def _unlock_file_handle(handle: Any) -> None:
+    if os.name == "nt":
+        try:
+            import msvcrt
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        except (ImportError, OSError):
+            return
+        return
+    try:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except (ImportError, OSError):
+        return
+
+
+def _ensure_lock_byte(handle: Any) -> None:
+    handle.seek(0, os.SEEK_END)
+    if handle.tell() == 0:
+        handle.write(b"\0")
+        handle.flush()
+
+
+def _replace_file(source: Path, destination: Path) -> None:
+    for attempt in range(40):
+        try:
+            os.replace(source, destination)
+            return
+        except PermissionError:
+            if attempt == 39:
+                raise
+            time.sleep(0.025)

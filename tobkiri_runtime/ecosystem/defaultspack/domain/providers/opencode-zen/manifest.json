@@ -8,8 +8,7 @@
   "display_name": "OpenCode Zen",
   "description": "OpenCode Zen curated model gateway with Anthropic-compatible MiniMax M3 Free and OpenAI-compatible MiMo V2.5 Free access.",
   "entrypoints": {
-    "adapter": "../ai_client/providers/opencode_zen_provider.py",
-    "models": "models.json"
+    "adapter": "../ai_client/providers/opencode_zen_provider.py"
   },
   "security": {
     "credential_required": true,

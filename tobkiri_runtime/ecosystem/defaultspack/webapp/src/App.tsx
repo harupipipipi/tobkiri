@@ -3183,6 +3183,16 @@ function ChatApp() {
   useEffect(() => {
     if (!isSettingsOpen) return;
     let cancelled = false;
+    // The bootstrap response deliberately omits dynamic provider metadata.  Fetch
+    // the full registry when Settings opens so built-in Provider/API controls do
+    // not look like empty extension slots while the shell is still settling.
+    void api.uiSettings({ full: true })
+      .then((settings) => {
+        if (cancelled) return;
+        setSettingsSections(settings.sections);
+        setSettingsValues(withCalendarSettingsValues(settings.values));
+      })
+      .catch((settingsError) => console.error(settingsError));
     void fetchDesktopSystemInfo()
       .then((info) => {
         if (!cancelled) setDesktopSystemInfo(info);
@@ -3204,6 +3214,7 @@ function ChatApp() {
       setHealth(nextHealth);
       setBackendConnectionState("online");
       setBackendConnectionNote(null);
+      return true;
     } catch (healthError) {
       console.error(healthError);
       consecutiveHealthFailuresRef.current += 1;
@@ -3236,6 +3247,7 @@ function ChatApp() {
           },
         });
       }
+      return false;
     }
   }, [activeConversationId]);
 
@@ -3305,7 +3317,7 @@ function ChatApp() {
     void refreshCatalog().catch(console.error);
   }
 
-  async function refreshCatalog() {
+  async function refreshCatalog({ requireShellData = false }: { requireShellData?: boolean } = {}) {
     const [catalogResult, settingsResult, profilesResult, commandsResult] = await Promise.allSettled([
       api.uiCatalog(),
       api.uiSettings(),
@@ -3342,6 +3354,9 @@ function ChatApp() {
     const defaultMode = nextSettings?.values.preview?.default_mode;
     if (defaultMode === "auto" || defaultMode === "manual") {
       setPreviewMode(defaultMode);
+    }
+    if (requireShellData && (!nextCatalog || !nextSettings)) {
+      throw new Error("起動情報をまだ読み込めていません。バックエンドへの接続を確認して再試行してください。");
     }
     return nextCatalog;
   }
@@ -3447,8 +3462,11 @@ function ChatApp() {
           recoveredFromLocation: true,
         });
       }
-      const shellBootstrap = Promise.all([refreshHealth("bootstrap"), refreshCatalog()])
-        .then(([, nextCatalog]) => {
+      const shellBootstrap = Promise.all([refreshHealth("bootstrap"), refreshCatalog({ requireShellData: true })])
+        .then(([isHealthy, nextCatalog]) => {
+          if (!isHealthy) {
+            throw new Error("バックエンドの起動を待っています。接続を確認して再試行してください。");
+          }
           if (cancelled) return;
           const statusRefreshes: Array<Promise<unknown>> = [];
           if (hasOperationsProfile(nextCatalog)) {
@@ -3461,11 +3479,12 @@ function ChatApp() {
             return Promise.all(statusRefreshes);
           }
           return undefined;
-        })
-        .catch((shellError) => {
-          if (!cancelled) console.error(shellError);
         });
       try {
+        // The shell depends on the catalog and settings to render the settings
+        // entry point and the widget rail. Do not present an apparently-ready,
+        // empty workspace while those requests are still in flight.
+        await shellBootstrap;
         if (!cancelled) {
           await refreshConversations(null);
         }
@@ -3482,7 +3501,6 @@ function ChatApp() {
           setIsLoading(false);
         }
       }
-      void shellBootstrap;
     }
 
     void bootstrap();
@@ -6400,7 +6418,7 @@ function ChatApp() {
                 isLoading={isLoading}
                 isNewConversation={isNewConversation}
                 isGenerating={isGenerating || isConversationPending}
-                pendingStatus={pendingRequest?.status ?? null}
+                pendingStatus={pendingRequest?.status ?? (isLoading ? "起動情報を読み込んでいます" : null)}
                 pendingToolNames={pendingRequest?.toolNames ?? []}
                 pendingStartedAt={pendingRequest?.startedAt ?? null}
                 pendingToolStartedAt={pendingRequest?.toolStartedAt ?? {}}

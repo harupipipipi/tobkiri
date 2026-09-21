@@ -8,8 +8,7 @@
   "display_name": "OpenCode Go",
   "description": "OpenCode Go subscription provider with OpenAI-compatible and Anthropic-compatible model endpoints.",
   "entrypoints": {
-    "adapter": "../ai_client/providers/opencode_go_provider.py",
-    "models": "models.json"
+    "adapter": "../ai_client/providers/opencode_go_provider.py"
   },
   "security": {
     "credential_required": true,

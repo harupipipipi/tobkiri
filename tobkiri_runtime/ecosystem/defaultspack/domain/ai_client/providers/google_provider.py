@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import time
 import urllib.error
@@ -172,8 +173,10 @@ class GoogleProvider(OpenAICompatibleProvider):
             "type": "embedding",
         },
     ]
-    CURATED_MODELS = curated_models
-    KNOWN_MODELS = curated_models
+    CURATED_MODELS: List[Dict[str, Any]] = []
+    KNOWN_MODELS: List[Dict[str, Any]] = []
+    _MODEL_INVENTORY_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
+    _MODEL_INVENTORY_CACHE_TTL_SECONDS = 300
 
     def __init__(self):
         super().__init__(
@@ -182,7 +185,7 @@ class GoogleProvider(OpenAICompatibleProvider):
             api_key_env=["GOOGLE_API_KEY", "GEMINI_API_KEY"],
             base_url_env="GOOGLE_BASE_URL",
             default_base_url=self.BASE_URL,
-            known_models=self.curated_models,
+            known_models=[],
         )
         self._base_url = self._normalize_google_base_url(self._base_url)
         self.BASE_URL = self._base_url
@@ -233,9 +236,107 @@ class GoogleProvider(OpenAICompatibleProvider):
 
     @classmethod
     def _load_profile_models(cls):
-        return merge_curated_and_profiles("google", cls.curated_models, cls.PROFILE_DIR)
+        return merge_curated_and_profiles("google", [], cls.PROFILE_DIR)
+
+    def _native_models_base_url(self) -> str:
+        parsed = urllib.parse.urlparse(str(self._base_url or ""))
+        if parsed.netloc != "generativelanguage.googleapis.com":
+            return ""
+        path = parsed.path.rstrip("/")
+        if path.endswith("/openai"):
+            path = path[:-len("/openai")]
+        return urllib.parse.urlunparse(parsed._replace(path=path or "/v1beta", query="", fragment="")).rstrip("/")
+
+    def _model_inventory_scope(self) -> str:
+        token = self._oauth_access_token() or str(self._api_key or "")
+        return hashlib.sha256((self._native_models_base_url() + "\0" + token).encode("utf-8")).hexdigest()
+
+    def _fetch_native_models_page(self, page_token: str = "") -> dict[str, Any]:
+        base = self._native_models_base_url()
+        token = self._oauth_access_token()
+        if not base or not (token or self._api_key):
+            return {}
+        query = {"pageSize": "1000"}
+        if page_token:
+            query["pageToken"] = page_token
+        if not token:
+            query["key"] = str(self._api_key or "")
+        request = urllib.request.Request(
+            base + "/models?" + urllib.parse.urlencode(query),
+            headers={"Authorization": f"Bearer {token}"} if token else {},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, context=self._ssl_ctx, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _native_model_record(raw: Any) -> Dict[str, Any] | None:
+        if not isinstance(raw, dict):
+            return None
+        model_id = str(raw.get("name") or raw.get("baseModelId") or "").strip()
+        if model_id.startswith("models/"):
+            model_id = model_id.split("/", 1)[1]
+        if not model_id:
+            return None
+        actions = raw.get("supportedGenerationMethods") or raw.get("supportedActions") or []
+        actions = {str(item) for item in actions} if isinstance(actions, list) else set()
+        is_embedding = bool(actions & {"embedContent", "batchEmbedContents", "embedText"})
+        is_chat = bool(actions & {"generateContent", "streamGenerateContent", "createInteraction"})
+        model_type = "chat" if is_chat else "embedding" if is_embedding else "chat"
+        return {
+            "id": f"google/{model_id}",
+            "model_id": model_id,
+            "provider_id": "google",
+            "provider": "google",
+            "name": str(raw.get("displayName") or model_id),
+            "display_name": str(raw.get("displayName") or model_id),
+            "type": model_type,
+            "context_window": int(raw.get("inputTokenLimit") or 0),
+            "max_context": int(raw.get("inputTokenLimit") or 0),
+            "capabilities": {
+                "chat": is_chat,
+                "text_input": is_chat,
+                "text_output": is_chat,
+                "streaming": "streamGenerateContent" in actions or is_chat,
+                "embedding": is_embedding,
+                "image_input": "generateContent" in actions,
+                "vision": "generateContent" in actions,
+            },
+            "metadata": {
+                "source": "native_models_endpoint",
+                "capability_source": "native_models_endpoint",
+                "capability_confidence": "provider_reported",
+                "max_output_tokens": int(raw.get("outputTokenLimit") or 0),
+            },
+        }
 
     def list_models(self):
+        scope = self._model_inventory_scope()
+        cached = self._MODEL_INVENTORY_CACHE.get(scope) if scope else None
+        now = time.monotonic()
+        if cached and cached[0] > now:
+            return [dict(model) for model in cached[1]]
+        models: List[Dict[str, Any]] = []
+        page_token = ""
+        seen_tokens = set()
+        for _ in range(100):
+            page = self._fetch_native_models_page(page_token)
+            for raw in page.get("models", []) if isinstance(page.get("models"), list) else []:
+                model = self._native_model_record(raw)
+                if model and all(item["model_id"] != model["model_id"] for item in models):
+                    models.append(model)
+            next_token = str(page.get("nextPageToken") or "").strip()
+            if not next_token or next_token in seen_tokens:
+                break
+            seen_tokens.add(next_token)
+            page_token = next_token
+        if models and scope:
+            self._MODEL_INVENTORY_CACHE[scope] = (now + self._MODEL_INVENTORY_CACHE_TTL_SECONDS, [dict(model) for model in models])
+            return models
         return self._normalize_known_models(self._load_profile_models())
 
     @staticmethod

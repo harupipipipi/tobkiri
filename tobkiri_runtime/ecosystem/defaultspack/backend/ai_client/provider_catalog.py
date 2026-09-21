@@ -10,7 +10,6 @@ import os
 from typing import Any, Dict, List
 
 from ecosystem.defaultspack.domain.ai_client.providers import (
-    build_profile_catalog,
     get_all_known_models,
     get_provider_catalog,
     validate_provider_catalog_coverage,
@@ -25,19 +24,156 @@ from ecosystem.defaultspack.domain.ai_client.model_capability_schema import (
 from ecosystem.defaultspack.domain.ai_client.model_metadata_schema import context_window_value
 
 
+def _runtime_client():
+    """Return the live client without making the static catalog depend on startup order."""
+    from ecosystem.defaultspack.domain.ai_client.client import AIClient
+
+    return AIClient()
+
+
+def _active_provider_ids() -> set[str]:
+    try:
+        return {
+            str(provider.get("provider_id") or provider.get("id") or "").strip()
+            for provider in _runtime_client().list_providers()
+            if isinstance(provider, dict)
+            and str(provider.get("provider_id") or provider.get("id") or "").strip()
+        }
+    except Exception:
+        return set()
+
+
 def list_provider_catalog() -> List[Dict[str, Any]]:
-    return [_with_legacy_provider_fields(provider) for provider in get_provider_catalog()]
+    """List every installed provider, marking credential-backed ones as active.
+
+    The provider registry is deliberately broader than the active runtime.  Passing
+    the active ids through preserves that complete setup catalog while ensuring a
+    just-configured provider is immediately shown as available.
+    """
+    active_provider_ids = _active_provider_ids()
+    return [
+        _with_legacy_provider_fields(provider)
+        for provider in get_provider_catalog(active_provider_ids=active_provider_ids)
+    ]
 
 
 def list_model_catalog(provider: str = "") -> List[Dict[str, Any]]:
-    models = get_all_known_models()
-    if provider:
-        models = [model for model in models if model.get("provider_id") == provider or model.get("provider") == provider]
-    return [_with_legacy_model_fields(model) for model in models]
+    """Return static metadata plus every model discoverable by active providers.
+
+    Gateway providers (notably OpenRouter) expose their live inventory at runtime.
+    Previously this endpoint discarded that inventory and returned only the small
+    curated overlay, leaving valid account models absent from the desktop UI.
+    """
+    active_provider_ids = _active_provider_ids()
+    models = get_all_known_models(
+        provider_id=provider or None,
+        active_provider_ids=active_provider_ids,
+    )
+    try:
+        runtime_models = _runtime_client().list_models(provider=provider or None)
+    except Exception:
+        runtime_models = []
+
+    # A successful live inventory is authoritative for that connection.  Do
+    # not append an old bundled overlay merely because it contains different
+    # ids: that makes removed/unavailable models reappear in the UI and defeats
+    # account-scoped discovery.
+    live_inventory_sources = {
+        "remote_models_endpoint",
+        "openrouter_models_api",
+        "vercel_gateway_models_api",
+        "vercel_ai_gateway_models_api",
+        "native_models_endpoint",
+        "native_server_api",
+        "last_known_good_inventory",
+    }
+    providers_with_live_inventory = {
+        str(model.get("provider_id") or model.get("provider") or "").strip()
+        for model in runtime_models
+        if isinstance(model, dict)
+        and str((model.get("metadata") or {}).get("source") or "").strip().lower()
+        in live_inventory_sources
+    }
+
+    merged: dict[str, Dict[str, Any]] = {}
+    order: list[str] = []
+    for source in (models, runtime_models):
+        for raw in source:
+            if not isinstance(raw, dict):
+                continue
+            item = dict(raw)
+            provider_id = str(item.get("provider_id") or item.get("provider") or "").strip()
+            model_id = str(item.get("model_id") or item.get("model_name") or "").strip()
+            qualified_id = str(item.get("qualified_model_id") or item.get("id") or "").strip()
+            if not qualified_id and provider_id and model_id:
+                qualified_id = f"{provider_id}/{model_id}"
+            if not qualified_id:
+                continue
+            if provider and provider_id != provider:
+                continue
+            if source is models and provider_id in providers_with_live_inventory:
+                continue
+            if qualified_id not in merged:
+                merged[qualified_id] = item
+                order.append(qualified_id)
+                continue
+
+            # Runtime discovery is authoritative for capability/pricing metadata,
+            # while curated metadata remains a fallback for omitted fields.
+            existing = merged[qualified_id]
+            metadata = dict(existing.get("metadata") or {})
+            metadata.update(dict(item.get("metadata") or {}))
+            existing.update({key: value for key, value in item.items() if value not in (None, "", [], {})})
+            existing["metadata"] = metadata
+
+    return [_with_legacy_model_fields(merged[qualified_id]) for qualified_id in order]
 
 
 def list_profile_catalog() -> List[Dict[str, Any]]:
-    return [_with_legacy_profile_fields(profile) for profile in build_profile_catalog()]
+    # Build profiles from the same merged catalog used by /api/ai/models.  This
+    # keeps the composer, Settings, and API routes in agreement after a provider
+    # key is saved instead of exposing live models in only one endpoint.
+    profiles: list[Dict[str, Any]] = []
+    for model in list_model_catalog():
+        metadata = dict(model.get("metadata") or {})
+        metadata.update(
+            {
+                "profile_source": "catalog",
+                "resolved_model_key": model.get("qualified_model_id") or model.get("id") or "",
+            }
+        )
+        profiles.append(
+            {
+                "id": model.get("qualified_model_id") or model.get("id") or "",
+                "profile_id": model.get("qualified_model_id") or model.get("id") or "",
+                "name": model.get("display_name") or model.get("name") or "",
+                "display_name": model.get("display_name") or model.get("name") or "",
+                "provider": model.get("provider_id") or model.get("provider") or "",
+                "provider_id": model.get("provider_id") or model.get("provider") or "",
+                "provider_display_name": model.get("provider_display_name") or "",
+                "model": model.get("model_id") or model.get("model_name") or "",
+                "model_id": model.get("model_id") or model.get("model_name") or "",
+                "model_name": model.get("model_name") or model.get("model_id") or "",
+                "qualified_model_id": model.get("qualified_model_id") or model.get("id") or "",
+                "availability": dict(model.get("availability") or {}),
+                "name_collision": bool(model.get("name_collision")),
+                "provider_count_for_model_name": int(model.get("provider_count_for_model_name") or 0),
+                "disambiguated_name": model.get("disambiguated_name") or model.get("display_name") or "",
+                "type": model.get("type") or "chat",
+                "context_window": int(model.get("context_window") or 0),
+                "capabilities": list(model.get("capabilities") or []),
+                "request_features": dict(model.get("request_features") or {}),
+                "routing": dict(model.get("routing") or {}),
+                "thinking": dict(model.get("thinking") or {}),
+                "defaults": dict(model.get("defaults") or {}),
+                "pricing": dict(model.get("pricing") or {}),
+                "metadata": metadata,
+                "supports_thinking": bool(model.get("supports_thinking")),
+                "thinking_levels": list(model.get("thinking_levels") or []),
+                "default_thinking_level": model.get("default_thinking_level"),
+            }
+        )
+    return [_with_legacy_profile_fields(profile) for profile in profiles]
 
 
 def validate_catalog_coverage() -> List[Dict[str, Any]]:

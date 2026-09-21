@@ -20,5 +20,5 @@
   },
   "recommended": true,
   "risk_level": "low",
-  "supports_all_ok": true
+  "supports_all_ok": false
 }

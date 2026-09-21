@@ -732,7 +732,7 @@ def _projected_id(template: RumiTemplate, piece: TemplatePiece) -> str:
 
 
 def _source(template: RumiTemplate) -> str:
-    return str(template.source_path) if template.source_path else ""
+    return template.source_path.as_posix() if template.source_path else ""
 
 
 def _value(value: object) -> str:

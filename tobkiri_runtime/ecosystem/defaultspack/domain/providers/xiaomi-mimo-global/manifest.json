@@ -6,10 +6,8 @@
   "version": "1",
   "status": "experimental",
   "display_name": "Xiaomi MiMo Global",
-  "description": "Experimental catalog entry for the Xiaomi MiMo Global API. Runtime is disabled until official base URL and auth behavior are confirmed.",
-  "entrypoints": {
-    "models": "models.json"
-  },
+  "description": "Xiaomi MiMo Global OpenAI-compatible API. Models are read from the connected account at runtime.",
+  "entrypoints": {},
   "security": {
     "credential_required": true,
     "region_explicit_selection_required": true
@@ -18,19 +16,16 @@
     "display_name": "Xiaomi MiMo Global",
     "kind": "cloud",
     "env_vars": [
-      "XIAOMI_MIMO_GLOBAL_API_KEY"
+      "XIAOMI_MIMO_GLOBAL_API_KEY",
+      "MIMO_API_KEY"
     ],
     "base_url_envs": [
       "XIAOMI_MIMO_GLOBAL_BASE_URL"
     ],
-    "catalog_only": true,
-    "supports_invoke": false,
-    "default_model": "mimo-v2.5-pro",
-    "default_model_for": {
-      "chat": "mimo-v2.5-pro",
-      "reasoning": "mimo-v2.5-pro",
-      "fast": "mimo-v2-flash"
-    },
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "",
+    "default_model_for": {},
     "subscription_plans": [
       {
         "id": "mimo_orbit_100t_grant_if_available",
@@ -42,11 +37,8 @@
         "requires_manual_signup": true,
         "do_not_auto_enable": true,
         "token_quota_label": "100T tokens",
-        "applies_to_models": [
-          "mimo-v2.5-pro",
-          "mimo-v2-flash"
-        ],
-        "notes": "Catalog metadata only until official API base URL, auth behavior, and eligibility are confirmed."
+        "applies_to_models": [],
+        "notes": "The plan's regional endpoint and account-visible model inventory are authoritative."
       }
     ],
     "catalog_features": [
@@ -63,20 +55,17 @@
     "display_name": "Xiaomi MiMo Global",
     "enabled": true,
     "priority": 71,
-    "adapter": "catalog_only",
-    "api_key_env": "XIAOMI_MIMO_GLOBAL_API_KEY",
+    "adapter": "openai_compatible",
+    "api_key_env": ["XIAOMI_MIMO_GLOBAL_API_KEY", "MIMO_API_KEY"],
     "base_url_env": "XIAOMI_MIMO_GLOBAL_BASE_URL",
     "credential_required": true,
-    "catalog_only": true,
-    "supports_invoke": false,
-    "default_model": "mimo-v2.5-pro",
-    "default_model_for": {
-      "chat": "mimo-v2.5-pro",
-      "reasoning": "mimo-v2.5-pro",
-      "fast": "mimo-v2-flash"
-    },
+    "default_base_url": "https://api.xiaomimimo.com/v1",
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "",
+    "default_model_for": {},
     "config": {
-      "api_compatibility": "openai_if_confirmed",
+      "api_compatibility": "openai",
       "region": "global",
       "data_region": "global_or_unspecified",
       "requires_region_explicit_selection": true,
@@ -95,17 +84,15 @@
           "requires_manual_signup": true,
           "do_not_auto_enable": true,
           "token_quota_label": "100T tokens",
-          "applies_to_models": [
-            "mimo-v2.5-pro",
-            "mimo-v2-flash"
-          ],
-          "notes": "Catalog metadata only until official API base URL, auth behavior, and eligibility are confirmed."
+          "applies_to_models": [],
+          "notes": "The plan's regional endpoint and account-visible model inventory are authoritative."
         }
       ],
       "do_not_fallback_to_other_region": true,
       "do_not_reuse_credentials_across_regions": true,
-      "model_sync": "fixed_allowlist",
-      "runtime_enablement": "manual_base_url_and_docs_required"
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "runtime_enablement": "official_openai_compatible_endpoint"
     }
   },
   "source_pack_id": "defaultspack",

@@ -93,6 +93,11 @@ export type PlacementRenderingResolution =
 
 export const PINNED_PLACEMENTS_STORAGE_KEY = "rumi-ui-placements";
 export const PLACEMENT_HTML_MAX_SOURCE_BYTES = 64 * 1024;
+export const DEFAULT_RIGHT_SIDEBAR_PLACEMENTS: PinnedPlacement[] = [
+  { id: "model-manager", surface: "right_sidebar" },
+  { id: "runtime-status", surface: "right_sidebar" },
+  { id: "tool-filter-log", surface: "right_sidebar" },
+];
 
 export function normalizePinnedPlacements(value: unknown): PinnedPlacement[] {
   if (!Array.isArray(value)) return [];
@@ -103,6 +108,14 @@ export function normalizePinnedPlacements(value: unknown): PinnedPlacement[] {
       surface: String(entry.surface ?? "").trim() as PlacementSurface,
     }))
     .filter((entry) => entry.id && entry.surface);
+}
+
+/** New profiles and legacy empty defaults should not start with an empty widget rail. */
+export function initialPinnedPlacements(value: unknown): PinnedPlacement[] {
+  const placements = normalizePinnedPlacements(value);
+  return placements.length > 0
+    ? placements
+    : DEFAULT_RIGHT_SIDEBAR_PLACEMENTS.map((placement) => ({ ...placement }));
 }
 
 function supportsOrientation(actual: PlacementOrientation, requested: Exclude<PlacementOrientation, "both">): boolean {

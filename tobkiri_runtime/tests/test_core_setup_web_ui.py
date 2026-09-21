@@ -2,112 +2,68 @@ import re
 from pathlib import Path
 
 
-SETUP_UI = (
-    Path(__file__).resolve().parent.parent
-    / "core_runtime"
-    / "core_pack"
-    / "core_setup"
-    / "web"
-    / "index.html"
-)
+RUNTIME_ROOT = Path(__file__).resolve().parent.parent
+SETUP_UI = RUNTIME_ROOT / "core_runtime" / "core_pack" / "core_setup" / "web" / "index.html"
+DEFAULT_PACK = RUNTIME_ROOT / "ecosystem" / "setup_pack" / "defaultspack" / "pack.json"
 
 
 def setup_ui_source() -> str:
-    """Return the setup-pack landing page source."""
+    """Return the initial setup page source."""
     return SETUP_UI.read_text(encoding="utf-8")
 
 
-def test_setup_pack_landing_avoids_centered_clipping_layout() -> None:
-    """Initial desktop view should top-align and allow natural vertical scroll."""
+def test_setup_starts_with_a_single_dark_recommendation() -> None:
+    """The first-run surface is a focused, dark one-column recommendation."""
     source = setup_ui_source()
     body_rules = re.search(r"body \{(?P<body>.*?)\n    \}", source, re.S)
 
-    assert body_rules is not None
-    assert "place-items: center" not in body_rules.group("body")
-    assert "overflow: hidden;" not in body_rules.group("body")
-    assert "margin: 0 auto;" in source
-    assert "grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr)" in source
-    assert "min-width: 0;" in source
-    assert "overflow-x: clip;" in source
-    assert "@media (max-width: 820px)" in source
+    assert "color-scheme: dark;" in source
+    assert "--bg: #0a0a0a;" in source
+    assert "grid-template-columns: minmax(0, 720px);" in source
+    assert "Tobkiri をはじめよう" in source
+    assert "まずはこれだけで始められます" in source
+    assert "このおすすめで始める →" in source
 
 
-def test_setup_state_hides_raw_json_behind_debug_disclosure() -> None:
-    """The default status panel should render compact copy, not a raw JSON dump."""
-    source = setup_ui_source()
-    set_status = re.search(
-        r"function setStatus\(label, payload, rows, tone = \"neutral\"\) \{(?P<body>.*?)\n    \}",
-        source,
-        re.S,
-    )
-
-    assert set_status is not None
-    assert "JSON.stringify(payload, null, 2)" not in set_status.group("body")
-    assert "renderInstallSummary(packs, migration)" in source
-    assert "Advanced debug state" in source
-    assert 'document.createElement("details")' in source
-
-
-def test_setup_never_infers_or_auto_selects_recommendations() -> None:
-    """Selection must be explicit and independent of names, order, and recommended flags."""
-    source = setup_ui_source()
-    assert "PROFILE_CARDS" not in source
-    assert "matchingPacks" not in source
-    assert "matches.push(packs[0])" not in source
-    assert "pack.recommended" not in source
-    assert 'summary.textContent = "packを個別に選択"' in source
-
-
-def test_setup_cards_are_full_clickable_labels() -> None:
-    """Selection cards should use label-owned checkboxes for large hit targets."""
+def test_setup_selects_defaultspack_instead_of_restoring_every_pack() -> None:
+    """Existing setup selections must not turn the first screen into a pack dump."""
     source = setup_ui_source()
 
-    assert 'document.createElement("label")' in source
-    assert 'label.className = "pack"' in source
-    assert "cursor: pointer;" in source
-    assert "min-height: 44px;" in source
-    assert "dataset.selectPack" in source
-    assert 'input.setAttribute("aria-label", "Include " + (pack.display_name || pack.pack_id || "pack"))' in source
-    assert '.pack:has(input:focus-visible)' in source
+    assert 'pack.pack_id === "defaultspack"' in source
+    assert "|| packs.find((pack) => pack.recommended)" in source
+    assert "selectedPackIds.add(recommended.pack_id);" in source
+    assert "renderRecommendedSelection(recommended);" in source
+    assert "for (const pack of packs)" not in source[source.index("function renderPacks"):source.index("function renderRecommendedSelection")]
+    assert "renderAdvancedSelection" not in source
 
 
-def test_group_and_advanced_choices_share_one_selection_model() -> None:
-    """Group and individual controls must not submit stale duplicate state."""
+def test_setup_hides_technical_status_until_an_action_needs_feedback() -> None:
+    """Initial setup must not show migration, review, or debug internals."""
     source = setup_ui_source()
 
-    assert "const selectedPackIds = new Set();" in source
-    assert "function handleSelectionChange(event)" in source
-    assert "selectedPackIds.add(packId)" in source
-    assert "selectedPackIds.delete(packId)" in source
-    assert 'listEl.addEventListener("change", handleSelectionChange)' in source
-    assert "return Array.from(selectedPackIds);" in source
+    assert 'id="status" class="status" role="status" aria-live="polite" hidden' in source
+    assert "statusEl.hidden = !label;" in source
+    assert "Advanced debug state" not in source
+    assert "setup/migration/status" not in source
+    assert "Review required before install" not in source
 
 
-def test_install_action_sends_selected_ids_and_reports_feedback() -> None:
-    """Install should post selected setup pack ids and expose pending/result feedback."""
+def test_recommended_install_posts_only_the_recommended_pack() -> None:
+    """One click should install the selected recommendation instead of opening review."""
     source = setup_ui_source()
 
-    assert "const selected = selectedSetupPackIds();" in source
+    assert 'getJson("/api/setup/packs/install"' in source
     assert "reviewed_pack_ids: selected" in source
     assert "review_revision: currentReviewRevision" in source
-    assert "confirmed_privileged_pack_ids" in source
-    assert 'getJson("/api/setup/packs/install"' in source
-    assert 'setInstallProgress("pending")' in source
-    assert 'setInstallProgress("success")' in source
-    assert 'setInstallProgress("error")' in source
-    assert 'id="install-progress"' in source
-    assert 'id="install-selected" disabled' in source
-    assert "do not immediately issue an unauthenticated refresh request here" in source
-    assert "const refreshed = await load({ preserveStatus: true, redirect: false });" not in source
-    assert 'aria-live="polite"' in source
-    assert 'setStatus("Installing setup packs…"' in source
-    assert 'setStatus("Setup packs installed"' in source
+    assert "confirmed_privileged_pack_ids: []" in source
+    assert 'setStatus("おすすめを入れています…"' in source
+    assert 'setStatus("セットアップが完了しました"' in source
+    assert "renderReview" not in source
 
 
-def test_install_review_discloses_pack_risk_and_requires_privileged_confirmation() -> None:
-    source = setup_ui_source()
+def test_default_recommendation_does_not_grant_all_ok_on_install() -> None:
+    """The one-click recommendation must not carry broad permission grants."""
+    source = DEFAULT_PACK.read_text(encoding="utf-8")
 
-    for field in ("source_path", "description", "risk_level", "required_permissions", "supports_all_ok", "depends_on", "conflicts_with", "version"):
-        assert field in source
-    assert "I explicitly confirm this privileged pack" in source
-    assert "Review required before install" in source
+    assert '"recommended": true' in source
+    assert '"supports_all_ok": false' in source

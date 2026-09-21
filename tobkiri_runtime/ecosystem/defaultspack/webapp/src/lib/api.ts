@@ -2966,9 +2966,10 @@ export const api = {
     return request<UICatalog>("/api/ui/catalog");
   },
 
-  uiSettings() {
+  uiSettings(options: { full?: boolean } = {}) {
+    const query = options.full ? "?full=true" : "";
     return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>> }>(
-      "/api/ui/settings",
+      `/api/ui/settings${query}`,
       { cache: "no-store" },
     );
   },
@@ -3162,6 +3163,7 @@ export const api = {
     notes?: string;
     quotaLabel?: string;
     kind?: string;
+    credentialMode?: "api_key" | "none";
   }) {
     return request<{ provider_id: string; api_id?: string; name?: string; configured: boolean; kind?: string; model_availability?: ModelAvailabilityAfterKeySave }>("/api/ai/provider-key", {
       method: "POST",
@@ -3176,6 +3178,7 @@ export const api = {
         notes: options?.notes,
         quota_label: options?.quotaLabel,
         kind: options?.kind,
+        credential_mode: options?.credentialMode,
       }),
     });
   },

@@ -154,18 +154,6 @@ class XiaomiMimoTokenPlanProvider(OpenAICompatibleProvider):
         default_base_url: str,
         region: str,
     ) -> None:
-        models: List[Dict[str, Any]] = []
-        for raw in _TOKEN_PLAN_MODELS:
-            model = dict(raw)
-            model["id"] = f"{provider_id}/{model['model_id']}"
-            model["provider"] = provider_id
-            model["provider_id"] = provider_id
-            metadata = dict(model.get("metadata", {}))
-            metadata["region"] = region
-            metadata["token_plan_region_scoped"] = True
-            model["metadata"] = metadata
-            models.append(model)
-
         super().__init__(
             provider_id=provider_id,
             display_name=display_name,
@@ -173,7 +161,10 @@ class XiaomiMimoTokenPlanProvider(OpenAICompatibleProvider):
             base_url_env=base_url_env,
             default_base_url=default_base_url,
             credential_required=True,
-            known_models=models,
+            known_models=[],
+            remote_model_discovery=True,
+            remote_model_list_path="/models",
+            remote_model_cache_ttl_seconds=3600,
         )
         self.region = region
 
@@ -190,15 +181,7 @@ class XiaomiMimoTokenPlanProvider(OpenAICompatibleProvider):
 
     @classmethod
     def _assert_supported_model(cls, model: str) -> None:
-        model_id = str(model or "").strip()
-        if "/" in model_id:
-            model_id = model_id.split("/", 1)[1]
-        if model_id not in cls.MODEL_IDS:
-            supported = ", ".join(sorted(cls.MODEL_IDS))
-            raise RuntimeError(
-                "xiaomi-mimo-token-plan: unsupported model. "
-                f"defaultspack supports only: {supported}"
-            )
+        return None
 
     def _translate_model_params(self, model, params):
         translated = dict(params or {})
@@ -225,7 +208,12 @@ class XiaomiMimoTokenPlanProvider(OpenAICompatibleProvider):
         return translated
 
     def list_models(self) -> List[Dict[str, Any]]:
-        return [dict(model) for model in self.KNOWN_MODELS]
+        models = self._merge_remote_models([])
+        for model in models:
+            metadata = dict(model.get("metadata") or {})
+            metadata.update({"region": self.region, "token_plan_region_scoped": True})
+            model["metadata"] = metadata
+        return models
 
     def complete(self, model, messages, tools, params):
         self._assert_supported_model(model)

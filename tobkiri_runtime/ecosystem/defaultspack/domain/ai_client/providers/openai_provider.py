@@ -3,6 +3,8 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import json
+import hashlib
+import time
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -13,28 +15,26 @@ from ..base_provider import BaseProvider
 
 
 class OpenAIProvider(BaseProvider):
-    """OpenAI API provider with modern default catalog."""
+    """OpenAI API provider whose catalog comes from the authenticated account."""
 
     BASE_URL = "https://api.openai.com/v1"
 
-    KNOWN_MODELS = [
-        {"id": "openai/gpt-5.5", "name": "GPT-5.5", "provider": "openai", "type": "chat"},
-        {"id": "openai/gpt-5.5-mini", "name": "GPT-5.5 mini", "provider": "openai", "type": "chat"},
-        {"id": "openai/gpt-5.4", "name": "GPT-5.4", "provider": "openai", "type": "chat"},
-        {"id": "openai/gpt-5.4-mini", "name": "GPT-5.4 mini", "provider": "openai", "type": "chat"},
-        {"id": "openai/gpt-5.4-nano", "name": "GPT-5.4 nano", "provider": "openai", "type": "chat"},
-        {"id": "openai/gpt-image-1", "name": "GPT Image 1", "provider": "openai", "type": "image_gen"},
-        {"id": "openai/gpt-image-1-mini", "name": "GPT Image 1 mini", "provider": "openai", "type": "image_gen"},
-        {"id": "openai/gpt-4o-transcribe", "name": "GPT-4o Transcribe", "provider": "openai", "type": "transcription"},
-        {"id": "openai/gpt-4o-mini-transcribe", "name": "GPT-4o mini Transcribe", "provider": "openai", "type": "transcription"},
-        {"id": "openai/gpt-4o-mini-tts", "name": "GPT-4o mini TTS", "provider": "openai", "type": "tts"},
-        {"id": "openai/text-embedding-3-small", "name": "text-embedding-3-small", "provider": "openai", "type": "embedding"},
-        {"id": "openai/text-embedding-3-large", "name": "text-embedding-3-large", "provider": "openai", "type": "embedding"},
-    ]
+    # Never seed availability from a release snapshot. /models is scoped to
+    # the API key and is the only authority for what this account may use.
+    KNOWN_MODELS = []
+    _MODEL_INVENTORY_CACHE = {}
+    _MODEL_INVENTORY_CACHE_TTL_SECONDS = 300
 
     def __init__(self):
         self._api_key = os.environ.get("OPENAI_API_KEY", "")
-        self._ssl_ctx = ssl.create_default_context()
+        # Provider discovery must not disappear merely because a minimal host
+        # environment lacks Windows certificate-location variables.  Requests
+        # still use urllib's verified default context when this construction is
+        # deferred; no insecure TLS fallback is introduced.
+        try:
+            self._ssl_ctx = ssl.create_default_context()
+        except ssl.SSLError:
+            self._ssl_ctx = None
 
     # ── internal helpers ────────────────────────────────────────────────
 
@@ -65,6 +65,92 @@ class OpenAIProvider(BaseProvider):
             return json.loads(raw_bytes)
         except (json.JSONDecodeError, ValueError) as e:
             raise RuntimeError("OpenAI API returned invalid JSON: {}".format(raw_bytes[:500]))
+
+    def _model_inventory_scope(self):
+        return hashlib.sha256(str(self._api_key or "").encode("utf-8")).hexdigest()
+
+    def _fetch_live_models(self):
+        if not self._api_key:
+            return []
+        request = urllib.request.Request(
+            self.BASE_URL + "/models",
+            headers=self._headers(content_type=None),
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, context=self._ssl_ctx, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            return []
+        records = payload.get("data") if isinstance(payload, dict) else []
+        return records if isinstance(records, list) else []
+
+    @staticmethod
+    def _live_model_record(raw):
+        if not isinstance(raw, dict):
+            return None
+        model_id = str(raw.get("id") or "").strip()
+        if not model_id:
+            return None
+        token = model_id.lower()
+        if "embedding" in token:
+            model_type = "embedding"
+        elif "transcrib" in token or "whisper" in token:
+            model_type = "transcription"
+        elif "tts" in token:
+            model_type = "tts"
+        elif "image" in token or token.startswith("dall-e"):
+            model_type = "image_gen"
+        else:
+            model_type = "chat"
+        chat = model_type == "chat"
+        return {
+            "id": f"openai/{model_id}",
+            "model_id": model_id,
+            "provider_id": "openai",
+            "provider": "openai",
+            "name": model_id,
+            "display_name": model_id,
+            "type": model_type,
+            "capabilities": {
+                "chat": chat,
+                "text_input": chat or model_type == "embedding",
+                "text_output": chat,
+                "streaming": chat,
+                "embeddings": model_type == "embedding",
+                "image_generation": model_type == "image_gen",
+                "transcription": model_type == "transcription",
+                "tts": model_type == "tts",
+            },
+            "metadata": {
+                "source": "native_models_endpoint",
+                "source_endpoint": "/models",
+                "visibility_scope": "account",
+                "capability_confidence": "inferred_from_model_id",
+                "owned_by": str(raw.get("owned_by") or ""),
+                "created": raw.get("created"),
+            },
+        }
+
+    def list_models(self):
+        if not self._api_key:
+            return []
+        scope = self._model_inventory_scope()
+        cached = self._MODEL_INVENTORY_CACHE.get(scope)
+        now = time.monotonic()
+        if cached and cached[0] > now:
+            return [dict(model) for model in cached[1]]
+        models = []
+        for raw in self._fetch_live_models():
+            model = self._live_model_record(raw)
+            if model and all(item["model_id"] != model["model_id"] for item in models):
+                models.append(model)
+        if models:
+            self._MODEL_INVENTORY_CACHE[scope] = (
+                now + self._MODEL_INVENTORY_CACHE_TTL_SECONDS,
+                [dict(model) for model in models],
+            )
+        return models
 
     def _request_stream(self, path, body, *, timeout=120.0):
         """POST して SSE ストリームを返す (generator)"""

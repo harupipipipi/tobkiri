@@ -475,29 +475,21 @@ class TestSetupHandlers(unittest.TestCase):
         )
         source = web_path.read_text(encoding="utf-8")
         self.assertIn("/api/setup/packs/install", source)
-        self.assertIn("/api/setup/migration/status", source)
         self.assertNotIn("/api/defaultspack/setup", source)
-        self.assertNotIn(
-            "Checked setup packs are installed together and receive all OK permissions.",
-            source,
-        )
-        self.assertIn(
-            "all OK permissions are granted only to setup packs that explicitly support all OK",
-            source,
-        )
-        self.assertIn("Installs without all OK grants", source)
+        self.assertNotIn("/api/setup/migration/status", source)
+        self.assertIn("このおすすめで始める", source)
+        self.assertIn("追加の広い権限は有効にしません", source)
+        self.assertNotIn("Advanced debug state", source)
         self.assertIn("return_to", source)
-        self.assertIn("active_target_not_selected", source)
-        self.assertIn("no active setup pack selected", source)
         self.assertIn("payloadError", source)
         self.assertIn("payloadErrorItem", source)
         self.assertIn("PANEL_CSRF_STORAGE_KEY", source)
         self.assertIn('"X-Rumi-CSRF"', source)
         self.assertIn('credentials: "same-origin"', source)
         self.assertIn("name.textContent = pack.display_name", source)
-        self.assertIn("description.textContent = pack.description", source)
-        self.assertIn("input.dataset.selectPack = pack.pack_id", source)
-        self.assertIn("document.createTextNode", source)
+        self.assertIn("description.textContent = \"基本の機能を準備", source)
+        self.assertNotIn("input.dataset.selectPack", source)
+        self.assertNotIn("document.createTextNode", source)
         self.assertIn('url.pathname === "/panel"', source)
         self.assertIn('url.pathname.startsWith("/panel/")', source)
         self.assertIn("!packs.active_target_pack_id", source)
@@ -516,7 +508,7 @@ class TestSetupHandlers(unittest.TestCase):
             r'async function installSelectedPacks\(\)[\s\S]*'
             r'getJson\("/api/setup/packs/install"[\s\S]*'
             r'catch \(error\) \{[\s\S]*'
-            r'setStatus\("Setup pack install failed"'
+            r'setStatus\("セットアップに失敗しました"'
         )
         self.assertRegex(source, install_error_pattern)
 

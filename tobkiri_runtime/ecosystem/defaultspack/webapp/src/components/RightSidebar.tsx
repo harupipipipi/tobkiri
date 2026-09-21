@@ -71,7 +71,7 @@ import type {
 import { toolResources } from "../features/tools/resources/toolResources";
 import type { RuntimeCapabilitySnapshot, ToolFilterEntry } from "../lib/toolStatus";
 import { toolFilterBlockedSummary } from "../lib/toolStatus";
-import { buildBuiltinPlacementManifests, filterPlacementCandidates, normalizePinnedPlacements, togglePinnedPlacement } from "../lib/placement";
+import { buildBuiltinPlacementManifests, filterPlacementCandidates, initialPinnedPlacements, normalizePinnedPlacements, togglePinnedPlacement } from "../lib/placement";
 import { compareToolUiItems, sortedToolGroups, sortedToolUiItems, supportedComposerDropKind, supportsComposerDrop, toolGroupFor } from "../lib/toolUi";
 import { PlacementHtmlRenderer } from "./PlacementHtmlRenderer";
 import { ToolFilterLogWidget, ToolManagerWidget } from "./ToolStatusWidgets";
@@ -1025,7 +1025,7 @@ export function RightSidebar({
     [sidebarSettings.pinned_item_ids],
   );
   const pinnedPlacements = useMemo(
-    () => normalizePinnedPlacements(sidebarSettings.ui_placements),
+    () => initialPinnedPlacements(sidebarSettings.ui_placements),
     [sidebarSettings.ui_placements],
   );
   const starredItemIds = useMemo(

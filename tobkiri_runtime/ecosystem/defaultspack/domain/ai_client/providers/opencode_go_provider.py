@@ -259,6 +259,7 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
     MODEL_IDS = OPENAI_CHAT_MODELS | ANTHROPIC_MESSAGES_MODELS | set(MODEL_ALIASES)
     TOOL_CALL_MODELS = set(_OPENCODE_GO_TOOL_CALL_MODELS)
     KNOWN_MODELS = [_known_model_entry(spec) for spec in _OPENCODE_GO_MODEL_SPECS]
+    KNOWN_MODELS: List[Dict[str, Any]] = []
     _OPENAI_CHAT_PARAM_KEYS = {
         "temperature",
         "top_p",
@@ -291,7 +292,10 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
             base_url_env="OPENCODE_GO_BASE_URL",
             default_base_url=self.BASE_URL,
             credential_required=True,
-            known_models=self.KNOWN_MODELS,
+            known_models=[],
+            remote_model_discovery=True,
+            remote_model_list_path="/models",
+            remote_model_cache_ttl_seconds=3600,
         )
 
     @classmethod
@@ -304,12 +308,6 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
     @classmethod
     def _assert_supported_model(cls, model: str) -> str:
         model_id = cls._normalize_model_id(model)
-        if model_id not in cls.MODEL_IDS:
-            supported = ", ".join(sorted(cls.MODEL_IDS))
-            raise RuntimeError(
-                "opencode-go: unsupported model. "
-                f"defaultspack supports only: {supported}"
-            )
         return model_id
 
     @staticmethod
@@ -406,7 +404,7 @@ class OpencodeGoProvider(OpenAICompatibleProvider):
             raise RuntimeError("OpenCode Go API connection error: {}".format(exc.reason))
 
     def list_models(self) -> List[Dict[str, Any]]:
-        return [dict(model) for model in self.KNOWN_MODELS]
+        return self._merge_remote_models([])
 
     def _messages_body(self, model_id, messages, params):
         params = self._translate_messages_params(params)

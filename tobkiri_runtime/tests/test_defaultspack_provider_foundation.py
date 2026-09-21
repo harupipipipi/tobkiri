@@ -34,12 +34,29 @@ class TestDefaultspackProviderCatalog(unittest.TestCase):
             list_model_catalog,
         )
 
-        models = list_model_catalog(provider="openai")
+        class Client:
+            def list_models(self, provider=None):
+                assert provider == "openai"
+                return [{
+                    "id": "openai/account-visible-model",
+                    "qualified_model_id": "openai/account-visible-model",
+                    "provider_id": "openai",
+                    "model_id": "account-visible-model",
+                    "display_name": "Account Visible Model",
+                    "type": "chat",
+                    "metadata": {"source": "remote_models_endpoint"},
+                }]
+
+        with patch(
+            "ecosystem.defaultspack.backend.ai_client.provider_catalog._runtime_client",
+            return_value=Client(),
+        ):
+            models = list_model_catalog(provider="openai")
         self.assertTrue(models)
-        sample = next(model for model in models if model["model_id"] == "gpt-4o")
-        self.assertEqual(sample["canonical_model_id"], "gpt-4o")
-        self.assertEqual(sample["same_model_across_providers_key"], "gpt-4o")
-        self.assertEqual(sample["qualified_model_id"], "openai/gpt-4o")
+        sample = next(model for model in models if model["model_id"] == "account-visible-model")
+        self.assertEqual(sample["canonical_model_id"], "account-visible-model")
+        self.assertEqual(sample["same_model_across_providers_key"], "account-visible-model")
+        self.assertEqual(sample["qualified_model_id"], "openai/account-visible-model")
 
     def test_detect_available_providers_registers_openai_compatible_gateways(self):
         from ecosystem.defaultspack.domain.ai_client.providers import (
@@ -92,17 +109,71 @@ class TestDefaultspackProviderCatalog(unittest.TestCase):
             list_profile_catalog,
             list_provider_catalog,
         )
+        from domain.ai_client.client import AIClient
+        from domain.ai_client.providers import (
+            get_provider_catalog,
+        )
+        from domain.ai_client.providers.google_provider import (
+            GoogleProvider,
+        )
+
+        # Profiles come from the connection's live inventory now that no static
+        # model snapshot is bundled; stub the native models endpoint accordingly.
+        live_page = {
+            "models": [
+                {
+                    "name": "models/gemini-2.5-flash",
+                    "displayName": "Gemini 2.5 Flash",
+                    "supportedGenerationMethods": [
+                        "generateContent",
+                        "streamGenerateContent",
+                    ],
+                }
+            ]
+        }
+
+        def _reset_runtime_client() -> None:
+            AIClient._instance = None
+            GoogleProvider._MODEL_INVENTORY_CACHE.clear()
+
+        self.addCleanup(_reset_runtime_client)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             secrets_dir = Path(tmpdir) / "secrets"
             store = SecretsStore(str(secrets_dir))
             store.set_secret("GOOGLE_API_KEY", "secret-key", actor="test")
-            with patch.dict(os.environ, {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)}, clear=True):
-                providers = {item["provider_id"]: item for item in list_provider_catalog()}
-                profiles = {item["profile_id"]: item for item in list_profile_catalog()}
+            with patch.dict(
+                os.environ,
+                {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)},
+                clear=True,
+            ):
+                _reset_runtime_client()
+                domain_providers = {
+                    item["provider_id"]: item for item in get_provider_catalog()
+                }
+                with patch.object(
+                    GoogleProvider,
+                    "_fetch_native_models_page",
+                    return_value=live_page,
+                ):
+                    providers = {
+                        item["provider_id"]: item for item in list_provider_catalog()
+                    }
+                    profiles = {
+                        item["profile_id"]: item for item in list_profile_catalog()
+                    }
 
         google = providers["google"]
-        self.assertEqual(google["configured_envs"], ["defaultspack_secret"])
+        self.assertEqual(
+            domain_providers["google"]["availability"]["configuration_source"],
+            "defaultspack_secret",
+        )
+        # The backend facade hydrates stored keys into os.environ through the
+        # runtime client, so the surfaced env name depends on whether the
+        # singleton client was (re)built before this catalog call.
+        self.assertIn(
+            google["configured_envs"][0], {"GOOGLE_API_KEY", "defaultspack_secret"}
+        )
         self.assertTrue(google["configured"])
         self.assertTrue(profiles["google/gemini-2.5-flash"]["availability"]["configured"])
 

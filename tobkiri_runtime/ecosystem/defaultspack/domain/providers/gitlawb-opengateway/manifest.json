@@ -7,8 +7,7 @@
   "status": "stable",
   "display_name": "Gitlawb OpenGateway",
   "entrypoints": {
-    "adapter": "../ai_client/providers/gitlawb_opengateway_provider.py",
-    "models": "models.json"
+    "adapter": "../ai_client/providers/gitlawb_opengateway_provider.py"
   },
   "security": {
     "credential_required": true,

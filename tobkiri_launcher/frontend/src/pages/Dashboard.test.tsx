@@ -50,6 +50,9 @@ test('launch skips immediate Defaultspack desktop open during restart handoff', 
     openDesktop: async () => {
       calls.push('open-desktop');
     },
+    queueDesktopAfterRestart: async () => {
+      calls.push('queue-desktop-after-restart');
+    },
     setSuccessFeedback: (message) => {
       calls.push(`success:${message}`);
     },
@@ -61,6 +64,7 @@ test('launch skips immediate Defaultspack desktop open during restart handoff', 
 
   assert.deepEqual(calls, [
     'launch:p1',
+    'queue-desktop-after-restart',
     'success:Profile launched. Defaultspack will open after the runtime restart is ready.',
   ]);
 });
@@ -82,6 +86,9 @@ test('launch opens Defaultspack desktop immediately when no restart is requested
     },
     openDesktop: async () => {
       calls.push('open-desktop');
+    },
+    queueDesktopAfterRestart: async () => {
+      calls.push('queue-desktop-after-restart');
     },
     setSuccessFeedback: (message) => {
       calls.push(`success:${message}`);

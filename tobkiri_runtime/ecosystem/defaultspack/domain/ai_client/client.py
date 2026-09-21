@@ -1480,6 +1480,24 @@ class AIClient:
         if provider is not None and provider not in active_provider_ids:
             return []
 
+        catalog_map = get_provider_catalog_map(active_provider_ids=active_provider_ids)
+        provider_ids = [provider] if provider else sorted(active_provider_ids)
+        runtime_candidates: dict[str, list[dict]] = {}
+        live_inventory_providers: set[str] = set()
+        for provider_id in provider_ids:
+            provider_entry = catalog_map.get(provider_id)
+            if provider_entry is None:
+                continue
+            candidates: list[dict] = []
+            for raw in self._provider_model_candidates(provider_id):
+                candidate = self._normalize_runtime_model(provider_id, provider_entry, raw)
+                if candidate is None:
+                    continue
+                candidates.append(candidate)
+                if self._is_live_inventory_model(candidate):
+                    live_inventory_providers.add(provider_id)
+            runtime_candidates[provider_id] = candidates
+
         models = get_all_known_models(
             provider_id=provider,
             active_provider_ids=active_provider_ids,
@@ -1488,18 +1506,13 @@ class AIClient:
             model
             for model in models
             if model.get("provider_id") in active_provider_ids
+            and model.get("provider_id") not in live_inventory_providers
         ]
 
-        catalog_map = get_provider_catalog_map(active_provider_ids=active_provider_ids)
         seen = {model.get("qualified_model_id") for model in models}
-        provider_ids = [provider] if provider else sorted(active_provider_ids)
         for provider_id in provider_ids:
-            provider_entry = catalog_map.get(provider_id)
-            if provider_entry is None:
-                continue
-            for raw in self._provider_model_candidates(provider_id):
-                candidate = self._normalize_runtime_model(provider_id, provider_entry, raw)
-                if candidate is None:
+            for candidate in runtime_candidates.get(provider_id, []):
+                if provider_id in live_inventory_providers and not self._is_live_inventory_model(candidate):
                     continue
                 qualified_model_id = candidate.get("qualified_model_id")
                 if qualified_model_id in seen:
@@ -1507,6 +1520,24 @@ class AIClient:
                 seen.add(qualified_model_id)
                 models.append(candidate)
         return models
+
+    @staticmethod
+    def _is_live_inventory_model(model):
+        metadata = model.get("metadata") if isinstance(model, dict) and isinstance(model.get("metadata"), dict) else {}
+        source = str(metadata.get("source") or "").strip().lower()
+        return source in {
+            "remote_models_endpoint",
+            "openrouter_models_api",
+            "openai_models_endpoint",
+            "vercel_gateway_models_api",
+            "vercel_ai_gateway_models_api",
+            "azure_ai_foundry_project_deployments",
+            "aws_bedrock_list_foundation_models",
+            "stability_ai_engines_api",
+                "native_server_api",
+                "native_models_endpoint",
+                "last_known_good_inventory",
+        }
 
     def list_providers(self):
         active_provider_ids = self._active_provider_ids()

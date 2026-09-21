@@ -98,6 +98,7 @@ class OpencodeZenProvider(AnthropicProvider):
     OPENAI_CHAT_MODELS = {"mimo-v2.5-free"}
     MODEL_IDS = ANTHROPIC_MESSAGES_MODELS | OPENAI_CHAT_MODELS
     KNOWN_MODELS = [_known_model_entry(spec) for spec in _OPENCODE_ZEN_MODEL_SPECS]
+    KNOWN_MODELS: List[Dict[str, Any]] = []
     _OPENAI_CHAT_PARAM_KEYS = {
         "temperature",
         "top_p",
@@ -125,12 +126,6 @@ class OpencodeZenProvider(AnthropicProvider):
     @classmethod
     def _assert_supported_model(cls, model: str) -> str:
         model_id = cls._normalize_model_id(model)
-        if model_id not in cls.MODEL_IDS:
-            supported = ", ".join(sorted(cls.MODEL_IDS))
-            raise RuntimeError(
-                "opencode-zen: unsupported model. "
-                f"defaultspack supports only: {supported}"
-            )
         return model_id
 
     def _headers(self) -> Dict[str, str]:
@@ -183,7 +178,37 @@ class OpencodeZenProvider(AnthropicProvider):
             raise RuntimeError("OpenCode Zen API connection error: {}".format(exc.reason))
 
     def list_models(self) -> List[Dict[str, Any]]:
-        return [dict(model) for model in self.KNOWN_MODELS]
+        if not self._api_key:
+            return []
+        request = urllib.request.Request(
+            self.BASE_URL + "/v1/models",
+            headers=self._openai_headers(),
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, context=self._ssl_ctx, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError):
+            return []
+        records = payload.get("data") if isinstance(payload, dict) else []
+        models = []
+        for raw in records if isinstance(records, list) else []:
+            item = raw if isinstance(raw, dict) else {"id": raw}
+            model_id = str(item.get("id") or item.get("model_id") or item.get("name") or "").strip()
+            if not model_id or any(model["model_id"] == model_id for model in models):
+                continue
+            models.append({
+                "id": f"opencode-zen/{model_id}",
+                "model_id": model_id,
+                "provider_id": "opencode-zen",
+                "provider": "opencode-zen",
+                "name": str(item.get("display_name") or item.get("displayName") or model_id),
+                "display_name": str(item.get("display_name") or item.get("displayName") or model_id),
+                "type": "chat",
+                "capabilities": {"chat": True, "text_input": True, "text_output": True, "streaming": True},
+                "metadata": {"source": "openai_models_endpoint", "source_endpoint": "/v1/models", "visibility_scope": "account"},
+            })
+        return models
 
     @staticmethod
     def _params_with_token_floor(params: Dict[str, Any] | None) -> Dict[str, Any]:
@@ -320,15 +345,15 @@ class OpencodeZenProvider(AnthropicProvider):
 
     def complete(self, model, messages, tools, params):
         model_id = self._assert_supported_model(model)
-        if model_id in self.OPENAI_CHAT_MODELS:
-            return self._complete_openai_chat(model_id, messages, params)
-        del tools
-        return super().complete(model_id, messages, [], self._params_with_token_floor(params))
+        if model_id in self.ANTHROPIC_MESSAGES_MODELS:
+            del tools
+            return super().complete(model_id, messages, [], self._params_with_token_floor(params))
+        return self._complete_openai_chat(model_id, messages, params)
 
     def stream(self, model, messages, tools, params):
         model_id = self._assert_supported_model(model)
-        if model_id in self.OPENAI_CHAT_MODELS:
-            yield from self._stream_openai_chat(model_id, messages, params)
+        if model_id in self.ANTHROPIC_MESSAGES_MODELS:
+            del tools
+            yield from super().stream(model_id, messages, [], self._params_with_token_floor(params))
             return
-        del tools
-        yield from super().stream(model_id, messages, [], self._params_with_token_floor(params))
+        yield from self._stream_openai_chat(model_id, messages, params)

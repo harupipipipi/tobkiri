@@ -7,9 +7,7 @@
   "status": "experimental",
   "display_name": "Xiaomi MiMo China Mainland",
   "description": "Experimental catalog entry for the Xiaomi MiMo China Mainland API. Runtime is disabled until official base URL and auth behavior are confirmed.",
-  "entrypoints": {
-    "models": "models.json"
-  },
+  "entrypoints": {},
   "security": {
     "credential_required": true,
     "region_explicit_selection_required": true
@@ -25,12 +23,6 @@
     ],
     "catalog_only": true,
     "supports_invoke": false,
-    "default_model": "mimo-v2.5-pro",
-    "default_model_for": {
-      "chat": "mimo-v2.5-pro",
-      "reasoning": "mimo-v2.5-pro",
-      "fast": "mimo-v2-flash"
-    },
     "subscription_plans": [
       {
         "id": "mimo_orbit_100t_grant_if_available",
@@ -42,10 +34,7 @@
         "requires_manual_signup": true,
         "do_not_auto_enable": true,
         "token_quota_label": "100T tokens",
-        "applies_to_models": [
-          "mimo-v2.5-pro",
-          "mimo-v2-flash"
-        ],
+        "applies_to_models": [],
         "notes": "Catalog metadata only until official API base URL, auth behavior, and eligibility are confirmed."
       }
     ],
@@ -69,12 +58,6 @@
     "credential_required": true,
     "catalog_only": true,
     "supports_invoke": false,
-    "default_model": "mimo-v2.5-pro",
-    "default_model_for": {
-      "chat": "mimo-v2.5-pro",
-      "reasoning": "mimo-v2.5-pro",
-      "fast": "mimo-v2-flash"
-    },
     "config": {
       "api_compatibility": "openai_if_confirmed",
       "region": "cn",
@@ -95,16 +78,13 @@
           "requires_manual_signup": true,
           "do_not_auto_enable": true,
           "token_quota_label": "100T tokens",
-          "applies_to_models": [
-            "mimo-v2.5-pro",
-            "mimo-v2-flash"
-          ],
+          "applies_to_models": [],
           "notes": "Catalog metadata only until official API base URL, auth behavior, and eligibility are confirmed."
         }
       ],
       "do_not_fallback_to_other_region": true,
       "do_not_reuse_credentials_across_regions": true,
-      "model_sync": "fixed_allowlist",
+      "model_sync": "remote_merge",
       "runtime_enablement": "manual_base_url_and_docs_required"
     }
   },
