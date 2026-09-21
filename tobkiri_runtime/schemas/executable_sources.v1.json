@@ -14468,7 +14468,7 @@
       },
       "execution_kind": "source-verified",
       "function_id": "tobkiri.ui.model-search.read",
-      "implementation_digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c",
+      "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
       "implementation_path": "runtime/model_search.py",
       "input_schema": {
         "additionalProperties": false,
@@ -14563,7 +14563,7 @@
           "error_schema": {
             "type": "object"
           },
-          "implementation_digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c",
+          "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
           "implementation_path": "runtime/model_search.py",
           "input_schema": {
             "additionalProperties": false,

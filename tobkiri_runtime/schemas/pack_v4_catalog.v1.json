@@ -19236,7 +19236,7 @@
         {
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "function_id": "tobkiri.ui.model-search.read",
-      "implementation_digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c",
+      "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
           "operation_ids": ["tobkiri_ui_settings_pack.model-search"]
         }
       ],
@@ -19657,7 +19657,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.model-search",
               "id": "tobkiri_ui_settings_pack.model-search",
-              "implementation_digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c"
+              "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -19742,7 +19742,7 @@
           "path": "runtime/settings.py"
         },
         {
-          "digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c",
+          "digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
           "kind": "executable",
           "path": "runtime/model_search.py"
         },

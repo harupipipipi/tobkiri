@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:d809dd2b20a6cf50e8fce0815b12bd2674e7c516a1f8ef0aaef045b27a21d613",
+  "catalog_digest": "sha256:feb39a36a9578124f0a623d2693236cb96e2fb7fc350575e293fa9f7e223a292",
   "pack_id": "tobkiri_ui_settings_pack",
-  "source_identity": "sha256:f00c2857d5e7e006f23205f438c5b8ac7180b165d6fa7e8a253d7aece52cb649",
+  "source_identity": "sha256:2f2e94a89e859d66c5bd247a82e9b1e856f2b5044a36cce4c0ca2af998bb50be",
   "variants": [
     {
       "architecture": "any",
@@ -155,7 +155,7 @@
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
       "function_id": "tobkiri.ui.model-search.read",
-      "implementation_digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c",
+      "implementation_digest": "sha256:4f3bd4ae8b82c5e6190a243610bfb897eab50d6d730d4d1f5c9e246c487e93aa",
       "implementation_path": "runtime/model_search.py",
       "materialization_mode": "on_demand",
       "operations": [
