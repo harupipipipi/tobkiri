@@ -2,6 +2,8 @@
 
 from .canonical import canonical_json, content_identity
 from .clients import ActionClient, EventClient, ResourceClient, ServiceHandle
+from .legacy_projection import LegacyProjectionRule, LegacyRegistryProjection
+from .manifest import ManifestDiagnostic, load_manifest
 from .models import (
     Cardinality,
     ContractDescriptor,
@@ -13,21 +15,31 @@ from .models import (
     ProviderDescriptor,
     SecurityClassification,
 )
+from .registry import ContractRegistry
+from .semver import is_compatible, parse_version, validate_version_range
 
 __all__ = [
-    "Cardinality",
     "ActionClient",
+    "Cardinality",
     "ContractDescriptor",
+    "ContractRegistry",
     "ContractRequirement",
     "ContractResult",
     "ContractStatus",
-    "FailureSemantics",
     "EventClient",
+    "FailureSemantics",
+    "LegacyProjectionRule",
+    "LegacyRegistryProjection",
     "LifecycleMetadata",
+    "ManifestDiagnostic",
     "ProviderDescriptor",
-    "SecurityClassification",
     "ResourceClient",
+    "SecurityClassification",
     "ServiceHandle",
     "canonical_json",
     "content_identity",
+    "is_compatible",
+    "load_manifest",
+    "parse_version",
+    "validate_version_range",
 ]

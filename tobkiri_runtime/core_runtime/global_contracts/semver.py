@@ -11,12 +11,17 @@ _SEMVER = re.compile(
     r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )
+_COMPARATORS = (">=", "<=", ">", "<", "=")
 
 
 @total_ordering
 @dataclass(frozen=True)
 class Version:
-    """Comparable SemVer core plus prerelease marker."""
+    """Comparable SemVer core plus prerelease marker.
+
+    Build metadata is intentionally excluded because it does not affect SemVer
+    precedence or equality.
+    """
 
     major: int
     minor: int
@@ -35,11 +40,13 @@ class Version:
             return False
         if other.prerelease is None:
             return True
-        return _prerelease_key(self.prerelease) < _prerelease_key(other.prerelease)
+        return _prerelease_key(self.prerelease) < _prerelease_key(
+            other.prerelease
+        )
 
 
 def _prerelease_key(value: str) -> tuple[tuple[int, int | str], ...]:
-    """Return a comparison key honoring numeric prerelease identifiers."""
+    """Return a key honoring numeric prerelease identifiers."""
     return tuple(
         (0, int(item)) if item.isdigit() else (1, item)
         for item in value.split(".")
@@ -47,21 +54,57 @@ def _prerelease_key(value: str) -> tuple[tuple[int, int | str], ...]:
 
 
 def parse_version(value: str) -> Version:
-    """Parse a strict semantic version or raise ``ValueError``."""
+    """Parse a strict semantic version or raise TypeError or ValueError."""
+    if not isinstance(value, str):
+        raise TypeError("semantic version must be a string")
     match = _SEMVER.fullmatch(value)
     if match is None:
         raise ValueError(f"invalid semantic version: {value!r}")
+    prerelease = match.group(4)
+    if prerelease is not None:
+        for identifier in prerelease.split("."):
+            if (
+                identifier.isdigit()
+                and len(identifier) > 1
+                and identifier.startswith("0")
+            ):
+                raise ValueError(
+                    "numeric prerelease identifiers cannot have leading zeros"
+                )
     return Version(
         int(match.group(1)),
         int(match.group(2)),
         int(match.group(3)),
-        match.group(4),
+        prerelease,
     )
 
 
+def validate_version_range(version_range: str) -> None:
+    """Validate the exact, caret, tilde, or comparator-list range syntax."""
+    if not isinstance(version_range, str) or not version_range:
+        raise ValueError("version range must be a non-empty string")
+    if version_range != version_range.strip():
+        raise ValueError("version range cannot contain surrounding whitespace")
+    if version_range.startswith(("^", "~")):
+        parse_version(version_range[1:])
+        return
+    if version_range.startswith((">", "<", "=")):
+        for check in version_range.split():
+            operator = next(
+                (item for item in _COMPARATORS if check.startswith(item)),
+                None,
+            )
+            if operator is None or len(check) == len(operator):
+                raise ValueError(f"invalid version comparator: {check!r}")
+            parse_version(check[len(operator) :])
+        return
+    parse_version(version_range)
+
+
 def is_compatible(version: str, version_range: str) -> bool:
-    """Evaluate exact, caret, tilde, or comparator-list version ranges."""
+    """Evaluate an exact, caret, tilde, or comparator-list version range."""
     candidate = parse_version(version)
+    validate_version_range(version_range)
     if candidate.prerelease and "-" not in version_range:
         return False
     if version_range.startswith("^"):
@@ -78,25 +121,20 @@ def is_compatible(version: str, version_range: str) -> bool:
         maximum = Version(minimum.major, minimum.minor + 1, 0)
         return minimum <= candidate < maximum
     if version_range.startswith((">", "<", "=")):
-        checks = version_range.split()
-        for check in checks:
+        for check in version_range.split():
             operator = next(
-                (item for item in (">=", "<=", ">", "<", "=") if check.startswith(item)),
-                None,
+                item for item in _COMPARATORS if check.startswith(item)
             )
-            if operator is None:
-                raise ValueError(f"invalid version comparator: {check!r}")
             target = parse_version(check[len(operator) :])
-            if operator == ">=" and not candidate >= target:
+            if operator == ">=" and candidate < target:
                 return False
-            if operator == "<=" and not candidate <= target:
+            if operator == "<=" and candidate > target:
                 return False
-            if operator == ">" and not candidate > target:
+            if operator == ">" and candidate <= target:
                 return False
-            if operator == "<" and not candidate < target:
+            if operator == "<" and candidate >= target:
                 return False
             if operator == "=" and candidate != target:
                 return False
         return True
     return candidate == parse_version(version_range)
-

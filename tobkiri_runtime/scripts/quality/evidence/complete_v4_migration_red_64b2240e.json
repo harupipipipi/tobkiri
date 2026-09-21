@@ -6,12 +6,12 @@
       "artifact_contracts": 0,
       "authority_resolved_plan_scope": 0,
       "command_protocol_activation": 0,
-      "declaration_disk_runtime": 0,
+      "declaration_disk_runtime": 159,
       "double_authority": 0,
       "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 1,
+      "migration_evidence": 2,
       "offline_projection": 0
     },
     "legacy_manifest_declared_packs": 141,
@@ -30,12 +30,1133 @@
     "artifact_contracts": [],
     "authority_resolved_plan_scope": [],
     "command_protocol_activation": [],
-    "declaration_disk_runtime": [],
+    "declaration_disk_runtime": [
+      {
+        "artifact": "tools/artifact_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/artifact_file_delete/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/artifact_file_list/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/artifact_file_patch/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/artifact_file_read/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/artifact_file_write/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/artifact_preview/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/artifact_zip/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/audio_transcribe/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/audio_transcribe_local/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/browser_download_collect/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/browser_extract_table/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/browser_save_page/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/browser_upload_file/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/calendar_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/chart_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_access_grant/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_access_request/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_control_acquire/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_control_release/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_control_renew/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_frame/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_input/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_list/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/desktop_rules_update/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/discord_send/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/doc_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/doc_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/doc_to_pdf/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/doc_update/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/drive_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/drive_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/external_send/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/github_issue_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/github_issue_list/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/github_issue_update/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/github_pr_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/github_search/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/gmail_draft/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/gmail_search/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/html_preview/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/image_convert/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/image_generate_local_or_provider/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/image_render/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/image_resize/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/jira_issue_sync/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/job_artifacts/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/job_cancel/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/job_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/job_history/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/job_resume/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/job_status/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/line_push/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/linear_issue_sync/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/node_exec/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/ocr_extract/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/package_install_plan/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/pdf_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/pdf_extract/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/pdf_extract_tables/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/pdf_preview/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/project_scaffold/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/python_exec/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/research_report_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_exec/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_files_apply_patch/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_files_read/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_port_expose/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sheet_analyze/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sheet_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sheet_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sheet_read/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sheet_update/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/slack_send/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/slides_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/slides_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/slides_from_markdown/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/slides_update/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/source_extract/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/source_rank/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/static_site_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_names/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_search/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_task_board/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_task_board_agent_session/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_build_recursive/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_commit_plan/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_compile_plan/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_compose_page/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_generate_candidates/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_generate_foundation/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_inspect_compression/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_render_matrix/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_select_candidates/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tool_ui_verify_recursive_build/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tts_generate/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/tts_generate_local/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/webapp_build/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/webapp_export_static/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/webapp_lint/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/webapp_preview/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/wide_research/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/workflow_cancel/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/workflow_define/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/workflow_retry/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/workflow_run/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/workflow_status/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "frontend_extensions/ambient_trigger.ui.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/api_toolsmith_workflows.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/element_schema.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_browser_element_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/form_action_recipes.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/business_ops_workflows.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_business_ops_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/connectors.gateway.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/browser_companion/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/browser_use/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_file_create/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_file_delete/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_file_list/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_file_patch/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_file_read/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_file_restore/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_file_search/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_file_write/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_git_diff/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_git_push/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_git_status/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/coding_terminal_exec/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/file_reader/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/reddit_search/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/rumi_api/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_artifact_export/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_diff_preview/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_file_patch/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_file_read/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_file_write/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/sandbox_terminal_exec/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/subagent/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/todo/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "tools/web_search/manifest.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "schemas/citation_trace.schema.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "schemas/component_acceptance.schema.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "policies/host_capability_boundary.policy.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "frontend_extensions/marketplace_preview.ui.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "schemas/locale_issue.schema.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_localization_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "asset_index.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/capabilities.memory.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/artifact_schema.media.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "schemas/observability_event.schema.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_observability_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "frontend_extensions/operations_company.ui.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_operations_company_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/prompt_studio_prompt_library.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "schemas/metric_record.schema.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/runtime_matrix.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/finding_schema.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_security_review_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "schemas/sop_mining_record.schema.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/voice_mobile_workflows.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/delivery_handoffs.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "catalog/artifact_types.workspace.yaml",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/rumi_workspace_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      },
+      {
+        "artifact": "nodes/search_home_surface.node.json",
+        "line": 1,
+        "path": "tobkiri_runtime/ecosystem/search_home_pack/pack.v4.json",
+        "rule": "runtime_artifact_digest_mismatch",
+        "symbol": "runtime_artifact_digest_mismatch"
+      }
+    ],
     "double_authority": [],
     "executable_source_registry": [],
     "launcher_safety": [],
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
+      {
+        "diagnostic": "RED: [WinError 1314] クライアントは要求された特権を保有していません。: 'C:\\\\Users\\\\inoue\\\\AppData\\\\Local\\\\Temp\\\\tobkiri-independent-migration-7fnxo_w8\\\\outside-proof-target.txt' -> 'C:\\\\Users\\\\inoue\\\\AppData\\\\Local\\\\Temp\\\\tobkiri-independent-migration-7fnxo_w8\\\\broken-legacy\\\\profiles\\\\profile-cleo\\\\notes\\\\escape'",
+        "line": 1,
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "migration_proof_generator_drift",
+        "symbol": "migration_proof_generator_drift"
+      },
       {
         "line": 1,
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
@@ -102,8 +1223,1122 @@
       "status": "GREEN"
     },
     "declaration_disk_runtime": {
-      "findings": [],
-      "status": "GREEN"
+      "findings": [
+        {
+          "artifact": "tools/artifact_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/artifact_file_delete/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/artifact_file_list/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/artifact_file_patch/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/artifact_file_read/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/artifact_file_write/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/artifact_preview/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/artifact_zip/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/audio_transcribe/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/audio_transcribe_local/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/browser_download_collect/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/browser_extract_table/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/browser_save_page/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/browser_upload_file/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/calendar_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/chart_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_access_grant/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_access_request/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_control_acquire/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_control_release/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_control_renew/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_frame/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_input/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_list/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/desktop_rules_update/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/discord_send/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/doc_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/doc_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/doc_to_pdf/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/doc_update/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/drive_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/drive_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/external_send/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/github_issue_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/github_issue_list/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/github_issue_update/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/github_pr_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/github_search/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/gmail_draft/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/gmail_search/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/html_preview/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/image_convert/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/image_generate_local_or_provider/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/image_render/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/image_resize/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/jira_issue_sync/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/job_artifacts/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/job_cancel/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/job_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/job_history/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/job_resume/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/job_status/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/line_push/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/linear_issue_sync/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/node_exec/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/ocr_extract/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/package_install_plan/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/pdf_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/pdf_extract/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/pdf_extract_tables/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/pdf_preview/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/project_scaffold/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/python_exec/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/research_report_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_exec/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_files_apply_patch/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_files_read/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_port_expose/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sheet_analyze/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sheet_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sheet_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sheet_read/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sheet_update/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/slack_send/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/slides_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/slides_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/slides_from_markdown/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/slides_update/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/source_extract/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/source_rank/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/static_site_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_names/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_search/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_task_board/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_task_board_agent_session/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_build_recursive/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_commit_plan/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_compile_plan/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_compose_page/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_generate_candidates/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_generate_foundation/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_inspect_compression/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_render_matrix/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_select_candidates/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tool_ui_verify_recursive_build/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tts_generate/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/tts_generate_local/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/webapp_build/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/webapp_export_static/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/webapp_lint/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/webapp_preview/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/wide_research/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/workflow_cancel/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/workflow_define/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/workflow_retry/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/workflow_run/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/workflow_status/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/defaultspack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "frontend_extensions/ambient_trigger.ui.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/api_toolsmith_workflows.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/element_schema.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_browser_element_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/form_action_recipes.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/business_ops_workflows.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_business_ops_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/connectors.gateway.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/browser_companion/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/browser_use/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_file_create/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_file_delete/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_file_list/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_file_patch/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_file_read/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_file_restore/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_file_search/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_file_write/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_git_diff/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_git_push/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_git_status/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/coding_terminal_exec/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/file_reader/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/reddit_search/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/rumi_api/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_artifact_export/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_diff_preview/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_file_patch/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_file_read/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_file_write/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/sandbox_terminal_exec/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/subagent/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/todo/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "tools/web_search/manifest.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_default_tools_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "schemas/citation_trace.schema.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "schemas/component_acceptance.schema.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "policies/host_capability_boundary.policy.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "frontend_extensions/marketplace_preview.ui.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "schemas/locale_issue.schema.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_localization_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "asset_index.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/capabilities.memory.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/artifact_schema.media.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "schemas/observability_event.schema.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_observability_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "frontend_extensions/operations_company.ui.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_operations_company_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/prompt_studio_prompt_library.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_prompt_studio_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "schemas/metric_record.schema.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/runtime_matrix.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/finding_schema.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_security_review_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "schemas/sop_mining_record.schema.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/voice_mobile_workflows.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/delivery_handoffs.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "catalog/artifact_types.workspace.yaml",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/rumi_workspace_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        },
+        {
+          "artifact": "nodes/search_home_surface.node.json",
+          "line": 1,
+          "path": "tobkiri_runtime/ecosystem/search_home_pack/pack.v4.json",
+          "rule": "runtime_artifact_digest_mismatch",
+          "symbol": "runtime_artifact_digest_mismatch"
+        }
+      ],
+      "status": "RED"
     },
     "double_authority": {
       "findings": [],
@@ -123,6 +2358,13 @@
     },
     "migration_evidence": {
       "findings": [
+        {
+          "diagnostic": "RED: [WinError 1314] クライアントは要求された特権を保有していません。: 'C:\\\\Users\\\\inoue\\\\AppData\\\\Local\\\\Temp\\\\tobkiri-independent-migration-7fnxo_w8\\\\outside-proof-target.txt' -> 'C:\\\\Users\\\\inoue\\\\AppData\\\\Local\\\\Temp\\\\tobkiri-independent-migration-7fnxo_w8\\\\broken-legacy\\\\profiles\\\\profile-cleo\\\\notes\\\\escape'",
+          "line": 1,
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "migration_proof_generator_drift",
+          "symbol": "migration_proof_generator_drift"
+        },
         {
           "line": 1,
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
@@ -2193,8 +4435,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "b1719908b5ab35fe4009aa1485250b7794d78ecc",
-    "semantic_digest": "sha256:8f423f80223267a40310b5b9ef0036cbe4d412df9aa64cb113ad17fde2e64e3b",
+    "observed_head_sha": "01aad006da97bcad60ce949560334afe383ff35e",
+    "semantic_digest": "sha256:927123ac7e3c579af1de32f5c2e30ae43eb19c1c71ec0be67ff1de288a43d8bc",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
