@@ -1,19 +1,66 @@
 {
+  "components": {},
+  "connectivity": {
+    "provides": [],
+    "requires": [
+      "rumi.resource.browser.host.v1",
+      "rumi.action.browser.host.v1",
+      "rumi.resource.desktop.host.v1",
+      "rumi.action.desktop.host.v1",
+      "rumi.resource.clipboard.v1",
+      "rumi.action.clipboard.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_browser_host_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_clipboard_host_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0"
+  },
+  "load_order": [],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:afaf7fda61ba33d093772d5741d39ff5f0d49527adb0085018ebfa964062f5aa",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:df3e346dc453500699a22170bc2281987e24ae5379ba3ced248d31587f021751"
+    },
+    "description": "Concrete AI-facing default tools separated from defaultspack core.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:df3e346dc453500699a22170bc2281987e24ae5379ba3ced248d31587f021751"
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Default Tools Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security_boundary": {
+      "client_approval_material": "discard",
+      "host_execution": false,
+      "role": "finite_tool_compatibility_adapter",
+      "self_approval": false
+    }
+  },
   "pack_id": "rumi_default_tools_pack",
   "pack_identity": "rumi:ecosystem/rumi_default_tools_pack",
-  "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Default Tools Pack",
-    "description": "Concrete AI-facing default tools separated from defaultspack core.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
+  "provenance": {
+    "build_identity": "rumi_default_tools_pack:1.0.0",
+    "content_hash": "sha256:afaf7fda61ba33d093772d5741d39ff5f0d49527adb0085018ebfa964062f5aa",
+    "signature": null,
+    "trust_class": "local"
   },
   "runtime": {
     "type": "python_host"
   },
+  "version": "1.0.0",
   "vocabulary": {
-    "types": ["tool"]
-  },
-  "components": {},
-  "load_order": []
+    "types": [
+      "tool"
+    ]
+  }
 }

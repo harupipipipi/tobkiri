@@ -1,0 +1,223 @@
+{
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.clipboard.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_clipboard_host_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "clipboard.read",
+        "required_capabilities": [
+          "clipboard.read"
+        ],
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.clipboard.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_clipboard_host_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "clipboard.write",
+        "required_capabilities": [
+          "clipboard.write"
+        ],
+        "schemas": {
+          "input": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "contract_id": "rumi.resource.clipboard.v1",
+      "id": "clipboard-read",
+      "loader": "python",
+      "module": "ecosystem.rumi_clipboard_host_service_pack.runtime.service",
+      "symbol": "create_clipboard_reader"
+    },
+    {
+      "artifact_hash": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "contract_id": "rumi.action.clipboard.v1",
+      "id": "clipboard-write",
+      "loader": "python",
+      "module": "ecosystem.rumi_clipboard_host_service_pack.runtime.service",
+      "symbol": "create_clipboard_writer"
+    }
+  ],
+  "extensions": {
+    "rumi.clipboard.boundary": {
+      "authority": "core_runtime.authority",
+      "client_approval_material": "forbidden",
+      "executor": "rumi_viewer_host_broker",
+      "max_text_bytes": 1048576,
+      "payload_persistence": false,
+      "read_write_split": true
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.clipboard.v1",
+            "rumi.resource.clipboard.v1"
+          ],
+          "requires": [
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Separately permissioned clipboard read and write requests.",
+        "display_name": "Rumi Clipboard Host Service",
+        "host_execution": true,
+        "metadata": {
+          "authority_split": [
+            "read",
+            "write"
+          ],
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:76377cc3a85b98f5d138681cdf00013845379a47b3c88293e280a106dfe51fd8",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:e69dd60c28d655f5467d78090107abdb7ff20986bf78d800eeefa90166c8d720"
+          },
+          "executor_owner": "rumi_viewer_host_broker",
+          "payload_persistence": false,
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "runner": "runtime/runner.py invoked only by Viewer helper after token validation",
+          "tool_or_ui_registry_imports": false
+        },
+        "pack_id": "rumi_clipboard_host_service_pack",
+        "pack_identity": "rumi:ecosystem/rumi_clipboard_host_service_pack",
+        "provenance": {
+          "build_identity": "rumi_clipboard_host_service_pack:1.0.0",
+          "content_hash": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "clipboard.read",
+          "clipboard.write",
+          "host.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "host",
+            "clipboard",
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_clipboard_host_service_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_clipboard_host_service_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:e69dd60c28d655f5467d78090107abdb7ff20986bf78d800eeefa90166c8d720"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.media.processor.read_clipboard",
+      "defaultspack.domain.media.processor.write_clipboard",
+      "rumi_default_tools_pack.domain.tool.browser_computer"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior adapter; never enable both clipboard writers.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Separately permissioned clipboard read and write requests.",
+    "display_name": "Rumi Clipboard Host Service",
+    "id": "rumi.clipboard_host_service",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": true,
+      "capability": "clipboard.read"
+    },
+    {
+      "access": "write",
+      "approval_required": true,
+      "capability": "clipboard.write"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_clipboard_host_service_pack:1.0.0",
+    "content_hash": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
+}

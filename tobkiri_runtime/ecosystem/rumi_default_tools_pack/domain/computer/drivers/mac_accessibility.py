@@ -344,6 +344,39 @@ class MacAccessibilityDriver(ComputerDriver):
 
         return ax_is_trusted()
 
+    def safe_type_candidate_diagnostics(self, target: ComputerTarget) -> dict[str, object]:
+        """Return fixed AX readiness facts without app names or target IDs."""
+        try:
+            from ..mac.ax import ax_import_available, ax_is_trusted
+
+            import_available = bool(ax_import_available())
+            process_trusted = bool(ax_is_trusted()) if import_available else False
+        except Exception:
+            import_available = False
+            process_trusted = False
+        unsafe_app = self._target_avoids_ax_set_value(target)
+        if not import_available:
+            result_code = "AX_IMPORT_UNAVAILABLE"
+        elif not process_trusted:
+            result_code = "AX_NOT_TRUSTED"
+        elif unsafe_app:
+            result_code = "AX_SET_VALUE_UNSAFE_APP"
+        elif target.pid is None and not target.app:
+            result_code = "AX_TARGET_MISSING"
+        else:
+            result_code = "AX_ELIGIBLE"
+        return {
+            "pyobjc_ax_import_available": import_available,
+            "ax_process_trusted": process_trusted,
+            "ax_set_value_unsafe_app": unsafe_app,
+            "target_app_present": bool(target.app),
+            "target_bundle_present": bool(target.bundle_id),
+            "target_pid_present": target.pid is not None,
+            "target_window_present": target.window_id is not None or bool(target.window_title),
+            "attempted": False,
+            "result_code": result_code,
+        }
+
     @staticmethod
     def _target_avoids_ax_set_value(target: ComputerTarget) -> bool:
         app_name = MacAccessibilityDriver._normalized_app_name(target.app)

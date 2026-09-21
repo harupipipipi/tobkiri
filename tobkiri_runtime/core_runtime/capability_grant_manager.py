@@ -22,7 +22,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from .compat import safe_chmod
 from .authority.config_lattice import meet_authority_configs
@@ -116,7 +116,11 @@ class CapabilityGrantManager:
     DEFAULT_GRANTS_DIR = "user_data/permissions/capabilities"
     SECRET_KEY_FILE = "user_data/permissions/.secret_key"
     
-    def __init__(self, grants_dir: str = None, secret_key: str = None):
+    def __init__(
+        self,
+        grants_dir: Optional[str] = None,
+        secret_key: Optional[str] = None,
+    ) -> None:
         if grants_dir:
             self._grants_dir = Path(grants_dir)
         else:
@@ -419,7 +423,7 @@ class CapabilityGrantManager:
         self,
         principal_id: str,
         permission_id: str,
-        config: Dict[str, Any] = None,
+        config: Optional[Dict[str, Any]] = None,
     ) -> CapabilityGrant:
         """permission を付与"""
         with self._lock:
@@ -531,7 +535,8 @@ class CapabilityGrantManager:
         for item in grants:
             principal_id = item.get("principal_id", "")
             permission_id = item.get("permission_id", "")
-            config = item.get("config")
+            raw_config = item.get("config")
+            config = raw_config if isinstance(raw_config, dict) else {}
 
             if not principal_id or not permission_id:
                 results.append({
@@ -629,7 +634,10 @@ def get_capability_grant_manager() -> CapabilityGrantManager:
     return _global_grant_manager
 
 
-def reset_capability_grant_manager(grants_dir: str = None, secret_key: str = None) -> CapabilityGrantManager:
+def reset_capability_grant_manager(
+    grants_dir: Optional[str] = None,
+    secret_key: Optional[str] = None,
+) -> CapabilityGrantManager:
     """リセット（テスト用）"""
     global _global_grant_manager
     with _grant_lock:

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schemas.tobkiri.dev/activity/v1.json",
+  "schema_version": "tobkiri.activity/v1",
+  "kind": "activity",
+  "id": "computer",
+  "version": "1.0.0",
+  "display_name": {"ja": "Computer", "en": "Computer"},
+  "description": {
+    "ja": "画面を見ながらアプリやブラウザを操作します。",
+    "en": "Operate desktop applications and browsers visually."
+  },
+  "aliases": ["pc", "desktop", "computer-use", "パソコン", "画面操作"],
+  "members": {
+    "tool_ids": [
+      "desktop_list",
+      "desktop_create",
+      "desktop_frame",
+      "desktop_input",
+      "desktop_control_acquire",
+      "desktop_control_renew",
+      "desktop_control_release"
+    ],
+    "tool_tags": ["activity:computer"],
+    "skills": {
+      "required": ["desktop_operator"],
+      "optional": [],
+      "safety": ["computer_safety"]
+    }
+  },
+  "selection": {
+    "explicit_intent_required": true,
+    "schema_policy": "progressive",
+    "max_candidate_tools": 12,
+    "max_attached_tools": 6
+  },
+  "permissions": {
+    "default_action_class": "computer",
+    "minimum": "confirm"
+  },
+  "ui": {
+    "mentionable": true,
+    "pinnable": true,
+    "default_pinned": false,
+    "widget": "computer-status"
+  }
+}

@@ -64,7 +64,11 @@ class ActiveEcosystemManager:
     現在使用中のPack/Componentを管理する。
     """
     
-    def __init__(self, config_path: str = None, secret_key: str = None):
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        secret_key: Optional[str] = None,
+    ):
         """
         Args:
             config_path: 設定ファイルのパス（省略時はuser_data/active_ecosystem.json）
@@ -146,10 +150,11 @@ class ActiveEcosystemManager:
     
     def _save_config_internal(self):
         """設定を保存（ロック内で呼び出す、HMAC 署名付き、アトミック書き込み）"""
-        import tempfile, os as _os
+        import tempfile
+        import os as _os
         try:
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            data = self._config.to_dict()
+            data = self._require_config().to_dict()
             data["_hmac_signature"] = compute_data_hmac(self._secret_key, data)
             # PC-2 fix: アトミック書き込み — tmp ファイルに書いてから rename
             try:
@@ -178,6 +183,12 @@ class ActiveEcosystemManager:
                     json.dump(data, f, ensure_ascii=False, indent=2)
         except IOError as e:
             logger.error("[ActiveEcosystem] 設定保存エラー: %s", e)
+
+    def _require_config(self) -> ActiveEcosystemConfig:
+        """Return the loaded configuration or fail closed if unavailable."""
+        if self._config is None:
+            raise RuntimeError("active ecosystem configuration is unavailable")
+        return self._config
     
     def _save_config(self):
         """設定を保存"""
@@ -218,38 +229,39 @@ class ActiveEcosystemManager:
     def config(self) -> ActiveEcosystemConfig:
         """現在の設定を取得"""
         with self._lock:
-            return copy.deepcopy(self._config)
+            return copy.deepcopy(self._require_config())
     
     @property
     def active_pack_identity(self) -> Optional[str]:
         """アクティブなPack Identityを取得"""
         with self._lock:
-            return self._config.active_pack_identity
+            return self._require_config().active_pack_identity
     
     @active_pack_identity.setter
     def active_pack_identity(self, value: Optional[str]):
         """アクティブなPack Identityを設定"""
         with self._lock:
-            self._config.active_pack_identity = value
+            self._require_config().active_pack_identity = value
             self._save_config_internal()
 
 
     def get_interface_override(self, interface_key: str) -> Optional[str]:
         """インターフェースキーのオーバーライドを取得"""
         with self._lock:
-            return self._config.interface_overrides.get(interface_key)
+            return self._require_config().interface_overrides.get(interface_key)
 
     def set_interface_override(self, interface_key: str, pack_id: str):
         """インターフェースキーのオーバーライドを設定"""
         with self._lock:
-            self._config.interface_overrides[interface_key] = pack_id
+            self._require_config().interface_overrides[interface_key] = pack_id
             self._save_config_internal()
 
     def remove_interface_override(self, interface_key: str) -> bool:
         """インターフェースオーバーライドを削除"""
         with self._lock:
-            if interface_key in self._config.interface_overrides:
-                del self._config.interface_overrides[interface_key]
+            config = self._require_config()
+            if interface_key in config.interface_overrides:
+                del config.interface_overrides[interface_key]
                 self._save_config_internal()
                 return True
             return False
@@ -257,7 +269,7 @@ class ActiveEcosystemManager:
     def get_all_interface_overrides(self) -> Dict[str, str]:
         """すべてのインターフェースオーバーライドを取得"""
         with self._lock:
-            return dict(self._config.interface_overrides)
+            return dict(self._require_config().interface_overrides)
     
     def get_override(self, component_type: str) -> Optional[str]:
         """
@@ -270,7 +282,7 @@ class ActiveEcosystemManager:
             オーバーライドされたコンポーネントID、または None
         """
         with self._lock:
-            return self._config.overrides.get(component_type)
+            return self._require_config().overrides.get(component_type)
     
     def set_override(self, component_type: str, component_id: str):
         """
@@ -281,7 +293,7 @@ class ActiveEcosystemManager:
             component_id: 使用するコンポーネントID
         """
         with self._lock:
-            self._config.overrides[component_type] = component_id
+            self._require_config().overrides[component_type] = component_id
             self._save_config_internal()
     
     def remove_override(self, component_type: str) -> bool:
@@ -295,8 +307,9 @@ class ActiveEcosystemManager:
             削除成功の可否
         """
         with self._lock:
-            if component_type in self._config.overrides:
-                del self._config.overrides[component_type]
+            config = self._require_config()
+            if component_type in config.overrides:
+                del config.overrides[component_type]
                 self._save_config_internal()
                 return True
             return False
@@ -304,7 +317,7 @@ class ActiveEcosystemManager:
     def get_all_overrides(self) -> Dict[str, str]:
         """すべてのオーバーライドを取得"""
         with self._lock:
-            return dict(self._config.overrides)
+            return dict(self._require_config().overrides)
     
     def is_component_disabled(self, component_full_id: str) -> bool:
         """
@@ -317,51 +330,55 @@ class ActiveEcosystemManager:
             無効化されている場合 True
         """
         with self._lock:
-            return component_full_id in self._config.disabled_components
+            return component_full_id in self._require_config().disabled_components
     
     def disable_component(self, component_full_id: str):
         """コンポーネントを無効化"""
         with self._lock:
-            if component_full_id not in self._config.disabled_components:
-                self._config.disabled_components.append(component_full_id)
+            config = self._require_config()
+            if component_full_id not in config.disabled_components:
+                config.disabled_components.append(component_full_id)
                 self._save_config_internal()
     
     def enable_component(self, component_full_id: str):
         """コンポーネントを有効化"""
         with self._lock:
-            if component_full_id in self._config.disabled_components:
-                self._config.disabled_components.remove(component_full_id)
+            config = self._require_config()
+            if component_full_id in config.disabled_components:
+                config.disabled_components.remove(component_full_id)
                 self._save_config_internal()
     
     def is_addon_disabled(self, addon_id: str) -> bool:
         """アドオンが無効化されているか確認"""
         with self._lock:
-            return addon_id in self._config.disabled_addons
+            return addon_id in self._require_config().disabled_addons
     
     def disable_addon(self, addon_id: str):
         """アドオンを無効化"""
         with self._lock:
-            if addon_id not in self._config.disabled_addons:
-                self._config.disabled_addons.append(addon_id)
+            config = self._require_config()
+            if addon_id not in config.disabled_addons:
+                config.disabled_addons.append(addon_id)
                 self._save_config_internal()
     
     def enable_addon(self, addon_id: str):
         """アドオンを有効化"""
         with self._lock:
-            if addon_id in self._config.disabled_addons:
-                self._config.disabled_addons.remove(addon_id)
+            config = self._require_config()
+            if addon_id in config.disabled_addons:
+                config.disabled_addons.remove(addon_id)
                 self._save_config_internal()
     
     def set_metadata(self, key: str, value: Any):
         """メタデータを設定"""
         with self._lock:
-            self._config.metadata[key] = value
+            self._require_config().metadata[key] = value
             self._save_config_internal()
     
     def get_metadata(self, key: str, default: Any = None) -> Any:
         """メタデータを取得"""
         with self._lock:
-            return self._config.metadata.get(key, default)
+            return self._require_config().metadata.get(key, default)
     
     def reset_to_defaults(self):
         """デフォルト設定にリセット"""
@@ -391,7 +408,7 @@ def get_active_ecosystem_manager() -> ActiveEcosystemManager:
     return _global_manager
 
 
-def get_active_pack_identity() -> str:
+def get_active_pack_identity() -> Optional[str]:
     """アクティブなPack Identityを取得（ショートカット）"""
     return get_active_ecosystem_manager().active_pack_identity
 

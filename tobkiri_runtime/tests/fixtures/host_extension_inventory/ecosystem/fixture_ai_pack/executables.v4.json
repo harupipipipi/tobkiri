@@ -1,0 +1,36 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "pack_id": "fixture_ai_pack",
+  "source_identity": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "fixture_ai_pack.provider",
+      "implementation_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "implementation_path": "runtime/provider.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.ai.generate.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {},
+          "idempotency": "none",
+          "input_schema": {},
+          "operation_id": "fixture_ai_pack.generate",
+          "output_schema": {},
+          "revision_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          "timeout_default_ms": 1000,
+          "timeout_hard_max_ms": 5000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3",
+      "variant_id": "fixture_ai_pack.provider.python"
+    }
+  ]
+}

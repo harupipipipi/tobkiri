@@ -14,7 +14,7 @@ taxonomy:
   handoff_targets:
   - defaultspack
   - rumi_default_tools_pack
-  - rumi_reference_ui_pack
+  - rumi_frontend_design_pack
   forbidden_ownership:
   - frontend design generation
   - file persistence
