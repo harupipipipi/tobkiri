@@ -11,7 +11,7 @@
       "executable_source_registry": 0,
       "launcher_safety": 0,
       "legacy_registry_and_installed_lookup": 0,
-      "migration_evidence": 1,
+      "migration_evidence": 2,
       "offline_projection": 0
     },
     "legacy_manifest_declared_packs": 141,
@@ -36,6 +36,13 @@
     "launcher_safety": [],
     "legacy_registry_and_installed_lookup": [],
     "migration_evidence": [
+      {
+        "diagnostic": "RED: [WinError 1314] クライアントは要求された特権を保有していません。: 'C:\\\\Users\\\\inoue\\\\AppData\\\\Local\\\\Temp\\\\tobkiri-independent-migration-ffi7co11\\\\outside-proof-target.txt' -> 'C:\\\\Users\\\\inoue\\\\AppData\\\\Local\\\\Temp\\\\tobkiri-independent-migration-ffi7co11\\\\broken-legacy\\\\profiles\\\\profile-cleo\\\\notes\\\\escape'",
+        "line": 1,
+        "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+        "rule": "migration_proof_generator_drift",
+        "symbol": "migration_proof_generator_drift"
+      },
       {
         "line": 1,
         "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
@@ -123,6 +130,13 @@
     },
     "migration_evidence": {
       "findings": [
+        {
+          "diagnostic": "RED: [WinError 1314] クライアントは要求された特権を保有していません。: 'C:\\\\Users\\\\inoue\\\\AppData\\\\Local\\\\Temp\\\\tobkiri-independent-migration-ffi7co11\\\\outside-proof-target.txt' -> 'C:\\\\Users\\\\inoue\\\\AppData\\\\Local\\\\Temp\\\\tobkiri-independent-migration-ffi7co11\\\\broken-legacy\\\\profiles\\\\profile-cleo\\\\notes\\\\escape'",
+          "line": 1,
+          "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
+          "rule": "migration_proof_generator_drift",
+          "symbol": "migration_proof_generator_drift"
+        },
         {
           "line": 1,
           "path": "tobkiri_runtime/scripts/quality/evidence/pack_migration_proof.v1.json",
@@ -2193,8 +2207,8 @@
   "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
   "source": {
     "freshness_basis": "deterministic-semantic-recomputation",
-    "observed_head_sha": "b1719908b5ab35fe4009aa1485250b7794d78ecc",
-    "semantic_digest": "sha256:8f423f80223267a40310b5b9ef0036cbe4d412df9aa64cb113ad17fde2e64e3b",
+    "observed_head_sha": "55e25dc0a22a047b09ee66c03a690f3ec15a1ab8",
+    "semantic_digest": "sha256:52720c27a6f884680963452c10da8dffb827006e581f2c511c19d71d476bd31d",
     "test_file": "tobkiri_runtime/tests/test_complete_v4_migration_gate.py"
   }
 }
