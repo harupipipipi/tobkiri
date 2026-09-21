@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import hashlib
 import http.client
 import json
@@ -13,13 +15,22 @@ from urllib.parse import quote
 
 import pytest
 
-from core_runtime.frontend_contract_routes import (
-    FrontendContractBinding,
-    FrontendContractTarget,
+from core_runtime.global_contracts.http_contract_dispatch import (
+    HTTPContractBinding as FrontendContractBinding,
+    HTTPContractTarget as FrontendContractTarget,
+)
+from ecosystem.defaultspack.defaultspack.frontend_contract_loader import (
     load_frontend_contract_bindings,
+)
+from ecosystem.defaultspack.defaultspack.http_contract_composition import (
+    defaultspack_capability_snapshot,
+)
+from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
+    DefaultspackHTTPPresentation,
 )
 from core_runtime.pack_api_server import PackAPIServer
 from core_runtime.panel_auth import PanelAuthManager
+from tests.conformance_support.host_contract import host_contract_for_session
 
 
 pytestmark = pytest.mark.contract
@@ -89,13 +100,17 @@ def _authenticate(server: PackAPIServer) -> tuple[str, str, str]:
     return cookie.split(";", 1)[0], str(exchange["data"]["csrf_token"]), origin
 
 
-def _load_conversation_target() -> FrontendContractTarget:
-    """Load the committed target through the map's digest-checked parser."""
+def _load_application_bindings() -> tuple[FrontendContractBinding, ...]:
+    """Load the committed map through its digest-checked parser."""
 
     raw = MAP_PATH.read_bytes()
     bindings = load_frontend_contract_bindings(
         MAP_PATH,
         {
+            "pack": {
+                "id": "runtime.tauri.application.default",
+                "kind": "application",
+            },
             "artifacts": [
                 {
                     "path": "defaultspack/frontend_contract_map.v4.json",
@@ -105,9 +120,14 @@ def _load_conversation_target() -> FrontendContractTarget:
             ]
         },
     )
+    return bindings
+
+
+def _load_conversation_target() -> FrontendContractTarget:
+    """Load the exact executable capability independently of display entries."""
     binding = next(
         item
-        for item in bindings
+        for item in _load_application_bindings()
         if item.method == "POST" and item.path == "/api/ui/capability/invoke"
     )
     target = next(item for item in binding.targets if item.contribution_id == _CONVERSATION_ID)
@@ -122,7 +142,10 @@ class _CapturedConversationSession:
     """Finite captured Broker fixture with controllable readiness evidence."""
 
     profile_id = "defaults"
+    profile_revision = "sha256:" + "3" * 64
     plan_digest = "sha256:" + "1" * 64
+    activation_id = "activation:conversation-test"
+    security_epoch = 1
 
     def __init__(self, targets: tuple[FrontendContractTarget, ...]) -> None:
         self._providers: dict[str, tuple[Mapping[str, object], ...]] = {}
@@ -137,6 +160,8 @@ class _CapturedConversationSession:
                     "function_id": target.function_id,
                     "operation_id": target.operation_id,
                     "profile_id": self.profile_id,
+                    "profile_revision": self.profile_revision,
+                    "activation_id": self.activation_id,
                     "plan_digest": self.plan_digest,
                     "artifact_digest": "sha256:" + "2" * 64,
                 },
@@ -176,6 +201,19 @@ class _CapturedConversationSession:
         return {"profile_id": self.profile_id}
 
 
+def _captured_catalog_binding(catalog: FrontendContractTarget) -> FrontendContractBinding:
+    """Use the sealed Application declaration with this test's captured identity."""
+    binding = next(item for item in _load_application_bindings()
+                   if item.method == "GET" and item.path == "/api/ui/catalog")
+    return replace(
+        binding, targets=(catalog,),
+        profile_id=_CapturedConversationSession.profile_id,
+        profile_revision=_CapturedConversationSession.profile_revision,
+        activation_id=_CapturedConversationSession.activation_id,
+        plan_digest=_CapturedConversationSession.plan_digest,
+    )
+
+
 def test_conversation_capability_is_capture_gated_and_http_brokered(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -196,13 +234,14 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
         path="/api/ui/capability/invoke",
         presentation="capability_result",
         targets=(conversation, catalog),
+        application_id="runtime.tauri.application.default",
+        route_namespace="defaultspack",
+        profile_id=_CapturedConversationSession.profile_id,
+        profile_revision=_CapturedConversationSession.profile_revision,
+        activation_id=_CapturedConversationSession.activation_id,
+        plan_digest=_CapturedConversationSession.plan_digest,
     )
-    catalog_binding = FrontendContractBinding(
-        method="GET",
-        path="/api/ui/catalog",
-        presentation="dynamic_pack_catalog",
-        targets=(catalog,),
-    )
+    catalog_binding = _captured_catalog_binding(catalog)
     session = _CapturedConversationSession((conversation, catalog))
     server = PackAPIServer(
         port=0,
@@ -211,6 +250,9 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
         ),
         dispatch_session=session,
         contract_bindings=(capability_binding, catalog_binding),
+        capability_snapshot_factory=defaultspack_capability_snapshot,
+        application_presentation=DefaultspackHTTPPresentation(),
+        host_contract=host_contract_for_session(session),
     )
     server.start()
     try:
@@ -228,23 +270,35 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
         )
         assert status == 200, catalog_response
         host = catalog_response["data"]["dynamic_host"]
+        assert host["profile_revision"] == session.profile_revision
+        assert host["profile_revision"] != host["plan_hash"]
+        assert host["activation_id"] == session.activation_id
         contribution = next(
             item
             for item in host["contributions"]
             if item["contribution_id"] == _CONVERSATION_ID
         )
-        assert contribution["kind"] == "route"
+        assert contribution["kind"] == "action"
         assert contribution["mode"] == "declarative"
-        assert contribution["route"] == "/chat"
+        assert "route" not in contribution
         assert contribution["action_contract"] == _CONVERSATION_CONTRACT
-        assert contribution["view"]["type"] == "conversation_v4"
-        assert contribution["view"]["title"] == "Tobkiri Conversation"
-        assert contribution["view"]["body"]
+        assert contribution["resolved_profile_id"] == session.profile_id
+        assert contribution["resolved_profile_revision"] == session.profile_revision
+        assert contribution["resolved_activation_id"] == session.activation_id
+        assert contribution["resolved_plan_hash"] == session.plan_digest
+        entry = next(item for item in host["contributions"]
+                     if item.get("route") == "/chat")
+        assert entry["mode"] == "application_builtin"
+        assert entry["implementation"] == "defaultspack.chat"
+        assert entry["contribution_id"] == "defaultspack.frontend.chat"
+        assert "action_contract" not in entry
 
         capability_request = {
             "request_id": str(uuid.uuid4()),
             "expires_at": time.time() + 45,
             "profile_id": host["profile_id"],
+            "profile_revision": host["profile_revision"],
+            "activation_id": host["activation_id"],
             "plan_hash": host["plan_hash"],
             "catalog_hash": host["catalog_hash"],
             "contribution_id": contribution["contribution_id"],
@@ -300,6 +354,15 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
         assert rejected_response["data"]["code"] == "invalid_contract_payload"
         assert len(session.broker_invocations) == before
 
+        display_invoke_status, _, _ = _request(
+            server, "POST", route,
+            body={**capability_request, "request_id": str(uuid.uuid4()),
+                  "contribution_id": entry["contribution_id"]},
+            headers={**mutation_headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        assert display_invoke_status == 404
+        assert len(session.broker_invocations) == before
+
         invoked, invoked_response, _ = _request(
             server,
             "POST",
@@ -319,6 +382,38 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
         )
         assert payload["messages"] == [{"role": "user", "content": "hello"}]
         assert set(payload) == {"messages", "_session_id"}
+
+        rotated_activation, rotated_response, _ = _request(
+            server,
+            "POST",
+            route,
+            body={
+                **capability_request,
+                "request_id": str(uuid.uuid4()),
+                "activation_id": "activation:rotated",
+            },
+            headers={
+                **mutation_headers,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        assert rotated_activation == 404, rotated_response
+        assert len(session.broker_invocations) == before + 1
+
+        missing_revision = dict(capability_request)
+        del missing_revision["profile_revision"]
+        missing_revision_status, missing_revision_response, _ = _request(
+            server,
+            "POST",
+            route,
+            body={**missing_revision, "request_id": str(uuid.uuid4())},
+            headers={
+                **mutation_headers,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        assert missing_revision_status == 404, missing_revision_response
+        assert len(session.broker_invocations) == before + 1
 
         before_legacy = len(session.broker_invocations)
         legacy_status, _, _ = _request(
@@ -341,19 +436,36 @@ def test_conversation_capability_is_capture_gated_and_http_brokered(
             },
         )
         assert status == 200, unready_catalog
-        assert all(
-            item["contribution_id"] != _CONVERSATION_ID
+        assert any(
+            item["contribution_id"] == "defaultspack.frontend.chat"
             for item in unready_catalog["data"]["dynamic_host"]["contributions"]
         )
+        before_unready = len(session.broker_invocations)
+        denied_status, _, _ = _request(
+            server,
+            "POST",
+            route,
+            body={
+                **capability_request,
+                "request_id": str(uuid.uuid4()),
+                "catalog_hash": unready_catalog["data"]["dynamic_host"]["catalog_hash"],
+            },
+            headers={
+                **mutation_headers,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        assert denied_status == 404
+        assert len(session.broker_invocations) == before_unready
     finally:
         server.stop()
 
 
-def test_unready_conversation_is_omitted_without_blocking_packapi_start(
+def test_unready_conversation_keeps_verified_ui_without_admitting_execution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PackAPI starts fail-closed before the optional Provider is ready."""
+    """Settings stay reachable while the executable snapshot remains empty."""
 
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
     conversation = _load_conversation_target()
@@ -380,14 +492,18 @@ def test_unready_conversation_is_omitted_without_blocking_packapi_start(
                 path="/api/ui/capability/invoke",
                 presentation="capability_result",
                 targets=(conversation, catalog),
+                application_id="runtime.tauri.application.default",
+                route_namespace="defaultspack",
+                profile_id=_CapturedConversationSession.profile_id,
+                profile_revision=_CapturedConversationSession.profile_revision,
+                activation_id=_CapturedConversationSession.activation_id,
+                plan_digest=_CapturedConversationSession.plan_digest,
             ),
-            FrontendContractBinding(
-                method="GET",
-                path="/api/ui/catalog",
-                presentation="dynamic_pack_catalog",
-                targets=(catalog,),
-            ),
+            _captured_catalog_binding(catalog),
         ),
+        capability_snapshot_factory=defaultspack_capability_snapshot,
+        application_presentation=DefaultspackHTTPPresentation(),
+        host_contract=host_contract_for_session(session),
     )
 
     server.start()
@@ -404,9 +520,39 @@ def test_unready_conversation_is_omitted_without_blocking_packapi_start(
             },
         )
         assert status == 200, response
-        assert all(
-            item["contribution_id"] != _CONVERSATION_ID
+        assert any(
+            item["contribution_id"] == "defaultspack.frontend.chat"
             for item in response["data"]["dynamic_host"]["contributions"]
         )
+        snapshot = defaultspack_capability_snapshot(
+            server._contract_routes[("POST", "/api/ui/capability/invoke")],  # noqa: SLF001
+            session=session,
+            catalog={"packs": []},
+        )
+        assert all(
+            target.contribution_id != _CONVERSATION_ID
+            for target in snapshot.targets
+        )
+        providers = session._providers[_CONVERSATION_CONTRACT]  # noqa: SLF001
+        for field in (
+            "provider_id", "function_id", "operation_id", "profile_id",
+            "profile_revision", "activation_id", "plan_digest", "artifact_digest",
+        ):
+            session._providers[_CONVERSATION_CONTRACT] = tuple(  # noqa: SLF001
+                {**provider, field: ""} for provider in providers
+            )
+            status, mismatch, _ = _request(
+                server, "GET", _contract("GET", "/api/ui/catalog"),
+                headers={
+                    "Cookie": cookie,
+                    "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+                },
+            )
+            assert status == 200, mismatch
+            assert all(
+                item["contribution_id"] != _CONVERSATION_ID
+                for item in mismatch["data"]["dynamic_host"]["contributions"]
+            ), field
+        session._providers[_CONVERSATION_CONTRACT] = providers  # noqa: SLF001
     finally:
         server.stop()

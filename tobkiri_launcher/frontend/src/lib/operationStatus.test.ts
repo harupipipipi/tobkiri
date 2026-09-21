@@ -4,9 +4,12 @@ import {test} from 'node:test';
 
 import {
   OPERATION_STATUS_API_VERSION,
+  OperationStatusNotFoundError,
+  fetchOperationStatus,
   reconcileMutationStatus,
   type OperationStatusBinding,
 } from './operationStatus.ts';
+import {ApiContractError} from './apiTransport.ts';
 import {
   beginMutation,
   listMutationJournal,
@@ -93,6 +96,35 @@ test('operation status reconciles success only after an authoritative refresh', 
   assert.equal(result.state, 'succeeded');
   assert.equal(refreshes, 1);
   assert.equal(listMutationJournal().some((item) => item.key === record.key), false);
+});
+
+test('only the typed current-root absence envelope becomes a recoverable not-found result', async () => {
+  const requestId = requestIds[0];
+  await assert.rejects(
+    fetchOperationStatus(binding(requestId), async () => {
+      throw new ApiContractError('safe public message', {
+        host_operation_api_version: 'io.tobkiri.host.operation.v1',
+        state: 'error',
+        code: 'OPERATION_NOT_FOUND',
+        retryable: false,
+        message: 'The operation is absent from the current data root',
+        write_set: [],
+      });
+    }),
+    (error: unknown) => error instanceof OperationStatusNotFoundError
+      && error.requestId === requestId,
+  );
+  await assert.rejects(
+    fetchOperationStatus(binding(requestId), async () => {
+      throw new ApiContractError('binding mismatch', {
+        host_operation_api_version: 'io.tobkiri.host.operation.v1',
+        state: 'error',
+        code: 'DIGEST_MISMATCH',
+        retryable: false,
+      });
+    }),
+    (error: unknown) => error instanceof ApiContractError,
+  );
 });
 
 test('a terminal result cleans only its exact journal when the UI binding is stale', async () => {

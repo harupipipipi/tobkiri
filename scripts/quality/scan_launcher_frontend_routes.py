@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 
@@ -34,6 +35,7 @@ RETIRED_ROUTES = (
     "/api/routes/reload",
     "/api/runtime/available",
 )
+PACK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 
 
 def scan_panel(panel_root: Path, map_path: Path) -> list[dict[str, Any]]:
@@ -50,12 +52,17 @@ def scan_panel(panel_root: Path, map_path: Path) -> list[dict[str, Any]]:
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         return [{"rule": "contract_map_unreadable", "path": str(map_path), "error": str(error)}]
     routes = contract_map.get("routes") if isinstance(contract_map, dict) else None
-    if not isinstance(routes, list):
+    pack_id = contract_map.get("pack_id") if isinstance(contract_map, dict) else None
+    if (
+        not isinstance(routes, list)
+        or not isinstance(pack_id, str)
+        or not PACK_ID.fullmatch(pack_id)
+    ):
         return [{"rule": "contract_map_invalid", "path": str(map_path)}]
 
     sources = {path: path.read_text(encoding="utf-8", errors="replace") for path in scripts}
     combined = "\n".join(sources.values())
-    if "/api/contracts/defaultspack/" not in combined:
+    if f"/api/contracts/{pack_id}/" not in combined:
         findings.append({"rule": "exact_contract_prefix_missing", "path": str(panel_root)})
     for route in routes:
         target = route.get("path") if isinstance(route, dict) else None

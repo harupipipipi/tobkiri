@@ -32,8 +32,40 @@ def _bundle_root() -> Path:
 
     return packaged_profile_bundle_root()
 
+
 PACK_ID = "tobkiri_workflow_pack"
 SESSION_ID = f"{'a' * 64}.{'b' * 24}.1"
+
+
+def _capture_control_session(**kwargs):
+    """Compose the Defaultspack runtime surface explicitly for direct tests."""
+
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        create_runtime_surface_services,
+    )
+
+    return capture_pack_control_session(
+        runtime_surface_factory=create_runtime_surface_services,
+        **kwargs,
+    )
+
+
+def _capture_defaultspack_dispatch(active: object, **kwargs: object):
+    """Compose production dispatch with Defaultspack-owned dependencies."""
+
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_activation_snapshot_loader,
+    )
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        create_runtime_surface_services,
+    )
+
+    return capture_production_dispatch(
+        active,
+        activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+        runtime_surface_factory=create_runtime_surface_services,
+        **kwargs,
+    )
 
 
 def _invoke(session, contract: str, operation: str, payload: dict | None = None):
@@ -52,7 +84,7 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
 
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user-data"))
     capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    session = capture_pack_control_session()
+    session = _capture_control_session()
 
     catalog = _invoke(session, PACK_CONTROL_CONTRACT, "catalog.read")
     workflow = next(item for item in catalog["packs"] if item["pack_id"] == PACK_ID)
@@ -142,10 +174,8 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
     # exercise the exact operation route.  This is the packaged restart path
     # that previously reapplied a hidden v1-only compatibility constraint.
     restarted_active = capture_default_profile()
-    authority = AuthorityStore(
-        tmp_path / "user-data" / "authority" / "v4.sqlite3"
-    )
-    restarted = capture_production_dispatch(
+    authority = AuthorityStore(tmp_path / "user-data" / "authority" / "v4.sqlite3")
+    restarted = _capture_defaultspack_dispatch(
         restarted_active,
         bundle_root=_bundle_root(),
         ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
@@ -161,9 +191,7 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
             for item in authority.list_provider_authorities()
             if item.provider.principal_id == binding.principal_ref.value
         )
-        extension_trust = authority.get_host_extension_trust(
-            provider_authority.host_extension_id
-        )
+        extension_trust = authority.get_host_extension_trust(provider_authority.host_extension_id)
         assert extension_trust is not None
         assert extension_trust.package_kind == "host_extension"
         assert extension_trust.parent_artifact_digest == binding.artifact.digest
@@ -220,8 +248,7 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
         step_target = next(
             item
             for item in palette["operations"]
-            if item["contract_id"] == "conversation.turn.v1"
-            and item["operation_id"] == "complete"
+            if item["contract_id"] == "conversation.turn.v1" and item["operation_id"] == "complete"
         )
         document = {
             "workflow_api_version": "io.tobkiri.workflow.v4",
@@ -233,13 +260,9 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
                     "when": "false",
                     "request": {
                         "contract_id": step_target["contract_id"],
-                        "contract_revision_digest": step_target[
-                            "contract_revision_digest"
-                        ],
+                        "contract_revision_digest": step_target["contract_revision_digest"],
                         "operation_id": step_target["operation_id"],
-                        "function_principal_id": step_target[
-                            "function_principal_id"
-                        ],
+                        "function_principal_id": step_target["function_principal_id"],
                         "input": {"messages": "${inputs.messages}"},
                     },
                     "retry": {"max_attempts": 1, "backoff_ms": 0},
@@ -289,13 +312,11 @@ def test_optional_workflow_pack_enters_closure_only_after_full_ceremony(
     finally:
         restarted.close()
 
-    restarted_again = capture_production_dispatch(
+    restarted_again = _capture_defaultspack_dispatch(
         capture_default_profile(),
         bundle_root=_bundle_root(),
         ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
-        authority_store=AuthorityStore(
-            tmp_path / "user-data" / "authority" / "v4.sqlite3"
-        ),
+        authority_store=AuthorityStore(tmp_path / "user-data" / "authority" / "v4.sqlite3"),
     )
     try:
         persisted = restarted_again.invoke(

@@ -99,7 +99,7 @@ for j in jobs:
   3. Build panel frontend and defaultspack frontend
   4. Build `pack-shell` for the target platform
   5. Prepare `tobkiri_launcher/src-tauri/gen/app` from `tobkiri_runtime`
-  6. Build (`cargo tauri build --target $target`)
+  6. Build (`python -B scripts/run_tauri_build.py build --target $target`)
   7. Upload release artifacts (`softprops/action-gh-release`)
 
 `tobkiri_launcher/src-tauri/gen/app` は Git 管理しない。CI では
@@ -111,7 +111,7 @@ for j in jobs:
 
 resource staging の preflight は Defaultspack v4 のみを authority とする。
 `pack.v4.json`, `contracts.v4.json`, `artifact-index.v4.json`,
-`executables.v4.json`, `v4/bundle.lock.json`, `v4/defaults.profile.v4.json` を
+`executables.v4.json`, `v4/bundle.lock.json`, `v4/defaults.profile.v5.json` を
 必須入力とし、bundle lock・artifact catalog の declared implementation
 digest と staged bytes を strict に照合する。欠落、改変、hash drift、unlisted
 file、path traversal、symlink は fail closed になる。旧 `ecosystem.json` と

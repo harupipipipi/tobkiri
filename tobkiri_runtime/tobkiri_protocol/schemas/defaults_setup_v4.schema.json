@@ -146,6 +146,7 @@
         "execution_kind": {"enum": ["wasm", "pack_vm", "host_extension", "remote"]},
         "authority_reference": {"$ref": "#/$defs/authorityReference"},
         "requested_scope_digest": {"$ref": "#/$defs/digest"},
+        "authority_mode": {"enum": ["profile_grant", "interactive_only"]},
         "adapter_digests": {
           "type": "array",
           "uniqueItems": true,

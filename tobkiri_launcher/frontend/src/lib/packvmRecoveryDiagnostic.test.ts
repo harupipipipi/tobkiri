@@ -39,3 +39,12 @@ test('a blocked catalog is availability failure, not a lock digest mismatch', ()
     'API_FAILURE: PackVM reconciliation could not be verified; retry only after the Host is healthy.',
   );
 });
+
+test('a changed packaged helper is a cleanup condition, not a Profile digest mismatch', () => {
+  const error = 'PackVM VZ helper_digest changed';
+  assert.equal(classifyPackVMRecoveryCode(error), 'API_FAILURE');
+  assert.equal(
+    formatPackVMRecoveryError(error, error),
+    'API_FAILURE: PackVM VZ helper_digest changed',
+  );
+});

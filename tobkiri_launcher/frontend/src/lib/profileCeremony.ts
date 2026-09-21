@@ -1,6 +1,4 @@
-import {
-  fetchFrontendContractOperation,
-} from './api';
+import {fetchFrontendContractOperation} from './defaultspackClient';
 import {
   assertVerifiedRuntimeTarget,
   RUNTIME_PROFILE_CEREMONY_TARGETS as GENERATED_PROFILE_CEREMONY_TARGETS,
@@ -209,22 +207,16 @@ function exactMutationPayload(step: ProfileCeremonyStep, value: unknown): Record
   if (!isRecord(value)) {
     throw new RuntimeSurfaceError('INVALID', `Profile ${step} request is not an object.`);
   }
-  const hasCatalogBinding = step === 'resolve'
-    && ['profile_definition_digest', 'profile_catalog_digest', 'bundle_lock_digest'].some(
-      (key) => Object.prototype.hasOwnProperty.call(value, key),
-    );
   const expectedKeys = step === 'resolve'
-    ? hasCatalogBinding
-      ? [
-        'profile_id',
-        'expected_profile_revision',
-        'expected_plan_digest',
-        'desired_pack_ids',
-        'profile_definition_digest',
-        'profile_catalog_digest',
-        'bundle_lock_digest',
-      ]
-      : ['profile_id', 'expected_profile_revision', 'expected_plan_digest', 'desired_pack_ids']
+    ? [
+      'profile_id',
+      'expected_profile_revision',
+      'expected_plan_digest',
+      'desired_pack_ids',
+      'profile_definition_digest',
+      'profile_catalog_digest',
+      'bundle_lock_digest',
+    ]
     : step === 'activate'
       ? ['approval_id', 'approval_digest']
       : ['candidate_id', 'candidate_digest'];
@@ -239,12 +231,9 @@ function exactMutationPayload(step: ProfileCeremonyStep, value: unknown): Record
       || !Array.isArray(value.desired_pack_ids)
       || value.desired_pack_ids.length === 0
       || value.desired_pack_ids.some((item) => !validRequestString(item))
-      || (hasCatalogBinding && (
-        !isSha256(value.profile_definition_digest)
-        || !isSha256(value.profile_catalog_digest)
-        || !isSha256(value.bundle_lock_digest)
-      ))
-      || (!hasCatalogBinding && value.profile_id !== 'defaults')) {
+      || !isSha256(value.profile_definition_digest)
+      || !isSha256(value.profile_catalog_digest)
+      || !isSha256(value.bundle_lock_digest)) {
       throw new RuntimeSurfaceError('INVALID', 'Profile resolve request is invalid.');
     }
   } else if (step === 'activate') {

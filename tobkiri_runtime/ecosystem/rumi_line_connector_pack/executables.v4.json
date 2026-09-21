@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:f73acaf4ce6d2a18e127f068cc5dd2ef39481116f43270478cd177d82a526d16",
+  "catalog_digest": "sha256:f408d5630688acbdf61ff1c96bf714e356dae636ceab7760aa7e83d3c0b84638",
   "pack_id": "rumi_line_connector_pack",
-  "source_identity": "sha256:12045cf43a6d5d9d14f802126d48dc3e4311740809c017a295c3dd666c5225ba",
+  "source_identity": "sha256:d8024baa2be6a1809e05982596091f67e3ff6f2725b67008753284462a10e479",
   "variants": [
     {
       "architecture": "any",
@@ -29,7 +29,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:012e201606412a5a4f10f37501b77ba50eabe306a5f3d1cde99c0e4da11ecf8f",
+          "revision_digest": "sha256:73470a390f086beb6c39e07ab54a01ae71ea3730a1df8f25cb3c57f3bf9525cf",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

@@ -159,13 +159,15 @@ test('Header avatar is an actionable Profile/Settings entry with focus, Escape, 
 test('mobile navigation exposes ordinary named links, moves focus, and closes on Escape or selection', {concurrency: false}, async () => {
   const release = await acquireDomTestLock();
   const globalSurfaceSnapshot = captureGlobalSurface();
+  const previousState = useAppStore.getState();
   let surface: Surface | undefined;
   try {
     surface = createSurface();
     const {dom, container, root} = surface;
+    useAppStore.setState({devtoolsEnabled: true});
     await act(async () => {
       root.render(
-        <MemoryRouter initialEntries={['/']}>
+        <MemoryRouter initialEntries={['/graphs']}>
           <Header />
         </MemoryRouter>,
       );
@@ -182,6 +184,15 @@ test('mobile navigation exposes ordinary named links, moves focus, and closes on
     assert.equal(navigationDialog.querySelector('[role="menuitem"]'), null);
     const navigation = navigationDialog.querySelector<HTMLElement>('nav[aria-label="Mobile navigation"]');
     assert.ok(navigation);
+    const devtoolsGroup = navigation.querySelector<HTMLElement>(
+      'section[aria-labelledby="mobile-nav-group-devtools"]',
+    );
+    assert.ok(devtoolsGroup);
+    assert.equal(devtoolsGroup.querySelectorAll('a').length, 7);
+    assert.equal(
+      devtoolsGroup.querySelector('a[href="/graphs"]')?.getAttribute('aria-current'),
+      'page',
+    );
     assert.equal(trigger.getAttribute('aria-expanded'), 'true');
     assert.equal(trigger.getAttribute('aria-controls'), navigationDialog.id);
     const firstLink = navigation.querySelector<HTMLAnchorElement>('a[href]');
@@ -204,7 +215,12 @@ test('mobile navigation exposes ordinary named links, moves focus, and closes on
     await act(async () => { packsLink.click(); await nextTick(); });
     assert.equal(dom.window.document.querySelector('[role="dialog"][aria-label="Mobile navigation"]'), null);
   } finally {
-    await cleanupSurface(surface, globalSurfaceSnapshot, release);
+    await cleanupSurface(
+      surface,
+      globalSurfaceSnapshot,
+      release,
+      () => useAppStore.setState(previousState, true),
+    );
   }
 });
 

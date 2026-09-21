@@ -6,34 +6,40 @@ import {
   checkShellCompatibility,
   compatibleShellProviders,
   defaultPresentationSelection,
+  isVerifiedDynamicFrontendCatalog,
   isConversationCapabilityReady,
   launchDisabledReason,
   launchDisabledReasonForSelection,
   normalizePresentationSelection,
+  resolveVerifiedViewCapability,
   selectShellAfterBaseChange,
+  verifiedViewCapabilities,
 } from './presentation';
 
 const conversationCatalog = (): ApiDynamicFrontendCatalog => ({
   version: 'rumi.ui.contribution.v1',
-  profile_id: 'defaults',
+  profile_id: 'research-a',
   profile_revision: `sha256:${'a'.repeat(64)}`,
+  activation_id: 'activation:research-a',
   plan_hash: `sha256:${'a'.repeat(64)}`,
   contributions: [{
-    contribution_id: 'defaults.conversation.complete',
+    contribution_id: 'research.conversation.complete',
     kind: 'route',
     mode: 'declarative',
-    label: 'Tobkiri Conversation',
-    owner_pack_id: 'defaultspack',
+    label: 'Research conversation',
+    owner_pack_id: 'research-ui-pack',
     owner_pack_hash: `sha256:${'b'.repeat(64)}`,
-    build_identity: 'defaultspack.conversation',
+    build_identity: 'research-ui-build',
+    resolved_profile_id: 'research-a',
     resolved_profile_revision: `sha256:${'a'.repeat(64)}`,
+    resolved_activation_id: 'activation:research-a',
     resolved_plan_hash: `sha256:${'a'.repeat(64)}`,
     descriptor_hash: `sha256:${'c'.repeat(64)}`,
-    route: '/chat',
+    route: '/research/conversation',
     action_contract: 'conversation.turn.v1',
     operation_id: 'complete',
-    provider_id: 'defaultspack.conversation',
-    function_id: 'defaultspack.conversation',
+    provider_id: 'research-conversation-provider',
+    function_id: 'research-conversation-function',
     view: {type: 'conversation_v4'},
   }],
   diagnostics: [],
@@ -218,22 +224,29 @@ test('Conversation readiness requires one exact live capability binding', () => 
     ['version', (candidate) => { candidate.version = 'other'; }],
     ['profile id', (candidate) => { candidate.profile_id = ''; }],
     ['profile revision', (candidate) => { candidate.profile_revision = 'sha256:short'; }],
+    ['activation id', (candidate) => { candidate.activation_id = ''; }],
     ['plan hash', (candidate) => { candidate.plan_hash = 'sha256:short'; }],
     ['catalog hash', (candidate) => { candidate.catalog_hash = 'sha256:short'; }],
-    ['quarantine', (candidate) => { candidate.quarantined_pack_ids = ['defaultspack']; }],
+    ['quarantine', (candidate) => { candidate.quarantined_pack_ids = ['research-ui-pack']; }],
     ['kind', (candidate) => { candidate.contributions[0].kind = 'action'; }],
     ['mode', (candidate) => { candidate.contributions[0].mode = 'same_origin_builtin'; }],
-    ['route', (candidate) => { candidate.contributions[0].route = '/packs'; }],
-    ['owner', (candidate) => { candidate.contributions[0].owner_pack_id = 'other'; }],
+    ['missing route', (candidate) => { candidate.contributions[0].route = ''; }],
+    ['missing owner', (candidate) => { candidate.contributions[0].owner_pack_id = ''; }],
     ['contract', (candidate) => { candidate.contributions[0].action_contract = 'other.v1'; }],
     ['operation', (candidate) => { candidate.contributions[0].operation_id = 'other'; }],
-    ['provider', (candidate) => { candidate.contributions[0].provider_id = 'other'; }],
-    ['function', (candidate) => { candidate.contributions[0].function_id = 'other'; }],
-    ['build', (candidate) => { candidate.contributions[0].build_identity = 'other'; }],
+    ['missing provider', (candidate) => { candidate.contributions[0].provider_id = ''; }],
+    ['missing function', (candidate) => { candidate.contributions[0].function_id = ''; }],
+    ['missing build', (candidate) => { candidate.contributions[0].build_identity = ''; }],
     ['owner hash', (candidate) => { candidate.contributions[0].owner_pack_hash = ''; }],
     ['descriptor hash', (candidate) => { candidate.contributions[0].descriptor_hash = ''; }],
     ['profile binding', (candidate) => {
+      candidate.contributions[0].resolved_profile_id = 'other-profile';
+    }],
+    ['profile revision binding', (candidate) => {
       candidate.contributions[0].resolved_profile_revision = 'sha256:stale';
+    }],
+    ['activation binding', (candidate) => {
+      candidate.contributions[0].resolved_activation_id = 'activation:stale';
     }],
     ['plan binding', (candidate) => {
       candidate.contributions[0].resolved_plan_hash = 'sha256:stale';
@@ -249,4 +262,29 @@ test('Conversation readiness requires one exact live capability binding', () => 
   const duplicate = conversationCatalog();
   duplicate.contributions.push({...duplicate.contributions[0]});
   assert.equal(isConversationCapabilityReady(duplicate), false);
+});
+
+test('Conversation is an optional Profile capability resolved from live bindings', () => {
+  const catalog = conversationCatalog();
+  const capability = resolveVerifiedViewCapability(catalog, {
+    viewType: 'conversation_v4',
+    actionContract: 'conversation.turn.v1',
+    operationId: 'complete',
+  });
+
+  assert.equal(isVerifiedDynamicFrontendCatalog(catalog), true);
+  assert.equal(capability?.owner_pack_id, 'research-ui-pack');
+  assert.equal(capability?.route, '/research/conversation');
+  assert.equal(
+    verifiedViewCapabilities({...catalog, quarantined_pack_ids: ['unrelated-pack']}, {
+      viewType: 'conversation_v4',
+      actionContract: 'conversation.turn.v1',
+      operationId: 'complete',
+    }).length,
+    1,
+  );
+  assert.equal(
+    isConversationCapabilityReady({...catalog, contributions: []}),
+    false,
+  );
 });

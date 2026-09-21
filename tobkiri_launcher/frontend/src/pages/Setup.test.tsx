@@ -47,6 +47,10 @@ test('the setup component exposes verification instead of replay after an ambigu
   assert.match(html, /Activation was submitted; verification is required/);
   assert.match(html, /previous confirmation will not be submitted again/);
   assert.match(html, /Verify activation/);
+  assert.match(html, /data-error-icon="activation-verification-required"/);
+  assert.match(html, /lucide-clock-3/);
+  assert.match(html, /aria-label="Copy activation verification status"/);
+  assert.match(html, /lucide-copy/);
 });
 
 test('setup activation is explicit and followed by selected presentation materialization', () => {
@@ -60,6 +64,7 @@ test('setup activation is explicit and followed by selected presentation materia
   assert.match(setupSource, /navigate\(panelRoutes\.home\)/);
   assert.match(setupSource, /typeof error === 'string' && error\.trim\(\)/);
   assert.match(setupSource, /refreshRuntimeHealth/);
+  assert.match(setupSource, /reconcileDefaultsRuntime/);
   assert.match(setupSource, /refreshMountedRuntimeSurfaces/);
   assert.match(setupSource, /refreshPackVMDoctor\(\{reconcile: false\}\)/);
   assert.match(setupSource, /if \(!packVmDoctor\)/);
@@ -74,7 +79,8 @@ test('setup activation is explicit and followed by selected presentation materia
   assert.match(setupSource, /runtimeStatus.*runtime_ready/);
   assert.match(setupSource, /activateDefaultsWithRecovery/);
   assert.match(setupSource, /recoverDefaultsActivation/);
-  assert.match(setupSource, /fetchAuthoritativeSetup: fetchDefaultsSetupState/);
+  assert.match(setupSource, /fetchAuthoritativeSetup: \(\) => fetchDefaultsSetupState\(\{waitForRestart: true\}\)/);
+  assert.match(setupSource, /\{committedActivation: activationCommitted\}/);
 });
 
 test('activation denial remains visible and disables confirmation controls', () => {
@@ -94,7 +100,18 @@ test('activation denial remains visible and disables confirmation controls', () 
   />);
 
   assert.match(html, /Profile revision is stale/);
+  assert.match(html, /data-error-icon="activation-denied"/);
+  assert.match(html, /lucide-shield-alert/);
+  assert.match(html, /lucide-copy/);
   assert.match(html, /disabled=""/);
+});
+
+test('presentation load failures have one reachable diagnostic with an icon and copy action', () => {
+  assert.match(setupSource, /presentationError \? <div role="alert"/);
+  assert.match(setupSource, /data-error-icon="presentation"/);
+  assert.match(setupSource, /CopyErrorButton label="Copy presentation error" text=\{presentationError\}/);
+  assert.doesNotMatch(setupSource, /role=\{presentationError \? 'alert' : 'status'\}/);
+  assert.doesNotMatch(setupSource, /\{presentationError \? <AlertCircle/);
 });
 
 test('reconfirmation setup copy exposes only the Host-owned bootstrap ceremony', () => {
@@ -105,9 +122,33 @@ test('reconfirmation setup copy exposes only the Host-owned bootstrap ceremony',
   assert.doesNotMatch(reviewSource, /profile\.change\.(resolve|review|approve|activate)/);
 });
 
+test('review displays the exact Host confirmation and every operation binding', () => {
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json',
+    import.meta.url,
+  ), 'utf8'));
+  const setup = parseDefaultsSetupState(fixture);
+  const html = renderToString(<DefaultsReview setup={setup} reviewed={false}
+    activating={false} error={null} onReviewedChange={() => undefined}
+    onActivate={() => { throw new Error('render must not activate'); }} />);
+  const confirmation = setup.recommended_default_profile.confirmation;
+  assert.ok(html.includes(confirmation.confirmation_digest));
+  assert.ok(html.includes(confirmation.profile_revision));
+  assert.ok(html.includes(confirmation.authority_snapshot_digest));
+  for (const binding of confirmation.bindings) {
+    assert.ok(html.includes(binding.operation_id));
+    assert.ok(html.includes(binding.caller_function_id));
+    assert.ok(html.includes(binding.function_principal.contract_revision_digest));
+    assert.ok(html.includes(binding.requested_scope_digest));
+  }
+  assert.match(html, /Confirmed operation bindings/);
+  assert.match(html, /disabled=""/);
+  assert.doesNotMatch(html, /<details[^>]*\sopen(?:\s|>)/);
+});
+
 test('the current GUI has no dependency on retired setup-pack routing', () => {
   assert.doesNotMatch(setupSource, /setupPack|setup_pack|\/setup\?return_to/);
   assert.doesNotMatch(appSource, /hasSelectedSetupPack|setupPacks/);
-  assert.match(appSource, /fetchDefaultsSetupState/);
-  assert.match(appSource, /state\.state === 'active'/);
+  assert.doesNotMatch(appSource, /fetchDefaultsSetupState/);
+  assert.doesNotMatch(appSource, /profile_reconfirmation_required/);
 });

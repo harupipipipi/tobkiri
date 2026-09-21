@@ -175,12 +175,16 @@ def _capture(tmp_path: Path):
     )
     ceilings = {
         (
+            "defaults",
+            "activation:defaults-v4",
             next(
                 principal
                 for (function_id, _operation_id), principal in principals.items()
                 if function_id == edge["caller_function_id"]
             ).principal_id,
             principals[(edge["target_provider_id"], edge["operation_id"])].principal_id,
+            edge["contract_id"],
+            edge["operation_id"],
         ): AuthorityCeilings(scope, scope, scope)
         for edge in resolved.profile["requested_edges"]
     }
@@ -200,10 +204,14 @@ def test_capture_uses_only_exact_effective_set_and_resolved_routes(tmp_path: Pat
     composition, resolved, activation, artifacts, routes, ceilings = _capture(tmp_path)
     assert composition.plan["plan_digest"] == resolved.plan["plan_digest"]
     assert composition.activation["activation_id"] == activation["activation_id"]
-    assert (
-        composition.catalog.resolve("conversation.turn.v1", "complete", ">=1").artifact.digest
-        == resolved.plan["bindings"][0]["artifact_digest"]
-    )
+    # Plan ordering is not operation identity. New Defaults edges may precede
+    # conversation.complete; check every captured route against its own pin.
+    for binding in resolved.plan["bindings"]:
+        captured = composition.catalog.resolve(
+            binding["contract_id"], binding["operation_id"], ">=1"
+        )
+        assert captured.artifact.digest == binding["artifact_digest"]
+        assert captured.function.function_id == binding["function_principal"]["function_id"]
 
     with pytest.raises(ResolutionError, match="exactly equal"):
         HostV4Composition.capture(
@@ -233,7 +241,16 @@ def test_capture_rejects_stale_plan_extra_route_and_injected_authority(tmp_path:
         )
 
     injected = dict(ceilings)
-    injected[("sha256:" + "1" * 64, next(iter(ceilings))[1])] = next(iter(ceilings.values()))
+    injected[
+        (
+            "defaults",
+            "activation:defaults-v4",
+            "sha256:" + "1" * 64,
+            next(iter(ceilings))[3],
+            next(iter(ceilings))[4],
+            next(iter(ceilings))[5],
+        )
+    ] = next(iter(ceilings.values()))
     with pytest.raises(ResolutionError, match="authority ceilings"):
         HostV4Composition.capture(
             profile=resolved.profile,

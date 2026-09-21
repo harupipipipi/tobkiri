@@ -4,8 +4,10 @@ from urllib.parse import quote
 
 import pytest
 
-from core_runtime.frontend_contract_routes import (
-    ContractRouteError,
+from core_runtime.global_contracts.http_contract_dispatch import (
+    HTTPContractBinding,
+    HTTPContractRouteError as ContractRouteError,
+    HTTPContractTarget,
     resolve_contract_route,
 )
 
@@ -13,8 +15,24 @@ pytestmark = pytest.mark.contract
 
 
 class _FakeHost:
-    _api_route_exact = {("GET", "/api/ui/catalog"): {}}
-    _api_route_patterns = ()
+    _contract_routes = {
+        ("GET", "/api/ui/catalog"): HTTPContractBinding(
+            method="GET",
+            path="/api/ui/catalog",
+            presentation="broker_result",
+            targets=(
+                HTTPContractTarget(
+                    contribution_id="test.catalog",
+                    contract_id="test.catalog.v1",
+                    operation_id="read",
+                    provider_id="test.catalog",
+                    function_id="test.catalog",
+                ),
+            ),
+            application_id="test.application",
+            route_namespace="defaultspack",
+        )
+    }
 
 
 def _operation(method: str, target: str) -> str:
@@ -66,7 +84,10 @@ def test_contract_operation_fails_closed_for_escape_recursion_and_unknown_route(
 
 def test_contract_operation_has_no_family_prefix_fallback() -> None:
     class _EmptyHost:
-        _api_route_exact = {}
+        _contract_routes = {}
+        _api_route_exact = {
+            ("POST", "/api/authority/requests/forged/approve"): {},
+        }
         _api_route_patterns = ()
 
     with pytest.raises(ContractRouteError) as exc_info:
@@ -96,8 +117,24 @@ def test_contract_operation_rejects_nested_traversal_ambiguous_query_and_fragmen
 
 def test_encoded_identifier_is_left_for_normal_route_matching() -> None:
     class _PatternHost:
-        _api_route_exact = {}
-        _api_route_patterns = (("GET", __import__("re").compile(r"^/api/company/[^/]+$"), (), {}),)
+        _contract_routes = {
+            ("GET", "/api/company/operations%2Fcompany"): HTTPContractBinding(
+                method="GET",
+                path="/api/company/operations%2Fcompany",
+                presentation="broker_result",
+                targets=(
+                    HTTPContractTarget(
+                        contribution_id="test.encoded",
+                        contract_id="test.encoded.v1",
+                        operation_id="read",
+                        provider_id="test.encoded",
+                        function_id="test.encoded",
+                    ),
+                ),
+                application_id="test.application",
+                route_namespace="defaultspack",
+            )
+        }
 
     resolved = resolve_contract_route(
         _PatternHost(),

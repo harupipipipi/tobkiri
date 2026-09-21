@@ -13,7 +13,6 @@ from __future__ import annotations
 import shutil
 import subprocess
 import sys
-import hashlib
 from pathlib import Path
 
 import pytest
@@ -71,25 +70,6 @@ def _approved_context() -> dict[str, object]:
     from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
     return mark_tool_server_approval_context({})
-
-
-def _git_snapshot(path: Path, mount_revision: int = 1) -> dict[str, object]:
-    def git(*args: str) -> str:
-        return subprocess.check_output(
-            ["git", "-C", str(path), *args],
-            text=True,
-        ).strip()
-
-    status = subprocess.check_output(
-        ["git", "-C", str(path), "status", "--porcelain=v2", "--untracked-files=all"],
-        text=True,
-    )
-    return {
-        "expected_head": git("rev-parse", "HEAD"),
-        "expected_tree": git("rev-parse", "HEAD^{tree}"),
-        "expected_status_hash": hashlib.sha256(status.encode("utf-8")).hexdigest(),
-        "expected_mount_revision": mount_revision,
-    }
 
 
 def test_git_ops_commit_with_paths_commits_only_selected_files(tmp_path, monkeypatch):
@@ -215,7 +195,6 @@ def test_block_git_commit_with_paths_commits_only_selected_files(tmp_path, monke
             "workspace_id": "trusted",
             "message": "partial via block",
             "paths": ["a.txt"],
-            **_git_snapshot(tmp_path),
         },
         _approved_context(),
     )
@@ -245,7 +224,6 @@ def test_block_git_commit_files_alias_is_accepted(tmp_path, monkeypatch):
             "workspace_id": "trusted",
             "message": "via files alias",
             "files": ["y.txt"],
-            **_git_snapshot(tmp_path),
         },
         _approved_context(),
     )
@@ -293,7 +271,6 @@ def test_block_git_commit_rejects_traversal_path(tmp_path, monkeypatch):
             "workspace_id": "trusted",
             "message": "escape attempt",
             "paths": ["../escape.txt"],
-            **_git_snapshot(tmp_path),
         },
         _approved_context(),
     )
@@ -319,7 +296,6 @@ def test_block_git_commit_rejects_restricted_path(tmp_path, monkeypatch):
             "workspace_id": "trusted",
             "message": "leak",
             "paths": [".env"],
-            **_git_snapshot(tmp_path),
         },
         _approved_context(),
     )

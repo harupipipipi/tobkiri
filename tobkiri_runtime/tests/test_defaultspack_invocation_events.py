@@ -156,18 +156,19 @@ def test_executing_state_rejects_late_cancel_settlement(tmp_path: Path) -> None:
         expected_state="accepted",
     )
 
-    with pytest.raises(InvocationEventError, match="transition conflict"):
+    with pytest.raises(InvocationEventError, match="settle_terminal"):
         store.set_state(
             "inv-cas",
             "cancelled",
             owner_key="alice:default",
             expected_states={"accepted"},
         )
-    store.set_state(
+    store.settle_terminal(
         "inv-cas",
         "succeeded",
         owner_key="alice:default",
         result={"status": "succeeded"},
+        event_type="completed",
         expected_states={"executing"},
     )
     assert store.stored("inv-cas", owner_key="alice:default")["state"] == "succeeded"
@@ -241,10 +242,377 @@ def test_result_size_is_bounded(tmp_path: Path) -> None:
         request_fingerprint="large",
     )
     with pytest.raises(InvocationEventError, match="result exceeds"):
-        store.set_state(
+        store.settle_terminal(
             "large",
             "succeeded",
             owner_key="alice:default",
             result={"value": "x" * 2048},
+            event_type="completed",
             expected_states={"accepted"},
         )
+
+
+@pytest.mark.parametrize(
+    "terminal_state",
+    ["succeeded", "failed", "cancelled", "conflicted", "expired"],
+)
+def test_set_state_rejects_terminal_states(
+    tmp_path: Path,
+    terminal_state: str,
+) -> None:
+    store = InvocationEventStore(tmp_path / f"{terminal_state}.sqlite3")
+    assert store.claim(
+        "terminal-bypass",
+        {},
+        owner_key="alice:default",
+        request_fingerprint=terminal_state,
+    )
+
+    with pytest.raises(InvocationEventError, match="settle_terminal"):
+        store.set_state(
+            "terminal-bypass",
+            terminal_state,
+            owner_key="alice:default",
+            expected_states={"accepted"},
+        )
+
+    assert store.stored("terminal-bypass", owner_key="alice:default")["state"] == (
+        "accepted"
+    )
+
+
+def test_recover_stale_atomically_persists_failed_state_and_event(
+    tmp_path: Path,
+) -> None:
+    store = InvocationEventStore(tmp_path / "events.sqlite3", lease_seconds=10)
+    owner_key = "alice:default"
+    assert store.claim(
+        "stale-execution",
+        {},
+        owner_key=owner_key,
+        request_fingerprint="stale-execution",
+    )
+    assert store.mark_executing(
+        "stale-execution",
+        owner_key=owner_key,
+        expected_state="accepted",
+    )
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            """
+            UPDATE command_invocations
+            SET updated_at = '2020-01-01T00:00:00+00:00'
+            WHERE owner_key = ? AND invocation_id = ?
+            """,
+            (owner_key, "stale-execution"),
+        )
+
+    assert store.recover_stale("stale-execution", owner_key=owner_key) == "failed"
+
+    stored = store.stored("stale-execution", owner_key=owner_key)
+    events = store.resume("stale-execution", owner_key=owner_key)
+    assert stored is not None
+    assert stored["state"] == "failed"
+    assert stored["result"]["error"]["code"] == "EXECUTION_OUTCOME_UNKNOWN"
+    assert [event["type"] for event in events] == ["accepted", "failed"]
+    assert events[-1]["payload"]["error"]["code"] == (
+        "EXECUTION_OUTCOME_UNKNOWN"
+    )
+    assert store.snapshot("stale-execution", owner_key=owner_key)["terminal"] is True
+
+    assert store.recover_stale("stale-execution", owner_key=owner_key) is None
+    assert [
+        event["type"]
+        for event in store.resume("stale-execution", owner_key=owner_key)
+    ] == ["accepted", "failed"]
+
+
+def test_recover_stale_rolls_back_state_when_terminal_event_insert_fails(
+    tmp_path: Path,
+) -> None:
+    store = InvocationEventStore(tmp_path / "events.sqlite3", lease_seconds=10)
+    owner_key = "alice:default"
+    assert store.claim(
+        "stale-rollback",
+        {},
+        owner_key=owner_key,
+        request_fingerprint="stale-rollback",
+    )
+    assert store.mark_executing(
+        "stale-rollback",
+        owner_key=owner_key,
+        expected_state="accepted",
+    )
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            """
+            UPDATE command_invocations
+            SET updated_at = '2020-01-01T00:00:00+00:00'
+            WHERE owner_key = ? AND invocation_id = ?
+            """,
+            (owner_key, "stale-rollback"),
+        )
+        connection.execute(
+            """
+            CREATE TRIGGER fail_stale_terminal_event_insert
+            BEFORE INSERT ON invocation_events
+            WHEN NEW.event_type = 'failed'
+            BEGIN
+                SELECT RAISE(ABORT, 'injected stale terminal event failure');
+            END
+            """
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="injected stale terminal"):
+        store.recover_stale("stale-rollback", owner_key=owner_key)
+
+    assert store.stored("stale-rollback", owner_key=owner_key)["state"] == (
+        "executing"
+    )
+    assert [
+        event["type"]
+        for event in store.resume("stale-rollback", owner_key=owner_key)
+    ] == ["accepted"]
+
+    with sqlite3.connect(store.path) as connection:
+        connection.execute("DROP TRIGGER fail_stale_terminal_event_insert")
+
+    assert store.recover_stale("stale-rollback", owner_key=owner_key) == "failed"
+    assert store.recover_stale("stale-rollback", owner_key=owner_key) is None
+    assert [
+        event["type"]
+        for event in store.resume("stale-rollback", owner_key=owner_key)
+    ] == ["accepted", "failed"]
+
+
+def test_terminal_settlement_commits_state_result_and_event_together(
+    tmp_path: Path,
+) -> None:
+    store = InvocationEventStore(tmp_path / "events.sqlite3")
+    owner_key = "alice:default"
+    assert store.claim(
+        "terminal-success",
+        {"request": "safe"},
+        owner_key=owner_key,
+        request_fingerprint="terminal-success",
+    )
+    assert store.mark_executing(
+        "terminal-success",
+        owner_key=owner_key,
+        expected_state="accepted",
+    )
+
+    event = store.settle_terminal(
+        "terminal-success",
+        "succeeded",
+        owner_key=owner_key,
+        result={"status": "succeeded", "token": "sk-abcdefghijklmnop"},
+        event_type="completed",
+        event_payload={"authorization": "Bearer this-should-not-be-stored"},
+        expected_states={"executing"},
+    )
+
+    stored = store.stored("terminal-success", owner_key=owner_key)
+    snapshot = store.snapshot("terminal-success", owner_key=owner_key)
+    assert stored == {
+        "request_fingerprint": "terminal-success",
+        "state": "succeeded",
+        "result": {"status": "succeeded", "token": "[REDACTED]"},
+        "approval_request_id": None,
+    }
+    assert event["sequence"] == 2
+    assert event["payload"] == {"authorization": "[REDACTED]"}
+    assert snapshot["status"] == "completed"
+    assert snapshot["terminal"] is True
+    assert snapshot["last_sequence"] == event["sequence"]
+    assert snapshot["latest"] == event
+    with pytest.raises(InvocationEventError, match="already terminated"):
+        store.settle_terminal(
+            "terminal-success",
+            "failed",
+            owner_key=owner_key,
+            result={"status": "failed"},
+            event_type="failed",
+            expected_states={"succeeded"},
+        )
+
+
+def test_terminal_settlement_rolls_back_state_when_event_insert_fails(
+    tmp_path: Path,
+) -> None:
+    store = InvocationEventStore(tmp_path / "events.sqlite3")
+    owner_key = "alice:default"
+    assert store.claim(
+        "terminal-rollback",
+        {},
+        owner_key=owner_key,
+        request_fingerprint="terminal-rollback",
+    )
+    assert store.mark_executing(
+        "terminal-rollback",
+        owner_key=owner_key,
+        expected_state="accepted",
+    )
+    before_events = store.resume("terminal-rollback", owner_key=owner_key)
+    with sqlite3.connect(store.path) as connection:
+        connection.execute(
+            """
+            CREATE TRIGGER fail_terminal_event_insert
+            BEFORE INSERT ON invocation_events
+            WHEN NEW.event_type = 'completed'
+            BEGIN
+                SELECT RAISE(ABORT, 'injected terminal event insert failure');
+            END
+            """
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="injected terminal event"):
+        store.settle_terminal(
+            "terminal-rollback",
+            "succeeded",
+            owner_key=owner_key,
+            result={"status": "succeeded"},
+            event_type="completed",
+            expected_states={"executing"},
+        )
+
+    assert store.stored("terminal-rollback", owner_key=owner_key) == {
+        "request_fingerprint": "terminal-rollback",
+        "state": "executing",
+        "result": None,
+        "approval_request_id": None,
+    }
+    assert store.resume("terminal-rollback", owner_key=owner_key) == before_events
+    assert store.snapshot("terminal-rollback", owner_key=owner_key)["terminal"] is False
+
+
+def test_terminal_settlement_rejects_conflicts_without_partial_write(
+    tmp_path: Path,
+) -> None:
+    store = InvocationEventStore(tmp_path / "events.sqlite3")
+    owner_key = "alice:default"
+    assert store.claim(
+        "terminal-conflict",
+        {},
+        owner_key=owner_key,
+        request_fingerprint="terminal-conflict",
+    )
+    assert store.mark_executing(
+        "terminal-conflict",
+        owner_key=owner_key,
+        expected_state="accepted",
+    )
+    before_events = store.resume("terminal-conflict", owner_key=owner_key)
+
+    with pytest.raises(InvocationEventError, match="transition conflict"):
+        store.settle_terminal(
+            "terminal-conflict",
+            "succeeded",
+            owner_key=owner_key,
+            result={"status": "succeeded"},
+            event_type="completed",
+            expected_states={"accepted"},
+        )
+    with pytest.raises(InvocationEventError, match="transition conflict"):
+        store.settle_terminal(
+            "terminal-conflict",
+            "succeeded",
+            owner_key="bob:default",
+            result={"status": "succeeded"},
+            event_type="completed",
+            expected_states={"executing"},
+        )
+
+    assert store.stored("terminal-conflict", owner_key=owner_key) == {
+        "request_fingerprint": "terminal-conflict",
+        "state": "executing",
+        "result": None,
+        "approval_request_id": None,
+    }
+    assert store.resume("terminal-conflict", owner_key=owner_key) == before_events
+
+
+def test_terminal_settlement_checks_lease_and_payload_contracts(tmp_path: Path) -> None:
+    store = InvocationEventStore(
+        tmp_path / "events.sqlite3",
+        max_payload_bytes=64,
+        max_result_bytes=1024,
+    )
+    owner_key = "alice:default"
+    assert store.claim(
+        "terminal-lease",
+        {},
+        owner_key=owner_key,
+        request_fingerprint="terminal-lease",
+    )
+    store.set_state(
+        "terminal-lease",
+        "approval_required",
+        owner_key=owner_key,
+        result={"status": "approval_required"},
+        expected_states={"accepted"},
+    )
+    assert store.claim_resume(
+        "terminal-lease",
+        owner_key=owner_key,
+        request_fingerprint="terminal-lease",
+        lease_id="correct-lease",
+    )
+    assert store.mark_executing(
+        "terminal-lease",
+        owner_key=owner_key,
+        expected_state="resuming",
+        lease_id="correct-lease",
+    )
+
+    with pytest.raises(InvocationEventError, match="transition conflict"):
+        store.settle_terminal(
+            "terminal-lease",
+            "succeeded",
+            owner_key=owner_key,
+            result={"status": "succeeded"},
+            event_type="completed",
+            expected_states={"executing"},
+            lease_id="wrong-lease",
+        )
+    with pytest.raises(InvocationEventError, match="size limit"):
+        store.settle_terminal(
+            "terminal-lease",
+            "succeeded",
+            owner_key=owner_key,
+            result={"status": "succeeded"},
+            event_type="completed",
+            event_payload={"message": "x" * 128},
+            expected_states={"executing"},
+            lease_id="correct-lease",
+        )
+    with pytest.raises(InvocationEventError, match="result exceeds"):
+        store.settle_terminal(
+            "terminal-lease",
+            "succeeded",
+            owner_key=owner_key,
+            result={"message": "x" * 2048},
+            event_type="completed",
+            expected_states={"executing"},
+            lease_id="correct-lease",
+        )
+    with pytest.raises(InvocationEventError, match="state/event mismatch"):
+        store.settle_terminal(
+            "terminal-lease",
+            "succeeded",
+            owner_key=owner_key,
+            result={"status": "succeeded"},
+            event_type="failed",
+            expected_states={"executing"},
+            lease_id="correct-lease",
+        )
+
+    assert store.stored("terminal-lease", owner_key=owner_key) == {
+        "request_fingerprint": "terminal-lease",
+        "state": "executing",
+        "result": {"status": "approval_required"},
+        "approval_request_id": None,
+    }
+    assert [event["type"] for event in store.resume(
+        "terminal-lease", owner_key=owner_key
+    )] == ["accepted"]

@@ -3,7 +3,9 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, ArrowRight, Check, ChevronDown, Copy, Loader2, MessageCircle, MoreVertical, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 
 import { cn } from "../lib/cn";
+import { ModelRouteSetup } from "../features/models/ModelRouteSetup";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
+import { ErrorNotice } from "../components/ErrorNotice";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
 import { AppsSettingsPanel } from "../components/AppsSettingsPanel";
 import { CredentialTransferModal } from "../components/CredentialTransferModal";
@@ -1031,7 +1033,13 @@ function ModelAllowlistField({
                   </button>
                 )}
               </label>
-              {error && <div className="border-t border-zinc-800 px-3 py-2 text-[11px] text-rose-300">{error}</div>}
+              {error && (
+                <ErrorNotice
+                  className="rounded-none border-x-0 border-b-0 px-3 py-2 text-[11px]"
+                  copyLabel="モデル検索エラーをコピー"
+                  message={error}
+                />
+              )}
               <div className="max-h-72 overflow-y-auto border-t border-zinc-800 p-1">
                 {candidateOptions.length > 0 ? candidateOptions.map((option) => {
                   const badges = modelOptionBadges(option);
@@ -1542,9 +1550,15 @@ function ProviderOAuthPanel({
               </div>
             )}
             {banner && (
-              <p className={cn("mt-3 text-[11px]", banner.tone === "success" ? "text-emerald-400" : "text-rose-300")}>
-                {banner.text}
-              </p>
+              banner.tone === "success" ? (
+                <p className="mt-3 text-[11px] text-emerald-400">{banner.text}</p>
+              ) : (
+                <ErrorNotice
+                  className="mt-3 px-3 py-2 text-[11px]"
+                  copyLabel="OAuth接続エラーをコピー"
+                  message={banner.text}
+                />
+              )
             )}
           </div>
         );
@@ -1701,9 +1715,12 @@ function PublicUrlField({
         </div>
       )}
       {!publicUrl && error && (
-        <div className="rounded-lg border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
-          {error}
-        </div>
+        <ErrorNotice
+          className="px-3 py-2 text-xs"
+          copyLabel="公開URLエラーをコピー"
+          message={error}
+          severity="warning"
+        />
       )}
     </div>
   );
@@ -2154,23 +2171,29 @@ function DeviceLockField({ field }: { field: SettingsSection["fields"][number] }
       ? lockMessage
       : availableMessage;
 
+  if (blocked) {
+    return (
+      <ErrorNotice
+        className="text-sm"
+        copyLabel="デバイス確認エラーをコピー"
+        message={message}
+      />
+    );
+  }
+
   return (
     <div
       data-settings-renderer="device_lock"
       data-device-state={state}
       className={cn(
         "flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm",
-        blocked
-          ? "border-red-500/30 bg-red-500/10 text-red-100"
-          : state === "checking"
-            ? "border-white/[0.09] bg-white/[0.04]/60 text-zinc-300"
-            : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+        state === "checking"
+          ? "border-white/[0.09] bg-white/[0.04]/60 text-zinc-300"
+          : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
       )}
     >
       {state === "checking" ? (
         <Loader2 size={15} className="mt-0.5 shrink-0 animate-spin" />
-      ) : blocked ? (
-        <AlertTriangle size={15} className="mt-0.5 shrink-0" />
       ) : (
         <Check size={15} className="mt-0.5 shrink-0" />
       )}
@@ -2827,7 +2850,7 @@ function SettingsField({
                     : "bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed",
                 )}
               >
-                {apiSaveState === "saving" ? "Saving" : "Save"}
+                {apiSaveState === "saving" ? "承認・保存結果を確認中" : "Save"}
               </button>
             </div>
             {isCustomProvider && (
@@ -2837,8 +2860,8 @@ function SettingsField({
                   : "Custom LLM provider として保存されます。"}
               </p>
             )}
-            <details className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs">
-              <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">Advanced (任意): base_url / model 制限 / quota / notes</summary>
+            <details open className="rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-2 text-xs">
+              <summary className="cursor-pointer select-none text-zinc-400 hover:text-zinc-200">接続先HTTPS URL（必須）・モデル設定（別途）</summary>
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 <input
                   value={apiBaseUrl}
@@ -2846,7 +2869,8 @@ function SettingsField({
                     setApiBaseUrl(event.target.value);
                     resetApiSaveFeedback();
                   }}
-                  placeholder="base_url (optional)"
+                  placeholder="HTTPS base URL (required)"
+                  aria-label="Provider HTTPS base URL"
                   className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none"
                 />
                 <input
@@ -2890,18 +2914,21 @@ function SettingsField({
                 次に保存する API key にだけ適用されます。通常はそのまま空欄で大丈夫です。
               </p>
             </details>
+            <ModelRouteSetup />
           </div>
           {apiFeedback?.text && (
-            <div
-              className={cn(
-                "rounded-lg border px-3 py-2 text-[11px]",
-                apiFeedback.tone === "success"
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-amber-500/30 bg-amber-500/10 text-amber-100",
-              )}
-            >
-              {apiFeedback.text}
-            </div>
+            apiFeedback.tone === "success" ? (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-300">
+                {apiFeedback.text}
+              </div>
+            ) : (
+              <ErrorNotice
+                className="px-3 py-2 text-[11px]"
+                copyLabel="APIキー設定の警告をコピー"
+                message={apiFeedback.text}
+                severity="warning"
+              />
+            )
           )}
           {apiActionMessage && (
             <div role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-300">
@@ -2909,9 +2936,11 @@ function SettingsField({
             </div>
           )}
           {apiSaveError && (
-            <div role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-200">
-              {apiSaveError}
-            </div>
+            <ErrorNotice
+              className="px-3 py-2 text-[11px]"
+              copyLabel="APIキー保存エラーをコピー"
+              message={apiSaveError}
+            />
           )}
         </div>
       );
@@ -3279,9 +3308,15 @@ function SettingsField({
             <p role="status" className="text-[11px] text-emerald-400">{tokenActionMessage || "Saved and verified by the backend."}</p>
           )}
           {tokenSaveState === "error" && tokenSaveError && (
-            <div id={`${sectionId}-${field.id}-token-error`} role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] leading-5 text-rose-200">
-              <p>{tokenSaveError}</p>
-              <p className="text-rose-200/70">A new secret remains only in this input until the backend confirms it was stored.</p>
+            <div id={`${sectionId}-${field.id}-token-error`}>
+              <ErrorNotice
+                className="px-3 py-2 text-[11px] leading-5"
+                copyLabel="外部認証情報保存エラーをコピー"
+                copyText={`${tokenSaveError}\n\nA new secret remains only in this input until the backend confirms it was stored.`}
+                message={tokenSaveError}
+              >
+                <p className="mt-1 text-rose-200/70">A new secret remains only in this input until the backend confirms it was stored.</p>
+              </ErrorNotice>
             </div>
           )}
         </div>
@@ -3337,7 +3372,16 @@ function SettingsField({
               {secretState === "saving" ? "Verifying…" : secretState === "saved" || isSecretConfigured ? "Saved" : ""}
             </span>
           </div>
-          {secretError ? <p className="text-[11px] leading-5 text-red-300" role="alert">{secretError} The value remains only in this input so you can correct or retry it.</p> : null}
+          {secretError ? (
+            <ErrorNotice
+              className="px-3 py-2 text-[11px] leading-5"
+              copyLabel="秘密情報保存エラーをコピー"
+              copyText={`${secretError}\n\nThe value remains only in this input so you can correct or retry it.`}
+              message={secretError}
+            >
+              <p className="mt-1 text-rose-200/70">The value remains only in this input so you can correct or retry it.</p>
+            </ErrorNotice>
+          ) : null}
         </div>
       );
       break;
@@ -4442,7 +4486,13 @@ export function SettingsModalRenderer({
                         {cloudflareBlockers.length > 0 && (
                           <div className="mt-3 space-y-1.5">
                             {cloudflareBlockers.map((blocker) => (
-                              <div key={blocker} className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2.5 py-1.5 text-[11px] leading-5 text-amber-100/85">{blocker}</div>
+                              <ErrorNotice
+                                className="px-2.5 py-1.5 text-[11px] leading-5"
+                                copyLabel={localizedCopy("Copy Cloudflare diagnostic", "Cloudflare診断をコピー")}
+                                key={blocker}
+                                message={blocker}
+                                severity="warning"
+                              />
                             ))}
                           </div>
                         )}
@@ -4630,7 +4680,15 @@ export function SettingsModalRenderer({
                       </div>
                     )}
                     {message && (
-                      <p className={cn("mt-4 rounded-lg border px-3 py-2 text-[11px] leading-5", message.tone === "success" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-rose-500/25 bg-rose-500/10 text-rose-200")}>{message.text}</p>
+                      message.tone === "success" ? (
+                        <p className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] leading-5 text-emerald-200">{message.text}</p>
+                      ) : (
+                        <ErrorNotice
+                          className="mt-4 px-3 py-2 text-[11px] leading-5"
+                          copyLabel={localizedCopy("Copy connection error", "接続エラーをコピー")}
+                          message={message.text}
+                        />
+                      )
                     )}
                     </div>
                   </div>
@@ -4752,13 +4810,30 @@ export function SettingsModalRenderer({
                   ))}
                 </div>
 
-                {codexAppServerPrelude.blockedReason && <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-100/80">{codexAppServerPrelude.blockedReason}</p>}
+                {codexAppServerPrelude.blockedReason && (
+                  <ErrorNotice
+                    className="mt-4 px-3 py-2 text-[11px] leading-5"
+                    copyLabel={localizedCopy("Copy Codex App Server warning", "Codex App Serverの注意をコピー")}
+                    message={codexAppServerPrelude.blockedReason}
+                    severity="warning"
+                  />
+                )}
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button type="button" disabled={connectionBusy === "codex_app_server:save"} onClick={() => void saveCodexAppServer()} className="rounded-lg border border-cyan-700 bg-cyan-950/30 px-3 py-1.5 text-xs text-cyan-100 transition-colors hover:border-cyan-500 hover:bg-cyan-900/35 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600">{connectionBusy === "codex_app_server:save" ? "Saving..." : "Save config"}</button>
                   <button type="button" disabled={connectionBusy === "codex_app_server:probe"} onClick={() => void probeCodexAppServer()} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700">{connectionBusy === "codex_app_server:probe" ? "Probing..." : "Probe"}</button>
                   <button type="button" disabled={connectionBusy === "codex_app_server:clear"} onClick={() => void clearCodexAppServer()} className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700">{connectionBusy === "codex_app_server:clear" ? "Clearing..." : "Clear"}</button>
                 </div>
-                {appServerMessage && <p className={cn("mt-4 rounded-lg border px-3 py-2 text-[11px] leading-5", appServerMessage.tone === "success" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-rose-500/25 bg-rose-500/10 text-rose-200")}>{appServerMessage.text}</p>}
+                {appServerMessage && (
+                  appServerMessage.tone === "success" ? (
+                    <p className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[11px] leading-5 text-emerald-200">{appServerMessage.text}</p>
+                  ) : (
+                    <ErrorNotice
+                      className="mt-4 px-3 py-2 text-[11px] leading-5"
+                      copyLabel={localizedCopy("Copy Codex App Server error", "Codex App Serverエラーをコピー")}
+                      message={appServerMessage.text}
+                    />
+                  )
+                )}
               </div>
             </div>
           </div>
@@ -4807,8 +4882,16 @@ export function SettingsModalRenderer({
                   ? localizedCopy(`${saveState.dirtyKeys?.length ?? 0} unsaved changes`, `未保存の変更 ${saveState.dirtyKeys?.length ?? 0}件`)
                   : localizedCopy("All changes saved", "すべて保存済み")}
           </div>
-          {saveState.message ? <p className="mt-2 text-[11px] leading-5 text-zinc-500">{saveState.message}</p> : null}
-          {saveState.status === "error" && (saveState.dirtyKeys?.length ?? 0) > 0 && onRetrySave ? <button type="button" onClick={onRetrySave} className="mt-3 text-xs font-medium text-red-300 hover:text-red-200">{localizedCopy("Retry save", "保存を再試行")}</button> : null}
+          {saveState.status === "error" ? (
+            <ErrorNotice
+              className="mt-3 px-3 py-2 text-[11px] leading-5"
+              copyLabel={localizedCopy("Copy settings save error", "設定保存エラーをコピー")}
+              message={saveState.message || localizedCopy("Some changes could not be saved. Review the affected settings and retry.", "一部の変更を保存できませんでした。該当する設定を確認して再試行してください。")}
+              trailing={(saveState.dirtyKeys?.length ?? 0) > 0 && onRetrySave ? (
+                <button type="button" onClick={onRetrySave} className="shrink-0 text-xs font-medium text-red-300 hover:text-red-200">{localizedCopy("Retry save", "保存を再試行")}</button>
+              ) : undefined}
+            />
+          ) : saveState.message ? <p className="mt-2 text-[11px] leading-5 text-zinc-500">{saveState.message}</p> : null}
         </section>
         <section className="border border-zinc-800 bg-zinc-950/50 p-4">
           <div className="text-xs font-medium uppercase tracking-normal text-zinc-500">{localizedCopy("Source sections", "設定の提供元")}</div>

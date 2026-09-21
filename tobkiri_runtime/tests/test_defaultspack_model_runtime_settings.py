@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
@@ -17,6 +20,29 @@ from domain.ai_client.rumi_process import (  # noqa: E402
     RUMI_MODEL_PACK_REF,
     resolve_rumi_base_model,
 )
+
+
+def _owner_bound_service(pack_root: Path) -> ModelRuntimeSettingsService:
+    """Give each unit fixture an explicit owner; do not alter product defaults."""
+    from domain.frontend_settings_store import defaultspack_frontend_settings_path
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return ModelRuntimeSettingsService(
+        pack_root,
+        settings_owner=FrontendSettingsStore(defaultspack_frontend_settings_path(pack_root)),
+    )
+
+
+def test_model_settings_require_explicit_owner_even_when_legacy_file_exists(tmp_path):
+    service = ModelRuntimeSettingsService(tmp_path)
+    service._settings_path.parent.mkdir(parents=True, exist_ok=True)
+    service._settings_path.write_text('{"models":{"preferred_model":"stub/private"}}')
+    before = service._settings_path.read_bytes()
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        service.get_settings()
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        service.set_preferred_model("stub/replacement")
+    assert service._settings_path.read_bytes() == before
 
 
 def _profile(
@@ -51,7 +77,7 @@ def _profile(
 
 
 def test_model_runtime_settings_preferred_model_and_thinking_level(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
 
     assert service.get_preferred_model() == "stub/default"
     assert service.get_preferred_model_group() == "default"
@@ -67,7 +93,7 @@ def test_model_runtime_settings_preferred_model_and_thinking_level(tmp_path):
     assert service.get_thinking_level()["level"] == "high"
 
 
-def test_model_runtime_settings_cache_reuses_resolution_and_invalidates_on_update(
+def test_model_runtime_settings_reads_owner_for_each_resolution(
     tmp_path, monkeypatch
 ):
     calls = 0
@@ -79,27 +105,59 @@ def test_model_runtime_settings_cache_reuses_resolution_and_invalidates_on_updat
         return original_read_all(service)
 
     monkeypatch.setattr(ModelRuntimeSettingsService, "_read_all", counted_read_all)
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
 
     first = service.get_settings()
-    second = ModelRuntimeSettingsService(tmp_path).get_settings()
+    second = _owner_bound_service(tmp_path).get_settings()
 
     assert first == second
-    assert calls == 1
-
-    service.update_settings({"preferred_model": "stub/fast"})
-    refreshed = ModelRuntimeSettingsService(tmp_path).get_settings()
-
-    assert refreshed["preferred_model"] == "stub/fast"
     assert calls == 2
 
+    service.update_settings({"preferred_model": "stub/fast"})
+    refreshed = _owner_bound_service(tmp_path).get_settings()
 
-def test_model_runtime_settings_cache_invalidates_on_credential_store_change(
+    assert refreshed["preferred_model"] == "stub/fast"
+    assert calls == 3
+
+
+def test_model_settings_same_size_and_timestamp_replacement_is_visible(tmp_path):
+    """A legacy writer need not change a revision or mtime to publish new values."""
+    service = _owner_bound_service(tmp_path)
+    path = service._settings_path
+    path.parent.mkdir(parents=True)
+    first = json.dumps({"models": {"preferred_model": "stub/fast"}})
+    second = json.dumps({"models": {"preferred_model": "stub/slow"}})
+    assert len(first) == len(second)
+    path.write_text(first, encoding="utf-8")
+    original = path.stat()
+    assert service.get_preferred_model() == "stub/fast"
+
+    path.write_text(second, encoding="utf-8")
+    os.utime(path, ns=(original.st_atime_ns, original.st_mtime_ns))
+    assert path.stat().st_mtime_ns == original.st_mtime_ns
+    assert path.stat().st_size == original.st_size
+    assert service.get_preferred_model() == "stub/slow"
+
+
+def test_model_settings_owner_response_is_not_cached_or_mutated(tmp_path, monkeypatch):
+    """An owner read, not a filesystem probe, determines current model values."""
+    service = _owner_bound_service(tmp_path)
+    snapshots = iter([
+        {"models": {"preferred_model": "stub/fast"}},
+        {"models": {"preferred_model": "stub/slow"}},
+    ])
+    monkeypatch.setattr(service._settings_store, "read", lambda: next(snapshots))
+    first = service.get_settings()
+    first["preferred_model"] = "changed-by-caller"
+    assert service.get_preferred_model() == "stub/slow"
+
+
+def test_model_runtime_settings_refreshes_credential_availability(
     tmp_path, monkeypatch
 ):
     from domain.ai_client.api_key_store import set_provider_api_key
 
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
@@ -111,13 +169,13 @@ def test_model_runtime_settings_cache_invalidates_on_credential_store_change(
     )
     assert result["success"] is True
 
-    refreshed = ModelRuntimeSettingsService(tmp_path).get_settings()
+    refreshed = _owner_bound_service(tmp_path).get_settings()
 
     assert refreshed["google_api_key_configured"] is True
 
 
 def test_model_runtime_settings_deepthink_toggle_warns(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
 
     assert service.get_deepthink_enabled()["enabled"] is False
     enabled = service.set_deepthink_enabled(True)
@@ -131,7 +189,7 @@ def test_model_runtime_settings_deepthink_toggle_warns(tmp_path):
 
 
 def test_model_runtime_settings_deepthink_uses_desired_state_snapshot(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
 
     enabled = service.set_deepthink_enabled(
         True,
@@ -155,7 +213,7 @@ def test_model_runtime_settings_deepthink_uses_desired_state_snapshot(tmp_path):
 
 
 def test_model_runtime_settings_deepthink_two_desired_states_settle_to_last(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
 
     enabled = service.set_deepthink_enabled(True, expected_revision=0)
     disabled = service.set_deepthink_enabled(False, expected_revision=1)
@@ -167,7 +225,7 @@ def test_model_runtime_settings_deepthink_two_desired_states_settle_to_last(tmp_
 
 
 def test_model_runtime_settings_utility_models_and_groups(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     settings = service.update_settings(
         {
             "utility_models": {"tool_selector": "google/gemini-2.5-flash"},
@@ -180,7 +238,7 @@ def test_model_runtime_settings_utility_models_and_groups(tmp_path):
 
 
 def test_simple_model_slots_sync_existing_runtime_settings(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: RUMI_BASE_MODEL
 
     settings = service.update_settings(
@@ -201,7 +259,7 @@ def test_simple_model_slots_sync_existing_runtime_settings(tmp_path):
 
 
 def test_simple_model_slots_preserve_advanced_utility_roles_and_allow_override(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: RUMI_BASE_MODEL
     service.update_settings(
         {
@@ -237,7 +295,7 @@ def test_simple_model_slots_preserve_advanced_utility_roles_and_allow_override(t
 
 
 def test_lightweight_model_sparse_update_preserves_unrelated_utility_roles(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: RUMI_BASE_MODEL
     service.update_settings(
         {
@@ -259,7 +317,7 @@ def test_lightweight_model_sparse_update_preserves_unrelated_utility_roles(tmp_p
 
 
 def test_structured_model_slots_write_translates_and_persists_canonical_settings(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: RUMI_BASE_MODEL
 
     updated = service.update_settings(
@@ -282,7 +340,7 @@ def test_structured_model_slots_write_translates_and_persists_canonical_settings
 
 
 def test_model_runtime_settings_includes_builtin_rumi_model_pack(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: RUMI_BASE_MODEL
     # This assertion targets the unresolved built-in pack shape, so keep it
     # isolated from any configured provider catalog state introduced elsewhere.
@@ -305,7 +363,7 @@ def test_model_runtime_settings_includes_builtin_rumi_model_pack(tmp_path):
 
 
 def test_model_runtime_settings_materializes_builtin_rumi_against_available_provider(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service._runtime_rumi_base_model = lambda settings=None: "google/gemini-2.5-flash"
     service._base_profile_catalog = lambda settings=None: [
         _profile(
@@ -338,7 +396,7 @@ def test_model_runtime_settings_materializes_builtin_rumi_against_available_prov
 
 
 def test_runtime_rumi_base_model_prefers_configured_default_profile(tmp_path, monkeypatch):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service._base_profile_catalog = lambda settings=None: [
         _profile(
             "openai/default-chat",
@@ -369,7 +427,7 @@ def test_runtime_rumi_base_model_prefers_configured_default_profile(tmp_path, mo
 
 
 def test_runtime_rumi_base_model_rejects_stub_non_chat_and_synthetic_profiles(tmp_path, monkeypatch):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     configured = {"configured": True, "active": True, "status": "configured"}
     service._base_profile_catalog = lambda settings=None: [
         _profile(
@@ -442,7 +500,7 @@ def test_resolve_rumi_base_model_fallback_is_deterministic():
 
 
 def test_model_runtime_settings_normalizes_model_api_routes(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
 
     settings = service.update_settings(
         {
@@ -463,7 +521,7 @@ def test_api_bound_profile_reports_missing_api_key_after_delete(tmp_path, monkey
     from domain.ai_client.api_key_store import set_provider_api_key
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_SECRETS_DIR", str(tmp_path / "secrets"))
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     settings = service.update_settings(
         {
             "api_bound_profiles": [
@@ -497,7 +555,7 @@ def test_api_bound_profile_reports_missing_api_key_after_delete(tmp_path, monkey
 
 
 def test_effective_thinking_level_resolution_order(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service.set_thinking_level("low", scope="global")
     service.set_thinking_level("medium", scope="profile", profile_id="stub/default")
     service.set_thinking_level("xhigh", scope="conversation", conversation_id="conv-1")
@@ -508,7 +566,7 @@ def test_effective_thinking_level_resolution_order(tmp_path):
 
 
 def test_thinking_level_validation_and_provider_normalization(tmp_path):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
 
     assert service.validate_thinking_level("bogus")["valid"] is False
     normalized = service.normalize_for_provider("openai", "gpt-5", "xhigh")
@@ -529,7 +587,7 @@ def test_thinking_level_validation_and_provider_normalization(tmp_path):
 
 
 def test_resolve_model_candidates_exact_and_ambiguous_matches(tmp_path, monkeypatch):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     profiles = [
         _profile(
             "openai/gpt-4o",
@@ -569,7 +627,7 @@ def test_resolve_model_candidates_exact_and_ambiguous_matches(tmp_path, monkeypa
 
 
 def test_resolve_model_candidates_ranking_uses_match_and_runtime_tie_breaks(tmp_path, monkeypatch):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     service.update_settings({"favorite_profiles": ["favorite/alpha-favorite"]})
     profiles = [
         _profile(
@@ -623,7 +681,7 @@ def test_resolve_model_candidates_ranking_uses_match_and_runtime_tie_breaks(tmp_
 
 
 def test_resolve_model_candidates_limits_model_command_to_chat_profiles(tmp_path, monkeypatch):
-    service = ModelRuntimeSettingsService(tmp_path)
+    service = _owner_bound_service(tmp_path)
     profiles = [
         _profile(
             "openai/text-embedding-3-small",

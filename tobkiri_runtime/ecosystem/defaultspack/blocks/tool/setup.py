@@ -7,6 +7,7 @@ under the key ``io.http.route``.
 
 import sys
 import os
+import inspect
 
 
 def run(context):
@@ -17,6 +18,7 @@ def run(context):
 
     interface_registry = context["interface_registry"]
     source_component = context.get("_source_component", "defaultspack:tool:tool")
+    settings_owner = context.get("_settings_owner_port")
     try:
         from capability_bindings import register_defaultspack_binding_handlers
         register_defaultspack_binding_handlers(interface_registry)
@@ -33,6 +35,12 @@ def run(context):
             import importlib
             mod = importlib.import_module(module_path)
             fn = getattr(mod, func_name)
+            if "settings_owner" in inspect.signature(fn).parameters:
+                return fn(
+                    request_data,
+                    context,
+                    settings_owner=settings_owner,
+                )
             return fn(request_data, context)
         try:
             setattr(handler, "__rumi_route_sensitive__", bool(sensitive))

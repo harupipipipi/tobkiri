@@ -14,12 +14,6 @@ from core_runtime.profile_paths import (
 )
 
 
-def _captured(profile_id: str = "defaults") -> object:
-    return SimpleNamespace(
-        resolved=SimpleNamespace(profile={"profile_id": profile_id})
-    )
-
-
 def test_profile_scoped_paths_use_only_verified_v4_activation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -27,8 +21,8 @@ def test_profile_scoped_paths_use_only_verified_v4_activation(
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path))
     monkeypatch.setenv("RUMI_ACTIVE_PROFILE_ID", "forged-environment-profile")
     monkeypatch.setattr(
-        "core_runtime.bootstrap.profile_capture.capture_default_profile",
-        lambda **_kwargs: _captured(),
+        "core_runtime.active_profile_store_v4.ActiveProfileStore.require",
+        lambda _store, **_kwargs: SimpleNamespace(profile_id="defaults"),
     )
 
     assert active_profile_id() == "defaults"
@@ -44,8 +38,10 @@ def test_profile_scoped_paths_fail_closed_without_activation(
 ) -> None:
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path))
     monkeypatch.setattr(
-        "core_runtime.bootstrap.profile_capture.capture_default_profile",
-        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("not activated")),
+        "core_runtime.active_profile_store_v4.ActiveProfileStore.require",
+        lambda _store, **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("not activated")
+        ),
     )
 
     assert active_profile_id() is None

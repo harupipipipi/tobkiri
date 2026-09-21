@@ -9,6 +9,7 @@
     "catalog_api_version": {"const": "io.tobkiri.executable-catalog.v4"},
     "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
     "source_identity": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "materialization_catalog_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
     "variants": {
       "type": "array",
       "items": {

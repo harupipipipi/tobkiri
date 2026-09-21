@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import json
 import os
 from pathlib import Path
 
 import pytest
 
 from tobkiri_host.admission import (
+    AdmissionError,
     AdmissionEstimate,
+    DurableResourceLedger,
     FairAdmissionQueue,
     QueueScope,
     ResourceAmount,
@@ -201,6 +204,291 @@ def test_admission_charge_uses_maximum_and_concurrency() -> None:
         concurrency=2,
     )
     assert estimate.charge().memory_bytes == 600
+
+
+@pytest.mark.parametrize("field", [
+    "measured_p95_bytes", "declared_minimum_bytes", "runtime_floor_bytes",
+    "profile_reservation_bytes", "backend_overhead_bytes", "disk_bytes",
+    "declared_upper_bound_bytes", "concurrency",
+])
+@pytest.mark.parametrize("value", [-1, True, 1.5, float("nan"), float("inf")])
+def test_admission_rejects_each_invalid_input_before_maximum(
+    field: str, value: object
+) -> None:
+    estimate = AdmissionEstimate(100, 100, 100, 100, 100)
+    with pytest.raises(AdmissionError):
+        replace(estimate, **{field: value}).charge()
+
+
+@pytest.mark.parametrize("field", [
+    "memory_bytes", "disk_bytes", "process_slots", "start_slots",
+])
+@pytest.mark.parametrize("value", [-1, True, 1.5, float("nan"), float("inf")])
+def test_resource_amount_rejects_invalid_axes(field: str, value: object) -> None:
+    with pytest.raises(ValueError):
+        replace(ResourceAmount(100), **{field: value})
+
+
+def test_admission_charge_honors_declared_upper_bound() -> None:
+    estimate = AdmissionEstimate(
+        measured_p95_bytes=300,
+        declared_minimum_bytes=100,
+        runtime_floor_bytes=200,
+        profile_reservation_bytes=250,
+        backend_overhead_bytes=150,
+        declared_upper_bound_bytes=900,
+    )
+    assert estimate.charge().memory_bytes == 900
+    with pytest.raises(AdmissionError, match="cannot be negative"):
+        AdmissionEstimate(
+            measured_p95_bytes=1,
+            declared_minimum_bytes=1,
+            runtime_floor_bytes=1,
+            profile_reservation_bytes=1,
+            backend_overhead_bytes=1,
+            declared_upper_bound_bytes=-1,
+        ).charge()
+
+
+def test_durable_ledger_survives_restart_and_fences_successor(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "admission" / "reservations.json"
+    limits = {
+        "runtime_limit": ResourceAmount(1000, 100, 4, 4),
+        "host_free_guard": ResourceAmount(100, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(800, 100, 4, 4)},
+    }
+    identity = {
+        "profile_id": "p1",
+        "profile_revision": digest("revision-a"),
+        "activation_id": "activation-a",
+        "plan_digest": digest("plan-a"),
+    }
+    first = DurableResourceLedger(state_path=state_path, identity=identity, **limits)
+    reservation = first.reserve("p1", ResourceAmount(300, 2, 1, 1))
+    assert state_path.is_file()
+
+    restarted = DurableResourceLedger(
+        state_path=state_path,
+        identity=identity,
+        **limits,
+    )
+    assert restarted.runtime_used == reservation.amount
+    restarted.release(reservation.reservation_id)
+    assert restarted.runtime_used == ResourceAmount(0, 0, 0, 0)
+
+    successor = DurableResourceLedger(
+        state_path=state_path,
+        identity={**identity, "activation_id": "activation-b"},
+        **limits,
+    )
+    assert successor.runtime_used == ResourceAmount(0, 0, 0, 0)
+
+
+def test_durable_ledger_rejects_corrupt_state(tmp_path: Path) -> None:
+    state_path = tmp_path / "reservations.json"
+    state_path.write_text("not-json", encoding="utf-8")
+    with pytest.raises(AdmissionError, match="ledger is invalid"):
+        DurableResourceLedger(
+            runtime_limit=ResourceAmount(1000, 100, 4, 4),
+            host_free_guard=ResourceAmount(100, 0, 0, 0),
+            profile_limits={"p1": ResourceAmount(800, 100, 4, 4)},
+            state_path=state_path,
+            identity={"profile_id": "p1", "activation_id": "a"},
+        )
+
+
+def test_durable_reservation_requires_release_after_deadline_and_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Neither wall time nor an activation change proves a worker has exited."""
+    options = {
+        "runtime_limit": ResourceAmount(100, 0, 1, 1),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100, 0, 1, 1)},
+        "state_path": tmp_path / "reservations.json",
+        "lease_ttl_seconds": 1,
+    }
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    monkeypatch.setattr("tobkiri_host.admission.time.time", lambda: 1000)
+    first = DurableResourceLedger(identity=identity, **options)
+    reservation = first.reserve("p1", ResourceAmount(100))
+    original = options["state_path"].read_bytes()
+
+    monkeypatch.setattr("tobkiri_host.admission.time.time", lambda: 2000)
+    with pytest.raises(ResourceExhaustedError):
+        first.reserve("p1", ResourceAmount(100))
+    reopened = DurableResourceLedger(identity=identity, **options)
+    assert reopened.runtime_used == reservation.amount
+    with pytest.raises(ResourceExhaustedError):
+        reopened.reserve("p1", ResourceAmount(100))
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={**identity, "activation_id": "b"}, **options,
+        )
+    assert options["state_path"].read_bytes() == original
+
+    # This is the existing trusted supervisor release, not a timed lease reap.
+    reopened.release(reservation.reservation_id)
+    successor = DurableResourceLedger(
+        identity={**identity, "activation_id": "b"}, **options,
+    )
+    assert successor.reserve("p1", ResourceAmount(100)).amount == reservation.amount
+
+
+def test_durable_ledger_accepts_only_confirmed_supervisor_release(
+    tmp_path: Path,
+) -> None:
+    """A successor persists an empty ledger only after exact child cleanup."""
+
+    options = {
+        "runtime_limit": ResourceAmount(100, 0, 2, 2),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100, 0, 2, 2)},
+        "state_path": tmp_path / "reservations.json",
+    }
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    first = DurableResourceLedger(identity=identity, **options)
+    reservation = first.reserve("p1", ResourceAmount(10))
+    calls: list[object] = []
+
+    successor = DurableResourceLedger(
+        identity={**identity, "activation_id": "b"},
+        confirmed_supervisor_release=lambda saved, rows: (
+            calls.append((saved, rows)) or (reservation.reservation_id,)
+        ),
+        **options,
+    )
+
+    assert calls == [(identity, (reservation,))]
+    assert successor.runtime_used == ResourceAmount(0, 0, 0, 0)
+    saved = json.loads(options["state_path"].read_text(encoding="utf-8"))
+    assert saved["identity"]["activation_id"] == "b"
+    assert saved["reservations"] == []
+
+
+def test_durable_ledger_retains_each_unproven_predecessor_reservation(
+    tmp_path: Path,
+) -> None:
+    """One exact child receipt never releases another ledger row."""
+
+    state_path = tmp_path / "reservations.json"
+    options = {
+        "runtime_limit": ResourceAmount(100, 0, 2, 2),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100, 0, 2, 2)},
+        "state_path": state_path,
+    }
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    first = DurableResourceLedger(identity=identity, **options)
+    proven = first.reserve("p1", ResourceAmount(10))
+    retained = first.reserve("p1", ResourceAmount(20))
+
+    with pytest.raises(AdmissionError, match="confirmed supervisor release"):
+        DurableResourceLedger(
+            identity={**identity, "activation_id": "b"},
+            confirmed_supervisor_release=lambda _saved, _rows: (
+                proven.reservation_id,
+            ),
+            **options,
+        )
+
+    saved = json.loads(state_path.read_text(encoding="utf-8"))
+    assert saved["identity"] == identity
+    assert [item["reservation_id"] for item in saved["reservations"]] == [
+        retained.reservation_id
+    ]
+
+    # A second interruption resumes from the one remaining row. The already
+    # released reservation cannot be recovered or charged twice.
+    reopened = DurableResourceLedger(identity=identity, **options)
+    assert reopened.runtime_used == retained.amount
+    calls: list[tuple[str, ...]] = []
+    successor = DurableResourceLedger(
+        identity={**identity, "activation_id": "b"},
+        confirmed_supervisor_release=lambda _saved, rows: (
+            calls.append(tuple(item.reservation_id for item in rows))
+            or (retained.reservation_id,)
+        ),
+        **options,
+    )
+    assert calls == [(retained.reservation_id,)]
+    assert successor.runtime_used == ResourceAmount(0, 0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "released",
+    ["reservation", ("unknown",), ("duplicate", "duplicate")],
+)
+def test_durable_ledger_rejects_invalid_release_identity_without_mutation(
+    tmp_path: Path, released: object,
+) -> None:
+    """Malformed, unknown, or duplicate recovery results cannot alter a ledger."""
+
+    state_path = tmp_path / "reservations.json"
+    options = {
+        "runtime_limit": ResourceAmount(100, 0, 1, 1),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100, 0, 1, 1)},
+        "state_path": state_path,
+    }
+    identity = {"profile_id": "p1", "activation_id": "a"}
+    first = DurableResourceLedger(identity=identity, **options)
+    reservation = first.reserve("p1", ResourceAmount(10))
+    if released == ("duplicate", "duplicate"):
+        released = (reservation.reservation_id, reservation.reservation_id)
+    before = state_path.read_bytes()
+
+    with pytest.raises(AdmissionError, match="durable admission ledger is invalid"):
+        DurableResourceLedger(
+            identity={**identity, "activation_id": "b"},
+            confirmed_supervisor_release=lambda _saved, _rows: released,  # type: ignore[arg-type,return-value]
+            **options,
+        )
+
+    assert state_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("ttl", [True, None, "1", 0, -1, float("nan"), float("inf")])
+def test_durable_ledger_rejects_invalid_ttl_before_creating_state(
+    tmp_path: Path, ttl: object,
+) -> None:
+    """Invalid journal metadata must not create a silently droppable charge."""
+    path = tmp_path / "reservations.json"
+    with pytest.raises(ValueError, match="TTL"):
+        DurableResourceLedger(
+            runtime_limit=ResourceAmount(100),
+            host_free_guard=ResourceAmount(0, 0, 0, 0),
+            profile_limits={"p1": ResourceAmount(100)},
+            state_path=path, identity={"profile_id": "p1"},
+            lease_ttl_seconds=ttl,
+        )
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("field,value", [
+    ("reservation_id", ""), ("profile_id", ""),
+    ("expires_at", None), ("expires_at", True), ("expires_at", float("nan")),
+])
+def test_durable_ledger_never_skips_a_malformed_reservation(
+    tmp_path: Path, field: str, value: object,
+) -> None:
+    """Corrupt metadata cannot erase an otherwise outstanding resource charge."""
+    path = tmp_path / "reservations.json"
+    options = {
+        "runtime_limit": ResourceAmount(100),
+        "host_free_guard": ResourceAmount(0, 0, 0, 0),
+        "profile_limits": {"p1": ResourceAmount(100)},
+        "state_path": path, "identity": {"profile_id": "p1"},
+    }
+    ledger = DurableResourceLedger(**options)
+    ledger.reserve("p1", ResourceAmount(100))
+    saved = json.loads(path.read_text())
+    saved["reservations"][0][field] = value
+    path.write_text(json.dumps(saved))
+    with pytest.raises(AdmissionError, match="ledger is invalid"):
+        DurableResourceLedger(**options)
 
 
 def test_ledger_rejects_before_crossing_host_guard() -> None:

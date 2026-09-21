@@ -29,6 +29,7 @@ from core_runtime.bounded_process_runner import (
 )
 from core_runtime.env_compat import read_migrated_env
 from core_runtime.hmac_key_manager import generate_or_load_signing_key
+from core_runtime.packvm_lifecycle_v4 import PackVMProvisioningRequest
 from ecosystem.defaultspack.backend.sandbox.isolation.packvm_image_cache import (
     PackVMImageAuthority,
     PackVMImageCache,
@@ -145,18 +146,8 @@ class PackVMProvisioningPlan:
     ceremony_nonce: str
     plan_digest: str
     confirmation: str
-
-
-@dataclass(frozen=True)
-class PackVMProvisioningRequest:
-    """Typed user/setup authorization for one exact provisioning plan."""
-
-    plan_digest: str
-    ceremony_nonce: str
-    confirmation: str
-    approve_image_download: bool = False
-    session_digest: str | None = None
-    operation_id: str | None = None
+    registration_update: dict[str, str] | None = None
+    storage_rebind: dict[str, str | int] | None = None
 
 
 @dataclass(frozen=True)
@@ -1234,7 +1225,7 @@ class PackVMLimaProvisioner:
         self,
         request: PackVMProvisioningRequest,
         *,
-        progress: Callable[[PackVMImageProgress], None] | None = None,
+        progress: Callable[[Any], None] | None = None,
         cancelled: Callable[[], bool] | None = None,
     ) -> PackVMDoctor:
         """Create and attest the guest after consuming an exact ceremony once."""

@@ -22,6 +22,15 @@ def default_approval_db_path() -> Path:
     override = os.getenv("RUMI_DEFAULTSPACK_APPROVAL_DB_PATH")
     if override:
         return Path(override)
+    user_data = os.getenv("RUMI_USER_DATA")
+    if user_data:
+        return (
+            Path(user_data)
+            / "defaultspack"
+            / "shared"
+            / "safety"
+            / "approval.sqlite3"
+        )
     return _pack_root() / "user_data" / "safety" / "approval.sqlite3"
 
 
@@ -127,7 +136,11 @@ class ApprovalStore:
 
     def save_request(self, request: Any) -> dict[str, Any]:
         self._ensure_schema()
-        data = asdict(request) if is_dataclass(request) else dict(request)
+        data = (
+            asdict(request)
+            if is_dataclass(request) and not isinstance(request, type)
+            else dict(request)
+        )
         with self._lock, self._connect() as conn:
             conn.execute(
                 """

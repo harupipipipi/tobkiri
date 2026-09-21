@@ -30,12 +30,24 @@ SOURCE_ROOTS = (
     "ecosystem/defaultspack/v4",
     "ecosystem/defaultspack/runtime",
     "ecosystem/defaultspack/defaultspack",
+    "ecosystem/defaultspack/tools",
+    "ecosystem/defaultspack/extensions/tools",
 )
 SOURCE_FILES = (
+    "schemas/profile_bundle_generation.v1.json",
     "ecosystem/defaultspack/pack.v4.json",
     "ecosystem/defaultspack/contracts.v4.json",
     "ecosystem/defaultspack/artifact-index.v4.json",
     "ecosystem/defaultspack/executables.v4.json",
+    "ecosystem/defaultspack/host_contract_contributions.v1.json",
+    "ecosystem/defaultspack/update_metadata.v1.json",
+    "ecosystem/defaultspack/domain/runtime_surface_v4.py",
+    "ecosystem/defaultspack/domain/frontend_settings_catalog.py",
+    "ecosystem/defaultspack/domain/frontend_builtin_catalog.py",
+    "ecosystem/defaultspack/domain/frontend_command_catalog.py",
+    "ecosystem/defaultspack/commands/default_commands.json",
+    "ecosystem/defaultspack/schemas/command-protocol-v1.schema.json",
+    "ecosystem/defaultspack/domain/frontend_settings_store.py",
 )
 MANIFEST_KEYS = ("schema", "roots", "files")
 FILE_KEYS = ("path", "type", "size", "sha256", "executable")

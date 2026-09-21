@@ -25,6 +25,82 @@ from tobkiri_protocol.validation import validate_document  # noqa: E402
 
 ECOSYSTEM = ROOT / "ecosystem"
 
+_DEFAULT_TIMEOUT_MS = 30_000
+_HARD_TIMEOUT_MAX_MS = 300_000
+
+# The conversation bridge performs a cold PackVM launch before entering the
+# Host-owned AI gateway.  That gateway gives its credentialed provider request
+# a 60-second deadline, so every enclosing Broker operation must outlive both
+# the provider deadline and the PackVM startup budget.  Keep the override
+# finite and identity-specific; unrelated Pack operations retain the shorter
+# default.
+_LONG_RUNNING_OPERATION_TIMEOUTS_MS = {
+    # These startup reads can enter the selected presentation Pack through a
+    # Host-owned nested call.  A first native launch includes the authenticated
+    # PackVM cold start, which is bounded separately from steady-state reads.
+    (
+        "tobkiri_ui_settings_pack",
+        "tobkiri.ui.catalog.read",
+        "tobkiri_ui_settings_pack.catalog-read",
+    ): 120_000,
+    (
+        "tobkiri_ui_settings_pack",
+        "tobkiri.ui.settings.read",
+        "tobkiri_ui_settings_pack.settings-read",
+    ): 120_000,
+    (
+        "rumi_command_protocol_pack",
+        "rumi_command_protocol_pack.catalog.read",
+        "command.catalog.read",
+    ): 120_000,
+    (
+        "defaultspack",
+        "defaultspack.application-presentation",
+        "defaultspack.presentation.read",
+    ): 120_000,
+    **{
+        (
+            "tobkiri_host_pack_control",
+            "tobkiri.host.control-presentation",
+            operation_id,
+        ): 120_000
+        for operation_id in (
+            "profile.catalog.read",
+            "profile.read",
+            "settings.read",
+            "topology.contracts.read",
+            "topology.operations.read",
+            "topology.packs.read",
+            "topology.principals.read",
+        )
+    },
+    (
+        "defaultspack",
+        "defaultspack.conversation",
+        "complete",
+    ): 120_000,
+    (
+        "rumi_ai_gateway_pack",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+    ): 120_000,
+    (
+        "rumi_ai_gateway_pack",
+        "rumi_ai_gateway_pack.ai-gateway.stream",
+        "rumi_ai_gateway_pack.ai-gateway.stream",
+    ): 120_000,
+    (
+        "rumi_provider_adapters_pack",
+        "rumi_provider_adapters_pack.provider.compatibility.generate",
+        "rumi_provider_adapters_pack.provider-generate",
+    ): 120_000,
+    (
+        "rumi_provider_adapters_pack",
+        "rumi_provider_adapters_pack.provider.compatibility.stream",
+        "rumi_provider_adapters_pack.provider-stream",
+    ): 120_000,
+}
+
 
 def _file_digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
@@ -45,7 +121,12 @@ def _effect_class(operation: dict[str, Any]) -> str:
     effects = tuple(str(item) for item in operation["effect_ceiling"])
     if any(item.startswith(("host:", "secret:")) for item in effects):
         return "privileged"
-    if any(item.startswith("network:") for item in effects):
+    if (
+        "capability:mcp.tool.call" in effects
+        or any(item.startswith("network:") for item in effects)
+    ):
+        # Remote MCP tools can mutate external state even when their namespace
+        # does not contain a write-like verb. Never treat an unknown tool as read.
         return "external_effect"
     if any("write" in item or "mutat" in item or "delete" in item for item in effects):
         return "write"
@@ -56,27 +137,48 @@ def _effect_class(operation: dict[str, Any]) -> str:
 
 def _execution_metadata(manifest: dict[str, Any], function: dict[str, Any]) -> dict[str, str]:
     isolation = function["isolation"]
-    if manifest["pack"]["kind"] == "host_extension":
+    if isolation == "wasm_component":
+        execution_kind = "wasm"
+        backend = "tobkiri.wasmtime-pulley-v1"
+        domain = "wasm.component.default.v1"
+        runtime_abi = "component-v1"
+    elif manifest["pack"]["kind"] == "host_extension":
         execution_kind = "host_extension"
         backend = "tobkiri.python-host-v4"
         domain = "host.extension.default.v1"
+        runtime_abi = "python3.13"
     elif isolation == "remote":
         execution_kind = "remote"
         backend = "tobkiri.remote-pack-v4"
         domain = "remote.default.v1"
+        runtime_abi = "python3.13"
     else:
         execution_kind = "pack_vm"
         backend = "tobkiri.python-pack-v4"
         domain = "sandbox.default.v1"
+        runtime_abi = "python3.13"
     return {
         "execution_kind": execution_kind,
         "platform": "any",
         "architecture": "any",
-        "runtime_abi": "python3.13",
+        "runtime_abi": runtime_abi,
         "backend": backend,
         "materialization_mode": "on_demand",
         "execution_domain_profile": domain,
     }
+
+
+def _operation_timeout_ms(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> int:
+    """Return the finite default timeout for one exact executable operation."""
+
+    return _LONG_RUNNING_OPERATION_TIMEOUTS_MS.get(
+        (pack_id, function_id, operation_id),
+        _DEFAULT_TIMEOUT_MS,
+    )
 
 
 def _render_document(
@@ -106,6 +208,10 @@ def _render_document(
         digest = _file_digest(implementation)
         if digest != function["implementation_digest"]:
             raise ValueError(f"canonical implementation digest is stale: {pack_id}")
+        if function["isolation"] == "wasm_component":
+            from tobkiri_host.wasm_component import PureComponent
+
+            PureComponent(implementation.read_bytes(), digest)
         contract = _one(
             [
                 item
@@ -137,14 +243,22 @@ def _render_document(
                     "output_schema": schemas[operation["output_schema_digest"]],
                     "error_schema": schemas[operation["error_schema_digest"]],
                     "effect_class": _effect_class(operation),
-                    "timeout_default_ms": 30_000,
-                    "timeout_hard_max_ms": 300_000,
+                    "timeout_default_ms": _operation_timeout_ms(
+                        pack_id,
+                        function["id"],
+                        operation_id,
+                    ),
+                    "timeout_hard_max_ms": _HARD_TIMEOUT_MAX_MS,
                     "idempotency": operation["idempotency"]["mode"],
                 }
             )
         variants.append(
             {
-                "variant_id": f"{function['id']}.python",
+                "variant_id": (
+                    f"{function['id']}.wasm"
+                    if function["isolation"] == "wasm_component"
+                    else f"{function['id']}.python"
+                ),
                 "function_id": function["id"],
                 "implementation_path": implementation_path,
                 "implementation_digest": digest,

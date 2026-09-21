@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import http.cookiejar
 import json
 import os
 import socket
 import stat
-import threading
 import urllib.error
 import urllib.request
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -24,10 +24,18 @@ from core_runtime.bootstrap.runtime import Kernel
 from core_runtime.bootstrap.profile_capture import capture_default_profile
 from core_runtime.di_container import get_container, reset_container
 from core_runtime.hmac_key_manager import get_hmac_key_manager
-from core_runtime.panel_auth import PanelAuthManager, reset_panel_auth_manager_for_tests
-from core_runtime.pack_api_server import PackAPIServer
+from core_runtime.panel_auth import reset_panel_auth_manager_for_tests
+from ecosystem.defaultspack.defaultspack.runtime_composition import (
+    create_defaultspack_kernel,
+)
 from tobkiri_host.broker import RequestBroker
 from tobkiri_host.runtime import V4DispatchSession
+
+
+_LAUNCHER_BOOTSTRAP_REVISION = (
+    "sha256:cce92a9b1d3092cdac63ba80b39e5d3a17d0905f3a716241250e8ac724095580"
+)
+_LAUNCHER_BOOTSTRAP_PLAN = "sha256:2a08fdc2de1e0d5e51d2f248b0984d4510db442e6905bcebc2984a44d23131a5"
 
 
 def _free_port() -> int:
@@ -36,9 +44,58 @@ def _free_port() -> int:
         return int(listener.getsockname()[1])
 
 
+def _kernel() -> Kernel:
+    """Build the application-composed Host rather than an unconfigured core."""
+
+    from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
+
+    return create_defaultspack_kernel(bundle_root=packaged_profile_bundle_root())
+
+
+def _publish_launcher_contract(
+    user_data: Path,
+    *,
+    profile_id: str,
+    profile_revision: str,
+    activation_id: str,
+    plan_digest: str,
+    bootstrap_secret: str,
+) -> Path:
+    """Simulate the Launcher's owner-only atomic contract promotion."""
+
+    from tests.conformance_support.host_contract import host_contract
+
+    user_data.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name != "nt":
+        user_data.chmod(0o700)
+    path = user_data / "host_contract.json"
+    replacement = user_data / f".host-contract-{uuid.uuid4().hex}.tmp"
+    replacement.write_text(
+        json.dumps(
+            host_contract(
+                profile_id=profile_id,
+                profile_revision=profile_revision,
+                activation_id=activation_id,
+                plan_digest=plan_digest,
+                values={"panel_bootstrap_secret": bootstrap_secret},
+            ),
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    if os.name != "nt":
+        replacement.chmod(0o600)
+    os.replace(replacement, path)
+    if os.name != "nt":
+        path.chmod(0o600)
+    return path
+
+
+@pytest.mark.parametrize("failure_stage", ["profile_capture", "http_composition"])
 def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    failure_stage: str,
 ) -> None:
     """A valid predecessor transition serves setup instead of wedging startup."""
 
@@ -52,40 +109,42 @@ def test_superseded_packaged_artifact_starts_ui_ready_reconfirmation(
         "packaged release; explicit reconfirmation is required"
     )
     monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "user_data"))
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user_data"))
+    from core_runtime.bootstrap.profile_capture import prepare_default_profile_confirmation
 
-    class SetupServer:
-        port = 8765
-        _contract_routes: tuple[object, ...] = ()
+    capture_default_profile(confirmation=prepare_default_profile_confirmation())
 
-        @staticmethod
-        def is_running() -> bool:
-            return True
-
-        @staticmethod
-        def stop() -> None:
-            return None
+    port = _free_port()
 
     def require_reconfirmation() -> None:
         raise ProfileReconfirmationRequired(diagnostic)
 
-    monkeypatch.setattr(runtime_bootstrap, "active_default_profile_exists", lambda: True)
-    monkeypatch.setattr(
-        runtime_bootstrap,
-        "capture_default_profile",
-        require_reconfirmation,
-    )
-    monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: 8765)
-    monkeypatch.setattr(
-        runtime_bootstrap,
-        "initialize_pack_api_server",
-        lambda **_kwargs: SetupServer(),
-    )
+    monkeypatch.setattr(runtime_bootstrap, "active_profile_exists", lambda: True)
+    if failure_stage == "profile_capture":
+        monkeypatch.setattr(
+            runtime_bootstrap,
+            "capture_active_profile",
+            require_reconfirmation,
+        )
+    monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: port)
 
-    kernel = Kernel()
+    kernel = _kernel()
+    if failure_stage == "http_composition":
+        def unavailable_composition(active):
+            del active
+            require_reconfirmation()
+
+        kernel._runtime_capture_factory = unavailable_composition
     try:
         result = kernel.run_startup_until(kernel.API_INIT_STEP)
         readiness = get_runtime_readiness()
-        assert result == {"status": "ok", "step_id": "api_init", "port": 8765}
+        assert result == {"status": "ok", "step_id": "api_init", "port": port}
+        assert kernel._dispatch_session.session_kind == "host_profile_control"
+        assert get_container().get_or_none("v4_dispatch_session") is None
+        with urlopen(f"http://127.0.0.1:{port}/health", timeout=10) as response:
+            health = json.load(response)["data"]
+        assert health["panel_ready"] is True
+        assert health["runtime_ready"] is False
         assert readiness == {
             "panel_ready": True,
             "runtime_ready": False,
@@ -119,7 +178,7 @@ def test_kernel_bootstrap_publishes_and_reuses_desktop_api_token(
     user_data = tmp_path / "user_data"
     token_cache = tmp_path / ".desktop_api_token"
     monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
-    monkeypatch.setattr(runtime_bootstrap, "active_default_profile_exists", lambda: False)
+    monkeypatch.setattr(runtime_bootstrap, "active_profile_exists", lambda: False)
     monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: 8765)
     monkeypatch.setattr(
         runtime_bootstrap,
@@ -128,7 +187,7 @@ def test_kernel_bootstrap_publishes_and_reuses_desktop_api_token(
     )
 
     reset_container()
-    first_kernel = Kernel()
+    first_kernel = _kernel()
     try:
         first_kernel.run_startup_until(first_kernel.API_INIT_STEP)
         first_token = get_hmac_key_manager().get_active_key()
@@ -140,7 +199,7 @@ def test_kernel_bootstrap_publishes_and_reuses_desktop_api_token(
         first_kernel.shutdown()
 
     reset_container()
-    second_kernel = Kernel()
+    second_kernel = _kernel()
     try:
         second_kernel.run_startup_until(second_kernel.API_INIT_STEP)
         restarted_token = get_hmac_key_manager().get_active_key()
@@ -174,7 +233,7 @@ def test_kernel_bootstrap_refreshes_desktop_api_token_after_hmac_rotation(
     user_data = tmp_path / "user_data"
     token_cache = tmp_path / ".desktop_api_token"
     monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
-    monkeypatch.setattr(runtime_bootstrap, "active_default_profile_exists", lambda: False)
+    monkeypatch.setattr(runtime_bootstrap, "active_profile_exists", lambda: False)
     monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: 8765)
     monkeypatch.setattr(
         runtime_bootstrap,
@@ -183,7 +242,7 @@ def test_kernel_bootstrap_refreshes_desktop_api_token_after_hmac_rotation(
     )
 
     reset_container()
-    first_kernel = Kernel()
+    first_kernel = _kernel()
     try:
         first_kernel.run_startup_until(first_kernel.API_INIT_STEP)
         original_token = token_cache.read_text(encoding="utf-8")
@@ -194,7 +253,7 @@ def test_kernel_bootstrap_refreshes_desktop_api_token_after_hmac_rotation(
         first_kernel.shutdown()
 
     reset_container()
-    refreshed_kernel = Kernel()
+    refreshed_kernel = _kernel()
     try:
         refreshed_kernel.run_startup_until(refreshed_kernel.API_INIT_STEP)
         assert token_cache.read_text(encoding="utf-8") == rotated_token
@@ -215,7 +274,7 @@ def test_kernel_bootstrap_fails_closed_when_token_cache_cannot_be_published(
     monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
     monkeypatch.setattr(
         runtime_bootstrap,
-        "active_default_profile_exists",
+        "active_profile_exists",
         lambda: False,
     )
 
@@ -236,7 +295,7 @@ def test_kernel_bootstrap_fails_closed_when_token_cache_cannot_be_published(
 
     reset_container()
     with pytest.raises(OSError, match="simulated token cache failure"):
-        Kernel().run_startup_until(Kernel.API_INIT_STEP)
+        _kernel().run_startup_until(Kernel.API_INIT_STEP)
 
     assert server_started is False
     assert not (tmp_path / ".desktop_api_token").exists()
@@ -246,52 +305,92 @@ def test_public_kernel_first_start_requires_confirmed_defaults_transaction(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """The canonical public bootstrap serves ready HTTP from isolated data."""
+    """Activation flushes its receipt, then cold-restarts under a new contract."""
     coordination_timeout_seconds = 30
     port = _free_port()
+    user_data = tmp_path / "user_data"
+    bootstrap_secret = "first-request-bootstrap"
     monkeypatch.setenv("RUMI_PORT", str(port))
-    monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "user_data"))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
     monkeypatch.setenv("RUMI_LOG_DIR", str(tmp_path / "logs"))
-    reset_panel_auth_manager_for_tests(PanelAuthManager(bootstrap_secret="first-request-bootstrap"))
-    original_refresh = PackAPIServer._refresh_runtime_capture
-    refresh_entered = threading.Event()
-    release_refresh = threading.Event()
-    refresh_completed = threading.Event()
-    activation_started = threading.Event()
-    activation_response_received = threading.Event()
+    contract_path = _publish_launcher_contract(
+        user_data,
+        profile_id="defaults",
+        profile_revision=_LAUNCHER_BOOTSTRAP_REVISION,
+        activation_id="activation:bootstrap-template",
+        plan_digest=_LAUNCHER_BOOTSTRAP_PLAN,
+        bootstrap_secret=bootstrap_secret,
+    )
+    monkeypatch.setenv("TOBKIRI_HOST_CONTRACT_PATH", str(contract_path))
+    reset_panel_auth_manager_for_tests(capture_launcher_credential=True)
+    from core_runtime.restart_control import (
+        clear_kernel_restart_request,
+        is_kernel_restart_requested,
+    )
 
-    def delayed_refresh(
-        server: PackAPIServer,
-        activated_session=None,
-        *,
-        lifecycle_generation: int,
-    ) -> None:
-        refresh_entered.set()
-        assert release_refresh.wait(timeout=coordination_timeout_seconds)
-        try:
-            original_refresh(
-                server,
-                activated_session,
-                lifecycle_generation=lifecycle_generation,
-            )
-        finally:
-            refresh_completed.set()
-
-    monkeypatch.setattr(PackAPIServer, "_refresh_runtime_capture", delayed_refresh)
-
-    kernel = Kernel()
+    clear_kernel_restart_request()
+    kernel = _kernel()
     try:
         kernel.run_startup_until("api_init")
         remaining = kernel.run_startup_remaining()
         assert remaining["status"] == "setup_required"
-        with urlopen(
+        challenge = "fresh-kernel-cold-boot-challenge"
+        health_request = Request(
             f"http://127.0.0.1:{port}/health",
+            headers={"X-Rumi-Desktop-Health-Challenge": challenge},
+        )
+        with urlopen(
+            health_request,
             timeout=coordination_timeout_seconds,
         ) as response:
             envelope = json.load(response)
         assert envelope["success"] is True
         assert envelope["data"]["panel_ready"] is True
         assert envelope["data"]["runtime_ready"] is False
+        assert hmac.compare_digest(
+            envelope["data"]["desktop_challenge_response"],
+            hmac.new(
+                bootstrap_secret.encode(), challenge.encode(), hashlib.sha256,
+            ).hexdigest(),
+        )
+
+        # The temporary Launcher identity may authenticate only this bootstrap
+        # panel session. It is not the execution identity projected by health.
+        assert "activation_id" not in envelope["data"]
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+        )
+        bootstrap_request = Request(
+            f"http://127.0.0.1:{port}/api/panel/auth/bootstrap",
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Rumi-Desktop-Bootstrap": bootstrap_secret,
+            },
+            data=b"{}",
+        )
+        with opener.open(
+            bootstrap_request,
+            timeout=coordination_timeout_seconds,
+        ) as response:
+            old_login_code = json.load(response)["data"]["code"]
+        exchange_request = Request(
+            f"http://127.0.0.1:{port}/api/panel/auth/exchange",
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": f"http://127.0.0.1:{port}",
+            },
+            data=json.dumps({"code": old_login_code}).encode(),
+        )
+        with opener.open(exchange_request, timeout=coordination_timeout_seconds):
+            pass
+        assert getattr(kernel._server, "handler_class")._dispatch_session.session_kind == (
+            "host_profile_control"
+        )
+        control_session = getattr(kernel._server, "handler_class")._dispatch_session
+        assert control_session.session_kind == "host_profile_control"
+        assert get_container().get_or_none("v4_dispatch_session") is None
 
         with urlopen(
             f"http://127.0.0.1:{port}/api/setup/packs",
@@ -318,49 +417,89 @@ def test_public_kernel_first_start_requires_confirmed_defaults_transaction(
                 }
             ).encode(),
         )
-
-        def activate() -> dict[str, object]:
-            activation_started.set()
-            with urlopen(request, timeout=coordination_timeout_seconds) as response:
-                result = json.load(response)["data"]
-            activation_response_received.set()
-            return result
-
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            activation = executor.submit(activate)
-            try:
-                assert activation_started.wait(timeout=coordination_timeout_seconds)
-                if not refresh_entered.wait(timeout=coordination_timeout_seconds):
-                    try:
-                        activation.result(timeout=5)
-                    except TimeoutError as error:
-                        raise AssertionError(
-                            "defaults activation did not reach runtime refresh "
-                            "within the bounded coordination window"
-                        ) from error
-                    pytest.fail(
-                        "defaults activation returned before runtime refresh started"
-                    )
-                assert activation_response_received.wait(
-                    timeout=coordination_timeout_seconds
-                )
-                activated = activation.result(timeout=coordination_timeout_seconds)
-                assert not release_refresh.is_set()
-            finally:
-                release_refresh.set()
-        assert refresh_completed.wait(timeout=coordination_timeout_seconds)
+        with opener.open(request, timeout=coordination_timeout_seconds) as response:
+            activated = json.load(response)["data"]
         assert activated["state"] == "active"
         assert activated["audit_receipt"]["state"] == "committed"
         assert activated["audit_receipt"]["activation_id"] == activated["activation_id"]
-        opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
-        )
+        assert is_kernel_restart_requested() is True
+        assert kernel.run_startup_remaining() == {
+            "status": "restart_required",
+            "runtime_ready": False,
+        }
+        assert get_runtime_readiness()["runtime_ready"] is False
+        # The stale control handler remains local to this server and the newly
+        # constructed active capture is never installed into the global slot.
+        assert getattr(kernel._server, "handler_class")._dispatch_session is control_session
+        assert get_container().get_or_none("v4_dispatch_session") is None
+        with pytest.raises(urllib.error.HTTPError) as stale_cookie:
+            opener.open(
+                f"http://127.0.0.1:{port}/api/v4/packvm/doctor",
+                timeout=coordination_timeout_seconds,
+            )
+        assert stale_cookie.value.code == 401
+    finally:
+        kernel.shutdown()
+
+    # A stale or tampered Launcher contract cannot create an active handler.
+    # The failed cold start also must not publish its candidate into the
+    # process-global dispatch slot before contract validation succeeds.
+    clear_kernel_restart_request()
+    reset_container()
+    reset_panel_auth_manager_for_tests(capture_launcher_credential=True)
+    rejected_restart = _kernel()
+    try:
+        with pytest.raises(RuntimeError, match="Host contract"):
+            rejected_restart.run_startup_until("api_init")
+        assert get_container().get_or_none("v4_dispatch_session") is None
+    finally:
+        rejected_restart.shutdown()
+
+    # This is the external Launcher promotion: it atomically replaces the
+    # bootstrap marker only after the activation response has been received.
+    active = capture_default_profile()
+    _publish_launcher_contract(
+        user_data,
+        profile_id=str(active.resolved.profile["profile_id"]),
+        profile_revision=str(active.resolved.plan["profile_revision"]),
+        activation_id=str(active.activation["activation_id"]),
+        plan_digest=str(active.resolved.plan["plan_digest"]),
+        bootstrap_secret=bootstrap_secret,
+    )
+    clear_kernel_restart_request()
+    reset_container()
+    reset_panel_auth_manager_for_tests(capture_launcher_credential=True)
+
+    restarted = _kernel()
+    try:
+        restarted.run_startup_until("api_init")
+        assert restarted.run_startup_remaining() == {
+            "status": "ok",
+            "runtime_ready": True,
+        }
+        with urlopen(
+            f"http://127.0.0.1:{port}/health",
+            timeout=coordination_timeout_seconds,
+        ) as response:
+            ready = json.load(response)["data"]
+        assert ready["runtime_ready"] is True
+        assert ready["activation_id"] == active.activation["activation_id"]
+
+        # A process-local cookie from HostProfileControl cannot cross the cold
+        # handoff, while a new active-session exchange works immediately.
+        with pytest.raises(urllib.error.HTTPError) as old_cookie:
+            opener.open(
+                f"http://127.0.0.1:{port}/api/v4/packvm/doctor",
+                timeout=coordination_timeout_seconds,
+            )
+        assert old_cookie.value.code == 401
+
         bootstrap_request = Request(
             f"http://127.0.0.1:{port}/api/panel/auth/bootstrap",
             method="POST",
             headers={
                 "Content-Type": "application/json",
-                "X-Rumi-Desktop-Bootstrap": "first-request-bootstrap",
+                "X-Rumi-Desktop-Bootstrap": bootstrap_secret,
             },
             data=b"{}",
         )
@@ -395,15 +534,8 @@ def test_public_kernel_first_start_requires_confirmed_defaults_transaction(
         with pytest.raises(urllib.error.HTTPError) as replay:
             urlopen(request, timeout=coordination_timeout_seconds)
         assert replay.value.code == 401
-        with urlopen(
-            f"http://127.0.0.1:{port}/health",
-            timeout=coordination_timeout_seconds,
-        ) as response:
-            ready = json.load(response)["data"]
-        assert ready["runtime_ready"] is True
     finally:
-        release_refresh.set()
-        kernel.shutdown()
+        restarted.shutdown()
 
 
 def test_clean_bootstrap_captures_and_restarts_without_legacy_profile(
@@ -413,12 +545,23 @@ def test_clean_bootstrap_captures_and_restarts_without_legacy_profile(
     """A fresh Host persists one exact Defaults activation and reloads it."""
     user_data = tmp_path / "clean-home"
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
     from core_runtime.bootstrap.profile_capture import (
         prepare_default_profile_confirmation,
     )
 
     first = capture_default_profile(confirmation=prepare_default_profile_confirmation())
     restarted = capture_default_profile()
+
+    from core_runtime.host_contract import bind_host_contract
+    from tests.conformance_support.host_contract import host_contract
+
+    contract = host_contract(
+        profile_id=str(first.resolved.profile["profile_id"]),
+        profile_revision=str(first.resolved.plan["profile_revision"]),
+        activation_id=str(first.activation["activation_id"]),
+        plan_digest=str(first.resolved.plan["plan_digest"]),
+    )
 
     assert first.activation == restarted.activation
     assert first.resolved.plan == restarted.resolved.plan
@@ -432,11 +575,12 @@ def test_clean_bootstrap_captures_and_restarts_without_legacy_profile(
     assert len(providers) == 1
     assert not (user_data / "settings" / "startup_profiles.json").exists()
 
-    kernel = Kernel()
+    kernel = _kernel()
     monkeypatch.setenv("RUMI_PORT", str(_free_port()))
     try:
-        kernel.run_startup_until("api_init")
-        session = get_container().get("v4_dispatch_session")
+        with bind_host_contract(contract):
+            kernel.run_startup_until("api_init")
+            session = get_container().get("v4_dispatch_session")
         assert isinstance(session, V4DispatchSession)
         assert isinstance(session.broker, RequestBroker)
         assert session.authority_control is not None
@@ -453,3 +597,379 @@ def test_clean_bootstrap_captures_and_restarts_without_legacy_profile(
     renamed_path = user_data / "authority" / "v4-renamed.sqlite3"
     authority_path.rename(renamed_path)
     renamed_path.rename(authority_path)
+
+
+def test_kernel_start_binds_real_approval_window_delegate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kernel start over an active Profile must reach the approval delegate.
+
+    The packaged approval flow is launcher → kernel start → already-activated
+    Profile → shell → contract dispatch. ``Kernel.run_startup_until`` captures
+    the dispatch session itself; a missing ``authority_approval_window_open``
+    binding degrades to the bounded "authority approval window is unavailable"
+    stub seen in packaged CUA logs.
+    """
+
+    from core_runtime.bootstrap.profile_capture import (
+        prepare_default_profile_confirmation,
+    )
+    from ecosystem.defaultspack.domain.host_bridge.viewer_broker_client import (
+        ViewerBrokerClient,
+    )
+
+    coordination_timeout_seconds = 30
+    port = _free_port()
+    user_data = tmp_path / "user_data"
+    bootstrap_secret = "kernel-start-bootstrap"
+    monkeypatch.setenv("RUMI_PORT", str(port))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+
+    active = capture_default_profile(
+        confirmation=prepare_default_profile_confirmation()
+    )
+    contract_path = _publish_launcher_contract(
+        user_data,
+        profile_id=str(active.resolved.profile["profile_id"]),
+        profile_revision=str(active.resolved.plan["profile_revision"]),
+        activation_id=str(active.activation["activation_id"]),
+        plan_digest=str(active.resolved.plan["plan_digest"]),
+        bootstrap_secret=bootstrap_secret,
+    )
+    monkeypatch.setenv("TOBKIRI_HOST_CONTRACT_PATH", str(contract_path))
+
+    opened: list[str] = []
+    monkeypatch.setattr(ViewerBrokerClient, "available", lambda _self: True)
+
+    def fake_open(
+        self: ViewerBrokerClient, request_id: str
+    ) -> dict[str, object]:
+        opened.append(str(request_id))
+        return {"ok": True, "request_id": request_id}
+
+    monkeypatch.setattr(
+        ViewerBrokerClient, "open_authority_approval_window", fake_open
+    )
+
+    reset_container()
+    reset_panel_auth_manager_for_tests(capture_launcher_credential=True)
+    kernel = _kernel()
+    try:
+        kernel.run_startup_until("api_init")
+        assert kernel.run_startup_remaining() == {
+            "status": "ok",
+            "runtime_ready": True,
+        }
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+        )
+        bootstrap_request = Request(
+            f"http://127.0.0.1:{port}/api/panel/auth/bootstrap",
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Rumi-Desktop-Bootstrap": bootstrap_secret,
+            },
+            data=b"{}",
+        )
+        with opener.open(
+            bootstrap_request, timeout=coordination_timeout_seconds
+        ) as response:
+            login_code = json.load(response)["data"]["code"]
+        exchange_request = Request(
+            f"http://127.0.0.1:{port}/api/panel/auth/exchange",
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": f"http://127.0.0.1:{port}",
+            },
+            data=json.dumps({"code": login_code}).encode(),
+        )
+        with opener.open(
+            exchange_request, timeout=coordination_timeout_seconds
+        ) as response:
+            csrf = json.load(response)["data"]["csrf_token"]
+        approval_request = Request(
+            "http://127.0.0.1:"
+            f"{port}/api/contracts/defaultspack/"
+            + quote("POST /api/authority/approval-window", safe=""),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": f"http://127.0.0.1:{port}",
+                "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+            data=json.dumps({"request_id": "req-1"}).encode(),
+        )
+        with opener.open(
+            approval_request, timeout=coordination_timeout_seconds
+        ) as response:
+            payload = json.load(response)
+        assert payload["success"] is True
+        assert payload["data"] == {"opened": True, "request_id": "req-1"}
+        assert opened == ["req-1"]
+    finally:
+        kernel.shutdown()
+
+
+@pytest.mark.parametrize("legacy_missing", [False, True])
+def test_bootstrap_registers_selected_definition_in_existing_collection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, legacy_missing: bool
+) -> None:
+    """Confirmed setup and old committed setup preserve existing user definitions."""
+    import core_runtime.bootstrap.profile_capture as capture
+    from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
+    from core_runtime.profile_runtime_port import require_profile_runtime
+    from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
+
+    user_data = tmp_path / "user_data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    runtime = require_profile_runtime()
+    catalog = runtime.load_catalog(packaged_profile_bundle_root())
+    definitions = ProfileDefinitionStore(user_data)
+    existing = definitions.create_profile(catalog.profiles["defaults"], profile_id="existing")
+    assert "defaults" not in capture.host_profile_catalog().profiles
+    confirmation = capture.prepare_default_profile_confirmation()
+    with monkeypatch.context() as patch:
+        if legacy_missing:
+            patch.setattr(capture, "register_bootstrap_definition", lambda *_args: None)
+        active = capture.capture_default_profile(confirmation=confirmation)
+    assert (definitions.get_profile("defaults") is None) == legacy_missing
+    from core_runtime.active_profile_store_v4 import ActiveProfileStore
+
+    pointer_path = ActiveProfileStore(user_data).path
+    pointer_before = pointer_path.read_bytes()
+    restarted = capture.capture_active_profile()
+    assert restarted.activation == active.activation
+    assert restarted.resolved.plan == active.resolved.plan
+    assert definitions.get_profile("existing") == existing
+    assert dict(definitions.get_profile("defaults").profile) == catalog.profiles["defaults"]
+    assert pointer_path.read_bytes() == pointer_before
+    generation = definitions.snapshot()["generation"]
+    capture.capture_active_profile()
+    assert definitions.snapshot()["generation"] == generation
+
+
+@pytest.mark.parametrize("conflict", ["changed", "deleted"])
+def test_bootstrap_does_not_replace_existing_definition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conflict: str
+) -> None:
+    """Setup cannot overwrite a custom Defaults definition or revive its tombstone."""
+    import core_runtime.bootstrap.profile_capture as capture
+    from core_runtime.profile_definition_store_v4 import (
+        ProfileDefinitionStore,
+        ProfileDefinitionStoreConflict,
+    )
+    from core_runtime.profile_runtime_port import require_profile_runtime
+    from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
+
+    user_data = tmp_path / "user_data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    catalog = require_profile_runtime().load_catalog(packaged_profile_bundle_root())
+    definitions = ProfileDefinitionStore(user_data)
+    definitions.create_profile(catalog.profiles["defaults"], display_name="My Defaults")
+    if conflict == "deleted":
+        definitions.delete_profile("defaults")
+    before = definitions.snapshot()
+    confirmation = capture.prepare_default_profile_confirmation()
+    with pytest.raises(ProfileDefinitionStoreConflict):
+        capture.capture_default_profile(confirmation=confirmation)
+    assert definitions.snapshot() == before
+    assert not (user_data / "workspaces" / "defaults" / "activation" / "active.json").exists()
+
+
+@pytest.mark.parametrize("conflict", ["source", "pointer", "tombstone"])
+def test_committed_bootstrap_recovery_rejects_conflicting_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, conflict: str
+) -> None:
+    """Repair requires an absent definition and the exact approved source and pointer."""
+    from dataclasses import replace
+
+    import core_runtime.bootstrap.profile_capture as capture
+    from core_runtime.active_profile_store_v4 import ActiveProfileStore
+    from core_runtime.bootstrap.profile_registry import recover_bootstrap_definition
+    from core_runtime.profile_definition_store_v4 import (
+        ProfileDefinitionStore,
+        ProfileDefinitionStoreConflict,
+    )
+    from core_runtime.profile_runtime_port import require_profile_runtime
+    from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
+
+    user_data = tmp_path / "user_data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    runtime = require_profile_runtime()
+    catalog = runtime.load_catalog(packaged_profile_bundle_root())
+    definitions = ProfileDefinitionStore(user_data)
+    definitions.create_profile(catalog.profiles["defaults"], profile_id="existing")
+    confirmation = capture.prepare_default_profile_confirmation()
+    with monkeypatch.context() as patch:
+        patch.setattr(capture, "register_bootstrap_definition", lambda *_args: None)
+        capture.capture_default_profile(confirmation=confirmation)
+    pointer = ActiveProfileStore(user_data).require(verify_snapshot=True)
+    if conflict == "source":
+        source = dict(catalog.profiles["defaults"], display_name="Unapproved change")
+        catalog = runtime.catalog_with_profiles(catalog, {"defaults": source})
+    elif conflict == "pointer":
+        pointer = replace(pointer, plan_digest="sha256:" + "0" * 64)
+    else:
+        definitions.create_profile(catalog.profiles["defaults"])
+        definitions.delete_profile("defaults")
+    before = definitions.snapshot()
+    with pytest.raises((type(runtime.denied("test")), ProfileDefinitionStoreConflict)):
+        recover_bootstrap_definition(
+            user_data=user_data, pointer=pointer, runtime=runtime, catalog=catalog
+        )
+    assert definitions.snapshot() == before
+
+
+def test_initial_setup_review_does_not_create_profile_or_authority_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reading the initial confirmation must not initialize persistent Host stores."""
+    from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+    user_data = tmp_path / "not-yet-initialized"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    review = SetupHandlersMixin._setup_listing()
+    assert review["state"] == "review_required"
+    assert not user_data.exists()
+
+
+@pytest.mark.parametrize("customized", [False, True])
+@pytest.mark.parametrize(
+    "extra_pack", [None, "approved", "revoked", "tampered", "foreign_root", "missing_key"]
+)
+def test_confirmed_bootstrap_upgrade_preserves_definition_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, customized: bool, extra_pack: str | None
+) -> None:
+    """Only the verified predecessor may receive a confirmed source successor."""
+    import core_runtime.bootstrap.profile_capture as capture
+    from core_runtime.active_profile_store_v4 import ActiveProfileStore
+    from core_runtime.profile_definition_store_v4 import (
+        ProfileDefinitionStore,
+        ProfileDefinitionStoreConflict,
+    )
+    from core_runtime.profile_runtime_port import require_profile_runtime
+    from tests.test_profile_architecture_review_c import _packaged_catalog_revision
+
+    user_data = tmp_path / "user_data"
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
+    runtime = require_profile_runtime()
+    catalog = _packaged_catalog_revision(tmp_path / "old", b"old")
+    monkeypatch.setattr(runtime, "load_catalog", lambda _root: catalog)
+    monkeypatch.setattr(capture, "_bundle_root", lambda _base=None: catalog.root)
+    first = capture.capture_default_profile(
+        confirmation=capture.prepare_default_profile_confirmation()
+    )
+    if extra_pack:
+        from tests.test_pack_control_v4 import _capture_control_session, _invoke
+
+        session = _capture_control_session()
+        pack_id = "rumi_agent_workroom_pack"
+        _invoke(session, "pack.install", {"pack_id": pack_id})
+        candidate = _invoke(session, "approval.candidate", {"pack_id": pack_id})
+        _invoke(session, "approval.approve", {
+            "pack_id": pack_id, "candidate_id": candidate["candidate_id"],
+        })
+        assert _invoke(session, "pack.enable", {"pack_id": pack_id})["enabled"]
+        first = capture.capture_active_profile()
+        approval_path = user_data / "pack_control" / "approvals" / "defaults" / f"{pack_id}.json"
+        approval = json.loads(approval_path.read_text())
+        if extra_pack == "revoked":
+            # Model a committed revocation whose subsequent deactivation failed.
+            from core_runtime.authority.v4 import AuthorityStore
+
+            with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
+                authority.revoke_pack_approval(
+                    pack_id=pack_id,
+                    approval_revision=approval["approval_revision"],
+                    profile_id="defaults",
+                    activation_id=first.activation["activation_id"],
+                    artifact_digest=catalog.packs[pack_id]["pack"]["artifact_digest"],
+                    reason="test interrupted Pack revocation",
+                )
+        elif extra_pack == "tampered":
+            approval["signature"] = "invalid"
+            approval_path.write_text(json.dumps(approval))
+        elif extra_pack == "missing_key":
+            (user_data / "pack_control" / ".authority_key").unlink()
+    definitions = ProfileDefinitionStore(user_data)
+    original = definitions.get_profile("defaults")
+    if customized:
+        definitions.update_profile("defaults", display_name="My custom profile")
+    before = definitions.snapshot()
+    pointer_path = ActiveProfileStore(user_data).path
+    pointer_before = pointer_path.read_bytes()
+    catalog = _packaged_catalog_revision(tmp_path / "new", b"new")
+    successor_source = catalog.profiles["defaults"]
+    if extra_pack == "foreign_root":
+        # The lifecycle captured this root explicitly; ambient readers must not
+        # accidentally verify a different user's optional Pack receipts.
+        monkeypatch.setattr(capture, "_user_data_root", lambda _base=None: user_data)
+        monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "unrelated"))
+        monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "unrelated"))
+    control_before = {
+        str(path.relative_to(user_data)): path.read_bytes()
+        for path in (user_data / "pack_control").rglob("*") if path.is_file()
+    }
+    if customized:
+        with pytest.raises(ProfileDefinitionStoreConflict):
+            capture.prepare_default_profile_confirmation()
+        assert definitions.snapshot() == before
+        assert pointer_path.read_bytes() == pointer_before
+    elif extra_pack in {"revoked", "tampered", "missing_key"}:
+        from core_runtime.pack_control_v4 import PackControlDenied
+
+        with pytest.raises(PackControlDenied, match="approval_(revoked|signature_invalid|authority_unavailable)"):
+            capture.prepare_bootstrap_profile_review()
+        assert definitions.snapshot() == before
+        assert pointer_path.read_bytes() == pointer_before
+    else:
+        review_catalog, confirmation = capture.prepare_bootstrap_profile_review()
+        review = runtime.setup_listing(
+            review_catalog,
+            confirmation,
+            active=False,
+            activation_denied=False,
+            denial_diagnostic=None,
+        )
+        assert (
+            "rumi_agent_workroom_pack"
+            in {pack["pack_id"] for pack in review["recommended_default_profile"]["packs"]}
+        ) == bool(extra_pack)
+        assert definitions.snapshot() == before
+        assert pointer_path.read_bytes() == pointer_before
+        assert control_before == {
+            str(path.relative_to(user_data)): path.read_bytes()
+            for path in (user_data / "pack_control").rglob("*") if path.is_file()
+        }
+        upgraded = capture.capture_default_profile(confirmation=confirmation)
+        assert upgraded.activation["activation_id"] != first.activation["activation_id"]
+        current = definitions.get_profile("defaults")
+        assert dict(current.profile) == {**original.profile, "shell": successor_source["shell"]}
+        assert "rumi_agent_workroom_pack" not in {
+            pack["pack_id"] for pack in current.profile["packs"]
+        }
+        assert (
+            "rumi_agent_workroom_pack"
+            in {pack["pack_id"] for pack in upgraded.resolved.profile["packs"]}
+        ) == bool(extra_pack)
+        assert current.parent_revision == original.profile_revision
+        entry = next(p for p in definitions.snapshot()["profiles"] if p["profile_id"] == "defaults")
+        assert entry["revisions"][0]["profile"] == dict(original.profile)
+        assert capture.capture_active_profile().activation == upgraded.activation
+
+    assert not (tmp_path / "unrelated").exists()
+    if extra_pack in {"revoked", "tampered", "missing_key"}:
+        assert control_before == {
+            str(path.relative_to(user_data)): path.read_bytes()
+            for path in (user_data / "pack_control").rglob("*") if path.is_file()
+        }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {beforeEach, test} from 'node:test';
 
 import {
@@ -7,6 +8,9 @@ import {
   bootstrapPanelSession,
   checkHealth,
   clearApiPrefetchCache,
+  createNamedProfile,
+  deleteNamedProfile,
+  duplicateNamedProfile,
   disablePack,
   enablePack,
   fetchDashboard,
@@ -14,6 +18,8 @@ import {
   fetchFrontendCatalog,
   fetchRuntimeOperationStatus,
   fetchPacks,
+  fetchPackVMDoctor,
+  fetchNamedProfiles,
   fetchPresentationState,
   installPack,
   invokeFrontendCapability,
@@ -23,6 +29,7 @@ import {
   selectPresentation,
   parseHealthResponse,
   setRuntimeDispatchStatus,
+  updateNamedProfile,
 } from './api.ts';
 import {
   extractExactOperationDescriptors,
@@ -30,6 +37,7 @@ import {
   RUNTIME_SURFACE_API_VERSION,
 } from './runtimeSurface.ts';
 import {GENERATED_FRONTEND_CONTRACT_MAP} from './generatedFrontendContractMap.ts';
+import {activateDefaultsProfile, fetchDefaultsSetupState} from './defaultsSetup.ts';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -123,7 +131,10 @@ function installFetchMock(): void {
     if (lastFetchUrl === '/api/panel/auth/exchange') {
       exchangeCount += 1;
       return new Response(JSON.stringify({
-        data: {csrf_token: 'csrf-from-server'},
+        data: {
+          csrf_token: 'csrf-from-server',
+          journal_scope: `sha256:${'a'.repeat(64)}`,
+        },
         success: true,
       }), {headers: {'Content-Type': 'application/json'}});
     }
@@ -135,6 +146,11 @@ function installFetchMock(): void {
           runtime_ready: true,
           runtime_status: 'runtime_ready',
           runtime_error: null,
+          host_catalog_verified: true,
+          profile_ceremony_available: true,
+          active_profile_ready: true,
+          launch_ready: true,
+          defaults_bootstrap_required: false,
           status: 'ok',
         },
         success: true,
@@ -144,7 +160,15 @@ function installFetchMock(): void {
     const data = route === 'POST /api/pack-control/approval-candidate'
       ? {candidate_id: 'candidate-one', pack_id: 'pack-a', snapshot_digest: `sha256:${'a'.repeat(64)}`}
       : route === 'GET /api/pack-control/catalog'
-        ? {packs: [], count: 0}
+        ? {
+          profile_id: 'profile-a',
+          workspace_id: 'workspace-a',
+          profile_revision: 'sha256:profile',
+          plan_digest: 'sha256:plan',
+          catalog_revision: 'catalog-a',
+          packs: [],
+          count: 0,
+        }
         : {
           pack_id: 'pack-a',
           enabled: true,
@@ -193,7 +217,15 @@ test('Home and Packs use only exact v4 frontend contract routes', async () => {
     const data = route === 'POST /api/pack-control/approval-candidate'
       ? {candidate_id: 'candidate-one', pack_id: 'pack-a', snapshot_digest: `sha256:${'a'.repeat(64)}`}
       : route === 'GET /api/pack-control/catalog'
-        ? {packs: [], count: 0}
+        ? {
+          profile_id: 'profile-a',
+          workspace_id: 'workspace-a',
+          profile_revision: 'sha256:profile',
+          plan_digest: 'sha256:plan',
+          catalog_revision: 'catalog-a',
+          packs: [],
+          count: 0,
+        }
         : {
           pack_id: 'pack-a',
           enabled: true,
@@ -227,6 +259,111 @@ test('Home and Packs use only exact v4 frontend contract routes', async () => {
     'POST /api/pack-control/disable',
   ]);
   assert.equal(lastFetchInit?.method, 'POST');
+});
+
+test('Named Profile CRUD uses exact Host routes, payloads, and registry response validation', async () => {
+  const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+  const profile = (profileId: string, revision: string) => ({
+    profile_id: profileId,
+    profile_revision: revision,
+    profile: {profile_id: profileId, display_name: profileId},
+    order: 0,
+    parent_revision: null,
+    tombstone: false,
+    created_at: 1,
+    updated_at: 1,
+    legacy_ids: [],
+  });
+  const registry = {
+    profile_registry_api_version: 'io.tobkiri.profile-registry.v4',
+    generation: 3,
+    active_profile_id: 'defaults',
+    active_profile_revision: digest('a'),
+    profiles: [profile('defaults', digest('a'))],
+  };
+  const requests: Array<{url: string; method: string; body: unknown}> = [];
+  fetchHandler = async (input, init) => {
+    requests.push({
+      url: String(input),
+      method: init?.method ?? 'GET',
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    return new Response(JSON.stringify({success: true, data: registry}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  };
+
+  await fetchNamedProfiles();
+  await createNamedProfile({
+    profile_id: 'work-a',
+    display_name: 'Work A',
+    source_profile_id: 'defaults',
+    expected_store_generation: 3,
+  });
+  await updateNamedProfile({
+    profile_id: 'work-a',
+    display_name: 'Work A updated',
+    expected_profile_revision: digest('a'),
+    expected_store_generation: 3,
+  });
+  await duplicateNamedProfile({
+    profile_id: 'work-a',
+    new_profile_id: 'work-b',
+    display_name: 'Work B',
+    expected_profile_revision: digest('a'),
+    expected_store_generation: 3,
+  });
+  await deleteNamedProfile({
+    profile_id: 'work-b',
+    expected_profile_revision: digest('a'),
+    expected_store_generation: 3,
+  });
+
+  assert.deepEqual(requests.map(({url, method}) => `${method} ${url}`), [
+    'GET /api/v4/profiles',
+    'POST /api/v4/profiles/create',
+    'POST /api/v4/profiles/update',
+    'POST /api/v4/profiles/duplicate',
+    'POST /api/v4/profiles/delete',
+  ]);
+  assert.deepEqual(requests.slice(1).map((request) => request.body), [
+    {
+      profile_id: 'work-a',
+      display_name: 'Work A',
+      source_profile_id: 'defaults',
+      expected_store_generation: 3,
+    },
+    {
+      profile_id: 'work-a',
+      display_name: 'Work A updated',
+      expected_profile_revision: digest('a'),
+      expected_store_generation: 3,
+    },
+    {
+      profile_id: 'work-a',
+      new_profile_id: 'work-b',
+      display_name: 'Work B',
+      expected_profile_revision: digest('a'),
+      expected_store_generation: 3,
+    },
+    {
+      profile_id: 'work-b',
+      expected_profile_revision: digest('a'),
+      expected_store_generation: 3,
+    },
+  ]);
+
+  const requestCount = requests.length;
+  assert.throws(
+    () => createNamedProfile({
+      profile_id: 'Work A',
+      display_name: 'Rejected',
+      source_profile_id: 'defaults',
+      expected_store_generation: 3,
+    }),
+    /canonical Profile ID/,
+  );
+  assert.equal(requests.length, requestCount);
 });
 
 test('Pack approval rejects a candidate or approval response for a different state', async () => {
@@ -272,6 +409,7 @@ test('dynamic catalog and capability invocation use the exact canonical v4 route
           version: 'rumi.ui.contribution.v1',
           profile_id: 'profile-a',
           profile_revision: 'sha256:profile-a',
+          activation_id: 'activation:profile-a',
           plan_hash: 'sha256:plan-a',
           contributions: [{
             contribution_id: 'file-inspect',
@@ -292,6 +430,8 @@ test('dynamic catalog and capability invocation use the exact canonical v4 route
   assert.equal(lastFetchInit?.cache, 'no-store');
   const result = await invokeFrontendCapability({
     profileId: catalog.profile_id,
+    profileRevision: catalog.profile_revision,
+    activationId: catalog.activation_id,
     planHash: catalog.plan_hash,
     catalogHash: catalog.catalog_hash,
     contributionId: 'file-inspect',
@@ -310,6 +450,8 @@ test('dynamic catalog and capability invocation use the exact canonical v4 route
     request_id: invocationBody?.request_id,
     expires_at: invocationBody?.expires_at,
     profile_id: 'profile-a',
+    profile_revision: 'sha256:profile-a',
+    activation_id: 'activation:profile-a',
     plan_hash: 'sha256:plan-a',
     catalog_hash: 'sha256:catalog-a',
     contribution_id: 'file-inspect',
@@ -333,6 +475,8 @@ test('capability invocation keeps the supplied request identity in both body and
 
   await invokeFrontendCapability({
     profileId: 'profile-a',
+    profileRevision: 'sha256:profile-a',
+    activationId: 'activation:profile-a',
     planHash: 'sha256:plan-a',
     catalogHash: 'sha256:catalog-a',
     contributionId: 'contribution-a',
@@ -367,6 +511,74 @@ test('operation status uses the canonical GET target and a fresh authenticated r
   const headers = lastFetchInit?.headers as Record<string, string>;
   assert.match(headers['X-Tobkiri-Request-ID'], /^[0-9a-f-]{36}$/i);
   assert.notEqual(headers['X-Tobkiri-Request-ID'], requestId);
+});
+
+test('operation status reads allow a slow bounded verification without replaying it', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  const requestId = '22222222-2222-4222-8222-222222222222';
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), `/api/contracts/defaultspack/${encodeURIComponent('GET /api/runtime-surface/operation-status')}?request_id=${requestId}`);
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: {state: 'pending'}})),
+    ), 11_000));
+  };
+
+  const pending = fetchRuntimeOperationStatus(requestId);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(11_000);
+
+  assert.deepEqual(await pending, {state: 'pending'});
+  assert.equal(reads, 1);
+});
+
+test('operation status reads stop at their bounded status-read deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  const requestId = '22222222-2222-4222-8222-222222222222';
+  fetchHandler = async (_input, init) => {
+    reads += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+
+  const bounded = assert.rejects(
+    fetchRuntimeOperationStatus(requestId),
+    /(?:timed out after|exceeded) 30000ms/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(30_000);
+  await bounded;
+  assert.equal(reads, 1);
+});
+
+test('unrelated foreground contract GETs keep their original bounded deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async (_input, init) => {
+    reads += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+
+  const bounded = assert.rejects(
+    fetchPacks(),
+    /GET request timed out after 10000ms/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  // The consumer deadline is 10s; ticking through the shared 30s hard timeout
+  // lets the aborted in-flight entry settle instead of leaking into later reads.
+  context.mock.timers.tick(30_000);
+  await bounded;
+  assert.equal(reads, 1);
 });
 
 test('runtime operation invocation uses only its exact invocation contribution and catalog hash', async () => {
@@ -405,10 +617,11 @@ test('runtime operation invocation uses only its exact invocation contribution a
     artifact_digest: digest('1'),
     invocation_contribution_id: 'invocation-contribution',
     invocation_owner_pack_id: 'provider-pack',
-    invocation_catalog_hash: digest('c'),
+    invocation_catalog_hash: digest('f'),
     invocation_reason: null,
     invokable: true,
     catalog_digest: digest('c'),
+    activation_id: 'activation:defaults-one',
     function_id: 'function.one',
     function_principal_id: 'principal.function.one',
     caller_function_id: 'caller.function.one',
@@ -449,7 +662,7 @@ test('runtime operation invocation uses only its exact invocation contribution a
   };
   const [acceptedOperation] = extractExactOperationDescriptors(envelope.data);
   assert.ok(acceptedOperation);
-  assert.equal(acceptedOperation.invocation_catalog_hash, digest('c'));
+  assert.equal(acceptedOperation.invocation_catalog_hash, digest('f'));
   assert.equal(acceptedOperation.invocation_contribution_id, 'invocation-contribution');
   assert.equal(acceptedOperation.function_principal_id, 'principal.function.one');
   assert.equal(acceptedOperation.caller_function_id, 'caller.function.one');
@@ -471,7 +684,10 @@ test('runtime operation invocation uses only its exact invocation contribution a
   assert.deepEqual(result, {accepted: true});
   assert.equal(decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')), 'POST /api/ui/capability/invoke');
   assert.equal(body?.contribution_id, 'invocation-contribution');
-  assert.equal(body?.catalog_hash, digest('c'));
+  assert.equal(body?.catalog_hash, digest('f'));
+  assert.equal(body?.profile_id, 'defaults');
+  assert.equal(body?.profile_revision, digest('a'));
+  assert.equal(body?.activation_id, 'activation:defaults-one');
   assert.equal(body?.plan_hash, digest('b'));
   assert.equal(Object.prototype.hasOwnProperty.call(body ?? {}, 'catalog_revision'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(body ?? {}, 'operation_digest'), false);
@@ -556,6 +772,215 @@ test('unsafe frontend requests time out and reject instead of leaving lifecycle 
   );
 });
 
+test('PackVM doctor accepts slow verified image checks without replaying provisioning', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  const doctor = {
+    ready: true,
+    backend_id: 'tobkiri.python-pack-v4',
+    platform: 'macos-arm64',
+    instance: 'tobkiri-packvm-v4',
+    reason: null,
+    attestation_digest: `sha256:${'a'.repeat(64)}`,
+  };
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/v4/packvm/doctor');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: doctor})),
+    ), 15_000));
+  };
+  const pending = fetchPackVMDoctor();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(15_000);
+  assert.deepEqual(await pending, doctor);
+  assert.equal(reads, 1);
+});
+
+test('PackVM doctor still stops at its bounded verification deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/v4/packvm/doctor');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>(() => {});
+  };
+  const bounded = assert.rejects(fetchPackVMDoctor(), /request timed out after 60000ms/);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(60_000);
+  await bounded;
+  assert.equal(reads, 1);
+});
+
+test('activation verification waits through a slow restart without submitting another mutation', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json', import.meta.url,
+  ), 'utf8'));
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/setup/packs');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: fixture})),
+    ), 11_000));
+  };
+  const pending = fetchDefaultsSetupState({waitForRestart: true});
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(11_000);
+  assert.equal((await pending).state, fixture.state);
+  assert.equal(reads, 1);
+});
+
+test('additive Profile review allows a slow bounded read without replaying it', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json', import.meta.url,
+  ), 'utf8'));
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/setup/packs?include_source_additions=true');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: fixture})),
+    ), 11_000));
+  };
+  const pending = fetchDefaultsSetupState({includeSourceAdditions: true});
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(11_000);
+  assert.equal((await pending).state, fixture.state);
+  assert.equal(reads, 1);
+});
+
+test('additive Profile review stops at its bounded read deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/setup/packs?include_source_additions=true');
+    assert.equal(init?.method, 'GET');
+    reads += 1;
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new Error('request aborted'));
+      }, {once: true});
+    });
+  };
+  const bounded = assert.rejects(
+    fetchDefaultsSetupState({includeSourceAdditions: true}),
+    /GET request timed out after 60000ms: GET:\/api\/setup\/packs\?include_source_additions=true/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(60_000);
+  await bounded;
+  assert.equal(reads, 1);
+});
+
+test('Defaults activation allows the bounded cold start and still has a hard deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json', import.meta.url,
+  ), 'utf8'));
+  let posts = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/setup/packs/install');
+    assert.equal(init?.method, 'POST');
+    posts += 1;
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(
+      new Response(JSON.stringify({success: true, data: {}})),
+    ), 20_000));
+  };
+  const slow = assert.rejects(
+    activateDefaultsProfile(fixture.recommended_default_profile.confirmation),
+    /Activated profile revision is invalid/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(20_000);
+  await slow;
+  assert.equal(posts, 1);
+
+  fetchHandler = async () => {
+    posts += 1;
+    return new Promise<Response>(() => {});
+  };
+  const bounded = assert.rejects(
+    activateDefaultsProfile(fixture.recommended_default_profile.confirmation),
+    /POST request timed out after 120000ms: \/api\/setup\/packs\/install/,
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(120_000);
+  await bounded;
+  assert.equal(posts, 2);
+});
+
+test('Setup reconnects after Kernel connection resets without replaying activation', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json', import.meta.url,
+  ), 'utf8'));
+  let reads = 0;
+  fetchHandler = async (input, init) => {
+    assert.equal(String(input), '/api/setup/packs');
+    assert.equal(init?.method, 'GET');
+    if (++reads <= 2) throw new TypeError('Load failed');
+    return new Response(JSON.stringify({success: true, data: fixture}));
+  };
+  const pending = fetchDefaultsSetupState({waitForRestart: true});
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    context.mock.timers.tick(500);
+  }
+  assert.equal((await pending).state, fixture.state);
+  assert.equal(reads, 3);
+});
+
+test('Setup connection recovery remains bounded and does not retry integrity errors', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  fetchHandler = async () => {
+    reads += 1;
+    throw new TypeError('Load failed');
+  };
+  const bounded = assert.rejects(fetchDefaultsSetupState({waitForRestart: true}), /Load failed/);
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    context.mock.timers.tick(500);
+  }
+  await bounded;
+  assert.ok(reads <= 120);
+  reads = 0;
+  fetchHandler = async () => {
+    reads += 1;
+    return new Response(JSON.stringify({success: false, error: 'Profile digest mismatch'}), {status: 409});
+  };
+  await assert.rejects(fetchDefaultsSetupState({waitForRestart: true}), /Profile digest mismatch/);
+  assert.equal(reads, 1);
+});
+
+test('a late session invalidation cannot restart the Setup verification deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  let reads = 0;
+  const responses: Array<(response: Response) => void> = [];
+  fetchHandler = async () => {
+    reads += 1;
+    return new Promise<Response>((resolve) => { responses.push(resolve); });
+  };
+  const bounded = assert.rejects(fetchDefaultsSetupState({waitForRestart: true}), /request timed out/);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(59_000);
+  clearApiPrefetchCache();
+  responses[0](new Response(JSON.stringify({success: true, data: {}})));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(reads, 2);
+  context.mock.timers.tick(1_000);
+  await bounded;
+  responses[1](new Response(JSON.stringify({success: true, data: {}})));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+});
+
 test('presentation wrappers use Launcher-owned Tauri commands', async () => {
   await fetchPresentationState();
   await selectPresentation({
@@ -618,6 +1043,11 @@ test('health parsing recognizes reconfirmation and preserves the typed setup pat
     runtime_ready: false,
     runtime_status: 'profile_reconfirmation_required',
     runtime_error: 'internal denial detail is not surfaced by the UI',
+    host_catalog_verified: true,
+    profile_ceremony_available: true,
+    active_profile_ready: false,
+    launch_ready: false,
+    defaults_bootstrap_required: false,
   });
   assert.equal(health.runtime_status, 'profile_reconfirmation_required');
   assert.equal(health.runtime_ready, false);
@@ -630,6 +1060,50 @@ test('health parsing recognizes reconfirmation and preserves the typed setup pat
     /Profile reconfirmation is required.*Setup first/,
   );
   assert.equal(lastFetchUrl, '/api/setup/packs');
+});
+
+test('additive Setup routes retain exact methods, authentication and selector spelling', async () => {
+  setRuntimeDispatchStatus('profile_reconfirmation_required');
+  await apiFetch('/api/setup/packs?include_source_additions=true');
+  assert.equal(lastFetchUrl, '/api/setup/packs?include_source_additions=true');
+  await apiFetch('/api/setup/packs/install?include_source_additions=true', {method: 'POST'});
+  assert.equal(lastFetchUrl, '/api/setup/packs/install?include_source_additions=true');
+  for (const path of [
+    '/api/setup/packs?include_source_additions=false',
+    '/api/setup/packs?include_source_additions=1',
+    '/api/setup/packs?include_source_additions=true&include_source_additions=true',
+    '/api/setup/packs?include_source_additions=true&unknown=1',
+    '/api/setup/packs/install?include_source_additions=true',
+  ]) {
+    await assert.rejects(apiFetch(path), /exact method\/path allowlist/);
+  }
+});
+
+test('additive preview and activation use the same selector without retrying a denied POST', async () => {
+  const fixture = JSON.parse(readFileSync(new URL(
+    '../../../../tobkiri_runtime/tobkiri_protocol/fixtures/defaults_setup_v4.canonical.json', import.meta.url,
+  ), 'utf8'));
+  const requests: Array<{path: string; init?: RequestInit}> = [];
+  fetchHandler = async (input, init) => {
+    requests.push({path: String(input), init});
+    return init?.method === 'POST'
+      ? new Response(JSON.stringify({success: false, error: 'confirmation rejected'}), {status: 409})
+      : new Response(JSON.stringify({success: true, data: fixture}));
+  };
+  const proposal = await fetchDefaultsSetupState({includeSourceAdditions: true});
+  await assert.rejects(activateDefaultsProfile(
+    proposal.recommended_default_profile.confirmation, {includeSourceAdditions: true},
+  ), /confirmation rejected/);
+  assert.deepEqual(requests.map(({path}) => path), [
+    '/api/setup/packs?include_source_additions=true',
+    '/api/setup/packs/install?include_source_additions=true',
+  ]);
+  assert.deepEqual(JSON.parse(String(requests[1].init?.body)), {
+    setup_api_version: 'io.tobkiri.setup-state.v4',
+    operation_id: 'defaults.activate',
+    confirmed: true,
+    confirmation: proposal.recommended_default_profile.confirmation,
+  });
 });
 
 test('dispatch gate releases only after the Host publishes runtime_ready', async () => {
@@ -693,6 +1167,11 @@ test('health parsing accepts only coherent lifecycle relationships across all pe
                 runtime_ready: runtimeReady,
                 runtime_status: runtimeStatus,
                 runtime_error: runtimeError,
+                host_catalog_verified: true,
+                profile_ceremony_available: true,
+                active_profile_ready: runtimeReady,
+                launch_ready: runtimeReady,
+                defaults_bootstrap_required: false,
               };
               const coherent = runtimeStatus === 'starting'
                 ? status === 'ok' && !panelReady && !runtimeReady && runtimeError === null
@@ -822,13 +1301,33 @@ test('every single-target product route is dispatched through the generated map'
   }
 });
 
+test('conversation writes preserve their declared method and revision payload', async () => {
+  for (const method of ['PUT', 'DELETE'] as const) {
+    const payload = {conversation_id: 'conversation', expected_conversation_revision: 2};
+    await fetchFrontendContractOperation(method, '/api/chat/conversation', payload);
+    assert.equal(lastFetchInit?.method, method);
+    assert.deepEqual(JSON.parse(String(lastFetchInit?.body)), payload);
+    assert.equal(decodeURIComponent(lastFetchUrl), `/api/contracts/defaultspack/${method} /api/chat/conversation`);
+    const before = lastFetchUrl;
+    assert.throws(
+      () => fetchFrontendContractOperation(method, '/api/chat/conversation', {...payload, approved: true}),
+      /unknown key/,
+    );
+    assert.equal(lastFetchUrl, before);
+  }
+});
+
 test('all generated map bindings use the exact method/path and reject ambiguous capability dispatch', () => {
   assert.throws(
     () => fetchFrontendContractOperation('POST', '/api/ui/capability/invoke'),
     /multiple operations/i,
   );
   assert.throws(
-    () => fetchFrontendContractOperation('PUT' as never, '/api/pack-control/catalog'),
-    /unsupported|not declared/i,
+    () => fetchFrontendContractOperation('PUT', '/api/pack-control/catalog'),
+    /no exact route/i,
+  );
+  assert.throws(
+    () => fetchFrontendContractOperation('PATCH' as never, '/api/chat/conversation'),
+    /unsupported/i,
   );
 });

@@ -70,29 +70,17 @@ def _v4_provider_fixture(
     from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
 
     catalog = BundledCatalog.load(packaged_profile_bundle_root())
-    packs = dict(catalog.packs)
     for pack_id in provider_packs:
-        pack_path = ROOT / "ecosystem" / pack_id / "pack.v4.json"
-        packs[pack_id] = json.loads(pack_path.read_text(encoding="utf-8"))
-        assert packs[pack_id]["requirements"]["network"]["allowed_domains"] == []
+        assert (
+            catalog.packs[pack_id]["requirements"]["network"]["allowed_domains"]
+            == []
+        )
 
     source_profile = copy.deepcopy(catalog.profiles["defaults"])
     requested_pack_ids = {item["pack_id"] for item in source_profile["packs"]}
     additional_pack_ids = tuple(
         pack_id for pack_id in provider_packs if pack_id not in requested_pack_ids
     )
-    profiles = dict(catalog.profiles)
-    profiles["defaults"] = source_profile
-    catalog = BundledCatalog(
-        catalog.root,
-        packs,
-        catalog.bases,
-        catalog.shells,
-        profiles,
-        catalog.artifact_root,
-        executable_catalogs=catalog.executable_catalogs,
-    )
-
     authority_bindings = {
         "shell.tauri.default|defaultspack.conversation|conversation.turn.v1|complete": (
             "authority-ref:conversation.default"
@@ -233,6 +221,8 @@ def _v4_provider_fixture(
         providers={"tobkiri.resource.ai.provider.registry.v1": provider_metadata},
         profile_id=active.resolved.profile["profile_id"],
         plan_digest=active.resolved.plan["plan_digest"],
+        profile_revision=active.resolved.plan["profile_revision"],
+        activation_id=active.activation["activation_id"],
     )
     fixture = _V4ProviderFixture(
         profile=active.resolved.profile,

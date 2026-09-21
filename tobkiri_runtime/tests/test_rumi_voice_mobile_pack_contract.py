@@ -101,10 +101,10 @@ def test_pack_setup_discoverable_and_validates_dependencies() -> None:
     assert setup["risk_level"] == "medium"
     assert candidate.depends_on == []
     assert candidate.overlap_policy["connector_delivery"] == "handoff_to_rumi_connector_gateway_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "Voice Mobile" in candidate.defaultspack_promotion["reason"]
-    assert "no_voice_capture_runtime" in candidate.defaultspack_promotion["promotion_blockers"]
-    assert "handoff_receipt_schema_cases" in candidate.defaultspack_promotion["promotion_evidence_required"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "Voice Mobile" in candidate.base_pack_promotion["reason"]
+    assert "no_voice_capture_runtime" in candidate.base_pack_promotion["promotion_blockers"]
+    assert "handoff_receipt_schema_cases" in candidate.base_pack_promotion["promotion_evidence_required"]
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

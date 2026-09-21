@@ -155,7 +155,8 @@ class OfflineOperationQueue:
             queued_count = connection.execute(
                 """
                 SELECT COUNT(*) FROM offline_operations
-                WHERE owner_key = ? AND state IN ('queued', 'replaying')
+                WHERE owner_key = ?
+                  AND state IN ('queued', 'replaying', 'effect_committing')
                 """,
                 (owner,),
             ).fetchone()
@@ -288,19 +289,30 @@ class OfflineOperationQueue:
         owner_key: str = "local",
         lease_id: str,
     ) -> dict[str, Any]:
-        """Record replay success, conflict, cancellation, or terminal failure."""
+        """Record a replay terminal result without crossing the effect barrier.
+
+        Results from ``effect_committing`` remain valid after lease expiry: the
+        lease identifies the worker that owns the non-retryable effect, and no
+        worker can reclaim that state. A concurrent reconciliation process may
+        instead terminalize an expired record as ``reconciliation_required``.
+        """
 
         if state not in {"completed", "conflicted", "cancelled", "failed"}:
             raise OfflineQueueError("invalid terminal queue state")
         now = datetime.now(timezone.utc).isoformat()
         encoded_result = _canonical_json(_redact(result))
+        permitted_states = ("effect_committing",)
+        if state in {"cancelled", "conflicted", "failed"}:
+            permitted_states = ("replaying", "effect_committing")
+        placeholders = ", ".join("?" for _ in permitted_states)
         with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             cursor = connection.execute(
-                """
+                f"""
                 UPDATE offline_operations
                 SET state = ?, result_json = ?, updated_at = ?
                 WHERE queue_id = ? AND owner_key = ?
-                  AND state = 'replaying' AND lease_id = ?
+                  AND state IN ({placeholders}) AND lease_id = ?
                 """,
                 (
                     state,
@@ -308,23 +320,168 @@ class OfflineOperationQueue:
                     now,
                     queue_id,
                     _owner_key(owner_key),
+                    *permitted_states,
                     str(lease_id),
                 ),
             )
-            connection.commit()
             if cursor.rowcount != 1:
+                row = connection.execute(
+                    """
+                    SELECT queue_id, request_hash, state, request_json,
+                           created_at, updated_at, result_json
+                    FROM offline_operations
+                    WHERE queue_id = ? AND owner_key = ?
+                    """,
+                    (queue_id, _owner_key(owner_key)),
+                ).fetchone()
+                connection.commit()
+                if row is not None and str(row[2]) == "cancelled":
+                    return _row_to_record(row)
                 raise OfflineQueueError("queued operation was not found or is terminal")
             row = connection.execute(
                 """
-                SELECT queue_id, request_hash, state, request_json, created_at, updated_at
+                SELECT queue_id, request_hash, state, request_json,
+                       created_at, updated_at, result_json
                 FROM offline_operations
-                WHERE queue_id = ?
+                WHERE queue_id = ? AND owner_key = ?
                 """,
-                (queue_id,),
+                (queue_id, _owner_key(owner_key)),
             ).fetchone()
+            connection.commit()
+        return _row_to_record(row)
+
+    def begin_effect_commit(
+        self,
+        queue_id: str,
+        *,
+        owner_key: str,
+        lease_id: str,
+    ) -> dict[str, Any]:
+        """Atomically cross the durable barrier immediately before an effect.
+
+        A cancellation that commits first changes the record to ``cancelled``.
+        Once this transition commits, replay must invoke the backend exactly once;
+        later cancellation requests are durably marked but explicitly too late.
+        """
+
+        now = datetime.now(timezone.utc).isoformat()
+        owner = _owner_key(owner_key)
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE offline_operations
+                SET state = 'effect_committing', effect_committing_at = ?,
+                    updated_at = ?
+                WHERE queue_id = ? AND owner_key = ?
+                  AND state = 'replaying' AND lease_id = ?
+                  AND cancel_requested = 0
+                  AND lease_expires_at >= ?
+                """,
+                (
+                    now,
+                    now,
+                    str(queue_id),
+                    owner,
+                    str(lease_id),
+                    now,
+                ),
+            )
+            row = connection.execute(
+                """
+                SELECT queue_id, request_hash, state, request_json,
+                       created_at, updated_at, result_json
+                FROM offline_operations
+                WHERE queue_id = ? AND owner_key = ?
+                """,
+                (str(queue_id), owner),
+            ).fetchone()
+            connection.commit()
+        if row is None:
+            raise OfflineQueueError("queued operation was not found")
         record = _row_to_record(row)
-        record["result"] = json.loads(encoded_result)
-        return record
+        if cursor.rowcount == 1:
+            return {"status": "effect_committing", "queue": record}
+        if record["state"] == "cancelled":
+            return {"status": "cancelled", "queue": record}
+        raise OfflineQueueError(
+            "queued operation cannot enter the effect commit barrier"
+        )
+
+    def reconcile_expired_effect_commits(
+        self,
+        *,
+        owner_key: str,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Expose expired effect barriers without replaying an unknown effect.
+
+        An ``effect_committing`` record means a backend invocation may already
+        have happened. A worker crash therefore becomes an explicit
+        reconciliation task instead of an automatic retry that could duplicate
+        the effect.
+        """
+
+        if isinstance(limit, bool) or limit < 1 or limit > 1000:
+            raise OfflineQueueError("limit must be between 1 and 1000")
+        now = datetime.now(timezone.utc).isoformat()
+        owner = _owner_key(owner_key)
+        encoded_result = _canonical_json(
+            {
+                "api_version": "tobkiri.commands/v1",
+                "status": "reconciliation_required",
+                "state_changes": [],
+                "error": {
+                    "code": "EFFECT_OUTCOME_UNKNOWN",
+                    "message": (
+                        "effect commit lease expired before its outcome "
+                        "was recorded"
+                    ),
+                },
+            }
+        )
+        records: list[dict[str, Any]] = []
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """
+                SELECT queue_id
+                FROM offline_operations
+                WHERE owner_key = ? AND state = 'effect_committing'
+                  AND lease_expires_at < ?
+                ORDER BY created_at ASC, queue_id ASC
+                LIMIT ?
+                """,
+                (owner, now, limit),
+            ).fetchall()
+            for row in rows:
+                queue_id = str(row[0])
+                cursor = connection.execute(
+                    """
+                    UPDATE offline_operations
+                    SET state = 'reconciliation_required', result_json = ?,
+                        updated_at = ?
+                    WHERE queue_id = ? AND owner_key = ?
+                      AND state = 'effect_committing'
+                      AND lease_expires_at < ?
+                    """,
+                    (encoded_result, now, queue_id, owner, now),
+                )
+                if cursor.rowcount != 1:
+                    continue
+                current = connection.execute(
+                    """
+                    SELECT queue_id, request_hash, state, request_json,
+                           created_at, updated_at, result_json
+                    FROM offline_operations
+                    WHERE queue_id = ? AND owner_key = ?
+                    """,
+                    (queue_id, owner),
+                ).fetchone()
+                if current is not None:
+                    records.append(_row_to_record(current))
+            connection.commit()
+        return records
 
     def cancellation_requested(
         self,
@@ -339,7 +496,7 @@ class OfflineOperationQueue:
                 SELECT cancel_requested
                 FROM offline_operations
                 WHERE queue_id = ? AND owner_key = ?
-                  AND state = 'replaying' AND lease_id = ?
+                  AND lease_id = ?
                 """,
                 (str(queue_id), _owner_key(owner_key), str(lease_id)),
             ).fetchone()
@@ -376,32 +533,71 @@ class OfflineOperationQueue:
             connection.commit()
             return cursor.rowcount == 1
 
-    def cancel(self, queue_id: str, *, owner_key: str) -> bool:
+    def cancel(self, queue_id: str, *, owner_key: str) -> dict[str, Any]:
+        """Cancel before the barrier or report a durable too-late outcome."""
+
         now = datetime.now(timezone.utc).isoformat()
+        owner = _owner_key(owner_key)
+        cancelled_result = _canonical_json(
+            {
+                "api_version": "tobkiri.commands/v1",
+                "status": "cancelled",
+                "state_changes": [],
+            }
+        )
         with self._lock, self._connect() as connection:
-            cursor = connection.execute(
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
                 """
-                UPDATE offline_operations
-                SET state = CASE
-                      WHEN state = 'queued' THEN 'cancelled'
-                      ELSE state
-                    END,
-                    cancel_requested = CASE
-                      WHEN state = 'replaying' THEN 1
-                      ELSE cancel_requested
-                    END,
-                    lease_id = CASE
-                      WHEN state = 'queued' THEN NULL
-                      ELSE lease_id
-                    END,
-                    updated_at = ?
+                SELECT queue_id, request_hash, state, request_json,
+                       created_at, updated_at, result_json, effect_committing_at
+                FROM offline_operations
                 WHERE queue_id = ? AND owner_key = ?
-                  AND state IN ('queued', 'replaying')
                 """,
-                (now, str(queue_id), _owner_key(owner_key)),
-            )
+                (str(queue_id), owner),
+            ).fetchone()
+            if row is None:
+                connection.commit()
+                return {"status": "not_found", "too_late": False}
+            state = str(row[2])
+            crossed_barrier = bool(row[7])
+            if state in {"queued", "replaying"}:
+                connection.execute(
+                    """
+                    UPDATE offline_operations
+                    SET state = 'cancelled', cancel_requested = 1,
+                        result_json = ?, updated_at = ?
+                    WHERE queue_id = ? AND owner_key = ?
+                      AND state IN ('queued', 'replaying')
+                    """,
+                    (cancelled_result, now, str(queue_id), owner),
+                )
+                outcome = {"status": "cancelled", "too_late": False}
+            elif state == "cancelled":
+                outcome = {"status": "cancelled", "too_late": False}
+            elif state == "effect_committing" or crossed_barrier:
+                connection.execute(
+                    """
+                    UPDATE offline_operations
+                    SET cancel_requested = 1, updated_at = ?
+                    WHERE queue_id = ? AND owner_key = ?
+                    """,
+                    (now, str(queue_id), owner),
+                )
+                outcome = {"status": "too_late", "too_late": True}
+            else:
+                outcome = {"status": "not_cancellable", "too_late": False}
+            current = connection.execute(
+                """
+                SELECT queue_id, request_hash, state, request_json,
+                       created_at, updated_at, result_json
+                FROM offline_operations
+                WHERE queue_id = ? AND owner_key = ?
+                """,
+                (str(queue_id), owner),
+            ).fetchone()
             connection.commit()
-            return cursor.rowcount == 1
+        return {**outcome, "queue": _row_to_record(current)}
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=30)
@@ -431,6 +627,7 @@ class OfflineOperationQueue:
                     attempt_count INTEGER NOT NULL DEFAULT 0,
                     next_attempt_at TEXT,
                     cancel_requested INTEGER NOT NULL DEFAULT 0,
+                    effect_committing_at TEXT,
                     UNIQUE (owner_key, idempotency_key)
                 )
                 """
@@ -450,6 +647,7 @@ class OfflineOperationQueue:
                 "attempt_count": "INTEGER NOT NULL DEFAULT 0",
                 "next_attempt_at": "TEXT",
                 "cancel_requested": "INTEGER NOT NULL DEFAULT 0",
+                "effect_committing_at": "TEXT",
             }
             for name, declaration in migrations.items():
                 if name not in columns:
@@ -470,7 +668,10 @@ class OfflineOperationQueue:
                 """
                 DELETE FROM offline_operations
                 WHERE updated_at < ?
-                  AND state IN ('completed', 'conflicted', 'cancelled', 'failed')
+                  AND state IN (
+                      'completed', 'conflicted', 'cancelled', 'failed',
+                      'reconciliation_required'
+                  )
                 """,
                 (before,),
             )
@@ -479,7 +680,7 @@ class OfflineOperationQueue:
 
 
 def _row_to_record(row: sqlite3.Row | tuple[Any, ...]) -> dict[str, Any]:
-    return {
+    record = {
         "queue_id": str(row[0]),
         "request_hash": str(row[1]),
         "state": str(row[2]),
@@ -487,6 +688,9 @@ def _row_to_record(row: sqlite3.Row | tuple[Any, ...]) -> dict[str, Any]:
         "created_at": str(row[4]),
         "updated_at": str(row[5]),
     }
+    if len(row) > 6 and row[6] is not None:
+        record["result"] = json.loads(str(row[6]))
+    return record
 
 
 def _contains_secret(value: Any) -> bool:

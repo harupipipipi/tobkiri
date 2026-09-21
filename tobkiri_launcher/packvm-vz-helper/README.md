@@ -44,6 +44,36 @@ descriptor is closed immediately after it is read.
 `com.apple.security.virtualization` entitlement.  That means `swift run` and
 unit tests can exercise protocol validation but cannot start a VM.
 
+After VZ reports the VM started, the helper waits for the initial guest vsock
+service with a bounded five-minute readiness deadline. It retries only
+transient connection/readiness failures (starting at 100ms and capped at one
+second); authenticated, signature, schema, and protocol failures are returned
+immediately. Each attempt is capped at two seconds. Connect initiation follows
+Virtualization.framework's required VZ lifecycle queue, but its completion
+does no descriptor I/O there: a deadline cancels even a pre-connection
+attempt, closes a live connection if present, and then the launch path tears
+down the VM and allocation. At most two framework connects may be pending, so
+one framework call that never completes cannot prevent a fresh retry or cause
+unbounded blocked workers.
+The signed launch binding intentionally has no caller-controlled readiness
+timeout, so this is a helper-owned production default rather than untrusted
+request input.
+
+## Validation boundaries
+
+The macOS installer CI always runs the helper's Swift protocol and launch-asset
+tests on arm64, then builds, signs, and verifies the packaged sidecar with its
+exact virtualization entitlement. This is a native no-image check: it validates
+the production direct-VZ helper and its authenticated wire, but it does not
+claim to boot a guest.
+
+A real guest acceptance test needs a dedicated macOS runner with
+Virtualization.framework support, the pinned multi-GiB image already approved
+or cached, and a provisioned PackVM. The older
+`RUMI_RUN_LIMA_INTEGRATION=1` test has that same infrastructure requirement but
+targets only the legacy `rumi-managed-runtime` Lima supervisor; it is not
+evidence for the production direct-VZ PackVM.
+
 ## Build
 
 ```bash

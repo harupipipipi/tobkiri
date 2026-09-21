@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import os
 from pathlib import Path, PurePosixPath
 import stat
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.errors import SchemaValidationError
 from tobkiri_protocol.secure_persistence import (
     SecureDirectory,
     SecurePersistenceError,
@@ -31,6 +33,9 @@ _METADATA_FILES = (
 _MAX_MATERIALIZED_FILES = 10_000
 _MAX_MATERIALIZED_FILE_BYTES = 128 * 1024 * 1024
 _MAX_MATERIALIZED_TOTAL_BYTES = 512 * 1024 * 1024
+_MAX_DATA_FILE_BYTES = 2 * 1024 * 1024
+_MAX_DATA_TOTAL_BYTES = 16 * 1024 * 1024
+_MAX_DATA_FILES = 256
 
 
 @dataclass(frozen=True)
@@ -134,6 +139,116 @@ def capture_materialized_artifact(
 ) -> MaterializedPackArtifact:
     """Capture exact Pack bytes while rejecting symlink and swap races."""
 
+    with _pack_reader(pack_root, binding.artifact.pack_id) as (read_regular, root):
+        captured, implementation_path = _capture_files(read_regular, binding)
+    return MaterializedPackArtifact(
+        pack_id=binding.artifact.pack_id,
+        artifact_digest=binding.artifact.digest,
+        function_id=binding.function.function_id,
+        implementation_digest=binding.function.implementation_digest,
+        implementation_path=implementation_path,
+        materialization_digest=_materialization_digest(
+            binding.artifact.pack_id,
+            binding.artifact.digest,
+            binding.function.function_id,
+            binding.function.implementation_digest,
+            implementation_path,
+            captured,
+        ),
+        root_device=int(root.st_dev),
+        root_inode=int(root.st_ino),
+        files=captured,
+    )
+
+
+def capture_declared_pack_data(
+    pack_root: Path,
+    *,
+    pack_id: str,
+    artifact_digest: str,
+    path_prefix: str,
+) -> tuple[MaterializedArtifactFile, ...]:
+    """Copy bounded declarative bytes pinned by a Host-selected Pack digest.
+
+    The caller supplies the identity from its captured Profile, never from a
+    request payload or the same mutable manifest. No Function is required or
+    created. Only declared data below one relative directory is returned;
+    the result contains immutable bytes, without a Host path or executable bit.
+    """
+    require_identifier(pack_id, "data pack_id")
+    require_digest(artifact_digest, "data artifact")
+    if not path_prefix.endswith("/") or not _canonical_data_path(path_prefix[:-1]):
+        raise InvalidArtifactError("Pack data prefix must be a relative directory")
+    with _pack_reader(
+        pack_root, pack_id, max_file_bytes=_MAX_DATA_FILE_BYTES
+    ) as (read_regular, _root):
+        manifest_bytes, _mode = read_regular("pack.v4.json")
+        try:
+            manifest = validate_document(manifest_bytes, "pack")
+        except SchemaValidationError as exc:
+            raise InvalidArtifactError("Pack data manifest is invalid") from exc
+        declared = manifest["artifacts"]
+        if (
+            manifest["pack"]["id"] != pack_id
+            or manifest["pack"]["artifact_digest"] != artifact_digest
+            or manifest["integrity"]["artifact_set_digest"] != artifact_digest
+            or canonical_digest(declared) != artifact_digest
+        ):
+            raise InvalidArtifactError("Pack data artifact identity mismatch")
+        if (
+            len({item["path"] for item in declared}) != len(declared)
+            or any(not _canonical_data_path(item["path"]) for item in declared)
+        ):
+            raise InvalidArtifactError("Pack data declaration paths are invalid")
+        selected = sorted(
+            (item for item in declared if item["path"].startswith(path_prefix)),
+            key=lambda item: item["path"],
+        )
+        if len(selected) > _MAX_DATA_FILES:
+            raise InvalidArtifactError("Pack data inventory exceeds file limit")
+        if any(item["kind"] not in {"asset", "schema", "sidecar"} for item in selected):
+            raise InvalidArtifactError("Pack data selection contains executable code")
+        captured: list[MaterializedArtifactFile] = []
+        total = 0
+        for item in selected:
+            content, _mode = read_regular(item["path"])
+            total += len(content)
+            if total > _MAX_DATA_TOTAL_BYTES:
+                raise InvalidArtifactError("Pack data exceeds total size limit")
+            captured.append(
+                MaterializedArtifactFile(
+                    path=item["path"],
+                    digest=item["digest"],
+                    executable=False,
+                    content=content,
+                )
+            )
+        if read_regular("pack.v4.json")[0] != manifest_bytes:
+            raise InvalidArtifactError("Pack data declaration changed during capture")
+    return tuple(captured)
+
+
+def _canonical_data_path(value: str) -> bool:
+    path = PurePosixPath(value)
+    return (
+        bool(value)
+        and bool(path.parts)
+        and not path.is_absolute()
+        and path.as_posix() == value
+        and not {".", ".."}.intersection(path.parts)
+        and "\\" not in value
+        and "\x00" not in value
+    )
+
+
+@contextmanager
+def _pack_reader(
+    pack_root: Path,
+    pack_id: str,
+    *,
+    max_file_bytes: int = _MAX_MATERIALIZED_FILE_BYTES,
+) -> Iterator[tuple[Callable[[str], tuple[bytes, int]], os.stat_result]]:
+    """Share one bounded, no-follow reader and verify root continuity."""
     unresolved_root = Path(pack_root)
     try:
         initial_root = unresolved_root.lstat()
@@ -145,7 +260,7 @@ def capture_materialized_artifact(
         or not stat.S_ISDIR(initial_root.st_mode)
     ):
         raise InvalidArtifactError("Pack materialization root must be a real directory")
-    if binding.artifact.pack_id != unresolved_root.name:
+    if pack_id != unresolved_root.name:
         raise InvalidArtifactError("Pack materialization root identity mismatch")
 
     root_descriptor: int | None = None
@@ -160,7 +275,7 @@ def capture_materialized_artifact(
                 return (
                     secure_root.read_bytes_bounded(
                         relative,
-                        max_bytes=_MAX_MATERIALIZED_FILE_BYTES,
+                        max_bytes=max_file_bytes,
                     ),
                     0,
                 )
@@ -185,10 +300,12 @@ def capture_materialized_artifact(
 
         def read_regular(relative: str) -> tuple[bytes, int]:
             assert root_descriptor is not None
-            return _read_regular_file(root_descriptor, relative)
+            return _read_regular_file(
+                root_descriptor, relative, max_bytes=max_file_bytes
+            )
 
     try:
-        captured, implementation_path = _capture_files(read_regular, binding)
+        yield read_regular, initial_root
     finally:
         if root_descriptor is not None:
             os.close(root_descriptor)
@@ -202,24 +319,6 @@ def capture_materialized_artifact(
         or _file_identity(initial_root) != _file_identity(final_root)
     ):
         raise InvalidArtifactError("Pack materialization root changed during capture")
-    return MaterializedPackArtifact(
-        pack_id=binding.artifact.pack_id,
-        artifact_digest=binding.artifact.digest,
-        function_id=binding.function.function_id,
-        implementation_digest=binding.function.implementation_digest,
-        implementation_path=implementation_path,
-        materialization_digest=_materialization_digest(
-            binding.artifact.pack_id,
-            binding.artifact.digest,
-            binding.function.function_id,
-            binding.function.implementation_digest,
-            implementation_path,
-            captured,
-        ),
-        root_device=int(initial_root.st_dev),
-        root_inode=int(initial_root.st_ino),
-        files=captured,
-    )
 
 
 def _capture_files(
@@ -289,7 +388,12 @@ def _capture_files(
     return tuple(files), implementation_path
 
 
-def _read_regular_file(root_descriptor: int, relative_value: str) -> tuple[bytes, int]:
+def _read_regular_file(
+    root_descriptor: int,
+    relative_value: str,
+    *,
+    max_bytes: int = _MAX_MATERIALIZED_FILE_BYTES,
+) -> tuple[bytes, int]:
     relative = PurePosixPath(relative_value)
     if (
         not relative_value
@@ -318,6 +422,8 @@ def _read_regular_file(root_descriptor: int, relative_value: str) -> tuple[bytes
             if not stat.S_ISDIR(metadata.st_mode):
                 raise InvalidArtifactError("Pack materialization directory is unsafe")
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        # A swapped FIFO must not block open before the regular-file check.
+        flags |= getattr(os, "O_NONBLOCK", 0)
         try:
             descriptor = os.open(relative.parts[-1], flags, dir_fd=parent_descriptor)
         except OSError as exc:
@@ -326,19 +432,19 @@ def _read_regular_file(root_descriptor: int, relative_value: str) -> tuple[bytes
             before = os.fstat(descriptor)
             if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
                 raise InvalidArtifactError("Pack materialization entry is not a regular file")
-            if before.st_size > _MAX_MATERIALIZED_FILE_BYTES:
+            if before.st_size > max_bytes:
                 raise InvalidArtifactError("Pack materialization file exceeds size limit")
             chunks: list[bytes] = []
             total = 0
             while True:
                 chunk = os.read(
                     descriptor,
-                    min(1024 * 1024, _MAX_MATERIALIZED_FILE_BYTES + 1),
+                    min(1024 * 1024, max_bytes - total + 1),
                 )
                 if not chunk:
                     break
                 total += len(chunk)
-                if total > _MAX_MATERIALIZED_FILE_BYTES:
+                if total > max_bytes:
                     raise InvalidArtifactError("Pack materialization file exceeds size limit")
                 chunks.append(chunk)
             after = os.fstat(descriptor)

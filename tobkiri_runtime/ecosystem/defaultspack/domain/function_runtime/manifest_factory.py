@@ -359,7 +359,7 @@ CODING_FUNCTIONS: tuple[FunctionSpec, ...] = tuple(
         ("coding_git_status", "Get git status.", "low", "blocks.coding.git_status"),
         ("coding_git_diff", "Get git diff.", "low", "blocks.coding.git_diff"),
         ("coding_git_branch_get", "Get the current git branch.", "low", "blocks.coding.git_branch",),
-        ("coding_git_branch_create", "Create a git branch.", "high", "blocks.coding.git_branch"),
+        ("coding_git_branch_create", "Unavailable: Git branch create/switch requires a Host workspace mutation lease.", "high", "blocks.coding.git_branch"),
         ("coding_git_commit", "Create a git commit.", "high", "blocks.coding.git_commit"),
         ("coding_git_push", "Push git changes.", "high", "blocks.coding.git_push"),
         ("coding_rumi_log", "List or append local .rumi coding history.", "medium", "blocks.coding.rumi_log"),

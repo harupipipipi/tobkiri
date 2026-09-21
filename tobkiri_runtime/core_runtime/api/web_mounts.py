@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
+from typing_extensions import NotRequired
+
 if TYPE_CHECKING:
     from http.server import BaseHTTPRequestHandler as _HTTPHandlerBase
 else:
@@ -21,6 +23,7 @@ class WebMountEntry(TypedDict):
     spa_fallback: bool
     index_file: str
     auth_required: bool
+    auth_bootstrap: NotRequired[bool]
 
 
 class WebMountMixin(_HTTPHandlerBase):
@@ -29,6 +32,7 @@ class WebMountMixin(_HTTPHandlerBase):
     _CLIENT_DISCONNECT_EXCEPTIONS: tuple[type[OSError], ...]
 
     if TYPE_CHECKING:
+
         def _send_response(
             self,
             response: APIResponse,
@@ -58,7 +62,6 @@ class WebMountMixin(_HTTPHandlerBase):
     @staticmethod
     def _fixed_web_mounts() -> tuple[WebMountEntry, ...]:
         core_root = Path(__file__).resolve().parent.parent
-        runtime_root = core_root.parent
         return (
             {
                 "path_prefix": "/panel",
@@ -66,6 +69,7 @@ class WebMountMixin(_HTTPHandlerBase):
                 "spa_fallback": True,
                 "index_file": "index.html",
                 "auth_required": True,
+                "auth_bootstrap": True,
             },
             {
                 "path_prefix": "/setup",
@@ -73,13 +77,7 @@ class WebMountMixin(_HTTPHandlerBase):
                 "spa_fallback": True,
                 "index_file": "index.html",
                 "auth_required": False,
-            },
-            {
-                "path_prefix": "/desktops",
-                "web_root": runtime_root / "ecosystem" / "defaultspack" / "ui",
-                "spa_fallback": True,
-                "index_file": "shell.html",
-                "auth_required": True,
+                "auth_bootstrap": False,
             },
         )
 
@@ -101,7 +99,7 @@ class WebMountMixin(_HTTPHandlerBase):
             return
         prefix = selected["path_prefix"]
         root = selected["web_root"].resolve()
-        relative = request_path[len(prefix):]
+        relative = request_path[len(prefix) :]
         if not relative or relative == "/":
             relative = f"/{selected['index_file']}"
         try:

@@ -21,6 +21,7 @@ class ResponseWriterMixin(_HTTPHandlerBase):
     ]
 
     if TYPE_CHECKING:
+
         def _get_cors_origin(self, origin: str) -> str | None: ...
 
     def _send_response(
@@ -140,9 +141,9 @@ class ResponseWriterMixin(_HTTPHandlerBase):
                 if isinstance(event, bytes):
                     payload = event
                 else:
-                    payload = (
-                        "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
-                    ).encode("utf-8")
+                    payload = ("data: " + json.dumps(event, ensure_ascii=False) + "\n\n").encode(
+                        "utf-8"
+                    )
                 self.wfile.write(payload)
                 self.wfile.flush()
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
@@ -163,7 +164,7 @@ class ResponseWriterMixin(_HTTPHandlerBase):
             return result["data"].get("events", [])
         return None
 
-    def _send_defaultspack_http_result(self, result: Any) -> None:
+    def _send_pack_http_result(self, result: Any) -> None:
         if isinstance(result, dict) and result.get("_static"):
             body = str(result.get("body", "")).encode("utf-8")
             try:
@@ -185,7 +186,7 @@ class ResponseWriterMixin(_HTTPHandlerBase):
         if isinstance(result, dict) and result.get("_redirect"):
             try:
                 self.send_response(int(result.get("status_code", 302)))
-                self.send_header("Location", str(result.get("location") or "/chat"))
+                self.send_header("Location", str(result.get("location") or "/panel/"))
                 self.end_headers()
             except self._CLIENT_DISCONNECT_EXCEPTIONS:
                 self.close_connection = True

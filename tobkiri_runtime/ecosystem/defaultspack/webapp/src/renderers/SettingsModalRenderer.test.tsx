@@ -14,6 +14,9 @@ import {
 } from "./settings/renderers/slashCommandsField";
 import { allowCleartextMobileQr } from "../lib/mobileCleartextQr";
 import { apiKeySetupTargetFieldId } from "./settings/renderers/settingsFieldRendererUtils";
+import { SettingsStatusBar } from "./settings/SettingsStatusBar";
+import { ProfileSettingsPanel } from "./settings/ProfileSettingsPanel";
+import { ModelSearchPicker } from "../features/models/ModelSearchPicker";
 import type { TemplateSettingsField } from "./template/settingsFieldMetadata";
 import type { SettingsSection } from "../lib/api";
 
@@ -26,6 +29,49 @@ function makeModelOption(index: number) {
     model_id: `model-${index}`,
   };
 }
+
+test("settings error surfaces keep severity glyphs separate from stable copy controls", () => {
+  const statusHtml = renderToStaticMarkup(createElement(SettingsStatusBar, {
+    backendNote: "Kernel is unreachable.",
+    backendState: "offline",
+    loadState: { status: "error", message: "Settings refresh failed." },
+    locale: "en",
+    saveState: {
+      dirtyKeys: ["profiles.active_profile"],
+      message: "Profile save failed.",
+      status: "error",
+    },
+  }));
+  const profileHtml = renderToStaticMarkup(createElement(ProfileSettingsPanel, {
+    loadState: { status: "error", message: "Profiles could not load." },
+    locale: "en",
+    onSettingChange: () => undefined,
+    workspace: {
+      activeProfileId: "",
+      defaultProfileId: "",
+      editableCollection: null,
+      modelRoutesText: "",
+      profiles: [],
+    },
+  }));
+  const modelHtml = renderToStaticMarkup(createElement(ModelSearchPicker, {
+    error: "Model search failed.",
+    onChange: () => undefined,
+    onOpenChange: () => undefined,
+    onQueryChange: () => undefined,
+    open: true,
+    query: "demo",
+    value: "",
+  }));
+
+  assert.equal((statusHtml.match(/data-copy-action=""/g) ?? []).length, 3);
+  assert.match(statusHtml, /data-error-icon="error"/);
+  assert.match(profileHtml, /aria-label="Copy profile load error"/);
+  assert.match(profileHtml, /data-copy-action=""/);
+  assert.match(modelHtml, /aria-label="モデル検索エラーをコピー"/);
+  assert.match(modelHtml, /data-error-icon="error"/);
+  assert.match(modelHtml, /data-copy-action=""/);
+});
 
 
 test("settings close guard allows in-flight autosaves and guards only failed dirty changes", () => {
@@ -685,6 +731,45 @@ test("SettingsModalRenderer renders template api_key_setup with setup control", 
   assert.match(html, />Save</);
 });
 
+test("custom LLM API setup exposes only supported protocol choices", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [{
+        id: "apis",
+        label: "APIs",
+        fields: [{
+          id: "api_key_setup_template",
+          label: "API Key Setup",
+          type: "api_key_setup",
+          provider_id: "acme-ai",
+          api_keys: [{
+            provider_id: "acme-ai",
+            label: "Acme AI",
+            kind: "llm",
+          }],
+        } as unknown as TemplateSettingsField] as unknown as SettingsSection["fields"],
+      }],
+      settingsValues: { apis: { api_keys: [] } },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /aria-label="Custom LLM protocol"/);
+  assert.match(html, /value="openai-compatible"/);
+  assert.match(html, /value="anthropic"/);
+});
+
 test("Connections API credential template excludes AI provider keys", () => {
   const html = renderToStaticMarkup(
     createElement(SettingsModalRenderer, {
@@ -739,6 +824,10 @@ test("Connections API credential template excludes AI provider keys", () => {
   assert.match(html, /data-provider-scope="non_llm"/);
   assert.match(html, /line:channel:\*\*\*/);
   assert.doesNotMatch(html, /openai:main:\*\*\*/);
+  assert.match(html, /placeholder="line token"/);
+  assert.match(html, /外部サービス用トークンとして保存します/);
+  assert.doesNotMatch(html, /loopback endpoint only/);
+  assert.doesNotMatch(html, /Provider HTTPS base URL/);
 });
 
 test("Models places AI API registration before model API connections", () => {

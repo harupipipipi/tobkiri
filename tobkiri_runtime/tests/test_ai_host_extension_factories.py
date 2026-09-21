@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
@@ -9,6 +11,10 @@ from typing import Any, Mapping
 import pytest
 
 from core_runtime.host_provider_backend_v4 import HostProviderCaptureContextV4
+from tobkiri_host.broker import RequestEnvelope
+from tobkiri_host.models import OpaqueAuthorityRef, RequestContext
+from tobkiri_host.ports import OpaqueInvocationLease
+from tobkiri_protocol.canonical import canonical_digest
 from ecosystem.rumi_ai_pipeline_pack.runtime.pipeline import (
     HOST_PROVIDER_FACTORY as PIPELINE_FACTORIES,
 )
@@ -30,19 +36,26 @@ from ecosystem.rumi_model_registry_pack.runtime import process as registry_proce
 class _Invocation:
     """Record the contract allow-list acquired by a captured contribution."""
 
-    def __init__(self) -> None:
+    def __init__(self, client: object | None = None) -> None:
         self.calls: list[tuple[frozenset[str], str]] = []
+        self.client = object() if client is None else client
 
     def contract_client(
         self,
         *,
         allowed_contract_ids: frozenset[str],
         consumer_pack_id: str,
+        include_credentials: bool = True,
     ) -> object:
         """Return an opaque fake client with no ambient Host access."""
 
         self.calls.append((allowed_contract_ids, consumer_pack_id))
-        return object()
+        return self.client
+
+    def assert_current(self) -> None:
+        """Fake invocations are always current."""
+
+        return None
 
 
 def _binding(
@@ -206,7 +219,14 @@ def test_ai_support_factories_use_only_an_empty_declared_contract_client(
 
 
 @pytest.mark.parametrize(
-    "function_id, contract_id, operation_id, payload, expected_service_operation",
+    (
+        "function_id",
+        "contract_id",
+        "operation_id",
+        "payload",
+        "expected_service_operation",
+        "expected_calls",
+    ),
     [
         (
             "rumi_model_registry_pack.model-registry.profile",
@@ -214,13 +234,28 @@ def test_ai_support_factories_use_only_an_empty_declared_contract_client(
             "rumi_model_registry_pack.model-profile-resource.generate",
             {"identifier": "default", "profile_id": "defaults"},
             "rumi_model_registry_pack.model-profile-resource.generate",
+            [],
         ),
         (
             "rumi_model_registry_pack.model-registry.manage",
             "tobkiri.action.ai.model.profile.manage.v1",
             "rumi_model_registry_pack.model-profile-manage",
-            {"operation": "save", "profile_id": "defaults"},
+            {
+                "operation": "save",
+                "profile_id": "defaults",
+                "expected_revision": 0,
+                "provider_registry_revision": 0,
+                "record": {
+                    "metadata": {"provider_connection_id": "connection-1"}
+                },
+            },
             "save",
+            [
+                (
+                    frozenset({"tobkiri.resource.ai.provider.registry.v1"}),
+                    "rumi_model_registry_pack",
+                )
+            ],
         ),
         (
             "rumi_model_registry_pack.model-registry.migrate",
@@ -228,6 +263,7 @@ def test_ai_support_factories_use_only_an_empty_declared_contract_client(
             "rumi_model_registry_pack.model-registry-migrate",
             {"action": "migration.apply", "profile_id": "defaults"},
             "migration.apply",
+            [],
         ),
     ],
 )
@@ -239,6 +275,7 @@ def test_model_registry_factory_uses_bound_client_and_narrow_owner_operation(
     operation_id: str,
     payload: Mapping[str, Any],
     expected_service_operation: str,
+    expected_calls: list[tuple[frozenset[str], str]],
 ) -> None:
     """Registry factory never exposes a raw service method through payload."""
 
@@ -267,13 +304,33 @@ def test_model_registry_factory_uses_bound_client_and_narrow_owner_operation(
         binding,
         user_data_root=tmp_path,
     )
-    invocation = _Invocation()
+
+    class _ProviderRegistryClient:
+        def invoke(
+            self,
+            contract_id: str,
+            operation_id: str,
+            value: Mapping[str, Any],
+        ) -> Mapping[str, Any]:
+            return {
+                "revision": 0,
+                "providers": [
+                    {
+                        "provider_instance_id": "connection-1",
+                        "enabled": True,
+                    }
+                ],
+            }
+
+    invocation = _Invocation(
+        client=_ProviderRegistryClient() if expected_calls else None
+    )
 
     result = captured.contributions[0].invoke(operation_id, payload, invocation)
 
     assert result == {"operation": expected_service_operation}
     assert calls == [(tmp_path, expected_service_operation, payload)]
-    assert invocation.calls == [(frozenset(), "rumi_model_registry_pack")]
+    assert invocation.calls == expected_calls
 
 
 def test_model_registry_manage_rejects_an_unrelated_service_method(
@@ -339,3 +396,145 @@ def test_factory_rejects_mixed_function_bindings() -> None:
 
     with pytest.raises(PermissionError, match="bindings are incomplete"):
         ROUTING_FACTORY.capture(context)
+
+
+def test_model_search_projection_carries_saved_preferred_model(
+    tmp_path: Path,
+) -> None:
+    """The bounded settings projection keeps the saved preferred model.
+
+    ``preferred_model`` is non-secret owner state the runtime needs to resolve
+    the built-in Rumi pack base model; dropping it silently falls back to
+    catalog candidates.  Secret material must still stay out of the
+    projection.
+    """
+    from ecosystem.tobkiri_ui_settings_pack.runtime import model_search
+
+    class _Port:
+        def __init__(self) -> None:
+            self.commands: list[Any] = []
+
+        def search_models(self, command: Any) -> Mapping[str, Any]:
+            self.commands.append(command)
+            return {"models": []}
+
+    class _RegistryClient:
+        def invoke(
+            self,
+            contract_id: str,
+            operation_id: str,
+            payload: Mapping[str, Any],
+        ) -> Mapping[str, Any]:
+            return {"profiles": []}
+
+    class _SearchInvocation:
+        def __init__(self, envelope: RequestEnvelope) -> None:
+            self.envelope = envelope
+            self.client_calls: list[Mapping[str, Any]] = []
+
+        def assert_current(self) -> None:
+            return None
+
+        def contract_client(self, **kwargs: Any) -> object:
+            self.client_calls.append(kwargs)
+            return _RegistryClient()
+
+    settings_path = (
+        tmp_path / "defaultspack" / "shared" / "frontend_settings.json"
+    )
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "models": {
+                    "preferred_model": "openai/custom-preferred",
+                    "google_api_key": "secret-marker",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    binding = _binding(
+        function_id=model_search.FUNCTION_ID,
+        contract_id=model_search.CONTRACT_ID,
+        operation_id=model_search.OPERATION_ID,
+    )
+    port = _Port()
+    key = (
+        binding.operation.contract_id,
+        binding.operation.operation_id,
+        binding.principal_ref.value,
+    )
+    plan_digest = canonical_digest({"plan": "defaults"})
+    context = HostProviderCaptureContextV4(
+        profile_id="defaults",
+        plan_digest=plan_digest,
+        security_epoch=9,
+        activation={"activation_id": "activation-defaults"},
+        state_root=tmp_path / "state",
+        provider_bindings=(binding,),
+        catalog_bindings=(),
+        domain_ids={key: "domain.defaults"},
+        user_data_root=tmp_path,
+        model_search_port=port,
+    )
+    captured = model_search.HOST_PROVIDER_FACTORY[
+        model_search.FUNCTION_ID
+    ].capture(context)
+
+    envelope = RequestEnvelope(
+        context=RequestContext(
+            request_id="request-model-search",
+            trace_id="trace-model-search",
+            caller_principal=OpaqueAuthorityRef("caller-defaults"),
+            profile_id="defaults",
+            activation_id="activation-defaults",
+            activation_digest=canonical_digest(
+                {"activation_id": "activation-defaults"}
+            ),
+            plan_digest=plan_digest,
+            security_epoch=9,
+            caller_session_id="session-defaults",
+            caller_domain_id="domain.caller",
+            caller_boot_epoch=1,
+            target_domain_id="domain.defaults",
+            target_boot_epoch=1,
+            target_backend_digest=canonical_digest({"backend": "defaults"}),
+            profile_authority_digest=canonical_digest({"authority": "defaults"}),
+            fencing_token=1,
+            handle_namespace="model-search",
+        ),
+        target_principal=binding.principal_ref,
+        target_domain=OpaqueAuthorityRef("domain.defaults"),
+        contract_id=model_search.CONTRACT_ID,
+        contract_version="1.0.0",
+        operation_id=model_search.OPERATION_ID,
+        payload={},
+        request_digest=canonical_digest({"request": "model-search"}),
+        deadline_monotonic=time.monotonic() + 60,
+        lease=OpaqueInvocationLease(b"model-search-lease"),
+        idempotency_key=None,
+    )
+    invocation = _SearchInvocation(envelope)
+
+    result = captured.contributions[0].invoke(
+        model_search.OPERATION_ID,
+        {"profile_id": "defaults", "query": "Rumi"},
+        invocation,
+    )
+
+    assert result == {"models": []}
+    assert len(port.commands) == 1
+    command = port.commands[0]
+    assert command.runtime_settings["preferred_model"] == "openai/custom-preferred"
+    assert "google_api_key" not in command.runtime_settings
+    assert invocation.client_calls == [
+        {
+            "allowed_contract_ids": frozenset(
+                {model_search.MODEL_PROFILE_CONTRACT}
+            ),
+            "consumer_pack_id": "tobkiri_ui_settings_pack",
+            "include_credentials": False,
+        }
+    ]

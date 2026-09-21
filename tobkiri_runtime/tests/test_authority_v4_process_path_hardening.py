@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import shutil
 import sqlite3
+import sys
+import tempfile
 import threading
 from typing import Any
 
@@ -331,6 +333,33 @@ def test_authority_rejects_non_regular_and_symlink_ancestor_paths(
     alias.symlink_to(real_parent, target_is_directory=True)
     with pytest.raises(AuthorityStoreError, match="unsafe"):
         AuthorityStore(alias / "authority.sqlite3")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="Darwin-only alias contract")
+def test_secure_parent_normalizes_os_alias_but_rejects_caller_symlink() -> None:
+    """Normalize macOS temporary aliases without weakening no-follow checks."""
+
+    with tempfile.TemporaryDirectory() as temporary:
+        requested_root = Path(temporary)
+        canonical_root = secure_paths.canonical_platform_path(requested_root)
+        if requested_root == canonical_root:
+            pytest.skip("temporary directory is already represented canonically")
+
+        alias_root = Path("/var") / canonical_root.relative_to("/private/var")
+        target = canonical_root / "nested" / "authority.sqlite3"
+        target.parent.mkdir()
+
+        with secure_paths.secure_parent(
+            alias_root / "nested" / target.name
+        ) as opened_parent:
+            assert opened_parent.path == target.parent
+            assert opened_parent.descriptor is not None
+
+        linked_parent = canonical_root / "caller-link"
+        linked_parent.symlink_to(target.parent, target_is_directory=True)
+        with pytest.raises(secure_paths.SecurePathError, match="unsafe"):
+            with secure_paths.secure_parent(alias_root / "caller-link" / target.name):
+                pass
 
 
 @pytest.mark.skipif(not hasattr(os, "getuid"), reason="requires POSIX ownership")

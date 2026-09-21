@@ -1615,6 +1615,7 @@ def test_ambient_permission_function_requires_signed_viewer_operator(monkeypatch
     from blocks.ambient import permissions
     from core_runtime.authority.ui_operator import sign_ui_operator
     from core_runtime.host_contract import bind_host_contract
+    from tests.conformance_support.host_contract import host_contract
 
     unsigned = permissions.run({"action": "grant", "permission_id": MIC_PERMISSION})
 
@@ -1622,11 +1623,10 @@ def test_ambient_permission_function_requires_signed_viewer_operator(monkeypatch
     assert unsigned["error"]["code"] == "AMBIENT_PERMISSION_UI_OPERATOR_REQUIRED"
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"panel_bootstrap_secret": "test-ambient-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"panel_bootstrap_secret": "test-ambient-secret"},
+        )
     ):
         signed = permissions.run(
             {
@@ -1652,13 +1652,13 @@ def test_ambient_permission_function_rejects_wrong_operator_request(monkeypatch,
     from blocks.ambient import permissions
     from core_runtime.authority.ui_operator import sign_ui_operator
     from core_runtime.host_contract import bind_host_contract
+    from tests.conformance_support.host_contract import host_contract
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"panel_bootstrap_secret": "test-ambient-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"panel_bootstrap_secret": "test-ambient-secret"},
+        )
     ):
         result = permissions.run(
             {
@@ -1704,13 +1704,13 @@ def test_ambient_permission_revoke_function_requires_signed_viewer_operator(monk
     from blocks.ambient import permissions
     from core_runtime.authority.ui_operator import sign_ui_operator
     from core_runtime.host_contract import bind_host_contract
+    from tests.conformance_support.host_contract import host_contract
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"panel_bootstrap_secret": "test-ambient-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"panel_bootstrap_secret": "test-ambient-secret"},
+        )
     ):
         grant_operator = sign_ui_operator(
             "rumi_ambient_trigger_pack", nonce="ambient-grant"
@@ -1957,13 +1957,13 @@ def test_composer_transcription_rejects_invalid_or_mismatched_audio_mime(monkeyp
 def test_ambient_events_viewer_token_satisfies_local_ui_context():
     from transport import http
     from core_runtime.host_contract import bind_host_contract
+    from tests.conformance_support.host_contract import host_contract
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "viewer-local-token"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "viewer-local-token"},
+        )
     ):
         assert http._local_ui_approval_route_authorized(
             "POST",

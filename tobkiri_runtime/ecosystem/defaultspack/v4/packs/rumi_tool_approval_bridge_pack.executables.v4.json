@@ -1,42 +1,43 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:7e95acdaf4259f485eb7d746610a19e7c3444cb3327693181e1aec8205e39105",
   "pack_id": "rumi_tool_approval_bridge_pack",
-  "source_identity": "sha256:875d534c9a41b2844e4bd78cba38740dd66f9d108ab238649d8d1123989bf00a",
+  "source_identity": "sha256:45b7befb6e4e65aab490fb95f621e45d1f34653e43cd736b6f0f01ddd698229a",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_tool_approval_bridge_pack.tool-approval.authorize.python",
       "function_id": "rumi_tool_approval_bridge_pack.tool-approval.authorize",
-      "implementation_digest": "sha256:03ff0d15044227dd93e47aeb4640ff6633375b66fd284d20ab0ded3dff21e8df",
       "implementation_path": "runtime/bridge.py",
+      "implementation_digest": "sha256:03ff0d15044227dd93e47aeb4640ff6633375b66fd284d20ab0ded3dff21e8df",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.tool.authorize.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:1c5d87db10ba43552b1b615cb4e644f9b12127eebcf3d1bf4ef8cbe995155630",
+          "operation_id": "rumi_tool_approval_bridge_pack.tool-authorize",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_tool_approval_bridge_pack.tool-authorize",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:1c5d87db10ba43552b1b615cb4e644f9b12127eebcf3d1bf4ef8cbe995155630",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_tool_approval_bridge_pack.tool-approval.authorize.python"
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:7e95acdaf4259f485eb7d746610a19e7c3444cb3327693181e1aec8205e39105",
+  "catalog_digest": "sha256:b6fbc4cb5f259a2799d83bfd1bf2b95db3f4723b248571973a251a3d0e435a5d"
 }

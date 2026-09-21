@@ -7,7 +7,9 @@ DEFAULTSPACK_ROOT = Path(__file__).resolve().parents[1] / "ecosystem" / "default
 if str(DEFAULTSPACK_ROOT) not in sys.path:
     sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
-from core_runtime.ai_input_graph_builder import build_ai_input_graph_response  # noqa: E402
+from ecosystem.defaultspack.domain.ai_input.ai_input_graph_builder import (  # noqa: E402
+    build_ai_input_graph_response,
+)
 from core_runtime.profile_workspace import ProfileWorkspaceManager  # noqa: E402
 
 
@@ -89,8 +91,8 @@ def _profile(tmp_path: Path) -> dict:
 
 
 def test_ai_input_graph_includes_model_input_node(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
-    monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_prompt)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.ToolRegistry", _FakeToolRegistry)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.resolve_effective_prompt", _fake_prompt)
 
     payload = build_ai_input_graph_response(
         _profile(tmp_path),
@@ -104,8 +106,8 @@ def test_ai_input_graph_includes_model_input_node(monkeypatch, tmp_path: Path) -
 
 
 def test_selected_prompt_becomes_system_segment(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
-    monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_prompt)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.ToolRegistry", _FakeToolRegistry)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.resolve_effective_prompt", _fake_prompt)
 
     payload = build_ai_input_graph_response(
         _profile(tmp_path),
@@ -117,8 +119,8 @@ def test_selected_prompt_becomes_system_segment(monkeypatch, tmp_path: Path) -> 
 
 
 def test_disabled_prompt_edge_removes_segment(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
-    monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_prompt)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.ToolRegistry", _FakeToolRegistry)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.resolve_effective_prompt", _fake_prompt)
     profile = _profile(tmp_path)
     profile["metadata"]["ai_input"] = {
         "disabled_edges": ["edge:prompt:research.system->model_input:default.system"]
@@ -136,9 +138,9 @@ def test_disabled_prompt_edge_removes_segment(monkeypatch, tmp_path: Path) -> No
 
 
 def test_untrusted_pack_prompt_is_not_model_visible(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
-    monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_pack_prompt)
-    monkeypatch.setattr("core_runtime.ai_input_segments.is_pack_trusted", lambda pack_id: (False, "not_approved"))
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.ToolRegistry", _FakeToolRegistry)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.resolve_effective_prompt", _fake_pack_prompt)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.is_pack_trusted", lambda pack_id: (False, "not_approved"))
 
     payload = build_ai_input_graph_response(
         _profile(tmp_path),
@@ -157,8 +159,8 @@ def test_untrusted_pack_prompt_is_not_model_visible(monkeypatch, tmp_path: Path)
 
 
 def test_condition_gate_blocks_and_allows_segment(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
-    monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_prompt)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.ToolRegistry", _FakeToolRegistry)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.resolve_effective_prompt", _fake_prompt)
     profile = _profile(tmp_path)
     profile["metadata"]["ai_input"] = {
         "disabled_edges": ["edge:prompt:research.system->model_input:default.system"],
@@ -209,8 +211,8 @@ def test_condition_gate_blocks_and_allows_segment(monkeypatch, tmp_path: Path) -
 
 
 def test_legacy_selected_tools_do_not_create_runtime_allowlist(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
-    monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_prompt)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.ToolRegistry", _FakeToolRegistry)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.resolve_effective_prompt", _fake_prompt)
 
     payload = build_ai_input_graph_response(
         _profile(tmp_path),
@@ -224,8 +226,8 @@ def test_legacy_selected_tools_do_not_create_runtime_allowlist(monkeypatch, tmp_
 
 
 def test_api_route_and_memory_sources_connect_to_model_input(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
-    monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_prompt)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.ToolRegistry", _FakeToolRegistry)
+    monkeypatch.setattr("ecosystem.defaultspack.domain.ai_input.ai_input_segments.resolve_effective_prompt", _fake_prompt)
 
     payload = build_ai_input_graph_response(
         _profile(tmp_path),

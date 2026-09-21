@@ -513,8 +513,19 @@ def test_macos_python_archive_authority_is_exact_and_offline_after_download(
 def test_formal_packaging_lock_selection_is_target_bound() -> None:
     """ARM uses its reviewed wheel lock while Intel publication fails closed."""
     arm = BUILDER.target_spec("aarch64-apple-darwin")
-    assert BUILDER.packaging_requirements_relative(arm) == Path(
+    arm_lock_relative = BUILDER.packaging_requirements_relative(arm)
+    assert arm_lock_relative == Path(
         "tobkiri_runtime/requirements-packaging-aarch64-apple-darwin.txt"
+    )
+    arm_lock = (ROOT / arm_lock_relative).read_text(encoding="utf-8")
+    assert "wasmtime==48.0.0" in arm_lock
+    assert (
+        "sha256:ea69889a3c51702e9da5f5f441027ca934f7758f8926a4ed167b0d6877f092e8"
+        in arm_lock
+    )
+    assert (
+        "sha256:49c9ee43e9cf59ad7453ac65dce0cc4b885837904dd3cfd45faafe930defe14a"
+        not in arm_lock
     )
 
     intel = BUILDER.target_spec("x86_64-apple-darwin")
@@ -1070,7 +1081,7 @@ def test_manifest_is_strict_complete_and_reproducible(tmp_path: Path, target: st
         "package_id",
         "release_digest",
     )
-    assert first_document["package_provenance"]["package_id"] == "dev.tobkiri.launcher"
+    assert first_document["package_provenance"]["package_id"] == "dev.rumiai.app"
     assert tuple(first_document["sentinels"]) == BUILDER.SENTINEL_KEYS
     records = first_document["files"]
     assert records == sorted(records, key=lambda entry: entry["path"])
@@ -3733,35 +3744,27 @@ def test_all_tauri_build_callsites_are_mac_release_gated() -> None:
         .decode("utf-8")
         .split("\0")
     )
-    needle = "cargo tauri " + "build"
-    all_hits = []
-    callsites = []
+    raw_needle = "cargo tauri " + "build"
+    bound_needle = "python -B scripts/run_tauri_build.py build"
+    raw_callsites = []
+    bound_callsites = []
     for relative in tracked:
         if not relative:
+            continue
+        if Path(relative).suffix not in {".sh", ".yml", ".yaml"}:
             continue
         try:
             text = (ROOT / relative).read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        if needle in text:
-            all_hits.append(relative)
-        if Path(relative).suffix not in {".sh", ".yml", ".yaml"}:
-            continue
-        if needle in text:
-            callsites.append(relative)
-    assert set(all_hits) == {
+        if raw_needle in text:
+            raw_callsites.append(relative)
+        if bound_needle in text:
+            bound_callsites.append(relative)
+    assert set(raw_callsites) == {"scripts/build-and-sign.sh"}
+    assert set(bound_callsites) == {
         ".github/workflows/desktop-installers.yml",
         ".github/workflows/release.yml",
-        "scripts/build-and-sign.sh",
-        "tobkiri_runtime/docs/ci_build_guide.md",
-        "tobkiri_runtime/docs/quality_pack/claude_desktop_quality_pack.md",
-        "tobkiri_runtime/tests/test_claude_quality_pack_contract.py",
-        "tobkiri_runtime/tests/test_viewer_build_contract.py",
-    }
-    assert set(callsites) == {
-        ".github/workflows/desktop-installers.yml",
-        ".github/workflows/release.yml",
-        "scripts/build-and-sign.sh",
     }
 
     desktop = (ROOT / ".github/workflows/desktop-installers.yml").read_text(encoding="utf-8")
@@ -3775,10 +3778,10 @@ def test_all_tauri_build_callsites_are_mac_release_gated() -> None:
         assert "if: runner.os != 'macOS'" not in workflow
         assert "--features" not in workflow
         for line in workflow.splitlines():
-            if needle in line:
+            if bound_needle in line:
                 assert "${{ matrix.target }}" in line
 
     helper = (ROOT / "scripts/build-and-sign.sh").read_text(encoding="utf-8")
     guard = 'if [[ "$mode" == "production" && "$presentation_platform" != "macos" ]]'
     assert guard in helper
-    assert helper.index(guard) < helper.index(needle)
+    assert helper.index(guard) < helper.index(raw_needle)

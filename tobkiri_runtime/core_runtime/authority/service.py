@@ -1715,7 +1715,10 @@ class AuthorityService:
                     stream_label=stream_label,
                     summary=host_execution_summary,
                 )
-        if request.permission_id == "pack.approve" and resource.get("kind") == "defaultspack.pack_request":
+        if (
+            request.permission_id == "pack.approve"
+            and resource.get("kind") == "pack.approval_request"
+        ):
             target_label = target_pack_id or pack_id or "pack"
             title = f"{target_label} のpack requestを承認しますか？"
             summary = (
@@ -1724,7 +1727,7 @@ class AuthorityService:
             )
             access_summary = pack_request_mode or "pack request"
         if has_rich_provider_metadata and request.permission_id in {"model.invoke", "api_key.use", "network.egress"}:
-            app_label = app_name or "defaultspack"
+            app_label = app_name or "application"
             provider_label = provider_display_name or provider_id or "provider"
             provider_subject = (
                 provider_label

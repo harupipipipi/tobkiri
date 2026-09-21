@@ -59,6 +59,10 @@ test("keeps failures inside the startup boundary and offers a retry", () => {
   assert.match(markup, /role="alert"/);
   assert.match(markup, new RegExp(TOBKIRI_STARTUP_ERROR_LABEL));
   assert.match(markup, /Launcherから起動し直すか/);
+  assert.match(markup, /data-error-icon="startup"/);
+  assert.match(markup, /aria-label="起動エラーをコピー"/);
+  assert.match(markup, /data-copy-icon=""/);
+  assert.match(markup, /role="status" aria-live="polite"/);
   assert.match(markup, />再試行</);
   assert.match(markup, /<summary[^>]*>技術詳細<\/summary>/);
   assert.match(markup, /ツール情報を取得できませんでした/);
@@ -68,7 +72,7 @@ test("keeps failures inside the startup boundary and offers a retry", () => {
 
 test("uses the branded loading screen while the dynamic interface catalog loads", () => {
   const markup = renderToStaticMarkup(
-    <HostBootstrap route="/chat" fallback={<div>Fallback</div>} />,
+    <HostBootstrap pathname="/p/defaults/chat" />,
   );
 
   assert.match(markup, /data-tobkiri-loading-screen=""/);
@@ -76,20 +80,21 @@ test("uses the branded loading screen while the dynamic interface catalog loads"
   assert.doesNotMatch(markup, /Loading selected interface/);
 });
 
-test("keeps /chat on the scoped Pack v4 unavailable screen instead of the legacy fallback", () => {
+test("every unresolved route remains unavailable without a Chat fallback", () => {
+  for (const route of ["/chat", "/chat/", "/workbench", "/unknown", "/approval", "/coding"]) {
   const markup = renderToStaticMarkup(
     <HostBootstrapFallback
-      route="/chat"
-      reason="The active profile does not provide a Pack v4 conversation."
+      route={route}
+      reason="The conversation is not ready. Check the active profile and PackVM status in Tobkiri Launcher, then retry."
       onRetry={() => undefined}
-      fallback={<div data-legacy-chat-app="">Legacy ChatApp</div>}
     />,
   );
 
-  assert.match(markup, /data-conversation-surface="v4-unavailable"/);
-  assert.match(markup, /Tobkiri Conversation is unavailable/);
+  assert.match(markup, /data-frontend-unavailable=/);
+  assert.match(markup, /This screen is unavailable/);
   assert.match(markup, />Retry</);
   assert.doesNotMatch(markup, /Legacy ChatApp|data-legacy-chat-app/);
+  }
 });
 
 test("vendors the exact local animation shipped by Tobkiri Launcher", async () => {

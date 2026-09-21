@@ -145,8 +145,8 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["locale_qa_matrix"] == "owned_by_rumi_localization_pack"
     assert candidate.overlap_policy["locale_issue_schema"] == "owned_by_rumi_localization_pack"
 
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= {
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= {
         "no_executable_runtime",
         "localization_contract_only",
         "requires_locale_policy_selection",

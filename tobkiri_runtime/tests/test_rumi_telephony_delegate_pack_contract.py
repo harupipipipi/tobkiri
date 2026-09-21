@@ -26,7 +26,7 @@ WORKFLOW_IDS = set(['pre_call_script_review', 'never_call_screen', 'mock_dial_ap
 QUALITY_CHECK_IDS = set(['script_present', 'consent_disclosure_present', 'never_call_checked', 'approval_state_approved', 'approved_number_matches', 'disallowed_intent_aborts', 'consent_decline_aborts', 'transcript_pii_redacted', 'takeover_owner_present', 'takeover_abort_required'])
 OWNER_EXPECTED = set(['call_task_contract', 'pre_call_script', 'dial_approval_gate', 'consent_disclosure_script', 'call_session_state', 'takeover_escalation', 'transcript_redaction_contract', 'never_call_list', 'mock_dial_readiness'])
 NON_OWNER_EXPECTED = set(['actual dialing', 'ASR/TTS runtime', 'contact lookup', 'calendar mutation', 'payment or purchase execution', 'external connector writes', 'emergency services'])
-OVERLAP_EXPECTED = {'actual_dialing': 'blocked_handoff_to_defaultspack_tool_runtime', 'asr_tts_runtime': 'handoff_to_defaultspack_tool_runtime', 'media_transcript_runtime': 'handoff_to_defaultspack_tool_runtime', 'contact_or_calendar_lookup': 'handoff_to_defaultspack_tool_runtime', 'meeting_recap': 'handoff_to_rumi_local_agent_pack', 'external_business_action': 'handoff_to_rumi_operations_company_pack', 'real_world_action_risk_review': 'handoff_to_rumi_operations_company_pack', 'telephony_contract': 'owned_by_rumi_telephony_delegate_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
+OVERLAP_EXPECTED = {'actual_dialing': 'blocked_handoff_to_defaultspack_tool_runtime', 'asr_tts_runtime': 'handoff_to_defaultspack_tool_runtime', 'media_transcript_runtime': 'handoff_to_defaultspack_tool_runtime', 'contact_or_calendar_lookup': 'handoff_to_defaultspack_tool_runtime', 'meeting_recap': 'handoff_to_rumi_meeting_intelligence_pack', 'external_business_action': 'handoff_to_rumi_operations_company_pack', 'real_world_action_risk_review': 'handoff_to_rumi_operations_company_pack', 'telephony_contract': 'owned_by_rumi_telephony_delegate_pack', 'tool_aliases': 'prefer_explicit_pack_namespace'}
 PROMOTION_BLOCKERS = set(['no_actual_dialing_runtime', 'requires_external_real_world_action_approval_class', 'requires_never_call_policy', 'requires_redactable_transcript_storage', 'must_pass_disallowed_intent_abort_cases'])
 PROMOTION_EVIDENCE = set(['mock_dial_approval_cases', 'never_call_block_cases', 'transcript_redaction_cases', 'takeover_escalation_cases', 'operations_company_takeover_acceptance_cases', 'provider_handoff_acceptance_cases'])
 BLOCKED_BY_DEFAULT = set(['dial without human approval', 'call numbers on the never-call list', 'continue after consent is declined', 'continue after disallowed intent is detected', 'perform payment or purchase execution', 'handle emergency services', 'mask actual dialing as a mock handoff', 'store unredacted transcript PII in a handoff packet', 'use raw phone numbers instead of target aliases'])
@@ -60,7 +60,7 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
     assert ecosystem["metadata"]["declarative_only"] is True
     assert ecosystem["metadata"]["consumes_existing_sources_only"] is True
     assert ecosystem["metadata"]["output_effect"] == "draft_and_handoff_only"
-    assert ecosystem["metadata"]["defaultspack_promotion_eligible"] is False
+    assert ecosystem["metadata"]["base_pack_promotion_eligible"] is False
     assert set(ecosystem["metadata"]["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(ecosystem["metadata"]["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
     available = {item.pack_id for item in PackSelector(ROOT / "ecosystem").scan_candidates()}
@@ -86,7 +86,7 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
         "executable_code": False,
         "supports_all_ok": False,
         "external_actions_are_handoffs": True,
-        "defaultspack_promotion_eligible": False,
+        "base_pack_promotion_eligible": False,
     }
 
 
@@ -123,9 +123,9 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert handed
     assert candidate.overlap_policy["tool_aliases"] == "prefer_explicit_pack_namespace"
 
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

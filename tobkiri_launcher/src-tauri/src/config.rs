@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 const UV_PATH_ENV: &str = "RUMI_UV_PATH";
+const LOCAL_DEV_WORKSPACE_BUILD: Option<&str> = option_env!("TOBKIRI_LOCAL_DEV_WORKSPACE");
 
 /// Central configuration resolved from Tauri path APIs.
 #[derive(Debug, Clone)]
@@ -54,18 +55,37 @@ impl AppConfig {
     pub fn detect_for_tauri(resource_dir: PathBuf, app_data_dir: PathBuf) -> Result<Self> {
         let staged_app_dir = resource_dir.join("app");
         let detected_workspace_root = find_dev_workspace_root(&resource_dir);
-        let prefer_dev_runtime =
-            cfg!(debug_assertions) && is_cargo_debug_resource_dir(&resource_dir);
-        let dev_workspace_root = if prefer_dev_runtime {
-            detected_workspace_root
+        // A direct Cargo executable uses the checkout runtime. A debug `.app`
+        // uses its staged Resources/app tree so Python children do not need
+        // protected Desktop-folder access to import the checkout.
+        let is_debug_artifact = cfg!(debug_assertions)
+            && detected_workspace_root.is_some()
+            && (is_cargo_debug_resource_dir(&resource_dir)
+                || resource_dir.ancestors().any(|ancestor| {
+                    ancestor.file_name().and_then(|name| name.to_str()) == Some("target")
+                }));
+        let is_app_bundle = resource_dir
+            .ancestors()
+            .any(|ancestor| ancestor.extension().and_then(|value| value.to_str()) == Some("app"));
+        // The explicit marker covers a debug configuration whose resource
+        // map intentionally omits `gen/app`; the target-path check covers
+        // Cargo's direct and app-bundle resource layouts in tests and local
+        // builds. A staged app remains the runtime boundary for an app bundle.
+        let prefer_dev_runtime = (is_debug_artifact && !is_app_bundle)
+            || (is_explicit_local_development_workspace_build() && !staged_app_dir.exists());
+        let dev_workspace_root = if is_debug_artifact {
+            detected_workspace_root.clone()
         } else if staged_app_dir.exists() {
             None
         } else {
-            detected_workspace_root
+            detected_workspace_root.clone()
         };
 
         let mut app_dir = staged_app_dir;
-        if let Some(workspace_root) = &dev_workspace_root {
+        if prefer_dev_runtime {
+            let workspace_root = dev_workspace_root
+                .as_ref()
+                .context("debug runtime has no workspace root")?;
             let candidate = workspace_root.join("tobkiri_runtime");
             if candidate.join("app.py").exists() {
                 app_dir = candidate;
@@ -73,15 +93,45 @@ impl AppConfig {
         }
         let rumi_home = app_dir.clone();
 
-        let python_dir = app_data_dir.join("python");
-        let uv_path = if cfg!(target_os = "windows") {
-            app_data_dir.join("uv.exe")
+        // An unsigned checkout must never consume or mutate the installed
+        // application's persisted activation. macOS also binds writable files
+        // to the creating code identity; that identity changes on every local
+        // rebuild. Keep each debug run below its own ignored state root so a
+        // new build never blocks while opening MACL-bound state from an older
+        // build.
+        let writable_root = if dev_workspace_root.is_some() && is_app_bundle {
+            std::env::temp_dir()
+                .join("tobkiri-launcher-dev")
+                .join("runs")
+                .join(std::process::id().to_string())
+                .join("state")
         } else {
-            app_data_dir.join("uv")
+            dev_workspace_root
+                .as_ref()
+                .map(|workspace_root| {
+                    workspace_root
+                        .join("tobkiri_launcher")
+                        .join("src-tauri")
+                        .join("target")
+                        .join("dev-state")
+                        .join("runs")
+                        .join(std::process::id().to_string())
+                })
+                .unwrap_or(app_data_dir)
         };
-        let venv_dir = app_data_dir.join("venv");
-        let user_data_dir = app_data_dir.join("user_data");
-        let log_dir = app_data_dir.join("logs");
+
+        let python_dir = writable_root.join("python");
+        let uv_path = if cfg!(target_os = "windows") {
+            writable_root.join("uv.exe")
+        } else {
+            writable_root.join("uv")
+        };
+        let venv_dir = dev_workspace_root
+            .as_ref()
+            .map(|workspace_root| development_venv_dir(&app_dir, workspace_root, is_app_bundle))
+            .unwrap_or_else(|| writable_root.join("venv"));
+        let user_data_dir = writable_root.join("user_data");
+        let log_dir = writable_root.join("logs");
 
         Ok(Self {
             app_dir,
@@ -99,13 +149,17 @@ impl AppConfig {
     /// Rebase every writable Viewer runtime path into an owned state root.
     ///
     /// Debug parallel instances use this after validating their supervisor
-    /// root. Keeping Python, the virtual environment, logs, secrets, and user
-    /// data together prevents a debug process from mutating production app
-    /// data or another concurrently running Viewer.
+    /// root. Packaged runtimes keep their managed Python environment together
+    /// with logs, secrets, and user data. A development workspace instead
+    /// reads its already-validated repository venv: creating or provisioning
+    /// an isolated replacement would both duplicate dependencies and violate
+    /// the development Python policy.
     pub fn isolate_writable_state(&mut self, state_root: &Path, user_data_dir: PathBuf) {
         self.python_dir = state_root.join("python");
         self.uv_path = state_root.join(uv_binary_name());
-        self.venv_dir = state_root.join("venv");
+        if !self.is_dev_workspace() {
+            self.venv_dir = state_root.join("venv");
+        }
         self.user_data_dir = user_data_dir;
         self.log_dir = state_root.join("logs");
     }
@@ -135,11 +189,26 @@ impl AppConfig {
 
     /// Return the persisted panel bootstrap secret path inside app data.
     pub fn panel_bootstrap_secret_path(&self) -> PathBuf {
-        self.user_data_dir
+        let state_root = self
+            .user_data_dir
             .parent()
             .map(Path::to_path_buf)
-            .unwrap_or_else(|| self.user_data_dir.clone())
-            .join(".rumi_panel_bootstrap_secret")
+            .unwrap_or_else(|| self.user_data_dir.clone());
+
+        // macOS attaches a MACL to files created by an app process. That ACL
+        // is bound to the current code identity, so a newly rebuilt unsigned
+        // development app can block while opening the previous build's
+        // secret. A debug secret only coordinates children of this launcher.
+        #[cfg(debug_assertions)]
+        {
+            return state_root.join(format!(
+                ".rumi_panel_bootstrap_secret.{}",
+                std::process::id()
+            ));
+        }
+
+        #[cfg(not(debug_assertions))]
+        state_root.join(".rumi_panel_bootstrap_secret")
     }
 
     /// Return the directory where Viewer host broker files are stored.
@@ -269,6 +338,26 @@ fn is_cargo_debug_resource_dir(resource_dir: &Path) -> bool {
     )
 }
 
+fn is_explicit_local_development_workspace_build() -> bool {
+    LOCAL_DEV_WORKSPACE_BUILD == Some("1")
+}
+
+/// Select the venv that belongs to the runtime boundary selected for a
+/// development launch.
+///
+/// An unbundled debug `.app` deliberately runs the checkout runtime and must
+/// therefore use the checkout's `.venv`. A debug `.app` that contains a
+/// staged runtime instead uses the staged development venv copied beside that
+/// runtime. Production launches never call this helper.
+fn development_venv_dir(app_dir: &Path, workspace_root: &Path, is_app_bundle: bool) -> PathBuf {
+    let workspace_runtime = workspace_root.join("tobkiri_runtime");
+    if !is_app_bundle || app_dir == workspace_runtime {
+        workspace_root.join(".venv")
+    } else {
+        app_dir.join("dev-venv")
+    }
+}
+
 fn configured_uv_path() -> Option<PathBuf> {
     std::env::var_os(UV_PATH_ENV)
         .filter(|value| !value.is_empty())
@@ -347,8 +436,35 @@ mod tests {
         assert_eq!(config.log_dir, state_root.join("logs"));
         assert_eq!(
             config.panel_bootstrap_secret_path(),
-            state_root.join(".rumi_panel_bootstrap_secret")
+            state_root.join(format!(
+                ".rumi_panel_bootstrap_secret.{}",
+                std::process::id()
+            ))
         );
+    }
+
+    #[test]
+    fn isolated_writable_state_keeps_the_development_workspace_venv() {
+        let workspace_root = PathBuf::from("/tmp/tobkiri-workspace");
+        let workspace_venv = workspace_root.join(".venv");
+        let mut config = AppConfig {
+            app_dir: workspace_root.join("tobkiri_runtime"),
+            rumi_home: workspace_root.join("tobkiri_runtime"),
+            python_dir: PathBuf::from("/tmp/shared-app-data/python"),
+            uv_path: PathBuf::from("/tmp/shared-app-data/uv"),
+            venv_dir: workspace_venv.clone(),
+            user_data_dir: PathBuf::from("/tmp/shared-app-data/user_data"),
+            log_dir: PathBuf::from("/tmp/shared-app-data/logs"),
+            kernel_port: 8765,
+            dev_workspace_root: Some(workspace_root),
+        };
+        let state_root = PathBuf::from("/tmp/owned-debug-supervisor");
+
+        config.isolate_writable_state(&state_root, state_root.join("viewer_user_data"));
+
+        assert_eq!(config.venv_dir, workspace_venv);
+        assert_eq!(config.python_dir, state_root.join("python"));
+        assert_eq!(config.uv_path, state_root.join(uv_binary_name()));
     }
 
     #[test]
@@ -367,7 +483,10 @@ mod tests {
         let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
         assert_eq!(
             config.panel_bootstrap_secret_path(),
-            PathBuf::from("/tmp/data/.rumi_panel_bootstrap_secret")
+            PathBuf::from("/tmp/data").join(format!(
+                ".rumi_panel_bootstrap_secret.{}",
+                std::process::id()
+            ))
         );
     }
 
@@ -395,6 +514,13 @@ mod tests {
 
         let config = AppConfig::detect_for_tauri(resource, appdata).unwrap();
         assert_eq!(config.app_dir, root.join("tobkiri_runtime"));
+        assert_eq!(config.venv_dir, root.join(".venv"));
+        assert_eq!(
+            config.user_data_dir,
+            root.join("tobkiri_launcher/src-tauri/target/dev-state/runs")
+                .join(std::process::id().to_string())
+                .join("user_data")
+        );
         assert!(config.is_dev_workspace());
 
         fs::remove_dir_all(&root).ok();
@@ -456,9 +582,91 @@ mod tests {
 
         assert_eq!(config.app_dir, root.join("tobkiri_runtime"));
         assert_eq!(config.dev_workspace_root, Some(root.clone()));
+        assert_eq!(config.venv_dir, root.join(".venv"));
         assert!(config.is_dev_workspace());
 
         fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn detect_for_tauri_recognizes_target_triple_debug_directory() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_launcher_config_target_{unique}"));
+        let resource = root.join("tobkiri_launcher/src-tauri/target/aarch64-apple-darwin/debug");
+        let staged_app_py = resource.join("app/app.py");
+        let repo_app_py = root.join("tobkiri_runtime/app.py");
+        fs::create_dir_all(staged_app_py.parent().unwrap()).unwrap();
+        fs::create_dir_all(repo_app_py.parent().unwrap()).unwrap();
+        fs::write(&staged_app_py, "print('staged')\n").unwrap();
+        fs::write(&repo_app_py, "print('repo')\n").unwrap();
+
+        let config = AppConfig::detect_for_tauri(resource.clone(), root.join("appdata")).unwrap();
+
+        assert_eq!(config.app_dir, root.join("tobkiri_runtime"));
+        assert_eq!(config.venv_dir, root.join(".venv"));
+        assert!(config.is_dev_workspace());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn detect_for_tauri_recognizes_debug_app_bundle_resources() {
+        use std::fs;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri_launcher_config_app_{unique}"));
+        let resource = root.join(
+            "tobkiri_launcher/src-tauri/target/debug/bundle/macos/Tobkiri Launcher.app/Contents/Resources",
+        );
+        let staged_app_py = resource.join("app/app.py");
+        let repo_app_py = root.join("tobkiri_runtime/app.py");
+        fs::create_dir_all(staged_app_py.parent().unwrap()).unwrap();
+        fs::create_dir_all(repo_app_py.parent().unwrap()).unwrap();
+        fs::write(&staged_app_py, "print('staged')\n").unwrap();
+        fs::write(&repo_app_py, "print('repo')\n").unwrap();
+
+        let config = AppConfig::detect_for_tauri(resource.clone(), root.join("appdata")).unwrap();
+
+        assert_eq!(config.app_dir, resource.join("app"));
+        assert_eq!(config.dev_workspace_root, Some(root.clone()));
+        assert_eq!(config.venv_dir, resource.join("app/dev-venv"));
+        assert_eq!(
+            config.user_data_dir,
+            std::env::temp_dir()
+                .join("tobkiri-launcher-dev")
+                .join("runs")
+                .join(std::process::id().to_string())
+                .join("state/user_data")
+        );
+        assert!(config.is_dev_workspace());
+        fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn development_app_bundle_venv_follows_the_selected_runtime_boundary() {
+        let workspace_root = PathBuf::from("/tmp/tobkiri-workspace");
+        let workspace_runtime = workspace_root.join("tobkiri_runtime");
+        let staged_runtime = PathBuf::from("/tmp/Launcher.app/Contents/Resources/app");
+
+        assert_eq!(
+            development_venv_dir(&workspace_runtime, &workspace_root, true),
+            workspace_root.join(".venv"),
+            "an unbundled debug app uses the checkout runtime and venv"
+        );
+        assert_eq!(
+            development_venv_dir(&staged_runtime, &workspace_root, true),
+            staged_runtime.join("dev-venv"),
+            "a staged debug app uses the venv staged with that runtime"
+        );
     }
 
     #[test]

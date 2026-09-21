@@ -1,6 +1,7 @@
 import { MessageSquareText } from "lucide-react";
 
 import type { CompanyRunConversationMessage } from "../../lib/api";
+import { ErrorNotice } from "../ErrorNotice";
 
 const ROLE_TONES: Record<string, { rail: string; label: string; text: string }> = {
   user: { rail: "border-sky-500/60", label: "text-sky-300", text: "text-zinc-200" },
@@ -49,16 +50,30 @@ export function CompanyRunConversation({
       <div className="space-y-2">
         {visibleMessages.map((message, index) => {
           const tone = toneFor(message);
+          const isError = message.is_error === true || message.role === "error";
+          const label = message.label || message.role;
           return (
-            <div key={`${message.role}:${index}`} className={`border-l-2 pl-2 ${tone.rail}`}>
-              <div className="mb-0.5 flex min-w-0 items-center justify-between gap-2 text-[9px] uppercase tracking-wide">
-                <span className={`truncate font-semibold ${tone.label}`}>{message.label || message.role}</span>
-                <span className="flex-shrink-0 font-mono text-zinc-700">{message.role}</span>
+            isError ? (
+              <ErrorNotice
+                announce={false}
+                key={`${message.role}:${index}`}
+                className="px-2 py-1.5 text-[10px] leading-relaxed"
+                copyLabel={`${label}をコピー`}
+                copyText={`${label}: ${message.content}`}
+                message={message.content}
+                title={label}
+              />
+            ) : (
+              <div key={`${message.role}:${index}`} className={`border-l-2 pl-2 ${tone.rail}`}>
+                <div className="mb-0.5 flex min-w-0 items-center justify-between gap-2 text-[9px] uppercase tracking-wide">
+                  <span className={`truncate font-semibold ${tone.label}`}>{label}</span>
+                  <span className="flex-shrink-0 font-mono text-zinc-700">{message.role}</span>
+                </div>
+                <p className={`max-h-32 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-relaxed ${tone.text}`}>
+                  {message.content}
+                </p>
               </div>
-              <p className={`max-h-32 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-relaxed ${tone.text}`}>
-                {message.content}
-              </p>
-            </div>
+            )
           );
         })}
       </div>

@@ -8,11 +8,17 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Mapping
 
+from .pack_api_server import RuntimeCaptureFactory
+
 logger = logging.getLogger(__name__)
+
+_PROFILE_CAPTURE_ATTEMPTS = 3
+_PROFILE_CAPTURE_RETRY_DELAY_SECONDS = 0.05
 
 
 _RUNTIME_READINESS_LOCK = threading.Lock()
@@ -102,9 +108,11 @@ class AppLifecycleManager:
 
     base_dir: Path = field(default_factory=lambda: Path(__file__).resolve().parent.parent)
     packvm_lifecycle: Any | None = field(default=None, repr=False)
-    _activation_lock: threading.Lock = field(
-        default_factory=threading.Lock, init=False, repr=False
+    runtime_capture_factory: RuntimeCaptureFactory | None = field(
+        default=None,
+        repr=False,
     )
+    _activation_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     def check_setup_status(self) -> Dict[str, Any]:
         """
@@ -114,106 +122,173 @@ class AppLifecycleManager:
             {"needs_setup": bool, "reason": str}
         """
         from .bootstrap.profile_capture import (
-            active_default_profile_exists,
-            capture_default_profile,
+            active_profile_exists,
+            capture_active_profile,
+            host_profile_catalog,
+            runtime_user_data_root,
         )
+        from .profile_definition_store_v4 import ProfileDefinitionStore
 
-        if not active_default_profile_exists(base_dir=self.base_dir):
+        if not active_profile_exists(base_dir=self.base_dir):
+            try:
+                catalog = host_profile_catalog(base_dir=self.base_dir)
+                del catalog
+                bootstrap = ProfileDefinitionStore(
+                    runtime_user_data_root(self.base_dir)
+                ).bootstrap_state()
+                defaults_bootstrap_required = bootstrap.get("state") == "template_available"
+            except Exception as error:
+                logger.error("Host Profile catalog verification failed: %s", error)
+                result = {
+                    "needs_setup": True,
+                    "reason": "host_catalog_verification_failed",
+                    "setup_state": "host_verification_denied",
+                    "host_catalog_verified": False,
+                    "profile_ceremony_available": False,
+                    "active_profile_ready": False,
+                    "launch_ready": False,
+                    "defaults_bootstrap_required": False,
+                }
+                result.update(get_runtime_readiness())
+                return result
             result = {
-                "needs_setup": True,
-                "reason": "explicit_defaults_confirmation_required",
-                "setup_state": "profile_transaction_required",
+                "needs_setup": defaults_bootstrap_required,
+                "reason": (
+                    "explicit_bootstrap_confirmation_required"
+                    if defaults_bootstrap_required
+                    else "profile_activation_required"
+                ),
+                "setup_state": (
+                    "profile_transaction_required"
+                    if defaults_bootstrap_required
+                    else "profile_activation_required"
+                ),
+                "host_catalog_verified": True,
+                "profile_ceremony_available": not defaults_bootstrap_required,
+                "active_profile_ready": False,
+                "launch_ready": False,
+                "defaults_bootstrap_required": defaults_bootstrap_required,
             }
             result.update(get_runtime_readiness())
             return result
-        try:
-            active = capture_default_profile(base_dir=self.base_dir)
-            result = {
-                "needs_setup": False,
-                "reason": "canonical_v4_profile_captured",
-                "setup_state": "complete",
-                "profile_id": active.resolved.profile["profile_id"],
-                "plan_digest": active.resolved.plan["plan_digest"],
-                "activation_id": active.activation["activation_id"],
-            }
-        except Exception as error:
-            from ecosystem.defaultspack.domain.runtime_v4 import (
-                ProfileReconfirmationRequired,
-            )
+        from .profile_runtime_port import require_profile_runtime
 
-            logger.error("canonical v4 setup status failed: %s", error)
-            if isinstance(error, ProfileReconfirmationRequired):
+        profile_runtime = require_profile_runtime()
+        for attempt in range(_PROFILE_CAPTURE_ATTEMPTS):
+            try:
+                active = capture_active_profile(base_dir=self.base_dir)
                 result = {
-                    "needs_setup": True,
-                    "reason": "profile_reconfirmation_required",
-                    "setup_state": "profile_reconfirmation_required",
-                    "error_type": type(error).__name__,
-                    "denial_diagnostic": str(error),
+                    "needs_setup": False,
+                    "reason": "canonical_v4_profile_captured",
+                    "setup_state": "complete",
+                    "profile_id": active.resolved.profile["profile_id"],
+                    "plan_digest": active.resolved.plan["plan_digest"],
+                    "activation_id": active.activation["activation_id"],
+                    "host_catalog_verified": True,
+                    "profile_ceremony_available": True,
+                    "active_profile_ready": True,
+                    "launch_ready": True,
+                    "defaults_bootstrap_required": False,
                 }
-            else:
-                result = {
-                    "needs_setup": True,
-                    "reason": "canonical_v4_profile_unavailable",
-                    "setup_state": "profile_transaction_required",
-                    "error_type": type(error).__name__,
-                    "denial_diagnostic": str(error),
-                }
+                break
+            except Exception as error:
+                if (
+                    profile_runtime.is_activation_lock_timeout(error)
+                    and attempt + 1 < _PROFILE_CAPTURE_ATTEMPTS
+                ):
+                    time.sleep(_PROFILE_CAPTURE_RETRY_DELAY_SECONDS)
+                    continue
+
+                logger.error("canonical v4 setup status failed: %s", error)
+                if profile_runtime.is_reconfirmation_required(error):
+                    result = {
+                        "needs_setup": True,
+                        "reason": "profile_reconfirmation_required",
+                        "setup_state": "profile_reconfirmation_required",
+                        "error_type": type(error).__name__,
+                        "denial_diagnostic": str(error),
+                        "host_catalog_verified": True,
+                        "profile_ceremony_available": True,
+                        "active_profile_ready": False,
+                        "launch_ready": False,
+                        "defaults_bootstrap_required": False,
+                    }
+                else:
+                    result = {
+                        "needs_setup": True,
+                        "reason": "canonical_v4_profile_unavailable",
+                        "setup_state": "profile_transaction_required",
+                        "error_type": type(error).__name__,
+                        "denial_diagnostic": str(error),
+                        "host_catalog_verified": False,
+                        "profile_ceremony_available": False,
+                        "active_profile_ready": False,
+                        "launch_ready": False,
+                        "defaults_bootstrap_required": False,
+                    }
+                break
 
         result.update(get_runtime_readiness())
         return result
 
-    def activate_default_profile(
-        self, confirmation: Mapping[str, Any]
+    def activate_bootstrap_profile(
+        self, confirmation: Mapping[str, Any], *, include_source_additions: bool = False
     ) -> Any:
-        """Commit one confirmed activation and publish its Broker session."""
+        """Commit one Pack-selected activation and construct a restart-only check."""
 
         from .authority.v4 import AuthorityStore
         from .bootstrap.production_v4 import capture_production_dispatch
         from .bootstrap.profile_capture import (
-            _bundle_root,
-            capture_default_profile,
+            capture_bootstrap_profile,
             runtime_user_data_root,
         )
-        from .di_container import get_container
-        from .frontend_contract_routes import load_frontend_contract_bindings
-        from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
-        from tobkiri_host.runtime import install_dispatch_session
-
         with self._activation_lock:
-            active = capture_default_profile(
+            active = capture_bootstrap_profile(
                 base_dir=self.base_dir,
                 confirmation=confirmation,
+                include_source_additions=include_source_additions,
             )
-            runtime_root = Path(__file__).resolve().parents[1]
-            user_data = runtime_user_data_root(self.base_dir)
-            bundle_root = _bundle_root(self.base_dir)
-            catalog = BundledCatalog.load(bundle_root)
-            bindings = load_frontend_contract_bindings(
-                runtime_root
-                / "ecosystem"
-                / "defaultspack"
-                / "defaultspack"
-                / "frontend_contract_map.v4.json",
-                catalog.packs["runtime.tauri.application.default"],
-            )
-            session = capture_production_dispatch(
-                active,
-                bundle_root=bundle_root,
-                ecosystem_root=runtime_root / "ecosystem",
-                authority_store=AuthorityStore(
-                    user_data / "authority" / "v4.sqlite3"
-                ),
-                packvm_provisioner=self.packvm_lifecycle,
-                packvm_readiness_reader=(
-                    self.packvm_lifecycle.readiness_snapshot
-                    if self.packvm_lifecycle is not None
-                    else None
-                ),
-                frontend_contract_bindings=bindings,
-            )
-            install_dispatch_session(get_container(), session)
-            mark_runtime_ready()
+            try:
+                user_data = runtime_user_data_root(self.base_dir)
+                capture_factory = self.runtime_capture_factory
+                if capture_factory is None:
+                    raise RuntimeError("application runtime capture composition is unavailable")
+                inputs = capture_factory(active)
+                session = capture_production_dispatch(
+                    active,
+                    bundle_root=inputs.bundle_root,
+                    ecosystem_root=inputs.ecosystem_root,
+                    authority_store=AuthorityStore(user_data / "authority" / "v4.sqlite3"),
+                    packvm_provisioner=inputs.packvm_backend_factory,
+                    packvm_readiness_reader=(
+                        self.packvm_lifecycle.readiness_snapshot
+                        if self.packvm_lifecycle is not None
+                        else None
+                    ),
+                    http_contract_bindings=inputs.contract_bindings,
+                    activation_snapshot_loader=inputs.activation_snapshot_loader,
+                    runtime_surface_factory=inputs.runtime_surface_factory,
+                    capability_binding_snapshot_factory=(inputs.capability_binding_snapshot_factory),
+                    capability_binding_selector=inputs.capability_binding_selector,
+                    credential_store_factory=inputs.credential_store_factory,
+                    acceptance_receipts=inputs.acceptance_receipts,
+                    chat_continuation_approve=inputs.chat_continuation_approve,
+                    chat_continuation_resume=inputs.chat_continuation_resume,
+                    authority_approval_window_open=inputs.authority_approval_window_open,
+                    model_search=inputs.model_search,
+                )
+            except Exception as error:
+                from .activation_handoff import ActivationCommittedError
+
+                raise ActivationCommittedError(
+                    "activation committed; cold Host verification is required"
+                ) from error
             return active, session
+
+    def activate_default_profile(self, confirmation: Mapping[str, Any]) -> Any:
+        """Compatibility alias for the Pack-selected bootstrap activation."""
+
+        return self.activate_bootstrap_profile(confirmation)
 
     def complete_setup(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -241,9 +316,10 @@ class AppLifecycleManager:
                 "errors": errors,
                 "setup_state": "invalid_request",
             }
-        from .bootstrap.profile_capture import capture_default_profile
+        from .bootstrap.profile_capture import capture_active_profile
+
         try:
-            active = capture_default_profile(base_dir=self.base_dir)
+            active = capture_active_profile(base_dir=self.base_dir)
         except Exception as error:
             logger.error("canonical v4 setup transaction failed: %s", error)
             return {
@@ -277,4 +353,9 @@ class AppLifecycleManager:
             "runtime_ready": status.get("runtime_ready", False),
             "runtime_status": status.get("runtime_status", "starting"),
             "runtime_error": status.get("runtime_error"),
+            "host_catalog_verified": status.get("host_catalog_verified", False),
+            "profile_ceremony_available": status.get("profile_ceremony_available", False),
+            "active_profile_ready": status.get("active_profile_ready", False),
+            "launch_ready": status.get("launch_ready", False),
+            "defaults_bootstrap_required": status.get("defaults_bootstrap_required", False),
         }

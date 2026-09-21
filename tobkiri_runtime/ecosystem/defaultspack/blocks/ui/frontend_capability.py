@@ -8,7 +8,7 @@ from collections import OrderedDict
 from typing import Any
 
 from blocks._common import error, ok
-from core_runtime.frontend_host import build_frontend_catalog
+from ecosystem.defaultspack.domain.frontend.host import build_frontend_catalog
 from core_runtime.global_contract_dispatch import (
     GlobalContractInvocationError,
     GlobalContractUnavailable,

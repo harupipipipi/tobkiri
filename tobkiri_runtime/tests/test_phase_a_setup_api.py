@@ -43,7 +43,11 @@ class TestCheckSetupStatus:
         alm = AppLifecycleManager(base_dir=tmp_path)
         result = alm.check_setup_status()
         assert result["needs_setup"] is True
-        assert result["reason"] == "explicit_defaults_confirmation_required"
+        assert result["reason"] == "explicit_bootstrap_confirmation_required"
+        assert result["host_catalog_verified"] is True
+        assert result["profile_ceremony_available"] is False
+        assert result["defaults_bootstrap_required"] is True
+        assert result["launch_ready"] is False
 
     def test_setup_status_includes_runtime_readiness(self, tmp_path):
         from core_runtime.app_lifecycle_manager import (

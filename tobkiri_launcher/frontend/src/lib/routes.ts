@@ -22,6 +22,18 @@ export type PanelRouteMeta = {
   navKey?: string;
 };
 
+export const DEVTOOLS_PANEL_ROUTE_KEYS = [
+  'graph',
+  'flow',
+  'apiMap',
+  'aiInput',
+  'nodeManager',
+  'profileFiles',
+  'profileWiring',
+] as const satisfies readonly PanelRouteKey[];
+
+export type DevtoolsPanelRouteKey = (typeof DEVTOOLS_PANEL_ROUTE_KEYS)[number];
+
 export const panelRouteMeta: Record<PanelRouteKey, PanelRouteMeta> = {
   home: { path: panelRoutes.home, titleKey: 'nav.home', navKey: 'nav.home' },
   setup: { path: panelRoutes.setup, titleKey: 'nav.setup' },
@@ -49,28 +61,41 @@ export const panelRouteMeta: Record<PanelRouteKey, PanelRouteMeta> = {
   },
 };
 
-export const viewerNavGroups = [
+const primaryViewerNavGroups = [
   {
     id: 'workspace',
     labelKey: 'nav.group.workspace',
     routes: ['home', 'packs'] satisfies PanelRouteKey[],
   },
   {
-    id: 'advanced',
-    labelKey: 'nav.group.advanced',
-    routes: [
-      'profile',
-      'settings',
-      'profileWiring',
-      'profileFiles',
-      'flow',
-      'graph',
-      'aiInput',
-      'apiMap',
-      'nodeManager',
-    ] satisfies PanelRouteKey[],
+    id: 'preferences',
+    labelKey: 'nav.group.preferences',
+    routes: ['profile', 'settings'] satisfies PanelRouteKey[],
   },
 ] as const;
+
+const devtoolsViewerNavGroup = {
+  id: 'devtools',
+  labelKey: 'nav.group.devtools',
+  routes: DEVTOOLS_PANEL_ROUTE_KEYS,
+} as const;
+
+export type ViewerNavGroup =
+  | (typeof primaryViewerNavGroups)[number]
+  | typeof devtoolsViewerNavGroup;
+
+/** Keep Devtools out of default navigation without changing its stable routes. */
+export function viewerNavGroups(devtoolsEnabled: boolean): ViewerNavGroup[] {
+  return devtoolsEnabled
+    ? [...primaryViewerNavGroups, devtoolsViewerNavGroup]
+    : [...primaryViewerNavGroups];
+}
+
+export function isDevtoolsPanelRouteKey(
+  route: PanelRouteKey,
+): route is DevtoolsPanelRouteKey {
+  return DEVTOOLS_PANEL_ROUTE_KEYS.some((candidate) => candidate === route);
+}
 
 export function panelRouteTitleKey(pathname: string): string {
   if (pathname === panelRoutes.packs || pathname.startsWith(`${panelRoutes.packs}/`)) {

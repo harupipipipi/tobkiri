@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from threading import RLock
-from typing import Any
+from typing import Any, Mapping
 
 
 @dataclass(frozen=True)
@@ -92,9 +92,9 @@ def persisted_resolved_profile() -> Any | None:
     if active is not None:
         return active
     try:
-        from .bootstrap.profile_capture import capture_default_profile
+        from .bootstrap.profile_capture import capture_active_profile
 
-        captured = capture_default_profile()
+        captured = capture_active_profile()
         activation_id = str(captured.activation["activation_id"])
         cache_key = (activation_id, _PERSISTED_PROFILE_INVALIDATION_REVISION)
         with _PERSISTED_PROFILE_LOCK:
@@ -140,6 +140,7 @@ def _view_from_activation(captured: Any) -> V4ResolvedProfileView:
         effective_pack_set=effective,
         packs=packs,
         providers=providers,
+        projections=tuple(profile.get("content_projections") or ()),
     )
 
 
@@ -148,6 +149,23 @@ def effective_pack_ids() -> frozenset[str]:
 
     plan = persisted_resolved_profile()
     return frozenset(plan.effective_pack_set) if plan is not None else frozenset()
+
+
+def effective_profile_projections() -> tuple[Any, ...]:
+    """Return digest-bound content projections from the active Profile."""
+
+    plan = persisted_resolved_profile()
+    if plan is None:
+        return ()
+    projections = getattr(plan, "projections", None)
+    if projections is None:
+        profile = getattr(plan, "profile", None)
+        projections = (
+            profile.get("content_projections")
+            if isinstance(profile, Mapping)
+            else ()
+        )
+    return tuple(projections or ())
 
 
 def require_effective_pack(pack_id: str) -> None:
@@ -169,6 +187,7 @@ __all__ = [
     "activate_resolved_profile",
     "active_resolved_profile",
     "effective_pack_ids",
+    "effective_profile_projections",
     "invalidate_persisted_resolved_profile",
     "persisted_resolved_profile",
     "require_effective_pack",

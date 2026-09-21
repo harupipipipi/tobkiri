@@ -120,18 +120,18 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["model_scoring"] == "handoff_to_rumi_model_evals_pack"
     assert candidate.overlap_policy["qa_routing_matrix"] == "owned_by_rumi_agentic_qa_pack"
     assert candidate.overlap_policy["acceptance_rubric"] == "owned_by_rumi_agentic_qa_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "acceptance and triage contract pack" in candidate.defaultspack_promotion["reason"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "acceptance and triage contract pack" in candidate.base_pack_promotion["reason"]
     assert {
         "no_executable_runtime",
         "qa_contract_only",
         "requires_external_owner_for_browser_replay",
         "requires_external_owner_for_model_scoring",
-    } <= set(candidate.defaultspack_promotion["promotion_blockers"])
+    } <= set(candidate.base_pack_promotion["promotion_blockers"])
     assert {
         "stable_replay_integration_surface",
         "observability_evidence_for_scenario_runs",
-    } <= set(candidate.defaultspack_promotion["promotion_evidence_required"])
+    } <= set(candidate.base_pack_promotion["promotion_evidence_required"])
     assert candidate.marketplace["id"].startswith("rumi.")
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"

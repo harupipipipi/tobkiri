@@ -1,42 +1,43 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:310f0ca8297bebba86c89e5eefe467399e94f44f1216878457db4d3b80dcb3a8",
   "pack_id": "rumi_git_read_pack",
-  "source_identity": "sha256:5c8ae1efd0bfe6a847b2b3db070225fca4b0901ee80544c48d544663acb79882",
+  "source_identity": "sha256:a8158ef96ca54dbefb35656726ef3d49d0ffe67045dfb4c854fa33e3c01f8e2c",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_git_read_pack.git-read.service.python",
       "function_id": "rumi_git_read_pack.git-read.service",
-      "implementation_digest": "sha256:9f79fddc4bb747277a0623bb2ba6cab74944d20e4fdf35005f4d355c06d6f932",
       "implementation_path": "runtime/read.py",
+      "implementation_digest": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.git.read.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:620f8682cdb4a27c2ac2c94c22536575387b86aeff2cff3465411ae8789c37e5",
+          "operation_id": "rumi_git_read_pack.git-read",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_git_read_pack.git-read",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:620f8682cdb4a27c2ac2c94c22536575387b86aeff2cff3465411ae8789c37e5",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_git_read_pack.git-read.service.python"
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:ced22b8842e1588b5524e7a88f0046a99530da8c910927d26c1dbf4420c75395",
+  "catalog_digest": "sha256:cebd87ec8cdbec59cf11fa92cb51e21abc032e6783d34ac4831d228de43c0fd2"
 }

@@ -125,18 +125,18 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["workflow_taxonomy"] == "owned_by_rumi_business_ops_pack"
     assert candidate.overlap_policy["approval_risk_matrix"] == "owned_by_rumi_business_ops_pack"
     assert candidate.overlap_policy["handoff_ledger"] == "owned_by_rumi_business_ops_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "declarative planning, approval, and handoff pack" in candidate.defaultspack_promotion["reason"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "declarative planning, approval, and handoff pack" in candidate.base_pack_promotion["reason"]
     assert {
         "no_executable_runtime",
         "business_contract_only",
         "requires_connector_pack_for_external_actions",
         "requires_scheduler_pack_for_followups",
-    } <= set(candidate.defaultspack_promotion["promotion_blockers"])
+    } <= set(candidate.base_pack_promotion["promotion_blockers"])
     assert {
         "successful_approval_gated_business_workflows",
         "connector_handoff_audit_evidence",
-    } <= set(candidate.defaultspack_promotion["promotion_evidence_required"])
+    } <= set(candidate.base_pack_promotion["promotion_evidence_required"])
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

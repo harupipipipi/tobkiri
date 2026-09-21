@@ -1,4 +1,4 @@
-import { AlertTriangle, Bot, ClipboardList, MessageSquare, Route, Settings, Share2 } from "lucide-react";
+import { Bot, ClipboardList, MessageSquare, Route, Settings, Share2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
@@ -15,6 +15,7 @@ import type {
   P2PStatusResponse,
 } from "../../lib/api";
 import { arrayFromRecord, companyResources } from "../../features/company/resources/companyResources";
+import { ErrorNotice } from "../ErrorNotice";
 import { CompanyAgentList } from "./CompanyAgentList";
 import { CompanyChannelView } from "./CompanyChannelView";
 import { CompanyInboundRoutesPanel } from "./CompanyInboundRoutesPanel";
@@ -706,10 +707,12 @@ export function CompanyWorkspacePanel({
       </div>
 
       {error && (
-        <div className="m-2 flex items-start gap-2 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
-          <AlertTriangle size={13} className="mt-0.5 flex-shrink-0" />
-          <span>{error}</span>
-        </div>
+        <ErrorNotice
+          className="m-2 px-2 py-1.5 text-[11px]"
+          copyLabel="会社ワークスペースエラーをコピー"
+          message={error}
+          severity="warning"
+        />
       )}
 
       <CompanyTree

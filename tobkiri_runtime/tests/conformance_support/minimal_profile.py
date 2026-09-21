@@ -335,8 +335,14 @@ def minimal_profile() -> MinimalProfile:
         {"role": "shell", "identity": shell.pack_id, "artifact_digest": shell.digest},
         {"role": "pack", "identity": pack.pack_id, "artifact_digest": pack.digest},
     ]
+    content_projections: list[dict[str, Any]] = []
     requested_edges_digest = canonical_digest(profile["requested_edges"])
-    closure_digest = canonical_digest(effective_set)
+    closure_digest = canonical_digest(
+        {
+            "effective_set": effective_set,
+            "content_projections": content_projections,
+        }
+    )
     provenance_digest = canonical_digest(profile["provenance"])
     binding = {
         "caller_function_id": caller.function_id,
@@ -383,7 +389,9 @@ def minimal_profile() -> MinimalProfile:
             "definition_digest": MINIMAL_SHELL_DEFINITION_DIGEST,
         },
         "application": None,
+        "launch_contribution": None,
         "effective_set": effective_set,
+        "content_projections": content_projections,
         "requested_edges_digest": requested_edges_digest,
         "constraints_digest": MINIMAL_CONSTRAINTS_DIGEST,
         "closure_digest": closure_digest,
@@ -419,6 +427,7 @@ def minimal_profile() -> MinimalProfile:
         },
         "application": None,
         "effective_set": effective_set,
+        "content_projections": content_projections,
         "variant_pins": [
             {
                 "pack_id": pack.pack_id,

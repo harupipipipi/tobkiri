@@ -36,10 +36,13 @@ from tobkiri_protocol import platform_artifact
 from tobkiri_protocol.provenance import (
     informational_source_commit,
     normative_generated_provenance,
+    repository_tree_digest,
     trusted_source_commit,
 )
 from scripts import generate_defaultspack_v4_bundle
+from scripts import generate_packaged_defaultspack_v4_bundle
 from scripts.generate_packaged_defaultspack_v4_bundle import stage_packaged_bundle
+from scripts.profile_compatibility_provenance import validate_compatibility_profile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_BUNDLE = ROOT / "ecosystem" / "defaultspack" / "v4"
@@ -317,8 +320,11 @@ def test_valid_active_artifact_revision_requires_explicit_reconfirmation(
     with pytest.raises(
         ProfileReconfirmationRequired,
         match="artifact identity was superseded",
-    ):
+    ) as required:
         store.load_active_snapshot()
+    assert required.value.verified_profile_definition_digest == (
+        predecessor.plan["profile_definition_digest"]
+    )
     assert (state / "active.json").read_bytes() == pointer_before
     assert predecessor_envelope.read_bytes() == predecessor_bytes
     assert len(tuple((state / "activations").iterdir())) == 1
@@ -345,42 +351,66 @@ def test_capture_flow_reconfirms_valid_artifact_successor_and_persists_restart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from core_runtime.bootstrap import profile_capture
+    from core_runtime.bootstrap.profile_registry import register_bootstrap_definition
+    from core_runtime.profile_definition_store_v4 import ProfileDefinitionStore
 
     predecessor_catalog = _packaged_catalog_revision(tmp_path / "predecessor", b"predecessor")
     successor_catalog = _packaged_catalog_revision(tmp_path / "successor", b"successor")
     predecessor = _resolve(predecessor_catalog)
-    successor = _resolve(successor_catalog)
     user_data = tmp_path / "user-data"
     workspace = user_data / "workspaces" / "defaults"
     workspace.mkdir(parents=True)
     state = workspace / "activation"
     with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
-        ActivationStore(
+        predecessor_store = ActivationStore(
             state,
             workspace,
             profile_id="defaults",
             authority=authority,
             catalog=predecessor_catalog,
-        ).activate(
+        )
+        predecessor_store.activate(
             predecessor,
             activation_id="activation:defaults-capture-predecessor",
             created_at="2026-08-12T00:00:00Z",
         )
-    confirmation = {
-        "operation_id": "defaults.activate",
-        "confirmation_digest": "sha256:" + "a" * 64,
-    }
+        active_predecessor = predecessor_store.load_active_snapshot()
+    register_bootstrap_definition(user_data, predecessor_catalog.profiles["defaults"])
+    profile_capture._publish_host_active_pointer(
+        active_predecessor, user_data=user_data, replace_existing=False
+    )
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     monkeypatch.setattr(
         profile_capture,
         "_bundle_root",
         lambda _base=None: successor_catalog.root,
     )
-    monkeypatch.setattr(
-        profile_capture,
-        "_resolve_candidate",
-        lambda **_kwargs: (successor, confirmation),
-    )
+    successor, confirmation = profile_capture._resolve_bootstrap_candidate()
+
+    definitions_before = ProfileDefinitionStore(user_data).snapshot()
+    pointer_before = (user_data / "profiles" / "active.json").read_bytes()
+    with pytest.raises(ProfileReconfirmationRequired, match="superseded"):
+        profile_capture.capture_active_profile()
+    assert ProfileDefinitionStore(user_data).snapshot() == definitions_before
+    assert (user_data / "profiles" / "active.json").read_bytes() == pointer_before
+
+    from dataclasses import replace
+    from core_runtime.active_profile_store_v4 import ActiveProfileStore
+    from core_runtime.bootstrap.profile_registry import verify_registered_bootstrap_successor
+    from core_runtime.profile_runtime_port import require_profile_runtime
+
+    pointer = ActiveProfileStore(user_data).require(verify_snapshot=True)
+    registered = predecessor_catalog.profiles["defaults"]
+    with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
+        for candidate_pointer, candidate_source in (
+            (replace(pointer, plan_digest="sha256:" + "f" * 64), registered),
+            (pointer, {**registered, "profile_id": "other"}),
+        ):
+            verify_registered_bootstrap_successor(
+                runtime=require_profile_runtime(), catalog=successor_catalog,
+                registered=candidate_source, pointer=candidate_pointer,
+                workspace=workspace, authority=authority,
+            )
 
     with pytest.raises(ProfileReconfirmationRequired, match="superseded"):
         profile_capture.capture_default_profile()
@@ -567,6 +597,31 @@ def test_packaged_generator_binds_macos_tree_and_entrypoint_digests(
         bundle_identity="io.tobkiri.shell.tauri",
         source_provenance_file=provenance,
     )
+    profile = json.loads((bundle / "defaults.profile.v5.json").read_text())
+    assert profile["provenance"]["normative"] is False
+    validate_compatibility_profile(profile)
+    for companion in (
+        "defaults.profile.intent.v1.json",
+        "defaults.profile.lock.v5.json",
+        "defaults.release.provenance.json",
+    ):
+        assert not (bundle / companion).exists()
+    bundle_lock = json.loads((bundle / "bundle.lock.json").read_text())
+    profile_entry = next(
+        item
+        for item in bundle_lock["entries"]
+        if item["path"] == "defaults.profile.v5.json"
+    )
+    assert profile_entry["digest"] == "sha256:" + hashlib.sha256(
+        (bundle / "defaults.profile.v5.json").read_bytes()
+    ).hexdigest()
+    assert profile["provenance"]["repository_tree"] == repository_tree_digest(
+        ROOT,
+        [
+            Path(generate_packaged_defaultspack_v4_bundle.__file__),
+            *generate_packaged_defaultspack_v4_bundle.COMPATIBILITY_PROVENANCE_INPUTS,
+        ],
+    )
     shell = json.loads((bundle / "shell.tauri.default.shell.v1.json").read_text())
     variant = shell["launch"]["variants"][0]
     assert variant["artifact_digest"] != variant["entrypoint_digest"]
@@ -590,8 +645,10 @@ def test_production_bundle_root_ignores_environment_attack(
     from core_runtime import pack_control_v4
     from core_runtime.app_lifecycle_manager import AppLifecycleManager
     from core_runtime.bootstrap import profile_capture
-    from core_runtime.pack_api_server import _load_production_capture_inputs
-    from core_runtime.runtime_surface_v4 import RuntimeSurfaceService
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_runtime_capture_inputs,
+    )
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import RuntimeSurfaceService
 
     attacker = tmp_path / "attacker-bundle"
     attacker.mkdir()
@@ -611,16 +668,23 @@ def test_production_bundle_root_ignores_environment_attack(
         raise CatalogProbe
 
     monkeypatch.setattr(BundledCatalog, "load", classmethod(probe))
-    monkeypatch.setattr(profile_capture, "capture_default_profile", lambda **_kwargs: object())
+    monkeypatch.setattr(profile_capture, "capture_bootstrap_profile", lambda **_kwargs: object())
     entrypoints = (
         lambda: RuntimeSurfaceService._load_catalog(),
         lambda: pack_control_v4._required_profile_pack_ids("defaults"),
-        _load_production_capture_inputs,
-        lambda: AppLifecycleManager(base_dir=tmp_path).activate_default_profile({}),
+        defaultspack_runtime_capture_inputs,
+        lambda: AppLifecycleManager(
+            base_dir=tmp_path,
+            runtime_capture_factory=defaultspack_runtime_capture_inputs,
+        ).activate_bootstrap_profile({}),
     )
     for entrypoint in entrypoints:
-        with pytest.raises(CatalogProbe):
+        from core_runtime.activation_handoff import ActivationCommittedError
+
+        with pytest.raises((CatalogProbe, ActivationCommittedError)) as caught:
             entrypoint()
+        if isinstance(caught.value, ActivationCommittedError):
+            assert isinstance(caught.value.__cause__, CatalogProbe)
     assert observed == [SOURCE_BUNDLE] * len(entrypoints)
 
 
@@ -777,6 +841,20 @@ def _write_frozen_activation(
     (state / "active.json").write_bytes(canonical_json(pointer) + b"\n")
 
 
+def _legacy_packaged_catalog(tmp_path: Path) -> BundledCatalog:
+    """Model the v1 one-binding-per-target operation inventory before resolution."""
+    from dataclasses import replace
+
+    catalog = _packaged_catalog(tmp_path)
+    source = copy.deepcopy(catalog.profiles["defaults"])
+    edges = {}
+    for edge in source["requested_edges"]:
+        identity = (edge["target_provider_id"], edge["contract_id"], edge["operation_id"])
+        edges.setdefault(identity, edge)
+    source["requested_edges"] = list(edges.values())
+    return replace(catalog, profiles={**catalog.profiles, "defaults": source})
+
+
 def _compatible_legacy_fixture(resolved: Any) -> dict[str, Any]:
     profile = copy.deepcopy(resolved.profile)
     plan = {
@@ -900,7 +978,7 @@ def _remove_legacy_authority_edge(fixture: dict[str, Any]) -> None:
         binding
         for binding in plan["bindings"]
         if not (
-            binding["function_principal"]["function_id"] == removed["caller_function_id"]
+            binding["function_principal"]["function_id"] == removed["target_provider_id"]
             and binding["contract_id"] == removed["contract_id"]
             and binding["operation_id"] == removed["operation_id"]
         )
@@ -909,7 +987,7 @@ def _remove_legacy_authority_edge(fixture: dict[str, Any]) -> None:
 
 
 def test_exact_legacy_activation_migrates_once_without_drift(tmp_path: Path) -> None:
-    catalog = _packaged_catalog(tmp_path)
+    catalog = _legacy_packaged_catalog(tmp_path)
     resolved = _resolve(catalog)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -937,7 +1015,7 @@ def test_exact_legacy_activation_migrates_once_without_drift(tmp_path: Path) -> 
 def test_valid_narrower_activation_requires_confirmed_reconciliation(
     tmp_path: Path,
 ) -> None:
-    catalog = _packaged_catalog(tmp_path)
+    catalog = _legacy_packaged_catalog(tmp_path)
     resolved = _resolve(catalog)
     fixture = _compatible_legacy_fixture(resolved)
     _remove_legacy_authority_edge(fixture)
@@ -988,7 +1066,7 @@ def test_capture_flow_reconciles_only_with_exact_explicit_confirmation(
 ) -> None:
     from core_runtime.bootstrap import profile_capture
 
-    catalog = _packaged_catalog(tmp_path / "catalog")
+    catalog = _legacy_packaged_catalog(tmp_path / "catalog")
     resolved = _resolve(catalog)
     fixture = _compatible_legacy_fixture(resolved)
     _remove_legacy_authority_edge(fixture)
@@ -1005,8 +1083,11 @@ def test_capture_flow_reconciles_only_with_exact_explicit_confirmation(
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     monkeypatch.setattr(profile_capture, "_bundle_root", lambda _base=None: catalog.root)
     monkeypatch.setattr(
+        profile_capture.require_profile_runtime(), "load_catalog", lambda _root: catalog
+    )
+    monkeypatch.setattr(
         profile_capture,
-        "_resolve_candidate",
+        "_resolve_bootstrap_candidate",
         lambda **_kwargs: (resolved, confirmation),
     )
 
@@ -1023,7 +1104,7 @@ def test_capture_flow_reconciles_only_with_exact_explicit_confirmation(
 def test_reconfirmation_hard_denials_do_not_replace_predecessor(
     tmp_path: Path,
 ) -> None:
-    catalog = _packaged_catalog(tmp_path)
+    catalog = _legacy_packaged_catalog(tmp_path)
     resolved = _resolve(catalog)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -1075,7 +1156,7 @@ def test_reconfirmation_hard_denials_do_not_replace_predecessor(
 def test_confirmed_reconciliation_recovers_commit_across_restart(
     tmp_path: Path,
 ) -> None:
-    catalog = _packaged_catalog(tmp_path)
+    catalog = _legacy_packaged_catalog(tmp_path)
     resolved = _resolve(catalog)
     fixture = _compatible_legacy_fixture(resolved)
     _remove_legacy_authority_edge(fixture)
@@ -1119,7 +1200,7 @@ def test_confirmed_reconciliation_recovers_commit_across_restart(
 
 @pytest.mark.parametrize("role", ("base", "shell", "pack"))
 def test_legacy_migration_rejects_self_consistent_artifact_drift(tmp_path: Path, role: str) -> None:
-    catalog = _packaged_catalog(tmp_path)
+    catalog = _legacy_packaged_catalog(tmp_path)
     fixture = _compatible_legacy_fixture(_resolve(catalog))
     _retarget_legacy_artifact(fixture, role)
     workspace = tmp_path / "workspace"
@@ -1138,7 +1219,7 @@ def test_legacy_migration_rejects_self_consistent_artifact_drift(tmp_path: Path,
 
 
 def test_legacy_migration_rejects_principal_drift(tmp_path: Path) -> None:
-    catalog = _packaged_catalog(tmp_path)
+    catalog = _legacy_packaged_catalog(tmp_path)
     fixture = _compatible_legacy_fixture(_resolve(catalog))
     fixture["plan"]["bindings"][0]["function_principal"]["function_implementation_digest"] = (
         "sha256:" + "e" * 64

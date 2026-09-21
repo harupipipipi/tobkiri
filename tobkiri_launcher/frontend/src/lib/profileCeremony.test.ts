@@ -13,6 +13,14 @@ import {
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 
+function catalogBindingFields() {
+  return {
+    profile_definition_digest: digest('6'),
+    profile_catalog_digest: digest('7'),
+    bundle_lock_digest: digest('8'),
+  };
+}
+
 function profileSnapshot(): RuntimeSurfaceEnvelope<unknown> {
   return {
     runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION,
@@ -145,6 +153,7 @@ test('Profile ceremony sends exact staged payloads and requires the authoritativ
     expected_profile_revision: digest('a'),
     expected_plan_digest: digest('b'),
     desired_pack_ids: ['provider-pack'],
+    ...catalogBindingFields(),
   });
   await client.review({candidate_id: 'candidate-one', candidate_digest: candidateDigest});
   await client.approve({candidate_id: 'candidate-one', candidate_digest: candidateDigest});
@@ -162,6 +171,7 @@ test('Profile ceremony sends exact staged payloads and requires the authoritativ
     expected_profile_revision: digest('a'),
     expected_plan_digest: digest('b'),
     desired_pack_ids: ['provider-pack'],
+    ...catalogBindingFields(),
   });
   assert.equal(Object.prototype.hasOwnProperty.call(calls[0].payload, 'approved'), false);
   assert.deepEqual(calls[3].payload, {
@@ -289,6 +299,7 @@ test('Profile ceremony maps stale, digest mismatch, timeout, and denial errors f
         expected_profile_revision: digest('a'),
         expected_plan_digest: digest('b'),
         desired_pack_ids: ['provider-pack'],
+        ...catalogBindingFields(),
       }),
       (error: unknown) => error instanceof RuntimeSurfaceError && error.code === expectedCode,
     );

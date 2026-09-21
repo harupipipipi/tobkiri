@@ -152,6 +152,7 @@ def test_isolated_asset_is_bound_to_persisted_plan_and_artifact_evidence(
     write_host_install_record(
         trust_store,
         pack_id="feature-pack",
+        install_path=pack,
         record={
             "signature_required": False,
             "developer_mode": True,

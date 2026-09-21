@@ -25,6 +25,7 @@ function operation(invokable = true): RuntimeOperationDescriptor {
     invocation_reason: invokable ? null : 'Host readiness attestation is stale.',
     invokable,
     catalog_digest: digest('c'),
+    activation_id: 'activation:conversation-one',
     function_id: 'conversation.turn',
     function_principal_id: 'principal.conversation.turn',
     caller_function_id: 'caller.conversation.turn',
@@ -294,6 +295,98 @@ test('OperationInputForm omits blank optional values and preserves JSON enum typ
     assert.equal(Object.prototype.hasOwnProperty.call(received ?? {}, 'optional_number'), false);
     assert.equal(Object.prototype.hasOwnProperty.call(received ?? {}, 'optional_object'), false);
     assert.equal(Object.prototype.hasOwnProperty.call(received ?? {}, 'optional_array'), false);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('OperationInputForm omits an optional enum after the blank choice is selected', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  let received: Record<string, unknown> | null = null;
+  const enumOperation: RuntimeOperationDescriptor = {
+    ...operation(),
+    operation_id: 'optional.numeric.enum',
+    input_schema: {
+      type: 'object',
+      properties: {
+        priority: {type: 'number', title: 'Priority', enum: [7, 8]},
+      },
+    },
+  };
+  try {
+    await act(async () => {
+      root.render(
+        <OperationInputForm
+          operation={enumOperation}
+          descriptor={LAUNCHER_ADVANCED_VIEWS.aiInput}
+          busy={false}
+          canInvoke
+          onInvoke={async (payload) => { received = payload; }}
+        />,
+      );
+    });
+    const select = container.querySelector<HTMLSelectElement>('select[aria-label="Priority"]');
+    assert.ok(select);
+    await act(async () => {
+      select.value = '0';
+      select.dispatchEvent(new dom.window.Event('change', {bubbles: true}));
+      select.value = '';
+      select.dispatchEvent(new dom.window.Event('change', {bubbles: true}));
+    });
+    const form = container.querySelector<HTMLFormElement>('form');
+    assert.ok(form);
+    await act(async () => {
+      form.dispatchEvent(new dom.window.Event('submit', {bubbles: true, cancelable: true}));
+    });
+    assert.deepEqual(received, {});
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('OperationInputForm allows decimal number schema values while constraining integers', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  const numberOperation: RuntimeOperationDescriptor = {
+    ...operation(),
+    operation_id: 'numeric.steps',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ratio: {type: 'number', title: 'Ratio'},
+        attempts: {type: 'integer', title: 'Attempts'},
+      },
+    },
+  };
+  try {
+    await act(async () => {
+      root.render(
+        <OperationInputForm
+          operation={numberOperation}
+          descriptor={LAUNCHER_ADVANCED_VIEWS.aiInput}
+          busy={false}
+          canInvoke
+          onInvoke={async () => {}}
+        />,
+      );
+    });
+    const ratio = container.querySelector<HTMLInputElement>('[id="operation-numeric.steps-ratio"]');
+    const attempts = container.querySelector<HTMLInputElement>('[id="operation-numeric.steps-attempts"]');
+    assert.ok(ratio);
+    assert.ok(attempts);
+    assert.equal(ratio.type, 'number');
+    assert.equal(ratio.step, 'any');
+    assert.equal(attempts.type, 'number');
+    assert.equal(attempts.step, '1');
   } finally {
     act(() => root.unmount());
     dom.window.close();

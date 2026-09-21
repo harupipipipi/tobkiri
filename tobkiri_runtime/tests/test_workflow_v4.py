@@ -271,6 +271,17 @@ def test_palette_is_exact_catalog_and_rejects_unpinned_operation(
     assert "exact active catalog operation" in result["errors"][0]
 
 
+def test_palette_rejects_conflicting_effects_for_same_operation(
+    runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
+) -> None:
+    provider, catalog, _authority, _invoker = runtime
+    catalog.value["operations"].append(
+        {**catalog.value["operations"][0], "effect_ceiling": ["capability:write"]}
+    )
+    with pytest.raises(WorkflowValidationError, match="duplicate operation identity"):
+        provider.invoke("operation.palette", {})
+
+
 def test_run_pins_revision_activation_and_commits_atomic_authority(
     runtime: tuple[WorkflowProviderV4, Catalog, Authority, Invoker],
 ) -> None:

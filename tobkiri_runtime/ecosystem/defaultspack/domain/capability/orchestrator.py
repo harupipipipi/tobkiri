@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Iterable
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.capability.activity_registry import ActivityRegistry
 from domain.capability.models import (
@@ -59,6 +60,7 @@ class CapabilityOrchestrator:
         selected_model_capabilities: dict[str, Any] | None = None,
         context: dict[str, Any] | None = None,
         dry_run: bool = False,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> dict[str, Any]:
         """Resolve a versioned plan without executing any Tool."""
 
@@ -191,6 +193,7 @@ class CapabilityOrchestrator:
             model_capabilities=selected_model_capabilities,
             settings=settings,
             call_handler=self._call_handler,
+            settings_owner=settings_owner,
         )
         plan.selected_tools = selected_tools
         plan.hydrated_tools = list(selected_tools)
@@ -443,6 +446,7 @@ def _select_tools(
     model_capabilities: dict[str, Any] | None,
     settings: dict[str, Any] | None,
     call_handler: Any,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> list[str]:
     if not tools or limit <= 0:
         return []
@@ -453,6 +457,7 @@ def _select_tools(
         selected_model_capabilities=model_capabilities,
         settings=settings,
         prefilter=len(tools) > limit,
+        settings_owner=settings_owner,
     )
     recommendations = (
         _list_or_empty(result.get("recommended_tools"))

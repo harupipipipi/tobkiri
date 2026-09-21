@@ -14,11 +14,14 @@ credentials, an old Kernel, or a previous test result.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import http.client
 import json
 import os
 import plistlib
 import re
+import secrets
 import signal
 import socket
 import stat
@@ -32,18 +35,23 @@ from typing import Any, Optional
 
 
 CI_BUNDLE_IDENTIFIER = "dev.tobkiri.launcher.ci-e2e"
-CI_APP_DATA_DIRECTORY_NAME = CI_BUNDLE_IDENTIFIER
+CI_APP_DATA_DIRECTORY_NAME = "ci-e2e-app-data"
+CI_APP_DATA_ROOT_ENV = "TOBKIRI_CI_E2E_APP_DATA_ROOT"
 CI_APP_NAME = "Tobkiri Launcher CI E2E.app"
 CI_EXECUTABLE_NAME = "tobkiri-launcher"
 EXECUTABLE_DIRECTORY_RELATIVE = Path("Contents/MacOS")
 INFO_PLIST_RELATIVE = Path("Contents/Info.plist")
 BROKER_CONNECTION_RELATIVE = Path("user_data/host_broker/connection.json")
+HOST_CONTRACT_RELATIVE = Path("user_data/host_contract.json")
 BROKER_HEALTH_PATH = "/api/host/health"
 KERNEL_HEALTH_PATH = "/health"
-PANEL_BOOTSTRAP_PATH = "/panel/"
+DESKTOP_HEALTH_CHALLENGE_HEADER = "X-Rumi-Desktop-Health-Challenge"
+PANEL_AUTH_BOOTSTRAP_PATH = "/api/panel/auth/bootstrap"
+PANEL_AUTH_EXCHANGE_PATH = "/api/panel/auth/exchange"
 DEFAULT_KERNEL_PORT = 8765
 POLL_INTERVAL_SECONDS = 0.2
-HTTP_TIMEOUT_SECONDS = 0.8
+HTTP_CONNECT_TIMEOUT_SECONDS = 0.8
+HTTP_RESPONSE_TIMEOUT_SECONDS = 30.0
 TERMINATION_GRACE_SECONDS = 5.0
 MAX_ANCESTRY_DEPTH = 64
 DIAGNOSTIC_FILENAME = "launcher-cold-boot.v1.json"
@@ -98,7 +106,9 @@ class ColdBootProbes:
 
     port_available: Callable[[int], bool]
     reserve_broker_port: Callable[[int], int]
-    http_get: Callable[[int, str], Optional[HttpResponse]]
+    http_request: Callable[
+        [int, str, str, Mapping[str, str], bytes, float], Optional[HttpResponse]
+    ]
     listener_pid: Callable[[int], Optional[int]]
     parent_pid: Callable[[int], Optional[int]]
     monotonic: Callable[[], float]
@@ -228,10 +238,43 @@ def _validate_fresh_app_data(app_data_dir: Path) -> Path:
         raise ColdBootError("application-data directory must be absolute")
     if app_data_dir.name != CI_APP_DATA_DIRECTORY_NAME:
         raise ColdBootError("application-data directory is not the CI/E2E directory")
-    _canonical_directory(app_data_dir.parent, "application-data parent directory")
+    parent = _canonical_directory(
+        app_data_dir.parent,
+        "application-data parent directory",
+    )
+    parent_metadata = parent.lstat()
+    if (
+        parent_metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(parent_metadata.st_mode) != 0o700
+    ):
+        raise ColdBootError(
+            "application-data parent directory must be owned and private"
+        )
     if app_data_dir.exists() or app_data_dir.is_symlink():
         raise ColdBootError("CI/E2E application-data directory must be fresh")
     return app_data_dir
+
+
+def _create_fresh_app_data(app_data_dir: Path) -> None:
+    """Create the validated CI/E2E root without permitting path substitution."""
+    try:
+        app_data_dir.mkdir(mode=0o700)
+        metadata = app_data_dir.lstat()
+        resolved = app_data_dir.resolve(strict=True)
+    except OSError as error:
+        raise ColdBootError(
+            "CI/E2E application-data directory could not be created"
+        ) from error
+    if (
+        resolved != app_data_dir
+        or app_data_dir.is_symlink()
+        or not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise ColdBootError(
+            "CI/E2E application-data directory is not owned and private"
+        )
 
 
 def _validate_config(config: ColdBootConfig) -> tuple[ColdBootConfig, Path]:
@@ -276,25 +319,77 @@ def _reserve_broker_port(kernel_port: int) -> int:
     raise ColdBootError("could not reserve a distinct loopback broker port")
 
 
-def _http_get(port: int, path: str) -> Optional[HttpResponse]:
+def _http_request(
+    port: int,
+    method: str,
+    path: str,
+    headers: Mapping[str, str],
+    body: bytes,
+    timeout_seconds: float,
+) -> Optional[HttpResponse]:
+    if timeout_seconds <= 0:
+        return None
+    deadline = time.monotonic() + timeout_seconds
+    connection = http.client.HTTPConnection(
+        "127.0.0.1", port,
+        timeout=min(HTTP_CONNECT_TIMEOUT_SECONDS, timeout_seconds),
+    )
+    timer: Optional[threading.Timer] = None
+
+    def remaining_timeout() -> None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or connection.sock is None:
+            raise TimeoutError("cold-boot HTTP budget expired")
+        connection.sock.settimeout(remaining)
+
     try:
-        connection = http.client.HTTPConnection(
-            "127.0.0.1",
-            port,
-            timeout=HTTP_TIMEOUT_SECONDS,
-        )
-        connection.request("GET", path, headers={"Accept": "application/json"})
+        connection.connect()
+        remaining_timeout()
+        owned_socket = connection.sock
+        assert owned_socket is not None
+
+        def expire_socket() -> None:
+            # Socket timeouts reset on each read; a slow response must still
+            # stop at the original request/boot deadline.
+            try:
+                owned_socket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+        timer = threading.Timer(deadline - time.monotonic(), expire_socket)
+        timer.daemon = True
+        timer.start()
+        connection.request(method, path, body=body, headers=dict(headers))
+        remaining_timeout()
         response = connection.getresponse()
+        # HTTP/1.0 getresponse may detach the socket from the connection. The
+        # response retains its already bounded socket until the body is read.
         body = response.read(128 * 1024)
+        if time.monotonic() >= deadline:
+            return None
         headers = {key.lower(): value for key, value in response.getheaders()}
         return HttpResponse(response.status, headers, body)
     except (OSError, http.client.HTTPException):
         return None
     finally:
-        try:
-            connection.close()
-        except UnboundLocalError:
-            pass
+        if timer is not None:
+            timer.cancel()
+        connection.close()
+
+
+def _request_before_deadline(
+    probes: ColdBootProbes, deadline: float, port: int, method: str, path: str,
+    headers: Mapping[str, str], body: bytes,
+) -> Optional[HttpResponse]:
+    """Allow a cold health read without resetting the whole boot deadline."""
+    remaining = deadline - probes.monotonic()
+    if remaining <= 0:
+        return None
+    response = probes.http_request(
+        port, method, path, headers, body,
+        min(HTTP_RESPONSE_TIMEOUT_SECONDS, remaining),
+    )
+    return response if probes.monotonic() < deadline else None
 
 
 def _listener_pid(port: int) -> Optional[int]:
@@ -347,7 +442,7 @@ def _system_probes() -> ColdBootProbes:
     return ColdBootProbes(
         port_available=_port_available,
         reserve_broker_port=_reserve_broker_port,
-        http_get=_http_get,
+        http_request=_http_request,
         listener_pid=_listener_pid,
         parent_pid=_parent_pid,
         monotonic=time.monotonic,
@@ -359,6 +454,7 @@ def _system_probes() -> ColdBootProbes:
 def _local_only_environment(
     base_environment: Mapping[str, str],
     broker_port: int,
+    app_data_dir: Path,
 ) -> dict[str, str]:
     """Return a minimal child environment with cloud traffic looped locally."""
     allowed = (
@@ -394,6 +490,7 @@ def _local_only_environment(
             "HTTPS_PROXY": local_proxy,
             "NO_PROXY": "127.0.0.1,localhost",
             "RUMI_VIEWER_BROKER_PORT": str(broker_port),
+            CI_APP_DATA_ROOT_ENV: str(app_data_dir),
             "PYTHONDONTWRITEBYTECODE": "1",
             "all_proxy": local_proxy,
             "http_proxy": local_proxy,
@@ -453,28 +550,140 @@ def _broker_is_ready(response: Optional[HttpResponse]) -> bool:
     return document == {"ok": True, "status": "running"}
 
 
-def _kernel_is_healthy(response: Optional[HttpResponse]) -> bool:
-    if response is None or response.status != 200:
-        return False
+def _kernel_is_healthy(
+    response: Optional[HttpResponse],
+    bootstrap_secret: str,
+    challenge: str,
+) -> bool:
+    """Verify both Kernel readiness and proof of the sealed bootstrap secret."""
+    return _kernel_health_failure(response, bootstrap_secret, challenge) is None
+
+
+def _kernel_health_failure(
+    response: Optional[HttpResponse], bootstrap_secret: str, challenge: str,
+) -> str | None:
+    """Return a fixed diagnostic code, never response text or credential data."""
+    if response is None:
+        return "unreachable"
+    if response.status != 200:
+        return "http_not_ok"
     document = response.json_object()
     if not isinstance(document, dict) or document.get("success") is not True:
-        return False
+        return "invalid_envelope"
     payload = document.get("data")
-    return not isinstance(payload, dict) or payload.get("panel_ready") is not False
+    if not isinstance(payload, dict):
+        return "invalid_payload"
+    if payload.get("panel_ready") is False:
+        return "panel_not_ready"
+    response_mac = payload.get("desktop_challenge_response")
+    if not isinstance(response_mac, str):
+        return "challenge_missing"
+    expected_mac = hmac.new(
+        bootstrap_secret.encode("utf-8"),
+        challenge.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return None if hmac.compare_digest(response_mac, expected_mac) else "challenge_mismatch"
 
 
-def _panel_bootstrap_is_reachable(response: Optional[HttpResponse]) -> bool:
+def _embedded_panel_bootstrap_secret(config: ColdBootConfig) -> str | None:
+    """Read the owner-only bootstrap secret without emitting credential material."""
+
+    contract_path = config.app_data_dir / HOST_CONTRACT_RELATIVE
+    try:
+        _canonical_regular_file(contract_path, "host contract")
+        metadata = contract_path.lstat()
+        if stat.S_IMODE(metadata.st_mode) & 0o077:
+            return None
+        document = json.loads(contract_path.read_text(encoding="utf-8"))
+    except (ColdBootError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    if document.get("schema_version") != "tobkiri.host-contract.v1":
+        return None
+    profile_id = document.get("profile_id")
+    profile_revision = document.get("profile_revision")
+    activation_id = document.get("activation_id")
+    plan_digest = document.get("plan_digest")
+    if (
+        not isinstance(profile_id, str)
+        or not profile_id
+        or not isinstance(profile_revision, str)
+        or not isinstance(plan_digest, str)
+        or profile_revision == plan_digest
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", profile_revision) is None
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", plan_digest) is None
+        or not isinstance(activation_id, str)
+        or re.fullmatch(r"activation:[a-z0-9][a-z0-9._-]{7,127}", activation_id)
+        is None
+    ):
+        return None
+    values = document.get("values")
+    secret = values.get("panel_bootstrap_secret") if isinstance(values, dict) else None
+    if not isinstance(secret, str) or not secret or secret != secret.strip():
+        return None
+    return secret
+
+
+def _successful_panel_auth_response(response: Optional[HttpResponse]) -> dict[str, object] | None:
+    """Return a successful API response body without retaining arbitrary JSON."""
+
     if response is None or response.status != 200:
+        return None
+    payload = response.json_object()
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        return None
+    data = payload.get("data")
+    return data if isinstance(data, dict) else None
+
+
+def _panel_authentication_is_reachable(
+    config: ColdBootConfig,
+    probes: ColdBootProbes,
+    bootstrap_secret: str,
+    deadline: float,
+) -> bool:
+    """Prove the native bootstrap and browser code exchange both work locally."""
+
+    bootstrap = _request_before_deadline(
+        probes, deadline,
+        config.kernel_port,
+        "POST",
+        PANEL_AUTH_BOOTSTRAP_PATH,
+        {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "X-Rumi-Desktop-Bootstrap": bootstrap_secret,
+        },
+        b"{}",
+    )
+    bootstrap_data = _successful_panel_auth_response(bootstrap)
+    code = bootstrap_data.get("code") if bootstrap_data is not None else None
+    if not isinstance(code, str) or not code or code != code.strip():
         return False
-    content_type = response.headers.get("content-type", "").lower()
-    cache_control = response.headers.get("cache-control", "").lower()
-    body = response.body.lower()
+
+    exchange = _request_before_deadline(
+        probes, deadline,
+        config.kernel_port,
+        "POST",
+        PANEL_AUTH_EXCHANGE_PATH,
+        {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Origin": f"http://127.0.0.1:{config.kernel_port}",
+        },
+        json.dumps({"code": code}, separators=(",", ":")).encode("utf-8"),
+    )
+    exchange_data = _successful_panel_auth_response(exchange)
+    csrf_token = exchange_data.get("csrf_token") if exchange_data is not None else None
+    set_cookie = exchange.headers.get("set-cookie", "") if exchange is not None else ""
     return (
-        "text/html" in content_type
-        and "no-store" in cache_control
-        and b"<!doctype html>" in body
-        and b"/api/panel/auth/exchange" in body
-        and b"tobkiri launcher authentication required" in body
+        isinstance(csrf_token, str)
+        and bool(csrf_token)
+        and csrf_token == csrf_token.strip()
+        and "rumi_panel_session=" in set_cookie
+        and "httponly" in set_cookie.lower()
     )
 
 
@@ -601,6 +810,9 @@ def _wait_for_readiness(
     broker_ready = False
     kernel_ownership_error = False
     panel_reachable = False
+    pending_stage = "embedded_broker"
+    health_failure = "not_checked"
+    bootstrap_secret: str | None = None
     connection_path = config.app_data_dir / BROKER_CONNECTION_RELATIVE
 
     while probes.monotonic() < deadline:
@@ -611,7 +823,14 @@ def _wait_for_readiness(
             )
 
         if not broker_ready:
-            broker_response = probes.http_get(broker_port, BROKER_HEALTH_PATH)
+            broker_response = _request_before_deadline(
+                probes, deadline,
+                broker_port,
+                "GET",
+                BROKER_HEALTH_PATH,
+                {"Accept": "application/json"},
+                b"",
+            )
             if _broker_is_ready(broker_response) and _broker_connection_is_embedded(
                 connection_path,
                 broker_port,
@@ -620,18 +839,45 @@ def _wait_for_readiness(
                 broker_ready = True
 
         if broker_ready:
-            kernel_response = probes.http_get(config.kernel_port, KERNEL_HEALTH_PATH)
-            if _kernel_is_healthy(kernel_response):
+            pending_stage = "bootstrap_contract"
+            bootstrap_secret = bootstrap_secret or _embedded_panel_bootstrap_secret(config)
+            challenge = secrets.token_urlsafe(32)
+            kernel_response = _request_before_deadline(
+                probes, deadline,
+                config.kernel_port,
+                "GET",
+                KERNEL_HEALTH_PATH,
+                {
+                    "Accept": "application/json",
+                    DESKTOP_HEALTH_CHALLENGE_HEADER: challenge,
+                },
+                b"",
+            )
+            if bootstrap_secret is not None:
+                pending_stage = "authenticated_kernel_health"
+                health_failure = _kernel_health_failure(
+                    kernel_response, bootstrap_secret, challenge,
+                )
+            if bootstrap_secret is not None and health_failure is None:
                 kernel_pid = probes.listener_pid(config.kernel_port)
+                pending_stage = "kernel_process_ownership"
                 if kernel_pid is not None and _is_descendant(
                     kernel_pid,
                     int(process.pid),
                     probes.parent_pid,
                 ):
-                    panel_reachable = _panel_bootstrap_is_reachable(
-                        probes.http_get(config.kernel_port, PANEL_BOOTSTRAP_PATH)
+                    pending_stage = "panel_authentication"
+                    panel_reachable = (
+                        _panel_authentication_is_reachable(
+                            config,
+                            probes,
+                            bootstrap_secret,
+                            deadline,
+                        )
+                        if bootstrap_secret is not None
+                        else False
                     )
-                    if panel_reachable:
+                    if panel_reachable and probes.monotonic() < deadline:
                         return ColdBootResult(
                             broker_port=broker_port,
                             kernel_port=config.kernel_port,
@@ -651,7 +897,8 @@ def _wait_for_readiness(
     if not broker_ready:
         raise ColdBootError("embedded host broker did not become ready before timeout")
     raise ColdBootError(
-        "owned Kernel health and panel bootstrap did not become ready before timeout"
+        "owned Kernel health and panel authentication did not become ready before "
+        f"timeout (pending stage: {pending_stage}; health: {health_failure})"
     )
 
 
@@ -685,10 +932,11 @@ def verify_cold_boot(
             raise ColdBootError("broker port must differ from configured Kernel port")
         if not probes.port_available(broker_port):
             raise ColdBootError("reserved broker port became unavailable before cold boot")
+        _create_fresh_app_data(config.app_data_dir)
         process = launch(
             executable,
             config.app_bundle,
-            _local_only_environment(environment, broker_port),
+            _local_only_environment(environment, broker_port, config.app_data_dir),
         )
         collector = _OutputCollector(process)
         return _wait_for_readiness(config, probes, process, broker_port)

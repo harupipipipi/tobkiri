@@ -1,18 +1,18 @@
 {
-  "artifact_set_digest": "sha256:6ee74e38ea446c36053feac7837d214b2f897aad221c6b571fd547b3ec60083f",
+  "artifact_set_digest": "sha256:ba5a0e48a5c3f25103065d3d022b556bb79a1d12fd3053b64702a283c7a8f8c4",
   "artifacts": [
     {
-      "digest": "sha256:20c461b0c6f997177910df3d8ca4f885dcfbf78573b2a0f3be9a6a29aca8022e",
+      "digest": "sha256:e414d51ecb642d756cbe7b66987ab5152a712623cd4c334608fa576bcc4e8450",
       "path": "contracts.v4.json",
       "role": "contract_catalog"
     },
     {
-      "digest": "sha256:a09fffb521abc168123431b2b20adc0ea3c262ed367c9cbdb87f4fe19104f704",
+      "digest": "sha256:cb14f15e7880777503b7b3b9b812b3c980d44ff22f5cd9ee3e0ea626256182e5",
       "path": "executables.v4.json",
       "role": "sidecar"
     },
     {
-      "digest": "sha256:222fbcaa23a0eb73da43c23a8071f654d19d0b7b62afd72215929d47dafbb0dc",
+      "digest": "sha256:3d052ac69498def17d583b3a3a5054f2e92c6889321c93fc9c6df35eb9de4e7a",
       "path": "pack.v4.json",
       "role": "canonical_manifest"
     },
@@ -22,16 +22,21 @@
       "role": "runtime"
     },
     {
-      "digest": "sha256:1c62e117deedea3af073bf7f244ce5f6e404a7b53b90696cf9a1ea54acafb02d",
+      "digest": "sha256:11c35f910d849a44280624726fb44f2d232ff287f9e4b43f4b24c20e4ea86d4f",
       "path": "runtime/gateway.py",
+      "role": "runtime"
+    },
+    {
+      "digest": "sha256:5f3326f55e4badaf86d0624000c29455830431586ee56e4432ed11dc5c2e1169",
+      "path": "runtime/preflight.py",
       "role": "runtime"
     }
   ],
   "index_api_version": "io.tobkiri.pack-artifact-index.v4",
   "integrity_seal": {
     "algorithm": "sha256-canonical-v1",
-    "signed_digest": "sha256:813c3e080eafc6e6eef1ce4126663261bfc47798b48cb30ab97f6d060796e68c"
+    "signed_digest": "sha256:eabe672e236796682880a30cc06fbc44072402b22b6a4f603de16021dbcf0f42"
   },
   "pack_id": "rumi_ai_gateway_pack",
-  "source_identity": "sha256:11f8631e8829c35a20ed2fff86bf854f64ffedc54303697cb4359ffbcf9493ec"
+  "source_identity": "sha256:6a35645b3206e0b65f8e00de6d95b604e59cd2af7f3121b523385475d5cc922d"
 }

@@ -1401,7 +1401,7 @@ def test_failed_provision_cleanup_refuses_replaced_same_name_orphan(
 def test_runtime_surface_recomputes_exact_packvm_attestation_digest(
     provisioner,
 ) -> None:
-    from core_runtime.runtime_surface_v4 import _packvm_attested
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import _packvm_attested
 
     manager, _fake, _command = provisioner
     plan = manager.prepare()
@@ -2657,6 +2657,10 @@ def test_restart_recovers_only_exact_session_plan_and_recovery_proof(
     _resign_operations(manager, payload)
 
     restarted = PackVMLifecycleV4(manager)
+    recovered_payload = json.loads(operations_path.read_text(encoding="utf-8"))
+    assert recovered_payload["operations"][operation_id]["state"] == "succeeded"
+    assert recovered_payload["operations"][different_plan_id]["state"] == "interrupted"
+    assert recovered_payload["operations"][tampered_proof_id]["state"] == "interrupted"
     recovered = restarted.progress(operation_id, session_id=session_id)
     assert recovered["state"] == "succeeded"
     for mismatched_id in (different_plan_id, tampered_proof_id):
@@ -2676,6 +2680,29 @@ def test_restart_recovers_only_exact_session_plan_and_recovery_proof(
             {"consent_id": "foreign-consent", "operation_id": operation_id},
             session_id=session_id,
         )
+
+
+def test_lifecycle_read_only_startup_does_not_rewrite_existing_journal(provisioner) -> None:
+    """Loading an unchanged journal must preserve its generation and HMAC."""
+
+    manager, _fake, _command = provisioner
+    lifecycle = PackVMLifecycleV4(manager)
+    operation_id = str(uuid.uuid4())
+    with lifecycle._journal_transaction():
+        lifecycle._operations[operation_id] = {
+            "operation_id": operation_id,
+            "operation_kind": "cleanup",
+            "state": "succeeded",
+            "updated_unix": 1,
+        }
+        lifecycle._persist_operations()
+
+    operations_path = manager.state_path.parent / "packvm-operations.json"
+    before = operations_path.read_bytes()
+    restarted = PackVMLifecycleV4(manager)
+
+    assert restarted._operations[operation_id]["state"] == "succeeded"
+    assert operations_path.read_bytes() == before
 
 
 def test_operation_journal_compacts_with_authenticated_replay_and_dependencies(
@@ -3100,8 +3127,11 @@ def test_guest_runner_executes_only_the_explicit_staged_python_abi(tmp_path: Pat
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {
-        "operation_id": "example-pack.inspect",
-        "value": 7,
+        "kind": "tobkiri.packvm.invoke.result.v1",
+        "outcome": {
+            "operation_id": "example-pack.inspect",
+            "value": 7,
+        },
     }
 
     implementation.write_text("RESULT = {}\n", encoding="utf-8")

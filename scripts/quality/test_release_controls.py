@@ -4,6 +4,7 @@ import base64
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -17,6 +18,12 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
+EXPECTED_INVENTORY_TARGETS = {
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+}
 
 
 def _load(name: str):
@@ -215,6 +222,8 @@ def test_inventory_binds_all_targets_once_and_rejects_tamper_missing_duplicate()
     revision = "a" * 40
     with TemporaryDirectory(prefix="tobkiri-release-inventory-") as temp:
         root = Path(temp)
+        assert set(INVENTORY.TARGETS) == EXPECTED_INVENTORY_TARGETS
+        assert len(INVENTORY.TARGETS) == 4
         for target in INVENTORY.TARGETS:
             _create_target_upload(root, target, revision)
         output = root / "release-inventory.json"
@@ -281,6 +290,265 @@ def test_inventory_binds_all_targets_once_and_rejects_tamper_missing_duplicate()
             )
 
 
+def test_inventory_binds_an_explicit_workflow_target_set() -> None:
+    revision = "c" * 40
+    target = "aarch64-apple-darwin"
+    with TemporaryDirectory(prefix="tobkiri-release-matrix-") as temp:
+        root = Path(temp)
+        _create_target_upload(root, target, revision)
+        output = root / "release-inventory.json"
+        assets = root / "release-assets"
+        inventory = INVENTORY.create_inventory(
+            root / "uploaded",
+            output,
+            assets,
+            revision,
+            "v1.2.3",
+            [target],
+        )
+
+        assert [item["target"] for item in inventory["targets"]] == [target]
+        INVENTORY.verify_inventory(
+            output,
+            assets,
+            revision,
+            "v1.2.3",
+            required_targets=[target],
+        )
+        with pytest.raises(INVENTORY.InventoryError, match="missing or unexpected"):
+            INVENTORY.verify_inventory(output, assets, revision, "v1.2.3")
+
+
+@pytest.mark.parametrize(
+    ("required_targets", "message"),
+    [
+        ([], "at least one target"),
+        (["aarch64-apple-darwin", "aarch64-apple-darwin"], "duplicated"),
+        (["unknown-release-target"], "unsupported required"),
+        ([None], "malformed"),
+    ],
+)
+def test_inventory_rejects_empty_duplicate_unknown_required_targets(
+    required_targets: list[object], message: str
+) -> None:
+    revision = "d" * 40
+    target = "aarch64-apple-darwin"
+    with TemporaryDirectory(prefix="tobkiri-release-target-contract-") as temp:
+        root = Path(temp)
+        _create_target_upload(root, target, revision)
+        output = root / "release-inventory.json"
+        assets = root / "release-assets"
+        with pytest.raises(INVENTORY.InventoryError, match=message):
+            INVENTORY.create_inventory(
+                root / "uploaded",
+                output,
+                assets,
+                revision,
+                "v1.2.3",
+                required_targets,
+            )
+
+        INVENTORY.create_inventory(
+            root / "uploaded",
+            output,
+            assets,
+            revision,
+            "v1.2.3",
+            [target],
+        )
+        with pytest.raises(INVENTORY.InventoryError, match=message):
+            INVENTORY.verify_inventory(
+                output,
+                assets,
+                revision,
+                "v1.2.3",
+                required_targets=required_targets,
+            )
+
+
+def test_release_workflow_inventory_target_matches_real_build_matrix() -> None:
+    workflow_path = ROOT / ".github/workflows/release.yml"
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(workflow_text)
+    matrix = workflow["jobs"]["build"]["strategy"]["matrix"]["include"]
+    matrix_targets = [row["target"] for row in matrix]
+    required_targets = json.loads(
+        workflow["env"]["TOBKIRI_REQUIRED_RELEASE_TARGETS"]
+    )
+
+    assert isinstance(required_targets, list)
+    assert required_targets
+    assert len(required_targets) == len(set(required_targets))
+    assert len(matrix_targets) == len(set(matrix_targets))
+    assert set(matrix_targets) == set(required_targets)
+    assert all(target in INVENTORY.TARGETS for target in required_targets)
+
+    gather_job = workflow["jobs"]["gather"]
+    inventory_runs = [
+        step["run"]
+        for step in gather_job["steps"]
+        if isinstance(step, dict)
+        and "scripts/release_inventory.py" in step.get("run", "")
+    ]
+    assert len(inventory_runs) == 3
+    for run in inventory_runs:
+        assert "json.loads(" in run
+        assert 'os.environ["TOBKIRI_REQUIRED_RELEASE_TARGETS"]' in run
+        assert "for required_target in required_targets:" in run
+        assert 'command.extend(["--required-target", required_target])' in run
+        assert "subprocess.run(command, check=True)" in run
+        assert run.count('"--required-target"') == 1
+    assert "TOBKIRI_REQUIRED_RELEASE_TARGET:" not in workflow_text
+
+
+def test_release_workflow_builds_a_single_unsigned_ad_hoc_macos_target() -> None:
+    """The OSS release path has no publisher credential or notary dependency."""
+    workflow_path = ROOT / ".github/workflows/release.yml"
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(workflow_text)
+    build = workflow["jobs"]["build"]
+    assert build["strategy"]["matrix"]["include"] == [
+        {
+            "os": "macos-latest",
+            "target": "aarch64-apple-darwin",
+            "shell_bundles": "app",
+            "signing_args": "--no-sign",
+            "presentation_variant": "shell.tauri.default.macos-arm64",
+            "presentation_platform": "macos",
+            "presentation_architecture": "arm64",
+        }
+    ]
+    steps = {
+        step["name"]: step
+        for step in build["steps"]
+        if isinstance(step, dict) and isinstance(step.get("name"), str)
+    }
+    for name in (
+        "Build unsigned Tauri Shell artifact",
+        "Build unsigned macOS application",
+    ):
+        assert "${{ matrix.signing_args }}" in steps[name]["run"]
+    signing = steps[
+        "Stage and ad-hoc sign macOS PackVM VZ helper and application"
+    ]["run"]
+    assert signing.count("/usr/bin/codesign --force --sign - --timestamp=none") == 2
+    assert "dev.rumiai.app" in signing
+    assert "dev.tobkiri.launcher.packvm-vz-helper" in signing
+    assert "--expected-signing-mode ad-hoc" in signing
+    assert "--ad-hoc" in steps["Build macOS DMG installer"]["run"]
+
+    for forbidden in (
+        "APPLE_CERTIFICATE",
+        "APPLE_SIGNING_IDENTITY",
+        "APPLE_TEAM_ID",
+        "APPLE_ID",
+        "APPLE_PASSWORD",
+        "Developer ID Application:",
+        "sign-artifacts",
+        "--signing-identity",
+        "TOBKIRI_MACOS_ARTIFACT_POLICY",
+        "ci-e2e",
+    ):
+        assert forbidden not in workflow_text
+    assert not any(
+        "notar" in name.lower() or "staple" in name.lower()
+        for name in steps
+    )
+
+    upload = next(
+        step
+        for step in workflow["jobs"]["gather"]["steps"]
+        if step.get("name") == "Upload one reviewable draft release"
+    )
+    assert upload["with"]["draft"] is True
+    assert upload["with"]["generate_release_notes"] is True
+    assert "unsigned/ad-hoc" in upload["with"]["body"]
+
+
+def test_release_workflow_passes_json_target_set_to_inventory_commands() -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    )
+    required_targets = json.loads(
+        workflow["env"]["TOBKIRI_REQUIRED_RELEASE_TARGETS"]
+    )
+    inventory_steps = [
+        step
+        for step in workflow["jobs"]["gather"]["steps"]
+        if isinstance(step, dict)
+        and "scripts/release_inventory.py" in step.get("run", "")
+    ]
+    expected_arguments = [
+        argument
+        for target in required_targets
+        for argument in ("--required-target", target)
+    ]
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], check: bool) -> None:
+        assert check is True
+        calls.append(command)
+        if command[2] == "create":
+            output = Path(command[command.index("--output") + 1])
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"{}\n")
+
+    with TemporaryDirectory(prefix="tobkiri-release-workflow-commands-") as temp:
+        root = Path(temp)
+        environment = {
+            "GATHER_ROOT": str(root / "gather"),
+            "GITHUB_OUTPUT": str(root / "github-output"),
+            "GITHUB_REF_NAME": "v1.2.3",
+            "INVENTORY_SHA256": "sha256:" + "0" * 64,
+            "SOURCE_REVISION": "1" * 40,
+            "TOBKIRI_REQUIRED_RELEASE_TARGETS": json.dumps(required_targets),
+        }
+        with (
+            patch.dict(os.environ, environment),
+            patch.object(subprocess, "run", side_effect=fake_run),
+        ):
+            for step in inventory_steps:
+                exec(step["run"], {})
+
+    assert [command[2] for command in calls] == ["create", "verify", "verify"]
+    for command in calls:
+        assert command[-len(expected_arguments) :] == expected_arguments
+
+
+@pytest.mark.parametrize(
+    "required_targets",
+    [[], ["aarch64-apple-darwin", "aarch64-apple-darwin"]],
+)
+def test_release_workflow_rejects_empty_or_duplicate_target_json(
+    required_targets: list[str],
+) -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    )
+    inventory_steps = [
+        step
+        for step in workflow["jobs"]["gather"]["steps"]
+        if isinstance(step, dict)
+        and "scripts/release_inventory.py" in step.get("run", "")
+    ]
+    with TemporaryDirectory(prefix="tobkiri-release-workflow-invalid-") as temp:
+        root = Path(temp)
+        environment = {
+            "GATHER_ROOT": str(root / "gather"),
+            "GITHUB_OUTPUT": str(root / "github-output"),
+            "GITHUB_REF_NAME": "v1.2.3",
+            "INVENTORY_SHA256": "sha256:" + "0" * 64,
+            "SOURCE_REVISION": "1" * 40,
+            "TOBKIRI_REQUIRED_RELEASE_TARGETS": json.dumps(required_targets),
+        }
+        with patch.dict(os.environ, environment):
+            for step in inventory_steps:
+                with patch.object(subprocess, "run") as run:
+                    with pytest.raises(SystemExit, match="non-empty"):
+                        exec(step["run"], {})
+                    run.assert_not_called()
+
+
 def test_inventory_rejects_symlink_and_path_escape_fixtures() -> None:
     revision = "b" * 40
     with TemporaryDirectory(prefix="tobkiri-release-path-guards-") as temp:
@@ -317,6 +585,85 @@ def test_inventory_rejects_symlink_and_path_escape_fixtures() -> None:
                 root / "release-assets",
                 revision,
                 "v1.2.3",
+            )
+
+
+def test_inventory_rejects_symlinked_target_manifest() -> None:
+    revision = "e" * 40
+    with TemporaryDirectory(prefix="tobkiri-release-manifest-link-") as temp:
+        root = Path(temp)
+        for target in INVENTORY.TARGETS:
+            _create_target_upload(root, target, revision)
+        manifest_path = root / "uploaded/aarch64-apple-darwin/release-target.json"
+        replacement = root / "uploaded/x86_64-apple-darwin/release-target.json"
+        try:
+            manifest_path.unlink()
+            manifest_path.symlink_to(replacement)
+        except OSError as error:
+            pytest.skip(f"symlink fixtures are unavailable: {error}")
+        with pytest.raises(INVENTORY.InventoryError, match="regular file"):
+            INVENTORY.create_inventory(
+                root / "uploaded",
+                root / "release-inventory.json",
+                root / "release-assets",
+                revision,
+                "v1.2.3",
+            )
+
+
+def test_inventory_rejects_unexpected_artifact_target() -> None:
+    revision = "f" * 40
+    target = "aarch64-apple-darwin"
+    with TemporaryDirectory(prefix="tobkiri-release-artifact-target-") as temp:
+        root = Path(temp)
+        _create_target_upload(root, target, revision)
+        output = root / "release-inventory.json"
+        assets = root / "release-assets"
+        INVENTORY.create_inventory(
+            root / "uploaded",
+            output,
+            assets,
+            revision,
+            "v1.2.3",
+            [target],
+        )
+        inventory = json.loads(output.read_text(encoding="utf-8"))
+        inventory["artifacts"][0]["target"] = "x86_64-apple-darwin"
+        output.write_text(
+            json.dumps(inventory, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(INVENTORY.InventoryError, match="missing or unexpected"):
+            INVENTORY.verify_inventory(
+                output,
+                assets,
+                revision,
+                "v1.2.3",
+                required_targets=[target],
+            )
+
+
+def test_inventory_rejects_unknown_target_manifest() -> None:
+    revision = "0" * 40
+    target = "aarch64-apple-darwin"
+    with TemporaryDirectory(prefix="tobkiri-release-unknown-target-") as temp:
+        root = Path(temp)
+        upload_root = _create_target_upload(root, target, revision)
+        manifest_path = upload_root / INVENTORY.TARGET_MANIFEST
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["target"] = "unknown-release-target"
+        manifest_path.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(INVENTORY.InventoryError, match="unsupported"):
+            INVENTORY.create_inventory(
+                root / "uploaded",
+                root / "release-inventory.json",
+                root / "release-assets",
+                revision,
+                "v1.2.3",
+                [target],
             )
 
 

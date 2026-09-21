@@ -6,7 +6,7 @@ import {JSDOM} from 'jsdom';
 import {MemoryRouter, Route, Routes} from 'react-router';
 
 import {type Pack, useAppStore} from '@/src/store';
-import type {ApiDynamicFrontendCatalog, ApiPackVMDoctor} from '@/src/lib/apiTypes';
+import type {ApiDynamicFrontendCatalog, ApiPackVMDoctor, PackControlBinding} from '@/src/lib/apiTypes';
 import {PackDetail} from './PackDetail';
 
 const operation = {
@@ -48,6 +48,7 @@ const catalog: ApiDynamicFrontendCatalog = {
   version: 'rumi.ui.contribution.v1',
   profile_id: 'profile-a',
   profile_revision: 'sha256:profile',
+  activation_id: 'activation:profile-a',
   plan_hash: 'sha256:plan',
   contributions: [{
     contribution_id: 'file-inspect',
@@ -59,6 +60,14 @@ const catalog: ApiDynamicFrontendCatalog = {
   diagnostics: [],
   quarantined_pack_ids: [],
   catalog_hash: 'sha256:catalog',
+};
+
+const activePackBinding: PackControlBinding = {
+  profile_id: pack.profileId,
+  workspace_id: pack.workspaceId,
+  profile_revision: pack.profileRevision,
+  plan_digest: pack.planDigest,
+  catalog_revision: pack.catalogRevision,
 };
 
 const healthyDoctor: ApiPackVMDoctor = {
@@ -101,6 +110,7 @@ async function renderDetail(root: Root): Promise<void> {
 function configureStore(currentPack: Pack, currentCatalog = catalog): void {
   useAppStore.setState({
     packs: [currentPack],
+    packCatalogBinding: activePackBinding,
     packsLoading: false,
     packsError: null,
     frontendCatalog: currentCatalog,
@@ -110,6 +120,8 @@ function configureStore(currentPack: Pack, currentCatalog = catalog): void {
     packVmDoctorLoading: false,
     refreshPackVMDoctor: async () => healthyDoctor,
     packOperationPending: {},
+    packMutationUnknown: {},
+    packOperationUnknown: {},
     loadPacks: async () => {},
     loadFrontendCatalog: async () => {},
     invokePackOperation: async () => ({ok: true}),
@@ -199,9 +211,42 @@ test('PackDetail exposes required Profile Packs without revoke or toggle actions
 
   try {
     await renderDetail(root);
-    assert.match(container.textContent ?? '', /Required by Defaults Profile/);
+    assert.match(container.textContent ?? '', /Required by active execution Profile · profile-a/);
+    assert.match(container.textContent ?? '', /Host-global artifact inventory and install state/);
     assert.equal(container.querySelector('[role="switch"]'), null);
     assert.equal(container.querySelector('[aria-label^="Revoke approval"]'), null);
+  } finally {
+    act(() => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
+test('PackDetail exposes unknown mutation results with a separate status icon and copy action', async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  configureStore(pack);
+  useAppStore.setState({
+    packMutationUnknown: {
+      'pack:toggle:rumi_file_inspect_pack:disable': {
+        key: 'pack:toggle:rumi_file_inspect_pack:disable',
+        requestId: 'b461a9e3-ae97-4c0e-bc2e-818e23554631',
+        state: 'unknown',
+        createdAt: 1,
+        metadata: {kind: 'pack.toggle', pack_id: pack.id},
+      },
+    },
+  });
+
+  try {
+    await renderDetail(root);
+    assert.match(container.textContent ?? '', /The result of a Pack mutation is unknown/);
+    assert.ok(container.querySelector('[data-error-icon="pack-mutation-unknown"]'));
+    const copy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy unknown Pack mutation result"]',
+    );
+    assert.ok(copy);
+    assert.ok(copy.querySelector('svg.lucide-copy'));
   } finally {
     act(() => root.unmount());
     useAppStore.setState(previousState, true);

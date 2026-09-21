@@ -1,7 +1,5 @@
 """defaults.coding.git_push — Gitプッシュブロック"""
 
-import hashlib
-
 from blocks._common import ok, error
 from blocks.coding._approval import approval_required
 from blocks.coding._workspace import canonical_mutation_guard
@@ -9,6 +7,7 @@ from domain.coding.contract_adapter import (
     GIT_PUBLISH,
     GIT_READ,
     authorize_legacy_coding_operation,
+    git_publish_snapshot,
     invoke_coding_contract,
     service_payload,
     workspace_id,
@@ -33,12 +32,6 @@ def run(input_data, context=None):
     record_attempt(operation, "high", {"remote": remote, "branch": branch})
     try:
         selected_workspace_id = workspace_id(input_data)
-        remote_result = invoke_coding_contract(
-            GIT_READ,
-            "remote",
-            {"workspace_id": selected_workspace_id},
-        )
-        remote_url = _remote_url(str(remote_result.get("output") or ""), str(remote))
         if not branch:
             branch_result = invoke_coding_contract(
                 GIT_READ,
@@ -49,15 +42,18 @@ def run(input_data, context=None):
         if not branch:
             return error("branch is required", code="INVALID_INPUT")
         dry_run = bool(input_data.get("dry_run", False))
+        snapshot = git_publish_snapshot(
+            selected_workspace_id,
+            remote=str(remote),
+            branch=str(branch),
+        )
         arguments = {
             "remote": str(remote),
             "branch": str(branch),
             "force_with_lease": bool(input_data.get("force_with_lease", False)),
             "set_upstream": bool(input_data.get("set_upstream", False)),
             "dry_run": dry_run,
-            "expected_remote_url_hash": hashlib.sha256(
-                remote_url.encode("utf-8")
-            ).hexdigest(),
+            **snapshot,
         }
         service_name = "dry_run" if dry_run else "push"
         service_operation = f"git.publish.{service_name}"
@@ -81,6 +77,7 @@ def run(input_data, context=None):
                         args=input_data,
                         remote=remote,
                         branch=branch,
+                        destination_url=snapshot["expected_remote_url"],
                     )
                 )
             return error(
@@ -98,18 +95,6 @@ def run(input_data, context=None):
     except Exception as e:
         record_failure(operation, "high", str(e), {"remote": remote, "branch": branch})
         return error(str(e), code="GIT_ERROR")
-
-
-def _remote_url(output, remote):
-    for line in output.splitlines():
-        fields = line.split()
-        if len(fields) >= 2 and fields[0] == remote and "(push)" in line:
-            return fields[1]
-    for line in output.splitlines():
-        fields = line.split()
-        if len(fields) >= 2 and fields[0] == remote:
-            return fields[1]
-    raise ValueError("Git remote is unavailable")
 
 
 def _current_branch(output):

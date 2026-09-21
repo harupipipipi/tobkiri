@@ -22,11 +22,11 @@ _KIND_GROUP = {
     "profile": 3,
 }
 _PATH_SUFFIX = {
-    "pack": ("packs/", ".pack.v4.json"),
-    "executable_catalog": ("packs/", ".executables.v4.json"),
-    "base": ("", ".base.v1.json"),
-    "shell": ("", ".shell.v1.json"),
-    "profile": ("", ".profile.v4.json"),
+    "pack": ("packs/", (".pack.v4.json",)),
+    "executable_catalog": ("packs/", (".executables.v4.json",)),
+    "base": ("", (".base.v1.json",)),
+    "shell": ("", (".shell.v1.json",)),
+    "profile": ("", (".profile.v4.json", ".profile.v5.json")),
 }
 
 Entry = TypeVar("Entry", bound=Mapping[str, Any])

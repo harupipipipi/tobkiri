@@ -8,6 +8,7 @@ export type FrontendContributionKind =
   | "command";
 
 export type FrontendContributionMode =
+  | "application_builtin"
   | "declarative"
   | "isolated"
   | "same_origin_builtin";
@@ -22,10 +23,14 @@ export type VerifiedFrontendContribution = {
   owner_pack_id: string;
   owner_pack_hash: string;
   build_identity: string;
+  resolved_profile_id: string;
   resolved_profile_revision: string;
+  resolved_activation_id: string;
   resolved_plan_hash: string;
   descriptor_hash: string;
   route?: string | null;
+  route_match?: "exact" | "subpath";
+  implementation?: string;
   region?: string | null;
   renderer?: string | null;
   action_contract?: string | null;
@@ -53,7 +58,9 @@ export type FrontendCatalog = {
   version: "rumi.ui.contribution.v1";
   profile_id: string;
   profile_revision: string;
+  activation_id: string;
   plan_hash: string;
+  selected_entry_route: string;
   contributions: VerifiedFrontendContribution[];
   diagnostics: Array<{
     code: string;
@@ -69,13 +76,30 @@ export type FrontendCatalog = {
 export type CapabilityInvocation = {
   contractId: string;
   payload: Record<string, unknown>;
-  contributionId: string;
-  ownerPackId: string;
+  // Compatibility hints from a contribution implementation are never used as
+  // Host identity. DynamicFrontendHost overwrites them from its catalog capture.
+  contributionId?: string;
+  ownerPackId?: string;
+  planHash?: string;
+  catalogHash?: string;
+};
+
+export type CapturedCapabilityInvocation = CapabilityInvocation & {
+  profileId: string;
+  profileRevision: string;
+  activationId: string;
   planHash: string;
   catalogHash: string;
+  contributionId: string;
+  ownerPackId: string;
 };
 
 export type FrontendCapabilityClient = {
   invokeAction: (request: CapabilityInvocation) => Promise<unknown>;
   readDataSource: (request: CapabilityInvocation) => Promise<unknown>;
+};
+
+export type FrontendCapabilityInvoker = {
+  invokeAction: (request: CapturedCapabilityInvocation) => Promise<unknown>;
+  readDataSource: (request: CapturedCapabilityInvocation) => Promise<unknown>;
 };

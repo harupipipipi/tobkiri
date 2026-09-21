@@ -263,6 +263,13 @@ def compose_runtime_profile(
         }
         for item in sorted(selected_packs, key=lambda item: item["pack_id"])
     )
+    content_projections = sorted(
+        (dict(item) for item in resolved.get("content_projections") or []),
+        key=lambda item: str(item["projection_id"]),
+    )
+    projection_ids = [str(item["projection_id"]) for item in content_projections]
+    if len(projection_ids) != len(set(projection_ids)):
+        raise CompositionError("Profile content projection IDs are duplicated")
     profile_revision = canonical_digest(resolved)
     profile_definition_digest = canonical_digest(resolved)
     requested_edges_digest = canonical_digest(resolved["requested_edges"])
@@ -275,7 +282,12 @@ def compose_runtime_profile(
             ],
         }
     )
-    closure_digest = canonical_digest(effective_set)
+    closure_digest = canonical_digest(
+        {
+            "effective_set": effective_set,
+            "content_projections": content_projections,
+        }
+    )
     provenance_digest = canonical_digest(resolved["provenance"])
     application_rows = [
         item for item in resolved["packs"] if item.get("role") == "application"
@@ -296,6 +308,7 @@ def compose_runtime_profile(
             "profile_revision": profile_revision,
             "catalog_revision": catalog.revision,
             "effective_set": effective_set,
+            "content_projections": content_projections,
         }
     )
     lock: dict[str, Any] = {
@@ -314,6 +327,7 @@ def compose_runtime_profile(
         "shell": shell_lock,
         "application": application,
         "effective_set": effective_set,
+        "content_projections": content_projections,
         "variant_pins": [],
         "requested_edges_digest": requested_edges_digest,
         "constraints_digest": constraints_digest,

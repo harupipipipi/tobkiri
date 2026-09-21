@@ -16,6 +16,7 @@ from core_runtime.resolved_profile import (
     resolution_input_from_startup_profile,
 )
 from core_runtime.resolved_profile_scope import (
+    effective_profile_projections,
     invalidate_persisted_resolved_profile,
     persisted_resolved_profile,
 )
@@ -298,7 +299,7 @@ def test_persisted_profile_uses_only_committed_v4_activation(
     )
 
     monkeypatch.setattr(scope, "_PERSISTED_PROFILE_CACHE", None)
-    monkeypatch.setattr(capture_module, "capture_default_profile", _fake_v4_activation)
+    monkeypatch.setattr(capture_module, "capture_active_profile", _fake_v4_activation)
 
     plan = persisted_resolved_profile()
 
@@ -306,6 +307,24 @@ def test_persisted_profile_uses_only_committed_v4_activation(
     assert plan.profile_id == "defaults"
     assert plan.effective_pack_set == ("defaultspack",)
     assert plan.plan_hash == "sha256:" + "3" * 64
+
+
+def test_effective_profile_projections_reads_compatibility_profile_view(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compatibility views without a projections attribute remain readable."""
+    import core_runtime.resolved_profile_scope as scope
+
+    expected = ({"projection_id": "profile-content"},)
+    monkeypatch.setattr(
+        scope,
+        "persisted_resolved_profile",
+        lambda: SimpleNamespace(
+            profile={"content_projections": expected},
+        ),
+    )
+
+    assert effective_profile_projections() == expected
 
 
 def test_persisted_profile_cache_tracks_activation_and_invalidation(
@@ -341,7 +360,7 @@ def test_persisted_profile_cache_tracks_activation_and_invalidation(
     activation = {"value": _fake_v4_activation()}
     monkeypatch.setattr(
         capture_module,
-        "capture_default_profile",
+        "capture_active_profile",
         lambda: activation["value"],
     )
 

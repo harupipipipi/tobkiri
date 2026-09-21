@@ -47,6 +47,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 
 from core_runtime.hmac_key_manager import generate_or_load_signing_key
+from tobkiri_protocol.secure_persistence import SecureDirectory
 from ecosystem.defaultspack.backend.sandbox.isolation.lima_runtime import (
     PACKVM_BACKEND_ID,
     PACKVM_CLEANUP_PREFIX,
@@ -60,11 +61,15 @@ from ecosystem.defaultspack.backend.sandbox.isolation.packvm_image_cache import 
     PackVMImageAuthority,
     PackVMImageCache,
     PackVMImageCancelled,
-    PackVMImageProgress,
     PackVMPinnedImage,
+)
+from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_registration import (
+    prepare_storage_rebind,
+    retain_registration,
 )
 
 if TYPE_CHECKING:
+    from tobkiri_host.artifact_materialization import MaterializedPackArtifact
     from tobkiri_host.macos_vz_supervisor import (
         MacOSVZAgentIdentity,
         MacOSVZDomainAllocation,
@@ -81,11 +86,40 @@ VZ_STATE_VERSION = 1
 VZ_INSTANCE = "tobkiri-packvm-v4"
 VZ_PLATFORM = "macos-arm64"
 VZ_RAW_EFI_IMAGE_DECLARED_BYTES = 3 * 1024 * 1024 * 1024
-VZ_INSTANCE_COW_BYTES = 4 * 1024 * 1024 * 1024
+# ``clonefile`` creates a same-sized raw COW image and no Direct VZ path
+# resizes it. Reserve its exact, pinned raw size rather than an invented
+# larger sparse-disk ceiling; a missing cache is charged separately below.
 VZ_HOST_STORAGE_RESERVE_BYTES = 512 * 1024 * 1024
 _MAX_STATE_BYTES = 128 * 1024
 _MAX_MANIFEST_BYTES = 128 * 1024
 _MAX_HELPER_PROTOCOL_BYTES = 1024 * 1024
+_MAX_ARTIFACT_SEED_MANIFEST_BYTES = 16 * 1024 * 1024
+_MAX_ARTIFACT_SEED_PAYLOAD_BYTES = 512 * 1024 * 1024
+_ARTIFACT_SEED_MAGIC = b"tobkiri-packvm-artifact-seed.v1\0"
+_ARTIFACT_SEED_FORMAT = "io.tobkiri.packvm-artifact-seed.v1"
+_MAX_ARTIFACT_SEED_BYTES = (
+    len(_ARTIFACT_SEED_MAGIC)
+    + 8
+    + _MAX_ARTIFACT_SEED_MANIFEST_BYTES
+    + _MAX_ARTIFACT_SEED_PAYLOAD_BYTES
+)
+# Allocation briefly owns both the private artifact seed and the CIDATA ISO
+# into which that seed is copied.  Charge both maximum-size copies during the
+# user-visible preflight; the ordinary Host reserve remains available for the
+# EFI store, the agent seed, ISO metadata/alignment, and COW writes.
+VZ_ARTIFACT_SEED_PEAK_RESERVE_BYTES = 2 * _MAX_ARTIFACT_SEED_BYTES
+# The guest image starts cloud-final after network-online.target.  A VZ
+# domain deliberately has no physical NIC, which makes an empty NoCloud
+# configuration wait for the image's networkd-wait-online timeout.  This
+# local-only dummy link is rendered from CIDATA before that dependency: it
+# has one /32 address but no route, gateway, DNS, or Host attachment.
+_NOCLOUD_LOCAL_ONLY_NETWORK_CONFIG = (
+    b"version: 2\n"
+    b"renderer: networkd\n"
+    b"dummy-devices:\n"
+    b"  tobkiri0:\n"
+    b"    addresses: [192.0.2.1/32]\n"
+)
 _DIGEST_PREFIX = "sha256:"
 _DIRECT_IMAGE_URL = (
     "https://gemmei.ftp.acc.umu.se/images/cloud/trixie/20260819-2575/"
@@ -117,6 +151,15 @@ class _ImageDescriptorFacts(TypedDict):
     size_bytes: int
     sha256: str
     sha512: str
+
+
+class _ArtifactSeedFile(TypedDict):
+    """One typed manifest entry for a materialized artifact-seed file."""
+
+    path: str
+    digest: str
+    executable: bool
+    size: int
 
 
 @dataclass(frozen=True)
@@ -394,6 +437,7 @@ class MacOSVZProvisioner:
         transport_factory: MacOSVZTransportFactory | None = None,
         helper_identity_verifier: Callable[[MacOSVZAssetManifest], tuple[bool, str | None]]
         | None = None,
+        allow_ad_hoc_helper_identity: bool = False,
         clone_file: Callable[[Path, Path], None] | None = None,
         efi_store_preparer: Callable[[Path, str, Path, bytes], Mapping[str, object]] | None = None,
     ) -> None:
@@ -462,6 +506,7 @@ class MacOSVZProvisioner:
         )
         self._transport_factory = transport_factory
         self._helper_identity_verifier = helper_identity_verifier
+        self._allow_ad_hoc_helper_identity = allow_ad_hoc_helper_identity
         self._clone_file = clone_file or _clone_file_apfs
         self._efi_store_preparer = efi_store_preparer
         self._pending: dict[str, PackVMProvisioningPlan] = {}
@@ -494,6 +539,12 @@ class MacOSVZProvisioner:
         return self._state_dir / "packvm-vz-mutation-claim.json"
 
     @property
+    def allocation_recovery_path(self) -> Path:
+        """Return the authenticated receipt for an interrupted allocation."""
+
+        return self._state_dir / "packvm-vz-allocation-recovery.json"
+
+    @property
     def audit_path(self) -> Path:
         """Return the bounded append-only local lifecycle audit path."""
 
@@ -512,12 +563,13 @@ class MacOSVZProvisioner:
         binding: Mapping[str, str | int],
         *,
         recover_claim: bool = False,
+        recover_stale_claim_for_cleanup: bool = False,
+        require_existing_claim: bool = False,
         preserve_claim_on_error: bool = False,
         retain_claim_on_success: bool = False,
     ) -> Iterator[None]:
         """Serialize a mutation and retain an exact owner claim durably."""
 
-        del recover_claim  # Recovery is authenticated by the state/proof below.
         self._ensure_state_root()
         claim = {
             "version": 1,
@@ -533,15 +585,52 @@ class MacOSVZProvisioner:
             _try_lock(descriptor)
             locked = True
             existing = _read_json_if_present(self.mutation_claim_path)
-            if existing is not None and _canonical_bytes(existing) != _canonical_bytes(claim):
-                raise ValueError("PackVM VZ mutation has an unresolved owner claim")
-            _atomic_private_json(self.mutation_claim_path, claim)
+            if existing is not None:
+                same_owner = hmac.compare_digest(
+                    _canonical_bytes(existing), _canonical_bytes(claim)
+                )
+                stale_recovery = (
+                    recover_claim
+                    and _claim_binding_equal(existing, claim)
+                    and _valid_process_id(existing.get("owner_pid"))
+                    and not _process_is_alive(existing.get("owner_pid"))
+                )
+                stale_attested_cleanup = (
+                    recover_stale_claim_for_cleanup
+                    and operation == "cleanup"
+                    and existing.get("version") == 1
+                    and existing.get("operation") == "provision"
+                    and existing.get("instance") == VZ_INSTANCE
+                    and _valid_process_id(existing.get("owner_pid"))
+                    and not _process_is_alive(existing.get("owner_pid"))
+                    and not self._failed_provision_claim_is_recoverable(existing)
+                )
+                if (
+                    not same_owner
+                    and not stale_recovery
+                    and not stale_attested_cleanup
+                ):
+                    raise ValueError("PackVM VZ mutation has an unresolved owner claim")
+                if stale_recovery or stale_attested_cleanup:
+                    _atomic_private_json(self.mutation_claim_path, claim)
+            else:
+                if require_existing_claim:
+                    raise ValueError("PackVM VZ mutation recovery claim is unavailable")
+                _atomic_private_json(self.mutation_claim_path, claim)
             yield
             succeeded = True
         finally:
             if locked:
+                # A failed provision owns recoverable mutable state only after
+                # the signed recovery record exists.  Preflight failures (for
+                # example an already-provisioned instance) must not strand an
+                # owner claim that blocks the explicit cleanup ceremony.
+                preserve_failed_claim = (
+                    preserve_claim_on_error
+                    and self._failed_provision_claim_is_recoverable(claim)
+                )
                 should_remove = (succeeded and not retain_claim_on_success) or (
-                    not succeeded and not preserve_claim_on_error
+                    not succeeded and not preserve_failed_claim
                 )
                 if should_remove:
                     current = _read_json_if_present(self.mutation_claim_path)
@@ -549,6 +638,29 @@ class MacOSVZProvisioner:
                         self.mutation_claim_path.unlink(missing_ok=True)
                 _unlock(descriptor)
             os.close(descriptor)
+
+    def _failed_provision_claim_is_recoverable(
+        self, claim: Mapping[str, Any]
+    ) -> bool:
+        """Return whether signed orphan evidence is bound to this claim."""
+
+        if (
+            claim.get("version") != 1
+            or claim.get("operation") != "provision"
+            or claim.get("instance") != VZ_INSTANCE
+        ):
+            return False
+        try:
+            recovery = self._load_recovery()
+            expected = {
+                "version": 1,
+                "operation": "provision",
+                "instance": VZ_INSTANCE,
+                "binding": _recovery_binding(recovery),
+            }
+        except (OSError, ValueError):
+            return False
+        return _claim_binding_equal(claim, expected)
 
     def recovery_identity(self) -> dict[str, int | str]:
         """Return non-secret stable state-root identity for operation recovery."""
@@ -586,9 +698,32 @@ class MacOSVZProvisioner:
                 config_digest = manifest.config_digest
                 guest_digest = manifest.agent_digest
                 helper_digest = manifest.helper_digest
-            image_download_required = manifest is not None and cache_status != "verified_source"
+            update = None
+            storage_rebind = None
+            if manifest is not None and (self.state_path.exists() or self.state_path.is_symlink()):
+                try:
+                    state = self._load_state()
+                    candidate_rebind = prepare_storage_rebind(self._state_dir, state)
+                    self._verify_registration_source(state, manifest, candidate_rebind)
+                    update = {
+                        "previous_attestation_digest": str(state["attestation_digest"]),
+                        "previous_config_digest": str(state["cloud_template_digest"]),
+                        "previous_guest_runner_digest": str(state["guest_runner_digest"]),
+                        "previous_host_build_digest": str(state["host_build_digest"]),
+                        "asset_manifest_digest": manifest.manifest_digest,
+                    }
+                    storage_rebind = candidate_rebind
+                    cache_status, cache_reason = "verified_source", None
+                except (OSError, ValueError) as exc:
+                    issue = str(exc)
+            image_download_required = (
+                manifest is not None and update is None and cache_status != "verified_source"
+            )
             download_bytes = image_size if image_download_required else 0
-            required_space = self._required_host_space(download_bytes)
+            required_space = (
+                3 * _MAX_STATE_BYTES if update is not None
+                else self._required_host_space(download_bytes)
+            )
             available, storage_reason = self._host_capacity(required_space)
             launcher_reason = issue or storage_reason
             runtime_status = "ready" if launcher_reason is None else "unsafe"
@@ -603,7 +738,7 @@ class MacOSVZProvisioner:
                 "image_download_required": image_download_required,
                 "image_download_bytes": download_bytes,
                 "image_cache_status": cache_status,
-                "disk_size_bytes": VZ_INSTANCE_COW_BYTES,
+                "disk_size_bytes": VZ_RAW_EFI_IMAGE_DECLARED_BYTES,
                 "host_free_space_required_bytes": required_space,
                 "config_digest": config_digest,
                 "guest_runner_digest": guest_digest,
@@ -611,6 +746,8 @@ class MacOSVZProvisioner:
                 "runtime_root_digest": _digest_text(str(self._state_dir)),
                 "runtime_path_status": runtime_status,
                 "ceremony_nonce": nonce,
+                "registration_update": update,
+                "storage_rebind": storage_rebind,
             }
             plan_digest = _canonical_digest(facts)
             self._pending.clear()
@@ -627,7 +764,7 @@ class MacOSVZProvisioner:
                 image_download_bytes=download_bytes,
                 image_cache_status=cache_status,
                 image_cache_reason=cache_reason,
-                disk_size_bytes=VZ_INSTANCE_COW_BYTES,
+                disk_size_bytes=VZ_RAW_EFI_IMAGE_DECLARED_BYTES,
                 host_free_space_required_bytes=required_space,
                 host_free_space_available_bytes=available,
                 host_free_space_reason=storage_reason,
@@ -640,6 +777,8 @@ class MacOSVZProvisioner:
                 ceremony_nonce=nonce,
                 plan_digest=plan_digest,
                 confirmation=f"{PACKVM_CONFIRMATION_PREFIX} {VZ_INSTANCE} {plan_digest[7:19]}",
+                registration_update=update,
+                storage_rebind=storage_rebind,
             )
             self._pending[nonce] = plan
             return plan
@@ -648,7 +787,7 @@ class MacOSVZProvisioner:
         self,
         request: PackVMProvisioningRequest,
         *,
-        progress: Callable[[PackVMImageProgress], None] | None = None,
+        progress: Callable[[Any], None] | None = None,
         cancelled: Callable[[], bool] | None = None,
     ) -> PackVMDoctor:
         """Fetch the exact raw EFI image and construct private VZ state once."""
@@ -666,6 +805,13 @@ class MacOSVZProvisioner:
                 "PackVM image download requires explicit approval for the displayed source, size, and digest"
             )
         manifest = self._require_manifest()
+        if plan.registration_update is not None:
+            return self._update_registration(request, plan, manifest, cancelled)
+        if (
+            request.previous_attestation_digest is not None
+            or request.storage_rebind_digest is not None
+        ):
+            raise ValueError("PackVM VZ create plan cannot update a registration")
         self._require_host_capacity(plan.image_download_bytes)
         authority = self._image_authority(
             manifest,
@@ -815,10 +961,10 @@ class MacOSVZProvisioner:
             raise ValueError(f"PackVM stop requires exact confirmation: {expected}")
         state = self._load_state()
         with self.operation_gate("stop", {"attestation_digest": str(state["attestation_digest"])}):
+            self._assert_state_current(state)
             self._verify_state_bindings(state, self._require_manifest())
             state["stopped"] = True
-            state["authentication"] = self._sign_state(state)
-            _atomic_private_json(self.state_path, state)
+            state = self._write_attested_state(state)
             self._audit("stopped", str(state["attestation_digest"]))
 
     def allocate(
@@ -830,6 +976,7 @@ class MacOSVZProvisioner:
         artifact_digest: str,
         executable_digest: str,
         materialization_digest: str,
+        artifact: MaterializedPackArtifact,
         channel_key: bytes,
     ) -> MacOSVZDomainAllocation:
         """Create one unshared APFS COW boot disk and helper-made EFI store."""
@@ -844,9 +991,14 @@ class MacOSVZProvisioner:
         }
         if any(not _is_digest(value) for value in launch_artifacts.values()):
             raise ValueError("PackVM VZ allocation artifact bindings are invalid")
+        _validate_materialized_artifact(
+            artifact,
+            artifact_digest=artifact_digest,
+            executable_digest=executable_digest,
+            materialization_digest=materialization_digest,
+        )
         state = self._load_state()
         manifest = self._require_manifest()
-        self._verify_state_bindings(state, manifest)
         allocation_name = _digest_text(f"{domain_id}\0{reservation_id}\0{lease_id}")[7:]
         root = self._state_dir / "domains" / allocation_name
         binding = {
@@ -855,8 +1007,14 @@ class MacOSVZProvisioner:
             "lease_digest": _digest_text(lease_id),
         }
         with self.operation_gate("allocate", binding):
+            self._assert_state_current(state)
+            self._verify_state_bindings(state, manifest)
             if root.exists() or root.is_symlink():
                 raise ValueError("PackVM VZ domain allocation already exists")
+            # Recheck while the cross-process mutation gate is held.  The
+            # user-visible plan reserves the maximum artifact, but actual free
+            # space may have changed before this exact allocation begins.
+            self._require_allocation_capacity(artifact)
             _ensure_private_directory(self._state_dir / "domains")
             _ensure_private_directory(root)
             cow = root / "boot-cow.raw"
@@ -896,6 +1054,7 @@ class MacOSVZProvisioner:
                     artifact_digest=artifact_digest,
                     executable_digest=executable_digest,
                     materialization_digest=materialization_digest,
+                    artifact=artifact,
                 )
                 allocation = {
                     "domain_id": domain_id,
@@ -931,6 +1090,211 @@ class MacOSVZProvisioner:
             config_seed_path=seed_facts["config_seed_path"],
             config_seed_digest=seed_facts["config_seed_digest"],
             guest_public_key=_decode_domain_public_key(seed_facts["guest_public_key_b64"]),
+        )
+
+    def recover_interrupted_allocation(
+        self,
+        *,
+        domain_id: str,
+        reservation_id: str,
+        executable_digest: str,
+    ) -> bool:
+        """Reconcile one exact pre-launch allocation owned by a dead supervisor.
+
+        A missing ``allocation.json`` proves that ``allocate`` never returned
+        to the VZ supervisor, so no guest transport could have been launched.
+        The helper's command channel is the owning process' stdin pipe; a dead
+        owner closes that channel before recovery. The HMAC receipt makes the
+        later admission-ledger release retryable across a second crash.
+        """
+
+        _validate_allocation_identifier(domain_id, "domain")
+        _validate_allocation_identifier(reservation_id, "reservation")
+        if not _is_digest(executable_digest):
+            raise ValueError("PackVM VZ recovery executable digest is invalid")
+        claim = _read_json_if_present(self.mutation_claim_path)
+        receipt_hint = _read_json_if_present(self.allocation_recovery_path)
+        hint = claim if claim is not None else receipt_hint
+        hint_binding = hint.get("binding") if isinstance(hint, Mapping) else None
+        if not isinstance(hint_binding, Mapping) or (
+            hint_binding.get("domain_digest") != _digest_text(domain_id)
+            or hint_binding.get("reservation_digest")
+            != _digest_text(reservation_id)
+        ):
+            # This unauthenticated comparison is only a cheap rejection. Full
+            # claim/receipt verification still precedes cleanup or release.
+            return False
+        state = self._load_state()
+        manifest = self._require_manifest()
+        from tobkiri_host.macos_vz_supervisor import (
+            MacOSVZAgentIdentity,
+            MacOSVZHelperIdentity,
+            MacOSVZLaunchAssets,
+            MacOSVZRuntime,
+        )
+
+        helper_identity = MacOSVZHelperIdentity(
+            binary_digest=str(state["helper_digest"]),
+            code_digest=str(state["helper_digest"]),
+            bundle_id=manifest.helper_bundle_id,
+            team_id=manifest.helper_team_id,
+            signing_identity=manifest.helper_signing_identity,
+        )
+        launch_assets = MacOSVZLaunchAssets(
+            base_image_digest=str(state["image_digest"]),
+            base_image_path=str(state["base_image_path"]),
+            agent_template_digest=str(state["guest_runner_digest"]),
+            config_template_digest=str(state["cloud_template_digest"]),
+            base_image_read_only=True,
+        )
+        backend_digest = _canonical_digest(
+            {
+                "backend_id": PACKVM_BACKEND_ID,
+                "substrate_id": "macos-vz",
+                "platform": VZ_PLATFORM,
+                "helper": helper_identity.to_dict(),
+                "launch_assets": launch_assets.to_dict(),
+                "agent_code_digest": MacOSVZAgentIdentity(
+                    agent_digest=str(state["guest_runner_digest"])
+                ).agent_digest,
+                "runtime": MacOSVZRuntime().to_dict(),
+            }
+        )
+        lease_id = _canonical_digest(
+            {
+                "reservation_id": reservation_id,
+                "executable": executable_digest,
+                "backend": backend_digest,
+            }
+        )
+        binding = {
+            "domain_digest": _digest_text(domain_id),
+            "reservation_digest": _digest_text(reservation_id),
+            "lease_digest": _digest_text(lease_id),
+        }
+        allocation_name = _digest_text(
+            f"{domain_id}\0{reservation_id}\0{lease_id}"
+        )[7:]
+        root = self._state_dir / "domains" / allocation_name
+        expected_claim = {
+            "version": 1,
+            "operation": "allocate",
+            "instance": VZ_INSTANCE,
+            "binding": binding,
+        }
+        receipt_matches = self._allocation_recovery_receipt_matches(binding, root)
+        if claim is None:
+            return receipt_matches
+        if not self._stale_allocation_claim_matches(claim, expected_claim):
+            return False
+        if root.exists() or root.is_symlink():
+            if not _safe_private_domain_root(root):
+                raise ValueError("PackVM VZ interrupted allocation root is unsafe")
+            allocation_record = root / "allocation.json"
+            if allocation_record.exists() or allocation_record.is_symlink():
+                return False
+        descriptor = _open_private_file(
+            self.mutation_lock_path, os.O_CREAT | os.O_RDWR
+        )
+        locked = False
+        try:
+            _try_lock(descriptor)
+            locked = True
+            current = _read_json_if_present(self.mutation_claim_path)
+            if current is None or not self._stale_allocation_claim_matches(
+                current, expected_claim
+            ):
+                return False
+            if root.exists() or root.is_symlink():
+                self._remove_allocation_root(root)
+            if not receipt_matches:
+                self._write_allocation_recovery_receipt(
+                    binding, root, int(current["owner_pid"])
+                )
+            latest = _read_json_if_present(self.mutation_claim_path)
+            if latest is None or not hmac.compare_digest(
+                _canonical_bytes(latest), _canonical_bytes(current)
+            ):
+                raise ValueError("PackVM VZ allocation recovery claim changed")
+            self.mutation_claim_path.unlink()
+            return True
+        finally:
+            if locked:
+                _unlock(descriptor)
+            os.close(descriptor)
+
+    @staticmethod
+    def _stale_allocation_claim_matches(
+        claim: Mapping[str, Any], expected: Mapping[str, Any]
+    ) -> bool:
+        return (
+            _claim_binding_equal(claim, expected)
+            and _valid_process_id(claim.get("owner_pid"))
+            and not _process_is_alive(claim.get("owner_pid"))
+        )
+
+    def _allocation_recovery_receipt_matches(
+        self, binding: Mapping[str, str], root: Path
+    ) -> bool:
+        receipt = _read_json_if_present(self.allocation_recovery_path)
+        if receipt is None or set(receipt) != {
+            "version",
+            "operation",
+            "instance",
+            "binding",
+            "root_digest",
+            "owner_pid",
+            "authentication",
+        }:
+            return False
+        authentication = receipt.pop("authentication")
+        key = generate_or_load_signing_key(
+            self._state_dir / "packvm-vz-allocation-recovery.key"
+        )
+        expected = hmac.new(
+            key, _canonical_bytes(receipt), hashlib.sha256
+        ).hexdigest()
+        return (
+            isinstance(authentication, str)
+            and hmac.compare_digest(authentication, expected)
+            and receipt.get("version") == 1
+            and receipt.get("operation") == "allocate_recovered"
+            and receipt.get("instance") == VZ_INSTANCE
+            and hmac.compare_digest(
+                _canonical_bytes(receipt.get("binding")),
+                _canonical_bytes(dict(binding)),
+            )
+            and receipt.get("root_digest") == _digest_text(str(root))
+            and _valid_process_id(receipt.get("owner_pid"))
+            and not root.exists()
+            and not root.is_symlink()
+        )
+
+    def _write_allocation_recovery_receipt(
+        self,
+        binding: Mapping[str, str],
+        root: Path,
+        owner_pid: int,
+    ) -> None:
+        unsigned = {
+            "version": 1,
+            "operation": "allocate_recovered",
+            "instance": VZ_INSTANCE,
+            "binding": dict(binding),
+            "root_digest": _digest_text(str(root)),
+            "owner_pid": owner_pid,
+        }
+        key = generate_or_load_signing_key(
+            self._state_dir / "packvm-vz-allocation-recovery.key"
+        )
+        _atomic_private_json(
+            self.allocation_recovery_path,
+            {
+                **unsigned,
+                "authentication": hmac.new(
+                    key, _canonical_bytes(unsigned), hashlib.sha256
+                ).hexdigest(),
+            },
         )
 
     def release(self, allocation: MacOSVZDomainAllocation) -> None:
@@ -1005,6 +1369,7 @@ class MacOSVZProvisioner:
         artifact_digest: str,
         executable_digest: str,
         materialization_digest: str,
+        artifact: MaterializedPackArtifact,
     ) -> dict[str, str]:
         """Create fresh domain-bound guest identity and no-cloud seed disks.
 
@@ -1016,6 +1381,7 @@ class MacOSVZProvisioner:
 
         agent_seed = root / "agent-seed.iso"
         config_seed = root / "config-seed.iso"
+        artifact_seed = root / "artifact-seed.v1.bin"
         runner = _read_verified_bundle_file(
             manifest.agent_path, manifest.agent_digest, 8 * 1024 * 1024
         )
@@ -1067,28 +1433,37 @@ class MacOSVZProvisioner:
             "executable": executable_digest,
             "materialization": materialization_digest,
         }
+        artifact_seed_binding = _write_materialized_artifact_seed(artifact_seed, artifact)
         agent_config = {
             "version": 1,
             "domain_id": domain_id,
             "binding_digests": binding_digests,
             "private_key_path": "/run/tobkiri-packvm/agent-ed25519.pem",
+            "artifact_seed": artifact_seed_binding,
         }
         cloud_template = _read_verified_bundle_file(
             manifest.config_path, manifest.config_digest, _MAX_MANIFEST_BYTES
         )
-        _write_iso_seed(
-            config_seed,
-            "cidata",
-            {
-                "user-data": cloud_template,
-                "meta-data": (f"instance-id: {domain_id}\nlocal-hostname: tobkiri-packvm\n").encode(
-                    "utf-8"
-                ),
-                "network-config": b"version: 2\nethernets: {}\n",
-                "agent-ed25519.pem": private_pem,
-                "agent-config.json": _canonical_bytes(agent_config),
-            },
-        )
+        try:
+            _write_iso_seed(
+                config_seed,
+                "cidata",
+                {
+                    "user-data": cloud_template,
+                    "meta-data": (
+                        f"instance-id: {domain_id}\nlocal-hostname: tobkiri-packvm\n"
+                    ).encode("utf-8"),
+                    "network-config": _NOCLOUD_LOCAL_ONLY_NETWORK_CONFIG,
+                    "agent-ed25519.pem": private_pem,
+                    "agent-config.json": _canonical_bytes(agent_config),
+                    "artifact-seed.v1.bin": artifact_seed,
+                },
+            )
+        finally:
+            try:
+                artifact_seed.unlink()
+            except FileNotFoundError:
+                pass
         config_seed_digest = _file_digest(config_seed)
         return {
             "agent_seed_path": str(agent_seed),
@@ -1203,15 +1578,11 @@ class MacOSVZProvisioner:
             raise ValueError(f"PackVM cleanup requires exact confirmation: {expected}")
         state = self._load_state()
         with self.operation_gate(
-            "cleanup", {"attestation_digest": str(state["attestation_digest"])}
+            "cleanup",
+            {"attestation_digest": str(state["attestation_digest"])},
+            recover_stale_claim_for_cleanup=True,
         ):
-            self._verify_state_bindings(state, self._require_manifest())
-            self._remove_empty_domains_root()
-            self._remove_exact_instance(Path(str(state["instance_root"])), state)
-            self._audit("deleted", str(state["attestation_digest"]))
-            self.state_path.unlink(missing_ok=True)
-            self.recovery_path.unlink(missing_ok=True)
-            (self._state_dir / "packvm-vz-attestation.key").unlink(missing_ok=True)
+            self._cleanup_authenticated_instance(state)
 
     def cleanup_failed_provision(
         self, confirmation: str, expected_proof: Mapping[str, Any]
@@ -1226,23 +1597,187 @@ class MacOSVZProvisioner:
             if not _secure_equal(recovery.get(key), expected_proof.get(key)):
                 raise ValueError("PackVM VZ orphan recovery proof does not match")
         instance_root = Path(str(recovery["instance_root"]))
-        with self.operation_gate("provision", _recovery_binding(expected_proof)):
-            self._remove_exact_instance(instance_root, recovery)
+        bound_recovery = self._bind_legacy_empty_recovery_root(instance_root, recovery)
+        with self.operation_gate(
+            "provision",
+            _recovery_binding(expected_proof),
+            recover_claim=True,
+            require_existing_claim=True,
+        ):
+            self._remove_exact_instance(instance_root, bound_recovery)
             self.recovery_path.unlink(missing_ok=True)
             self._audit("failed_provision_deleted", None)
         return {"missing": False}
 
+    def _cleanup_authenticated_instance(self, state: Mapping[str, Any]) -> None:
+        """Remove one authenticated instance while its lifecycle gate is held."""
+
+        self._assert_state_current(state)
+        self._require_manifest()
+        # Cleanup authenticates ownership of the old instance, not its ability
+        # to execute under the newly installed release.
+        for key, value in self.recovery_identity().items():
+            if key != "vz_provisioner_digest" and state.get(key) != value:
+                raise ValueError(f"PackVM VZ {key} changed")
+        self._remove_empty_domains_root()
+        self._remove_exact_instance(Path(str(state["instance_root"])), state)
+        self._audit("deleted", str(state["attestation_digest"]))
+        self.state_path.unlink(missing_ok=True)
+        self.recovery_path.unlink(missing_ok=True)
+        (self._state_dir / "packvm-vz-attestation.key").unlink(missing_ok=True)
+
     def recover_provision_operation(self, expected_proof: Mapping[str, Any]) -> PackVMDoctor:
         """Reconcile a restart only when the exact state proof still verifies."""
 
+        if expected_proof.get("previous_attestation_digest") is not None:
+            # A crash can occur on either side of the atomic state publication.
+            # Only this exact journal ceremony may release its stale claim;
+            # reconciliation never repeats the registration write.
+            with self.operation_gate(
+                "provision", _recovery_binding(expected_proof), recover_claim=True
+            ):
+                return self._recover_provision_state(expected_proof)
+        return self._recover_provision_state(expected_proof)
+
+    def _recover_provision_state(self, expected_proof: Mapping[str, Any]) -> PackVMDoctor:
         state = self._load_state()
+        if state.get("previous_attestation_digest") != expected_proof.get(
+            "previous_attestation_digest"
+        ):
+            raise ValueError("PackVM VZ registration recovery proof changed")
+        if state.get("storage_rebind_digest") != expected_proof.get("storage_rebind_digest"):
+            raise ValueError("PackVM VZ storage recovery proof changed")
         for key in _recovery_fields():
-            if not _secure_equal(state.get(key), expected_proof.get(key)):
+            state_key = "cloud_template_digest" if key == "config_digest" else key
+            if not _secure_equal(state.get(state_key), expected_proof.get(key)):
                 raise ValueError("PackVM VZ provision recovery proof changed")
         doctor = self.doctor()
         if not doctor.ready:
             raise ValueError(doctor.reason or "PackVM VZ is unavailable")
         return doctor
+
+    def _verify_registration_source(
+        self, state: Mapping[str, Any], manifest: MacOSVZAssetManifest,
+        storage_rebind: Mapping[str, str | int] | None = None,
+    ) -> None:
+        """Authenticate old ownership while requiring the same immutable image."""
+        if state.get("stopped") is not False or state.get("protocol_ready") is not True:
+            raise ValueError("PackVM VZ registration is stopped or incomplete")
+        self._verify_registration_roots(state, storage_rebind)
+        for key, value in (
+            ("image_digest", manifest.image_digest),
+            ("image_source", manifest.image_source),
+        ):
+            if not _secure_equal(state.get(key), value):
+                raise ValueError("PackVM VZ registration update cannot change its image")
+        root = Path(str(state.get("instance_root") or ""))
+        base = Path(str(state.get("base_image_path") or ""))
+        if not base.is_absolute() or _file_digest(base) != manifest.image_digest:
+            raise ValueError("PackVM VZ immutable base image changed")
+        for key in ("cloud_template_digest", "guest_runner_digest", "host_build_digest"):
+            if not _is_digest(state.get(key)):
+                raise ValueError("PackVM VZ previous registration bindings are invalid")
+        self._verify_instance_files(root, manifest)
+
+    def _verify_registration_roots(
+        self, state: Mapping[str, Any],
+        storage_rebind: Mapping[str, str | int] | None = None,
+    ) -> None:
+        if storage_rebind is not None:
+            # Only the pending, separately acknowledged plan may bind new device
+            # numbers. Doctor, execution and cleanup keep their strict checks.
+            if prepare_storage_rebind(self._state_dir, state) != storage_rebind:
+                raise ValueError("PackVM VZ storage re-registration plan changed")
+            state = {
+                **state,
+                "vz_state_root_device": storage_rebind["current_device"],
+                "instance_root_device": storage_rebind["current_device"],
+            }
+        for key, value in self.recovery_identity().items():
+            if key != "vz_provisioner_digest" and state.get(key) != value:
+                raise ValueError(f"PackVM VZ {key} changed")
+        root = Path(str(state.get("instance_root") or ""))
+        if root != self._state_dir / "instances" / VZ_INSTANCE or not _same_private_directory(root, state):
+            raise ValueError("PackVM VZ instance root changed")
+
+    def _update_registration(
+        self,
+        request: PackVMProvisioningRequest,
+        plan: PackVMProvisioningPlan,
+        manifest: MacOSVZAssetManifest,
+        cancelled: Callable[[], bool] | None,
+    ) -> PackVMDoctor:
+        update = plan.registration_update
+        assert update is not None
+        if request.previous_attestation_digest != update["previous_attestation_digest"]:
+            raise ValueError("PackVM VZ registration update requires exact explicit consent")
+        rebind = plan.storage_rebind
+        rebind_digest = rebind["digest"] if rebind is not None else None
+        if request.storage_rebind_digest != rebind_digest:
+            raise ValueError("PackVM VZ storage re-registration requires exact explicit consent")
+        if (
+            plan.image_download_required
+            or manifest.manifest_digest != update["asset_manifest_digest"]
+            or manifest.config_digest != plan.config_digest
+            or manifest.agent_digest != plan.guest_runner_digest
+            or manifest.helper_digest != plan.host_build_digest
+            or manifest.image_digest != plan.image_digest
+            or manifest.image_source != plan.image_source
+        ):
+            raise ValueError("PackVM VZ registration plan assets changed")
+        binding = {
+            "session_digest": request.session_digest or _digest_text("direct-local-lifecycle"),
+            "plan_digest": request.plan_digest,
+            "ceremony_nonce_digest": _digest_text(request.ceremony_nonce),
+        }
+        with self.operation_gate("provision", binding):
+            state = self._load_state()
+            if state["attestation_digest"] != update["previous_attestation_digest"]:
+                raise ValueError("PackVM VZ registration changed after preparation")
+            self._verify_registration_source(state, manifest, rebind)
+            _available, reason = self._host_capacity(3 * _MAX_STATE_BYTES)
+            if reason:
+                raise ValueError(reason)
+
+            def before_publish() -> None:
+                if cancelled is not None and cancelled():
+                    raise PackVMImageCancelled(
+                        "packvm_image_cancelled", "PackVM VZ registration update was cancelled"
+                    )
+                self._assert_state_current(state)
+                if rebind is not None:
+                    self._verify_registration_source(state, manifest, rebind)
+                else:
+                    self._verify_registration_roots(state)
+                if self._require_manifest() != manifest:
+                    raise ValueError("PackVM VZ registration plan assets changed")
+
+            before_publish()
+            raw = _read_private_file(self.state_path, _MAX_STATE_BYTES)
+            if json.loads(raw) != state:
+                raise ValueError("PackVM VZ registration changed before retention")
+            retain_registration(
+                self._state_dir, str(state["attestation_digest"]), raw,
+                before_publish=before_publish,
+            )
+            updated = dict(state)
+            updated.update({
+                **binding,
+                **self.recovery_identity(),
+                "previous_attestation_digest": state["attestation_digest"],
+                "storage_rebind_digest": rebind_digest,
+                "cloud_template_digest": manifest.config_digest,
+                "helper_digest": manifest.helper_digest,
+                "guest_runner_digest": manifest.agent_digest,
+                "bubblewrap_digest": manifest.bubblewrap_digest,
+                "host_build_digest": manifest.helper_digest,
+                "registration_updated_unix": int(time.time()),
+            })
+            if rebind is not None:
+                updated["instance_root_device"] = rebind["current_device"]
+            updated = self._write_attested_state(updated, before_publish=before_publish)
+            self._audit("registration_updated", str(updated["attestation_digest"]))
+            return self.doctor()
 
     def _provision_verified_image(
         self,
@@ -1291,9 +1826,7 @@ class MacOSVZProvisioner:
                 "created_unix": int(time.time()),
                 **self.recovery_identity(),
             }
-            state["attestation_digest"] = _canonical_digest(state)
-            state["authentication"] = self._sign_state(state)
-            _atomic_private_json(self.state_path, state)
+            state = self._write_attested_state(state)
             self.recovery_path.unlink(missing_ok=True)
             self._audit("provisioned", str(state["attestation_digest"]))
             return self.doctor()
@@ -1311,6 +1844,15 @@ class MacOSVZProvisioner:
         if root.exists() or root.is_symlink():
             raise ValueError("PackVM VZ instance root already exists")
         _ensure_private_directory(root)
+        recovery = self._load_recovery()
+        metadata = root.lstat()
+        recovery.update(
+            {
+                "instance_root_device": int(metadata.st_dev),
+                "instance_root_inode": int(metadata.st_ino),
+            }
+        )
+        _atomic_private_json(self.recovery_path, self._signed_recovery(recovery))
         try:
             verified = image.verified
             source = verified.path
@@ -1318,7 +1860,8 @@ class MacOSVZProvisioner:
                 raise ValueError("PackVM VZ verified raw EFI image digest changed")
             if (
                 manifest.image_sha512 is not None
-                and _file_digest_algorithm(source, "sha512") != manifest.image_sha512
+                and _file_digest_algorithm(source, "sha512").removeprefix("sha512:")
+                != manifest.image_sha512
             ):
                 raise ValueError("PackVM VZ verified raw EFI image SHA-512 changed")
             # The cache owns the immutable base.  The per-instance metadata only
@@ -1535,26 +2078,36 @@ class MacOSVZProvisioner:
             or not _is_digest(helper.get("code_sha256"))
             or not isinstance(signing, Mapping)
             or set(signing) != {"signing_mode", "team_id", "authority"}
-            or signing.get("signing_mode") != "developer-id"
-            or not isinstance(signing.get("team_id"), str)
-            or not isinstance(signing.get("authority"), str)
         ):
             raise ValueError("packaged macOS VZ helper production identity is unavailable")
-        team_id = str(signing["team_id"])
-        authority = str(signing["authority"])
-        if (
-            len(team_id) != 10
-            or not team_id.isascii()
-            or not team_id.isalnum()
-            or team_id != team_id.upper()
-            or not authority.startswith("Developer ID Application: ")
-            or not authority.endswith(f" ({team_id})")
-            or len(authority) > 512
-        ):
-            raise ValueError("packaged macOS VZ helper production identity is invalid")
+        signing_mode = signing.get("signing_mode")
+        if signing_mode == "ad-hoc":
+            if signing.get("team_id") is not None or signing.get("authority") is not None:
+                raise ValueError("packaged macOS VZ helper ad-hoc identity is invalid")
+            team_id = ""
+            authority = ""
+        elif signing_mode == "developer-id":
+            candidate_team_id = signing.get("team_id")
+            candidate_authority = signing.get("authority")
+            if (
+                not isinstance(candidate_team_id, str)
+                or not isinstance(candidate_authority, str)
+                or len(candidate_team_id) != 10
+                or not candidate_team_id.isascii()
+                or not candidate_team_id.isalnum()
+                or candidate_team_id != candidate_team_id.upper()
+                or not candidate_authority.startswith("Developer ID Application: ")
+                or not candidate_authority.endswith(f" ({candidate_team_id})")
+                or len(candidate_authority) > 512
+            ):
+                raise ValueError("packaged macOS VZ helper production identity is invalid")
+            team_id = candidate_team_id
+            authority = candidate_authority
+        else:
+            raise ValueError("packaged macOS VZ helper signing mode is invalid")
         binding = self._bundle_binding
-        if binding is not None and (
-            not binding.helper_team_id or not hmac.compare_digest(team_id, binding.helper_team_id)
+        if binding is not None and not hmac.compare_digest(
+            team_id, binding.helper_team_id
         ):
             raise ValueError("packaged macOS VZ helper Team ID binding changed")
         bundle_root = resource_root.parent.parent
@@ -1613,7 +2166,22 @@ class MacOSVZProvisioner:
         )
 
     def _required_host_space(self, download_bytes: int) -> int:
-        return VZ_INSTANCE_COW_BYTES + VZ_HOST_STORAGE_RESERVE_BYTES + download_bytes
+        return (
+            VZ_RAW_EFI_IMAGE_DECLARED_BYTES
+            + VZ_HOST_STORAGE_RESERVE_BYTES
+            + VZ_ARTIFACT_SEED_PEAK_RESERVE_BYTES
+            + download_bytes
+        )
+
+    def _required_allocation_space(self, artifact: MaterializedPackArtifact) -> int:
+        """Return peak bytes needed to allocate this already-validated artifact."""
+
+        artifact_seed_bytes = _materialized_artifact_seed_size(artifact)
+        return (
+            VZ_RAW_EFI_IMAGE_DECLARED_BYTES
+            + VZ_HOST_STORAGE_RESERVE_BYTES
+            + (2 * artifact_seed_bytes)
+        )
 
     def _host_capacity(self, required: int) -> tuple[int, str | None]:
         path = self._state_dir
@@ -1635,6 +2203,13 @@ class MacOSVZProvisioner:
         if reason is not None:
             raise ValueError(reason)
 
+    def _require_allocation_capacity(self, artifact: MaterializedPackArtifact) -> None:
+        """Recheck current free space for the exact artifact before mutation."""
+
+        _available, reason = self._host_capacity(self._required_allocation_space(artifact))
+        if reason is not None:
+            raise ValueError(reason)
+
     def _ensure_state_root(self) -> None:
         if (
             not self._requested_state_dir.is_absolute()
@@ -1648,6 +2223,31 @@ class MacOSVZProvisioner:
         key = generate_or_load_signing_key(self._state_dir / "packvm-vz-attestation.key")
         unsigned = {key: value for key, value in state.items() if key != "authentication"}
         return hmac.new(key, _canonical_bytes(unsigned), hashlib.sha256).hexdigest()
+
+    def _write_attested_state(
+        self, state: Mapping[str, Any], *, before_publish: Callable[[], None] | None = None
+    ) -> dict[str, Any]:
+        """Atomically bind both integrity layers to the same updated state."""
+        updated = {
+            key: value for key, value in state.items()
+            if key not in {"authentication", "attestation_digest"}
+        }
+        updated["attestation_digest"] = _canonical_digest(updated)
+        updated["authentication"] = self._sign_state(updated)
+        if before_publish is None:
+            _atomic_private_json(self.state_path, updated)
+        else:
+            SecureDirectory(self._state_dir, create=False).write_bytes_atomic(
+                self.state_path.name, _canonical_bytes(updated) + b"\n",
+                before_publish=before_publish,
+            )
+        return updated
+
+    def _assert_state_current(self, state: Mapping[str, Any]) -> None:
+        """Recheck the selected state after acquiring the lifecycle lock."""
+        current = self._load_state()
+        if current["attestation_digest"] != state["attestation_digest"]:
+            raise ValueError("PackVM VZ lifecycle state changed before mutation")
 
     def _load_state(self) -> dict[str, Any]:
         raw = _read_private_file(self.state_path, _MAX_STATE_BYTES)
@@ -1760,6 +2360,33 @@ class MacOSVZProvisioner:
         if root.exists():
             raise ValueError("PackVM VZ cleanup left instance residue")
 
+    def _bind_legacy_empty_recovery_root(
+        self, root: Path, recovery: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Bind an empty root created before recovery recorded its inode."""
+
+        device = recovery.get("instance_root_device")
+        inode = recovery.get("instance_root_inode")
+        if device is not None or inode is not None:
+            if isinstance(device, int) and isinstance(inode, int):
+                return recovery
+            raise ValueError("PackVM VZ cleanup target binding is incomplete")
+        expected = self._state_dir / "instances" / VZ_INSTANCE
+        if root != expected or root.is_symlink():
+            raise ValueError("PackVM VZ cleanup target changed")
+        metadata = root.lstat()
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_mode & 0o077
+            or (hasattr(os, "getuid") and metadata.st_uid != os.getuid())
+            or next(root.iterdir(), None) is not None
+        ):
+            raise ValueError("PackVM VZ cleanup target changed")
+        bound = dict(recovery)
+        bound["instance_root_device"] = int(metadata.st_dev)
+        bound["instance_root_inode"] = int(metadata.st_ino)
+        return bound
+
     def _audit(self, event: str, attestation_digest: str | None) -> None:
         self._ensure_state_root()
         record = {
@@ -1780,6 +2407,22 @@ class MacOSVZProvisioner:
 def default_packvm_provisioner() -> MacOSVZProvisioner:
     """Return direct VZ on supported macOS and no Lima default elsewhere."""
 
+    if os.environ.get("RUMI_ENVIRONMENT") == "development":
+        development_bundle = os.environ.get(
+            "TOBKIRI_DEVELOPMENT_PACKVM_BUNDLE_ROOT", ""
+        ).strip()
+        if development_bundle:
+            bundle_root = Path(development_bundle)
+            return MacOSVZProvisioner(
+                bundle_root=bundle_root,
+                asset_manifest_path=(
+                    bundle_root
+                    / "Contents"
+                    / "Resources"
+                    / "packvm-vz-provisioning.v1.json"
+                ),
+                allow_ad_hoc_helper_identity=True,
+            )
     return MacOSVZProvisioner()
 
 
@@ -1955,19 +2598,19 @@ def _parse_bubblewrap_descriptor(
         or set(descriptor) != {"schema", "package", "version", "architecture", "source"}
         or descriptor.get("schema") != "io.tobkiri.packvm-vz-bubblewrap-descriptor.v1"
         or descriptor.get("package") != "bubblewrap"
-        or descriptor.get("version") != "0.11.0-2+deb13u1"
+        or descriptor.get("version") != "0.12.0-1~deb13u1"
         or descriptor.get("architecture") != "arm64"
         or not isinstance(source, Mapping)
         or set(source) != {"url", "size_bytes", "sha256"}
         or source.get("url")
         != "https://deb.debian.org/debian/pool/main/b/bubblewrap/"
-        "bubblewrap_0.11.0-2+deb13u1_arm64.deb"
-        or source.get("size_bytes") != 50132
+        "bubblewrap_0.12.0-1~deb13u1_arm64.deb"
+        or source.get("size_bytes") != 54820
         or source.get("sha256")
-        != "sha256:c838daebddb7fe169ebb461612e90b1fcb981de838f81bfbecf26d45ab5a71ee"
+        != "sha256:d1ac1d0d81c815fc15842b9f04fdf414830ed14a0a602bf6344740f90bb36c00"
     ):
         raise ValueError("PackVM VZ bubblewrap descriptor is invalid")
-    return {"size_bytes": 50132, "sha256": str(source["sha256"])}
+    return {"size_bytes": 54820, "sha256": str(source["sha256"])}
 
 
 def _parse_guest_service_template(
@@ -2219,8 +2862,126 @@ def _atomic_private_json(path: Path, payload: Mapping[str, Any]) -> None:
     _atomic_private_bytes(path, _canonical_bytes(payload) + b"\n")
 
 
-def _write_iso_seed(path: Path, volume_label: str, files: Mapping[str, bytes]) -> None:
-    """Write a small deterministic ISO9660 seed disk aligned to 2048/512 bytes.
+def _validate_materialized_artifact(
+    artifact: MaterializedPackArtifact,
+    *,
+    artifact_digest: str,
+    executable_digest: str,
+    materialization_digest: str,
+) -> None:
+    """Reject an artifact that differs from the Host-resolved launch binding."""
+
+    from tobkiri_host.artifact_materialization import MaterializedPackArtifact
+
+    if not isinstance(artifact, MaterializedPackArtifact):
+        raise ValueError("PackVM VZ artifact payload is invalid")
+    if (
+        artifact.artifact_digest != artifact_digest
+        or artifact.implementation_digest != executable_digest
+        or artifact.materialization_digest != materialization_digest
+    ):
+        raise ValueError("PackVM VZ artifact payload binding changed")
+    if sum(len(item.content) for item in artifact.files) > _MAX_ARTIFACT_SEED_PAYLOAD_BYTES:
+        raise ValueError("PackVM VZ artifact payload exceeds the seed limit")
+
+
+def _write_materialized_artifact_seed(
+    path: Path,
+    artifact: MaterializedPackArtifact,
+) -> dict[str, object]:
+    """Serialize already Host-verified Pack bytes into one bounded seed file.
+
+    The compact binary framing deliberately avoids base64 expansion: a valid
+    512 MiB Host artifact therefore remains admissible.  The guest replays the
+    exact manifest and raw file stream into its normal materialization path.
+    """
+
+    encoded_manifest, total_payload = _materialized_artifact_seed_framing(artifact)
+    total_size = len(_ARTIFACT_SEED_MAGIC) + 8 + len(encoded_manifest) + total_payload
+    _ensure_private_directory(path.parent)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
+    digest = hashlib.sha256()
+
+    def write_hashed(data: bytes) -> None:
+        _write_all(descriptor, data)
+        digest.update(data)
+
+    try:
+        os.fchmod(descriptor, 0o600)
+        write_hashed(_ARTIFACT_SEED_MAGIC)
+        write_hashed(len(encoded_manifest).to_bytes(8, "big"))
+        write_hashed(encoded_manifest)
+        for item in artifact.files:
+            if _digest_bytes(item.content) != item.digest:
+                raise ValueError("PackVM VZ artifact bytes changed before seed creation")
+            write_hashed(item.content)
+        if os.fstat(descriptor).st_size != total_size:
+            raise ValueError("PackVM VZ artifact seed size is invalid")
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(temporary, path)
+        _validate_private_file(path, total_size)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+    return {
+        "format": _ARTIFACT_SEED_FORMAT,
+        "digest": _DIGEST_PREFIX + digest.hexdigest(),
+        "size_bytes": total_size,
+    }
+
+
+def _materialized_artifact_seed_framing(
+    artifact: MaterializedPackArtifact,
+) -> tuple[bytes, int]:
+    """Return the canonical manifest and payload size used by seed framing."""
+
+    files: list[_ArtifactSeedFile] = [
+        {
+            "path": item.path,
+            "digest": item.digest,
+            "executable": item.executable,
+            "size": len(item.content),
+        }
+        for item in artifact.files
+    ]
+    manifest = {
+        "schema": _ARTIFACT_SEED_FORMAT,
+        "pack_id": artifact.pack_id,
+        "artifact_digest": artifact.artifact_digest,
+        "function_id": artifact.function_id,
+        "implementation_digest": artifact.implementation_digest,
+        "implementation_path": artifact.implementation_path,
+        "materialization_digest": artifact.materialization_digest,
+        "files": files,
+    }
+    encoded_manifest = _canonical_bytes(manifest)
+    if len(encoded_manifest) > _MAX_ARTIFACT_SEED_MANIFEST_BYTES:
+        raise ValueError("PackVM VZ artifact seed manifest exceeds its bound")
+    total_payload = sum(item["size"] for item in files)
+    if total_payload > _MAX_ARTIFACT_SEED_PAYLOAD_BYTES:
+        raise ValueError("PackVM VZ artifact seed payload exceeds its bound")
+    return encoded_manifest, total_payload
+
+
+def _materialized_artifact_seed_size(artifact: MaterializedPackArtifact) -> int:
+    """Return exact artifact-seed bytes without writing allocation state."""
+
+    encoded_manifest, total_payload = _materialized_artifact_seed_framing(artifact)
+    return len(_ARTIFACT_SEED_MAGIC) + 8 + len(encoded_manifest) + total_payload
+
+
+def _write_iso_seed(
+    path: Path,
+    volume_label: str,
+    files: Mapping[str, bytes | Path],
+) -> None:
+    """Write a deterministic ISO9660 seed disk aligned to 2048/512 bytes.
 
     Cloud-init's NoCloud datasource recognizes ``cidata`` ISO volumes and the
     guest agent can mount the separate agent volume.  We build the narrow ISO
@@ -2229,35 +2990,44 @@ def _write_iso_seed(path: Path, volume_label: str, files: Mapping[str, bytes]) -
     exact VM ceremony.
     """
 
-    if (
-        not files
-        or len(files) > 16
-        or any(
+    if not files or len(files) > 16:
+        raise ValueError("PackVM VZ ISO seed content is invalid")
+    source_facts: dict[str, tuple[int, bytes | Path, str | None]] = {}
+    for name, data in files.items():
+        if (
             not isinstance(name, str)
             or not name
             or len(name.encode("ascii", errors="ignore")) != len(name)
             or len(name) > 96
             or "/" in name
             or "\x00" in name
-            or not isinstance(data, bytes)
-            or len(data) > 512 * 1024
-            for name, data in files.items()
-        )
-    ):
-        raise ValueError("PackVM VZ ISO seed content is invalid")
+        ):
+            raise ValueError("PackVM VZ ISO seed content is invalid")
+        if isinstance(data, bytes):
+            source_facts[name] = (len(data), data, _digest_bytes(data))
+        elif isinstance(data, Path):
+            descriptor = _open_private_file(data, os.O_RDONLY)
+            try:
+                metadata = os.fstat(descriptor)
+                if metadata.st_size < 0 or metadata.st_size > _MAX_ARTIFACT_SEED_BYTES:
+                    raise ValueError("PackVM VZ ISO seed source exceeds its bound")
+            finally:
+                os.close(descriptor)
+            source_facts[name] = (metadata.st_size, data, _file_digest(data))
+        else:
+            raise ValueError("PackVM VZ ISO seed content is invalid")
     block = 2048
     root_sector = 20
     root_blocks = 1
     file_sectors: dict[str, tuple[int, int]] = {}
     cursor = root_sector + root_blocks
-    for name, data in sorted(files.items()):
-        sectors = max(1, (len(data) + block - 1) // block)
+    for name, (size, _data, _digest) in sorted(source_facts.items()):
+        sectors = max(1, (size + block - 1) // block)
         file_sectors[name] = (cursor, sectors)
         cursor += sectors
     total = max(cursor, 32)
-    image = bytearray(total * block)
 
-    def both_endian(offset: int, value: int, width: int) -> None:
+    def both_endian(image: bytearray, offset: int, value: int, width: int) -> None:
         image[offset : offset + width] = value.to_bytes(width, "little")
         image[offset + width : offset + 2 * width] = value.to_bytes(width, "big")
 
@@ -2281,42 +3051,88 @@ def _write_iso_seed(path: Path, volume_label: str, files: Mapping[str, bytes]) -
         result[33 : 33 + len(identifier)] = identifier
         return bytes(result)
 
-    primary = 16 * block
-    image[primary] = 1
-    image[primary + 1 : primary + 6] = b"CD001"
-    image[primary + 6] = 1
-    image[primary + 8 : primary + 40] = b"TOBKIRI".ljust(32, b" ")
-    image[primary + 40 : primary + 72] = volume_label.upper().encode("ascii").ljust(32, b" ")
-    both_endian(primary + 80, total, 4)
-    both_endian(primary + 120, 1, 2)
-    both_endian(primary + 124, 1, 2)
-    both_endian(primary + 128, block, 2)
+    primary = bytearray(block)
+    primary[0] = 1
+    primary[1:6] = b"CD001"
+    primary[6] = 1
+    primary[8:40] = b"TOBKIRI".ljust(32, b" ")
+    primary[40:72] = volume_label.upper().encode("ascii").ljust(32, b" ")
+    both_endian(primary, 80, total, 4)
+    both_endian(primary, 120, 1, 2)
+    both_endian(primary, 124, 1, 2)
+    both_endian(primary, 128, block, 2)
     root_record = record(b"\x00", root_sector, root_blocks * block, 2)
-    image[primary + 156 : primary + 156 + len(root_record)] = root_record
-    terminator = 17 * block
-    image[terminator] = 255
-    image[terminator + 1 : terminator + 6] = b"CD001"
-    image[terminator + 6] = 1
-    root_offset = root_sector * block
+    primary[156 : 156 + len(root_record)] = root_record
+    terminator = bytearray(block)
+    terminator[0] = 255
+    terminator[1:6] = b"CD001"
+    terminator[6] = 1
+    root_directory = bytearray(block)
     entries = [
         record(b"\x00", root_sector, root_blocks * block, 2),
         record(b"\x01", root_sector, root_blocks * block, 2),
     ]
-    for name, data in sorted(files.items()):
+    for name, (size, _data, _digest) in sorted(source_facts.items()):
         sector, _sectors = file_sectors[name]
-        entries.append(record((name + ";1").encode("ascii"), sector, len(data), 0))
-    position = root_offset
+        entries.append(record((name + ";1").encode("ascii"), sector, size, 0))
+    position = 0
     for entry in entries:
-        if position + len(entry) > root_offset + block:
+        if position + len(entry) > block:
             raise ValueError("PackVM VZ ISO seed directory exceeds its bound")
-        image[position : position + len(entry)] = entry
+        root_directory[position : position + len(entry)] = entry
         position += len(entry)
-    for name, data in sorted(files.items()):
-        sector, _sectors = file_sectors[name]
-        offset = sector * block
-        image[offset : offset + len(data)] = data
-    _atomic_private_bytes(path, bytes(image))
-    _validate_private_file(path, len(image))
+    _ensure_private_directory(path.parent)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}-", dir=path.parent)
+    try:
+        os.fchmod(descriptor, 0o600)
+        os.ftruncate(descriptor, total * block)
+
+        def write_at(offset: int, content: bytes) -> None:
+            os.lseek(descriptor, offset, os.SEEK_SET)
+            _write_all(descriptor, content)
+
+        write_at(16 * block, bytes(primary))
+        write_at(17 * block, bytes(terminator))
+        write_at(root_sector * block, bytes(root_directory))
+        for name, (size, data, expected_digest) in sorted(source_facts.items()):
+            sector, _sectors = file_sectors[name]
+            os.lseek(descriptor, sector * block, os.SEEK_SET)
+            if isinstance(data, bytes):
+                _write_all(descriptor, data)
+                continue
+            source_descriptor = _open_private_file(data, os.O_RDONLY)
+            try:
+                before = os.fstat(source_descriptor)
+                copied = 0
+                digest = hashlib.sha256()
+                while chunk := os.read(source_descriptor, min(1024 * 1024, size - copied)):
+                    _write_all(descriptor, chunk)
+                    digest.update(chunk)
+                    copied += len(chunk)
+                after = os.fstat(source_descriptor)
+                if (
+                    copied != size
+                    or _DIGEST_PREFIX + digest.hexdigest() != expected_digest
+                    or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+                    != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+                ):
+                    raise ValueError("PackVM VZ ISO seed source changed while copying")
+            finally:
+                os.close(source_descriptor)
+        if os.fstat(descriptor).st_size != total * block:
+            raise ValueError("PackVM VZ ISO seed size is invalid")
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(temporary, path)
+        _validate_private_file(path, total * block)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 def _clone_file_apfs(source: Path, target: Path) -> None:
@@ -2483,7 +3299,39 @@ def _recovery_binding(proof: Mapping[str, Any]) -> dict[str, str]:
 
 
 def _canonical_bytes(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _claim_binding_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    fields = ("version", "operation", "instance", "binding")
+    return hmac.compare_digest(
+        _canonical_bytes({field: left.get(field) for field in fields}),
+        _canonical_bytes({field: right.get(field) for field in fields}),
+    )
+
+
+def _process_is_alive(value: object) -> bool:
+    if not _valid_process_id(value):
+        return False
+    assert isinstance(value, int) and not isinstance(value, bool)
+    try:
+        os.kill(value, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _valid_process_id(value: object) -> bool:
+    """Accept only a positive integer owner PID from a durable claim."""
+
+    return not isinstance(value, bool) and isinstance(value, int) and value > 0
 
 
 def _digest_bytes(value: bytes) -> str:
@@ -2525,7 +3373,16 @@ def _format_gib(value: int) -> str:
 
 
 def _secure_equal(left: object, right: object) -> bool:
-    return isinstance(left, str) and isinstance(right, str) and hmac.compare_digest(left, right)
+    if isinstance(left, str) and isinstance(right, str):
+        return hmac.compare_digest(left, right)
+    if (
+        isinstance(left, int)
+        and not isinstance(left, bool)
+        and isinstance(right, int)
+        and not isinstance(right, bool)
+    ):
+        return hmac.compare_digest(str(left).encode(), str(right).encode())
+    return False
 
 
 __all__ = [

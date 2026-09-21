@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ..hmac_key_manager import compute_data_hmac, generate_or_load_signing_key, verify_data_hmac
+from ..pack_boundary import PackBoundaryError, load_pack_catalog, resolve_selected_pack_roots
 from ..profile_workspace import ProfileWorkspaceManager, validate_profile_id
 from .constants import PLAN_SPEC_VERSION
 from .models import OperatingProfile
@@ -153,25 +154,30 @@ class OperatingProfilePlanStore:
         )
 
     def _pack_digest(self) -> str:
-        pack_manifest = (
-            Path(__file__).resolve().parents[2]
-            / "ecosystem"
-            / "defaultspack"
-            / "pack.v4.json"
-        )
+        """Digest the finite catalog-selected Pack artifacts for the profile host."""
+        artifacts: list[dict[str, str]] = []
         try:
-            raw = pack_manifest.read_bytes()
-            manifest = validate_document(raw, "pack")
-        except (OSError, ValueError) as exc:
-            raise ValueError("canonical defaultspack Pack v4 artifact is unavailable") from exc
-        return stable_sha256(
-            {
-                "pack_id": manifest["pack"]["id"],
-                "source_identity": manifest["integrity"]["source_identity"],
-                "artifact_digest": manifest["pack"]["artifact_digest"],
-                "manifest_sha256": hashlib.sha256(raw).hexdigest(),
-            }
-        )
+            pack_roots = resolve_selected_pack_roots(tuple(load_pack_catalog()))
+        except PackBoundaryError as exc:
+            raise ValueError("canonical Pack catalog is unavailable") from exc
+        for pack_id, pack_root in pack_roots.items():
+            pack_manifest = pack_root / "pack.v4.json"
+            try:
+                raw = pack_manifest.read_bytes()
+                manifest = validate_document(raw, "pack")
+            except (OSError, ValueError) as exc:
+                raise ValueError("canonical Pack artifact is unavailable") from exc
+            artifacts.append(
+                {
+                    "pack_id": pack_id,
+                    "source_identity": str(manifest["integrity"]["source_identity"]),
+                    "artifact_digest": str(manifest["pack"]["artifact_digest"]),
+                    "manifest_sha256": hashlib.sha256(raw).hexdigest(),
+                }
+            )
+        if not artifacts:
+            raise ValueError("canonical Pack catalog is unavailable")
+        return stable_sha256({"pack_artifacts": artifacts})
 
     def _scoped(self, path: Path, profile_id: str) -> Path:
         root = self.workspace_manager.paths_for_profile(profile_id).root.resolve()

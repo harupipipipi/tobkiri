@@ -15,6 +15,7 @@ from typing import Any, Callable, Mapping
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
+from ecosystem.rumi_conversation_store_pack.runtime.saved_receipt import append_receipt
 
 STORE_VERSION = "rumi.conversation-store.v1"
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
@@ -62,6 +63,11 @@ class ConversationStore:
     def get(self, conversation_id: str) -> dict[str, Any] | None:
         """Return one complete conversation with ordered messages."""
         value = self._read()["conversations"].get(_identifier(conversation_id))
+        return _copy(value) if isinstance(value, Mapping) else None
+
+    def saved_receipt(self, turn_id: str) -> dict[str, Any] | None:
+        """Read immutable append evidence without creating or changing state."""
+        value = self._read().get("saved_receipts", {}).get(_identifier(turn_id))
         return _copy(value) if isinstance(value, Mapping) else None
 
     def create(
@@ -237,6 +243,7 @@ class ConversationStore:
         message: Mapping[str, Any],
         *,
         expected_conversation_revision: int,
+        saved_input: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Append one normalized message at an exact conversation revision."""
         conversation_id = _identifier(conversation_id)
@@ -275,6 +282,17 @@ class ConversationStore:
                     for item in messages
                 ]
             normalized["sequence"] = len(messages)
+            if saved_input is not None:
+                receipts = dict(state.get("saved_receipts", {}))
+                turn_id = saved_input.get("request", {}).get("turn_id")
+                if turn_id not in receipts and len(receipts) >= 10000:
+                    raise ConversationConflict("saved receipt capacity is exhausted")
+                receipt = append_receipt(
+                    receipts.get(turn_id), saved_input, conversation_id,
+                    expected_conversation_revision, normalized,
+                )
+                receipts[receipt["turn_id"]] = receipt
+                state["saved_receipts"] = receipts
             messages.append(normalized)
             current["messages"] = messages
             current["current_node_id"] = normalized["id"]

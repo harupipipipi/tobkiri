@@ -155,8 +155,8 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["action_extraction"] == f"owned_by_{PACK_ID}"
     assert candidate.overlap_policy["evidence_linked_recap_bundle"] == f"owned_by_{PACK_ID}"
 
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= {
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= {
         "no_connector_delivery_runtime",
         "no_calendar_write_runtime",
         "no_business_ops_execution",
@@ -165,7 +165,7 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
         "no_voice_capture_runtime",
         "human_review_required_before_external_action",
     }
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= {
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= {
         "participant_consent_review_cases",
         "decision_log_source_span_cases",
         "followup_delivery_handoff_cases",

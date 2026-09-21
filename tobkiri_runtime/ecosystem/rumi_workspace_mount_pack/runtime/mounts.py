@@ -11,13 +11,27 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from core_runtime.host_provider_backend_v4 import (
+    CapturedHostProviderV4,
+    HostProviderCaptureContextV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+)
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
 from core_runtime.runtime_locks import NamedLock
+from tobkiri_host.workspace_mutation import (
+    WorkspaceMutationBinding,
+    open_directory_nofollow,
+)
 
 AUTHORITY = "rumi.service.host.authorize.v1"
 VERSION = "rumi.workspace-mounts.v1"
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_RESOURCE_FUNCTION_ID = "rumi_workspace_mount_pack.workspace-mount.resource"
+_ACTION_FUNCTION_ID = "rumi_workspace_mount_pack.workspace-mount.manage"
+_RESOURCE_SERVICE_OPERATIONS = frozenset({"list", "get"})
+_ACTION_SERVICE_OPERATIONS = frozenset({"mount", "unmount", "update", "select", "trust"})
 
 
 class WorkspaceConflict(RuntimeError):
@@ -197,32 +211,42 @@ def create_workspace_action(client: Any) -> Callable[[str, Mapping[str, Any]], A
     """Create receipt-gated workspace mount mutations."""
 
     def operation(name: str, payload: Mapping[str, Any]) -> Any:
-        if name not in {"mount", "unmount", "update", "select", "trust"}:
-            raise ValueError(f"unknown workspace action: {name}")
-        arguments = _action_arguments(name, payload)
-        _redeem(client, payload, f"workspace.{name}", arguments)
-        store = WorkspaceMountStore(_profile(payload))
-        expected = int(arguments["expected_revision"])
-        if name == "mount":
-            return store.mount(
-                arguments["workspace_id"],
-                arguments["root_path"],
-                expected_revision=expected,
-                metadata=arguments["metadata"],
-            )
-        if name == "unmount":
-            return store.unmount(arguments["workspace_id"], expected_revision=expected)
-        if name == "select":
-            return store.select(arguments["workspace_id"], expected_revision=expected)
-        metadata = {"trusted": True} if name == "trust" else arguments["metadata"]
-        return store.update(
-            arguments["workspace_id"],
-            expected_revision=expected,
-            root_path=arguments.get("root_path") or None,
-            metadata=metadata,
-        )
+        return _execute_workspace_action(client, name, payload)
 
     return operation
+
+
+def _execute_workspace_action(
+    client: Any,
+    name: str,
+    payload: Mapping[str, Any],
+    *,
+    user_data_root: Path | None = None,
+) -> Mapping[str, Any]:
+    if name not in _ACTION_SERVICE_OPERATIONS:
+        raise ValueError(f"unknown workspace action: {name}")
+    arguments = _action_arguments(name, payload)
+    _redeem(client, payload, f"workspace.{name}", arguments)
+    store = WorkspaceMountStore(_profile(payload), user_data_root=user_data_root)
+    expected = int(arguments["expected_revision"])
+    if name == "mount":
+        return store.mount(
+            arguments["workspace_id"],
+            arguments["root_path"],
+            expected_revision=expected,
+            metadata=arguments["metadata"],
+        )
+    if name == "unmount":
+        return store.unmount(arguments["workspace_id"], expected_revision=expected)
+    if name == "select":
+        return store.select(arguments["workspace_id"], expected_revision=expected)
+    metadata = {"trusted": True} if name == "trust" else arguments["metadata"]
+    return store.update(
+        arguments["workspace_id"],
+        expected_revision=expected,
+        root_path=arguments.get("root_path") or None,
+        metadata=metadata,
+    )
 
 
 def capture_selected_workspace_binding(
@@ -237,33 +261,18 @@ def capture_selected_workspace_binding(
     workspace_id = str(snapshot.get("selected_workspace_id") or "").strip()
     if not workspace_id:
         raise ValueError("a Host-selected workspace is required")
-    mount = store.get(workspace_id)
-    if not isinstance(mount, Mapping):
-        raise ValueError("the Host-selected workspace is unavailable")
-    unresolved = Path(str(mount.get("root_path") or ""))
-    if unresolved.is_symlink():
-        raise PermissionError("the selected workspace root must not be a symlink")
-    root = unresolved.resolve(strict=True)
-    if not root.is_dir():
-        raise PermissionError("the selected workspace root is unavailable")
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    root_fd = os.open(root, flags)
-    try:
-        root_stat = os.fstat(root_fd)
-        current = root.stat()
-        if (root_stat.st_dev, root_stat.st_ino) != (current.st_dev, current.st_ino):
-            raise PermissionError("the selected workspace root changed during capture")
-    finally:
-        os.close(root_fd)
+    captured = capture_workspace_binding(
+        profile_id,
+        workspace_id,
+        user_data_root=user_data_root,
+    )
     binding: dict[str, object] = {
         "workspace_id": workspace_id,
         "access": "read_only",
-        "mount_revision": str(
-            mount.get("revision") or mount.get("updated_at_ms") or mount.get("updated_at") or ""
-        ),
-        "canonical_root": str(root),
-        "root_st_dev": int(root_stat.st_dev),
-        "root_st_ino": int(root_stat.st_ino),
+        "mount_revision": captured.mount_revision,
+        "canonical_root": str(captured.canonical_root),
+        "root_st_dev": captured.root_st_dev,
+        "root_st_ino": captured.root_st_ino,
     }
     binding["root_identity"] = hashlib.sha256(
         json.dumps(
@@ -274,6 +283,230 @@ def capture_selected_workspace_binding(
         ).encode("utf-8")
     ).hexdigest()
     return binding
+
+
+def capture_workspace_binding(
+    profile_id: str,
+    workspace_id: str,
+    *,
+    user_data_root: Path | None = None,
+) -> WorkspaceMutationBinding:
+    """Capture one exact mount record and its nofollow root identity."""
+
+    store = WorkspaceMountStore(profile_id, user_data_root=user_data_root)
+    mount = store.get(_identifier(workspace_id))
+    if not isinstance(mount, Mapping):
+        raise ValueError("the requested workspace is unavailable")
+    unresolved = Path(str(mount.get("root_path") or ""))
+    if unresolved.is_symlink():
+        raise PermissionError("the workspace root must not be a symlink")
+    root = unresolved.resolve(strict=True)
+    if not root.is_dir():
+        raise PermissionError("the workspace root is unavailable")
+    root_fd = open_directory_nofollow(root)
+    try:
+        root_stat = os.fstat(root_fd)
+    finally:
+        os.close(root_fd)
+    return WorkspaceMutationBinding(
+        profile_id=store.profile_id,
+        workspace_id=workspace_id,
+        mount_revision=int(mount.get("mount_revision") or 0),
+        canonical_root=root,
+        root_st_dev=int(root_stat.st_dev),
+        root_st_ino=int(root_stat.st_ino),
+    )
+
+
+class WorkspaceResourceHostFactoryV4:
+    """Capture exact workspace metadata reads and the mutation binding hook."""
+
+    function_id = _RESOURCE_FUNCTION_ID
+
+    def capture_workspace_binding_resolver(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> Callable[[str, str], WorkspaceMutationBinding]:
+        """Return the Host-owned resolver for exact mounted workspace roots."""
+
+        user_data_root = _capture_user_data_root(context)
+
+        def resolve(profile_id: str, workspace_id: str) -> WorkspaceMutationBinding:
+            if profile_id != context.profile_id:
+                raise PermissionError("workspace binding profile changed")
+            return capture_workspace_binding(
+                profile_id,
+                workspace_id,
+                user_data_root=user_data_root,
+            )
+
+        return resolve
+
+    def capture(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> CapturedHostProviderV4:
+        """Bind list/get operations to exact resolved Function principals."""
+
+        _validate_factory_context(context, self.function_id)
+        user_data_root = _capture_user_data_root(context)
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            _assert_invocation_profile(context, invocation)
+            service_operation = _payload_operation(
+                operation_id,
+                payload,
+                _RESOURCE_SERVICE_OPERATIONS,
+            )
+            request = dict(payload)
+            request["profile_id"] = context.profile_id
+            store = WorkspaceMountStore(
+                context.profile_id,
+                user_data_root=user_data_root,
+            )
+            if service_operation == "list":
+                return store.snapshot()
+            mount = store.get(str(request.get("workspace_id") or ""))
+            if mount is None:
+                raise KeyError("workspace mount is unknown")
+            return mount
+
+        return CapturedHostProviderV4(
+            tuple(_contributions(context, invoke)),
+            lambda: None,
+        )
+
+
+class WorkspaceActionHostFactoryV4:
+    """Preserve the existing receipt-gated workspace mount action adapter."""
+
+    function_id = _ACTION_FUNCTION_ID
+
+    def capture(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> CapturedHostProviderV4:
+        """Bind existing mount actions without changing their receipt semantics."""
+
+        _validate_factory_context(context, self.function_id)
+        user_data_root = _capture_user_data_root(context)
+
+        def invoke(
+            operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            _assert_invocation_profile(context, invocation)
+            service_operation = _payload_operation(
+                operation_id,
+                payload,
+                _ACTION_SERVICE_OPERATIONS,
+            )
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset({AUTHORITY}),
+                consumer_pack_id="rumi_workspace_mount_pack",
+            )
+            request = dict(payload)
+            request["profile_id"] = context.profile_id
+            return _execute_workspace_action(
+                client,
+                service_operation,
+                request,
+                user_data_root=user_data_root,
+            )
+
+        return CapturedHostProviderV4(
+            tuple(_contributions(context, invoke)),
+            lambda: None,
+        )
+
+
+def _capture_user_data_root(context: HostProviderCaptureContextV4) -> Path:
+    root = Path(context.user_data_root or context.state_root)
+    if not root.is_absolute():
+        raise PermissionError("workspace Host state root is invalid")
+    return root
+
+
+def _validate_factory_context(
+    context: HostProviderCaptureContextV4,
+    function_id: str,
+) -> None:
+    if not context.provider_bindings or any(
+        binding.function.function_id != function_id for binding in context.provider_bindings
+    ):
+        raise PermissionError("workspace Host Provider bindings are incomplete")
+
+
+def _assert_invocation_profile(
+    context: HostProviderCaptureContextV4,
+    invocation: HostProviderInvocationContextV4,
+) -> None:
+    request = invocation.envelope.context
+    if (
+        request.profile_id != context.profile_id
+        or request.plan_digest != context.plan_digest
+        or request.security_epoch != context.security_epoch
+    ):
+        raise PermissionError("workspace Host Provider invocation binding changed")
+
+
+def _payload_operation(
+    operation_id: str,
+    payload: Mapping[str, Any],
+    allowed: frozenset[str],
+) -> str:
+    if operation_id not in {
+        "rumi_workspace_mount_pack.workspace-resource",
+        "rumi_workspace_mount_pack.workspace-mount",
+    }:
+        raise PermissionError("workspace Host Provider operation is unavailable")
+    operation = str(payload.get("operation") or payload.get("action") or "")
+    if operation not in allowed:
+        raise ValueError("workspace service operation is invalid")
+    return operation
+
+
+def _contributions(
+    context: HostProviderCaptureContextV4,
+    invoke: Callable[
+        [str, Mapping[str, Any], HostProviderInvocationContextV4],
+        Mapping[str, Any],
+    ],
+) -> list[HostProviderContributionV4]:
+    contributions: list[HostProviderContributionV4] = []
+    for binding in context.provider_bindings:
+        key = (
+            binding.operation.contract_id,
+            binding.operation.operation_id,
+            binding.principal_ref.value,
+        )
+        domain_id = context.domain_ids.get(key)
+        if domain_id is None:
+            raise PermissionError("workspace Host Provider domain is unavailable")
+        contributions.append(
+            HostProviderContributionV4(
+                contract_id=binding.operation.contract_id,
+                contract_version=binding.operation.contract_version,
+                operation_id=binding.operation.operation_id,
+                principal_id=binding.principal_ref.value,
+                artifact_digest=binding.artifact.digest,
+                implementation_digest=binding.function.implementation_digest,
+                domain_id=domain_id,
+                invoke=invoke,
+            )
+        )
+    return contributions
+
+
+HOST_PROVIDER_FACTORY = {
+    _RESOURCE_FUNCTION_ID: WorkspaceResourceHostFactoryV4(),
+    _ACTION_FUNCTION_ID: WorkspaceActionHostFactoryV4(),
+}
 
 
 def _redeem(

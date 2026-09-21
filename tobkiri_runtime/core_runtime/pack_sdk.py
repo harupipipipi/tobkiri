@@ -142,7 +142,8 @@ class PackSdkGenerator:
         dart_lines.extend(["};", ""])
         python_models = '''"""Generated command protocol DTOs; do not edit."""
 
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, TypedDict
+from typing_extensions import NotRequired
 
 CommandMode = Literal["chat", "coding", "agent"]
 
@@ -610,7 +611,8 @@ def _render_command_protocol_models(
     python_lines = [
         '"""Generated from command-protocol-v1.schema.json; do not edit."""',
         "",
-        "from typing import Any, Literal, NotRequired, TypedDict",
+        "from typing import Any, Literal, TypedDict",
+        "from typing_extensions import NotRequired",
         "",
         f"CommandMode = Literal[{', '.join(repr(item) for item in mode_values)}]",
         "",

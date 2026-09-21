@@ -49,7 +49,7 @@ PACKVM_REQUIRED_PROVISIONING_NAMES = frozenset(
     }
 )
 PACKVM_BUBBLEWRAP_DESCRIPTOR_SCHEMA = "io.tobkiri.packvm-vz-bubblewrap-descriptor.v1"
-PACKVM_BUBBLEWRAP_PACKAGE_BYTES = 50_132
+PACKVM_BUBBLEWRAP_PACKAGE_BYTES = 54_820
 PACKVM_REQUIRED_ENTITLEMENTS = ("com.apple.security.virtualization",)
 SIGNED_PATHS = (
     "Contents/MacOS/tobkiri-launcher",

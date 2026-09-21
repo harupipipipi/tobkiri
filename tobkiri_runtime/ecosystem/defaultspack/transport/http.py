@@ -436,7 +436,16 @@ class DefaultsHttpServer:
         if "." in leaf:
             return False
         first_segment = request_path.strip("/").split("/", 1)[0]
-        return first_segment in {"chat", "coding", "calendar", "desktops", "prompts", "defaultspack", "pack"}
+        return first_segment in {
+            "p",
+            "chat",
+            "coding",
+            "calendar",
+            "desktops",
+            "prompts",
+            "defaultspack",
+            "pack",
+        }
 
     def _active_profile_policy(self):
         try:
@@ -469,7 +478,9 @@ class DefaultsHttpServer:
         if not profile_id:
             return
         try:
-            from core_runtime.ai_input_trace_store import AiInputTraceStore
+            from ecosystem.defaultspack.domain.ai_input.ai_input_trace_store import (
+                AiInputTraceStore,
+            )
 
             AiInputTraceStore().append_blocked_event(
                 profile_id,

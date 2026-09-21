@@ -4,9 +4,7 @@ import {act} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 
-import type {ApiDynamicFrontendCatalog, ApiPresentationState} from '@/src/lib/apiTypes';
-import {clearApiPrefetchCache} from '@/src/lib/api';
-import {setRuntimeDispatchStatus} from '@/src/lib/runtimeDispatchGate';
+import type {ApiPresentationState} from '@/src/lib/apiTypes';
 import {useAppStore} from '@/src/store';
 import {ShellLaunchCard} from './ShellLaunchCard';
 
@@ -65,63 +63,6 @@ const state = (status: 'materialized' | 'blocked'): ApiPresentationState => ({
   },
 });
 
-const frontendCatalog = (conversationReady: boolean): ApiDynamicFrontendCatalog => ({
-  version: 'rumi.ui.contribution.v1',
-  profile_id: 'defaults-modern',
-  profile_revision: `sha256:${'a'.repeat(64)}`,
-  plan_hash: `sha256:${'a'.repeat(64)}`,
-  contributions: conversationReady ? [{
-    contribution_id: 'defaults.conversation.complete',
-    owner_pack_id: 'defaultspack',
-    label: 'Tobkiri Conversation',
-    action_contract: 'conversation.turn.v1',
-    operation_id: 'complete',
-    provider_id: 'defaultspack.conversation',
-    function_id: 'defaultspack.conversation',
-    kind: 'route',
-    mode: 'declarative',
-    route: '/chat',
-    owner_pack_hash: `sha256:${'b'.repeat(64)}`,
-    build_identity: 'defaultspack.conversation',
-    resolved_profile_revision: `sha256:${'a'.repeat(64)}`,
-    resolved_plan_hash: `sha256:${'a'.repeat(64)}`,
-    descriptor_hash: `sha256:${'c'.repeat(64)}`,
-    view: {type: 'conversation_v4'},
-  }] : [],
-  diagnostics: [],
-  quarantined_pack_ids: [],
-  catalog_hash: `sha256:${'d'.repeat(64)}`,
-});
-
-function installCatalogFetch(
-  catalogs: ApiDynamicFrontendCatalog[],
-): {routes: string[]; restore: () => void} {
-  clearApiPrefetchCache();
-  setRuntimeDispatchStatus('runtime_ready');
-  const originalFetch = globalThis.fetch;
-  const routes: string[] = [];
-  let index = 0;
-  globalThis.fetch = (async (input) => {
-    const url = String(input);
-    routes.push(decodeURIComponent(url.replace('/api/contracts/defaultspack/', '')));
-    const catalog = catalogs[Math.min(index, catalogs.length - 1)];
-    index += 1;
-    return new Response(JSON.stringify({
-      success: true,
-      data: {dynamic_host: catalog},
-      error: null,
-    }), {headers: {'Content-Type': 'application/json'}});
-  }) as typeof fetch;
-  return {
-    routes,
-    restore: () => {
-      clearApiPrefetchCache();
-      setRuntimeDispatchStatus('unknown');
-      globalThis.fetch = originalFetch;
-    },
-  };
-}
-
 function createSurface(): {dom: JSDOM; container: HTMLElement; root: Root} {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'http://localhost/panel/',
@@ -146,7 +87,7 @@ function createSurface(): {dom: JSDOM; container: HTMLElement; root: Root} {
             status: 'launched',
             provider_id: 'shell.tauri.default',
             artifact_id: 'shell-arm64',
-            message: 'Tobkiri Conversation launched',
+            message: 'Research A launched',
           };
         },
       },
@@ -161,7 +102,13 @@ function createSurface(): {dom: JSDOM; container: HTMLElement; root: Root} {
 
 async function renderCard(root: Root): Promise<void> {
   await act(async () => {
-    root.render(<ShellLaunchCard runtimeReady />);
+    root.render(
+      <ShellLaunchCard
+        profileDisplayName="Research A"
+        profileId="work-a"
+        runtimeReady
+      />,
+    );
     await Promise.resolve();
   });
   await act(async () => {
@@ -169,10 +116,9 @@ async function renderCard(root: Root): Promise<void> {
   });
 }
 
-test('selected Shell exposes the typed Conversation launch action', async () => {
+test('selected Shell exposes the Profile launch action', async () => {
   const previousState = useAppStore.getState();
   const {dom, container, root} = createSurface();
-  const catalogFetch = installCatalogFetch([frontendCatalog(true), frontendCatalog(true)]);
   const toasts: string[] = [];
   useAppStore.setState({
     addToast: (message, type) => {
@@ -183,7 +129,7 @@ test('selected Shell exposes the typed Conversation launch action', async () => 
   try {
     await renderCard(root);
     const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-      (candidate) => candidate.textContent?.includes('Open Tobkiri Conversation'),
+      (candidate) => candidate.textContent?.includes('Launch Research A'),
     );
     assert.ok(button);
     assert.equal(button.disabled, false);
@@ -193,23 +139,17 @@ test('selected Shell exposes the typed Conversation launch action', async () => 
       (dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls,
       ['get_presentation_catalog', 'launch_selected_presentation'],
     );
-    assert.deepEqual(toasts, ['Tobkiri Conversation launched']);
-    assert.deepEqual(catalogFetch.routes, [
-      'GET /api/ui/catalog',
-      'GET /api/ui/catalog',
-    ]);
+    assert.deepEqual(toasts, ['Research A launched']);
   } finally {
     act(() => root.unmount());
     useAppStore.setState(previousState, true);
-    catalogFetch.restore();
     dom.window.close();
   }
 });
 
-test('disabled selected Shell keeps Conversation unavailable and does not launch', async () => {
+test('disabled selected Shell keeps Profile launch unavailable', async () => {
   const previousState = useAppStore.getState();
   const {dom, container, root} = createSurface();
-  const catalogFetch = installCatalogFetch([frontendCatalog(true)]);
   Object.defineProperty(dom.window, '__TAURI__', {
     configurable: true,
     value: {
@@ -225,7 +165,7 @@ test('disabled selected Shell keeps Conversation unavailable and does not launch
   try {
     await renderCard(root);
     const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-      (candidate) => candidate.textContent?.includes('Open Tobkiri Conversation'),
+      (candidate) => candidate.textContent?.includes('Launch Research A'),
     );
     assert.ok(button);
     assert.equal(button.disabled, true);
@@ -234,65 +174,37 @@ test('disabled selected Shell keeps Conversation unavailable and does not launch
   } finally {
     act(() => root.unmount());
     useAppStore.setState(previousState, true);
-    catalogFetch.restore();
     dom.window.close();
   }
 });
 
-test('unready Conversation capability keeps the selected Shell fail-closed', async () => {
+test('Profile launch does not require an optional Conversation contribution', async () => {
   const previousState = useAppStore.getState();
   const {dom, container, root} = createSurface();
-  const catalogFetch = installCatalogFetch([frontendCatalog(false)]);
+  const originalFetch = globalThis.fetch;
+  const fetchCalls: string[] = [];
+  globalThis.fetch = (async (input) => {
+    fetchCalls.push(String(input));
+    throw new Error('frontend catalog must not be requested');
+  }) as typeof fetch;
 
   try {
     await renderCard(root);
     const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-      (candidate) => candidate.textContent?.includes('Open Tobkiri Conversation'),
-    );
-    assert.ok(button);
-    assert.equal(button.disabled, true);
-    assert.match(container.textContent ?? '', /verified Conversation capability is not ready/i);
-    assert.deepEqual(
-      (dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls,
-      ['get_presentation_catalog'],
-    );
-  } finally {
-    act(() => root.unmount());
-    useAppStore.setState(previousState, true);
-    catalogFetch.restore();
-    dom.window.close();
-  }
-});
-
-test('fresh capability loss prevents the typed Shell launch command', async () => {
-  const previousState = useAppStore.getState();
-  const {dom, container, root} = createSurface();
-  const catalogFetch = installCatalogFetch([
-    frontendCatalog(true),
-    frontendCatalog(false),
-  ]);
-
-  try {
-    await renderCard(root);
-    const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-      (candidate) => candidate.textContent?.includes('Open Tobkiri Conversation'),
+      (candidate) => candidate.textContent?.includes('Launch Research A'),
     );
     assert.ok(button);
     assert.equal(button.disabled, false);
     await act(async () => button.click());
-    assert.match(container.textContent ?? '', /changed and is no longer ready/i);
-    assert.deepEqual(
-      (dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls,
-      ['get_presentation_catalog'],
-    );
-    assert.deepEqual(catalogFetch.routes, [
-      'GET /api/ui/catalog',
-      'GET /api/ui/catalog',
+    assert.deepEqual(fetchCalls, []);
+    assert.deepEqual((dom.window as unknown as {__invokeCalls?: string[]}).__invokeCalls, [
+      'get_presentation_catalog',
+      'launch_selected_presentation',
     ]);
   } finally {
     act(() => root.unmount());
     useAppStore.setState(previousState, true);
-    catalogFetch.restore();
+    globalThis.fetch = originalFetch;
     dom.window.close();
   }
 });

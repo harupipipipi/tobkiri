@@ -12,6 +12,8 @@ dependencies = [
   "jsonschema>=4.26.0",
   "packaging>=24.0",
   "PyYAML>=6.0.2",
+  "typing-extensions>=4.4",
+  "wasmtime==48.0.0",
 ]
 
 [project.scripts]
@@ -40,7 +42,7 @@ py-modules = ["app"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["core_runtime*", "backend_core*", "tobkiri*", "rumi_ai*", "tobkiri_protocol*"]
+include = ["core_runtime*", "backend_core*", "ecosystem*", "tobkiri*", "rumi_ai*", "tobkiri_protocol*"]
 
 [tool.setuptools.package-data]
 tobkiri_protocol = ["schemas/*.json", "fixtures/*.json", "fixtures/*.yaml"]

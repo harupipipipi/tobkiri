@@ -46,11 +46,11 @@ def _app_data_dir() -> Path:
     if configured:
         return Path(configured).expanduser()
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "dev.tobkiri.launcher"
+        return Path.home() / "Library" / "Application Support" / "dev.rumiai.app"
     if os.name == "nt":
-        return Path(os.environ.get("APPDATA") or Path.home()) / "dev.tobkiri.launcher"
+        return Path(os.environ.get("APPDATA") or Path.home()) / "dev.rumiai.app"
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / (
-        "dev.tobkiri.launcher"
+        "dev.rumiai.app"
     )
 
 

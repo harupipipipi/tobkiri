@@ -14,6 +14,7 @@ import {
   Check,
   ChevronDown,
   CircleHelp,
+  CircleAlert,
   Clock3,
   CloudUpload,
   Code2,
@@ -85,6 +86,7 @@ import type {
 import type { ModelCommandCandidate, ModelProfile, ModelSearchItem } from "../lib/api";
 import { CodingWorkspaceBadge } from "../components/coding/CodingWorkspaceBadge";
 import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicker";
+import { ErrorCopyAction, ErrorNotice } from "../components/ErrorNotice";
 import { RuntimeCapabilityBanner } from "../components/RuntimeCapabilityBanner";
 import { StructuredComposerPanel } from "../components/StructuredComposerPanel";
 import { WarmActionIcon } from "../components/WarmActionIcon";
@@ -1300,13 +1302,11 @@ function FilePreviewCard({
         </div>
       )}
       {transcriptionState === "error" && (
-        <span
-          role="alert"
-          title={transcriptionError}
-          className="absolute inset-x-1 bottom-1 line-clamp-3 rounded bg-rose-950/95 px-1.5 py-1 text-[8px] leading-tight text-rose-100"
-        >
-          {transcriptionError}
-        </span>
+        <ErrorNotice
+          className="absolute inset-x-1 bottom-1 bg-rose-950/95 px-1.5 py-1 text-[8px] leading-tight"
+          copyLabel={`${file.name} の文字起こしエラーをコピー`}
+          message={transcriptionError}
+        />
       )}
       {onRemove && (
         <button
@@ -1550,7 +1550,13 @@ function ProviderApiKeyPrompt({
             className="w-full rounded-lg border border-white/[0.08] bg-black/25 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-indigo-400/50"
             autoFocus
           />
-          {error && <p className="text-[11px] text-red-300">{error}</p>}
+          {error && (
+            <ErrorNotice
+              className="px-2 py-1 text-[11px]"
+              copyLabel="API key 保存エラーをコピー"
+              message={error}
+            />
+          )}
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
@@ -2882,6 +2888,8 @@ export function ComposerRenderer({
   const visibleSteerPreviewItems = steerPreviewItems.filter((item) => (
     item.visible !== false && String(item.prompt ?? "").trim()
   ));
+  const steerError = steerStatus?.kind === "error" ? steerStatus.message : null;
+  const steerSuccessStatus = steerStatus?.kind === "success" ? steerStatus.message : null;
   const currentModeMeta = MODE_META[mode];
   const ModeIcon = currentModeMeta.icon;
   const directoryEntries = (codingContext?.entries ?? []).filter((entry) => entry.is_dir);
@@ -4478,7 +4486,7 @@ export function ComposerRenderer({
           {voiceStatus !== "idle" && (
             <div className="rumi-voice-capture mx-3 mt-2 flex min-h-11 items-center gap-3 rounded-xl border border-white/[0.09] bg-white/[0.035] px-3 py-2" role="status" aria-live="polite">
               <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${voiceStatus === "error" ? "bg-rose-500/10 text-rose-300" : "bg-white/[0.06] text-zinc-100"}`}>
-                {voiceStatus === "starting" || voiceStatus === "transcribing" ? <Loader2 size={15} className="animate-spin" /> : <WarmActionIcon kind="mic" size="sm" />}
+                {voiceStatus === "error" ? <CircleAlert size={15} aria-hidden="true" /> : voiceStatus === "starting" || voiceStatus === "transcribing" ? <Loader2 size={15} className="animate-spin" /> : <WarmActionIcon kind="mic" size="sm" />}
               </span>
               <span className="min-w-0 flex-1">
                 {voiceStatus === "listening" ? (
@@ -4494,6 +4502,12 @@ export function ComposerRenderer({
                   </span>
                 )}
               </span>
+              {voiceStatus === "error" && (
+                <ErrorCopyAction
+                  copyText={voiceError || "音声入力に失敗しました"}
+                  label="音声入力エラーをコピー"
+                />
+              )}
               {voiceStatus === "listening" && (
                 <button
                   type="button"
@@ -4532,7 +4546,7 @@ export function ComposerRenderer({
                 </div>
                 <div className="flex min-w-0 flex-shrink items-center justify-end gap-1.5">
                   {steerBusy && <Loader2 size={11} className="flex-shrink-0 animate-spin" />}
-                  {steerStatus && <span className="truncate">{steerStatus}</span>}
+                  {steerSuccessStatus && <span className="truncate">{steerSuccessStatus}</span>}
                 </div>
               </div>
               <div className="grid gap-1">
@@ -4550,6 +4564,16 @@ export function ComposerRenderer({
                 ))}
               </div>
             </div>
+          )}
+
+          {steerError && (
+            <ErrorNotice
+              className="mx-2 mt-1 rounded-xl px-2 py-1.5 text-[10px] leading-4"
+              copyLabel="ステアエラーをコピー"
+              errorIcon="conversation-steer"
+              message={steerError}
+              title="追加指示を送信できませんでした"
+            />
           )}
 
           {toolSelectionReview && (
@@ -4809,8 +4833,8 @@ export function ComposerRenderer({
                   {steerQueuedCount}件待機
                 </span>
               )}
-              {steerStatus && (
-                <span className="min-w-[8rem] flex-1 break-words text-zinc-500">{steerStatus}</span>
+              {steerSuccessStatus && (
+                <span className="min-w-[8rem] flex-1 break-words text-zinc-500">{steerSuccessStatus}</span>
               )}
             </div>
           )}

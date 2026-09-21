@@ -15,11 +15,174 @@ from tobkiri_protocol.errors import SchemaValidationError
 ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_mcp_gateway_calls_compile_as_external_effects() -> None:
+    """Arbitrary remote tool calls must retain ambiguous-outcome handling."""
+    compiled = compile_pack_root(ROOT / "ecosystem" / "rumi_mcp_gateway_pack")
+    operations = [
+        operation
+        for function in compiled.artifact.functions
+        for operation in function.operations
+    ]
+    assert len(operations) == 1
+    assert operations[0].effect_class.value == "external_effect"
+
+
+@pytest.mark.parametrize(
+    ("pack_id", "function_id", "operation_id"),
+    (
+        ("defaultspack", "defaultspack.conversation", "complete"),
+        (
+            "rumi_ai_gateway_pack",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+            "rumi_ai_gateway_pack.ai-gateway.generate",
+        ),
+        (
+            "rumi_ai_gateway_pack",
+            "rumi_ai_gateway_pack.ai-gateway.stream",
+            "rumi_ai_gateway_pack.ai-gateway.stream",
+        ),
+        (
+            "rumi_provider_adapters_pack",
+            "rumi_provider_adapters_pack.provider.compatibility.generate",
+            "rumi_provider_adapters_pack.provider-generate",
+        ),
+        (
+            "rumi_provider_adapters_pack",
+            "rumi_provider_adapters_pack.provider.compatibility.stream",
+            "rumi_provider_adapters_pack.provider-stream",
+        ),
+    ),
+)
+def test_ai_conversation_chain_outlives_provider_transport_deadline(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> None:
+    """Cold PackVM startup must not consume the provider's response budget."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / pack_id / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item for item in catalog["variants"] if item["function_id"] == function_id
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == operation_id
+    )
+
+    assert operation["timeout_default_ms"] == 120_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
+@pytest.mark.parametrize(
+    ("pack_id", "function_id", "operation_id"),
+    (
+        (
+            "tobkiri_ui_settings_pack",
+            "tobkiri.ui.catalog.read",
+            "tobkiri_ui_settings_pack.catalog-read",
+        ),
+        (
+            "tobkiri_ui_settings_pack",
+            "tobkiri.ui.settings.read",
+            "tobkiri_ui_settings_pack.settings-read",
+        ),
+        (
+            "rumi_command_protocol_pack",
+            "rumi_command_protocol_pack.catalog.read",
+            "command.catalog.read",
+        ),
+        (
+            "defaultspack",
+            "defaultspack.application-presentation",
+            "defaultspack.presentation.read",
+        ),
+        *(
+            (
+                "tobkiri_host_pack_control",
+                "tobkiri.host.control-presentation",
+                operation_id,
+            )
+            for operation_id in (
+                "profile.catalog.read",
+                "profile.read",
+                "settings.read",
+                "topology.contracts.read",
+                "topology.operations.read",
+                "topology.packs.read",
+                "topology.principals.read",
+            )
+        ),
+    ),
+)
+def test_native_startup_reads_outlive_cold_packvm_start(
+    pack_id: str,
+    function_id: str,
+    operation_id: str,
+) -> None:
+    """Startup reads may include one bounded native PackVM cold start."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / pack_id / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item for item in catalog["variants"] if item["function_id"] == function_id
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == operation_id
+    )
+
+    assert operation["timeout_default_ms"] == 120_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
+def test_unrelated_saved_turn_keeps_standard_deadline() -> None:
+    """The native startup allowance must stay limited to the selected reads."""
+
+    catalog = json.loads(
+        (ROOT / "ecosystem" / "defaultspack" / "executables.v4.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    variant = next(
+        item
+        for item in catalog["variants"]
+        if item["function_id"] == "defaultspack.conversation.saved"
+    )
+    operation = next(
+        item
+        for item in variant["operations"]
+        if item["operation_id"] == "saved_complete"
+    )
+
+    assert operation["timeout_default_ms"] == 30_000
+    assert operation["timeout_hard_max_ms"] == 300_000
+
+
 def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
     pack_roots = sorted(path.parent for path in (ROOT / "ecosystem").glob("*/pack.v4.json"))
     compiled = [compile_pack_root(path) for path in pack_roots]
-    assert len(compiled) == 143
+    declared = json.loads(
+        (ROOT / "schemas/pack_v4_catalog.v1.json").read_text(encoding="utf-8")
+    )["pack_ids"]
+    assert {item.artifact.pack_id for item in compiled} == set(declared)
     assert {item.artifact.pack_id for item in compiled} == {path.name for path in pack_roots}
+
+    command = next(
+        item for item in compiled if item.artifact.pack_id == "rumi_command_protocol_pack"
+    )
+    assert set(command.routes) == {
+        ("tobkiri.resource.command.catalog.v1", "command.catalog.read"),
+        ("tobkiri.service.command.high-risk.v1", "high_risk_command.manage")
+    }
 
     conversation = next(item for item in compiled if item.artifact.pack_id == "defaultspack")
     inspect = next(item for item in compiled if item.artifact.pack_id == "rumi_file_inspect_pack")
@@ -31,6 +194,8 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
     }
     assert selected_operations == {
         ("conversation.turn.v1", "complete"),
+        ("conversation.saved-turn.v1", "saved_complete"),
+        ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
         (
             "tobkiri.service.file.inspect.v1",
             "rumi_file_inspect_pack.file-inspect",
@@ -40,7 +205,11 @@ def test_all_canonical_executable_catalogs_compile_without_exclusion() -> None:
             "rumi_file_inspect_pack.file-inspect.for-media",
         ),
     }
-    assert set(conversation.routes) == {("conversation.turn.v1", "complete")}
+    assert set(conversation.routes) == {
+        ("conversation.turn.v1", "complete"),
+        ("conversation.saved-turn.v1", "saved_complete"),
+        ("tobkiri.resource.application.presentation.v1", "defaultspack.presentation.read"),
+    }
     assert set(inspect.routes) == {
         (
             "tobkiri.service.file.inspect.v1",

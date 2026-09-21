@@ -10,6 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.conformance_support.host_contract import host_contract
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
@@ -225,10 +227,10 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
                 )
                 self.assertTrue(saved["success"])
                 with bind_host_contract(
-                    {
-                        "profile_id": "default",
-                        "values": {"cloud_providers_enabled": "true"},
-                    }
+                    host_contract(
+                        profile_id="default",
+                        values={"cloud_providers_enabled": "true"},
+                    )
                 ):
                     client = AIClient()
 

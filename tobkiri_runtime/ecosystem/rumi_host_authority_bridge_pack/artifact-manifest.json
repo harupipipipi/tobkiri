@@ -3,7 +3,7 @@
   "artifacts": [
     {
       "path": "runtime/bridge.py",
-      "sha256": "d19bcba1e195378e41b21ee7543192a2922223afcbc73bce9999f52db86c4955",
+      "sha256": "f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
       "role": "runtime"
     }
   ]

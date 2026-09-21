@@ -2,20 +2,23 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 import re
-import tempfile
+import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from core_runtime.paths import USER_DATA_DIR
 from core_runtime.profile_workspace import validate_profile_id
-from core_runtime.runtime_locks import NamedLock
+from core_runtime.runtime_locks import LockTimeout, NamedLock
+from tobkiri_protocol.secure_persistence import SecureDirectory
 
 STORE_VERSION = "rumi.tool-definition-registry.v1"
+_STORE_LIMIT = 16 * 1024 * 1024
 DEFINITION_CONTRIBUTION = "rumi.resource.tool.definition.contribution.v1"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$")
 
@@ -28,8 +31,11 @@ class ToolDefinitionRegistry:
         profile_id: str,
         *,
         user_data_root: Path | None = None,
+        guard: Callable[[], None] | None = None,
     ) -> None:
         self.profile_id = validate_profile_id(profile_id)
+        self._guard = guard
+        self._directory: SecureDirectory | None = None
         self.root = (
             Path(user_data_root or USER_DATA_DIR)
             / "packs"
@@ -49,8 +55,7 @@ class ToolDefinitionRegistry:
             "profile_id": self.profile_id,
             "revision": state["revision"],
             "definitions": [
-                dict(state["definitions"][key])
-                for key in sorted(state["definitions"])
+                dict(state["definitions"][key]) for key in sorted(state["definitions"])
             ],
             "aliases": dict(sorted(state["aliases"].items())),
             "migration": dict(state["migration"])
@@ -77,9 +82,12 @@ class ToolDefinitionRegistry:
     def save(self, record: Mapping[str, Any], expected_revision: int) -> dict[str, Any]:
         """Save one normalized definition at an exact revision."""
         normalized = _definition(record)
-        with NamedLock(self.lock_root, "tool-definitions"):
+        with self._mutation_lock():
             state = self._read()
             _assert_revision(state, expected_revision)
+            tool_id = normalized["tool_id"]
+            if tool_id in state["aliases"] and tool_id not in state["definitions"]:
+                raise ValueError("tool definition collides with an alias")
             state["definitions"][normalized["tool_id"]] = normalized
             state["revision"] += 1
             self._write(state)
@@ -92,7 +100,7 @@ class ToolDefinitionRegistry:
     def delete(self, tool_id: str, expected_revision: int) -> dict[str, Any]:
         """Delete one definition and aliases pointing to it."""
         tool_id = _identifier(tool_id)
-        with NamedLock(self.lock_root, "tool-definitions"):
+        with self._mutation_lock():
             state = self._read()
             _assert_revision(state, expected_revision)
             if tool_id not in state["definitions"]:
@@ -117,7 +125,7 @@ class ToolDefinitionRegistry:
         """Bind an explicit compatibility alias to an existing definition."""
         alias = _identifier(alias)
         target_tool_id = _identifier(target_tool_id)
-        with NamedLock(self.lock_root, "tool-definitions"):
+        with self._mutation_lock():
             state = self._read()
             _assert_revision(state, expected_revision)
             if target_tool_id not in state["definitions"]:
@@ -145,28 +153,28 @@ class ToolDefinitionRegistry:
         raw_definitions.sort(
             key=lambda item: str(item.get("tool_id") or item.get("name") or "")
         )
-        raw_aliases = {
-            str(alias): str(target) for alias, target in aliases.items()
-        }
+        raw_aliases = {str(alias): str(target) for alias, target in aliases.items()}
         source = {
             "definitions": raw_definitions,
             "aliases": dict(sorted(raw_aliases.items())),
         }
         source_hash = hashlib.sha256(
-            json.dumps(source, sort_keys=True, separators=(",", ":")).encode(
-                "utf-8"
-            )
+            json.dumps(source, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         if source_hash != str(expected_source_hash or ""):
             raise RuntimeError("tool registry migration source changed")
         normalized = [_definition(item) for item in raw_definitions]
         normalized.sort(key=lambda item: item["tool_id"])
+        if len({item["tool_id"] for item in normalized}) != len(normalized):
+            raise ValueError("tool migration contains duplicate definitions")
         normalized_aliases = {
             _identifier(alias): _identifier(target)
             for alias, target in raw_aliases.items()
         }
-        with NamedLock(self.lock_root, "tool-definitions"):
-            if self.path.is_file():
+        with self._mutation_lock():
+            store = self._store(create=True)
+            assert store is not None
+            if store.exists(self.path.name):
                 raise RuntimeError("tool registry target is already initialized")
             tool_ids = {item["tool_id"] for item in normalized}
             if any(target not in tool_ids for target in normalized_aliases.values()):
@@ -178,13 +186,16 @@ class ToolDefinitionRegistry:
                 raise ValueError("tool alias collides with a definition")
             migration_id = f"migration-{uuid.uuid4().hex}"
             backup = self.backup_root / migration_id
-            backup.mkdir(parents=True, exist_ok=False)
-            os.chmod(backup, 0o700)
-            _atomic_json(backup / "legacy-tool-registry.json", source)
+            self._check_current()
+            relative_backup = (
+                backup.relative_to(self.root) / "legacy-tool-registry.json"
+            )
+            # Preserve earlier backups even if a migration identity collides.
+            descriptor = store.open_lock(relative_backup, exclusive=True)
+            os.close(descriptor)
+            self._write_json(relative_backup, source)
             state = self._empty()
-            state["definitions"] = {
-                item["tool_id"]: item for item in normalized
-            }
+            state["definitions"] = {item["tool_id"]: item for item in normalized}
             state["aliases"] = normalized_aliases
             state["revision"] = 1
             state["migration"] = {
@@ -201,28 +212,78 @@ class ToolDefinitionRegistry:
             "registry_revision": 1,
         }
 
-    def rollback_migration(self, migration_id: str) -> dict[str, Any]:
-        """Remove migrated owner state only for the exact migration marker."""
-        with NamedLock(self.lock_root, "tool-definitions"):
+    def rollback_migration(
+        self, migration_id: str, expected_revision: int = 1
+    ) -> dict[str, Any]:
+        """Roll back an exact revision; legacy calls require pristine migration."""
+        with self._mutation_lock():
             state = self._read()
+            _assert_revision(state, expected_revision)
             marker = state.get("migration")
             if (
                 not isinstance(marker, Mapping)
                 or marker.get("migration_id") != migration_id
             ):
                 raise ValueError("tool registry migration marker mismatch")
-            _atomic_json(self.root / f"rollback-{migration_id}.json", state)
-            self.path.unlink(missing_ok=True)
+            self._check_current()
+            self._write_json(f"rollback-{migration_id}.json", state)
+            self._check_current()
+            store = self._store(create=True)
+            assert store is not None
+            store.unlink(self.path.name, missing_ok=True)
         return {"migration_id": migration_id, "rolled_back": True}
 
+    def _check_current(self) -> None:
+        if self._guard is not None:
+            self._guard()
+
+    @contextmanager
+    def _mutation_lock(self) -> Iterator[None]:
+        # Use the same exclusive file/JSON lock protocol as existing writers.
+        self._check_current()
+        store = self._store(create=True)
+        assert store is not None
+        store.exists(self.path.name)  # Validate the captured root before locking.
+        locks = SecureDirectory(store.root / "locks")
+        lock = NamedLock(
+            locks.root,
+            "tool-definitions",
+            directory=locks,
+            timeout_ms=0 if self._guard is not None else 60000,
+        )
+        if self._guard is None:
+            with lock:
+                yield
+            return
+        while True:
+            self._check_current()
+            try:
+                lock.acquire()
+                break
+            except LockTimeout:
+                time.sleep(0.01)
+        try:
+            self._check_current()
+            yield
+        finally:
+            lock.release()
+
     def _read(self) -> dict[str, Any]:
-        if not self.path.is_file():
+        self._check_current()
+        store = self._store(create=False)
+        if store is None:
             return self._empty()
-        value = json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            encoded = store.read_bytes_bounded(self.path.name, max_bytes=_STORE_LIMIT)
+        except FileNotFoundError:
+            return self._empty()
+        value = json.loads(encoded)
         if (
             not isinstance(value, dict)
             or value.get("version") != STORE_VERSION
             or value.get("profile_id") != self.profile_id
+            or type(value.get("revision")) is not int
+            or value["revision"] < 0
             or not isinstance(value.get("definitions"), dict)
             or not isinstance(value.get("aliases"), dict)
         ):
@@ -239,20 +300,27 @@ class ToolDefinitionRegistry:
             "migration": None,
         }
 
+    def _store(self, *, create: bool) -> SecureDirectory | None:
+        if self._directory is None:
+            if not create:
+                try:
+                    self.root.lstat()
+                except FileNotFoundError:
+                    return None
+            self._directory = SecureDirectory(self.root, create=create)
+        return self._directory
+
+    def _write_json(self, relative: str | Path, value: Mapping[str, Any]) -> None:
+        self._check_current()
+        encoded = json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        if len(encoded) > _STORE_LIMIT:
+            raise ValueError("tool definition registry exceeds the storage limit")
+        store = self._store(create=True)
+        assert store is not None
+        store.write_bytes_atomic(relative, encoded, before_publish=self._check_current)
+
     def _write(self, state: Mapping[str, Any]) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
-        os.chmod(self.root, 0o700)
-        fd, temporary = tempfile.mkstemp(dir=self.root, prefix=".tools-", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(state, handle, ensure_ascii=False, sort_keys=True)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.chmod(temporary, 0o600)
-            os.replace(temporary, self.path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        self._write_json(self.path.name, state)
 
 
 def create_resource_operation(client: Any) -> Callable[[str, Mapping[str, Any]], Any]:
@@ -270,7 +338,11 @@ def create_resource_operation(client: Any) -> Callable[[str, Mapping[str, Any]],
     return operation
 
 
-def _composed_catalog(client: Any, registry: ToolDefinitionRegistry) -> dict[str, Any]:
+def _composed_catalog(
+    client: Any, registry: ToolDefinitionRegistry, *,
+    contribution_contract: str = DEFINITION_CONTRIBUTION,
+    pack_definitions: tuple[Mapping[str, Any], ...] = (),
+) -> dict[str, Any]:
     """Compose stored definitions with explicit profile contributions."""
 
     snapshot = registry.snapshot()
@@ -283,18 +355,34 @@ def _composed_catalog(client: Any, registry: ToolDefinitionRegistry) -> dict[str
         _identifier(alias): _identifier(target)
         for alias, target in (snapshot.get("aliases") or {}).items()
     }
+    for raw in pack_definitions:
+        definition = _definition(raw)
+        tool_id = definition["tool_id"]
+        if tool_id in definitions or tool_id in aliases:
+            raise RuntimeError(f"packaged tool definition collides: {tool_id}")
+        definitions[tool_id] = definition
+        for alias in definition["aliases"]:
+            if alias in definitions or alias in aliases:
+                raise RuntimeError(f"packaged tool alias collides: {alias}")
+            aliases[alias] = tool_id
     sources: list[dict[str, str]] = []
     providers = sorted(
-        client.providers(DEFINITION_CONTRIBUTION),
+        client.providers(contribution_contract),
         key=lambda item: str(item.get("provider_instance_id") or ""),
     )
     for provider in providers:
         provider_id = str(provider.get("provider_instance_id") or "").strip()
         if not provider_id:
             raise RuntimeError("tool definition contribution provider is invalid")
+        operation = (
+            "list" if contribution_contract == DEFINITION_CONTRIBUTION
+            else provider.get("operation_id")
+        )
+        if not isinstance(operation, str) or not operation:
+            raise RuntimeError("tool contribution operation is unavailable")
         value = client.invoke(
-            DEFINITION_CONTRIBUTION,
-            "list",
+            contribution_contract,
+            operation,
             {"profile_id": registry.profile_id},
             provider_instance_id=provider_id,
         )
@@ -433,8 +521,9 @@ def _definition(value: Mapping[str, Any]) -> dict[str, Any]:
     authority = str(value.get("authority") or "").strip()
     if not authority:
         raise ValueError("tool authority operation is required")
-    aliases = value.get("aliases") if isinstance(value.get("aliases"), list) else []
-    normalized = {
+    aliases = value.get("aliases")
+    aliases = aliases if isinstance(aliases, list) else []
+    normalized: dict[str, Any] = {
         "tool_id": tool_id,
         "display_name": str(value.get("display_name") or tool_id)[:200],
         "description": str(value.get("description") or "")[:4000],
@@ -456,6 +545,8 @@ def _definition(value: Mapping[str, Any]) -> dict[str, Any]:
         "widget": _json_object(value.get("widget") or {}),
         "source_adapter_id": str(value.get("source_adapter_id") or ""),
     }
+    if "connection_id" in execution:
+        normalized["execution"]["connection_id"] = _identifier(execution["connection_id"])
     normalized["definition_hash"] = hashlib.sha256(
         json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -484,21 +575,3 @@ def _profile_id(payload: Mapping[str, Any]) -> str:
 def _assert_revision(state: Mapping[str, Any], expected: int) -> None:
     if int(state.get("revision") or 0) != expected:
         raise RuntimeError("tool definition registry revision is stale")
-
-
-def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(
-        dir=path.parent, prefix=f".{path.name}-", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(value, handle, ensure_ascii=False, sort_keys=True)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-

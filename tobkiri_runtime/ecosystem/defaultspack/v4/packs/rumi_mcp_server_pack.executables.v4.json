@@ -1,76 +1,77 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:cf94b07f9162e8d674f0b387df6c6ea50100ff99376e1a29458474d0462dca86",
   "pack_id": "rumi_mcp_server_pack",
-  "source_identity": "sha256:3defa73d8642525f762fcd310f58d562ecff501d3655b304b020381a71ba0233",
+  "source_identity": "sha256:8579e25d68292f6817b4f242b0051d6222cf31f3602d453484bbf10ac5177607",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_mcp_server_pack.mcp-server.call.python",
       "function_id": "rumi_mcp_server_pack.mcp-server.call",
-      "implementation_digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
       "implementation_path": "runtime/server.py",
+      "implementation_digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.mcp.server.tool.call.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:21fabd1a5491db586598a37a68b97e308506b4bbb3a3af267069676f84848059",
+          "operation_id": "rumi_mcp_server_pack.mcp-server-tool-call",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_mcp_server_pack.mcp-server-tool-call",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:21fabd1a5491db586598a37a68b97e308506b4bbb3a3af267069676f84848059",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_mcp_server_pack.mcp-server.call.python"
+      ]
     },
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_mcp_server_pack.mcp-server.catalog.python",
       "function_id": "rumi_mcp_server_pack.mcp-server.catalog",
-      "implementation_digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
       "implementation_path": "runtime/server.py",
+      "implementation_digest": "sha256:550e6aa813f9216b05a85f5f28f035497596f982b5ffdba117ce3a7692394745",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.resource.mcp.server.tool.catalog.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:d701b53e247cb24460af3af06e6273f52ebd309a90b3061294f4b44ee3e4d5d4",
+          "operation_id": "rumi_mcp_server_pack.mcp-server-tool-catalog",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_mcp_server_pack.mcp-server-tool-catalog",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:d701b53e247cb24460af3af06e6273f52ebd309a90b3061294f4b44ee3e4d5d4",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_mcp_server_pack.mcp-server.catalog.python"
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:cf94b07f9162e8d674f0b387df6c6ea50100ff99376e1a29458474d0462dca86",
+  "catalog_digest": "sha256:a307aa854920a9726c0a36a8c44e435f3516e248ded4490eb2038f42ae986a70"
 }

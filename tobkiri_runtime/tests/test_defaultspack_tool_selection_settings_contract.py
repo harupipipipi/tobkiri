@@ -110,7 +110,8 @@ def test_all_with_hints_exposes_every_schema_and_keeps_recommendations(monkeypat
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -164,7 +165,8 @@ def test_catalog_ai_direct_sends_every_compact_candidate_to_selector(monkeypatch
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -215,7 +217,8 @@ def test_catalog_ai_uses_full_catalog_even_above_direct_limit(monkeypatch):
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["question"] = input_data["question"]
         return {
@@ -261,7 +264,8 @@ def test_explicit_tool_helper_model_does_not_force_fast_route(monkeypatch):
 
     captured = {}
 
-    def fake_call_model(input_data, context, *, call_handler=None):
+    def fake_call_model(input_data, context, *, call_handler=None, settings_owner=None):
+        assert settings_owner is None
         del context, call_handler
         captured["model_hint"] = input_data["model_hint"]
         captured["required_capabilities"] = input_data["required_capabilities"]
@@ -351,7 +355,7 @@ def test_semantic_auto_resolves_configured_embedding_model(monkeypatch):
     monkeypatch.setattr(
         service_module,
         "search_models",
-        lambda filters: {
+        lambda filters, **kwargs: {
             "models": [
                 {
                     "profile_id": "google/text-embedding-004",
@@ -524,7 +528,13 @@ def test_profile_write_and_high_risk_flags_do_not_escalate_read_tools():
 def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_memo(monkeypatch):
     from domain.tool import executor as executor_mod
 
+    owner = object()
+    received_owners = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            received_owners.append(settings_owner)
+
         def resolve(self, tool, *, context=None):
             return {
                 "tool_id": "memo_note_upsert",
@@ -535,7 +545,7 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
                 "sources": [{"source": "tool:memo_note_upsert", "value": "block"}],
             }
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
     monkeypatch.setattr(executor_mod, "_context_has_tool_server_approval", lambda context: True)
     monkeypatch.setattr(executor_mod, "is_safe_first_party_memo_tool", lambda tool: True)
 
@@ -545,8 +555,10 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
         {"note": "x"},
         {},
         {"full_access": True},
+        settings_owner=owner,
     )
 
+    assert received_owners == [owner]
     assert response["is_error"] is True
     assert response["rejected_by_tool_permission_policy"] is True
     assert response["tool_permission_policy_decision"]["status"] == "denied"
@@ -555,7 +567,13 @@ def test_frontend_settings_block_wins_over_server_approval_full_access_and_safe_
 def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypatch):
     from domain.tool import executor as executor_mod
 
+    owner = object()
+    received_owners = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            received_owners.append(settings_owner)
+
         def resolve(self, tool, *, context=None):
             return {
                 "tool_id": "coding_file_write",
@@ -566,7 +584,7 @@ def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypat
                 "sources": [{"source": "tool:coding_file_write", "value": "confirm"}],
             }
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
     monkeypatch.setattr(executor_mod, "_context_has_tool_server_approval", lambda context: True)
 
     _, response = executor_mod._preflight_frontend_tool_permission(
@@ -575,8 +593,10 @@ def test_frontend_settings_confirm_can_be_satisfied_by_server_approval(monkeypat
         {"path": "app.py", "content": "x"},
         {},
         {},
+        settings_owner=owner,
     )
 
+    assert received_owners == [owner]
     assert response is None
 
 
@@ -586,11 +606,17 @@ def test_frontend_settings_resolver_failure_fails_closed_for_write_tools(monkeyp
 
     approval.reset_approval_state_for_tests()
 
+    resolved_tools = []
+
     class Resolver:
+        def __init__(self, *, settings_owner=None):
+            pass
+
         def resolve(self, tool, *, context=None):
+            resolved_tools.append(tool["tool_id"])
             raise RuntimeError("settings unavailable")
 
-    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", lambda: Resolver())
+    monkeypatch.setattr(executor_mod, "ToolPermissionResolver", Resolver)
 
     _, write_response = executor_mod._preflight_frontend_tool_permission(
         "coding_file_write",
@@ -607,6 +633,7 @@ def test_frontend_settings_resolver_failure_fails_closed_for_write_tools(monkeyp
         {},
     )
 
+    assert resolved_tools == ["coding_file_write", "coding_file_read"]
     assert write_response["widget"]["type"] == "approval_request"
     assert write_response["widget"]["approval_required"] is True
     assert read_response is None
@@ -942,7 +969,7 @@ def test_available_tools_falls_back_when_selector_service_fails(monkeypatch):
 
     monkeypatch.setattr(run_request, "ToolRegistry", FakeRegistry)
     monkeypatch.setattr(run_request, "filter_tool_definitions_for_runtime_profile", fake_filter)
-    monkeypatch.setattr(run_request, "_read_frontend_settings", lambda: {"tools": {"selection_strategy": "catalog_ai"}})
+    monkeypatch.setattr(run_request, "_read_frontend_settings", lambda *, settings_owner=None: {"tools": {"selection_strategy": "catalog_ai"}})
     monkeypatch.setattr(run_request.ToolSelectionService, "select", fake_select)
 
     raw, provider, context = run_request._available_tools(

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "io.tobkiri.quality.pack-migration-runtime-receipts.v1",
+  "title": "Exact Pack migration runtime receipts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "authority", "generator_id", "receipts"],
+  "properties": {
+    "schema": {"const": "io.tobkiri.quality.pack-migration-runtime-receipts.v1"},
+    "authority": {"const": "host-runtime-receipts"},
+    "generator_id": {"type": "null"},
+    "receipts": {"type": "object", "additionalProperties": {"type": "object"}}
+  }
+}

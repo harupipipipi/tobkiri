@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.conformance_support.host_contract import host_contract
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 SAFE_APP_SERVER_ARGS = [
@@ -466,10 +468,10 @@ def test_codex_app_server_stdio_smoke_runs_thread_turn_and_streams_events(monkey
 
     monkeypatch.setattr(app_server.subprocess, "Popen", FakeProcess)
     with bind_host_contract(
-        {
-            "profile_id": "default",
-            "values": {"RUMI_CODEX_ACCESS_TOKEN": token},
-        }
+        host_contract(
+            profile_id="default",
+            values={"RUMI_CODEX_ACCESS_TOKEN": token},
+        )
     ):
         result = app_server.codex_app_server_stdio_smoke(
             prompt="Hello. Return exactly: rumi-codex-smoke-ok",

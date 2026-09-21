@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from typing import Any, Mapping
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from blocks._common import error, ok
 from blocks.coding._approval import (
@@ -28,7 +29,7 @@ _BUILTIN_PROVIDER_ADAPTER_ENDPOINTS = {
 }
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     """Preserve the finite legacy route without owning either resource."""
     data = dict(input_data or {})
     method = str(data.get("_method") or "GET").upper()
@@ -68,7 +69,7 @@ def run(input_data, context):
             return ok(_save_connection(provider_id, data, credential_handle=None))
         if action != "upsert":
             return error("unsupported action", "INVALID_ACTION")
-        return ok(_upsert(provider_id, data))
+        return ok(_upsert(provider_id, data, settings_owner=settings_owner))
     except (KeyError, RuntimeError, ValueError) as exc:
         return error(type(exc).__name__, "PROVIDER_CONNECTION_FAILED")
 
@@ -105,7 +106,10 @@ def _status() -> dict[str, Any]:
     }
 
 
-def _upsert(provider_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
+def _upsert(
+    provider_id: str, data: Mapping[str, Any], *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
     secret = str(data.get("value") or "")
     if not secret:
         raise ValueError("provider credential value is required")
@@ -131,7 +135,9 @@ def _upsert(provider_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
         _sync_legacy_provider_key(provider_id, secret, data)
         result = _save_connection(provider_id, data, credential_handle=handle)
         api_id = str(data.get("api_id") or "default").strip() or "default"
-        model_availability = ModelAvailabilityService().after_provider_key_saved(
+        model_availability = ModelAvailabilityService(
+            settings_owner=settings_owner,
+        ).after_provider_key_saved(
             provider_id,
             api_id,
             default_model=str(data.get("default_model") or ""),

@@ -1,5 +1,6 @@
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from .registry import ToolRegistry
 from .mcp_client import McpClient
@@ -314,7 +315,10 @@ def _approval_module():
 class ToolExecutor:
     """ツール実行エンジン"""
 
-    def __init__(self, *, subagent_factory: SubagentFactory | None = None):
+    def __init__(
+        self, *, subagent_factory: SubagentFactory | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
+    ):
         try:
             from domain.integrations.secrets import load_integration_secrets_into_env
 
@@ -324,6 +328,7 @@ class ToolExecutor:
         self._registry = ToolRegistry()
         self._mcp_client = McpClient()
         self._subagent_factory = subagent_factory
+        self._settings_owner = settings_owner
 
     def execute(self, tool_name, arguments, context):
         """
@@ -403,6 +408,7 @@ class ToolExecutor:
             tool_def,
             arguments,
             context,
+            settings_owner=self._settings_owner,
         )
         if delegated_review_response is not None:
             return delegated_review_response
@@ -423,6 +429,7 @@ class ToolExecutor:
             arguments,
             context,
             policy,
+            settings_owner=self._settings_owner,
         )
         if settings_permission_response is not None:
             return settings_permission_response
@@ -1162,17 +1169,25 @@ class ToolExecutor:
                     capability_executor, pack_id
                 )
                 if not approved:
-                    return {
+                    result = {
                         "result": "Pack not approved: {}".format(pack_id),
                         "is_error": True,
-                        "widget": {
-                            "type": "tool_execution_denied",
-                            "tool_name": _tool_approval_tool_name(tool_def),
-                            "reason": "Pack not approved: {}".format(pack_id),
-                        },
+                        "widget": None,
                         "error_type": "pack_not_approved",
                         "pack_not_approved_reason": reason,
                     }
+                    tool_name = _tool_approval_tool_name(tool_def)
+                    if tool_name not in {
+                        "browser_computer",
+                        "browser_use",
+                        "computer_use",
+                    }:
+                        result["widget"] = {
+                            "type": "tool_execution_denied",
+                            "tool_name": tool_name,
+                            "reason": "Pack not approved: {}".format(pack_id),
+                        }
+                    return result
         context["_tool_server_approved"] = True
         return None
 
@@ -1440,7 +1455,15 @@ class ToolExecutor:
         try:
             module = importlib.import_module(module_name)
             callable_obj = getattr(module, attr_name)
-            result = callable_obj(next_arguments, next_context)
+            handler_parameters = inspect.signature(callable_obj).parameters
+            if "settings_owner" in handler_parameters:
+                result = callable_obj(
+                    next_arguments,
+                    next_context,
+                    settings_owner=self._settings_owner,
+                )
+            else:
+                result = callable_obj(next_arguments, next_context)
         except Exception as exc:
             return {
                 "result": "Tool handler execution failed: {}".format(exc),
@@ -2676,6 +2699,7 @@ def _preflight_delegated_approval(
     tool_def,
     arguments,
     context,
+    *, settings_owner: SettingsOwnerPort | None = None,
 ):
     """Resolve ``agent`` mode through an isolated reviewer, never blanket-yolo."""
 
@@ -2702,7 +2726,7 @@ def _preflight_delegated_approval(
     if not needs_review:
         try:
             needs_review = (
-                ToolPermissionResolver().resolve(
+                ToolPermissionResolver(settings_owner=settings_owner).resolve(
                     tool_def,
                     context=next_context,
                 ).get("permission")
@@ -2773,11 +2797,16 @@ def _preflight_delegated_approval(
     return next_context, response
 
 
-def _preflight_frontend_tool_permission(tool_name, tool_def, arguments, context, policy):
+def _preflight_frontend_tool_permission(
+    tool_name, tool_def, arguments, context, policy, *,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     if not isinstance(policy, dict):
         policy = {}
     try:
-        resolution = ToolPermissionResolver().resolve(tool_def, context=context if isinstance(context, dict) else {})
+        resolution = ToolPermissionResolver(settings_owner=settings_owner).resolve(
+            tool_def, context=context if isinstance(context, dict) else {},
+        )
     except Exception:
         if _frontend_permission_resolver_failure_requires_approval(tool_def, tool_name):
             decision = _frontend_permission_decision(
@@ -3428,6 +3457,9 @@ def _approval_required_tool_response(tool_def, arguments, context=None, *, displ
             "function_id": operation,
             "pack_id": str(context.get("owner_pack") or context.get("pack_id") or context.get("_source_pack_id") or "defaultspack"),
             "conversation_id": str(context.get("conversation_id") or context.get("conversation_turn_id") or ""),
+            "turn_id": str(context.get("turn_id") or ""),
+            "tool_call_id": str(context.get("tool_call_id") or ""),
+            "profile_id": str(context.get("profile_id") or ""),
             "arguments": args,
         },
     )

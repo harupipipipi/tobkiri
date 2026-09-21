@@ -19,7 +19,18 @@
         "properties": {
           "path": {"type": "string", "minLength": 1},
           "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-          "role": {"enum": ["canonical_manifest", "contract_catalog", "runtime", "asset", "schema", "sidecar"]}
+          "role": {
+            "enum": [
+              "canonical_manifest",
+              "contract_catalog",
+              "runtime",
+              "asset",
+              "schema",
+              "sidecar",
+              "host_contract_contribution",
+              "host_contract_update_metadata"
+            ]
+          }
         }
       }
     },

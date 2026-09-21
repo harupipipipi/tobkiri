@@ -163,8 +163,12 @@ function operationHasExactInvocationBinding(
     && ownerPack.invokable_operations.includes(operationKey)
     && operation.invocation_contribution_id !== null
     && operation.invocation_owner_pack_id === operation.owner_pack_id
-    && operation.invocation_catalog_hash === envelope.catalog_revision
-    && operation.catalog_digest === envelope.catalog_revision;
+    // The capability hash binds the Application map; catalog_revision binds
+    // the Profile Pack catalog. The Broker revalidates the former on invoke.
+    && operation.invocation_catalog_hash !== null
+    && operation.catalog_digest === envelope.catalog_revision
+    && typeof operation.activation_id === 'string'
+    && operation.activation_id.length > 0;
 }
 
 /**
@@ -206,10 +210,10 @@ export function selectAdvancedContractInvokableOperations(
 export const LAUNCHER_ADVANCED_VIEWS: Record<LauncherAdvancedViewId, LauncherAdvancedViewDescriptor> = {
   profile: {
     id: 'profile',
-    label: 'Profile',
+    label: 'Profiles',
     support: 'rebuilt',
     sources: ['profile', 'profiles'],
-    summary: 'Launcher-local preferences with an authoritative Profile catalog and canonical runtime snapshot status.',
+    summary: 'Browse, configure, and activate verified Profiles; personal Launcher preferences remain clearly separate.',
     capability: 'launcher_local',
     actions: 'local',
   },
@@ -225,25 +229,25 @@ export const LAUNCHER_ADVANCED_VIEWS: Record<LauncherAdvancedViewId, LauncherAdv
   profileWiring: {
     id: 'profileWiring',
     label: 'Profile Wiring',
-    support: 'partial',
+    support: 'mapped',
     sources: ['profile', 'principals', 'contracts'],
-    summary: 'Read-only inspector reserved for exact ResolvedPlan bindings and Function principals.',
+    summary: 'Search the exact ResolvedPlan connections between Function principals and Contract operations.',
     capability: 'runtime_projection',
     actions: 'read_only',
   },
   profileFiles: {
     id: 'profileFiles',
     label: 'Profile Files',
-    support: 'partial',
+    support: 'mapped',
     sources: ['profile'],
-    summary: 'Activation evidence and canonical record digests; no filesystem or profile-file browser.',
+    summary: 'Search the finite Profile artifacts and activation evidence published by the runtime.',
     capability: 'runtime_projection',
     actions: 'read_only',
   },
   flow: {
     id: 'flow',
     label: 'Flow',
-    support: 'partial',
+    support: 'rebuilt',
     sources: ['operations'],
     summary: 'Contract-declared composition can invoke only an authoritative operation; provider side effects and Host approval are explicit.',
     capability: 'contract_operation',
@@ -252,16 +256,16 @@ export const LAUNCHER_ADVANCED_VIEWS: Record<LauncherAdvancedViewId, LauncherAdv
   graph: {
     id: 'graph',
     label: 'Graph',
-    support: 'partial',
+    support: 'mapped',
     sources: ['profile'],
-    summary: 'Read-only Plan binding graph becomes available only with exact bindings from the v4 projection.',
+    summary: 'Explore the exact active Plan graph and follow its Profile connections.',
     capability: 'runtime_projection',
     actions: 'read_only',
   },
   aiInput: {
     id: 'aiInput',
     label: 'AI Input',
-    support: 'partial',
+    support: 'rebuilt',
     sources: ['operations', 'contracts'],
     summary: 'Inputs are generated only for an authoritative Contract operation; provider side effects and Host approval are explicit.',
     capability: 'contract_operation',
@@ -270,9 +274,9 @@ export const LAUNCHER_ADVANCED_VIEWS: Record<LauncherAdvancedViewId, LauncherAdv
   apiMap: {
     id: 'apiMap',
     label: 'API & Route Map',
-    support: 'partial',
+    support: 'mapped',
     sources: ['contracts', 'operations', 'principals'],
-    summary: 'Read-only map waits for exact generated route and Contract metadata.',
+    summary: 'Search and filter the generated route, Contract, provider, and security map.',
     capability: 'runtime_projection',
     actions: 'read_only',
   },

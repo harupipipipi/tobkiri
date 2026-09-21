@@ -2,7 +2,7 @@ import type { FormEvent, MutableRefObject, ReactNode } from "react";
 
 import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
-import type { ComposerCommandItem } from "../lib/api";
+import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
@@ -91,6 +91,14 @@ export type ComposerModelStatusIndicator = {
   svgMarkup: string;
   tone?: "neutral" | "info" | "warning" | "danger";
   action?: ComposerModelStatusIndicatorAction | null;
+};
+
+export type ComposerSteerStatus = {
+  kind: "success";
+  message: string;
+} | {
+  kind: "error";
+  message: string;
 };
 
 export type SettingChangeHandler = (sectionId: string, fieldId: string, value: unknown) => void;
@@ -212,7 +220,7 @@ export type ComposerRendererProps = {
   toolSelectionTargets?: ToolSelectionChip[];
   toolSelectionReview?: PendingToolReview | null;
   keyboardButtonNavigation?: boolean;
-  steerStatus?: string | null;
+  steerStatus?: ComposerSteerStatus | null;
   steerBusy?: boolean;
   steerQueuedCount?: number;
   steerPreviewItems?: ConversationSteerItem[];
@@ -313,7 +321,7 @@ export type SettingsModalRendererProps = {
   isOpen: boolean;
   activeSectionId?: string | null;
   catalog: UICatalog | null;
-  health: { status: string; pack: string; ts: string } | null;
+  health: RuntimeHealth | null;
   previewsCount: number;
   settingsSections: SettingsSection[];
   settingsValues: Record<string, Record<string, unknown>>;

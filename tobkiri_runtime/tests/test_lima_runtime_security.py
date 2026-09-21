@@ -7,9 +7,11 @@ import time
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, Callable
 
 import pytest
 
+from core_runtime import function_runner
 from ecosystem.defaultspack.backend.sandbox.isolation import (
     supervisor as supervisor_module,
 )
@@ -56,6 +58,150 @@ def _hardened_payload() -> dict[str, object]:
             ],
         },
     }
+
+
+class _FakeCFunction:
+    """Small ctypes-compatible callable used to inspect seccomp installation."""
+
+    def __init__(self, callback: Callable[..., Any]) -> None:
+        self._callback = callback
+
+    def __call__(self, *args: Any) -> Any:
+        return self._callback(*args)
+
+
+class _FakeSeccompLibrary:
+    """Capture syscall rules without loading a filter in the test process."""
+
+    def __init__(self, resolved: dict[bytes, int]) -> None:
+        self._resolved = resolved
+        self.rules: list[int] = []
+        self.loaded = False
+        self.released = False
+        self.seccomp_init = _FakeCFunction(lambda _action: 1)
+        self.seccomp_rule_add = _FakeCFunction(self._add_rule)
+        self.seccomp_syscall_resolve_name = _FakeCFunction(self._resolve_name)
+        self.seccomp_load = _FakeCFunction(self._load)
+        self.seccomp_release = _FakeCFunction(self._release)
+
+    def _add_rule(self, _context, _action, syscall: int, _arguments: int) -> int:
+        self.rules.append(syscall)
+        return 0
+
+    def _resolve_name(self, syscall_name: bytes) -> int:
+        return self._resolved.get(syscall_name, -1)
+
+    def _load(self, _context) -> int:
+        self.loaded = True
+        return 0
+
+    def _release(self, _context) -> None:
+        self.released = True
+
+
+def test_seccomp_policy_allows_missing_arm64_fork_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """arm64 guests omit fork/vfork but retain every real dangerous syscall."""
+    resolved = {
+        b"clone": 220,
+        b"clone3": 435,
+        b"execve": 221,
+        b"execveat": 281,
+        b"fork": -1,
+        b"vfork": -1,
+    }
+    seccomp = _FakeSeccompLibrary(resolved)
+    monkeypatch.setattr(function_runner.sys, "platform", "linux")
+    monkeypatch.setattr(function_runner.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(
+        function_runner.ctypes, "CDLL", lambda *_args, **_kwargs: seccomp
+    )
+
+    function_runner._install_seccomp_child_process_filter()
+
+    assert seccomp.rules == [220, 435, 221, 281]
+    assert seccomp.loaded is True
+    assert seccomp.released is True
+
+
+def test_seccomp_policy_denies_every_available_child_process_syscall(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native aliases remain denied on ABIs which expose fork and vfork."""
+    resolved = {
+        b"clone": 56,
+        b"clone3": 435,
+        b"execve": 59,
+        b"execveat": 322,
+        b"fork": 57,
+        b"vfork": 58,
+    }
+    seccomp = _FakeSeccompLibrary(resolved)
+    monkeypatch.setattr(function_runner.sys, "platform", "linux")
+    monkeypatch.setattr(function_runner.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(
+        function_runner.ctypes, "CDLL", lambda *_args, **_kwargs: seccomp
+    )
+
+    function_runner._install_seccomp_child_process_filter()
+
+    assert seccomp.rules == [56, 435, 59, 322, 57, 58]
+    assert seccomp.loaded is True
+
+
+def test_seccomp_policy_fails_closed_when_x86_fork_aliases_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """x86_64 must not treat real fork/vfork syscalls as optional."""
+    resolved = {
+        b"clone": 56,
+        b"clone3": 435,
+        b"execve": 59,
+        b"execveat": 322,
+        b"fork": -1,
+        b"vfork": -1,
+    }
+    seccomp = _FakeSeccompLibrary(resolved)
+    monkeypatch.setattr(function_runner.sys, "platform", "linux")
+    monkeypatch.setattr(function_runner.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(
+        function_runner.ctypes, "CDLL", lambda *_args, **_kwargs: seccomp
+    )
+
+    with pytest.raises(RuntimeError, match="incomplete: fork, vfork"):
+        function_runner._install_seccomp_child_process_filter()
+
+    assert seccomp.rules == []
+    assert seccomp.loaded is False
+    assert seccomp.released is True
+
+
+def test_seccomp_policy_fails_closed_when_a_required_syscall_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A libseccomp mismatch cannot silently permit clone3 or exec variants."""
+    resolved = {
+        b"clone": 220,
+        b"clone3": -1,
+        b"execve": 221,
+        b"execveat": 281,
+        b"fork": -1,
+        b"vfork": -1,
+    }
+    seccomp = _FakeSeccompLibrary(resolved)
+    monkeypatch.setattr(function_runner.sys, "platform", "linux")
+    monkeypatch.setattr(function_runner.platform, "machine", lambda: "aarch64")
+    monkeypatch.setattr(
+        function_runner.ctypes, "CDLL", lambda *_args, **_kwargs: seccomp
+    )
+
+    with pytest.raises(RuntimeError, match="incomplete: clone3"):
+        function_runner._install_seccomp_child_process_filter()
+
+    assert seccomp.rules == []
+    assert seccomp.loaded is False
+    assert seccomp.released is True
 
 
 def test_lima_attestation_rejects_host_bridges() -> None:
@@ -340,14 +486,24 @@ def test_lima_capability_injects_child_process_policy_only_into_pack_runner(
     )
 
 
+@pytest.mark.live
 @pytest.mark.skipif(
     os.environ.get("RUMI_RUN_LIMA_INTEGRATION") != "1",
-    reason="real Lima sandbox integration is opt-in",
+    reason=(
+        "requires a manually provisioned legacy rumi-managed-runtime Lima guest; "
+        "production PackVM uses direct VZ and has separate packaged-helper CI coverage"
+    ),
 )
-def test_real_macos_lima_boundary_blocks_host_siblings_and_network(
+def test_live_legacy_lima_boundary_blocks_host_siblings_and_network(
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ) -> None:
+    """Exercise the retired Lima supervisor, not the production direct-VZ PackVM.
+
+    This is retained for existing installed ``rumi-managed-runtime`` guests.
+    It covers host/sibling/network isolation, child-process denial, and timeout
+    cleanup only when a caller explicitly provisions that legacy runtime.
+    """
     limactl, instance = resolve_attested_lima_runtime()
     sibling_secret_dir = f"{LIMA_GUEST_PACK_DATA_ROOT}/other_pack"
     sibling_secret = f"{sibling_secret_dir}/secret.txt"

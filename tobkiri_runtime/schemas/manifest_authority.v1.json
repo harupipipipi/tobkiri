@@ -1,10 +1,8 @@
 {
   "packs": {
-    "defaults": "v4-authoritative",
     "defaultspack": "v4-authoritative",
     "rumi_agent_continuity_pack": "v4-authoritative",
     "rumi_agent_runtime_service_pack": "v4-authoritative",
-    "rumi_agent_services_pack": "v4-authoritative",
     "rumi_agent_state_store_pack": "v4-authoritative",
     "rumi_agent_workroom_pack": "v4-authoritative",
     "rumi_agentic_qa_pack": "v4-authoritative",
@@ -28,6 +26,7 @@
     "rumi_code_ide_pack": "v4-authoritative",
     "rumi_code_migration_pack": "v4-authoritative",
     "rumi_coding_sandbox_service_pack": "v4-authoritative",
+    "rumi_command_protocol_pack": "v4-authoritative",
     "rumi_company_agent_adapter_pack": "v4-authoritative",
     "rumi_company_coordinator_pack": "v4-authoritative",
     "rumi_company_state_store_pack": "v4-authoritative",
@@ -76,7 +75,6 @@
     "rumi_knowledge_marketplace_pack": "v4-authoritative",
     "rumi_knowledge_store_pack": "v4-authoritative",
     "rumi_line_connector_pack": "v4-authoritative",
-    "rumi_local_agent_pack": "v4-authoritative",
     "rumi_localization_pack": "v4-authoritative",
     "rumi_mcp_gateway_pack": "v4-authoritative",
     "rumi_mcp_server_pack": "v4-authoritative",
@@ -96,12 +94,10 @@
     "rumi_omnichannel_agent_inbox_pack": "v4-authoritative",
     "rumi_operations_company_pack": "v4-authoritative",
     "rumi_p2p_connector_pack": "v4-authoritative",
-    "rumi_pack_suite_pack": "v4-authoritative",
     "rumi_prompt_studio_pack": "v4-authoritative",
     "rumi_provider_adapters_pack": "v4-authoritative",
     "rumi_provider_registry_pack": "v4-authoritative",
     "rumi_qr_pairing_connector_pack": "v4-authoritative",
-    "rumi_reference_ui_pack": "v4-authoritative",
     "rumi_repository_context_pack": "v4-authoritative",
     "rumi_research_pack": "v4-authoritative",
     "rumi_runtime_benchmark_pack": "v4-authoritative",
@@ -142,6 +138,8 @@
     "rumi_workspace_pack": "v4-authoritative",
     "search_home_pack": "v4-authoritative",
     "tobkiri_host_pack_control": "v4-authoritative",
+    "tobkiri_mcp_connection_pack": "v4-authoritative",
+    "tobkiri_ui_settings_pack": "v4-authoritative",
     "tobkiri_workflow_pack": "v4-authoritative"
   },
   "version": 1

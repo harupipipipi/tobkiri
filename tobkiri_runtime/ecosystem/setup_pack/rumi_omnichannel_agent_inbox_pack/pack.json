@@ -33,7 +33,7 @@
     "outbound_draft_approval": "owned_by_rumi_omnichannel_agent_inbox_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Rumi Omnichannel Agent Inbox Pack is declarative and cannot enter defaultspack until owner-pack integration, audit receipts, and real success cases prove it should be default.",
     "criteria": [

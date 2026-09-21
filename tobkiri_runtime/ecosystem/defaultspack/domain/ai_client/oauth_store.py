@@ -1528,7 +1528,9 @@ def provider_oauth_status(
     cloudflare_environment = {}
     if provider_id == "cloudflare":
         try:
-            from core_runtime.cloudflare.sdk_client import cloudflare_sdk_status
+            from core_runtime.cloudflare.sdk_client import (
+                cloudflare_sdk_status,
+            )
 
             cloudflare_sdk = cloudflare_sdk_status()
         except Exception:
@@ -1539,7 +1541,9 @@ def provider_oauth_status(
                 "detail": "Cloudflare Python SDK status could not be loaded.",
             }
         try:
-            from core_runtime.cloudflare.diagnostics import cloudflare_environment_status
+            from core_runtime.cloudflare.diagnostics import (
+                cloudflare_environment_status,
+            )
 
             active = active_diagnostics or str(os.environ.get("RUMI_CLOUDFLARE_ACTIVE_DIAGNOSTICS") or "").strip().lower() in {
                 "1",
@@ -1547,7 +1551,11 @@ def provider_oauth_status(
                 "yes",
             }
             cloudflare_api_token = get_provider_access_token(provider_id, pack_root=pack_root) if active else None
-            cloudflare_environment = cloudflare_environment_status(active=active, api_token=cloudflare_api_token)
+            cloudflare_environment = cloudflare_environment_status(
+                active=active,
+                api_token=cloudflare_api_token,
+                connector_root=pack_root or _pack_root(),
+            )
         except Exception:
             cloudflare_environment = {
                 "schema": "rumi.cloudflare.environment.v1",

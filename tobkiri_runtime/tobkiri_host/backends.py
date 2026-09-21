@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Iterable, Protocol
+from typing import TYPE_CHECKING, Callable, Iterable, Protocol, runtime_checkable
 
 from .contracts import ResolvedOperationBinding
 from .errors import BackendUnavailableError
@@ -73,6 +73,25 @@ class ExecutionBackend(Protocol):
 
     def terminate(self, domain_id: str) -> None:
         """Destroy a mismatched or revoked execution domain."""
+
+
+@runtime_checkable
+class RequestScopedBackend(ExecutionBackend, Protocol):
+    """Backend whose workers are paid for by one Broker request reservation.
+
+    The memory floor is Host-owned and covers compilation and guest execution;
+    a lower Pack declaration must not reduce the reserved amount.
+    """
+
+    memory_reservation_bytes: int
+
+    def release_materialization(self, reservation_id: str) -> None:
+        """Confirm all workers for this reservation have exited before returning.
+
+        This also applies to partial starts and final-authorization denials.
+        Raise if termination cannot be confirmed; the Broker retains the charge.
+        Resident backends instead own continuing resource accounting separately.
+        """
 
 
 class BackendRegistry:
@@ -183,6 +202,7 @@ __all__ = [
     "BackendRegistry",
     "BackendStatus",
     "ExecutionBackend",
+    "RequestScopedBackend",
     "REQUIRED_PRODUCTION_GATES",
     "production_backend_registry",
 ]

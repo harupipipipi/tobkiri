@@ -1,110 +1,111 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:7abda56e5480738a2e717f1ff97b672f70ad8ee776eebd8d360f4aad2eb88370",
   "pack_id": "rumi_knowledge_store_pack",
-  "source_identity": "sha256:e6336b9d1c81b4be1e4cd4673d61c0a5c2936ad22fb1b1d226f8c551c72ab342",
+  "source_identity": "sha256:54b940803fcc93f9a18effbb3ae568fc2ed9bfbd16c8dd6ffbaeadc84ddad740",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_knowledge_store_pack.knowledge-store.manage.python",
       "function_id": "rumi_knowledge_store_pack.knowledge-store.manage",
-      "implementation_digest": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
       "implementation_path": "runtime/store.py",
+      "implementation_digest": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.action.knowledge.manage.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:6b2e3a2286cedcc8605a26d46ddec501e173bc3395935b01a7cc87b1afcbc41a",
+          "operation_id": "rumi_knowledge_store_pack.knowledge-manage",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_knowledge_store_pack.knowledge-manage",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:6b2e3a2286cedcc8605a26d46ddec501e173bc3395935b01a7cc87b1afcbc41a",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_knowledge_store_pack.knowledge-store.manage.python"
+      ]
     },
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_knowledge_store_pack.knowledge-store.migrate.python",
       "function_id": "rumi_knowledge_store_pack.knowledge-store.migrate",
-      "implementation_digest": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
       "implementation_path": "runtime/store.py",
+      "implementation_digest": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.action.knowledge.migrate.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:a04930705b519cb41bf9eb6d40c5e89b5286ac962a9f9cc513dae61b9dc85655",
+          "operation_id": "rumi_knowledge_store_pack.knowledge-migrate",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_knowledge_store_pack.knowledge-migrate",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:a04930705b519cb41bf9eb6d40c5e89b5286ac962a9f9cc513dae61b9dc85655",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_knowledge_store_pack.knowledge-store.migrate.python"
+      ]
     },
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_knowledge_store_pack.knowledge-store.resource.python",
       "function_id": "rumi_knowledge_store_pack.knowledge-store.resource",
-      "implementation_digest": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
       "implementation_path": "runtime/store.py",
+      "implementation_digest": "sha256:1adc7542788dbf49e2ec9a6fdbf4b219913ef53e70c24d4c8a325d2ae929f41e",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.resource.knowledge.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:f95330eb0cea0caedb83d16fb138ecbfb1dd13144a4c65bc9c94188aacba373e",
+          "operation_id": "rumi_knowledge_store_pack.knowledge-resource",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_knowledge_store_pack.knowledge-resource",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:f95330eb0cea0caedb83d16fb138ecbfb1dd13144a4c65bc9c94188aacba373e",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_knowledge_store_pack.knowledge-store.resource.python"
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:7abda56e5480738a2e717f1ff97b672f70ad8ee776eebd8d360f4aad2eb88370",
+  "catalog_digest": "sha256:cbbeb5105b4a3a09a3384559a9eabee1d0a8c3573cd53bea5844f27fe0d15889"
 }

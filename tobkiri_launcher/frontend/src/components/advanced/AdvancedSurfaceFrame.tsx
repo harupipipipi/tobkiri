@@ -1,8 +1,9 @@
 import type {ReactNode} from 'react';
-import {AlertTriangle, CheckCircle2, Clock3, RefreshCw, ShieldAlert} from 'lucide-react';
+import {CheckCircle2, CircleAlert, Clock3, RefreshCw, ShieldAlert} from 'lucide-react';
 
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
+import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {TobkiriLoadingMark} from '@/src/components/ui/TobkiriLoader';
 import {
   advancedActionMetadata,
@@ -66,7 +67,8 @@ function StatusNotice({
   state: SurfaceStateNotice;
   onRetry: () => void;
 }): ReactNode {
-  if (state.status === 'loading' && !state.stale) {
+  if (descriptor.capability === 'launcher_local' && state.status === 'idle') return null;
+  if ((state.status === 'idle' || state.status === 'loading') && !state.stale) {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-border bg-bg-card px-4 py-4 text-sm text-text-muted" role="status" aria-live="polite">
         <TobkiriLoadingMark />
@@ -92,6 +94,12 @@ function StatusNotice({
           : 'Action is locked and fail-closed'
         : 'Canonical v4 surface could not be loaded';
   const message = state.error?.message ?? 'No new data was accepted.';
+  const staleExplanation = 'Showing the last accepted snapshot. Actions are disabled until the authoritative surface is fresh.';
+  const diagnosticText = [
+    title,
+    message,
+    ...(state.stale ? [staleExplanation] : []),
+  ].join('\n');
 
   return (
     <div
@@ -103,14 +111,15 @@ function StatusNotice({
       )}
       role="alert"
     >
-      <div className="flex min-w-0 items-start gap-3">
-        {state.status === 'timeout' ? <Clock3 className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" /> : isBlocked ? <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" /> : <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" />}
+      <div className="flex min-w-0 flex-1 items-start gap-3">
+        {state.status === 'timeout' ? <Clock3 className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="surface-timeout" /> : isBlocked ? <ShieldAlert className="mt-0.5 size-5 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="surface-blocked" /> : <CircleAlert className="mt-0.5 size-5 shrink-0 text-destructive" aria-hidden="true" data-error-icon="surface-load" />}
         <div className="min-w-0">
           <p className="text-sm font-semibold text-text-main">{title}</p>
           <p className="mt-1 text-sm leading-6 text-text-muted">{message}</p>
-          {state.stale ? <p className="mt-1 text-xs text-text-muted">Showing the last accepted snapshot. Actions are disabled until the authoritative surface is fresh.</p> : null}
+          {state.stale ? <p className="mt-1 text-xs text-text-muted">{staleExplanation}</p> : null}
         </div>
       </div>
+      <CopyErrorButton label={`Copy ${descriptor.label} error`} text={diagnosticText} />
       <Button type="button" variant="outline" size="sm" onClick={onRetry} disabled={state.status === 'loading'}>
         <RefreshCw className="h-4 w-4" aria-hidden="true" />
         Retry
@@ -149,19 +158,22 @@ export function AdvancedSurfaceFrame({
           </Button>
         </header>
 
-        <section
+        <details
           className="rounded-xl border border-border bg-bg-card px-4 py-4 sm:px-5"
           aria-label={`${descriptor.label} capability and action metadata`}
           data-advanced-action={descriptor.actions}
         >
-          <div className="flex flex-wrap items-center gap-2">
+          <summary className="cursor-pointer text-sm font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]">
+            Capability and action details
+          </summary>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Badge variant={actionVariant(descriptor.actions)}>Action: {descriptor.actions}</Badge>
             <Badge variant="outline">Capability: {descriptor.capability}</Badge>
           </div>
           <p className="mt-2 text-sm leading-6 text-text-muted">{advancedActionMetadata(descriptor).sideEffects}</p>
           <p className="mt-1 text-sm leading-6 text-text-muted">{advancedActionMetadata(descriptor).approval}</p>
           <p className="mt-1 text-xs leading-5 text-text-muted">{actionStateCopy(descriptor.actions, state.status, state.stale)}</p>
-        </section>
+        </details>
 
         <StatusNotice descriptor={descriptor} state={state} onRetry={onRetry} />
         {state.status === 'ready' && !state.error ? (
@@ -170,7 +182,7 @@ export function AdvancedSurfaceFrame({
             Canonical v4 projection accepted. {actionStateCopy(descriptor.actions, state.status, state.stale)}
           </div>
         ) : null}
-        {children}
+        {descriptor.capability === 'launcher_local' || state.stale || (state.status !== 'idle' && state.status !== 'loading') ? children : null}
       </div>
     </div>
   );
