@@ -19236,7 +19236,7 @@
         {
           "contract_id": "tobkiri.resource.ui.model-search.v1",
           "function_id": "tobkiri.ui.model-search.read",
-          "implementation_digest": "sha256:5f346a2aa442743d9a7712ca1bb166bb556eceefc5d0970ae7d3fd0dafe47164",
+      "implementation_digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c",
           "operation_ids": ["tobkiri_ui_settings_pack.model-search"]
         }
       ],
@@ -19657,7 +19657,7 @@
             {
               "entrypoint_id": "tobkiri_ui_settings_pack.model-search",
               "id": "tobkiri_ui_settings_pack.model-search",
-              "implementation_digest": "sha256:5f346a2aa442743d9a7712ca1bb166bb556eceefc5d0970ae7d3fd0dafe47164"
+              "implementation_digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c"
             }
           ],
           "owner": "tobkiri_ui_settings_pack",
@@ -19742,7 +19742,7 @@
           "path": "runtime/settings.py"
         },
         {
-          "digest": "sha256:5f346a2aa442743d9a7712ca1bb166bb556eceefc5d0970ae7d3fd0dafe47164",
+          "digest": "sha256:b5510927a0f4ae90aa9afe34d90094fc0dc1b294a548ff35eb0534056516662c",
           "kind": "executable",
           "path": "runtime/model_search.py"
         },
