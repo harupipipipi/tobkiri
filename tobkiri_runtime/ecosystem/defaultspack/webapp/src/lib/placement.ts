@@ -36,6 +36,11 @@ export type PlacementManifest = {
   };
   renderer: {
     kind: PlacementRendererKind;
+    /**
+     * Self-declared by the manifest. Inert: it must never grant rendering
+     * privileges. HTML placements stay blocked regardless of this flag until
+     * a reviewed provenance/capability contract exists (see issue #1080).
+     */
     trusted?: boolean;
     componentId?: string;
     templateId?: string;
@@ -85,6 +90,7 @@ export type PlacementRenderingResolution =
   | {
       kind: "blocked_html";
       reason: PlacementHtmlBlockReason;
+      manifestId: string;
       sourceLabel: string;
       byteLength: number;
       message: string;
@@ -204,11 +210,13 @@ export function resolvePlacementHtmlRendering(
   if (manifest.renderer.kind === "html") {
     const html = String(manifest.renderer.html ?? "");
     const byteLength = utf8ByteLength(html);
+    const manifestId = String(manifest.id ?? "").trim() || "unknown";
     const sourceLabel = placementSourceLabel(manifest);
     if (!html.trim()) {
       return {
         kind: "blocked_html",
         reason: "empty_html",
+        manifestId,
         sourceLabel,
         byteLength,
         message: "This extension requested an empty HTML placement. Nothing was rendered.",
@@ -218,14 +226,19 @@ export function resolvePlacementHtmlRendering(
       return {
         kind: "blocked_html",
         reason: "oversized_html",
+        manifestId,
         sourceLabel,
         byteLength,
         message: `This extension requested ${byteLength} bytes of HTML, above the ${PLACEMENT_HTML_MAX_SOURCE_BYTES}-byte limit.`,
       };
     }
+    // renderer.trusted is self-declared and is deliberately ignored here:
+    // every HTML placement is untrusted active content until a verified
+    // provenance/capability contract exists (issue #1080).
     return {
       kind: "blocked_html",
       reason: "unverified_active_content",
+      manifestId,
       sourceLabel,
       byteLength,
       message: "Arbitrary HTML placements are disabled. Use a verified component or declarative template renderer instead.",

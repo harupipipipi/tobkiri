@@ -1509,7 +1509,15 @@ export function RightSidebar({
           </div>
           {manifest.renderer.kind === "html" && (
             <div className="mt-3 h-48 overflow-hidden">
-              <PlacementHtmlRenderer manifest={manifest} />
+              <PlacementHtmlRenderer
+                manifest={manifest}
+                onDisable={() => {
+                  updatePinnedPlacements((current) => current.filter(
+                    (placement) => !(placement.id === placementId && placement.surface === "right_sidebar"),
+                  ));
+                  setActivePanel(null);
+                }}
+              />
             </div>
           )}
           {manifest.renderer.kind !== "html" && action?.type === "open_settings_section" && settingsTarget && (
