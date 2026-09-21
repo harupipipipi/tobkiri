@@ -665,6 +665,9 @@ def _run_validation():
     )
     print(summary)
 
+    if report.errors:
+        sys.exit(1)
+
 
 def _run_hmac_migration():
     """署名なしの HMAC 対象ファイルを再署名する。"""
