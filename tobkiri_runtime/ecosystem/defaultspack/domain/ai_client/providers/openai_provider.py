@@ -522,7 +522,7 @@ class OpenAIProvider(BaseProvider):
             "/chat/completions", body, **self._request_timeout_kwargs(params)
         )
         tool_call_state: dict[str, dict[str, object]] = {}
-        pending_end: dict[str, object] | None = None
+        pending_end: dict | None = None
         try:
             for payload in self._parse_sse_lines(resp):
                 try:
