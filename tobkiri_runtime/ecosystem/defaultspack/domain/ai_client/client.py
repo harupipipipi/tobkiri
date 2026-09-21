@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import re
+import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -22,6 +23,11 @@ from domain.ai_client.model_metadata_schema import (
 from domain.ai_client import rumi_process
 from domain.ai_client.rumi_process_runner import RumiProcessRunner
 from domain.ai_client.oauth_store import provider_has_oauth_connection
+from domain.ai_client.provider_performance import (
+    provider_measurement_context,
+    record_complete_response,
+    track_stream,
+)
 from domain.ai_client.providers import (
     _cloud_runtime_enabled,
     build_profile_catalog,
@@ -1407,10 +1413,22 @@ class AIClient:
                 provider=provider,
                 stream=False,
             )
+        measurement = provider_measurement_context(provider_id, model_name, provider)
+        started_at = time.monotonic()
         try:
-            return provider.complete(model_name, messages, tools or [], self._strip_authority_params(provider_params))
+            response = provider.complete(
+                model_name,
+                messages,
+                tools or [],
+                self._strip_authority_params(provider_params),
+            )
         except NotImplementedError as e:
             raise RuntimeError(str(e)) from None
+        try:
+            record_complete_response(response, measurement, started_at)
+        except Exception:
+            pass
+        return response
 
     def stream(self, model, messages, tools=None, params=None):
         params = dict(params or {})
@@ -1442,10 +1460,18 @@ class AIClient:
                 provider=provider,
                 stream=True,
             )
+        measurement = provider_measurement_context(provider_id, model_name, provider)
+        started_at = time.monotonic()
         try:
-            return provider.stream(model_name, messages, tools or [], self._strip_authority_params(provider_params))
+            events = provider.stream(
+                model_name,
+                messages,
+                tools or [],
+                self._strip_authority_params(provider_params),
+            )
         except NotImplementedError as e:
             raise RuntimeError(str(e)) from None
+        return track_stream(events, measurement, started_at)
 
     @staticmethod
     def _provider_params(params):
