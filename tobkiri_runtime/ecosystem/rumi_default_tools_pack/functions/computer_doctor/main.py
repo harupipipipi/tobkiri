@@ -67,7 +67,7 @@ def run(context, args):
             except Exception as e:
                 checks.append({"name": "screen_capture_kit", "status": "fail", "reason": str(e)})
         else:
-            checks.append({"name": "platform", "status": "warn", "reason": f"Platform {sys.platform} 窶・Mac checks skipped"})
+            checks.append({"name": "platform", "status": "warn", "reason": f"Platform {sys.platform} - Mac checks skipped"})
 
         return {
             "platform": sys.platform,

@@ -1613,7 +1613,7 @@ class BrowserComputerController:
         return meta
 
     def _computer_seat_observe(self, payload: dict[str, Any], *, yolo_mode: bool) -> dict[str, Any]:
-        """Delegate to ComputerSeatService.observe with approval.
+        """Delegate to ComputerToolService.observe with approval.
 
         observe can aggregate screenshot-capable and foreground drivers, so it
         must use the same explicit approval boundary as computer.screenshot.
@@ -1846,7 +1846,7 @@ class BrowserComputerController:
         return result
 
     def _computer_seat_semantic_action(self, payload: dict[str, Any], *, yolo_mode: bool) -> dict[str, Any]:
-        """Delegate to ComputerSeatService.semantic_action with approval."""
+        """Delegate to ComputerToolService.semantic_action with approval."""
         if not yolo_mode and not self._consume_approval(payload, "computer.semantic_action", self._safe_payload(payload)):
             return self._approval_required("computer.semantic_action", self._safe_payload(payload))
         try:
@@ -1865,7 +1865,7 @@ class BrowserComputerController:
             return {"action": "computer.semantic_action", "error": str(e)}
 
     def _computer_seat_pid_event(self, payload: dict[str, Any], *, yolo_mode: bool) -> dict[str, Any]:
-        """Delegate to ComputerSeatService for pid-targeted events."""
+        """Delegate to ComputerToolService for pid-targeted events."""
         if not yolo_mode and not self._consume_approval(payload, "computer.pid_event", self._safe_payload(payload)):
             return self._approval_required("computer.pid_event", self._safe_payload(payload))
         try:
@@ -1928,7 +1928,7 @@ class BrowserComputerController:
         raise ValueError(f"Unknown pid_event sub-action: {action}")
 
     def _computer_seat_doctor(self) -> dict[str, Any]:
-        """Delegate to ComputerSeatService.doctor."""
+        """Delegate to ComputerToolService.doctor."""
         try:
             svc = self._get_computer_seat()
             result = svc.doctor()
@@ -1938,7 +1938,7 @@ class BrowserComputerController:
             return {"action": "computer.doctor", "error": str(e)}
 
     def _computer_seat_screenshot_compat(self, payload: dict[str, Any], *, dry_run: bool, yolo_mode: bool) -> dict[str, Any] | None:
-        """Try ComputerSeatService.observe for screenshot, return legacy schema or None on failure."""
+        """Try ComputerToolService.observe for screenshot, return legacy schema or None on failure."""
         try:
             svc = self._get_computer_seat()
             target = self._computer_seat_target(payload)
@@ -1958,7 +1958,7 @@ class BrowserComputerController:
         background_safe_only: bool = False,
         verified_background_only: bool = False,
     ) -> dict[str, Any] | None:
-        """Attempt to execute a mutation action via ComputerSeatService.
+        """Attempt to execute a mutation action via ComputerToolService.
 
         Returns the ActionResult dict if ComputerSeat executed it. For explicit
         physical pointer actions, foreground fallback still falls through to
@@ -1997,7 +1997,7 @@ class BrowserComputerController:
                         "executed": False,
                         "confidence": "failed",
                         "is_error": True,
-                        "notes": ["ComputerSeatService does not expose a background_action API."],
+                        "notes": ["ComputerToolService does not expose a background_action API."],
                     }
                 service_action = {
                     "computer.click": "click",
@@ -2233,7 +2233,7 @@ class BrowserComputerController:
         foreground_error = self._foreground_action_focus_error(action, action_payload)
         if foreground_error is not None:
             return foreground_error
-        # --- Attempt ComputerSeatService delegation ---
+        # --- Attempt ComputerToolService delegation ---
         with self._edge_haze(action, action_payload) as edge_haze:
             seat_result = self._try_computer_seat_action(action, action_payload)
         if seat_result is not None and seat_result.get("executed"):
