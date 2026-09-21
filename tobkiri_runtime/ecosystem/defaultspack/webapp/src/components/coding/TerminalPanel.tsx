@@ -157,7 +157,6 @@ export function TerminalPanel({
           className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-40"
           aria-label="Clear terminal history from this private session"
           title="Clear terminal history"
-          disabled={logs.length === 0}
         >
           <Trash2 size={13} />
         </button>
@@ -169,6 +168,7 @@ export function TerminalPanel({
 
       <div className="flex items-center gap-1.5">
         <input
+          aria-label="Terminal command"
           value={command}
           onChange={(event) => setCommand(event.target.value)}
           onKeyDown={(event) => {
