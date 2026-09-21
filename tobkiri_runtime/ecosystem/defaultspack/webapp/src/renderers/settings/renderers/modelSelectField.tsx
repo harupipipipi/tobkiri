@@ -3,7 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ModelSearchItem } from "../../../lib/api";
 import {
   ModelSearchPicker,
+  modelProviderOptions,
   modelFieldOptionToModelSelectOption,
+  parseModelProviderQuery,
+  parseModelSelectorSchema,
+  type ModelSelectorSchema,
   type ModelSelectOption,
 } from "../../../features/models";
 import { settingsApiResources } from "../../../features/settings/resources/settingsApiResources";
@@ -15,11 +19,13 @@ export function SettingsModelSearchField({
   options,
   onChange,
   placeholder = "model/provider/特徴メモで検索",
+  selectorSchema,
 }: {
   value: string;
   options: ModelSelectOption[];
   onChange: (value: string) => void;
   placeholder?: string;
+  selectorSchema?: ModelSelectorSchema;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -28,12 +34,18 @@ export function SettingsModelSearchField({
   const [error, setError] = useState("");
   const searchRequestSeq = useRef(0);
   const trimmedQuery = query.trim();
+  const resolvedSelectorSchema = selectorSchema ?? parseModelSelectorSchema(undefined);
+  const providerQueryState = parseModelProviderQuery(
+    query,
+    modelProviderOptions(options),
+    resolvedSelectorSchema.layout.provider_trigger,
+  );
 
   useEffect(() => {
     if (!open) return;
     searchRequestSeq.current += 1;
     const requestSeq = searchRequestSeq.current;
-    if (!trimmedQuery) {
+    if (!trimmedQuery || providerQueryState.active) {
       setRemoteResults([]);
       setBusy(false);
       setError("");
@@ -43,7 +55,11 @@ export function SettingsModelSearchField({
     const timer = window.setTimeout(() => {
       setBusy(true);
       setError("");
-      settingsApiResources.searchModels({ query: trimmedQuery, max_results: 30 })
+      settingsApiResources.searchModels({
+        query: providerQueryState.providerId ? providerQueryState.modelQuery : trimmedQuery,
+        max_results: 30,
+        ...(providerQueryState.providerId ? { provider_id: providerQueryState.providerId } : {}),
+      })
         .then((result) => {
           if (disposed || requestSeq !== searchRequestSeq.current) return;
           setRemoteResults(result.models ?? []);
@@ -61,7 +77,13 @@ export function SettingsModelSearchField({
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [open, trimmedQuery]);
+  }, [
+    open,
+    providerQueryState.active,
+    providerQueryState.modelQuery,
+    providerQueryState.providerId,
+    trimmedQuery,
+  ]);
 
   return (
     <div data-settings-renderer="model_select">
@@ -73,6 +95,8 @@ export function SettingsModelSearchField({
         loading={busy}
         error={error}
         placeholder={placeholder}
+        selectorSchema={selectorSchema}
+        surface="settings"
         open={open}
         onOpenChange={setOpen}
         onChange={onChange}
@@ -90,6 +114,7 @@ export function BuiltinModelSelectRenderer({ sectionId, field, value, sectionVal
       <SettingsModelSearchField
         value={selectedValue}
         options={fieldOptions(field).map(modelFieldOptionToModelSelectOption)}
+        selectorSchema={parseModelSelectorSchema(field.selector_schema)}
         onChange={(nextValue) => onChange(sectionId, targetFieldId, nextValue)}
       />
     </SettingsFieldShell>

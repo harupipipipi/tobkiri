@@ -22,6 +22,7 @@ class ComputerTarget:
     # Cross-platform legacy/window fields.
     window_id: int | None = None
     window_title: str | None = None
+    window_bounds: dict[str, float] = field(default_factory=dict)
 
     # Windows.
     hwnd: int | None = None
@@ -54,6 +55,7 @@ class ComputerCapabilities:
     can_dom_action: bool = False
     can_background_click: bool = False
     can_background_type: bool = False
+    can_background_set_text_control: bool = False
     can_background_key: bool = False
     can_background_scroll: bool = False
     can_pid_event: bool = False

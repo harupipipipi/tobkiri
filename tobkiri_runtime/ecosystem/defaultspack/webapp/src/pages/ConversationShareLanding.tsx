@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Download, Eye, Import, Loader2, Lock, ShieldCheck, X } from "lucide-react";
 
 import { api, type ConversationShareRecord } from "../lib/api";
+import { ErrorNotice } from "../components/ErrorNotice";
+import { applicationPathname, profileScreenUrlFromLocation } from "../lib/profileRoute";
 
 
 export type ShareImportMode = "read_only" | "continue_copy";
@@ -57,7 +59,7 @@ export function ImportedConversationNotice({ onDismiss, importMode }: { onDismis
 }
 
 export function ConversationShareLanding() {
-  const token = shareTokenFromPath(window.location.pathname);
+  const token = shareTokenFromPath(applicationPathname(window.location.pathname) ?? "");
   const [record, setRecord] = useState<ConversationShareRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState<ShareImportMode | null>(null);
@@ -77,7 +79,9 @@ export function ConversationShareLanding() {
     setError(null);
     try {
       const result = await api.importShare(token, window.location.href, mode);
-      window.location.assign(shareImportDestination(result.conversation_id));
+      window.location.assign(profileScreenUrlFromLocation(
+        shareImportDestination(result.conversation_id),
+      ));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Import failed.");
       setImporting(null);
@@ -105,7 +109,13 @@ export function ConversationShareLanding() {
       <section className="mx-auto w-full max-w-3xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl sm:p-8">
         <div className="flex items-center gap-3 text-emerald-300"><ShieldCheck size={22} aria-hidden="true" /><span className="text-sm font-semibold">Inspectable redacted share</span></div>
         {error && !record ? (
-          <div role="alert" className="mt-8 border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">{error}</div>
+          <ErrorNotice
+            className="mt-8 p-4 text-sm"
+            copyLabel="Copy shared conversation error"
+            copyText={error}
+            errorIcon="conversation-share"
+            message={error}
+          />
         ) : !record || !summary ? (
           <div role="status" className="mt-10 flex items-center gap-3 text-sm text-zinc-400"><Loader2 size={18} className="animate-spin" /> Loading safety preview...</div>
         ) : (
@@ -146,14 +156,22 @@ export function ConversationShareLanding() {
               <ul className="mt-3 space-y-1 text-xs text-zinc-400">{(record.audit || []).map((event, index) => <li key={`${event.operation}-${event.timestamp}-${index}`}>{event.operation.replace(/_/g, " ")} · {event.result}{event.mode ? ` · ${event.mode.replace(/_/g, " ")}` : ""} · {new Date(event.timestamp).toLocaleString()}</li>)}</ul>
             </section>
 
-            {error && <p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}
+            {error ? (
+              <ErrorNotice
+                className="mt-4 p-3 text-sm"
+                copyLabel="Copy shared conversation error"
+                copyText={error}
+                errorIcon="conversation-share"
+                message={error}
+              />
+            ) : null}
             <div className="mt-8 grid gap-2 sm:grid-cols-2">
               <button autoFocus type="button" disabled={Boolean(importing)} onClick={() => void importConversation("read_only")} className="inline-flex min-h-12 items-center justify-center gap-2 border border-zinc-700 px-4 text-sm font-semibold text-zinc-100 hover:bg-zinc-900 disabled:opacity-60">{importing === "read_only" ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />} Import read-only copy</button>
               <button type="button" disabled={Boolean(importing)} onClick={() => void importConversation("continue_copy")} className="inline-flex min-h-12 items-center justify-center gap-2 bg-zinc-100 px-4 text-sm font-semibold text-zinc-950 hover:bg-white disabled:opacity-60">{importing === "continue_copy" ? <Loader2 size={16} className="animate-spin" /> : <Import size={16} />} Import and continue from copy</button>
             </div>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <button type="button" onClick={() => void downloadHistory()} className="inline-flex h-10 items-center justify-center gap-2 px-3 text-sm text-zinc-300 hover:text-white"><Download size={16} /> Download redacted history</button>
-              <button type="button" onClick={() => window.location.assign("/chat")} className="inline-flex h-10 items-center justify-center gap-2 px-3 text-sm text-zinc-400 hover:text-white"><X size={16} /> Cancel</button>
+              <button type="button" onClick={() => window.location.assign(profileScreenUrlFromLocation("/chat"))} className="inline-flex h-10 items-center justify-center gap-2 px-3 text-sm text-zinc-400 hover:text-white"><X size={16} /> Cancel</button>
             </div>
           </>
         )}

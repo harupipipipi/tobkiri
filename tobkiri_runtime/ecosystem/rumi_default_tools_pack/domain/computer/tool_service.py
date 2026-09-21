@@ -31,6 +31,11 @@ class ComputerToolService:
         result["coordinate_space"] = observation.coordinate_space
         return result
 
+    def list_surfaces(self) -> list[dict[str, Any]]:
+        """Return native surfaces without exposing the host implementation."""
+
+        return self._host.list_surfaces()
+
     def click(
         self,
         target: ComputerTarget | dict[str, Any],

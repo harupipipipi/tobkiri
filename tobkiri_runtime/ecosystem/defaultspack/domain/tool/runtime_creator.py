@@ -8,6 +8,7 @@ tool定義（名前、説明、パラメータスキーマ、実行ロジック�
 既存の domain/tool/ ファイルは変更しない。
 """
 
+import ast
 import json
 import re
 import sys
@@ -17,7 +18,6 @@ import threading
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.tool.registry import ToolRegistry
-from domain.tool.executor import _SAFE_BUILTINS
 from domain.ai_client.client import AIClient
 
 
@@ -60,6 +60,7 @@ class RuntimeToolCreator:
     """ランタイムtool作成・検証・登録を行うファサード（シングルトン）"""
 
     _instance = None
+    _initialized: bool
 
     def __new__(cls):
         if cls._instance is None:
@@ -197,7 +198,7 @@ class RuntimeToolCreator:
         戻り値: {"valid": bool, "errors": [str], "warnings": [str]}
         """
         errors = []
-        warnings = []
+        warnings: list[str] = []
 
         # --- name ---
         name = tool_def.get("name")
@@ -205,7 +206,7 @@ class RuntimeToolCreator:
             errors.append("name is required and must be a non-empty string")
         elif not _NAME_PATTERN.match(name):
             errors.append(
-                "name must match [a-zA-Z][a-zA-Z0-9_]{0,62} (got '{}')".format(name)
+                "name must match [a-zA-Z][a-zA-Z0-9_]{{0,62}} (got '{}')".format(name)
             )
         else:
             existing = self._registry.get(name)
@@ -311,7 +312,7 @@ class RuntimeToolCreator:
     def _validate_handler_code(self, handler_code):
         """handler_code の構文チェックとセキュリティチェック"""
         errors = []
-        warnings = []
+        warnings: list[str] = []
 
         if "def handler(" not in handler_code and "def handler (" not in handler_code:
             errors.append(
@@ -361,69 +362,34 @@ class RuntimeToolCreator:
         return errors, warnings
 
     def _sandbox_test(self, handler_code):
-        """サンドボックスで handler_code を exec し、handler が callable か確認する"""
-        errors = []
-        namespace = {"__builtins__": dict(_SAFE_BUILTINS)}
+        """Statically confirm the legacy source shape without executing it."""
+
         try:
-            exec(handler_code, namespace)
-        except Exception as exc:
-            errors.append(
-                "handler_code failed to execute in sandbox: {}".format(exc)
-            )
-            return errors
-
-        handler_fn = namespace.get("handler")
-        if handler_fn is None:
-            errors.append(
-                "handler_code does not define a 'handler' name after execution"
-            )
-        elif not callable(handler_fn):
-            errors.append("'handler' in handler_code is not callable")
-
-        return errors
+            tree = ast.parse(handler_code, mode="exec")
+        except SyntaxError as exc:
+            return ["handler_code has a syntax error: {}".format(exc.msg)]
+        handlers = [
+            node
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "handler"
+        ]
+        if not handlers:
+            return ["handler_code does not define a top-level 'handler' function"]
+        return []
 
     # ------------------------------------------------------------------
     # 登録
     # ------------------------------------------------------------------
 
     def register_runtime_tool(self, tool_def):
-        """
-        検証済みtool定義をランタイムでToolRegistryに登録する。
+        """Reject runtime Python registration and provide migration guidance."""
 
-        引数: tool_def: dict with keys: name, description, parameters, handler_code
-        戻り値: 登録された tool_def dict
-        例外: ValueError — 検証失敗時
-        """
-        validation = self.validate_tool_definition(tool_def)
-        if not validation["valid"]:
-            raise ValueError(
-                "Tool definition validation failed: {}".format(
-                    "; ".join(validation["errors"])
-                )
-            )
-
-        import time
-        registry_def = {
-            "tool_id": tool_def["name"],
-            "name": tool_def["name"],
-            "summary": tool_def["description"],
-            "tags": tool_def.get("tags", [_RUNTIME_TAG, "dynamic"]),
-            "schema": {
-                "parameters": tool_def["parameters"],
-            },
-            "execution": {"type": "dynamic"},
-            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "runtime": True,
-        }
-
-        handler_code = tool_def["handler_code"]
-
-        with self._lock:
-            registered = self._registry.register_dynamic(
-                registry_def, handler_code=handler_code
-            )
-
-        return registered
+        del tool_def
+        raise ValueError(
+            "migration_required: dynamic Python Tools are retired; "
+            "use a reviewed pack, MCP server, or connector"
+        )
 
     # ------------------------------------------------------------------
     # 削除
@@ -489,43 +455,10 @@ class RuntimeToolCreator:
     # ------------------------------------------------------------------
 
     def persist_tool(self, name):
-        """
-        ランタイムtoolをJSON + handler.py にエクスポート（永続化）する。
-        ToolRegistry.register_dynamic は既に永続化を行うが、
-        このメソッドは明示的な再エクスポートを行う。
+        """Reject persistence of retired executable Python source."""
 
-        引数: name: str
-        戻り値: {"name": str, "persisted": bool, "path": str}
-        例外: ValueError — 見つからない場合
-        """
-        existing = self._registry.get(name)
-        if existing is None:
-            raise ValueError("Tool '{}' not found".format(name))
-
-        exec_type = existing.get("execution", {}).get("type", "")
-        if exec_type != "dynamic":
-            raise ValueError(
-                "Tool '{}' is not a dynamic tool".format(name)
-            )
-
-        export_data = self._registry.export_tool(name)
-        if export_data is None:
-            raise ValueError(
-                "Failed to export tool '{}'".format(name)
-            )
-
-        # ToolRegistry._save_tool_json と _save_handler_code を呼び出す
-        self._registry._save_tool_json(existing)
-        handler_code = export_data.get("handler_code")
-        if handler_code:
-            self._registry._save_handler_code(name, handler_code)
-
-        tools_dir = self._registry._tools_dir
-        json_path = os.path.join(tools_dir, name + ".tool.json")
-
-        return {
-            "name": name,
-            "persisted": True,
-            "json_path": json_path,
-            "export": export_data,
-        }
+        del name
+        raise ValueError(
+            "migration_required: dynamic Python Tools are retired; "
+            "use a reviewed pack, MCP server, or connector"
+        )

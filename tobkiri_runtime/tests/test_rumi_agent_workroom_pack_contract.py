@@ -15,6 +15,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = 'rumi_agent_workroom_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 DEFAULTSPACK_RUN_STATUS_MODEL = ROOT / "ecosystem" / "defaultspack" / "domain" / "agent_runtime" / "models.py"
 REQUIRED_ASSETS = ['README.md', 'asset_index.json', 'asset_index.yaml', 'catalog/handoff_matrix.yaml', 'catalog/quality_matrix.yaml', 'catalog/taxonomy.yaml', 'catalog/workflows.yaml', 'checklists/review.checklist.yaml', 'docs/README.md', 'docs/architecture.md', 'docs/compatibility.md', 'docs/interfaces.md', 'docs/operations.md', 'examples/checkpoint_resume.example.yaml', 'examples/redirect_running_plan.example.yaml', 'examples/replay_divergence.example.yaml', 'examples/run_board_review.example.yaml', 'fixtures/contract_fixture.yaml', 'fixtures/negative_cases.yaml', 'frontend_extensions/run_board.ui.json', 'ledgers/evidence_ledger.schema.yaml', 'policies/handoff.policy.yaml', 'policies/safety.policy.yaml', 'presets/handoff_review.preset.yaml', 'presets/quality_gate.preset.yaml', 'presets/safe_default.preset.yaml', 'profiles/workroom_operator.profile.yaml', 'prompts/workroom_orchestrator.system.md', 'schemas/agent_run.schema.json', 'schemas/checkpoint.schema.json', 'schemas/control_request.schema.json', 'schemas/handoff_envelope.schema.json', 'schemas/intervention.schema.json', 'schemas/progress_event.schema.json', 'schemas/replay_index.schema.json', 'schemas/run_board_view.schema.json', 'schemas/run_event.schema.json', 'schemas/task_plan.schema.json', 'schemas/workroom_session.schema.json', 'templates/handoff.template.md', 'templates/review_report.template.md', 'templates/ui_contract.template.md']
@@ -57,7 +58,8 @@ def test_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["required_secrets"] == []
     assert ecosystem["required_network"] == []
     assert ecosystem["host_execution"] is False
@@ -68,7 +70,7 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert metadata["declarative_only"] is True
     assert metadata["consumes_existing_sources_only"] is True
     assert metadata["output_effect"] == "draft_and_handoff_only"
-    assert metadata["defaultspack_promotion_eligible"] is False
+    assert metadata["base_pack_promotion_eligible"] is False
     assert set(metadata["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(metadata["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
     available = available_setup_pack_ids()
@@ -78,14 +80,20 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert "tool execution" in optional_integrations["rumi_default_tools_pack"]
     assert "metrics" in optional_integrations["defaultspack"]
     assert "choreography" in optional_integrations["rumi_operations_company_pack"]
-    actual = {str(path.relative_to(PACK_DIR)) for path in PACK_DIR.rglob("*") if path.is_file() and path.name != "ecosystem.json"}
+    actual = {
+        str(path.relative_to(PACK_DIR))
+        for path in PACK_DIR.rglob("*")
+        if path.is_file()
+        and path.name not in {"ecosystem.json", "executables.v4.json"}
+    }
+    actual -= V4_AUTHORITY_ARTIFACTS
     indexed = {item for values in metadata["asset_index"].values() for item in values}
     assert actual == indexed == set(REQUIRED_ASSETS)
     asset_index = read_yaml(PACK_DIR / "asset_index.yaml")["asset_index"]
     indexed_file_assets = {item for values in asset_index["categories"].values() for item in values}
     assert indexed_file_assets == actual
     assert asset_index["invariants"]["external_actions_are_handoffs"] is True
-    assert asset_index["invariants"]["defaultspack_promotion_eligible"] is False
+    assert asset_index["invariants"]["base_pack_promotion_eligible"] is False
 
 
 def test_yaml_json_assets_parse() -> None:
@@ -109,9 +117,9 @@ def test_setup_pack_discoverable_and_overlap_scoped() -> None:
         assert candidate.overlap_policy[key] == value
     assert any(value.startswith("owned_by_") for value in candidate.overlap_policy.values())
     assert any("handoff" in value for value in candidate.overlap_policy.values())
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["status"] == "verified"
     assert candidate.marketplace["category"] == 'agent-workroom'
     assert candidate.signing["verified"] is True
@@ -309,4 +317,4 @@ def test_agent_workroom_subagent_acceptance_assets() -> None:
     assert ui["readonly_by_default"] is True
     assert RUN_BOARD_FORBIDDEN_ACTIONS <= set(ui["forbidden_actions"])
     setup = read_json(SETUP_PACK_JSON)
-    assert "must_prove_agent_run_store_compatibility" in setup["defaultspack_promotion"]["promotion_blockers"]
+    assert "must_prove_agent_run_store_compatibility" in setup["base_pack_promotion"]["promotion_blockers"]

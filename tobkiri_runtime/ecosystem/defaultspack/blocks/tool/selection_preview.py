@@ -17,6 +17,7 @@ from domain.chat.tool_selection_service import ToolSelectionService
 from domain.chat.tool_selection_schema import normalize_tool_targets
 from domain.tool.registry import ToolRegistry
 from domain.tool.schema_adapter import filter_tool_definitions_for_runtime_profile, resolve_runtime_profile_context
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 
 @dataclass
@@ -30,10 +31,20 @@ class _PreviewSelection:
     preview_id: str | None = None
 
 
-def run(input_data, context):
+def run(
+    input_data,
+    context,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     if not isinstance(input_data, dict):
         return error("input_data dict is required", "INVALID_INPUT")
-    raw = input_data.get("tool_selection") if isinstance(input_data.get("tool_selection"), dict) else {}
+    raw: dict[str, Any] = (
+        input_data["tool_selection"]
+        if isinstance(input_data.get("tool_selection"), dict)
+        else {}
+    )
+    user_text = str(input_data.get("user_text") or input_data.get("text") or input_data.get("message") or "")
     selection = _PreviewSelection(
         mode=str(raw.get("mode") or "review").strip().lower() or "review",
         strategy=str(raw.get("strategy") or "").strip().lower() or None,
@@ -42,8 +53,12 @@ def run(input_data, context):
         exclude=[target.to_dict() for target in normalize_tool_targets(raw.get("exclude"))],
         must_use=bool(raw.get("must_use", False)),
     )
-    user_text = str(input_data.get("user_text") or input_data.get("text") or input_data.get("message") or "")
-    resolved_context = resolve_runtime_profile_context(context if isinstance(context, dict) else {})
+    base_context = dict(context) if isinstance(context, dict) else {}
+    input_context = input_data.get("context") if isinstance(input_data.get("context"), dict) else {}
+    if isinstance(input_context, dict):
+        base_context.update(input_context)
+    resolved_context = resolve_runtime_profile_context(base_context)
+    selection, resolved_context = _apply_inferred_preview_tools(selection, raw, user_text, resolved_context)
     try:
         registry_tools = ToolRegistry().list_tools()
         tools = filter_tool_definitions_for_runtime_profile(
@@ -53,6 +68,7 @@ def run(input_data, context):
         )
         decision = ToolSelectionService(
             call_handler=resolved_context.get("call_handler"),
+            settings_owner=settings_owner,
         ).select(user_text, tools, selection=selection, context=resolved_context)
     except Exception as exc:
         return error("tool selection preview failed: " + str(exc), "SELECTION_PREVIEW_FAILED")
@@ -106,3 +122,66 @@ def run(input_data, context):
             },
         }
     )
+
+
+def _apply_inferred_preview_tools(selection, raw, user_text, context):
+    if _has_explicit_preview_selection(raw):
+        return selection, context
+    try:
+        from domain.chat.run_request import (
+            _apply_computer_use_context_preferences,
+            _has_computer_use_tool,
+            _infer_requested_tools_from_message,
+        )
+    except Exception:
+        return selection, context
+    inferred_tool_ids = _infer_requested_tools_from_message(user_text)
+    if not _has_computer_use_tool(inferred_tool_ids):
+        return selection, context
+    include = _merge_preview_includes(
+        selection.include,
+        [
+            {"kind": "tool", "id": tool_id}
+            for tool_id in inferred_tool_ids
+            if str(tool_id or "").strip()
+        ],
+    )
+    updated_selection = _PreviewSelection(
+        mode=selection.mode,
+        strategy=selection.strategy,
+        scope=selection.scope,
+        include=include,
+        exclude=selection.exclude,
+        must_use=selection.must_use,
+        preview_id=selection.preview_id,
+    )
+    updated_context = _apply_computer_use_context_preferences(
+        {**context, "user_requested_computer_use": True},
+        user_text,
+    )
+    return updated_selection, updated_context
+
+
+def _has_explicit_preview_selection(raw):
+    if not isinstance(raw, dict):
+        return False
+    mode = str(raw.get("mode") or "").strip().lower()
+    return mode in {"manual", "none"}
+
+
+def _merge_preview_includes(left, right):
+    merged = []
+    seen = set()
+    for item in [*(left or []), *(right or [])]:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "tool").strip() or "tool"
+        target_id = str(item.get("id") or item.get("tool_id") or "").strip()
+        if not target_id:
+            continue
+        key = (kind, target_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append({"kind": kind, "id": target_id})
+    return merged

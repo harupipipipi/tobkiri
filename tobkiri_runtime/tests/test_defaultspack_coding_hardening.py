@@ -13,6 +13,9 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _coding_contract_fixture import bind_verified_coding_contracts  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -202,30 +205,33 @@ def test_worktree_checkpoint_restore_recovers_dirty_untracked_and_clean_tracked_
     assert not (tmp_path / "later.txt").exists()
 
 
-def test_mutating_file_blocks_return_reversible_checkpoints(tmp_path):
+def test_mutating_file_blocks_use_receipt_gated_canonical_provider(tmp_path, monkeypatch):
     from blocks.coding.file_delete import run as file_delete_run
     from blocks.coding.file_write import run as file_write_run
 
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     path = tmp_path / "notes.txt"
     path.write_text("before\n", encoding="utf-8")
 
     write = file_write_run(
-        {"workspace_root": str(tmp_path), "path": "notes.txt", "content": "after\n"},
+        {"workspace_id": "trusted", "path": "notes.txt", "content": "after\n"},
         _approved_context(),
     )
 
-    assert write["status"] == "ok"
-    assert write["data"]["checkpoint"]["metadata"]["operation"] == "file.write"
-    assert "-before" in write["data"]["diff"]
-    assert "+after" in write["data"]["diff"]
+    assert write["status"] == "ok", write
+    assert write["data"]["written"] is True
+    assert write["data"]["before_sha256"]
+    assert write["data"]["sha256"] != write["data"]["before_sha256"]
+    assert path.read_text(encoding="utf-8") == "after\n"
 
     delete = file_delete_run(
-        {"workspace_root": str(tmp_path), "path": "notes.txt"},
+        {"workspace_id": "trusted", "path": "notes.txt"},
         _approved_context(),
     )
 
     assert delete["status"] == "ok"
-    assert delete["data"]["checkpoint"]["metadata"]["operation"] == "file.delete"
+    assert delete["data"]["deleted"] is True
+    assert not path.exists()
 
 
 def test_not_implemented_fails_closed():
@@ -237,16 +243,19 @@ def test_not_implemented_fails_closed():
     assert result["error"]["code"] == "NOT_IMPLEMENTED"
 
 
-def test_tool_executor_file_reader_delegates_and_unknown_tools_fail_closed(tmp_path):
+def test_tool_executor_file_reader_delegates_and_unknown_tools_fail_closed(
+    tmp_path, monkeypatch
+):
     from domain.tool.executor import ToolExecutor
 
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     (tmp_path / "doc.txt").write_text("real content", encoding="utf-8")
     executor = ToolExecutor()
 
     read = executor._execute_local(
         "file_reader",
-        {"path": "doc.txt", "workspace_root": str(tmp_path / "ignored")},
-        {"workspace_root": str(tmp_path)},
+        {"path": "doc.txt", "workspace_id": "attacker-selected"},
+        {"workspace_id": "trusted"},
     )
     unknown = executor._execute_local("missing_tool", {"x": 1}, {})
 
@@ -256,14 +265,15 @@ def test_tool_executor_file_reader_delegates_and_unknown_tools_fail_closed(tmp_p
     assert "not implemented" in unknown["result"]
 
 
-def test_tool_executor_file_reader_honors_output_budget(tmp_path):
+def test_tool_executor_file_reader_honors_output_budget(tmp_path, monkeypatch):
     from domain.tool.executor import ToolExecutor
 
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     (tmp_path / "doc.txt").write_text("0123456789" * 80, encoding="utf-8")
     read = ToolExecutor()._execute_local(
         "file_reader",
         {"path": "doc.txt", "max_chars": 220},
-        {"workspace_root": str(tmp_path)},
+        {"workspace_id": "trusted"},
     )
 
     assert read["is_error"] is False
@@ -272,13 +282,8 @@ def test_tool_executor_file_reader_honors_output_budget(tmp_path):
     assert read["widget"]["original_size"] > read["widget"]["returned_size"]
 
 
-def test_coding_checkpoint_functions_are_dispatchable(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CODING_WORKSPACE_STORE_PATH", str(tmp_path / "workspaces.json"))
-
+def test_coding_checkpoint_functions_fail_closed_without_selected_owner(tmp_path):
     from domain.function_runtime.dispatcher import run_defaultspack_function
-    from domain.coding.workspace_store import WorkspaceStore
-
-    WorkspaceStore().create(tmp_path, workspace_id="trusted", trusted=True)
 
     result = run_defaultspack_function(
         "coding_checkpoint_create",
@@ -290,45 +295,39 @@ def test_coding_checkpoint_functions_are_dispatchable(tmp_path, monkeypatch):
         {"workspace_id": "trusted"},
         {},
     )
-    (tmp_path / "missing.txt").write_text("created after checkpoint", encoding="utf-8")
     restored = run_defaultspack_function(
         "coding_checkpoint_restore",
         {
             "workspace_id": "trusted",
-            "snapshot_id": result["data"]["checkpoint"]["snapshot_id"],
+            "snapshot_id": "legacy-snapshot",
             "paths": ["missing.txt"],
         },
         _approved_context(),
     )
 
-    assert result["status"] == "ok"
-    assert result["data"]["checkpoint"]["snapshot_id"]
-    assert listed["status"] == "ok"
-    assert listed["data"]["checkpoints"]
-    assert restored["status"] == "ok"
-    assert restored["data"]["removed"] == ["missing.txt"]
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "UNAVAILABLE"
+    assert listed["status"] == "error"
+    assert listed["error"]["code"] == "UNAVAILABLE"
+    assert restored["status"] == "error"
+    assert restored["error"]["code"] == "UNAVAILABLE"
     assert not (tmp_path / "missing.txt").exists()
 
 
-def test_checkpoint_create_rejects_unregistered_workspace_root(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CODING_WORKSPACE_STORE_PATH", str(tmp_path / "workspaces.json"))
-
+def test_checkpoint_create_rejects_caller_controlled_workspace_root(tmp_path):
     from blocks.coding.file_checkpoint import run as checkpoint_run
 
     result = checkpoint_run({"workspace_root": str(tmp_path), "paths": ["."]}, {})
 
     assert result["status"] == "error"
-    assert result["error"]["code"] == "WORKSPACE_UNTRUSTED"
+    assert result["error"]["code"] == "UNAVAILABLE"
     assert not (tmp_path / ".rumi_snapshots").exists()
 
 
 def test_file_function_dispatch_covers_snapshot_diff_patch_restore(tmp_path, monkeypatch):
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_CODING_WORKSPACE_STORE_PATH", str(tmp_path / "workspaces.json"))
-
     from domain.function_runtime.dispatcher import run_defaultspack_function
-    from domain.coding.workspace_store import WorkspaceStore
 
-    WorkspaceStore().create(tmp_path, workspace_id="trusted", trusted=True)
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     (tmp_path / "doc.txt").write_text("before\n", encoding="utf-8")
 
     snapshot = run_defaultspack_function(
@@ -351,35 +350,43 @@ def test_file_function_dispatch_covers_snapshot_diff_patch_restore(tmp_path, mon
         "coding_file_restore",
         {
             "workspace_id": "trusted",
-            "snapshot_id": snapshot["data"]["snapshot_id"],
+            "snapshot_id": "legacy-snapshot",
             "paths": ["doc.txt"],
         },
         _approved_context(),
     )
 
-    assert snapshot["status"] == "ok"
-    assert snapshot["data"]["snapshot_id"]
+    assert snapshot["status"] == "error"
+    assert snapshot["error"]["code"] == "UNAVAILABLE"
     assert diff["status"] == "ok"
     assert diff["data"]["has_changes"] is True
-    assert patch["status"] == "ok"
+    assert patch["status"] == "ok", patch
     assert patched_content == "after\n"
-    assert restored["status"] == "ok"
-    assert (tmp_path / "doc.txt").read_text(encoding="utf-8") == "before\n"
+    assert restored["status"] == "error"
+    assert restored["error"]["code"] == "UNAVAILABLE"
+    assert (tmp_path / "doc.txt").read_text(encoding="utf-8") == "after\n"
 
 
-def test_terminal_read_only_commands_require_approval_for_outside_workspace_paths(tmp_path):
+def test_terminal_read_only_commands_require_approval_for_outside_workspace_paths(
+    tmp_path, monkeypatch
+):
     from domain.coding.terminal import Terminal
     from blocks.coding.terminal_exec import run as terminal_exec_run
     from blocks.coding.terminal_stream import run as terminal_stream_run
 
     outside = tmp_path.parent / "outside-secret.txt"
     terminal = Terminal(tmp_path)
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
     classification = terminal.classify(f"cat {outside}")
     result = terminal.execute(f"cat {outside}", approved=False)
     stream = terminal.stream(f"cat {outside}", approved=False)
-    exec_block = terminal_exec_run({"workspace_root": str(tmp_path), "command": f"cat {outside}"}, {})
-    stream_block = terminal_stream_run({"workspace_root": str(tmp_path), "command": f"cat {outside}"}, {})
+    exec_block = terminal_exec_run(
+        {"workspace_id": "trusted", "command": f"cat {outside}"}, {}
+    )
+    stream_block = terminal_stream_run(
+        {"workspace_id": "trusted", "command": f"cat {outside}"}, {}
+    )
 
     assert classification["approval_required"] is True
     assert classification["reason"] == "outside_workspace_path"
@@ -394,7 +401,9 @@ def test_terminal_read_only_commands_require_approval_for_outside_workspace_path
     assert terminal.classify("cat notes.txt")["risk_level"] == "low"
 
 
-def test_workspace_jail_blocks_absolute_traversal_protected_and_secret_paths(tmp_path):
+def test_workspace_jail_blocks_absolute_traversal_protected_and_secret_paths(
+    tmp_path, monkeypatch
+):
     from blocks.coding.file_read import run as file_read_run
     from domain.coding.file_ops import FileOps
     from domain.coding.workspace_jail import WorkspaceJail
@@ -410,6 +419,7 @@ def test_workspace_jail_blocks_absolute_traversal_protected_and_secret_paths(tmp
     (tmp_path.parent / "outside.txt").write_text("outside", encoding="utf-8")
 
     ops = FileOps(tmp_path)
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
     assert ops.read_file("notes.txt") == "safe"
     with pytest.raises(ValueError):
@@ -423,12 +433,14 @@ def test_workspace_jail_blocks_absolute_traversal_protected_and_secret_paths(tmp
         with pytest.raises(ValueError):
             WorkspaceJail(tmp_path).resolve_user_path(path)
 
-    blocked = file_read_run({"workspace_root": str(tmp_path), "path": ".env"}, {})
+    blocked = file_read_run({"workspace_id": "trusted", "path": ".env"}, {})
     assert blocked["status"] == "error"
     assert blocked["error"]["code"] == "PATH_RESTRICTED"
 
 
-def test_file_list_search_and_snapshot_hide_restricted_paths_and_external_symlinks(tmp_path):
+def test_file_list_search_and_snapshot_hide_restricted_paths_and_external_symlinks(
+    tmp_path, monkeypatch
+):
     from domain.coding.file_ops import FileOps
 
     (tmp_path / "src").mkdir()
@@ -449,6 +461,30 @@ def test_file_list_search_and_snapshot_hide_restricted_paths_and_external_symlin
     matches = set(ops.search_files("**/*", "."))
     snapshot = ops.snapshot(["."])
     snapshot_root = tmp_path / snapshot["path"]
+    contracts = bind_verified_coding_contracts(monkeypatch, tmp_path)
+    provider_listed = {
+        item["path"]
+        for item in contracts.invoke(
+            "rumi.service.file.inspect.v1",
+            "list",
+            {
+                "workspace_id": "trusted",
+                "directory": ".",
+                "recursive": True,
+            },
+        )["items"]
+    }
+    provider_matches = set(
+        contracts.invoke(
+            "rumi.service.file.inspect.v1",
+            "search",
+            {
+                "workspace_id": "trusted",
+                "directory": ".",
+                "pattern": "**/*",
+            },
+        )["matches"]
+    )
 
     assert "src/app.py" in listed
     assert "src/app.py" in matches
@@ -458,6 +494,12 @@ def test_file_list_search_and_snapshot_hide_restricted_paths_and_external_symlin
     assert "outside-link" not in listed
     assert ".env" not in matches
     assert "server.pem" not in matches
+    assert "src/app.py" in provider_listed
+    assert ".env" not in provider_listed
+    assert "server.pem" not in provider_listed
+    assert ".git/config" not in provider_listed
+    assert ".env" not in provider_matches
+    assert "server.pem" not in provider_matches
     assert not (snapshot_root / ".env").exists()
     assert not (snapshot_root / "server.pem").exists()
     assert not (snapshot_root / ".git").exists()
@@ -635,12 +677,9 @@ def test_terminal_filters_secret_env_and_rejects_restricted_cwd(tmp_path):
     assert result["risk"]["reason"] == "restricted_workspace_path"
 
 
-def test_dynamic_tool_create_uses_standard_approval_and_audit(tmp_path, monkeypatch):
-    from domain.safety.approval import reset_approval_state_for_tests
-    from domain.safety.audit import audit_path
+def test_dynamic_tool_create_requires_migration(tmp_path, monkeypatch):
     from blocks.tool.create import run as tool_create_run
 
-    reset_approval_state_for_tests()
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
     tool_name = "approval_probe_tool"
 
@@ -654,14 +693,10 @@ def test_dynamic_tool_create_uses_standard_approval_and_audit(tmp_path, monkeypa
         {},
     )
 
-    assert result["status"] == "ok"
-    assert result["data"]["approval_required"] is True
-    assert result["data"]["operation"] == "tool.create"
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "MIGRATION_REQUIRED"
+    assert result["error"]["details"]["migration_required"] is True
     assert not (DEFAULTSPACK_ROOT / "user_data" / "shared" / "tools" / f"{tool_name}.tool.json").exists()
-
-    records = [json.loads(line) for line in audit_path().read_text(encoding="utf-8").splitlines()]
-    assert records[-1]["event"] == "approval"
-    assert any(record["event"] == "attempt" and record["operation"] == "tool.create" for record in records)
 
 
 def test_mcp_connect_uses_standard_approval_before_connecting(tmp_path, monkeypatch):

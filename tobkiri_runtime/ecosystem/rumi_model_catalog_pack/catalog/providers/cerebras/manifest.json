@@ -1,0 +1,103 @@
+{
+  "id": "cerebras",
+  "provider_id": "cerebras",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "1",
+  "status": "stable",
+  "display_name": "Cerebras",
+  "entrypoints": {
+    "adapter": "../ai_client/providers/openai_compatible_provider.py",
+    "models": "models.json"
+  },
+  "security": {
+    "credential_required": true
+  },
+  "provider_metadata": {
+    "display_name": "Cerebras",
+    "kind": "cloud",
+    "env_vars": [
+      "CEREBRAS_API_KEY"
+    ],
+    "base_url_envs": [
+      "CEREBRAS_BASE_URL"
+    ],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "https://api.cerebras.ai/v1",
+    "default_model": "gpt-oss-120b",
+    "default_model_for": {
+      "chat": "gpt-oss-120b",
+      "reasoning": "gpt-oss-120b",
+      "general": "qwen-3-235b-a22b-instruct-2507",
+      "fast": "llama3.1-8b",
+      "coding": "zai-glm-4.7",
+      "agent": "zai-glm-4.7"
+    },
+    "catalog_features": [
+      "chat",
+      "streaming",
+      "tool_calls",
+      "reasoning",
+      "openai_compatible"
+    ]
+  },
+  "provider_manifest": {
+    "id": "cerebras",
+    "category": "llm_provider",
+    "version": "1",
+    "display_name": "Cerebras",
+    "enabled": true,
+    "priority": 55,
+    "adapter": "openai_compatible",
+    "api_key_env": "CEREBRAS_API_KEY",
+    "base_url_env": "CEREBRAS_BASE_URL",
+    "credential_required": true,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_base_url": "https://api.cerebras.ai/v1",
+    "default_model": "gpt-oss-120b",
+    "default_model_for": {
+      "chat": "gpt-oss-120b",
+      "reasoning": "gpt-oss-120b",
+      "general": "qwen-3-235b-a22b-instruct-2507",
+      "fast": "llama3.1-8b",
+      "coding": "zai-glm-4.7",
+      "agent": "zai-glm-4.7"
+    },
+    "config": {
+      "api_compatibility": "openai",
+      "supports_service_tier": true,
+      "service_tier_values": [
+        "default",
+        "auto",
+        "flex",
+        "priority"
+      ],
+      "default_service_tier": "default",
+      "priority_tier_private_preview": true,
+      "service_tier_request_injection": "explicit_only",
+      "model_sync": "remote_merge",
+      "model_list_path": "/models",
+      "model_cache_ttl_seconds": 21600
+    }
+  },
+  "aliases": {
+    "provider_ids": [
+      "cerebras"
+    ]
+  },
+  "compatibility": {
+    "legacy_ids": [
+      "cerebras"
+    ]
+  },
+  "source_pack_id": "rumi_model_catalog_pack",
+  "catalog_features": [
+    "chat",
+    "streaming",
+    "tool_calls",
+    "reasoning",
+    "openai_compatible"
+  ]
+}

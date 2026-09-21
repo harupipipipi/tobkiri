@@ -1,0 +1,5 @@
+package tobkiri:pack@0.1.0;
+
+world pack {
+  export invoke: func(operation-id: string, payload-json: string) -> result<string, string>;
+}
