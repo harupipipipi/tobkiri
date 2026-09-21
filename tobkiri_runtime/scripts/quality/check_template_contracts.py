@@ -86,6 +86,7 @@ def _walk_json(value: Any, path: str = "$") -> list[tuple[str, Any]]:
 def _validate_managed_template(template_id: str, template: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     prefix = template_id or "<missing-id>"
+    expected_source_pack_id = _managed_templates_dir().parent.name
 
     if template.get("schema_version") != 1:
         errors.append(f"{prefix}: schema_version must be 1")
@@ -93,8 +94,10 @@ def _validate_managed_template(template_id: str, template: dict[str, Any]) -> li
         errors.append(f"{prefix}: kind must be rumi.sandbox.template")
     if template.get("id") != template_id:
         errors.append(f"{prefix}: id field mismatch")
-    if template.get("source_pack_id") != "rumi_sandbox_runtime_pack":
-        errors.append(f"{prefix}: source_pack_id must be rumi_sandbox_runtime_pack")
+    if template.get("source_pack_id") != expected_source_pack_id:
+        errors.append(
+            f"{prefix}: source_pack_id must be {expected_source_pack_id}"
+        )
 
     if "trust" in template:
         errors.append(f"{prefix}: trust must be projected by the loader, not self-declared in template JSON")

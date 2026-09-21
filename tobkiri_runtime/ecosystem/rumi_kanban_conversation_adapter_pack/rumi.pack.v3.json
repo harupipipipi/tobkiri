@@ -1,17 +1,212 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.kanban_conversation_adapter","version":"1.0.0","kind":"adapter","display_name":"Rumi Kanban Conversation Adapter","description":"Conversation task extraction through global contracts."},
-  "contracts":{"provides":[{"id":"rumi.action.kanban.conversation_import.v1","version":"1.0.0","provider_instance_id":"kanban-conversation.import","cardinality":"one","security":"sensitive","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_kanban_state_store_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["kanban.conversation.import"]}],"requires":[
-    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.resource.conversation.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.resource.kanban.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.action.kanban.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
-  ]},
-  "entrypoints":[{"id":"kanban-conversation-import","contract_id":"rumi.action.kanban.conversation_import.v1","loader":"python","module":"ecosystem.rumi_kanban_conversation_adapter_pack.runtime.adapter","symbol":"create_kanban_conversation_import","artifact_hash":"sha256:54027d2aad5c71e2d66a70f6ae81503d97978d2566d859c48ec1190e2274c29a"}],
-  "resources":[],"storage":[],
-  "permissions":[{"capability":"kanban.conversation.import","access":"execute","approval_required":false},{"capability":"conversation.read","access":"read","approval_required":false},{"capability":"kanban.state.read","access":"read","approval_required":false},{"capability":"kanban.state.manage","access":"control","approval_required":true},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:54027d2aad5c71e2d66a70f6ae81503d97978d2566d859c48ec1190e2274c29a","build_identity":"rumi-kanban-conversation-adapter-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.kanban.service.KanbanService.import_conversation","defaultspack.domain.kanban.chat_sync"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Remove this adapter; conversation and Kanban owners remain independent without dual writes."},
-  "extensions":{"rumi.kanban_conversation.boundary":{"conversation_owner":false,"kanban_owner":false,"chat_imports":false,"kanban_imports":false,"agent_imports":false,"deterministic_cards":true,"receipt_per_transition":true}}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "isolate",
+        "id": "rumi.action.kanban.conversation_import.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_kanban_state_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "kanban-conversation.import",
+        "required_capabilities": [
+          "kanban.conversation.import"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.conversation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.kanban.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.kanban.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:3a1c4b115c1f07a423aaf32cb281452ef21e0d79a559ac6b6a24f5c99711296f",
+      "contract_id": "rumi.action.kanban.conversation_import.v1",
+      "id": "kanban-conversation-import",
+      "loader": "python",
+      "module": "ecosystem.rumi_kanban_conversation_adapter_pack.runtime.adapter",
+      "symbol": "create_kanban_conversation_import"
+    }
+  ],
+  "extensions": {
+    "rumi.kanban_conversation.boundary": {
+      "agent_imports": false,
+      "chat_imports": false,
+      "conversation_owner": false,
+      "deterministic_cards": true,
+      "kanban_imports": false,
+      "kanban_owner": false,
+      "receipt_per_transition": true
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+        "rumi_kanban_state_store_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.kanban.conversation_import.v1"
+          ],
+          "requires": [
+            "rumi.action.kanban.v1",
+            "rumi.resource.conversation.v1",
+            "rumi.resource.kanban.v1",
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+          "rumi_kanban_state_store_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Conversation task extraction through global contracts.",
+        "display_name": "Rumi Kanban Conversation Adapter",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:a7d9809777a75d9b99ac09638b0bb90eb735e8964b03126a5d1c60954af57bd1",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:436cd3064556cb4d77fd7328e24bce4e4e6f6d4a8057b0c23d0603a0a7dd1d32"
+          },
+          "chat_imports": false,
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "kanban_imports": false,
+          "projection": "conversation_to_kanban",
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_kanban_conversation_adapter_pack",
+        "pack_identity": "rumi:ecosystem/rumi_kanban_conversation_adapter_pack",
+        "provenance": {
+          "build_identity": "rumi_kanban_conversation_adapter_pack:1.0.0",
+          "content_hash": "sha256:2bea88f8c1c64e3bc8fb45a3bc70a326fda7dbecbb31ea9e8f3860391a33dd2c",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "conversation.read",
+          "host.authority.consume",
+          "kanban.conversation.import",
+          "kanban.state.manage",
+          "kanban.state.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_kanban_conversation_adapter_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_kanban_conversation_adapter_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:436cd3064556cb4d77fd7328e24bce4e4e6f6d4a8057b0c23d0603a0a7dd1d32"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.kanban.service.KanbanService.import_conversation",
+      "defaultspack.domain.kanban.chat_sync"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove this adapter; conversation and Kanban owners remain independent without dual writes.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Conversation task extraction through global contracts.",
+    "display_name": "Rumi Kanban Conversation Adapter",
+    "id": "rumi.kanban_conversation_adapter",
+    "kind": "adapter",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "kanban.conversation.import"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "conversation.read"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "kanban.state.read"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "kanban.state.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_kanban_conversation_adapter_pack:1.0.0",
+    "content_hash": "sha256:2bea88f8c1c64e3bc8fb45a3bc70a326fda7dbecbb31ea9e8f3860391a33dd2c",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }
-

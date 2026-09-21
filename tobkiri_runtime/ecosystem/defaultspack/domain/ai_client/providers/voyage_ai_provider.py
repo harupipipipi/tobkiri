@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List
 from ..base_provider import BaseProvider
+from ..api_key_store import read_provider_api_key
 
 
 class VoyageAIProvider(BaseProvider):
@@ -19,8 +20,8 @@ class VoyageAIProvider(BaseProvider):
     CATALOG_URL = "https://docs.voyageai.com/docs/embeddings"
     _CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
 
-    def __init__(self):
-        self._key = str(os.environ.get("VOYAGE_API_KEY") or "").strip()
+    def __init__(self, api_key: str | None = None):
+        self._key = str(api_key or read_provider_api_key("voyage", "legacy") or "").strip()
         self._base_url = str(os.environ.get("VOYAGE_BASE_URL") or self.BASE_URL).strip().rstrip("/")
         self._ssl_ctx = ssl.create_default_context()
 

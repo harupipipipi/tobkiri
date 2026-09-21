@@ -9,6 +9,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tobkiri_protocol.secure_persistence import SecureDirectory
+
+from .legacy_approval_lock import legacy_approval_lock
+
 from .browser_companion_bridge import (
     BrowserCompanionBridgeStore,
     candidate_base_urls,
@@ -398,6 +402,24 @@ class BrowserCompanionController:
         }
 
     @staticmethod
+    def _client_profile_fields(client: dict[str, Any]) -> dict[str, Any]:
+        client_profile = client.get("client_profile") if isinstance(client.get("client_profile"), dict) else {}
+        browser_profile_id = client.get("browser_profile_id") or client_profile.get("browser_profile_id")
+        profile_label = client.get("profile_label") or client_profile.get("profile_label")
+        installation_id = client.get("installation_id") or client_profile.get("installation_id")
+        return {
+            "browser_profile_id": browser_profile_id,
+            "profile_label": profile_label,
+            "installation_id": installation_id,
+            "client_profile": {
+                **client_profile,
+                "browser_profile_id": browser_profile_id or "",
+                "profile_label": profile_label or "",
+                "installation_id": installation_id or "",
+            },
+        }
+
+    @staticmethod
     def _requires_approval(remote_action: str) -> bool:
         return remote_action in _PAGE_ACTIONS_REQUIRING_APPROVAL
 
@@ -496,14 +518,15 @@ class BrowserCompanionController:
         }
 
     def _issue_approval(self, remote_action: str, approval_payload: dict[str, Any]) -> str:
-        approvals = self._read_approvals()
-        token = secrets.token_urlsafe(24)
-        approvals[token] = {
-            "action": remote_action,
-            "payload": approval_payload,
-            "expires_at": time.time() + 300,
-        }
-        self._write_approvals(approvals)
+        with legacy_approval_lock(self._approval_path):
+            approvals = self._read_approvals()
+            token = secrets.token_urlsafe(24)
+            approvals[token] = {
+                "action": remote_action,
+                "payload": approval_payload,
+                "expires_at": time.time() + 300,
+            }
+            self._write_approvals(approvals)
         return token
 
     def _consume_approval(
@@ -515,9 +538,10 @@ class BrowserCompanionController:
         token = str((payload or {}).get("approval_token") or "").strip()
         if not token:
             return False
-        approvals = self._read_approvals()
-        record = approvals.pop(token, None)
-        self._write_approvals(approvals)
+        with legacy_approval_lock(self._approval_path):
+            approvals = self._read_approvals()
+            record = approvals.pop(token, None)
+            self._write_approvals(approvals)
         if not isinstance(record, dict):
             return False
         if record.get("action") != remote_action:
@@ -536,10 +560,10 @@ class BrowserCompanionController:
         return value if isinstance(value, dict) else {}
 
     def _write_approvals(self, approvals: dict[str, Any]) -> None:
-        self._approval_path.parent.mkdir(parents=True, exist_ok=True)
-        self._approval_path.write_text(
-            json.dumps(approvals, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
+        directory = SecureDirectory(self._approval_path.parent)
+        directory.write_bytes_atomic(
+            self._approval_path.name,
+            json.dumps(approvals, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8"),
         )
 
     @staticmethod

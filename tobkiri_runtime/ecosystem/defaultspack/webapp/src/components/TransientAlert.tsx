@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 
+import { ErrorCopyAction } from "./ErrorNotice";
 import { LayerPortal } from "../ui/layers/LayerPortal";
 
 export type TransientAlertTone = "success" | "info" | "warning" | "error";
@@ -66,6 +67,20 @@ export function alertPresentation(tone: TransientAlertTone): AlertPresentation {
   }
 }
 
+export function alertSemantics(tone: TransientAlertTone): {
+  canCopy: boolean;
+  live: "assertive" | "polite";
+  role: "alert" | "status";
+} {
+  if (tone === "error") {
+    return { canCopy: true, live: "assertive", role: "alert" };
+  }
+  if (tone === "warning") {
+    return { canCopy: true, live: "polite", role: "status" };
+  }
+  return { canCopy: false, live: "polite", role: "status" };
+}
+
 export function TransientAlert({
   alert,
   onDismiss,
@@ -118,7 +133,7 @@ export function TransientAlert({
   const tone = alert?.tone ?? "success";
   const presentation = alertPresentation(tone);
   const AlertIcon = presentation.Icon;
-  const isUrgent = tone === "warning" || tone === "error";
+  const semantics = alertSemantics(tone);
 
   return (
     <LayerPortal layer="toast">
@@ -133,8 +148,8 @@ export function TransientAlert({
           {alert && (
             <motion.div
               key={alert.id}
-              role={isUrgent ? "alert" : "status"}
-              aria-live={isUrgent ? "assertive" : "polite"}
+              role={semantics.role}
+              aria-live={semantics.live}
               data-testid="transient-alert"
               className="pointer-events-auto relative flex max-w-[min(520px,calc(100vw-32px))] items-center gap-2.5 overflow-hidden rounded-xl border border-white/[0.09] bg-zinc-950/95 px-3.5 py-2.5 text-sm text-zinc-100 shadow-2xl shadow-black/45 backdrop-blur-xl"
               initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
@@ -150,6 +165,12 @@ export function TransientAlert({
                 <AlertIcon size={13} strokeWidth={2.35} aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">{alert.message}</span>
+              {semantics.canCopy && (
+                <ErrorCopyAction
+                  copyText={alert.message}
+                  label={tone === "error" ? "エラーをコピー" : "警告をコピー"}
+                />
+              )}
               <button
                 type="button"
                 onClick={onDismiss}

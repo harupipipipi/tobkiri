@@ -8,15 +8,5 @@ from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_provi
 
 def run(input_data, context):
     del input_data, context
-    providers = []
-    for provider in list_provider_catalog():
-        merged = dict(provider)
-        merged["registered"] = bool(provider.get("configured"))
-        if merged["registered"]:
-            merged["runtime"] = {
-                "source": "rumi.resource.ai.provider.registry.v1",
-                "provider_instance_id": f"provider.{provider['provider_id']}",
-            }
-            merged["status"] = "registered"
-        providers.append(merged)
+    providers = list_provider_catalog()
     return ok({"providers": providers, "count": len(providers)})

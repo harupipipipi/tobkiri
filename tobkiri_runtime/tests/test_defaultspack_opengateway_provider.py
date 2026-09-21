@@ -15,6 +15,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
+pytestmark = pytest.mark.usefixtures("provider_model_catalog_selected")
+
+
 OPENGATEWAY_MODELS = {
     "gitlawb-opengateway/mimo-v2.5-pro",
     "gitlawb-opengateway/mimo-v2-flash",
@@ -89,25 +92,18 @@ def test_opengateway_not_auto_registered_with_cloud_opt_in_without_api_key():
                 _reset_client()
 
 
-def test_opengateway_auto_registered_with_cloud_opt_in_and_api_key():
+def test_opengateway_auto_registered_with_cloud_opt_in_and_api_key(
+    configured_cloud_provider,
+):
     from domain.ai_client.client import AIClient
 
     _reset_client()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with patch.dict(
-            os.environ,
-            {
-                "RUMI_DEFAULTSPACK_ENABLE_CLOUD_PROVIDERS": "1",
-                "RUMI_DEFAULTSPACK_SECRETS_DIR": str(Path(tmpdir) / "secrets"),
-                "GITLAWB_OPENGATEWAY_API_KEY": "test-ogw-token",
-            },
-            clear=True,
-        ):
-            client = AIClient()
-            try:
-                assert "gitlawb-opengateway" in client._providers
-            finally:
-                _reset_client()
+    configured_cloud_provider("gitlawb-opengateway", "test-ogw-token")
+    client = AIClient()
+    try:
+        assert "gitlawb-opengateway" in client._providers
+    finally:
+        _reset_client()
 
 
 def test_opengateway_base_url_alone_does_not_configure_required_api_key():
@@ -145,25 +141,20 @@ def test_opengateway_base_url_alone_does_not_configure_required_api_key():
         ("gitlawb-opengateway/mimo-v2.5", "mimo-v2.5"),
     ],
 )
-def test_opengateway_resolve_provider(model_ref, model_id):
+def test_opengateway_resolve_provider(
+    model_ref,
+    model_id,
+    configured_cloud_provider,
+):
     from domain.ai_client.client import AIClient
 
     _reset_client()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with patch.dict(
-            os.environ,
-            {
-                "RUMI_DEFAULTSPACK_ENABLE_CLOUD_PROVIDERS": "1",
-                "RUMI_DEFAULTSPACK_SECRETS_DIR": str(Path(tmpdir) / "secrets"),
-                "GITLAWB_OPENGATEWAY_API_KEY": "test-ogw-token",
-            },
-            clear=True,
-        ):
-            client = AIClient()
-            try:
-                provider, resolved_model = client.resolve_provider(model_ref)
-            finally:
-                _reset_client()
+    configured_cloud_provider("gitlawb-opengateway", "test-ogw-token")
+    client = AIClient()
+    try:
+        provider, resolved_model = client.resolve_provider(model_ref)
+    finally:
+        _reset_client()
 
     assert getattr(provider, "provider_id", "") == "gitlawb-opengateway"
     assert resolved_model == model_id
@@ -193,15 +184,14 @@ def test_opengateway_omni_declares_verified_vision():
     assert omni["metadata"]["vision_verified"] is True
 
 
-def test_opengateway_rejects_non_allowlisted_models():
+def test_opengateway_does_not_client_filter_newly_provisioned_models():
     from domain.ai_client.providers.gitlawb_opengateway_provider import (
         GitlawbOpengatewayProvider,
     )
 
     provider = GitlawbOpengatewayProvider()
-
-    with pytest.raises(RuntimeError, match="unsupported model"):
-        provider.complete("openai/gpt-4o", [{"role": "user", "content": "hi"}], [], {})
+    provider._api_key = "test-ogw-token"
+    provider._assert_supported_model("newly-provisioned-model")
 
 
 def test_opengateway_translates_max_tokens_to_max_completion_tokens():
@@ -280,40 +270,38 @@ def test_opengateway_requires_api_key_and_has_no_dummy_authorization():
     assert "Authorization" not in provider._headers()
 
 
-def test_opengateway_api_key_sets_bearer_authorization():
-    from domain.ai_client.providers.gitlawb_opengateway_provider import (
-        GitlawbOpengatewayProvider,
+def test_opengateway_api_key_sets_bearer_authorization(tmp_path, monkeypatch):
+    from tests.v4_provider_runtime_support import exercise_captured_provider_send
+
+    monkeypatch.setenv("GITLAWB_OPENGATEWAY_API_KEY", "ambient-attacker")
+    sent = exercise_captured_provider_send(
+        tmp_path,
+        monkeypatch,
+        "gitlawb-opengateway",
+        endpoint="https://opengateway.gitlawb.com/v1",
     )
 
-    with patch.dict(os.environ, {"GITLAWB_OPENGATEWAY_API_KEY": "test-gb-token"}, clear=True):
-        provider = GitlawbOpengatewayProvider()
-
-    assert provider._credential_required is True
-    assert provider._headers()["Authorization"] == "Bearer test-gb-token"
+    assert sent["credential_bound"] is True
+    assert sent["provider_id"] == "gitlawb-opengateway"
+    assert "ambient-attacker" not in str(sent)
 
 
-def test_opengateway_api_key_can_be_saved_as_defaultspack_secret():
-    from core_runtime.secrets_store import SecretsStore
-    from domain.ai_client.api_key_store import (
-        load_provider_api_keys_into_env,
-        provider_has_api_key,
-        provider_secret_keys,
-        set_provider_api_key,
+def test_opengateway_credential_remains_opaque_at_defaultspack_boundary(
+    tmp_path,
+    monkeypatch,
+):
+    from tests.v4_provider_runtime_support import exercise_captured_provider_send
+
+    sent = exercise_captured_provider_send(
+        tmp_path,
+        monkeypatch,
+        "gitlawb-opengateway",
+        endpoint="https://opengateway.gitlawb.com/v1",
     )
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        secrets_dir = Path(tmpdir) / "secrets"
-        with patch.dict(os.environ, {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)}, clear=True):
-            result = set_provider_api_key("gitlawb-opengateway", "test-gb-token")
-            store = SecretsStore(str(secrets_dir))
-
-            assert result["success"] is True
-            assert provider_secret_keys("gitlawb-opengateway") == ["GITLAWB_OPENGATEWAY_API_KEY"]
-            assert provider_has_api_key("gitlawb-opengateway") is True
-            assert store.has_secret("GITLAWB_OPENGATEWAY_API_KEY") is True
-            loaded = load_provider_api_keys_into_env()
-            assert loaded["gitlawb-opengateway"] is True
-            assert os.environ["GITLAWB_OPENGATEWAY_API_KEY"] == "test-gb-token"
+    serialized = str(sent["result"]) + str(sent["calls"])
+    assert "credential-canary" not in serialized
+    assert "GITLAWB_OPENGATEWAY_API_KEY" not in os.environ
 
 
 def test_opengateway_uses_browser_user_agent_for_gateway_compatibility():

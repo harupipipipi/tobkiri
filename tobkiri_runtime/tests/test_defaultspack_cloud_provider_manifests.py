@@ -194,7 +194,7 @@ def test_provider_api_surface_contract_matches_bundled_model_requirements():
                 assert surface.get("supports_parallel_tool_call_shape") is True, model_label
 
 
-def test_groq_manifest_first_runtime_provider_and_allowlist(monkeypatch):
+def test_groq_manifest_first_runtime_provider_and_allowlist(configured_cloud_provider):
     from domain.ai_client.providers import detect_available_providers
 
     provider, models = _catalog_and_models("groq")
@@ -206,11 +206,14 @@ def test_groq_manifest_first_runtime_provider_and_allowlist(monkeypatch):
     assert provider["default_model_for"]["fast"] == "openai/gpt-oss-20b"
     assert models == {}
 
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    configured_cloud_provider("groq", "test-groq-key")
     assert "groq" in detect_available_providers()
 
 
-def test_cerebras_manifest_first_runtime_provider(monkeypatch):
+def test_cerebras_manifest_first_runtime_provider(
+    monkeypatch,
+    configured_cloud_provider,
+):
     from domain.ai_client.providers import detect_available_providers
 
     provider, models = _catalog_and_models("cerebras")
@@ -222,7 +225,7 @@ def test_cerebras_manifest_first_runtime_provider(monkeypatch):
     assert models == {}
     assert provider["metadata"]["config"]["model_sync"] == "remote_merge"
 
-    monkeypatch.setenv("CEREBRAS_API_KEY", "test-cerebras-key")
+    configured_cloud_provider("cerebras", "test-cerebras-key")
     assert "cerebras" in detect_available_providers()
 
 
@@ -409,7 +412,10 @@ def test_cerebras_thinking_normalization_only_emits_supported_reasoning_params()
     assert llama["provider_params"] == {}
 
 
-def test_nvidia_manifest_first_runtime_provider_accepts_either_key(monkeypatch):
+def test_nvidia_manifest_first_runtime_provider_accepts_either_key(
+    configured_cloud_provider,
+):
+    from domain.ai_client.api_key_store import set_provider_api_key
     from domain.ai_client.providers import detect_available_providers
 
     provider, models = _catalog_and_models("nvidia")
@@ -421,8 +427,13 @@ def test_nvidia_manifest_first_runtime_provider_accepts_either_key(monkeypatch):
     assert provider["default_model_for"] == {}
     assert models == {}
 
-    monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
-    monkeypatch.setenv("NGC_API_KEY", "test-ngc-key")
+    result = set_provider_api_key(
+        "nvidia",
+        "test-ngc-key",
+        api_id="NGC_API_KEY",
+        name="NGC_API_KEY",
+    )
+    assert result["success"] is True
     assert "nvidia" in detect_available_providers()
 
 
@@ -470,7 +481,14 @@ def test_named_token_plan_key_maps_back_to_long_provider_id(tmp_path, monkeypatc
     loaded = load_provider_api_keys_into_env(pack_root=tmp_path)
 
     assert loaded["xiaomi-token-plan-sgp"] is True
-    assert os.environ["XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY"] == "test-token"
+    assert all(
+        env_name not in os.environ
+        for env_name in (
+            "XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY",
+            "XIAOMI_MIMO_TOKEN_PLAN_API_KEY",
+            "MIMO_API_KEY",
+        )
+    )
 
 
 def test_cloud_model_capability_false_values_are_preserved():
@@ -491,7 +509,7 @@ def test_openai_primary_chat_models_remain_tool_capable_in_public_catalog():
     assert models == {}
 
 
-def test_moonshot_manifest_first_runtime_provider(monkeypatch):
+def test_moonshot_manifest_first_runtime_provider(configured_cloud_provider):
     from domain.ai_client.providers import detect_available_providers
 
     provider, models = _catalog_and_models("moonshotai")
@@ -502,11 +520,13 @@ def test_moonshot_manifest_first_runtime_provider(monkeypatch):
     assert provider["default_model_for"] == {}
     assert models == {}
 
-    monkeypatch.setenv("MOONSHOT_API_KEY", "test-moonshot-key")
+    configured_cloud_provider("moonshotai", "test-moonshot-key")
     assert "moonshotai" in detect_available_providers()
 
 
-def test_xiaomi_mimo_direct_catalog_is_separate_and_not_runtime_enabled(monkeypatch):
+def test_xiaomi_mimo_direct_catalog_is_separate_and_not_runtime_enabled(
+    configured_cloud_provider,
+):
     from domain.ai_client.providers import detect_available_providers, get_provider_catalog_map
     from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_model_catalog, list_provider_catalog
 
@@ -539,17 +559,10 @@ def test_xiaomi_mimo_direct_catalog_is_separate_and_not_runtime_enabled(monkeypa
     global_models = {model["id"]: model for model in list_model_catalog("xiaomi-mimo-global")}
     assert global_models == {}
 
-    with patch.dict(
-        os.environ,
-        {
-            "XIAOMI_MIMO_GLOBAL_API_KEY": "test-global",
-            "XIAOMI_MIMO_GLOBAL_BASE_URL": "https://mimo.example/v1",
-        },
-        clear=False,
-    ):
-        assert "xiaomi-mimo-global" in detect_available_providers()
+    configured_cloud_provider("xiaomi-mimo-global", "test-global")
+    assert "xiaomi-mimo-global" in detect_available_providers()
 
-    monkeypatch.setenv("XIAOMI_MIMO_TOKEN_PLAN_SGP_API_KEY", "test-token-plan")
+    configured_cloud_provider("xiaomi-token-plan-sgp", "test-token-plan")
     assert "xiaomi-token-plan-sgp" in detect_available_providers()
 
 

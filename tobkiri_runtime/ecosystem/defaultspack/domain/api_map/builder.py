@@ -8,9 +8,7 @@ _DEFAULTSPACK_IMPORT_ROOT = Path(__file__).resolve().parents[2]
 if str(_DEFAULTSPACK_IMPORT_ROOT) not in sys.path:
     sys.path.insert(0, str(_DEFAULTSPACK_IMPORT_ROOT))
 
-from core_runtime.profile_paths import active_profile_id
-from core_runtime.profile_workspace import ProfileWorkspaceManager
-from core_runtime.profile_runtime_selection import apply_profile_graph_selection
+from core_runtime.resolved_profile_scope import persisted_resolved_profile
 
 from domain.external.input_profile_registry import InputProfileRegistry
 from domain.function_runtime.manifest_factory import FUNCTION_SPECS_BY_ID, FunctionSpec
@@ -18,6 +16,7 @@ from domain.function_runtime.registry import function_id_for_block_module
 from domain.tool.catalog_contract_client import ContractToolCatalog as ToolRegistry
 from domain.webhook.endpoint_store import WebhookEndpointStore
 from transport.registry import canonical_http_route_specs
+from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 
 def build_api_map(*, profile_id: str | None = None, focus: str | None = None) -> Dict[str, Any]:
@@ -112,6 +111,7 @@ def build_api_map(*, profile_id: str | None = None, focus: str | None = None) ->
         )
     for edge in profile_edges["edges"]:
         edges.setdefault(edge["id"], edge)
+    _add_profile_contract_providers(nodes, edges, profile_edges)
 
     filtered_nodes = list(nodes.values())
     filtered_edges = list(edges.values())
@@ -140,6 +140,7 @@ def build_api_map(*, profile_id: str | None = None, focus: str | None = None) ->
             "tool_count": len([node for node in filtered_nodes if node["kind"] == "tool"]),
             "webhook_count": len([node for node in filtered_nodes if node["kind"] == "webhook"]),
             "flow_count": len([node for node in filtered_nodes if node["kind"] == "flow"]),
+            "provider_count": len([node for node in filtered_nodes if node["kind"] == "provider"]),
             "function_count": len([node for node in filtered_nodes if node["kind"] == "function"]),
             "operation_count": len([
                 node
@@ -158,6 +159,63 @@ def build_api_map(*, profile_id: str | None = None, focus: str | None = None) ->
         "profile_runtime": profile_edges.get("profile_runtime", {}),
         "diagnostics": diagnostics,
     }
+
+
+def _add_profile_contract_providers(
+    nodes: Dict[str, Dict[str, Any]],
+    edges: Dict[str, Dict[str, Any]],
+    profile_edges: Dict[str, Any],
+) -> None:
+    """Add data-only global provider identities from the verified active plan."""
+    plan = persisted_resolved_profile()
+    profile_runtime = profile_edges.get("profile_runtime")
+    profile_id = str(
+        profile_runtime.get("profile_id")
+        if isinstance(profile_runtime, dict)
+        else ""
+    ).strip()
+    if plan is None or profile_id != plan.profile_id:
+        return
+    profile_node_id = f"profile:{profile_id}"
+    for provider in plan.providers:
+        contract_node_id = f"contract:{provider.contract_id}"
+        provider_node_id = f"provider:{provider.provider_instance_id}"
+        _add_node(
+            nodes,
+            contract_node_id,
+            "contract",
+            provider.contract_id,
+            provider.contract_id,
+            {"runtime_role": "global_contract"},
+        )
+        _add_node(
+            nodes,
+            provider_node_id,
+            "provider",
+            provider.provider_instance_id,
+            provider.provider_instance_id,
+            {
+                "contract_id": provider.contract_id,
+                "source_pack_id": provider.source_pack_id,
+                "version": provider.version,
+                "content_hash": provider.content_hash,
+                "runtime_role": "selected_provider",
+            },
+        )
+        _add_edge(
+            edges,
+            provider_node_id,
+            contract_node_id,
+            "provides_contract",
+            {"source_pack_id": provider.source_pack_id},
+        )
+        _add_edge(
+            edges,
+            profile_node_id,
+            provider_node_id,
+            "activates_provider",
+            {"source_pack_id": provider.source_pack_id},
+        )
 
 
 def _add_http_route(
@@ -199,7 +257,7 @@ def _add_http_route(
             "defaults": dict(spec.defaults),
         },
     )
-    path = {
+    path: Dict[str, Any] = {
         "id": route_node_id,
         "label": route_id,
         "entrypoint": {
@@ -286,7 +344,7 @@ def _add_flow_steps(
     function_lookup: Dict[str, FunctionSpec],
 ) -> List[Dict[str, Any]]:
     flow_def = flow_defs.get(flow_id) if flow_id else None
-    steps = flow_def.get("steps") if isinstance(flow_def, dict) and isinstance(flow_def.get("steps"), list) else []
+    steps = list_or_empty(mapping_or_empty(flow_def).get("steps"))
     result: List[Dict[str, Any]] = []
     previous_step_node_id = ""
     for index, step in enumerate(steps):
@@ -371,7 +429,7 @@ def _add_tool_execution(
     tool: Dict[str, Any],
     function_lookup: Dict[str, FunctionSpec],
 ) -> None:
-    execution = tool.get("execution") if isinstance(tool.get("execution"), dict) else {}
+    execution = mapping_or_empty(tool.get("execution"))
     execution_type = str(execution.get("type") or "local").strip().lower()
     if execution_type == "rumi_function":
         qualified_name = str(execution.get("qualified_name") or "").strip()
@@ -473,89 +531,60 @@ def _add_function_reference(
 
 
 def _profile_selection_edges(profile_id: str | None) -> Dict[str, Any]:
-    resolved_profile_id = str(profile_id or active_profile_id() or "").strip()
-    if not resolved_profile_id:
-        return {"nodes": [], "edges": [], "diagnostics": [], "selected": {}, "profile_runtime": {}}
-    profile = ProfileWorkspaceManager().load_profile_yaml(resolved_profile_id)
-    if not profile:
+    plan = persisted_resolved_profile()
+    if plan is None:
         return {
             "nodes": [],
             "edges": [],
-            "diagnostics": [{"level": "warning", "code": "profile_not_found", "message": f"Profile '{resolved_profile_id}' was not found."}],
+            "diagnostics": [{"level": "error", "code": "v4_profile_not_active", "message": "Pack v4 resolved Profile is not active."}],
             "selected": {},
-            "profile_runtime": {"profile_id": resolved_profile_id, "found": False},
+            "profile_runtime": {"found": False},
         }
-    profile = apply_profile_graph_selection(profile)
-    metadata = profile.get("metadata") if isinstance(profile.get("metadata"), dict) else {}
-    selected = metadata.get("selected") if isinstance(metadata.get("selected"), dict) else {}
-    policy = profile.get("policy") if isinstance(profile.get("policy"), dict) else {}
-    profile_node = {
+    resolved_profile_id = str(plan.profile_id)
+    requested_profile_id = str(profile_id or resolved_profile_id).strip()
+    if requested_profile_id != resolved_profile_id:
+        return {
+            "nodes": [],
+            "edges": [],
+            "diagnostics": [{"level": "error", "code": "profile_not_active", "message": f"Profile '{requested_profile_id}' is not the verified v4 activation."}],
+            "selected": {},
+            "profile_runtime": {"profile_id": requested_profile_id, "found": False},
+        }
+    profile_node: Dict[str, Any] = {
         "id": f"profile:{resolved_profile_id}",
         "kind": "profile",
-        "label": str(profile.get("name") or resolved_profile_id),
+        "label": resolved_profile_id,
         "ref": resolved_profile_id,
         "metadata": {
             "profile_id": resolved_profile_id,
-            "system_prompt_id": str(profile.get("system_prompt_id") or ""),
-            "default_prompt_id": str(profile.get("default_prompt_id") or ""),
-            "policy": {
-                "tool_allowlist": _string_list(policy.get("tool_allowlist")),
-                "api_route_allowlist": _string_list(policy.get("api_route_allowlist")),
-                "enforce_api_route_allowlist": bool(policy.get("enforce_api_route_allowlist", False)),
-            },
+            "profile_revision": str(plan.profile_revision),
+            "plan_hash": str(plan.plan_hash),
+            "authority": "verified-v4-activation",
         },
     }
     nodes = [profile_node]
     edges: List[Dict[str, Any]] = []
-    for category, prefix, edge_kind in (
-        ("tools", "tool", "selects"),
-        ("webhooks", "webhook", "receives_from"),
-        ("api_routes", "api", "allows_api"),
-        ("prompts", "prompt", "uses_prompt"),
-        ("frontend", "frontend", "uses_frontend"),
-    ):
-        for item in selected.get(category) if isinstance(selected.get(category), list) else []:
-            item_id = str(item or "").strip()
-            if not item_id:
-                continue
-            node_id = f"{prefix}:{item_id}"
-            nodes.append({"id": node_id, "kind": prefix, "label": item_id, "ref": item_id, "metadata": {"selected": True}})
-            edges.append(_edge(profile_node["id"], node_id, edge_kind, {"selected": True}))
-    diagnostics: List[Dict[str, Any]] = []
-    if policy.get("api_route_allowlist") and not policy.get("enforce_api_route_allowlist"):
-        diagnostics.append(
-            {
-                "level": "info",
-                "code": "api_route_allowlist_not_enforced",
-                "message": "API routes are selected, but enforce_api_route_allowlist=false, so this is documentation and preview only.",
-            }
-        )
+    for pack_id in plan.effective_pack_set:
+        node_id = f"pack:{pack_id}"
+        nodes.append({"id": node_id, "kind": "pack", "label": pack_id, "ref": pack_id, "metadata": {"effective": True}})
+        edges.append(_edge(profile_node["id"], node_id, "activates", {"verified": True}))
     normalized_selected = {
-        "tools": _string_list(selected.get("tools")),
-        "webhooks": _string_list(selected.get("webhooks")),
-        "api_routes": _string_list(selected.get("api_routes")),
-        "prompts": _string_list(selected.get("prompts")),
-        "frontend": _string_list(selected.get("frontend")),
-        "flows": _string_list(selected.get("flows")),
-        "nodes": _string_list(selected.get("nodes")),
+        "packs": list(plan.effective_pack_set),
+        "providers": [provider.provider_instance_id for provider in plan.providers],
     }
     return {
         "nodes": nodes,
         "edges": edges,
-        "diagnostics": diagnostics,
+        "diagnostics": [],
         "selected": normalized_selected,
         "profile_runtime": {
             "profile_id": resolved_profile_id,
             "found": True,
-            "name": str(profile.get("name") or resolved_profile_id),
+            "name": resolved_profile_id,
+            "profile_revision": str(plan.profile_revision),
+            "plan_hash": str(plan.plan_hash),
             "selected": normalized_selected,
-            "policy": {
-                "tool_allowlist": _string_list(policy.get("tool_allowlist")),
-                "api_route_allowlist": _string_list(policy.get("api_route_allowlist")),
-                "enforce_api_route_allowlist": bool(policy.get("enforce_api_route_allowlist", False)),
-            },
-            "system_prompt_id": str(profile.get("system_prompt_id") or ""),
-            "default_prompt_id": str(profile.get("default_prompt_id") or ""),
+            "authority": "verified-v4-activation",
         },
     }
 
@@ -581,7 +610,7 @@ def _add_node(
 ) -> None:
     if not node_id:
         return
-    next_node = {
+    next_node: Dict[str, Any] = {
         "id": node_id,
         "kind": kind,
         "label": str(label or ref or node_id),
@@ -592,7 +621,7 @@ def _add_node(
     if existing is None:
         nodes[node_id] = next_node
         return
-    existing_metadata = existing.get("metadata") if isinstance(existing.get("metadata"), dict) else {}
+    existing_metadata = mapping_or_empty(existing.get("metadata"))
     nodes[node_id] = {
         **existing,
         "kind": existing.get("kind") or next_node["kind"],
@@ -678,8 +707,8 @@ def _function_metadata(spec: FunctionSpec) -> Dict[str, Any]:
 
 
 def _tool_metadata(tool: Dict[str, Any]) -> Dict[str, Any]:
-    execution = tool.get("execution") if isinstance(tool.get("execution"), dict) else {}
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    execution = mapping_or_empty(tool.get("execution"))
+    metadata = mapping_or_empty(tool.get("metadata"))
     return {
         **dict(tool),
         "runtime_role": "tool_facade",
@@ -715,9 +744,13 @@ def _load_flow_defs() -> Dict[str, Dict[str, Any]]:
 
 def _read_flow_yaml(path: Path) -> Dict[str, Any]:
     try:
-        import yaml
+        import importlib
 
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        yaml_module = importlib.import_module("yaml")
+        safe_load = getattr(yaml_module, "safe_load", None)
+        if not callable(safe_load):
+            return {}
+        data = safe_load(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
@@ -730,7 +763,7 @@ def _flow_metadata(flow_def: Dict[str, Any] | None) -> Dict[str, Any]:
         "resolved": True,
         "description": str(flow_def.get("description") or ""),
         "path": str(flow_def.get("_yaml_path") or ""),
-        "step_count": len(flow_def.get("steps") if isinstance(flow_def.get("steps"), list) else []),
+        "step_count": len(list_or_empty(flow_def.get("steps"))),
     }
 
 

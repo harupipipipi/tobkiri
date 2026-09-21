@@ -7,7 +7,8 @@ from pathlib import PurePosixPath
 from typing import Any, Callable, Final, Mapping
 
 
-FILE_INSPECT: Final[str] = "rumi.service.file.inspect.v1"
+FILE_INSPECT: Final[str] = "tobkiri.service.file.inspect.v1"
+FILE_INSPECT_FOR_MEDIA: Final[str] = "rumi_file_inspect_pack.file-inspect.for-media"
 _MAX_TEXT_BYTES: Final[int] = 4 * 1024 * 1024
 _TEXT_SUFFIXES: Final[frozenset[str]] = frozenset(
     {".txt", ".md", ".markdown", ".json", ".csv", ".tsv", ".yaml", ".yml", ".xml", ".html"}
@@ -18,9 +19,7 @@ _IMAGE_SUFFIXES: Final[frozenset[str]] = frozenset(
 _AUDIO_SUFFIXES: Final[frozenset[str]] = frozenset(
     {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg"}
 )
-_VIDEO_SUFFIXES: Final[frozenset[str]] = frozenset(
-    {".mp4", ".mov", ".mkv", ".webm", ".avi"}
-)
+_VIDEO_SUFFIXES: Final[frozenset[str]] = frozenset({".mp4", ".mov", ".mkv", ".webm", ".avi"})
 
 
 class MediaInspectService:
@@ -55,14 +54,18 @@ class MediaInspectService:
             }
         result = self.client.invoke(
             FILE_INSPECT,
-            "read",
-            {
-                "profile_id": _profile(payload),
-                "workspace_id": _workspace(payload),
-                "path": path.as_posix(),
-                "max_bytes": _MAX_TEXT_BYTES,
-                "encoding": str(payload.get("encoding") or "utf-8"),
-            },
+            FILE_INSPECT_FOR_MEDIA,
+            _file_payload(
+                payload,
+                {
+                    "name": "read",
+                    "profile_id": _profile(payload),
+                    "workspace_id": _workspace(payload),
+                    "path": path.as_posix(),
+                    "max_bytes": _MAX_TEXT_BYTES,
+                    "encoding": str(payload.get("encoding") or "utf-8"),
+                },
+            ),
         )
         if not isinstance(result, Mapping):
             raise TypeError("file inspect contract returned an invalid result")
@@ -95,12 +98,16 @@ class MediaInspectService:
             raise ValueError(f"path is not a supported {kind} artifact")
         result = self.client.invoke(
             FILE_INSPECT,
-            "stat",
-            {
-                "profile_id": _profile(payload),
-                "workspace_id": _workspace(payload),
-                "path": path.as_posix(),
-            },
+            FILE_INSPECT_FOR_MEDIA,
+            _file_payload(
+                payload,
+                {
+                    "name": "stat",
+                    "profile_id": _profile(payload),
+                    "workspace_id": _workspace(payload),
+                    "path": path.as_posix(),
+                },
+            ),
         )
         if not isinstance(result, Mapping) or result.get("is_file") is not True:
             raise FileNotFoundError("media artifact is unavailable")
@@ -143,3 +150,17 @@ def _workspace(payload: Mapping[str, Any]) -> str:
 def _profile(payload: Mapping[str, Any]) -> str:
     return str(payload.get("profile_id") or "default")
 
+
+def _file_payload(
+    source: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Forward only Host-stamped workspace authority to File Inspect."""
+
+    result = dict(payload)
+    binding = source.get("_workspace_binding")
+    if isinstance(binding, Mapping):
+        result["_workspace_binding"] = dict(binding)
+    if source.get("require_selected") is True:
+        result["require_selected"] = True
+    return result

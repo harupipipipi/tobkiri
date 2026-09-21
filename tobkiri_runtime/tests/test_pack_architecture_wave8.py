@@ -104,8 +104,9 @@ def test_viewer_helper_does_not_import_legacy_tool_controller() -> None:
     )
     assert "domain.tool" not in helper
     assert "BrowserComputerController" not in helper
-    assert "rumi_browser_host_service_pack.runtime.runner" in helper
-    assert "rumi_clipboard_host_service_pack.runtime.runner" in helper
+    assert "invoke_global_contract" in helper
+    assert "_run_v4_host_action" in helper
+    assert "computer_action_trace" in helper
 
 
 def test_defaultspack_media_has_no_clipboard_or_capture_executor() -> None:
@@ -160,6 +161,7 @@ def test_workspace_action_receipt_binds_revision_and_metadata() -> None:
 def test_wave8_artifact_hashes_match_static_source() -> None:
     root = Path(__file__).parents[1] / "ecosystem"
     pack_ids = (
+        "rumi_host_authority_bridge_pack",
         "rumi_workspace_mount_pack",
         "rumi_file_inspect_pack",
         "rumi_file_mutation_pack",
@@ -189,4 +191,3 @@ def test_wave8_artifact_hashes_match_static_source() -> None:
         for artifact in manifest["artifacts"]:
             content = (pack_root / artifact["path"]).read_bytes()
             assert hashlib.sha256(content).hexdigest() == artifact["sha256"]
-

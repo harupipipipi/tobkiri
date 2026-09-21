@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from typing import Any, Mapping
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from blocks._common import error, ok
 from blocks.coding._approval import (
@@ -14,6 +15,7 @@ from blocks.coding._approval import (
 from core_runtime.di_container import get_container
 from core_runtime.global_contract_dispatch import invoke_global_contract
 from domain.ai_client.api_key_store import set_provider_api_key
+from domain.ai_client.model_availability import ModelAvailabilityService
 
 _CREDENTIAL_MANAGE = "rumi.action.credential.manage.v1"
 _CREDENTIAL_STATUS = "rumi.resource.credential.status.v1"
@@ -27,7 +29,7 @@ _BUILTIN_PROVIDER_ADAPTER_ENDPOINTS = {
 }
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     """Preserve the finite legacy route without owning either resource."""
     data = dict(input_data or {})
     method = str(data.get("_method") or "GET").upper()
@@ -67,7 +69,7 @@ def run(input_data, context):
             return ok(_save_connection(provider_id, data, credential_handle=None))
         if action != "upsert":
             return error("unsupported action", "INVALID_ACTION")
-        return ok(_upsert(provider_id, data))
+        return ok(_upsert(provider_id, data, settings_owner=settings_owner))
     except (KeyError, RuntimeError, ValueError) as exc:
         return error(type(exc).__name__, "PROVIDER_CONNECTION_FAILED")
 
@@ -104,7 +106,10 @@ def _status() -> dict[str, Any]:
     }
 
 
-def _upsert(provider_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
+def _upsert(
+    provider_id: str, data: Mapping[str, Any], *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
     secret = str(data.get("value") or "")
     if not secret:
         raise ValueError("provider credential value is required")
@@ -129,11 +134,28 @@ def _upsert(provider_id: str, data: Mapping[str, Any]) -> dict[str, Any]:
     try:
         _sync_legacy_provider_key(provider_id, secret, data)
         result = _save_connection(provider_id, data, credential_handle=handle)
+        api_id = str(data.get("api_id") or "default").strip() or "default"
+        model_availability = ModelAvailabilityService(
+            settings_owner=settings_owner,
+        ).after_provider_key_saved(
+            provider_id,
+            api_id,
+            default_model=str(data.get("default_model") or ""),
+            allowed_models=data.get("allowed_models"),
+        )
     except Exception:
-        _clear_legacy_provider_key(provider_id)
+        _clear_legacy_provider_key(
+            provider_id,
+            api_id=str(data.get("api_id") or "default"),
+        )
         _invoke(_CREDENTIAL_MANAGE, "revoke", {"handle": handle})
         raise
-    return {**result, "configured": True}
+    return {
+        **result,
+        "api_id": api_id,
+        "configured": True,
+        "model_availability": model_availability,
+    }
 
 
 def _sync_legacy_provider_key(
@@ -150,17 +172,27 @@ def _sync_legacy_provider_key(
     result = set_provider_api_key(
         provider_id,
         secret,
+        api_id=str(data.get("api_id") or "default"),
+        name=str(data.get("name") or data.get("api_id") or "default"),
         base_url=str(data.get("base_url") or data.get("endpoint") or ""),
+        allowed_models=data.get("allowed_models"),
+        default_model=str(data.get("default_model") or ""),
+        notes=str(data.get("notes") or ""),
+        quota_label=str(data.get("quota_label") or ""),
         kind=str(data.get("kind") or "openai-compatible"),
     )
     if not result.get("success"):
         raise RuntimeError("legacy provider key synchronization failed")
 
 
-def _clear_legacy_provider_key(provider_id: str) -> None:
+def _clear_legacy_provider_key(provider_id: str, *, api_id: str = "") -> None:
     """Remove the compatibility copy when connection creation rolls back."""
     try:
-        set_provider_api_key(provider_id, "")
+        set_provider_api_key(
+            provider_id,
+            "",
+            api_id=api_id or None,
+        )
     except (KeyError, RuntimeError, ValueError):
         # The broker rollback is authoritative; do not mask the original error.
         pass
@@ -263,7 +295,11 @@ def _delete(provider_id: str) -> dict[str, Any]:
     handle = record.get("credential_handle")
     if handle:
         _invoke(_CREDENTIAL_MANAGE, "revoke", {"handle": handle})
-    _clear_legacy_provider_key(provider_id)
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), Mapping) else {}
+    _clear_legacy_provider_key(
+        provider_id,
+        api_id=str(metadata.get("legacy_api_id") or ""),
+    )
     return {"success": True, "provider_id": provider_id, "configured": False}
 
 
@@ -306,7 +342,7 @@ def _approval_data(data: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     if registry is None:
         raise RuntimeError("interface registry is unavailable")
     return invoke_global_contract(registry, contract_id, operation, dict(payload))

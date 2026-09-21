@@ -1,26 +1,20 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {
-    "id": "rumi.tool_guard",
-    "version": "1.0.0",
-    "kind": "service",
-    "display_name": "Rumi Tool Guard",
-    "description": "Ordered fail-closed pre-authorization tool guards."
-  },
   "contracts": {
     "provides": [
       {
-        "id": "rumi.service.tool.guard.evaluate.v1",
-        "version": "1.0.0",
-        "provider_instance_id": "tool-guard.evaluate",
         "cardinality": "one",
-        "security": "restricted",
         "failure": "fail_closed",
+        "id": "rumi.service.tool.guard.evaluate.v1",
+        "isolation": "in_process",
         "lifecycle": {
-          "introduced": "1.0.0",
+          "data_owner": "caller",
           "deprecated": false,
-          "data_owner": "caller"
+          "introduced": "1.0.0"
         },
+        "provider_instance_id": "tool-guard.evaluate",
+        "required_capabilities": [
+          "tool.guard.evaluate"
+        ],
         "schemas": {
           "input": {
             "type": "object"
@@ -29,56 +23,129 @@
             "type": "object"
           }
         },
-        "isolation": "in_process",
-        "required_capabilities": [
-          "tool.guard.evaluate"
-        ]
+        "security": "restricted",
+        "version": "1.0.0"
       }
     ],
     "requires": []
   },
   "entrypoints": [
     {
-      "id": "tool-guard-evaluate",
+      "artifact_hash": "sha256:3c9f17067f3e7f313bee9e243ebb98586171baa2185ffed5f9b65c0ea6027194",
       "contract_id": "rumi.service.tool.guard.evaluate.v1",
+      "id": "tool-guard-evaluate",
       "loader": "python",
       "module": "ecosystem.rumi_tool_guard_pack.runtime.guards",
-      "symbol": "create_guard_operation",
-      "artifact_hash": "sha256:3c9f17067f3e7f313bee9e243ebb98586171baa2185ffed5f9b65c0ea6027194"
+      "symbol": "create_guard_operation"
     }
   ],
-  "resources": [],
-  "storage": [],
-  "permissions": [
-    {
-      "capability": "tool.guard.evaluate",
-      "access": "execute",
-      "approval_required": false
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.tool.guard.evaluate.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Ordered fail-closed pre-authorization tool guards.",
+        "display_name": "Rumi Tool Guard",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:f8972319e44b6a0349f808fe0b6bf0671cac92e3fde62aa5bda659a7bdce4e25",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:cfffe062c7b916e597b26d1d6d40752601ea24f8572d64fe6dcce4d5b461e172"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "tool_guard_chain"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "authority": false,
+            "fail_closed": true
+          }
+        },
+        "pack_id": "rumi_tool_guard_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_guard_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_guard_pack:1.0.0",
+          "content_hash": "sha256:b9dd753535c1bdac37d4338a009308603b69348afeddd41d984db33513883868",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.guard.evaluate"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_guard_pack"
+    },
+    "rumi.tool_guard.boundary": {
+      "approval_authority": false,
+      "concrete_tool_branches": false,
+      "policy_owner": false,
+      "tool_execution": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_guard_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:cfffe062c7b916e597b26d1d6d40752601ea24f8572d64fe6dcce4d5b461e172"
     }
-  ],
-  "provenance": {
-    "content_hash": "sha256:32ad798918f6d5f0b2118cf5f2da973ef82cf7176cae90ab1b94d26826f9c51a",
-    "build_identity": "rumi-tool-guard-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
   },
   "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
     "from": [
       "defaultspack.domain.tool.permission_checker",
       "defaultspack.domain.tool.broker.guards"
     ],
-    "compatibility_aliases": [],
-    "compatibility_projection": "none",
     "removal_wave": 10,
-    "sunset_at": "2027-12-31",
-    "rollback": "Select the pinned prior guard provider."
+    "rollback": "Select the pinned prior guard provider.",
+    "sunset_at": "2027-12-31"
   },
-  "extensions": {
-    "rumi.tool_guard.boundary": {
-      "approval_authority": false,
-      "policy_owner": false,
-      "tool_execution": false,
-      "concrete_tool_branches": false
+  "pack": {
+    "description": "Ordered fail-closed pre-authorization tool guards.",
+    "display_name": "Rumi Tool Guard",
+    "id": "rumi.tool_guard",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.guard.evaluate"
     }
-  }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_guard_pack:1.0.0",
+    "content_hash": "sha256:b9dd753535c1bdac37d4338a009308603b69348afeddd41d984db33513883868",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }

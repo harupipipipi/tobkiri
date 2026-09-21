@@ -36,6 +36,10 @@
                     "Tab"
                 ],
                 "max_visible_options": 60,
+                "show_search": true,
+                "trigger_height_px": 44,
+                "popover_width_px": 420,
+                "popover_max_height_px": 420,
                 "show_provider_count": true,
                 "show_capability_tags": true
             },

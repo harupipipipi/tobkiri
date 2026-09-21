@@ -30,7 +30,11 @@ class ModelRegistryService:
             if value is None:
                 raise KeyError("model profile is unknown")
             return {"profile": value}
-        if operation == "resolve":
+        if operation in {
+            "resolve",
+            "rumi_model_registry_pack.model-profile-resource.generate",
+            "rumi_model_registry_pack.model-profile-resource.stream",
+        }:
             value = registry.resolve(str(data.get("identifier") or ""))
             if value is None:
                 raise KeyError("model profile or alias is unknown")
@@ -69,4 +73,3 @@ class ModelRegistryService:
                 str(data.get("migration_id") or "")
             )
         raise ValueError(f"unknown model registry operation: {operation}")
-

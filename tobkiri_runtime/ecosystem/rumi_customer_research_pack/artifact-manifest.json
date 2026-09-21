@@ -1,1 +1,10 @@
-{"schema_version":"rumi.artifact-manifest.v1","artifacts":[{"path":"frontend/contributions/customer-research.json","sha256":"083b6a99b7b5cd6c59dbc1fa2af992d6cef024b34a641f592ea2d269910ee224","role":"ui_contribution"}]}
+{
+  "artifacts": [
+    {
+      "path": "frontend/contributions/customer-research.json",
+      "role": "ui_contribution",
+      "sha256": "sha256:083b6a99b7b5cd6c59dbc1fa2af992d6cef024b34a641f592ea2d269910ee224"
+    }
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
+}

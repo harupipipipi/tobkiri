@@ -8,7 +8,9 @@ import {
   buildAccountConnectionPrelude,
   buildControlCenterSections,
   controlCenterSectionForField,
+  controlCenterSectionMeta,
   localizedSettingsSourceLabel,
+  mapSettingsSectionId,
   safeSettingsLabel,
 } from "./controlCenter";
 
@@ -30,12 +32,21 @@ test("settings control center keeps the required section order", () => {
   ]);
 });
 
-test("model choice and provider credentials use separate categories", () => {
+test("control center canonical section ids round-trip through settings navigation", () => {
+  for (const section of controlCenterSectionMeta("ja")) {
+    assert.equal(mapSettingsSectionId(section.id), section.id);
+  }
+});
+
+test("AI API setup is shared with models while connections keeps the source field", () => {
   const sections = buildControlCenterSections([
     {
       id: "models",
       label: "Models",
-      fields: [{ id: "provider_select", label: "Provider", type: "provider_select" }],
+      fields: [
+        { id: "provider_select", label: "Provider", type: "provider_select" },
+        { id: "model_api_routes", label: "Model API Routes", type: "model_api_routes" },
+      ],
     },
     {
       id: "apis",
@@ -46,7 +57,10 @@ test("model choice and provider credentials use separate categories", () => {
 
   const modelsApi = sections.find((section) => section.id === "models_api");
   const connections = sections.find((section) => section.id === "accounts_connections");
-  assert.deepEqual(modelsApi?.fields.map((field) => field.id), ["provider_select"]);
+  assert.deepEqual(modelsApi?.fields.map((field) => field.id), ["api_keys", "provider_select", "model_api_routes"]);
+  const aiApiKeys = modelsApi?.fields.find((field) => field.sourceSectionId === "apis" && field.id === "api_keys");
+  assert.equal(aiApiKeys?.type, "api_key_setup");
+  assert.equal((aiApiKeys as unknown as Record<string, unknown>)?.provider_scope, "llm");
   assert.deepEqual(connections?.fields.map((field) => field.id), ["api_keys"]);
 });
 
@@ -91,6 +105,29 @@ test("webhook and channel plumbing is advanced by default", () => {
 
   const field = sections.find((section) => section.id === "accounts_connections")?.fields[0];
   assert.equal(field?.advanced, true);
+});
+
+test("manual runtime mode selection stays in the advanced settings surface", () => {
+  const sections = buildControlCenterSections([
+    {
+      id: "general",
+      label: "General",
+      fields: [{
+        id: "manual_runtime_mode_selection",
+        label: "Manual Runtime Mode Selection",
+        type: "toggle",
+        default: false,
+        advanced: true,
+        control_center_section: "advanced",
+      }],
+    },
+  ] as SettingsSection[], "ja");
+
+  const field = sections.find((section) => section.id === "advanced")?.fields[0];
+  assert.equal(field?.id, "manual_runtime_mode_selection");
+  assert.equal(field?.label, "実行モードを手動選択できるようにする");
+  assert.equal(field?.advanced, true);
+  assert.equal(field?.default, false);
 });
 
 test("Japanese settings use task-oriented copy while preserving technical search aliases", () => {

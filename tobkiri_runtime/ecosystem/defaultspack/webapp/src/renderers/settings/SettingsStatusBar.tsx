@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, CloudOff, Loader2, Wifi, WifiOff } from "lucide-react";
 
+import { ErrorNotice } from "../../components/ErrorNotice";
 import { cn } from "../../lib/cn";
 import { normalizeLocale, type LocaleSetting } from "../../lib/i18n";
 import type { SettingsLoadState, SettingsSaveState } from "../types";
@@ -60,6 +61,16 @@ export function SettingsStatusBar({
 
   const ConnectionIcon = backendState === "online" ? Wifi : backendState === "degraded" ? WifiOff : CloudOff;
   const SaveIcon = saveState.status === "saving" ? Loader2 : saveState.status === "error" ? AlertCircle : CheckCircle2;
+  const backendMessage = backendNote || (backendState === "offline"
+    ? copy("Changes remain visible locally, but they are not confirmed on the backend until reconnection.", "変更は画面上に保持されますが、再接続するまでBackendへの保存は確認されません。")
+    : copy("The backend is responding intermittently. Verify the save indicator before closing Settings.", "Backendの応答が不安定です。Settingsを閉じる前に保存状態を確認してください。"));
+  const saveErrorMessage = saveState.message || (dirtyCount > 0
+    ? copy("Some changes remain local and have not been confirmed by the backend.", "一部の変更は画面上に保持されていますが、Backendでは未確定です。")
+    : copy("The last change could not be saved and was not retained as a retryable edit.", "直前の変更を保存できず、再試行可能な編集内容としては保持されていません。"));
+  const loadErrorMessage = loadState.message || copy(
+    "Settings could not be refreshed. Existing values remain available.",
+    "設定を再取得できませんでした。既存の値はそのまま利用できます。",
+  );
 
   return (
     <div className="space-y-2" aria-live="polite" aria-atomic="false">
@@ -97,31 +108,33 @@ export function SettingsStatusBar({
       </div>
 
       {backendState !== "online" ? (
-        <div
-          role="status"
-          className={cn(
-            "flex items-start justify-between gap-3 border-l-2 px-3 py-2 text-xs leading-5",
-            backendState === "offline"
-              ? "border-red-400 bg-red-400/[0.07] text-red-100"
-              : "border-amber-300 bg-amber-300/[0.06] text-amber-100",
-          )}
-        >
-          <span>
-            {backendNote || (backendState === "offline"
-              ? copy("Changes remain visible locally, but they are not confirmed on the backend until reconnection.", "変更は画面上に保持されますが、再接続するまでBackendへの保存は確認されません。")
-              : copy("The backend is responding intermittently. Verify the save indicator before closing Settings.", "Backendの応答が不安定です。Settingsを閉じる前に保存状態を確認してください。"))}
-          </span>
-        </div>
+        <ErrorNotice
+          className="rounded-none border-y-0 border-r-0 border-l-2 px-3 py-2 text-xs leading-5"
+          copyLabel={copy("Copy backend status", "Backend状態をコピー")}
+          message={backendMessage}
+          severity={backendState === "offline" ? "error" : "warning"}
+        />
       ) : null}
 
       {saveState.status === "error" ? (
-        <div role="alert" className="flex items-start justify-between gap-3 border-l-2 border-red-400 bg-red-400/[0.07] px-3 py-2 text-xs leading-5 text-red-100">
+        <ErrorNotice
+          className="rounded-none border-y-0 border-r-0 border-l-2 px-3 py-2 text-xs leading-5"
+          copyLabel={copy("Copy save error", "保存エラーをコピー")}
+          copyText={dirtyCount > 0
+            ? `${saveErrorMessage}\n\n${copy("Unconfirmed settings", "未確定の設定")}: ${(saveState.dirtyKeys ?? []).join(", ")}`
+            : saveErrorMessage}
+          message={saveErrorMessage}
+          trailing={dirtyCount > 0 && onRetrySave ? (
+            <button
+              type="button"
+              onClick={onRetrySave}
+              className="shrink-0 rounded-md border border-red-300/30 px-2 py-1 font-medium text-red-100 hover:bg-red-300/10"
+            >
+              {copy("Retry save", "保存を再試行")}
+            </button>
+          ) : undefined}
+        >
           <div className="min-w-0">
-            <p>
-              {saveState.message || (dirtyCount > 0
-                ? copy("Some changes remain local and have not been confirmed by the backend.", "一部の変更は画面上に保持されていますが、Backendでは未確定です。")
-                : copy("The last change could not be saved and was not retained as a retryable edit.", "直前の変更を保存できず、再試行可能な編集内容としては保持されていません。"))}
-            </p>
             {dirtyCount > 0 && onOpenDirtyKey ? (
               <div className="mt-2 flex flex-wrap gap-1.5" aria-label={copy("Unconfirmed settings", "未確定の設定")}>
                 {(saveState.dirtyKeys ?? []).slice(0, 3).map((key) => (
@@ -139,22 +152,15 @@ export function SettingsStatusBar({
               </div>
             ) : null}
           </div>
-          {dirtyCount > 0 && onRetrySave ? (
-            <button
-              type="button"
-              onClick={onRetrySave}
-              className="shrink-0 rounded-md border border-red-300/30 px-2 py-1 font-medium text-red-100 hover:bg-red-300/10"
-            >
-              {copy("Retry save", "保存を再試行")}
-            </button>
-          ) : null}
-        </div>
+        </ErrorNotice>
       ) : null}
 
       {loadState.status === "error" ? (
-        <div role="alert" className="flex items-start justify-between gap-3 border-l-2 border-red-400 bg-red-400/[0.07] px-3 py-2 text-xs leading-5 text-red-100">
-          <span>{loadState.message || copy("Settings could not be refreshed. Existing values remain available.", "設定を再取得できませんでした。既存の値はそのまま利用できます。")}</span>
-          {onRetryLoad ? (
+        <ErrorNotice
+          className="rounded-none border-y-0 border-r-0 border-l-2 px-3 py-2 text-xs leading-5"
+          copyLabel={copy("Copy settings load error", "設定読み込みエラーをコピー")}
+          message={loadErrorMessage}
+          trailing={onRetryLoad ? (
             <button
               type="button"
               onClick={onRetryLoad}
@@ -162,8 +168,8 @@ export function SettingsStatusBar({
             >
               {copy("Retry", "再試行")}
             </button>
-          ) : null}
-        </div>
+          ) : undefined}
+        />
       ) : null}
     </div>
   );

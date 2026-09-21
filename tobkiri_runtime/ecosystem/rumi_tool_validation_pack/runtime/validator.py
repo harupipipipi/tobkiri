@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any, Callable, Mapping
+
+from core_runtime.host_provider_function_v4 import SingleOperationHostFactoryV4
 
 
 def create_validate_operation(
@@ -19,6 +22,7 @@ def create_validate_operation(
         arguments = payload.get("arguments")
         if not isinstance(schema, Mapping):
             raise ValueError("tool input schema is required")
+        _check_schema(schema)
         errors: list[dict[str, str]] = []
         _validate(schema, arguments, "$", errors)
         return {
@@ -29,6 +33,56 @@ def create_validate_operation(
         }
 
     return operation
+
+
+def _check_schema(schema: Mapping[str, Any], depth: int = 0) -> None:
+    """Reject unimplemented constraints instead of silently validating them."""
+    supported = {
+        "type", "enum", "properties", "required", "additionalProperties",
+        "minProperties", "maxProperties", "items", "minItems", "maxItems",
+        "minLength", "maxLength", "minimum", "maximum",
+        "title", "description", "default", "examples", "$comment",
+    }
+    if depth > 32 or set(schema) - supported:
+        raise ValueError("tool schema contains unsupported constraints")
+    kinds = schema.get("type", [])
+    kinds = [kinds] if isinstance(kinds, str) else kinds
+    if not isinstance(kinds, list) or ("type" in schema and not kinds) or any(
+        not isinstance(kind, str)
+        or kind not in {"object", "array", "string", "boolean", "integer", "number", "null"}
+        for kind in kinds
+    ):
+        raise ValueError("tool schema type is invalid")
+    if "enum" in schema and (
+        not isinstance(schema["enum"], list) or not schema["enum"]
+    ):
+        raise ValueError("tool schema enum is invalid")
+    properties = schema.get("properties", {})
+    required = schema.get("required", [])
+    if not isinstance(properties, Mapping) or not isinstance(required, list) or any(
+        not isinstance(key, str) for key in required
+    ):
+        raise ValueError("tool schema properties are invalid")
+    children = list(properties.values())
+    if "items" in schema:
+        children.append(schema["items"])
+    additional = schema.get("additionalProperties", True)
+    if type(additional) is not bool:
+        children.append(additional)
+    for child in children:
+        if not isinstance(child, Mapping):
+            raise ValueError("tool schema child is invalid")
+        _check_schema(child, depth + 1)
+    for key in (
+        "minProperties", "maxProperties", "minItems", "maxItems", "minLength", "maxLength",
+    ):
+        if key in schema and (type(schema[key]) is not int or schema[key] < 0):
+            raise ValueError("tool schema length constraint is invalid")
+    for key in ("minimum", "maximum"):
+        if key in schema and (
+            type(schema[key]) not in (int, float) or not math.isfinite(schema[key])
+        ):
+            raise ValueError("tool schema numeric constraint is invalid")
 
 
 def _validate(
@@ -50,7 +104,9 @@ def _validate(
         return
     if "enum" in schema:
         choices = schema.get("enum")
-        if not isinstance(choices, list) or value not in choices:
+        if not isinstance(choices, list) or not any(
+            _equal(value, item) for item in choices
+        ):
             errors.append(
                 {"path": path, "code": "enum", "message": "value is not allowed"}
             )
@@ -166,6 +222,40 @@ def _matches(expected: str, value: Any) -> bool:
     return check()
 
 
-def _json_copy(value: Any) -> Any:
-    return json.loads(json.dumps(value, ensure_ascii=False))
+def _equal(left: Any, right: Any) -> bool:
+    """Use JSON equality, where booleans are never numbers at any depth."""
+    if isinstance(left, bool) != isinstance(right, bool):
+        return False
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(
+            _equal(value, right[key]) for key, value in left.items()
+        )
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            _equal(first, second) for first, second in zip(left, right)
+        )
+    return left == right
 
+
+def _json_copy(value: Any) -> Any:
+    return json.loads(json.dumps(value, ensure_ascii=False, allow_nan=False))
+
+
+def _host_bind(context: Any) -> Callable[..., Mapping[str, Any]]:
+    del context
+    validate = create_validate_operation(None)
+
+    def invoke(payload: Mapping[str, Any], invocation: Any) -> Mapping[str, Any]:
+        if set(payload) != {"schema", "arguments"}:
+            raise ValueError("tool validation payload is invalid")
+        return validate("validate", payload)
+
+    return invoke
+
+
+HOST_PROVIDER_FACTORY = SingleOperationHostFactoryV4(
+    function_id="rumi_tool_validation_pack.tool-validation.arguments",
+    contract_id="tobkiri.service.tool.arguments.validate.v1",
+    operation_id="rumi_tool_validation_pack.tool-arguments-validate",
+    bind=_host_bind,
+)

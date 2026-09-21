@@ -22,9 +22,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core_runtime.dependency_resolver import (
     CircularDependencyError,
     MissingDependencyError,
+    VersionMismatchError,
     extract_dependencies,
+    extract_dependency_specs,
     resolve_load_order,
     validate_dependencies,
+    version_satisfies,
 )
 
 
@@ -67,6 +70,13 @@ class TestExtractDependencies:
         }
         result = extract_dependencies(pack)
         assert set(result) == {"pack_m", "pack_n"}
+
+    def test_preserves_version_constraint_from_mapping_value(self):
+        """legacy mapping values are normalized into one resolver spec."""
+        specs = extract_dependency_specs(
+            {"dependencies": {"pack_m": ">=1.0,<2.0"}}
+        )
+        assert specs == [{"pack_id": "pack_m", "version": ">=1.0,<2.0"}]
 
     def test_ignores_connectivity_contract_requirements(self):
         """connectivity.requires は Pack 依存ではなく契約として扱う。"""
@@ -151,18 +161,14 @@ class TestResolveLoadOrder:
             resolve_load_order(packs)
 
     def test_resolve_circular_soft(self):
-        """soft_circular=True で循環 pack がアルファベット順追加されること"""
+        """compatibility soft_circular flag cannot bypass fail-closed cycles."""
         packs = {
             "pack_a": {"depends_on": [{"pack_id": "pack_b"}]},
             "pack_b": {"depends_on": [{"pack_id": "pack_a"}]},
             "pack_c": {},
         }
-        result = resolve_load_order(packs, soft_circular=True)
-        # pack_c has no deps so it comes first
-        assert result[0] == "pack_c"
-        # cyclic packs appended alphabetically
-        assert set(result[1:]) == {"pack_a", "pack_b"}
-        assert result[1:] == ["pack_a", "pack_b"]
+        with pytest.raises(CircularDependencyError):
+            resolve_load_order(packs, soft_circular=True)
 
     def test_resolve_missing_strict(self):
         """strict=True で missing 依存が MissingDependencyError を発生すること"""
@@ -180,6 +186,32 @@ class TestResolveLoadOrder:
         }
         result = resolve_load_order(packs, strict=False)
         assert set(result) == {"pack_a", "pack_b"}
+
+    def test_resolve_version_mismatch_strict(self):
+        packs = {
+            "pack_a": {"dependencies": {"pack_b": ">=2.0"}},
+            "pack_b": {"version": "1.9.9"},
+        }
+
+        with pytest.raises(VersionMismatchError, match="pack_a.*pack_b.*>=2.0"):
+            resolve_load_order(packs, strict=True)
+
+    def test_resolve_invalid_version_constraint_strict(self):
+        packs = {
+            "pack_a": {"dependencies": {"pack_b": "^2.0"}},
+            "pack_b": {"version": "2.0.0"},
+        }
+
+        with pytest.raises(VersionMismatchError):
+            resolve_load_order(packs, strict=True)
+
+    def test_resolve_version_mismatch_non_strict_preserves_ordering(self):
+        packs = {
+            "pack_a": {"dependencies": {"pack_b": ">=2.0"}},
+            "pack_b": {"version": "1.9.9"},
+        }
+
+        assert resolve_load_order(packs) == ["pack_b", "pack_a"]
 
     def test_resolve_self_dependency(self):
         """自己依存が正しく処理されること（無視されてソート完了）"""
@@ -251,6 +283,35 @@ class TestValidateDependencies:
         self_dep_issues = [i for i in issues if i["type"] == "self_dependency"]
         assert len(self_dep_issues) == 1
         assert self_dep_issues[0]["pack_id"] == "pack_a"
+
+
+class TestVersionConstraints:
+    """PEP 440 version handling must not be reimplemented locally."""
+
+    def test_pep440_prerelease_and_normalization(self):
+        assert version_satisfies("1.0", "==1.0.0")
+        assert version_satisfies("2.0rc1", ">=2.0rc1")
+
+    def test_invalid_version_or_specifier_fails_closed(self):
+        assert not version_satisfies("not-a-version", ">=1.0")
+        assert not version_satisfies("1.0.0", "^1.0")
+
+    def test_mapping_style_constraint_is_validated_with_pep440(self):
+        issues = validate_dependencies(
+            {
+                "pack_a": {"dependencies": {"pack_b": ">=2.0"}},
+                "pack_b": {"version": "1.9.9"},
+            }
+        )
+        assert issues == [
+            {
+                "type": "version_mismatch",
+                "pack_id": "pack_a",
+                "depends_on": "pack_b",
+                "required": ">=2.0",
+                "actual": "1.9.9",
+            }
+        ]
 
 
 if __name__ == "__main__":

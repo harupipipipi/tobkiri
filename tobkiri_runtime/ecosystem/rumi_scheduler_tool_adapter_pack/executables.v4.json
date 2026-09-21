@@ -1,0 +1,76 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:277955c8294698fc946f124fa5a27be101fc2596e00383eb868f3398c590cbcc",
+  "pack_id": "rumi_scheduler_tool_adapter_pack",
+  "source_identity": "sha256:71352402394a22ee41089620b5eb0ef196a0d4bc41c155a8920d0ee52f42ef61",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler",
+      "implementation_digest": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+      "implementation_path": "runtime/adapter.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.local.operation.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-operation",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:d753fb22387c558033f78166130ea196ba979072a220af7a2ab25da279531e7e",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_scheduler_tool_adapter_pack.tool-adapter.scheduler.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.wasmtime-pulley-v1",
+      "execution_domain_profile": "wasm.component.default.v1",
+      "execution_kind": "wasm",
+      "function_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler",
+      "implementation_digest": "sha256:13e5031b5327950835112ef8481c97e2bb6040358083334c8ed6cd2bd8a9287f",
+      "implementation_path": "runtime/definitions_component.wasm",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_scheduler_tool_adapter_pack.scheduler-tool-definitions",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a32b5e69496d1488bb466105b0836d9f2e30adf57b0ef821de625d392220e395",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "component-v1",
+      "variant_id": "rumi_scheduler_tool_adapter_pack.tool-definitions.scheduler.wasm"
+    }
+  ]
+}

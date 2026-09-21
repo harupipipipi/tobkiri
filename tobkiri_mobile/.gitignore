@@ -17,7 +17,9 @@ android/local.properties
 ios/Flutter/Generated.xcconfig
 ios/Flutter/flutter_export_environment.sh
 ios/Flutter/ephemeral/
+ios/Flutter/Flutter.podspec
 ios/Pods/
+ios/Podfile.lock
 ios/.symlinks/
 ios/Runner.xcworkspace/xcshareddata/
 ios/Runner.xcworkspace/xcuserdata/

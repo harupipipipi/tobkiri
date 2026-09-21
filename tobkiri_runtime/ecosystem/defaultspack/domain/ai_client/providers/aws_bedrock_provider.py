@@ -44,15 +44,6 @@ class AwsBedrockProvider(BaseProvider):
 
     @classmethod
     def _configured_credentials(cls, connection: Dict[str, Any]) -> Dict[str, str]:
-        access_key_id = str(os.environ.get("AWS_ACCESS_KEY_ID") or "").strip()
-        secret_access_key = str(os.environ.get("AWS_SECRET_ACCESS_KEY") or "").strip()
-        session_token = str(os.environ.get("AWS_SESSION_TOKEN") or "").strip()
-        if access_key_id and secret_access_key:
-            return {
-                "access_key_id": access_key_id,
-                "secret_access_key": secret_access_key,
-                "session_token": session_token,
-            }
         api_id = str(connection.get("api_id") or "").strip()
         secret = str(read_provider_api_key(cls.provider_id, api_id) or "").strip() if api_id else ""
         if not secret:

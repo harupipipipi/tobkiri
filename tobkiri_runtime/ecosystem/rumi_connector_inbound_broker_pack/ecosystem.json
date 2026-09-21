@@ -1,2 +1,67 @@
-{"pack_id":"rumi_connector_inbound_broker_pack","pack_identity":"rumi:ecosystem/rumi_connector_inbound_broker_pack","display_name":"Rumi Connector Inbound Broker Pack","version":"1.0.0","description":"Verified connector normalization, replay ledger, and route fan-out.","dependencies":{"rumi_connector_registry_service_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.resource.connector.registry.v1","rumi.service.connector.adapter.v1","rumi.action.connector.route.v1"],"provides":["rumi.transport.connector.inbound.v1"]},"required_secrets":[],"required_capabilities":["connector.inbound.receive","connector.registry.read","connector.adapter.verify","connector.route"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":false,"resources":[],"provenance":{"content_hash":"sha256:4e56ebd51bab0de92ab59d169e7603fe2a043b11a77aa3650c865d425da16539","build_identity":"rumi-connector-inbound-broker-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":true,"owner_surfaces":["connector_inbound_replay_ledger"]}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.transport.connector.inbound.v1"
+    ],
+    "requires": [
+      "rumi.action.connector.route.v1",
+      "rumi.resource.connector.registry.v1",
+      "rumi.service.connector.adapter.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Verified vendor normalization, dedupe, replay protection, and route fan-out.",
+  "display_name": "Rumi Connector Inbound Broker",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:634c46d225f0c7239abc8de40a1211650e735e0d3eda9c5d0a260a2e68984d92",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:8576606a39b3e9c691c4f0d5da80bbbfb59085f6fa1bcfd165c2f31af7dca04f"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:8576606a39b3e9c691c4f0d5da80bbbfb59085f6fa1bcfd165c2f31af7dca04f"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "connector_inbound_replay_ledger"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_connector_inbound_broker_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_inbound_broker_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_inbound_broker_pack:1.0.0",
+    "content_hash": "sha256:9d31421989dd635b488c4353bf7f50e24c878ded45daa8368c80af9e1361dd4f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.adapter.verify",
+    "connector.inbound.receive",
+    "connector.registry.read",
+    "connector.route"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

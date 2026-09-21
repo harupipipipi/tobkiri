@@ -15,7 +15,8 @@ from domain.frontend.invocation_events import InvocationEventStore  # noqa: E402
 class _Registry:
     events: InvocationEventStore
 
-    def __init__(self) -> None:
+    def __init__(self, *, settings_owner=None) -> None:
+        assert settings_owner is None
         self.events = type(self).events
 
     @staticmethod

@@ -1,26 +1,20 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {
-    "id": "rumi.tool_audit",
-    "version": "1.0.0",
-    "kind": "adapter",
-    "display_name": "Rumi Tool Audit",
-    "description": "Redacted tool lifecycle events forwarded to the core audit owner."
-  },
   "contracts": {
     "provides": [
       {
-        "id": "rumi.event.tool.invocation.v1",
-        "version": "1.0.0",
-        "provider_instance_id": "tool-audit.event",
         "cardinality": "one",
-        "security": "sensitive",
         "failure": "fail_closed",
+        "id": "rumi.event.tool.invocation.v1",
+        "isolation": "in_process",
         "lifecycle": {
-          "introduced": "1.0.0",
+          "data_owner": "core-audit",
           "deprecated": false,
-          "data_owner": "core-audit"
+          "introduced": "1.0.0"
         },
+        "provider_instance_id": "tool-audit.event",
+        "required_capabilities": [
+          "tool.audit.emit"
+        ],
         "schemas": {
           "input": {
             "type": "object"
@@ -29,55 +23,128 @@
             "type": "object"
           }
         },
-        "isolation": "in_process",
-        "required_capabilities": [
-          "tool.audit.emit"
-        ]
+        "security": "sensitive",
+        "version": "1.0.0"
       }
     ],
     "requires": []
   },
   "entrypoints": [
     {
-      "id": "tool-audit-emit",
+      "artifact_hash": "sha256:b789436190c19ec3f436dee86dc740293bdface12fdc0d531a1452c303eef888",
       "contract_id": "rumi.event.tool.invocation.v1",
+      "id": "tool-audit-emit",
       "loader": "python",
       "module": "ecosystem.rumi_tool_audit_pack.runtime.audit",
-      "symbol": "create_emit_operation",
-      "artifact_hash": "sha256:b789436190c19ec3f436dee86dc740293bdface12fdc0d531a1452c303eef888"
+      "symbol": "create_emit_operation"
     }
   ],
-  "resources": [],
-  "storage": [],
-  "permissions": [
-    {
-      "capability": "tool.audit.emit",
-      "access": "write",
-      "approval_required": false
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.event.tool.invocation.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Redacted tool lifecycle events forwarded to the core audit owner.",
+        "display_name": "Rumi Tool Audit",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:321b2856e1618dbfaadb12e24d67a7603ff469ee46c8631ccabf88d574bb76c7",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:399bacdcaaa830fbbcd8b1ed97f3c34a19715a150f64b946499a839c19ea88c3"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "tool_audit_adapter"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "raw_arguments": false,
+            "raw_results": false
+          }
+        },
+        "pack_id": "rumi_tool_audit_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_audit_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_audit_pack:1.0.0",
+          "content_hash": "sha256:ce817bc170289595d834fca05ac2d78ad58958fb63aa166025aefab65429c853",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.audit.emit"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_audit_pack"
+    },
+    "rumi.tool_audit.boundary": {
+      "allowlisted_fields": true,
+      "audit_storage_owner": false,
+      "raw_arguments": false,
+      "raw_results": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_audit_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:399bacdcaaa830fbbcd8b1ed97f3c34a19715a150f64b946499a839c19ea88c3"
     }
-  ],
-  "provenance": {
-    "content_hash": "sha256:351b455411466b3e03c755d6419929a6c691d0b73365dcd7d972290f3e6188ce",
-    "build_identity": "rumi-tool-audit-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
   },
   "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
     "from": [
       "defaultspack.domain.tool.executor.audit"
     ],
-    "compatibility_aliases": [],
-    "compatibility_projection": "legacy_to_v3_read_only",
     "removal_wave": 10,
-    "sunset_at": "2027-12-31",
-    "rollback": "Select the pinned prior audit adapter."
+    "rollback": "Select the pinned prior audit adapter.",
+    "sunset_at": "2027-12-31"
   },
-  "extensions": {
-    "rumi.tool_audit.boundary": {
-      "audit_storage_owner": false,
-      "raw_arguments": false,
-      "raw_results": false,
-      "allowlisted_fields": true
+  "pack": {
+    "description": "Redacted tool lifecycle events forwarded to the core audit owner.",
+    "display_name": "Rumi Tool Audit",
+    "id": "rumi.tool_audit",
+    "kind": "adapter",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "tool.audit.emit"
     }
-  }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_audit_pack:1.0.0",
+    "content_hash": "sha256:ce817bc170289595d834fca05ac2d78ad58958fb63aa166025aefab65429c853",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }

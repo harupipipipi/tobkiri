@@ -331,19 +331,23 @@ class UnitExecutor:
         # 5. Trust チェック（kind=python/binary のみ）
         verified_content: Optional[bytes] = None
         trust_sha256: Optional[str] = None
+        verified_entrypoint_path: Optional[Path] = None
         if unit_meta.kind in ("python", "binary"):
-            if not unit_meta.entrypoint:
+            unit_dir = unit_meta.unit_dir
+            entrypoint = unit_meta.entrypoint
+            if unit_dir is None or not entrypoint:
                 return self._denied(
                     "No entrypoint for executable unit",
                     "missing_entrypoint",
                     start_time, mode, principal_id, unit_ref,
                     mono_start=mono_start, audit_extra=audit_ctx,
                 )
+            verified_entrypoint_path = unit_dir / entrypoint
             try:
                 from .unit_registry import get_unit_registry as _gur
                 ur = _gur()
                 actual_sha256 = ur.compute_entrypoint_sha256(
-                    unit_meta.unit_dir, unit_meta.entrypoint,
+                    unit_dir, entrypoint,
                 )
                 if actual_sha256 is None:
                     return self._denied(
@@ -379,8 +383,8 @@ class UnitExecutor:
         audit_ctx["trust_verified"] = trust_sha256 is not None
 
         # 5.5. TOCTOU 緩和 (I-03): Trust チェック後にファイル内容を読み込み二重検証
-        if unit_meta.kind in ("python", "binary") and trust_sha256 is not None:
-            ep_path = unit_meta.unit_dir / unit_meta.entrypoint
+        if trust_sha256 is not None and verified_entrypoint_path is not None:
+            ep_path = verified_entrypoint_path
             try:
                 content = ep_path.read_bytes()
             except Exception as e:
@@ -904,7 +908,7 @@ if __name__ == "__main__":
                 action="execute",
                 success=result.success,
                 details=details,
-                rejection_reason=result.error if not result.success else None,
+                rejection_reason=result.error if not result.success and result.error else "",
             )
         except Exception:
             pass

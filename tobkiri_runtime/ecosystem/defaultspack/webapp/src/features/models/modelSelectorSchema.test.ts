@@ -84,7 +84,14 @@ test("the same model exclusion applies to settings options", () => {
 
 test("surface overrides preserve global layout and filters", () => {
   const schema = parseModelSelectorSchema({
-    layout: { group_by: "none", max_visible_options: 25 },
+    layout: {
+      group_by: "none",
+      max_visible_options: 25,
+      show_search: false,
+      trigger_height_px: 52,
+      popover_width_px: 560,
+      popover_max_height_px: 360,
+    },
     filters: { exclude_tags: ["deprecated"] },
     surfaces: {
       composer: {
@@ -98,6 +105,10 @@ test("surface overrides preserve global layout and filters", () => {
   assert.equal(composer.layout.placement, "above");
   assert.equal(composer.layout.group_by, "none");
   assert.equal(composer.layout.max_visible_options, 25);
+  assert.equal(composer.layout.show_search, false);
+  assert.equal(composer.layout.trigger_height_px, 52);
+  assert.equal(composer.layout.popover_width_px, 560);
+  assert.equal(composer.layout.popover_max_height_px, 360);
   assert.deepEqual(composer.filters.exclude_tags, ["deprecated"]);
   assert.deepEqual(composer.filters.exclude_model_ids, ["vendor/private"]);
 });

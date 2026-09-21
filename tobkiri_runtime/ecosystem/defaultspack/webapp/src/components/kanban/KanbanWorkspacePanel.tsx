@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import {
-  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   GripVertical,
@@ -11,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "../../lib/cn";
+import { ErrorNotice } from "../ErrorNotice";
 import {
   HISTORY_CHAT_KANBAN_DROP_EVENT,
   parseHistoryChatDragPayload,
@@ -228,18 +228,17 @@ export function KanbanWorkspacePanel({
   if (loadState === "error" && !boardData) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-        <section className="max-w-xl rounded-2xl border border-red-400/25 bg-red-500/[0.08] p-5" role="alert">
-          <div className="flex items-start gap-3">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-300" aria-hidden="true" />
-            <div className="min-w-0">
-              <h2 className="font-semibold text-red-100">Kanban is unavailable</h2>
-              <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-red-100/80">{error}</p>
-              <button type="button" onClick={() => void loadBoard()} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg border border-red-300/25 px-3 text-sm font-semibold text-red-100 hover:bg-red-500/10">
-                <RefreshCw size={15} aria-hidden="true" /> Retry
-              </button>
-            </div>
-          </div>
-        </section>
+        <ErrorNotice
+          className="max-w-xl p-5 text-sm"
+          copyLabel="Kanban 読み込みエラーをコピー"
+          message={error || "Kanban board could not be loaded."}
+          messageClassName="mt-1 whitespace-pre-wrap leading-6"
+          title="Kanban is unavailable"
+        >
+          <button type="button" onClick={() => void loadBoard()} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-lg border border-red-300/25 px-3 text-sm font-semibold text-red-100 hover:bg-red-500/10">
+            <RefreshCw size={15} aria-hidden="true" /> Retry
+          </button>
+        </ErrorNotice>
       </div>
     );
   }
@@ -264,12 +263,20 @@ export function KanbanWorkspacePanel({
         </button>
       </header>
 
-      {(error || statusMessage) && (
-        <div className={cn("mx-4 mt-3 flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 text-xs", error ? "border-red-400/25 bg-red-500/[0.08] text-red-100" : "border-emerald-400/20 bg-emerald-500/[0.08] text-emerald-100")} role={error ? "alert" : "status"} aria-live="polite">
-          <span className="min-w-0 whitespace-pre-wrap break-words">{error ?? statusMessage}</span>
-          <button type="button" onClick={() => { setError(null); setStatusMessage(null); }} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>
+      {error ? (
+        <ErrorNotice
+          className="mx-4 mt-3 px-3 py-2.5 text-xs"
+          copyLabel="Kanban 操作エラーをコピー"
+          message={error}
+          messageClassName="whitespace-pre-wrap"
+          trailing={<button type="button" onClick={() => { setError(null); setStatusMessage(null); }} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>}
+        />
+      ) : statusMessage ? (
+        <div className="mx-4 mt-3 flex items-start justify-between gap-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.08] px-3 py-2.5 text-xs text-emerald-100" role="status" aria-live="polite">
+          <span className="min-w-0 whitespace-pre-wrap break-words">{statusMessage}</span>
+          <button type="button" onClick={() => setStatusMessage(null)} className="shrink-0 rounded px-2 py-1 text-current/70 hover:bg-white/5 hover:text-current">Dismiss</button>
         </div>
-      )}
+      ) : null}
 
       {columns.length === 0 ? (
         <div className="flex min-h-0 flex-1 items-center justify-center p-6">

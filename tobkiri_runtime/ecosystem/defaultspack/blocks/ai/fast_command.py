@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from blocks._common import ok
 from domain.ai_client.provider_routing_settings import (
@@ -22,11 +23,17 @@ def _enabled(value: Any, *, default: bool = True) -> bool:
     return default
 
 
-def run(input_data: Any, context: dict[str, Any]) -> dict[str, Any]:
+def run(
+    input_data: Any, context: dict[str, Any], *,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
+    """Change fast mode using the caller's trusted settings binding."""
     del context
     data = input_data if isinstance(input_data, dict) else {}
     enabled = _enabled(data.get("enabled"), default=True)
-    settings = update_gateway_routing_settings({"fast_mode_enabled": enabled})
+    settings = update_gateway_routing_settings(
+        {"fast_mode_enabled": enabled}, settings_owner=settings_owner,
+    )
     summary = gateway_routing_summary(settings)
     if enabled:
         summary["message"] = (

@@ -1,5 +1,10 @@
-import sys
+from __future__ import annotations
+
 import os
+import sys
+from collections.abc import Sized
+from typing import Protocol
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 """
@@ -14,6 +19,30 @@ Pipeline 経由でデフォルトパイプラインを実行する。
 
 from domain.ai_client.base_provider import BaseProvider
 from domain.ai_client.rumi_process import RUMI_BASE_MODEL, RUMI_MODEL_PACK_REF, rumi_base_model_metadata
+
+class _Pipeline(Protocol):
+    """Typed boundary for the legacy-compatible pipeline implementation."""
+
+    def get_definition(self, name: str) -> Sized | None:
+        ...
+
+    def execute(
+        self,
+        pipeline_name: str,
+        messages: object,
+        tools: object,
+        params: object,
+    ) -> object:
+        ...
+
+    def stream(
+        self,
+        pipeline_name: str,
+        messages: object,
+        tools: object,
+        params: object,
+    ) -> object:
+        ...
 
 
 class RumiProvider(BaseProvider):
@@ -102,7 +131,7 @@ class RumiProvider(BaseProvider):
 
     def __init__(self, client):
         self._client = client
-        self._pipeline = None
+        self._pipeline: _Pipeline | None = None
         self._pipeline_name = "rumi_default"
         self._setup_pipeline()
 
@@ -113,6 +142,7 @@ class RumiProvider(BaseProvider):
         """
         try:
             from domain.ai_client.pipeline import Pipeline
+
             self._pipeline = Pipeline(self._client)
         except Exception:
             self._pipeline = None
@@ -145,8 +175,9 @@ class RumiProvider(BaseProvider):
         """
         if self._is_rumi_process_model(model):
             return self._client.complete(RUMI_MODEL_PACK_REF, messages, tools, self._process_params(model, params))
-        if self._has_pipeline():
-            return self._pipeline.execute(
+        pipeline = self._pipeline
+        if pipeline is not None and self._has_pipeline():
+            return pipeline.execute(
                 self._pipeline_name, messages, tools, params
             )
 
@@ -161,8 +192,9 @@ class RumiProvider(BaseProvider):
         """
         if self._is_rumi_process_model(model):
             return self._client.stream(RUMI_MODEL_PACK_REF, messages, tools, self._process_params(model, params))
-        if self._has_pipeline():
-            return self._pipeline.stream(
+        pipeline = self._pipeline
+        if pipeline is not None and self._has_pipeline():
+            return pipeline.stream(
                 self._pipeline_name, messages, tools, params
             )
 

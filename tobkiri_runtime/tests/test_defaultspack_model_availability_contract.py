@@ -14,6 +14,15 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
+def _availability(tmp_path):
+    from domain.ai_client.model_availability import ModelAvailabilityService
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return ModelAvailabilityService(
+        tmp_path, settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
+    )
+
+
 def test_provider_key_save_with_default_model_creates_available_api_bound_profile(tmp_path):
     from domain.ai_client.api_key_store import set_provider_api_key
     from domain.ai_client.model_availability import ModelAvailabilityService
@@ -28,7 +37,7 @@ def test_provider_key_save_with_default_model_creates_available_api_bound_profil
     )
     assert result["success"] is True
 
-    availability = ModelAvailabilityService(tmp_path).after_provider_key_saved(
+    availability = _availability(tmp_path).after_provider_key_saved(
         "examplellm",
         "main",
         default_model="example-chat",
@@ -52,7 +61,7 @@ def test_provider_key_save_without_model_binding_requires_explicit_route(tmp_pat
     )
     assert result["success"] is True
 
-    availability = ModelAvailabilityService(tmp_path).after_provider_key_saved("examplellm", "main")
+    availability = _availability(tmp_path).after_provider_key_saved("examplellm", "main")
 
     assert availability["status"] == "route_required"
     assert availability["provider_id"] == "examplellm"
@@ -75,7 +84,7 @@ def test_provider_key_save_auto_binds_every_live_discovered_model(tmp_path, monk
         name="main",
     )
     assert result["success"] is True
-    service = ModelAvailabilityService(tmp_path)
+    service = _availability(tmp_path)
     monkeypatch.setattr(
         service,
         "_catalog_models",
@@ -100,6 +109,24 @@ def test_provider_key_save_auto_binds_every_live_discovered_model(tmp_path, monk
     }
 
 
+def test_openai_compatible_live_inventory_is_trusted_for_named_connection(monkeypatch):
+    from domain.ai_client.model_availability import ModelAvailabilityService
+
+    service = ModelAvailabilityService()
+    monkeypatch.setattr(
+        service,
+        "_connection_models",
+        lambda provider_id, api_id: [
+            {
+                "model_id": "qwen-live",
+                "metadata": {"source": "openai_models_endpoint"},
+            }
+        ],
+    )
+
+    assert service._live_model_ids("opencode-zen", "main") == ["qwen-live"]
+
+
 def test_provider_key_approval_binding_redacts_secret() -> None:
     from blocks.ai import provider_key
 
@@ -110,3 +137,133 @@ def test_provider_key_approval_binding_redacts_secret() -> None:
     assert "value" not in approval
     assert "fixture-secret" not in str(approval)
     assert len(approval["value_sha256"]) == 64
+
+
+def test_provider_key_compatibility_store_preserves_named_connection_metadata(monkeypatch) -> None:
+    from blocks.ai import provider_key
+
+    captured = {}
+
+    def fake_set_provider_api_key(provider_id, secret, **options):
+        captured.update(provider_id=provider_id, secret=secret, **options)
+        return {"success": True}
+
+    monkeypatch.setattr(provider_key, "set_provider_api_key", fake_set_provider_api_key)
+
+    provider_key._sync_legacy_provider_key(
+        "examplellm",
+        "fixture-secret",
+        {
+            "api_id": "work",
+            "name": "Work account",
+            "base_url": "https://example.invalid/v1",
+            "allowed_models": ["example-chat"],
+            "default_model": "example-chat",
+            "notes": "fixture",
+            "quota_label": "team",
+            "kind": "openai-compatible",
+        },
+    )
+
+    assert captured == {
+        "provider_id": "examplellm",
+        "secret": "fixture-secret",
+        "api_id": "work",
+        "name": "Work account",
+        "base_url": "https://example.invalid/v1",
+        "allowed_models": ["example-chat"],
+        "default_model": "example-chat",
+        "notes": "fixture",
+        "quota_label": "team",
+        "kind": "openai-compatible",
+    }
+
+
+def test_provider_key_compatibility_rollback_clears_the_same_named_connection(monkeypatch) -> None:
+    from blocks.ai import provider_key
+
+    captured = {}
+
+    def fake_set_provider_api_key(provider_id, secret, **options):
+        captured.update(provider_id=provider_id, secret=secret, **options)
+        return {"success": True}
+
+    monkeypatch.setattr(provider_key, "set_provider_api_key", fake_set_provider_api_key)
+
+    provider_key._clear_legacy_provider_key("examplellm", api_id="work")
+
+    assert captured == {
+        "provider_id": "examplellm",
+        "secret": "",
+        "api_id": "work",
+    }
+
+
+def test_provider_key_upsert_returns_authoritative_model_availability(tmp_path, monkeypatch) -> None:
+    from blocks.ai import provider_key
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    owner = FrontendSettingsStore(tmp_path / "settings.json")
+
+    monkeypatch.setattr(
+        provider_key,
+        "_invoke",
+        lambda contract_id, operation, payload: {"handle": "credential-handle"}
+        if operation == "create"
+        else {},
+    )
+    monkeypatch.setattr(provider_key, "_sync_legacy_provider_key", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        provider_key,
+        "_save_connection",
+        lambda provider_id, data, *, credential_handle: {
+            "success": True,
+            "provider_id": provider_id,
+        },
+    )
+
+    class FakeAvailabilityService:
+        def __init__(self, *, settings_owner=None):
+            assert settings_owner is owner
+
+        def after_provider_key_saved(self, provider_id, api_id, **options):
+            assert provider_id == "examplellm"
+            assert api_id == "work"
+            assert options == {
+                "default_model": "example-chat",
+                "allowed_models": ["example-chat"],
+            }
+            return {
+                "status": "models_available",
+                "profiles": [{"profile_id": "examplellm/work/example-chat"}],
+                "selected_profile_id": "examplellm/work/example-chat",
+            }
+
+    monkeypatch.setattr(provider_key, "ModelAvailabilityService", FakeAvailabilityService)
+
+    result = provider_key._upsert(
+        "examplellm",
+        {
+            "value": "fixture-secret",
+            "api_id": "work",
+            "default_model": "example-chat",
+            "allowed_models": ["example-chat"],
+        },
+        settings_owner=owner,
+    )
+
+    assert result["configured"] is True
+    assert result["api_id"] == "work"
+    assert result["model_availability"]["status"] == "models_available"
+
+
+def test_model_availability_without_owner_does_not_read_ambient_settings(tmp_path, monkeypatch):
+    from domain.ai_client.model_availability import ModelAvailabilityService
+
+    path = tmp_path / "settings.json"
+    path.write_text('{"models":{}}', encoding="utf-8")
+    before = path.read_bytes()
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(path))
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        ModelAvailabilityService(tmp_path).snapshot()
+    assert path.read_bytes() == before

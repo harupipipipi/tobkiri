@@ -11,6 +11,10 @@ export type ModelSelectorLayout = {
   provider_confirm_key: "Tab" | "Enter";
   model_confirm_keys: string[];
   max_visible_options: number;
+  show_search: boolean;
+  trigger_height_px: number;
+  popover_width_px: number;
+  popover_max_height_px: number;
   show_provider_count: boolean;
   show_capability_tags: boolean;
 };
@@ -52,6 +56,10 @@ export const DEFAULT_MODEL_SELECTOR_SCHEMA: ModelSelectorSchema = {
     provider_confirm_key: "Tab",
     model_confirm_keys: ["Enter", "Tab"],
     max_visible_options: 60,
+    show_search: true,
+    trigger_height_px: 44,
+    popover_width_px: 420,
+    popover_max_height_px: 420,
     show_provider_count: true,
     show_capability_tags: true,
   },
@@ -111,6 +119,10 @@ function layout(value: unknown, fallback: ModelSelectorLayout): ModelSelectorLay
       ? strings(raw.model_confirm_keys)
       : fallback.model_confirm_keys,
     max_visible_options: positiveInteger(raw.max_visible_options, fallback.max_visible_options),
+    show_search: bool(raw.show_search, fallback.show_search),
+    trigger_height_px: positiveInteger(raw.trigger_height_px, fallback.trigger_height_px),
+    popover_width_px: positiveInteger(raw.popover_width_px, fallback.popover_width_px),
+    popover_max_height_px: positiveInteger(raw.popover_max_height_px, fallback.popover_max_height_px),
     show_provider_count: bool(raw.show_provider_count, fallback.show_provider_count),
     show_capability_tags: bool(raw.show_capability_tags, fallback.show_capability_tags),
   };
@@ -143,6 +155,10 @@ function layoutOverride(value: unknown): Partial<ModelSelectorLayout> {
   if ("provider_confirm_key" in raw) result.provider_confirm_key = parsed.provider_confirm_key;
   if ("model_confirm_keys" in raw) result.model_confirm_keys = parsed.model_confirm_keys;
   if ("max_visible_options" in raw) result.max_visible_options = parsed.max_visible_options;
+  if ("show_search" in raw) result.show_search = parsed.show_search;
+  if ("trigger_height_px" in raw) result.trigger_height_px = parsed.trigger_height_px;
+  if ("popover_width_px" in raw) result.popover_width_px = parsed.popover_width_px;
+  if ("popover_max_height_px" in raw) result.popover_max_height_px = parsed.popover_max_height_px;
   if ("show_provider_count" in raw) result.show_provider_count = parsed.show_provider_count;
   if ("show_capability_tags" in raw) result.show_capability_tags = parsed.show_capability_tags;
   return result;

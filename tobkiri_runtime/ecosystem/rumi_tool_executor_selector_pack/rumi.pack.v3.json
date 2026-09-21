@@ -1,26 +1,20 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {
-    "id": "rumi.tool_executor_selector",
-    "version": "1.0.0",
-    "kind": "service",
-    "display_name": "Rumi Tool Executor Selector",
-    "description": "Manifest-driven executor selection by declared execution kind."
-  },
   "contracts": {
     "provides": [
       {
-        "id": "rumi.service.tool.executor.select.v1",
-        "version": "1.0.0",
-        "provider_instance_id": "tool-executor-selector.select",
         "cardinality": "one",
-        "security": "sensitive",
         "failure": "fail_closed",
+        "id": "rumi.service.tool.executor.select.v1",
+        "isolation": "in_process",
         "lifecycle": {
-          "introduced": "1.0.0",
+          "data_owner": "caller",
           "deprecated": false,
-          "data_owner": "caller"
+          "introduced": "1.0.0"
         },
+        "provider_instance_id": "tool-executor-selector.select",
+        "required_capabilities": [
+          "tool.executor.select"
+        ],
         "schemas": {
           "input": {
             "type": "object"
@@ -29,54 +23,127 @@
             "type": "object"
           }
         },
-        "isolation": "in_process",
-        "required_capabilities": [
-          "tool.executor.select"
-        ]
+        "security": "sensitive",
+        "version": "1.0.0"
       }
     ],
     "requires": []
   },
   "entrypoints": [
     {
-      "id": "tool-executor-select",
+      "artifact_hash": "sha256:516b412da107fce6cf847c124a1c6605e10be25d877a15a53d1eb12d669fce3c",
       "contract_id": "rumi.service.tool.executor.select.v1",
+      "id": "tool-executor-select",
       "loader": "python",
       "module": "ecosystem.rumi_tool_executor_selector_pack.runtime.selector",
-      "symbol": "create_select_operation",
-      "artifact_hash": "sha256:516b412da107fce6cf847c124a1c6605e10be25d877a15a53d1eb12d669fce3c"
+      "symbol": "create_select_operation"
     }
   ],
-  "resources": [],
-  "storage": [],
-  "permissions": [
-    {
-      "capability": "tool.executor.select",
-      "access": "execute",
-      "approval_required": false
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.tool.executor.select.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Manifest-driven executor selection by declared execution kind.",
+        "display_name": "Rumi Tool Executor Selector",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:0968234abb6307c0afa1d5820ab484f55f4c676ab44363f67f5dc57a4e52186b",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:b793d25967b539c2e2bc43eb8aa1f4d74751c25a0ef8790a0f6c25b03c6a3f69"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "tool_executor_selection"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "execution": false,
+            "tool_id_branches": false
+          }
+        },
+        "pack_id": "rumi_tool_executor_selector_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_executor_selector_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_executor_selector_pack:1.0.0",
+          "content_hash": "sha256:81d5a8ebe91866a77ccf349606020d88987efc29849a6c4a125ecb5a956908bd",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.executor.select"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_executor_selector_pack"
+    },
+    "rumi.tool_executor_selector.boundary": {
+      "execution": false,
+      "selection_source": "manifest_routing_keys",
+      "tool_id_branches": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_executor_selector_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:b793d25967b539c2e2bc43eb8aa1f4d74751c25a0ef8790a0f6c25b03c6a3f69"
     }
-  ],
-  "provenance": {
-    "content_hash": "sha256:0c86922df38a44367222fcacb8c6cce59baad455241001bdc2b87af31d1fe2c0",
-    "build_identity": "rumi-tool-executor-selector-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
   },
   "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
     "from": [
       "defaultspack.domain.tool.executor.dispatch"
     ],
-    "compatibility_aliases": [],
-    "compatibility_projection": "none",
     "removal_wave": 10,
-    "sunset_at": "2027-12-31",
-    "rollback": "Select the pinned prior selector."
+    "rollback": "Select the pinned prior selector.",
+    "sunset_at": "2027-12-31"
   },
-  "extensions": {
-    "rumi.tool_executor_selector.boundary": {
-      "tool_id_branches": false,
-      "execution": false,
-      "selection_source": "manifest_routing_keys"
+  "pack": {
+    "description": "Manifest-driven executor selection by declared execution kind.",
+    "display_name": "Rumi Tool Executor Selector",
+    "id": "rumi.tool_executor_selector",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.executor.select"
     }
-  }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_executor_selector_pack:1.0.0",
+    "content_hash": "sha256:81d5a8ebe91866a77ccf349606020d88987efc29849a6c4a125ecb5a956908bd",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }

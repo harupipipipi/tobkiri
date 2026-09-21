@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 
 GATEWAY_PROVIDER_IDS = {"openrouter", "vercel-ai-gateway"}
@@ -116,13 +117,12 @@ def normalize_provider_list(value: Any) -> list[str]:
     return output
 
 
-def normalize_gateway_routing_settings(values: dict[str, Any] | None = None, *, pack_root: Path | None = None) -> dict[str, Any]:
-    if values is None:
-        try:
-            from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
-            values = ModelRuntimeSettingsService(_pack_root(pack_root)).get_settings()
-        except Exception:
-            values = {}
+def normalize_gateway_routing_settings(
+    values: dict[str, Any] | None = None,
+    *,
+    pack_root: Path | None = None,
+) -> dict[str, Any]:
+    """Normalize an explicit snapshot without reading ambient settings."""
     raw_values = dict(values or {})
     target = normalize_gateway_target(raw_values.get("gateway_routing_target"))
     for provider_id, prefix in (
@@ -170,9 +170,15 @@ def normalize_gateway_routing_settings(values: dict[str, Any] | None = None, *, 
     return result
 
 
-def update_gateway_routing_settings(patch: dict[str, Any], *, pack_root: Path | None = None) -> dict[str, Any]:
+def update_gateway_routing_settings(
+    patch: dict[str, Any], *, pack_root: Path | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
+) -> dict[str, Any]:
+    """Update gateway preferences through the explicitly bound settings owner."""
     from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
-    service = ModelRuntimeSettingsService(_pack_root(pack_root))
+    service = ModelRuntimeSettingsService(
+        _pack_root(pack_root), settings_owner=settings_owner,
+    )
     normalized = normalize_gateway_routing_settings({**service.get_settings(), **dict(patch or {})}, pack_root=pack_root)
     return service.update_settings({key: normalized[key] for key in DEFAULT_GATEWAY_ROUTING_SETTINGS})
 

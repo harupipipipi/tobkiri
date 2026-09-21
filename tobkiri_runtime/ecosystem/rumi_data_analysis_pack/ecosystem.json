@@ -1,121 +1,103 @@
 {
-  "pack_id": "rumi_data_analysis_pack",
-  "pack_identity": "rumi:ecosystem/rumi_data_analysis_pack",
-  "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Data Analysis Pack",
-    "description": "Declarative, local-first data analysis profiles, prompts, presets, catalogs, and reproducible recipe specs.",
-    "author": "Rumi AI Team",
-    "license": "MIT",
-    "integrity": {
-      "artifact_manifest": "artifact-manifest.json"
-    }
-  },
-  "runtime": {
-    "type": "declarative_pack"
-  },
-  "vocabulary": {
-    "types": [
-      "analysis_profile",
-      "analysis_prompt",
-      "analysis_preset",
-      "capability_catalog",
-      "data_recipe",
-      "chart_spec",
-      "audit_trail"
-    ]
-  },
   "components": {
     "analysis_capabilities": {
-      "type": "capability_catalog",
-      "id": "data_analysis_capabilities",
-      "path": "catalog/capabilities.yaml",
       "connectivity": {
+        "provides": [
+          "rumi.data_analysis.capability_catalog"
+        ],
         "requires": [
           "rumi.default_tools.file_reader",
           "rumi.default_tools.calculator",
           "rumi.local_agent.profiles"
-        ],
-        "provides": [
-          "rumi.data_analysis.capability_catalog"
         ]
-      }
+      },
+      "id": "data_analysis_capabilities",
+      "path": "catalog/capabilities.yaml",
+      "type": "capability_catalog"
     },
-    "chart_kind_catalog": {
-      "type": "capability_catalog",
-      "id": "chart_kind_catalog",
-      "path": "catalog/chart_kinds.json",
+    "analysis_examples": {
       "connectivity": {
         "provides": [
-          "rumi.data_analysis.chart_kind_catalog"
+          "rumi.data_analysis.examples"
         ]
-      }
+      },
+      "id": "data_analysis_examples",
+      "path": "examples",
+      "type": "example"
+    },
+    "analysis_presets": {
+      "connectivity": {
+        "provides": [
+          "rumi.data_analysis.presets"
+        ]
+      },
+      "id": "data_analysis_presets",
+      "path": "presets",
+      "type": "analysis_preset"
     },
     "analysis_profiles": {
-      "type": "analysis_profile",
-      "id": "data_analysis_profiles",
-      "path": "profiles",
       "connectivity": {
-        "requires": [
-          "rumi.local_agent.profiles"
-        ],
         "provides": [
           "rumi.data_analysis.profiles"
+        ],
+        "requires": [
+          "rumi.local_agent.profiles"
         ]
-      }
+      },
+      "id": "data_analysis_profiles",
+      "path": "profiles",
+      "type": "analysis_profile"
     },
     "analysis_prompts": {
-      "type": "analysis_prompt",
-      "id": "data_analysis_prompts",
-      "path": "prompts",
       "connectivity": {
         "provides": [
           "rumi.data_analysis.prompts"
         ]
-      }
+      },
+      "id": "data_analysis_prompts",
+      "path": "prompts",
+      "type": "analysis_prompt"
     },
     "analysis_recipes": {
-      "type": "data_recipe",
-      "id": "reproducible_data_recipes",
-      "path": "recipes",
       "connectivity": {
         "provides": [
           "rumi.data_analysis.recipes"
         ]
-      }
+      },
+      "id": "reproducible_data_recipes",
+      "path": "recipes",
+      "type": "data_recipe"
     },
     "analysis_specs": {
-      "type": "chart_spec",
-      "id": "analysis_specs",
-      "path": "specs",
       "connectivity": {
         "provides": [
           "rumi.data_analysis.chart_specs",
           "rumi.data_analysis.audit_trail_specs"
         ]
-      }
+      },
+      "id": "analysis_specs",
+      "path": "specs",
+      "type": "chart_spec"
     },
-    "analysis_presets": {
-      "type": "analysis_preset",
-      "id": "data_analysis_presets",
-      "path": "presets",
+    "chart_kind_catalog": {
       "connectivity": {
         "provides": [
-          "rumi.data_analysis.presets"
+          "rumi.data_analysis.chart_kind_catalog"
         ]
-      }
-    },
-    "analysis_examples": {
-      "type": "example",
-      "id": "data_analysis_examples",
-      "path": "examples",
-      "connectivity": {
-        "provides": [
-          "rumi.data_analysis.examples"
-        ]
-      }
+      },
+      "id": "chart_kind_catalog",
+      "path": "catalog/chart_kinds.json",
+      "type": "capability_catalog"
     }
   },
+  "connectivity": {
+    "provides": [],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Data analysis workflow and UI content without host authority.",
+  "display_name": "Rumi Data Analysis Content",
+  "host_execution": false,
   "load_order": [
     "capability_catalog:data_analysis_capabilities",
     "capability_catalog:chart_kind_catalog",
@@ -126,17 +108,62 @@
     "analysis_preset:data_analysis_presets",
     "example:data_analysis_examples"
   ],
-  "resources": [
-    {
-      "id": "frontend/contributions/data-analysis.json",
-      "kind": "ui.contribution",
-      "content_hash": "sha256:c52cf09712ad37b0e44656898afa03fb9fd08f238eb9e102b5667386031678cd"
-    }
-  ],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:49b6de8241c6eec1808be5084cb3457389fad037fc2d506e665d834b14aa28c1",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:bebe538206c785696ab1e6ed07db91765e5f5bd4b27c93bfc4d6e540994a6c27"
+    },
+    "description": "Declarative, local-first data analysis profiles, prompts, presets, catalogs, and reproducible recipe specs.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:bebe538206c785696ab1e6ed07db91765e5f5bd4b27c93bfc4d6e540994a6c27"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Data Analysis Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_data_analysis_pack",
+  "pack_identity": "rumi:ecosystem/rumi_data_analysis_pack",
   "provenance": {
-    "content_hash": "sha256:96f53569aef890d0c6a317bcab4511498f50a85b1a54edf699faf3d55c49367f",
-    "build_identity": "rumi-data-analysis-content-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
+    "build_identity": "rumi_data_analysis_pack:1.0.0",
+    "content_hash": "sha256:37dc8e19d1f8a394cd40aaedc6287990d24deba4cd98beee060f677a74c8db97",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "frontend/contributions/data-analysis.json"
+  ],
+  "runtime": {
+    "type": "declarative_pack"
+  },
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "analysis_profile",
+      "analysis_prompt",
+      "analysis_preset",
+      "capability_catalog",
+      "data_recipe",
+      "chart_spec",
+      "audit_trail"
+    ]
   }
 }

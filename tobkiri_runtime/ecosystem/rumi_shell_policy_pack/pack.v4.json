@@ -1,0 +1,113 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:7b61b2451e6226bdb2b16beaf2f6919c0f1b820812eda7cd93f92d6139901df1",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
+      "kind": "executable",
+      "path": "runtime/policy.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.shell.inspect.v1",
+      "operations": [
+        "rumi_shell_policy_pack.shell-inspect"
+      ],
+      "revision_digest": "sha256:186479de12112205be50ff0f0cc3a9e6ffb80e5b225bf84ebd30d539a12efe7b"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:186479de12112205be50ff0f0cc3a9e6ffb80e5b225bf84ebd30d539a12efe7b",
+      "id": "rumi_shell_policy_pack.shell-policy.inspect",
+      "implementation_digest": "sha256:4474513154ced3474da4db2d6bf90ece67c0da9406ee3ac392660d7bd9ddcf51",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_shell_policy_pack.shell-inspect"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:cc6420af77762ffc3d982f4c1275027af04c01548495c0d366ec112e33195b8b",
+    "contract_catalog_digest": "sha256:522329c12e712cc5c7fbbe0500b84941748e36dfbd0996792a02703aff1c498a",
+    "source_identity": "sha256:d4e626379d593a61cc28f1dde73b1707cbd7ece2aec92b253e1da5b8dfbba5ed"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [
+      "rumi.service.shell.inspect.v1",
+      "rumi:ecosystem/rumi_shell_policy_pack",
+      "rumi_shell_policy_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.shell.inspect.v1",
+      "effect_ceiling": [
+        "capability:shell.inspect"
+      ],
+      "operation_id": "rumi_shell_policy_pack.shell-inspect",
+      "owner": "rumi_shell_policy_pack",
+      "provider_id": "rumi_shell_policy_pack.shell-policy.inspect",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:cc6420af77762ffc3d982f4c1275027af04c01548495c0d366ec112e33195b8b",
+    "display_name": "Rumi Shell Policy",
+    "id": "rumi_shell_policy_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:d4e626379d593a61cc28f1dde73b1707cbd7ece2aec92b253e1da5b8dfbba5ed",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:d4e626379d593a61cc28f1dde73b1707cbd7ece2aec92b253e1da5b8dfbba5ed",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_shell_policy_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.shell.inspect.v1",
+      "operations": [
+        "rumi_shell_policy_pack.shell-inspect"
+      ],
+      "owner": "rumi_shell_policy_pack",
+      "provider_id": "rumi_shell_policy_pack.shell-policy.inspect"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "shell.inspect"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "workspace_brokered"
+  }
+}

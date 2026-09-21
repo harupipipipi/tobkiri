@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
+
+from core_runtime.host_provider_backend_v4 import (
+    CapturedHostProviderV4,
+    HostProviderCaptureContextV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+)
 
 
 def create_route_operation(client: Any):
@@ -10,7 +17,12 @@ def create_route_operation(client: Any):
     del client
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        if name not in {"route", "match"}:
+        if name not in {
+            "route",
+            "match",
+            "rumi_ai_routing_pack.ai-route.generate",
+            "rumi_ai_routing_pack.ai-route.stream",
+        }:
             raise ValueError(f"unknown AI routing operation: {name}")
         models = payload.get("models")
         providers = payload.get("execution_providers")
@@ -227,3 +239,76 @@ def _number(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
 
+
+_PACK_ID = "rumi_ai_routing_pack"
+_FUNCTION_ID = "rumi_ai_routing_pack.ai-routing.default"
+
+
+class AIRoutingHostFactoryV4:
+    """Bind the manifest-selected pure router to exact Host dispatch edges."""
+
+    function_id = _FUNCTION_ID
+
+    def capture(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> CapturedHostProviderV4:
+        """Capture all and only operations resolved to the routing function."""
+
+        if not context.provider_bindings or any(
+            binding.function.function_id != self.function_id
+            for binding in context.provider_bindings
+        ):
+            raise PermissionError("AI routing bindings are incomplete")
+
+        def invoke(
+            _operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset(),
+                consumer_pack_id=_PACK_ID,
+            )
+            return create_route_operation(client)("route", payload)
+
+        return CapturedHostProviderV4(
+            tuple(_contributions(context, invoke)),
+            lambda: None,
+        )
+
+
+def _contributions(
+    context: HostProviderCaptureContextV4,
+    invoke: Callable[
+        [str, Mapping[str, Any], HostProviderInvocationContextV4], Mapping[str, Any]
+    ],
+) -> list[HostProviderContributionV4]:
+    """Return contributions guarded by exact resolved principal/domain bindings."""
+
+    contributions: list[HostProviderContributionV4] = []
+    for binding in context.provider_bindings:
+        key = (
+            binding.operation.contract_id,
+            binding.operation.operation_id,
+            binding.principal_ref.value,
+        )
+        domain_id = context.domain_ids.get(key)
+        if domain_id is None:
+            raise PermissionError("AI routing domain binding is unavailable")
+        contributions.append(
+            HostProviderContributionV4(
+                contract_id=binding.operation.contract_id,
+                contract_version=binding.operation.contract_version,
+                operation_id=binding.operation.operation_id,
+                principal_id=binding.principal_ref.value,
+                artifact_digest=binding.artifact.digest,
+                implementation_digest=binding.function.implementation_digest,
+                domain_id=domain_id,
+                invoke=invoke,
+            )
+        )
+    return contributions
+
+
+HOST_PROVIDER_FACTORY = AIRoutingHostFactoryV4()
