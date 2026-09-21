@@ -13,6 +13,12 @@ internet relay.
   internet relay in defaultspack.
 - Enabling any future peer intake must be explicit local configuration and must
   preserve the same local-admin route guards used by sensitive routes.
+- While P2P is disabled, inbound envelopes, outbound sends, pairing accept, and
+  peer approve/upsert fail closed with `P2P_DISABLED`. The `enabled` flag is
+  resolved from server configuration only; request payloads cannot override it.
+  `POST /api/p2p/pairing/start` stays available because it doubles as the mobile
+  QR pairing session creator, but its sessions cannot mature into approved peers
+  while disabled.
 
 ## Ingress Boundary
 

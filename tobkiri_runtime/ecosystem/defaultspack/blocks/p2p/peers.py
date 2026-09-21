@@ -25,6 +25,8 @@ def run(input_data, context=None):
     if action == "block" or method == "DELETE":
         return ok({"peer": store.block_peer(peer_id, reason=str(input_data.get("reason") or "")).as_dict()})
     if action in {"approve", "upsert", ""}:
+        if not settings.enabled:
+            return error("P2P is disabled", "P2P_DISABLED")
         try:
             peer = store.approve_peer(
                 peer_id,

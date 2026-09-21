@@ -16,6 +16,8 @@ def run(input_data, context=None):
     if not code:
         return error("pairing code is required", "INVALID_INPUT")
     settings = settings_from(input_data, context)
+    if not settings.enabled:
+        return error("P2P is disabled", "P2P_DISABLED")
     result = PairingManager(settings.store_path).accept_pairing(
         code,
         peer_id=str(input_data.get("peer_id") or ""),

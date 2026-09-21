@@ -16,11 +16,15 @@ def settings_from(input_data: dict[str, Any] | None = None, context: dict[str, A
     context_p2p = context.get("p2p")
     if isinstance(context_p2p, dict):
         overrides.update(context_p2p)
+    # Client-supplied input may tune storage/ttl knobs, but it must never be
+    # able to flip `enabled`: when P2P is off, request bodies cannot reopen the
+    # inbound handshake/message paths (fail closed).
     input_p2p = input_data.get("p2p")
     if isinstance(input_p2p, dict):
-        overrides.update(input_p2p)
+        for key, value in input_p2p.items():
+            if key != "enabled":
+                overrides[key] = value
     for key in (
-        "enabled",
         "bind_host",
         "bind_port",
         "lan_discovery",

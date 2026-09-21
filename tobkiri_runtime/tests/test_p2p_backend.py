@@ -79,6 +79,99 @@ def test_p2p_defaults_are_disabled_and_local_only(monkeypatch, tmp_path):
     assert result["error"]["code"] == "P2P_DISABLED"
 
 
+def test_client_supplied_enabled_cannot_reopen_disabled_p2p(monkeypatch, tmp_path):
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_P2P_ENABLED", raising=False)
+
+    from blocks.p2p.messages_send import run as send_run  # noqa: E402
+
+    for payload in (
+        {"peer_id": "peer-a", "text": "hi", "enabled": True, "store_path": str(tmp_path)},
+        {"peer_id": "peer-a", "text": "hi", "p2p": {"enabled": True}, "store_path": str(tmp_path)},
+    ):
+        result = send_run(payload, {})
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "P2P_DISABLED"
+
+
+def test_p2p_enabled_override_only_comes_from_context(monkeypatch, tmp_path):
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_P2P_ENABLED", raising=False)
+
+    from blocks.p2p._helpers import settings_from  # noqa: E402
+
+    assert settings_from({"enabled": True, "store_path": str(tmp_path)}, {}).enabled is False
+    assert settings_from({"p2p": {"enabled": True}, "store_path": str(tmp_path)}, {}).enabled is False
+    assert settings_from({"store_path": str(tmp_path)}, {"p2p": {"enabled": True}}).enabled is True
+
+
+def test_pairing_accept_fails_closed_when_p2p_disabled(monkeypatch, tmp_path):
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_P2P_ENABLED", raising=False)
+    session = PairingManager(tmp_path).start_pairing(peer_id="peer-a", ttl_seconds=60)
+
+    from blocks.p2p.pairing_accept import run as accept_run  # noqa: E402
+
+    result = accept_run(
+        {"code": session.code, "peer_id": "peer-a", "store_path": str(tmp_path)},
+        {},
+    )
+
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "P2P_DISABLED"
+    assert PeerStore(tmp_path).get_peer("peer-a") is None
+
+
+def test_pairing_accept_succeeds_when_p2p_enabled(monkeypatch, tmp_path):
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_P2P_ENABLED", raising=False)
+    session = PairingManager(tmp_path).start_pairing(peer_id="peer-a", ttl_seconds=60)
+
+    from blocks.p2p.pairing_accept import run as accept_run  # noqa: E402
+
+    result = accept_run(
+        {"code": session.code, "peer_id": "peer-a", "store_path": str(tmp_path)},
+        {"p2p": {"enabled": True}},
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["peer"]["peer_id"] == "peer-a"
+    assert result["data"]["peer"]["status"] == "approved"
+
+
+def test_peer_approve_fails_closed_when_p2p_disabled(monkeypatch, tmp_path):
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_P2P_ENABLED", raising=False)
+
+    from blocks.p2p.peers import run as peers_run  # noqa: E402
+
+    result = peers_run(
+        {"_method": "POST", "action": "approve", "peer_id": "peer-a", "store_path": str(tmp_path)},
+        {},
+    )
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "P2P_DISABLED"
+    assert PeerStore(tmp_path).get_peer("peer-a") is None
+
+    # Read and revocation paths stay available so disabled peers can be cleaned up.
+    listed = peers_run({"_method": "GET", "store_path": str(tmp_path)}, {})
+    assert listed["status"] == "ok"
+    blocked = peers_run(
+        {"_method": "DELETE", "peer_id": "peer-a", "store_path": str(tmp_path)},
+        {},
+    )
+    assert blocked["status"] == "ok"
+    assert blocked["data"]["peer"]["status"] == "blocked"
+
+
+def test_pairing_start_still_available_for_mobile_pairing_when_disabled(monkeypatch, tmp_path):
+    # /api/p2p/pairing/start doubles as the mobile QR pairing session creator,
+    # which is independent of the P2P peer transport toggle.
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_P2P_ENABLED", raising=False)
+
+    from blocks.p2p.pairing_start import run as start_run  # noqa: E402
+
+    result = start_run({"store_path": str(tmp_path)}, {})
+
+    assert result["status"] == "ok"
+    assert result["data"]["pairing"]["status"] == "pending"
+
+
 def test_identity_persists_with_store_path_override(monkeypatch, tmp_path):
     monkeypatch.setenv("RUMI_DEFAULTSPACK_P2P_STORE_PATH", str(tmp_path))
 
