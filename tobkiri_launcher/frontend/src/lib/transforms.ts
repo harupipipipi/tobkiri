@@ -27,6 +27,7 @@ export function transformPack(api: ApiPack): Pack {
     enabled: api.enabled,
     description: api.description,
     artifactDigest: api.artifact_digest,
+    packArtifactDigest: api.pack_artifact_digest ?? null,
     profileId: api.profile_id,
     workspaceId: api.workspace_id,
     profileRevision: api.profile_revision,

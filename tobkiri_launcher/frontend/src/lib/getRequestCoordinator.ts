@@ -37,6 +37,7 @@ interface InFlightEntry {
   epoch: number;
   foreground: boolean;
   promise: Promise<unknown>;
+  extendDeadline: (timeoutMs: number) => void;
 }
 
 export class RequestInvalidatedError extends Error {
@@ -114,22 +115,37 @@ export class GetRequestCoordinator {
     let shared = this.inFlight.get(key);
     if (shared) {
       if (mode === 'foreground') shared.foreground = true;
+      shared.extendDeadline(timeoutMs);
       return withConsumerTimeout(shared.promise as Promise<T>, timeoutMs, key);
     }
 
     const abortController = new AbortController();
+    const startedAt = Date.now();
+    let hardTimeoutMs = 0;
+    let hardTimeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+    const extendDeadline = (budget: number) => {
+      const nextBudget = Number.isFinite(budget) && budget > 0
+        ? Math.max(this.hardTimeoutMs, budget)
+        : this.hardTimeoutMs;
+      if (nextBudget <= hardTimeoutMs) return;
+      hardTimeoutMs = nextBudget;
+      globalThis.clearTimeout(hardTimeout);
+      // Anchor extensions to the original request: repeated consumers cannot
+      // keep a shared request alive indefinitely with the same budget.
+      hardTimeout = globalThis.setTimeout(() => {
+        abortController.abort(new RequestTimeoutError(
+          `Shared GET request exceeded ${hardTimeoutMs}ms: ${key}`,
+        ));
+      }, Math.max(0, startedAt + hardTimeoutMs - Date.now()));
+    };
+    extendDeadline(timeoutMs);
     shared = {
       abortController,
       epoch: this.epoch,
       foreground: mode === 'foreground',
       promise: Promise.resolve(undefined),
+      extendDeadline,
     };
-
-    const hardTimeout = globalThis.setTimeout(() => {
-      abortController.abort(new RequestTimeoutError(
-        `Shared GET request exceeded ${this.hardTimeoutMs}ms: ${key}`,
-      ));
-    }, this.hardTimeoutMs);
 
     const entry = shared;
     entry.promise = Promise.resolve()

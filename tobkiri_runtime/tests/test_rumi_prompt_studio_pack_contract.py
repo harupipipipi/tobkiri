@@ -154,8 +154,8 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["prompt_lint_rubric"] == "owned_by_rumi_prompt_studio_pack"
     assert candidate.overlap_policy["fixture_dry_run_contract"] == "owned_by_rumi_prompt_studio_pack"
     assert candidate.overlap_policy["prompt_version_ledger"] == "owned_by_rumi_prompt_studio_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= {
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= {
         "prompt_preferences_are_user_specific",
         "no_model_router_owner",
         "no_memory_store_owner",

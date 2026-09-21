@@ -400,7 +400,7 @@ def test_helper_identity_rejects_nonexact_entitlements(
 
 
 def test_workflow_never_mutates_keychain_or_trust_state() -> None:
-    """The no-Apple-identity path remains file-scoped and non-publishable."""
+    """CI and release signing paths remain file-scoped without credentials."""
     workflow = WORKFLOW.read_text(encoding="utf-8")
     for forbidden in (
         "add-trusted-cert",
@@ -417,8 +417,20 @@ def test_workflow_never_mutates_keychain_or_trust_state() -> None:
     assert "--expected-signing-mode ad-hoc" in workflow
     assert "--entitlements tobkiri_launcher/packvm-vz-helper/Entitlements/" in workflow
     release_workflow = RELEASE_WORKFLOW.read_text(encoding="utf-8")
-    assert "--expected-signing-mode developer-id" in release_workflow
-    assert '--expected-team-id "$APPLE_TEAM_ID"' in release_workflow
+    assert "--expected-signing-mode ad-hoc" in release_workflow
+    assert "/usr/bin/codesign --force --sign - --timestamp=none" in release_workflow
+    assert "dev.rumiai.app" in release_workflow
+    for forbidden in (
+        "APPLE_CERTIFICATE",
+        "APPLE_SIGNING_IDENTITY",
+        "APPLE_TEAM_ID",
+        "APPLE_ID",
+        "APPLE_PASSWORD",
+        "Developer ID Application:",
+        "staple",
+    ):
+        assert forbidden not in release_workflow
+    assert "Notarize and" not in release_workflow
 
 
 def test_rust_cold_boot_attestation_mirrors_the_python_path_policy() -> None:
@@ -431,10 +443,12 @@ def test_rust_cold_boot_attestation_mirrors_the_python_path_policy() -> None:
     assert "MACOS_CI_MACHO_ATTESTED_PATHS.contains(relative)" in source
 
 
-def test_production_release_guard_rejects_ci_domain_artifacts() -> None:
-    """Production publication rejects all CI names and signed policy files."""
+def test_release_guard_rejects_ci_domain_artifacts() -> None:
+    """Unsigned/ad-hoc release verification rejects CI-only artifacts."""
     verifier = RELEASE_VERIFIER.read_text(encoding="utf-8")
     assert "dev.tobkiri.launcher.ci-e2e" not in verifier
+    assert "dev.rumiai.app" in verifier
+    assert "Signature=adhoc" in verifier
     for marker in (
         "NON_PUBLISHABLE_CI_E2E_ARTIFACT.txt",
         "ci-e2e-artifact-policy.v1.json",

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import AuthorityRequest
+from .principal import UNATTRIBUTED_PRINCIPAL_ID
 
 
 def active_authority_debug_binding(
@@ -148,7 +149,7 @@ def verify_authority_debug_operator(
         "conversation_id": (
             request.conversation_id or request.profile_id or request.principal_id or "local"
         ),
-        "operation_owner": request.principal_id or "defaultspack",
+        "operation_owner": request.principal_id or UNATTRIBUTED_PRINCIPAL_ID,
         "canonical_arguments_digest": snapshot["digest"],
         "target_digest": snapshot["target_digest"],
         "session_id": request.debug_session_id,

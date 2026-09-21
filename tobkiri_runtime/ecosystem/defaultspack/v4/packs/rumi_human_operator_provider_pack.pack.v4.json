@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:d205153e20ecfbc43a131a2ed0bd0c6f12bfaa13422323f337d0c208c511f80d",
+      "digest": "sha256:acf6d2e8275309e0e6c9d69517b96472c3ef15268c6264a37662aee2f469a686",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -55,9 +55,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:19592680cd61d225b3d6164edefb4e9f4014df25d898da806ceebc0b34da3cbb",
-    "contract_catalog_digest": "sha256:64f8fed5edc56adfa81cad6842fb9cea77a5f5ed64b2f1bb89bdc1dc73601020",
-    "source_identity": "sha256:0d080dd535065c6d93348b908776538534781ed96ef27aa81511fa4af36ce584"
+    "source_identity": "sha256:bfef0ea0fde023fd2f683e0539b7dd046d4a3a39708ce266c5dee266ce00dfe2",
+    "artifact_set_digest": "sha256:092ea2aa14d2377d9f04d9675fbe817d2c748d165d81cb187a8a9498caaa9ad3",
+    "contract_catalog_digest": "sha256:c5e023a8128d97eed792ab2230fd16b8c24fe2d797ec614e18bab2b50ac3961a"
   },
   "migration": {
     "compatibility": "read_only",
@@ -72,26 +72,20 @@
   },
   "operation_catalog": [
     {
-      "contract_reference": "tobkiri.service.ai.provider.generate.v1",
-      "effect_ceiling": [
-        "capability:ai.provider.human_handoff",
-        "host:brokered-execution"
-      ],
       "operation_id": "rumi_human_operator_provider_pack.human-generate",
       "owner": "rumi_human_operator_provider_pack",
+      "contract_reference": "tobkiri.service.ai.provider.generate.v1",
       "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.generate",
-      "source_kind": "canonical_v4_contract"
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     },
     {
-      "contract_reference": "tobkiri.service.ai.provider.stream.v1",
-      "effect_ceiling": [
-        "capability:ai.provider.human_handoff",
-        "host:brokered-execution"
-      ],
       "operation_id": "rumi_human_operator_provider_pack.human-stream",
       "owner": "rumi_human_operator_provider_pack",
+      "contract_reference": "tobkiri.service.ai.provider.stream.v1",
       "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.stream",
-      "source_kind": "canonical_v4_contract"
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
     }
   ],
   "pack": {
@@ -103,39 +97,48 @@
   },
   "pack_api_version": "io.tobkiri.pack.v4",
   "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_human_operator_provider_pack/pack.v4.json",
+    "source_digest": "sha256:bfef0ea0fde023fd2f683e0539b7dd046d4a3a39708ce266c5dee266ce00dfe2",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:febe80e62cc5841ca3ca8a65f185958c1d86f6c09b53acdb025ee7f61185f196",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:0eb10e636e7d681bd276f03c841a08d2e55d9e40a79698c19c008385ffeeb4fa",
+    "normative": true,
     "evidence": [
       {
-        "digest": "sha256:0d080dd535065c6d93348b908776538534781ed96ef27aa81511fa4af36ce584",
-        "path": "schemas/pack_v4_catalog.v1.json",
-        "rule_id": "canonical-pack-v4-source-record"
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_human_operator_provider_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:bfef0ea0fde023fd2f683e0539b7dd046d4a3a39708ce266c5dee266ce00dfe2"
       }
-    ],
-    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
-    "generator_version": "1.0.0",
-    "normative": true,
-    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
-    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
-    "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:0d080dd535065c6d93348b908776538534781ed96ef27aa81511fa4af36ce584",
-    "source_kind": "migration",
-    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_human_operator_provider_pack"
+    ]
   },
   "provider_catalog": [
     {
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.generate",
+      "owner": "rumi_human_operator_provider_pack",
       "contract_reference": "tobkiri.service.ai.provider.generate.v1",
       "operations": [
         "rumi_human_operator_provider_pack.human-generate"
-      ],
-      "owner": "rumi_human_operator_provider_pack",
-      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.generate"
+      ]
     },
     {
+      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.stream",
+      "owner": "rumi_human_operator_provider_pack",
       "contract_reference": "tobkiri.service.ai.provider.stream.v1",
       "operations": [
         "rumi_human_operator_provider_pack.human-stream"
-      ],
-      "owner": "rumi_human_operator_provider_pack",
-      "provider_id": "rumi_human_operator_provider_pack.provider.human-operator.stream"
+      ]
     }
   ],
   "requirements": {

@@ -298,17 +298,20 @@ class ToolRegistry:
         return False
 
     def _load_pack_tools(self):
-        loaded = self._load_extension_tools()
+        loaded = self._load_first_party_memo_tools()
+        loaded += self._load_extension_tools()
         for pack_root in self._installed_pack_roots():
             loaded += self._load_tools_from_pack(pack_root)
         loaded += self._load_component_tools()
-        loaded += self._load_first_party_memo_tools()
         self._apply_extension_skill_metadata()
         return loaded
 
     def _load_first_party_memo_tools(self) -> int:
         loaded = 0
         for manifest in _first_party_memo_tool_manifests():
+            manifest["source_path"] = str(
+                self._pack_root() / "tools" / manifest["id"] / "manifest.json"
+            )
             tool_def = self._tool_from_manifest(manifest, source_pack_id="defaultspack")
             if tool_def is None:
                 continue
@@ -1006,235 +1009,20 @@ class ToolRegistry:
             return removed
 
 
-def _first_party_memo_tool_manifests():
-    base_properties = {
-        "folder_id": {
-            "type": "string",
-            "description": "Memo folder id or slug. Defaults to personalization.",
-        },
-        "metadata": {
-            "type": "object",
-            "description": "Optional non-sensitive memo metadata.",
-        },
-    }
+def _first_party_memo_tool_manifests() -> list[dict[str, Any]]:
+    """Read the same owned memo descriptors captured by the canonical catalog."""
+    root = Path(__file__).resolve().parents[2] / "tools"
+    identifiers = (
+        "memo_folder_upsert",
+        "memo_note_upsert",
+        "memo_search",
+        "memo_get",
+        "memo_list",
+        "memo_create_note",
+        "memo_search_notes",
+        "memo_list_notes",
+    )
     return [
-        {
-            "id": "memo_folder_upsert",
-            "category": "tool",
-            "description": "Create or update a durable local memo folder.",
-            "source_pack_id": "defaultspack",
-            "config": {
-                "tool_id": "memo_folder_upsert",
-                "name": "memo_folder_upsert",
-                "summary": "Create or update a Memory2 memo folder.",
-                "tool_category": "memory",
-                "action_type": "write",
-                "write_action": True,
-                "requires_approval": False,
-                "tags": ["memory", "memo", "folder"],
-                "execution": {"type": "handler", "handler": "blocks.memory.memo_folders:tool_upsert_folder"},
-                "schema": {
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "folder_id": {"type": "string"},
-                            "slug": {"type": "string"},
-                            "name": {"type": "string"},
-                            "description": {"type": "string"},
-                            "metadata": {"type": "object"},
-                        },
-                        "required": ["name"],
-                    }
-                },
-            },
-        },
-        {
-            "id": "memo_note_upsert",
-            "category": "tool",
-            "description": "Create or update a durable local memo note.",
-            "source_pack_id": "defaultspack",
-            "config": {
-                "tool_id": "memo_note_upsert",
-                "name": "memo_note_upsert",
-                "summary": "Create or update a Memory2 memo note.",
-                "tool_category": "memory",
-                "action_type": "write",
-                "write_action": True,
-                "requires_approval": False,
-                "tags": ["memory", "memo"],
-                "execution": {"type": "handler", "handler": "blocks.memory.memo_notes:tool_upsert_note"},
-                "schema": {
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            **base_properties,
-                            "note_id": {"type": "string", "description": "Existing note id to update."},
-                            "title": {"type": "string", "description": "Short memo title."},
-                            "content": {"type": "string", "description": "Memo note body."},
-                            "source": {"type": "string", "description": "Optional source label."},
-                        },
-                        "required": ["content"],
-                    }
-                },
-            },
-        },
-        {
-            "id": "memo_search",
-            "category": "tool",
-            "description": "Search durable local memo notes.",
-            "source_pack_id": "defaultspack",
-            "config": {
-                "tool_id": "memo_search",
-                "name": "memo_search",
-                "summary": "Search Memory2 memo notes.",
-                "tool_category": "memory",
-                "action_type": "read",
-                "tags": ["memory", "memo", "search"],
-                "execution": {"type": "handler", "handler": "blocks.memory.memo_notes:tool_search_notes"},
-                "schema": {
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            **base_properties,
-                            "query": {"type": "string", "description": "Search query."},
-                            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-                        },
-                        "required": ["query"],
-                    }
-                },
-            },
-        },
-        {
-            "id": "memo_get",
-            "category": "tool",
-            "description": "Get a durable local memo note.",
-            "source_pack_id": "defaultspack",
-            "config": {
-                "tool_id": "memo_get",
-                "name": "memo_get",
-                "summary": "Load a Memory2 memo note by id.",
-                "tool_category": "memory",
-                "action_type": "read",
-                "tags": ["memory", "memo"],
-                "execution": {"type": "handler", "handler": "blocks.memory.memo_notes:tool_get_note"},
-                "schema": {
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"note_id": {"type": "string", "description": "Memo note id."}},
-                        "required": ["note_id"],
-                    }
-                },
-            },
-        },
-        {
-            "id": "memo_list",
-            "category": "tool",
-            "description": "List durable local memo notes.",
-            "source_pack_id": "defaultspack",
-            "config": {
-                "tool_id": "memo_list",
-                "name": "memo_list",
-                "summary": "List Memory2 memo notes.",
-                "tool_category": "memory",
-                "action_type": "read",
-                "tags": ["memory", "memo"],
-                "execution": {"type": "handler", "handler": "blocks.memory.memo_notes:tool_list_notes"},
-                "schema": {
-                    "parameters": {
-                        "type": "object",
-                        "properties": {**base_properties, "limit": {"type": "integer", "minimum": 1, "maximum": 50}},
-                        "required": [],
-                    }
-                },
-            },
-        },
-        {
-            "id": "memo_create_note",
-            "category": "tool",
-            "description": "Create a durable local memo note.",
-            "source_pack_id": "defaultspack",
-            "config": {
-                "tool_id": "memo_create_note",
-                "name": "memo_create_note",
-                "summary": "Create a durable local memo note in Memory2.",
-                "tool_category": "memory",
-                "action_type": "write",
-                "write_action": True,
-                "requires_approval": False,
-                "tags": ["memory", "memo"],
-                "execution": {
-                    "type": "handler",
-                    "handler": "blocks.memory.memo_notes:tool_create_note",
-                },
-                "schema": {
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            **base_properties,
-                            "title": {"type": "string", "description": "Short memo title."},
-                            "content": {"type": "string", "description": "Memo note body."},
-                            "source": {"type": "string", "description": "Optional source label."},
-                        },
-                        "required": ["content"],
-                    }
-                },
-            },
-        },
-        {
-            "id": "memo_search_notes",
-            "category": "tool",
-            "description": "Search durable local memo notes.",
-            "source_pack_id": "defaultspack",
-            "config": {
-                "tool_id": "memo_search_notes",
-                "name": "memo_search_notes",
-                "summary": "Search Memory2 memo notes.",
-                "tool_category": "memory",
-                "action_type": "read",
-                "tags": ["memory", "memo", "search"],
-                "execution": {
-                    "type": "handler",
-                    "handler": "blocks.memory.memo_notes:tool_search_notes",
-                },
-                "schema": {
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            **base_properties,
-                            "query": {"type": "string", "description": "Search query."},
-                            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-                        },
-                        "required": ["query"],
-                    }
-                },
-            },
-        },
-        {
-            "id": "memo_list_notes",
-            "category": "tool",
-            "description": "List durable local memo notes.",
-            "source_pack_id": "defaultspack",
-            "config": {
-                "tool_id": "memo_list_notes",
-                "name": "memo_list_notes",
-                "summary": "List Memory2 memo notes.",
-                "tool_category": "memory",
-                "action_type": "read",
-                "tags": ["memory", "memo"],
-                "execution": {
-                    "type": "handler",
-                    "handler": "blocks.memory.memo_notes:tool_list_notes",
-                },
-                "schema": {
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            **base_properties,
-                            "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-                        },
-                        "required": [],
-                    }
-                },
-            },
-        },
+        json.loads((root / identifier / "manifest.json").read_text(encoding="utf-8"))
+        for identifier in identifiers
     ]

@@ -1,7 +1,10 @@
 import type { ToolPreviewItem } from "../components/ToolPreview";
 import type { CommandInvocationRequest } from "../generated/commandProtocolModels";
 import type { AuthorityApprovalScope } from "./authorityApproval";
+import { chatContinuationPacketMatchesTurn } from "./pendingChat";
 import { defaultspackUrlWithLocalAuthToken } from "./defaultspackLocalAuth";
+import { configureProvider, type ProviderConfigurationStatus } from "./providerConfiguration";
+import { openAuthorityApprovalWindow } from "./desktopApproval";
 
 const PANEL_CSRF_STORAGE_KEY = "rumi-panel-csrf";
 const DEFAULTSPACK_CSRF_STORAGE_KEY = "rumi-defaultspack-csrf";
@@ -34,6 +37,131 @@ export type ChatMessage = {
   tool_logs?: ToolLogEntry[] | null;
   model?: string | null;
 };
+
+export type SavedToolSelection = {
+  mode: "auto" | "manual" | "none";
+  include?: Array<string | ToolTarget>;
+  exclude?: Array<string | ToolTarget>;
+  scope?: ToolSelectionScope;
+  must_use?: boolean;
+};
+
+export function validSavedToolSelection(value: unknown): value is SavedToolSelection {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const selection = value as Record<string, unknown>;
+  if (Object.keys(selection).some((key) => !["mode", "include", "exclude", "scope", "must_use"].includes(key))
+    || !["auto", "manual", "none"].includes(String(selection.mode))
+    || (selection.scope !== undefined && !["turn", "conversation"].includes(String(selection.scope)))
+    || (selection.must_use !== undefined && typeof selection.must_use !== "boolean")) return false;
+  for (const key of ["include", "exclude"]) {
+    const items = selection[key] ?? [];
+    if (!Array.isArray(items) || items.length > 256) return false;
+    for (const item of items) {
+      if (typeof item === "string") {
+        if (!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/.test(item)) return false;
+      } else if (!item || typeof item !== "object" || Array.isArray(item)
+        || Object.keys(item).length !== 2 || !["tool", "service"].includes(item.kind)
+        || typeof item.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/.test(item.id)) return false;
+    }
+  }
+  return selection.mode !== "none" || (!selection.must_use && !(selection.include as unknown[] | undefined)?.length);
+}
+
+export type SavedTurnRequest = {
+  turn_id: string;
+  conversation_id: string;
+  conversation_revision: number;
+  content: string;
+  tool_selection?: SavedToolSelection;
+};
+
+export type SavedTurnResult = {
+  status: "completed" | "existing" | "reconciliation_required";
+  turn: {
+    id: string;
+    conversation_id: string;
+    status: string;
+    revision: number;
+    events?: Array<{
+      name?: string;
+      details?: Record<string, unknown>;
+    }>;
+    result_reference?: {
+      conversation_id: string;
+      conversation_revision: number;
+      user_message_id: string;
+      assistant_message_id: string;
+      outcome_digest: string;
+    };
+  };
+};
+
+export type SavedTurnEventSnapshot = {
+  turn_id: string;
+  conversation_id: string;
+  operation_id: string;
+  request_id: string;
+  status: string;
+  turn_revision: number;
+  events: Array<{
+    turn_id: string;
+    conversation_id: string;
+    operation_id: string;
+    request_id: string;
+    turn_revision: number;
+    sequence: number;
+    name: string;
+    at: number;
+    details: Record<string, unknown>;
+  }>;
+  terminal: null | {
+    turn_id: string;
+    conversation_id: string;
+    operation_id: string;
+    request_id: string;
+    turn_revision: number;
+    status: string;
+    result_reference?: SavedTurnResult["turn"]["result_reference"];
+    error?: unknown;
+  };
+  turn: SavedTurnResult["turn"];
+};
+
+export type ProjectStateRecord = {
+  id: string;
+  title: string;
+  workspace_id: string | null;
+  workspace_label: string | null;
+  workspace_root: string | null;
+  rumi_data_path: string | null;
+};
+
+export type ProjectStateSnapshot = {
+  namespace: "defaultspack.projects.v1";
+  revision: number;
+  projects: ProjectStateRecord[];
+  receipt?: string;
+  mutation_id?: string;
+  migration_digest?: string | null;
+  caller_session_digest?: string;
+};
+
+function isProjectStateSnapshot(value: unknown): value is ProjectStateSnapshot {
+  const record = objectRecord(value);
+  if (!record || record.namespace !== "defaultspack.projects.v1"
+    || !Number.isSafeInteger(record.revision) || Number(record.revision) < 0
+    || !Array.isArray(record.projects) || record.projects.length > 256) return false;
+  return record.projects.every((candidate) => {
+    const project = objectRecord(candidate);
+    if (!project || Object.keys(project).sort().join(",") !== [
+      "id", "rumi_data_path", "title", "workspace_id", "workspace_label", "workspace_root",
+    ].sort().join(",")) return false;
+    if (typeof project.id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(project.id)
+      || typeof project.title !== "string" || !project.title.trim()) return false;
+    return ["workspace_id", "workspace_label", "workspace_root", "rumi_data_path"]
+      .every((key) => project[key] === null || typeof project[key] === "string");
+  });
+}
 
 export type TokenizerInfo = {
   available?: boolean;
@@ -380,8 +508,32 @@ export type CodingApprovalDecision = {
   status: string;
   approved: boolean;
   token?: string;
+  resume_id?: string;
   expires_at?: number | null;
   reason?: string;
+};
+
+/**
+ * A Host-bound approval-continuation packet, projected with the same
+ * canonical identity model as saved-turn events: ``turn_id`` equals the
+ * exact saved turn the continuation belongs to (``""`` when the operation
+ * is not turn-bound), ``operation_id`` always equals ``turn_id``, and
+ * ``terminal`` is ``null`` while unsettled or a canonical terminal receipt.
+ */
+export type ChatContinuationPacket = {
+  turn_id: string;
+  conversation_id: string;
+  operation_id: string;
+  request_id: string;
+  terminal: null | {
+    turn_id: string;
+    conversation_id: string;
+    operation_id: string;
+    request_id: string;
+    status: "completed" | "failed" | "cancelled";
+    result_reference?: unknown;
+    error?: unknown;
+  };
 };
 
 export type AuthorityApprovalDecision = {
@@ -397,12 +549,58 @@ export type AuthorityApprovalDecision = {
   related_approvals?: AuthorityApprovalDecision[];
 };
 
+/**
+ * The only approval state that the interactive-approval Pack may return to a
+ * web surface.  Authority material intentionally is not representable here:
+ * the Host consumes the one-shot grant itself when it resumes the effect.
+ */
+export type InteractiveApprovalRequest = {
+  request_id: string;
+  request_snapshot_digest: string;
+  state: string;
+  expires_at: number;
+  typed_confirmation_required: boolean;
+  typed_confirmation_digest: string | null;
+  redacted_metadata: Record<string, string>;
+  target_principal_id?: string | null;
+  base_scope?: Record<string, unknown> | null;
+  max_uses?: number | null;
+  remaining_uses?: number | null;
+};
+
+/** A redacted list projection from the interactive-approval Pack. */
+export type InteractiveApprovalRequestsResponse = {
+  approvals: InteractiveApprovalRequest[];
+};
+
+/**
+ * The redacted client projection from the high-risk command Host adapter.
+ *
+ * ``invocation_id`` is an opaque client correlation value. In particular,
+ * effect identity, prepared plans, authority tokens, and command arguments
+ * are intentionally not representable after prepare.
+ */
+export type HighRiskCommandInvocation = {
+  invocation_id: string;
+  approval_request_id: string | null;
+  state: string;
+  expires_at: number | null;
+  redacted_metadata: Record<string, string>;
+};
+
+export type HighRiskCommandInvocationsResponse = {
+  invocations: HighRiskCommandInvocation[];
+};
+
 export type AuthorityUiOperator = {
   version: number;
   kind: "ui_operator";
   origin: string;
   window_label: string;
   request_id: string;
+  decision?: "approve" | "deny";
+  request_snapshot_digest?: string;
+  typed_confirmation_digest?: string | null;
   issued_at: number;
   expires_at: number;
   nonce: string;
@@ -1297,6 +1495,8 @@ export function conversationArtifactFileUrl(conversationId: string, path: string
 export type ModelProfile = {
   profile_id: string;
   display_name: string;
+  /** A saved routing record, not proof of credentials or Provider health. */
+  route_configured?: boolean;
   provider_id?: string;
   provider_display_name?: string;
   model_id?: string;
@@ -1333,6 +1533,20 @@ export type ModelProfile = {
   disambiguated_name?: string;
   same_model_across_providers_key?: string;
   local?: boolean;
+};
+
+export type RegisteredProviderConnection = {
+  provider_instance_id: string;
+  display_name: string;
+  credential_status: "configured" | "missing";
+  health_status: "verified" | "unverified";
+  reachability: "available" | "unavailable" | "unknown";
+  observed_at: number | null;
+};
+
+export type ProviderConnectionSnapshot = {
+  registry_revision: number;
+  connections: RegisteredProviderConnection[];
 };
 
 export type ModelCandidate = {
@@ -1413,6 +1627,7 @@ export type ConversationSteerResponse =
 
 export type Conversation = {
   id: string;
+  conversation_revision?: number;
   title: string;
   created_at: number;
   updated_at: number;
@@ -2268,13 +2483,15 @@ export function isUICatalog(value: unknown): value is UICatalog {
 /** Validate the Pack v4 settings response used during startup. */
 export function isUiSettingsResponse(
   value: unknown,
-): value is { sections: SettingsSection[]; values: Record<string, Record<string, unknown>> } {
+): value is { sections: SettingsSection[]; values: Record<string, Record<string, unknown>>; document_revision: number } {
   const record = objectRecord(value);
   return Boolean(
     record
     && Array.isArray(record.sections)
     && record.sections.every(isSettingsSectionShape)
     && isRecordOfRecords(record.values)
+    && Number.isSafeInteger(record.document_revision)
+    && Number(record.document_revision) >= 0
   );
 }
 
@@ -2298,6 +2515,50 @@ export function isModelProfilesResponse(
     && Number.isInteger(record.count)
     && record.count >= 0
   );
+}
+
+function isProviderConnectionSnapshot(
+  value: unknown,
+): value is {
+  revision: number;
+  providers: Array<{
+    provider_instance_id: string;
+    display_name: string;
+    enabled: boolean;
+    credential_status: "configured" | "missing";
+    health_status: "verified" | "unverified";
+    reachability: "available" | "unavailable" | "unknown";
+    observed_at: number | null;
+  }>;
+} {
+  const record = objectRecord(value);
+  if (
+    !record
+    || Object.keys(record).length !== 2
+    || !Number.isSafeInteger(record.revision)
+    || Number(record.revision) < 0
+    || !Array.isArray(record.providers)
+  ) {
+    return false;
+  }
+  return record.providers.every((provider) => {
+    const item = objectRecord(provider);
+    return Boolean(
+      item
+      && Object.keys(item).length === 7
+      && hasNonEmptyString(item, "provider_instance_id")
+      && hasNonEmptyString(item, "display_name")
+      && typeof item.enabled === "boolean"
+      && (item.credential_status === "configured"
+        || item.credential_status === "missing")
+      && (item.health_status === "verified"
+        || item.health_status === "unverified")
+      && ["available", "unavailable", "unknown"].includes(String(item.reachability))
+      && (item.observed_at === null
+        || (typeof item.observed_at === "number"
+          && Number.isFinite(item.observed_at)))
+    );
+  });
 }
 
 function nonEmptyString(value: unknown): string {
@@ -2471,11 +2732,18 @@ export type ChatToolStreamEvent = ChatActivityEvent & {
 };
 
 export type ChatStreamEvent =
-  | { type: "delta"; delta: string }
-  | { type: "thinking_delta"; delta: string }
-  | { type: "message" | "done" | "user_message"; message?: ChatMessage }
-  | { type: "error"; error?: ChatStreamError }
-  | ChatToolStreamEvent;
+  ({
+    run_id?: string;
+    conversation_id?: string;
+    chat_operation_id?: string;
+    seq?: number;
+  } & (
+    | { type: "delta"; delta: string }
+    | { type: "thinking_delta"; delta: string }
+    | { type: "message" | "done" | "user_message"; message?: ChatMessage }
+    | { type: "error"; error?: ChatStreamError }
+    | ChatToolStreamEvent
+  ));
 
 type ChatStreamHandlers = {
   onEvent?: (event: ChatStreamEvent) => void;
@@ -2519,28 +2787,39 @@ export function normalizeChatStreamEvent(value: unknown): ChatStreamEvent | null
   const rawType = streamString(record, "type").trim();
   if (!rawType) return null;
   const data = streamRecord(record.data);
+  const identity = {
+    run_id: streamString(record, "run_id") || undefined,
+    conversation_id: streamString(record, "conversation_id") || undefined,
+    chat_operation_id: streamString(record, "chat_operation_id") || undefined,
+    seq: typeof record.seq === "number" ? record.seq : undefined,
+  };
   const delta = streamString(data, "delta") || streamString(record, "delta") || streamString(data, "content") || streamString(record, "content");
 
   if (rawType === "delta" || rawType === "content_delta") {
-    return { type: "delta", delta };
+    return { type: "delta", delta, ...identity };
   }
   if (rawType === "thinking_delta") {
-    return { type: "thinking_delta", delta };
+    return { type: "thinking_delta", delta, ...identity };
   }
   if (rawType === "user_message" || rawType === "user_message_committed") {
-    return { type: "user_message", message: streamMessageValue(record, data) };
+    return { type: "user_message", message: streamMessageValue(record, data), ...identity };
   }
   if (rawType === "message" || rawType === "assistant_message_completed") {
-    return { type: "message", message: streamMessageValue(record, data) };
+    return { type: "message", message: streamMessageValue(record, data), ...identity };
   }
   if (rawType === "done" || rawType === "stream_end") {
-    return { type: "done", message: streamMessageValue(record, data) };
+    return { type: "done", message: streamMessageValue(record, data), ...identity };
   }
   if (rawType === "error" || rawType === "cancelled") {
-    return { type: "error", error: rawType === "cancelled" ? "cancelled" : streamErrorValue(record, data) };
+    return { type: "error", error: rawType === "cancelled" ? "cancelled" : streamErrorValue(record, data), ...identity };
   }
 
-  const merged: Record<string, unknown> = { ...record, ...data, type: rawType };
+  const merged: Record<string, unknown> = {
+    ...record,
+    ...data,
+    type: rawType,
+    ...identity,
+  };
   delete merged.data;
   delete merged.schema_version;
   return merged as ChatStreamEvent;
@@ -2915,6 +3194,21 @@ export function explainDefaultspackApiError(
 
 type DefaultspackApiPath = string | DefaultspackContractRoute;
 
+/** Process reachability is distinct from verified Profile execution readiness. */
+export type RuntimeHealth = {
+  status: string;
+  pack?: string;
+  ts?: string;
+  runtime_ready?: boolean;
+  runtime_status?: string;
+  active_profile_ready?: boolean;
+  launch_ready?: boolean;
+  profile_id?: string;
+  profile_revision?: string;
+  activation_id?: string;
+  plan_digest?: string;
+};
+
 type ResponseShapeGuard<T> = (value: unknown) => value is T;
 
 function apiPathLabel(path: DefaultspackApiPath): string {
@@ -2942,6 +3236,29 @@ async function request<T>(
       throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
     }
     throw new Error("defaultspack API returned an invalid JSON response");
+  }
+
+  const hostEnvelope = objectRecord(payload);
+  if (hostEnvelope && typeof hostEnvelope.success === "boolean") {
+    if (!response.ok || hostEnvelope.success !== true || hostEnvelope.error != null) {
+      throw new Error(explainDefaultspackApiError(
+        response.status,
+        typeof hostEnvelope.error === "string" ? { message: hostEnvelope.error } : undefined,
+        response.statusText,
+      ));
+    }
+    if (!("data" in hostEnvelope)) {
+      throw invalidApiContractResponse(path, "missing Host data envelope");
+    }
+    // Host-owned reads return data directly; Pack operations may additionally
+    // carry their own status envelope. Neither layer may hide a failure.
+    payload = hostEnvelope.data;
+    if (!isApiErrorEnvelope(payload) && !isApiOkEnvelope(payload)) {
+      if (responseShape && !responseShape(payload)) {
+        throw invalidApiContractResponse(path, "data does not match the endpoint schema");
+      }
+      return payload as T;
+    }
   }
 
   if (isApiErrorEnvelope(payload)) {
@@ -3058,6 +3375,7 @@ function createChatOperationId(): string {
 
 async function readStreamEvents(
   response: Response,
+  expected: { conversationId: string; chatOperationId: string },
   handlers: ChatStreamHandlers = {},
 ): Promise<ChatMessage | null> {
   if (!response.body) {
@@ -3070,6 +3388,8 @@ async function readStreamEvents(
   let partialText = "";
   let thinkingText = "";
   let sawActivity = false;
+  let streamRunId = "";
+  let lastSequence = 0;
 
   const streamErrorMessage = (value: ChatStreamError | undefined): string => {
     if (typeof value === "string" && value.trim()) return value;
@@ -3097,6 +3417,27 @@ async function readStreamEvents(
       event = normalized;
     } catch {
       throw new Error("defaultspack stream returned a malformed event");
+    }
+    if (event.conversation_id !== expected.conversationId
+      || event.chat_operation_id !== expected.chatOperationId) {
+      throw new Error("defaultspack stream returned an event for a different chat operation");
+    }
+    if (event.run_id) {
+      if (streamRunId && event.run_id !== streamRunId) {
+        throw new Error("defaultspack stream changed run identity");
+      }
+      streamRunId = event.run_id;
+    } else if (event.type !== "error") {
+      throw new Error("defaultspack stream returned an event without run identity");
+    }
+    if (!Number.isSafeInteger(event.seq) || Number(event.seq) <= lastSequence) {
+      throw new Error("defaultspack stream returned an invalid event sequence");
+    }
+    lastSequence = Number(event.seq);
+    if ("message" in event && event.message && typeof event.message === "object"
+      && "conversation_id" in event.message
+      && event.message.conversation_id !== expected.conversationId) {
+      throw new Error("defaultspack stream returned a message for a different conversation");
     }
     handlers.onEvent?.(event);
     if (event.type === "delta") {
@@ -3220,6 +3561,26 @@ async function nativeCodingApprovalOperator(
   });
 }
 
+async function nativeCodingApprovalOperatorForDigest(
+  requestId: string,
+  expectedDigest: string,
+): Promise<Record<string, unknown>> {
+  if (!/^[a-f0-9]{64}$/i.test(expectedDigest)) {
+    throw new Error("The coding approval snapshot is unavailable.");
+  }
+  const tauri = (globalThis as typeof globalThis & {
+    __TAURI__?: { core?: { invoke?: (command: string, args?: Record<string, unknown>) => Promise<Record<string, unknown>> } };
+  }).__TAURI__;
+  if (typeof tauri?.core?.invoke !== "function") {
+    throw new Error("Coding approval requires the focused Tobkiri Launcher window.");
+  }
+  return tauri.core.invoke("coding_approval_operator", {
+    requestId,
+    expectedDigest,
+    decision: "approve",
+  });
+}
+
 export const api = {
   listConversations(options?: ConversationListOptions) {
     return request<{ conversations: Conversation[]; total: number }>(
@@ -3244,10 +3605,10 @@ export const api = {
   },
 
   getConversation(id: string) {
-    return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`));
+    return request<Conversation>(withQuery(defaultspackContractRoute("api/chat/conversation"), { conversation_id: id }));
   },
 
-  createConversation(options?: {
+  async createConversation(options?: {
     model?: string;
     system_prompt_id?: string | null;
     agent_id?: string | null;
@@ -3257,22 +3618,42 @@ export const api = {
     group_id?: string | null;
     metadata?: Record<string, unknown>;
   }) {
+    const snapshot = await request<{ store_revision: number }>(
+      defaultspackContractRoute("api/chat/conversations"),
+    );
+    if (!Number.isSafeInteger(snapshot.store_revision) || snapshot.store_revision < 0) {
+      throw new Error("Conversation store returned an invalid revision");
+    }
+    // Bind identity and revision once. Transport retries must retain this body;
+    // a stale response must not trigger another create with a fresh identity.
+    const body = {
+      ...options,
+      id: crypto.randomUUID(),
+      expected_revision: snapshot.store_revision,
+    };
     return request<Conversation>(defaultspackContractRoute("api/chat/conversations"), {
       method: "POST",
-      body: JSON.stringify(options ?? {}),
+      body: JSON.stringify(body),
     });
   },
 
-  updateConversation(id: string, updates: Partial<Conversation>) {
-    return request<Conversation>(defaultspackContractRoute(`api/chat/conversations/${id}`), {
+  async updateConversation(id: string, updates: Partial<Conversation>, revision: number | undefined) {
+    if (!Number.isSafeInteger(revision) || (revision ?? 0) < 1) {
+      throw new Error("Refresh the conversation before updating it: revision is unavailable");
+    }
+    return request<Conversation>(defaultspackContractRoute("api/chat/conversation"), {
       method: "PUT",
-      body: JSON.stringify({ updates }),
+      body: JSON.stringify({ conversation_id: id, updates, expected_conversation_revision: revision }),
     });
   },
 
-  deleteConversation(id: string) {
-    return request<{ deleted: boolean }>(defaultspackContractRoute(`api/chat/conversations/${id}`), {
+  async deleteConversation(id: string, revision: number | undefined) {
+    if (!Number.isSafeInteger(revision) || (revision ?? 0) < 1) {
+      throw new Error("Refresh the conversation before deleting it: revision is unavailable");
+    }
+    return request<{ deleted: boolean }>(defaultspackContractRoute("api/chat/conversation"), {
       method: "DELETE",
+      body: JSON.stringify({ conversation_id: id, expected_conversation_revision: revision }),
     });
   },
 
@@ -3389,6 +3770,117 @@ export const api = {
     });
   },
 
+  async getSavedTurn(turnId: string, conversationId: string): Promise<SavedTurnResult["turn"]> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for reconciliation.");
+    }
+    const turn = await request<SavedTurnResult["turn"]>(
+      withQuery(defaultspackContractRoute("api/chat/turn"), { turn_id: turnId }),
+      { cache: "no-store" },
+    );
+    if (turn?.id !== turnId || turn.conversation_id !== conversationId) {
+      throw new Error("Saved turn read does not match the pending conversation.");
+    }
+    return turn;
+  },
+
+  async getSavedTurnEvents(turnId: string, conversationId: string): Promise<SavedTurnEventSnapshot> {
+    const stableId = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
+    if (!stableId.test(turnId) || !stableId.test(conversationId)) {
+      throw new Error("Stable turn and conversation IDs are required for event reads.");
+    }
+    const snapshot = await request<SavedTurnEventSnapshot>(
+      withQuery(defaultspackContractRoute("api/chat/turn/events"), {
+        turn_id: turnId,
+        conversation_id: conversationId,
+      }),
+      { cache: "no-store" },
+    );
+    const matches = (value: {
+      turn_id?: string; conversation_id?: string; operation_id?: string;
+      request_id?: string; turn_revision?: number;
+    }) => value.turn_id === turnId && value.conversation_id === conversationId
+      && value.operation_id === turnId && stableId.test(value.request_id ?? "")
+      && Number.isSafeInteger(value.turn_revision) && (value.turn_revision ?? 0) >= 1;
+    if (!snapshot || !matches(snapshot)
+      || snapshot.turn.id !== turnId || snapshot.turn.conversation_id !== conversationId
+      || snapshot.turn.revision !== snapshot.turn_revision
+      || snapshot.turn.status !== snapshot.status
+      || !Array.isArray(snapshot.events)
+      || snapshot.events.some((event, sequence) => !matches(event)
+        || event.sequence !== sequence || !event.name.startsWith("turn."))
+      || (snapshot.terminal !== null && (!matches(snapshot.terminal)
+        || snapshot.terminal.status !== snapshot.status
+        || !["completed", "failed", "cancelled"].includes(snapshot.status)))
+      || (snapshot.terminal === null && ["completed", "failed", "cancelled"].includes(snapshot.status))) {
+      throw new Error("Saved turn events do not match the pending operation.");
+    }
+    return snapshot;
+  },
+
+  async reconcileSavedTurn(turnId: string, conversationId: string): Promise<SavedTurnResult["turn"]> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for reconciliation.");
+    }
+    const result = await request<SavedTurnResult>(defaultspackContractRoute("api/chat/turn/reconcile"), {
+      method: "POST",
+      body: JSON.stringify({ turn_id: turnId }),
+    });
+    if (!result || !["completed", "existing", "reconciliation_required"].includes(result.status)
+      || result.turn?.id !== turnId || result.turn.conversation_id !== conversationId) {
+      throw new Error("Saved turn reconciliation does not match the pending conversation.");
+    }
+    return result.turn;
+  },
+
+  async stopSavedTurn(turnId: string): Promise<{
+    status: "cancellation_requested" | "stopped_confirmed";
+    turn_id: string;
+    stopped: boolean;
+  }> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(turnId)) {
+      throw new Error("A stable turn ID is required for stopping.");
+    }
+    const result = await request<{ status: string; turn_id: string; stopped: boolean }>(
+      defaultspackContractRoute("api/chat/turn/stop"), {
+        method: "POST", body: JSON.stringify({ turn_id: turnId }),
+      },
+    );
+    const isRequested = result?.status === "cancellation_requested" && result.stopped === false;
+    const isStopped = result?.status === "stopped_confirmed" && result.stopped === true;
+    if ((!isRequested && !isStopped) || result.turn_id !== turnId) {
+      throw new Error("Saved turn cancellation receipt does not match the pending operation.");
+    }
+    return result as {
+      status: "cancellation_requested" | "stopped_confirmed";
+      turn_id: string;
+      stopped: boolean;
+    };
+  },
+
+  async startSavedTurn(value: SavedTurnRequest): Promise<SavedTurnResult> {
+    const input = { ...value };
+    const fields = ["turn_id", "conversation_id", "conversation_revision", "content"];
+    if (Object.keys(input).some((key) => ![...fields, "tool_selection"].includes(key)) || fields.some((key) => !(key in input))
+      || typeof input.turn_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.turn_id)
+      || typeof input.conversation_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(input.conversation_id)
+      || !Number.isSafeInteger(input.conversation_revision) || input.conversation_revision < 1
+      || (input.tool_selection !== undefined && !validSavedToolSelection(input.tool_selection))
+      || typeof input.content !== "string" || !input.content.trim()
+      || new TextEncoder().encode(JSON.stringify(input)).length > 60 * 1024) {
+      throw new Error("Saved conversation request is invalid or requires unsupported context.");
+    }
+    const result = await request<SavedTurnResult>(defaultspackContractRoute("api/chat/turn"), {
+      method: "POST",
+      body: JSON.stringify({ request: input }),
+    });
+    if (!result || !["completed", "existing", "reconciliation_required"].includes(result.status)
+      || result.turn?.id !== input.turn_id || result.turn.conversation_id !== input.conversation_id) {
+      throw new Error("Saved conversation outcome is unconfirmed; do not resend automatically.");
+    }
+    return result;
+  },
+
   sendMessage(
     conversationId: string,
     text: string,
@@ -3409,9 +3901,11 @@ export const api = {
     options?: SendMessageOptions,
     handlers?: ChatStreamHandlers,
   ) {
+    const body = messageRequestBody(text, options);
+    const chatOperationId = String(body.idempotency_key ?? "");
     const response = await defaultspackApiFetch(defaultspackContractRoute(`api/chat/conversations/${conversationId}/stream`), {
       method: "POST",
-      body: JSON.stringify(messageRequestBody(text, options)),
+      body: JSON.stringify(body),
       signal: handlers?.signal,
     });
 
@@ -3429,10 +3923,13 @@ export const api = {
       if (!response.ok) {
         throw new Error(explainDefaultspackApiError(response.status, undefined, response.statusText));
       }
+      if (payload.data.conversation_id !== conversationId) {
+        throw new Error("defaultspack API returned a message for a different conversation");
+      }
       handlers?.onMessage?.(payload.data);
       return payload.data;
     }
-    return readStreamEvents(response, handlers);
+    return readStreamEvents(response, { conversationId, chatOperationId }, handlers);
   },
 
   stopMessage(conversationId: string) {
@@ -3446,9 +3943,71 @@ export const api = {
   },
 
   listModelProfiles() {
-    return request<{ profiles: ModelProfile[]; count: number }>(defaultspackContractRoute("api/ai/profiles"), {
+    return request<{ profiles: ModelProfile[]; count: number; registry_revision?: number }>(defaultspackContractRoute("api/ai/profiles"), {
       cache: "no-store",
     }, isModelProfilesResponse);
+  },
+
+  async listProviderConnections(): Promise<ProviderConnectionSnapshot> {
+    const snapshot = await request<{
+      revision: number;
+      providers: Array<{
+        provider_instance_id: string;
+        display_name: string;
+        enabled: boolean;
+        credential_status: "configured" | "missing";
+        health_status: "verified" | "unverified";
+        reachability: "available" | "unavailable" | "unknown";
+        observed_at: number | null;
+      }>;
+    }>(defaultspackContractRoute("api/connections/status"), {
+      cache: "no-store",
+    }, isProviderConnectionSnapshot);
+    return {
+      registry_revision: snapshot.revision,
+      connections: snapshot.providers.flatMap((provider) => {
+        if (!provider.enabled) return [];
+        return [{
+          provider_instance_id: provider.provider_instance_id,
+          display_name: provider.display_name,
+          credential_status: provider.credential_status,
+          health_status: provider.health_status,
+          reachability: provider.reachability,
+          observed_at: provider.observed_at,
+        }];
+      }),
+    };
+  },
+
+  async createModelProfile(input: {
+    model_profile_id: string;
+    model_id: string;
+    provider_instance_id: string;
+    display_name: string;
+    provider_registry_revision: number;
+  }) {
+    const current = await api.listModelProfiles();
+    const matches = (profile: ModelProfile) => profile.profile_id === input.model_profile_id
+      && profile.model_id === input.model_id && profile.provider_id === input.provider_instance_id
+      && profile.display_name === input.display_name;
+    const existing = current.profiles.find((profile) => profile.profile_id === input.model_profile_id);
+    if (existing) {
+      if (!matches(existing)) {
+        throw new Error("同じモデル設定IDが既に存在します。別のIDを指定してください。");
+      }
+    }
+    if (!Number.isInteger(current.registry_revision) || current.registry_revision! < 0) {
+      throw new Error("モデル設定のrevisionを確認できません。");
+    }
+    const saved = await request<{ profiles: ModelProfile[]; count: number }>(
+      defaultspackContractRoute("api/ai/profiles"), {
+        method: "POST", body: JSON.stringify({ ...input, expected_revision: current.registry_revision }),
+      }, isModelProfilesResponse,
+    );
+    if (saved.profiles.length !== 1 || !matches(saved.profiles[0])) {
+      throw new Error("モデル設定の保存結果が一致しません。再送せず一覧を確認してください。");
+    }
+    return saved.profiles[0];
   },
 
   searchModels(filters: Record<string, unknown>) {
@@ -3466,12 +4025,13 @@ export const api = {
   },
 
   health() {
-    return request<{ status: string; pack: string; ts: string }>(defaultspackContractRoute("api/health"));
+    // Process health is Host-owned, not a Defaultspack operation contract.
+    return request<RuntimeHealth>("/health", { cache: "no-store" });
   },
 
   uiCatalog() {
     return request<UICatalog>(
-      defaultspackContractRoute("api/ui/catalog?include_skills=true"),
+      defaultspackContractRoute("api/ui/full-catalog"),
       undefined,
       isUICatalog,
     );
@@ -3479,15 +4039,62 @@ export const api = {
 
   uiSettings(options: { full?: boolean } = {}) {
     const query = options.full ? "?full=true" : "";
-    return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>> }>(
+    return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>>; document_revision: number }>(
       defaultspackContractRoute(`api/ui/settings${query}`),
       { cache: "no-store" },
       isUiSettingsResponse,
     );
   },
 
+  async updateModelState(kind: "preferred_model" | "thinking_level" | "deepthink_enabled", value: unknown) {
+    const snapshot = await request<{ namespace: string; revision: number; values: Record<string, unknown> }>(
+      defaultspackContractRoute("api/ui/model-state"), { cache: "no-store" },
+      (candidate): candidate is { namespace: string; revision: number; values: Record<string, unknown> } => {
+        const record = objectRecord(candidate);
+        return typeof record?.namespace === "string" && Number.isSafeInteger(record.revision)
+          && (record.revision as number) >= 0 && objectRecord(record.values) !== null;
+      },
+    );
+    const mutationId = crypto.randomUUID();
+    return request<{ kind: string; value: unknown; revision: number; mutation_id: string; receipt: string }>(
+      defaultspackContractRoute("api/ui/model-state"), {
+        method: "PUT",
+        body: JSON.stringify({ kind, value, expected_revision: snapshot.revision, mutation_id: mutationId }),
+      },
+      (candidate): candidate is { kind: string; value: unknown; revision: number; mutation_id: string; receipt: string } => {
+        const record = objectRecord(candidate);
+        return record?.kind === kind && record.value === value && record.mutation_id === mutationId
+          && record.revision === snapshot.revision + 1
+          && typeof record.receipt === "string" && /^sha256:[0-9a-f]{64}$/.test(record.receipt);
+      },
+    );
+  },
+
   uiCommands() {
     return request<{ commands: ComposerCommandItem[] }>(defaultspackContractRoute("api/ui/commands"));
+  },
+
+  projects() {
+    return request<ProjectStateSnapshot>(defaultspackContractRoute("api/projects"), {
+      cache: "no-store",
+    }, isProjectStateSnapshot);
+  },
+
+  replaceProjects(input: {
+    projects: ProjectStateRecord[];
+    expected_revision: number;
+    mutation_id: string;
+    migration_digest?: string;
+  }) {
+    return request<ProjectStateSnapshot>(defaultspackContractRoute("api/projects"), {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }, (value): value is ProjectStateSnapshot => {
+      const record = objectRecord(value);
+      return isProjectStateSnapshot(value)
+        && typeof record?.receipt === "string" && /^sha256:[0-9a-f]{64}$/.test(record.receipt)
+        && record.mutation_id === input.mutation_id;
+    });
   },
 
   commandProtocolCatalog() {
@@ -3652,6 +4259,63 @@ export const api = {
     };
   },
 
+  prepareHighRiskCommand(payload: {
+    invocation_id: string;
+    command_ref: "terminal" | "commit" | "push" | "patch" | "restore";
+    arguments: Record<string, unknown>;
+    presentation: { title: string; summary: string };
+  }) {
+    return request<HighRiskCommandInvocation>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "prepare", ...payload }),
+      },
+    );
+  },
+
+  listHighRiskCommands() {
+    return request<HighRiskCommandInvocationsResponse>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "list_pending" }),
+        cache: "no-store",
+      },
+    );
+  },
+
+  highRiskCommandStatus(invocationId: string) {
+    return request<HighRiskCommandInvocation>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "status", invocation_id: invocationId }),
+        cache: "no-store",
+      },
+    );
+  },
+
+  resumeHighRiskCommand(invocationId: string) {
+    return request<HighRiskCommandInvocation>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "resume", invocation_id: invocationId }),
+      },
+    );
+  },
+
+  cancelHighRiskCommand(invocationId: string) {
+    return request<HighRiskCommandInvocation>(
+      defaultspackContractRoute("api/command-protocol/v1/high-risk"),
+      {
+        method: "POST",
+        body: JSON.stringify({ phase: "cancel", invocation_id: invocationId }),
+      },
+    );
+  },
+
   resumeResolvedUiCommand(payload: {
     command: string;
     approval_token?: string;
@@ -3728,18 +4392,36 @@ export const api = {
     });
   },
 
-  updateUiSettings(values: Record<string, Record<string, unknown>>) {
-    return request<{ values: Record<string, Record<string, unknown>> }>(defaultspackContractRoute("api/ui/settings"), {
+  updateUiSettingsPatches(
+    patches: Array<{ section: string; field: string; value: unknown }>,
+    expectedRevision: number,
+  ) {
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || patches.length === 0) {
+      throw new Error("Refresh Settings before saving changes.");
+    }
+    const sections = new Map<string, Map<string, unknown>>();
+    for (const { section, field, value } of patches) {
+      if (value === undefined) throw new Error("Settings patches require a value.");
+      const fields = sections.get(section) ?? new Map<string, unknown>();
+      fields.set(field, value);
+      sections.set(section, fields);
+    }
+    const changes = Object.fromEntries([...sections].map(([section, fields]) => [section, Object.fromEntries(fields)]));
+    type Acknowledgement = { values: Record<string, Record<string, unknown>>; document_revision: number };
+    const validAcknowledgement = (value: unknown): value is Acknowledgement => {
+      const record = objectRecord(value);
+      if (!record || !Number.isSafeInteger(record.document_revision) || record.document_revision !== expectedRevision + 1 || !isRecordOfRecords(record.values)) return false;
+      const values = record.values as Acknowledgement["values"];
+      return Object.keys(values).length === sections.size && [...sections].every(([section, fields]) => (
+        Object.prototype.hasOwnProperty.call(values, section)
+        && Object.keys(values[section]).length === fields.size
+        && [...fields].every(([field, submitted]) => Object.prototype.hasOwnProperty.call(values[section], field) && values[section][field] === submitted)
+      ));
+    };
+    return request<Acknowledgement>(defaultspackContractRoute("api/ui/settings"), {
       method: "PUT",
-      body: JSON.stringify({ values }),
-    });
-  },
-
-  updateUiSettingsPatches(patches: Array<{ section: string; field: string; value: unknown }>) {
-    return request<{ values: Record<string, Record<string, unknown>> }>(defaultspackContractRoute("api/ui/settings"), {
-      method: "PUT",
-      body: JSON.stringify({ patches }),
-    });
+      body: JSON.stringify({ changes, expected_revision: expectedRevision }),
+    }, validAcknowledgement);
   },
 
   listContinuityNodes() {
@@ -3845,7 +4527,7 @@ export const api = {
     });
   },
 
-  reportClientEvent(payload: {
+  async reportClientEvent(payload: {
     source?: string;
     category?: string;
     level?: string;
@@ -3854,13 +4536,28 @@ export const api = {
     conversation_id?: string;
     detail?: unknown;
   }) {
-    return request<{ recorded: boolean; diagnostic_id?: string }>(defaultspackContractRoute("api/ui/client-events"), {
+    const snapshot = await request<{ namespace: string; revision: number; record_count: number }>(
+      defaultspackContractRoute("api/ui/recovery-diagnostics"), { cache: "no-store" },
+      (candidate): candidate is { namespace: string; revision: number; record_count: number } => {
+        const record = objectRecord(candidate);
+        return typeof record?.namespace === "string" && Number.isSafeInteger(record.revision)
+          && (record.revision as number) >= 0 && Number.isSafeInteger(record.record_count);
+      },
+    );
+    const mutationId = crypto.randomUUID();
+    const acknowledgement = await request<{ recorded: boolean; diagnostic_id?: string; revision: number; mutation_id: string; receipt: string }>(defaultspackContractRoute("api/ui/client-events"), {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ diagnostic: payload, expected_revision: snapshot.revision, mutation_id: mutationId }),
+    }, (candidate): candidate is { recorded: boolean; diagnostic_id?: string; revision: number; mutation_id: string; receipt: string } => {
+      const record = objectRecord(candidate);
+      return record?.recorded === true && typeof record.diagnostic_id === "string" && Boolean(record.diagnostic_id)
+        && record.revision === snapshot.revision + 1 && record.mutation_id === mutationId
+        && typeof record.receipt === "string" && /^sha256:[0-9a-f]{64}$/.test(record.receipt);
     });
+    return { recorded: acknowledgement.recorded, diagnostic_id: acknowledgement.diagnostic_id };
   },
 
-  saveProviderApiKey(providerId: string, value: string, options?: {
+  async saveProviderApiKey(providerId: string, value: string, options?: {
     apiId?: string;
     name?: string;
     baseUrl?: string;
@@ -3869,22 +4566,54 @@ export const api = {
     notes?: string;
     quotaLabel?: string;
     kind?: string;
+    protocol?: "openai-compatible" | "anthropic";
   }) {
-    return request<{ provider_id: string; api_id?: string; name?: string; configured: boolean; kind?: string; model_availability?: ModelAvailabilityAfterKeySave }>(defaultspackContractRoute("api/ai/provider-key"), {
-      method: "POST",
-      body: JSON.stringify({
-        provider_id: providerId,
-        value,
-        api_id: options?.apiId,
-        name: options?.name,
-        base_url: options?.baseUrl,
-        allowed_models: options?.allowedModels,
-        default_model: options?.defaultModel,
-        notes: options?.notes,
-        quota_label: options?.quotaLabel,
-        kind: options?.kind,
-      }),
+    const protocol = options?.protocol ?? (
+      providerId === "anthropic" ? "anthropic"
+        : ["openai", "openai_compatible", "deepseek", "openrouter"].includes(providerId)
+          ? "openai-compatible" : null
+    );
+    if (!protocol || options?.kind === "custom") {
+      throw new Error("このProviderの設定には対応するLLM protocolの選択が必要です。");
+    }
+    if (options?.allowedModels?.length || options?.defaultModel || options?.notes || options?.quotaLabel) {
+      throw new Error("モデル・メモ・quotaの同時保存は未対応です。接続設定とは別に設定してください。");
+    }
+    const connection = `${providerId}.${options?.apiId || "default"}`;
+    const endpoint = options?.baseUrl?.trim() ?? "";
+    let url: URL;
+    try { url = new URL(endpoint); } catch { throw new Error("HTTPSのProvider接続先URLを入力してください。"); }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(connection)
+      || !value || /[\x00-\x1f\x7f]/.test(value) || value.length > 16384
+      || url.protocol !== "https:" || url.username || url.password || url.search || url.hash
+      || /\s/.test(endpoint) || endpoint.length > 2048 || endpoint.includes(value) || connection.includes(value)) {
+      throw new Error("Provider接続名・HTTPS URL・APIキーの入力を確認してください。");
+    }
+    const post = (body: object) => request<ProviderConfigurationStatus>(
+      defaultspackContractRoute("api/ai/provider-key"), {
+        method: "POST", body: JSON.stringify(body),
+      },
+    );
+    await configureProvider({
+      connection_name: connection, protocol, endpoint, key_value: value,
+    }, {
+      storage: window.sessionStorage,
+      prepare: (configuration, correlation_id) => post({ phase: "prepare", effect_kind: "provider_configure", request: configuration, correlation_id }),
+      lookup: (correlation_id) => post({ phase: "lookup", effect_kind: "provider_configure", correlation_id }),
+      status: (effect_id) => post({ phase: "status", effect_id }),
+      resume: (effect_id) => post({ phase: "resume", effect_id }),
+      cancel: (effect_id) => post({ phase: "cancel", effect_id }),
+      approval: (id) => api.getInteractiveApproval(id),
+      openApproval: openAuthorityApprovalWindow,
+      pause: () => new Promise((resolve) => window.setTimeout(resolve, 1000)),
     });
+    return {
+      provider_id: providerId, api_id: options?.apiId ?? "default", configured: true,
+      model_availability: {
+        status: "route_required", provider_id: providerId, api_id: options?.apiId ?? "default", candidate_models: [],
+        reason: "接続を保存しました。モデルルートは別途設定が必要です。",
+      } as ModelAvailabilityAfterKeySave,
+    };
   },
 
   registerCustomProvider(providerId: string, options?: { label?: string; kind?: string }) {
@@ -5064,12 +5793,64 @@ export const api = {
     });
   },
 
+  async approveCodingApprovalForContinuation(
+    requestId: string,
+    conversationId: string,
+    argsHash: string,
+    turnId = "",
+  ) {
+    const uiOperator = await nativeCodingApprovalOperatorForDigest(requestId, argsHash);
+    const decision = await request<CodingApprovalDecision & ChatContinuationPacket>(
+      defaultspackContractRoute("api/chat/approval/approve"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: requestId,
+          conversation_id: conversationId,
+          ui_operator: uiOperator,
+          turn_id: turnId,
+        }),
+      },
+    );
+    if (!chatContinuationPacketMatchesTurn(decision, turnId, conversationId, requestId)
+      || decision.terminal !== null) {
+      throw new Error("Approval continuation does not match the pending saved turn.");
+    }
+    return decision;
+  },
+
   async denyCodingApproval(requestId: string, reason?: string) {
     const uiOperator = await nativeCodingApprovalOperator(requestId, "deny");
     return request<Record<string, unknown>>(defaultspackContractRoute("api/coding/approvals/deny"), {
       method: "POST",
       body: JSON.stringify({ approval_request_id: requestId, reason, ui_operator: uiOperator }),
     });
+  },
+
+  async resumeCodingApproval(
+    requestId: string,
+    resumeId: string,
+    conversationId: string,
+    turnId = "",
+  ) {
+    const packet = await request<ChatContinuationPacket & {
+      resumed?: boolean;
+      terminal_event?: string;
+      tool?: string;
+    }>(defaultspackContractRoute("api/chat/approval/resume"), {
+      method: "POST",
+      body: JSON.stringify({
+        request_id: requestId,
+        resume_id: resumeId,
+        conversation_id: conversationId,
+        turn_id: turnId,
+      }),
+    });
+    if (!chatContinuationPacketMatchesTurn(packet, turnId, conversationId, requestId)
+      || packet.terminal === null) {
+      throw new Error("Approval continuation result does not match the pending saved turn.");
+    }
+    return packet;
   },
 
   listAuthorityRequests(options?: { status?: "all" | "pending" | "approved" | "denied" | "expired" | string }) {
@@ -5142,6 +5923,60 @@ export const api = {
         ui_operator: options.ui_operator,
       }),
     });
+  },
+
+  listInteractiveApprovals() {
+    return request<InteractiveApprovalRequestsResponse>(
+      defaultspackContractRoute("api/interactive-approval/v1/list"),
+      { cache: "no-store" },
+    );
+  },
+
+  getInteractiveApproval(requestId: string) {
+    return request<InteractiveApprovalRequest>(
+      defaultspackContractRoute("api/interactive-approval/v1/get"),
+      {
+        method: "POST",
+        body: JSON.stringify({ request_id: requestId }),
+        cache: "no-store",
+      },
+    );
+  },
+
+  approveInteractiveApproval(
+    requestId: string,
+    options: {
+      confirmation_text: string;
+      ui_operator: AuthorityUiOperator;
+    },
+  ) {
+    return request<InteractiveApprovalRequest>(
+      defaultspackContractRoute("api/interactive-approval/v1/approve"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: requestId,
+          confirmation_text: options.confirmation_text,
+          ui_operator: options.ui_operator,
+        }),
+      },
+    );
+  },
+
+  denyInteractiveApproval(
+    requestId: string,
+    options: { ui_operator: AuthorityUiOperator },
+  ) {
+    return request<InteractiveApprovalRequest>(
+      defaultspackContractRoute("api/interactive-approval/v1/deny"),
+      {
+        method: "POST",
+        body: JSON.stringify({
+          request_id: requestId,
+          ui_operator: options.ui_operator,
+        }),
+      },
+    );
   },
 
   listCodingCheckpoints(options?: { workspace_id?: string | null; limit?: number }) {

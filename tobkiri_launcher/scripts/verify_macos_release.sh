@@ -3,22 +3,16 @@ set -Eeuo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: verify_macos_release.sh --app-bundle PATH --signing-identity "Developer ID Application: ..."
+Usage: verify_macos_release.sh --app-bundle PATH
 EOF
 }
 
 app_bundle=''
-signing_identity=''
 while (($# > 0)); do
   case "$1" in
     --app-bundle)
       (($# >= 2)) || { usage; exit 2; }
       app_bundle=$2
-      shift 2
-      ;;
-    --signing-identity)
-      (($# >= 2)) || { usage; exit 2; }
-      signing_identity=$2
       shift 2
       ;;
     -h|--help)
@@ -32,13 +26,9 @@ while (($# > 0)); do
   esac
 done
 
-if [[ -z "$app_bundle" || -z "$signing_identity" ]]; then
+if [[ -z "$app_bundle" ]]; then
   usage
   exit 2
-fi
-if [[ "$signing_identity" != "Developer ID Application: "* ]]; then
-  printf 'release macOS signing identity must be Developer ID Application, not ad-hoc\n' >&2
-  exit 1
 fi
 [[ -d "$app_bundle" ]] || {
   printf 'macOS release app bundle is missing: %s\n' "$app_bundle" >&2
@@ -47,7 +37,7 @@ fi
 
 bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
   "$app_bundle/Contents/Info.plist")"
-if [[ "$bundle_identifier" != 'dev.tobkiri.launcher' ]]; then
+if [[ "$bundle_identifier" != 'dev.rumiai.app' ]]; then
   printf 'release macOS app has a non-production bundle identifier: %s\n' \
     "$bundle_identifier" >&2
   exit 1
@@ -68,13 +58,25 @@ command -v codesign >/dev/null 2>&1 || {
   printf 'codesign is required to verify the macOS release\n' >&2
   exit 1
 }
-codesign --verify --deep --strict --verbose=2 "$app_bundle"
-details="$(codesign --display --verbose=4 "$app_bundle" 2>&1)"
-if ! grep -Fqx "Authority=$signing_identity" <<<"$details"; then
-  printf 'macOS app is not signed by the required Developer ID identity\n' >&2
+codesign --verify --strict --all-architectures --verbose=2 "$app_bundle"
+# These runtime-loaded applications are resources, so outer signature verification
+# alone does not establish that macOS can validate their own bundle signatures.
+shopt -s nullglob
+for runtime_root in "$app_bundle/Contents/Resources/app" \
+                    "$app_bundle/Contents/Resources/app/python-runtime/app"; do
+  shell_artifacts=("$runtime_root"/bundled/presentation-artifacts/shell.tauri.default.macos-*/Tobkiri.app)
+  if ((${#shell_artifacts[@]} != 1)); then
+    printf 'macOS release requires exactly one packaged Tauri Shell: %s\n' "$runtime_root" >&2
+    exit 1
+  fi
+  codesign --verify --deep --strict --all-architectures --verbose=2 "${shell_artifacts[0]}"
+done
+details="$(codesign -d -r- --verbose=4 "$app_bundle" 2>&1)"
+if ! grep -Fqx 'Identifier=dev.rumiai.app' <<<"$details"; then
+  printf 'macOS app has an unexpected code-signing identifier\n' >&2
   exit 1
 fi
-if grep -Fqx 'Authority=-' <<<"$details"; then
-  printf 'ad-hoc macOS signatures are forbidden for release artifacts\n' >&2
+if ! grep -Fqx 'Signature=adhoc' <<<"$details"; then
+  printf 'macOS release app must use an ad-hoc signature\n' >&2
   exit 1
 fi

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.ai_client.model_call import call_model
 from domain.agent.subagent_roles import get_subagent_role
 from domain.agent.placement_catalog import compile_utility_effective_plan
@@ -20,8 +22,14 @@ _TRUSTED_AUTHORITY_KEYS = ("principal_id", "authority_principal_id")
 
 
 class SubagentOrchestrator:
-    def __init__(self, *, call_handler: Any = None) -> None:
+    def __init__(
+        self,
+        *,
+        call_handler: Any = None,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self._call_handler = call_handler
+        self._settings_owner = settings_owner
 
     def run(
         self,
@@ -101,6 +109,11 @@ class SubagentOrchestrator:
                 },
                 runtime_context,
                 call_handler=self._call_handler,
+                **(
+                    {"settings_owner": self._settings_owner}
+                    if self._settings_owner is not None
+                    else {}
+                ),
             )
         except Exception:
             return None
@@ -145,8 +158,12 @@ def run_subagent(
     settings: dict[str, Any] | None = None,
     call_handler: Any = None,
     context: dict[str, Any] | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
-    return SubagentOrchestrator(call_handler=call_handler).run(
+    return SubagentOrchestrator(
+        call_handler=call_handler,
+        settings_owner=settings_owner,
+    ).run(
         role_id,
         payload,
         model=model,
@@ -163,6 +180,7 @@ def run_subagent_compat(
     settings: dict[str, Any] | None = None,
     call_handler: Any = None,
     context: dict[str, Any] | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     cleaned_role_id = str(role_id or "").strip()
     cleaned_payload = payload if isinstance(payload, dict) else {}
@@ -174,12 +192,19 @@ def run_subagent_compat(
             settings=settings,
             call_handler=call_handler,
             context=context,
+            **({"settings_owner": settings_owner} if settings_owner is not None else {}),
         )
         result["compatibility_alias"] = "subagent"
         result["route_kind"] = "utility_model_call"
         return result
     if cleaned_role_id in {"delegate", "agent_delegate", "task"} or str(cleaned_payload.get("task") or cleaned_payload.get("prompt") or "").strip():
-        return _delegate_via_input(cleaned_role_id, cleaned_payload, model=model, context=context)
+        return _delegate_via_input(
+            cleaned_role_id,
+            cleaned_payload,
+            model=model,
+            context=context,
+            **({"settings_owner": settings_owner} if settings_owner is not None else {}),
+        )
     raise ValueError("unknown subagent role: " + cleaned_role_id)
 
 
@@ -284,6 +309,7 @@ def _delegate_via_input(
     *,
     model: str = "",
     context: dict[str, Any] | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> dict[str, Any]:
     from domain.input.dispatcher import dispatch_input
     from domain.input.envelope import RumiInputEnvelope
@@ -331,6 +357,7 @@ def _delegate_via_input(
             tools=list(payload.get("tools") if isinstance(payload.get("tools"), list) else []),
         ),
         dispatch_context,
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
     )
     if isinstance(result, dict):
         assistant_text = extract_assistant_text_from_result(result)

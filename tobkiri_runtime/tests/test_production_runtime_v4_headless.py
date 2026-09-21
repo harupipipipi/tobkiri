@@ -323,6 +323,8 @@ def test_dispatch_session_install_publishes_only_captured_instance() -> None:
         providers={},
         profile_id="profile:installed-v4",
         plan_digest="sha256:" + "1" * 64,
+        profile_revision="sha256:" + "2" * 64,
+        activation_id="activation:headless-install-test",
     )
     install_dispatch_session(container, session)
     assert container.get("v4_dispatch_session") is session
@@ -334,6 +336,8 @@ def test_dispatch_session_install_publishes_only_captured_instance() -> None:
         providers={},
         profile_id="",
         plan_digest="sha256:" + "1" * 64,
+        profile_revision="sha256:" + "2" * 64,
+        activation_id="activation:headless-invalid-test",
     )
     with pytest.raises(ValueError, match="profile_id"):
         install_dispatch_session(container, invalid)

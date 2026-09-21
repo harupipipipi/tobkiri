@@ -48,11 +48,16 @@ def _run_cli(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def test_actual_cli_shell_does_not_infer_profile_identity_from_bundled_definition() -> None:
     responses = _run_cli(
-        [_command("cli:req:identity001", "profile.identity", profile_id="defaults")]
+        [
+            _command("cli:req:identity001", "profile.identity", profile_id="defaults"),
+            _command("cli:req:identity002", "profile.identity"),
+        ]
     )
 
     assert responses[0]["type"] == "error"
     assert "Host-captured active Profile v4" in responses[0]["error"]
+    assert responses[1]["type"] == "error"
+    assert "Host-captured active Profile v4" in responses[1]["error"]
 
 
 def test_actual_cli_shell_rejects_arbitrary_commands_and_keeps_artifacts_non_executable() -> None:

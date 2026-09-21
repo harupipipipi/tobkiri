@@ -4,10 +4,11 @@ import os
 import platform
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, Mapping
 
 from ..tool_policy.internal_context import tool_server_approval_context_is_internal
-from core_runtime.defaultspack_host_contract_adapter import run_host_contract_action
+from core_runtime.di_container import get_container
+from core_runtime.global_contract_dispatch import invoke_global_contract
 from .viewer_broker_client import ViewerBrokerClient
 
 _VIEWER_RECOVERY_MESSAGE = (
@@ -18,6 +19,69 @@ _VIEWER_RECOVERY_MESSAGE = (
 # Test and embedding callers may inject a controller explicitly.  Runtime
 # dispatch never populates this hook; it must use the captured v4 contract.
 BrowserComputerController: type[Any] | None = None
+_BROWSER_OBSERVE: Final[str] = "rumi.resource.browser.host.v1"
+_BROWSER_CONTROL: Final[str] = "rumi.action.browser.host.v1"
+_DESKTOP_OBSERVE: Final[str] = "rumi.resource.desktop.host.v1"
+_DESKTOP_CONTROL: Final[str] = "rumi.action.desktop.host.v1"
+_CLIPBOARD_READ: Final[str] = "rumi.resource.clipboard.v1"
+_CLIPBOARD_WRITE: Final[str] = "rumi.action.clipboard.v1"
+_HOST_ACTIONS: Final[dict[str, tuple[str, str]]] = {
+    "browser.session": (_BROWSER_OBSERVE, "browser.session.get"),
+    "browser.profiles.list": (_BROWSER_OBSERVE, "browser.profiles.list"),
+    "browser.cookies.list": (_BROWSER_OBSERVE, "browser.cookies.list"),
+    "browser.open_url": (_BROWSER_CONTROL, "browser.navigate"),
+    "browser.profile.create": (_BROWSER_CONTROL, "browser.profile.create"),
+    "browser.profile.set_active": (_BROWSER_CONTROL, "browser.profile.set_active"),
+    "browser.profile.delete": (_BROWSER_CONTROL, "browser.profile.delete"),
+    "browser.profile.clear_cache": (_BROWSER_CONTROL, "browser.profile.clear_cache"),
+    "browser.profile.clear_cookies": (_BROWSER_CONTROL, "browser.profile.clear_cookies"),
+    "browser.cookies.import": (_BROWSER_CONTROL, "browser.cookies.import"),
+    "browser.cookies.delete": (_BROWSER_CONTROL, "browser.cookies.delete"),
+    "computer.context": (_DESKTOP_OBSERVE, "desktop.state"),
+    "computer.state": (_DESKTOP_OBSERVE, "desktop.state"),
+    "computer.app_context": (_DESKTOP_OBSERVE, "desktop.state"),
+    "computer.apps": (_DESKTOP_OBSERVE, "desktop.applications.list"),
+    "computer.list_apps": (_DESKTOP_OBSERVE, "desktop.applications.list"),
+    "computer.windows": (_DESKTOP_OBSERVE, "desktop.windows.list"),
+    "computer.list_windows": (_DESKTOP_OBSERVE, "desktop.windows.list"),
+    "computer.screenshot": (_DESKTOP_OBSERVE, "desktop.capture.frame"),
+    "computer.observe": (_DESKTOP_OBSERVE, "desktop.capture.frame"),
+    "computer.ax_tree": (_DESKTOP_OBSERVE, "desktop.accessibility.snapshot"),
+    "computer.ocr": (_DESKTOP_OBSERVE, "desktop.accessibility.snapshot"),
+    "computer.doctor": (_DESKTOP_OBSERVE, "desktop.state"),
+    "computer.select_app": (_DESKTOP_CONTROL, "desktop.application.select"),
+    "computer.show_app": (_DESKTOP_CONTROL, "desktop.application.activate"),
+    "computer.focus_app": (_DESKTOP_CONTROL, "desktop.application.activate"),
+    "computer.activate_app": (_DESKTOP_CONTROL, "desktop.application.activate"),
+    "computer.select_window": (_DESKTOP_CONTROL, "desktop.window.select"),
+    "computer.move": (_DESKTOP_CONTROL, "desktop.pointer.move"),
+    "computer.click": (_DESKTOP_CONTROL, "desktop.pointer.click"),
+    "computer.drag": (_DESKTOP_CONTROL, "desktop.pointer.drag"),
+    "computer.type": (_DESKTOP_CONTROL, "desktop.keyboard.type"),
+    "computer.key": (_DESKTOP_CONTROL, "desktop.keyboard.key"),
+    "computer.backspace": (_DESKTOP_CONTROL, "desktop.keyboard.key"),
+    "computer.scroll": (_DESKTOP_CONTROL, "desktop.scroll"),
+    "computer.semantic_action": (_DESKTOP_CONTROL, "desktop.accessibility.action"),
+    "computer.click_text": (_DESKTOP_CONTROL, "desktop.accessibility.action"),
+    "computer.pid_event": (_DESKTOP_CONTROL, "desktop.accessibility.action"),
+    "computer.clipboard.read": (_CLIPBOARD_READ, "read"),
+    "computer.clipboard.get": (_CLIPBOARD_READ, "read"),
+    "computer.clipboard.write": (_CLIPBOARD_WRITE, "write"),
+    "computer.clipboard.set": (_CLIPBOARD_WRITE, "write"),
+    "computer.clipboard.clear": (_CLIPBOARD_WRITE, "write"),
+}
+_FORBIDDEN_HOST_ARGUMENTS: Final[frozenset[str]] = frozenset(
+    {
+        "approved",
+        "approval_token",
+        "authority_token",
+        "viewer_host_approved",
+        "yolo_mode",
+        "_contract_consumer_pack_id",
+        "_contract_consumer_function_id",
+        "_host_context",
+    }
+)
 _BROWSER_TEXT_INPUT_RECOMMENDED_NEXT_ACTIONS = (
     "computer.type",
     "computer.key",
@@ -118,7 +182,7 @@ def _run_local_controller(
         controller_cls = BrowserComputerController
     if controller_cls is None:
         try:
-            result = run_host_contract_action(
+            result = _run_captured_host_contract_action(
                 action,
                 {
                     **payload,
@@ -143,15 +207,67 @@ def _run_local_controller(
     if not isinstance(result, dict):
         return {"action": action, "result": result}
     if _is_request_approval_needed(result):
-        approval_payload = result.get("payload") if isinstance(result.get("payload"), dict) else payload
+        approval_candidate = result.get("payload")
+        approval_payload = (
+            approval_candidate
+            if isinstance(approval_candidate, dict)
+            else dict(payload or {})
+        )
         return _approval_required_response(
             tool_name,
             str(result.get("action") or action),
-            dict(approval_payload),
+            approval_payload,
             result,
             context,
         )
     return dict(result)
+
+
+def _run_captured_host_contract_action(
+    action: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    source_function_id: str,
+) -> dict[str, Any]:
+    """Project a legacy Defaultspack action onto the captured v4 Host session."""
+
+    normalized_action = str(action or "").strip()
+    target = _HOST_ACTIONS.get(normalized_action)
+    if target is None:
+        return {
+            "status": "unavailable",
+            "success": False,
+            "error_type": "legacy_host_action_not_migrated",
+            "action": normalized_action,
+        }
+    session = get_container().get_or_none("v4_dispatch_session")
+    if session is None:
+        return {
+            "status": "unavailable",
+            "success": False,
+            "error_type": "global_host_contract_unavailable",
+            "action": normalized_action,
+        }
+    request = {
+        key: value
+        for key, value in dict(payload or {}).items()
+        if key not in _FORBIDDEN_HOST_ARGUMENTS
+    }
+    if normalized_action == "computer.clipboard.clear":
+        request = {"text": ""}
+    elif normalized_action == "computer.backspace":
+        request = {**request, "key": "BACKSPACE"}
+    elif normalized_action == "computer.ocr":
+        request = {**request, "include_ocr": True}
+    elif target[0] == _CLIPBOARD_WRITE:
+        request = {"text": str(request.get("text", request.get("content", "")))}
+    elif target[0] == _CLIPBOARD_READ:
+        request = {}
+    del source_function_id
+    result = invoke_global_contract(session, target[0], target[1], request)
+    if not isinstance(result, dict):
+        raise RuntimeError("host contract returned an invalid result")
+    return result
 
 
 def _approval_token_present(payload: dict[str, Any] | None) -> bool:
@@ -296,6 +412,9 @@ def _approval_required_response(
             "payload": dict(payload or {}),
             "pack_id": pack_id,
             "conversation_id": conversation_id,
+            "turn_id": _context_value(context, "turn_id"),
+            "tool_call_id": _context_value(context, "tool_call_id"),
+            "profile_id": _context_value(context, "profile_id"),
             "permission_subject": "Rumi Viewer",
         },
     )

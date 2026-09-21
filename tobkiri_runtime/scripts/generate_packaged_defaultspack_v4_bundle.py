@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 verify_source_closure(ROOT)
 
 from .generate_defaultspack_v4_bundle import (  # noqa: E402
+    PROFILE_ARTIFACT_COMPANIONS,
     _generated_provenance,
     _normalize_pack,
     _pretty,
@@ -42,6 +43,45 @@ from tobkiri_protocol.platform_artifact import (  # noqa: E402
     verify_platform_artifact,
 )
 from tobkiri_protocol.validation import validate_document  # noqa: E402
+from .profile_compatibility_provenance import (  # noqa: E402
+    compatibility_profile_provenance,
+    validate_compatibility_profile,
+)
+
+
+COMPATIBILITY_PROVENANCE_INPUTS = (
+    ROOT / "scripts" / "generate_defaultspack_v4_bundle.py",
+    ROOT / "scripts" / "generator_source_manifest.py",
+    ROOT / "scripts" / "packaging_cleanup.py",
+    ROOT / "scripts" / "profile_compatibility_provenance.py",
+    ROOT / "tobkiri_protocol" / "canonical.py",
+    ROOT / "tobkiri_protocol" / "defaultspack_bundle_order.py",
+    ROOT / "tobkiri_protocol" / "platform_artifact.py",
+    ROOT / "tobkiri_protocol" / "profile_scope.py",
+    ROOT / "tobkiri_protocol" / "provenance.py",
+    ROOT / "tobkiri_protocol" / "validation.py",
+)
+
+
+def _exclude_source_only_profile_artifacts(bundle_root: Path) -> None:
+    """Remove source-checkout Profile companions from a distributable bundle."""
+
+    for relative in PROFILE_ARTIFACT_COMPANIONS:
+        candidate = _safe_join(
+            bundle_root,
+            relative.as_posix(),
+            "Profile companion",
+        )
+        if candidate.is_symlink():
+            raise ValueError(
+                f"source-only Profile companion is symlinked: {relative}"
+            )
+        if candidate.exists():
+            if not candidate.is_file():
+                raise ValueError(
+                    f"source-only Profile companion is not a file: {relative}"
+                )
+            candidate.unlink()
 
 
 class _PublishRecord(TypedDict):
@@ -619,10 +659,21 @@ def _validate_staged_bundle(
 ) -> None:
     """Verify every staged Pack/Profile/Shell/lock byte before publication."""
     shell_path = bundle_root / "shell.tauri.default.shell.v1.json"
-    profile_path = bundle_root / "defaults.profile.v4.json"
+    profile_path = bundle_root / "defaults.profile.v5.json"
     lock_path = bundle_root / "bundle.lock.json"
     shell = validate_document(_read_json(shell_path, "Shell"), "shell")
     profile = validate_document(_read_json(profile_path, "Profile"), "profile")
+    for relative in PROFILE_ARTIFACT_COMPANIONS:
+        candidate = _safe_join(
+            bundle_root,
+            relative.as_posix(),
+            "Profile companion",
+        )
+        if candidate.exists() or candidate.is_symlink():
+            raise ValueError(
+                "packaged bundle retained source-only Profile companion: "
+                f"{relative}"
+            )
     lock = _read_json(lock_path, "bundle lock")
     if lock.get("schema") != "io.tobkiri.defaultspack-bundle-lock.v1":
         raise ValueError("bundle lock schema is invalid")
@@ -713,6 +764,7 @@ def _package_transaction(
             _snapshot_tree(artifact_root, staged_artifacts)
         else:
             staged_artifacts.mkdir(parents=True, exist_ok=False)
+        _exclude_source_only_profile_artifacts(staged_bundle)
 
         if source_artifact is not None:
             source_input = source_artifact.expanduser().absolute()
@@ -829,7 +881,7 @@ def _package_transaction(
             )
             _write_json(staged_bundle / "packs" / pack_name, _normalize_pack(pack))
 
-        profile_path = staged_bundle / "defaults.profile.v4.json"
+        profile_path = staged_bundle / "defaults.profile.v5.json"
         profile = _read_json(profile_path, "Profile")
         if not isinstance(profile.get("shell"), dict):
             raise ValueError("packaged Profile has no Shell definition")
@@ -840,13 +892,18 @@ def _package_transaction(
             executable_artifact_digest=entrypoint_digest,
             definition_revision=shell["definition_revision"],
         )
-        profile["provenance"] = _generated_provenance(
-            profile,
-            "ecosystem/defaultspack/v4/defaults.profile.v4.json",
-            commit,
+        profile["provenance"] = compatibility_profile_provenance(
+            root=ROOT,
+            profile=profile,
+            source_path="ecosystem/defaultspack/v4/defaults.profile.v5.json",
+            generator="defaultspack-v4-packager",
+            generator_version="2.0.0",
             generator_path=Path(__file__),
+            input_paths=COMPATIBILITY_PROVENANCE_INPUTS,
         )
-        _write_json(profile_path, validate_document(profile, "profile"))
+        profile = validate_document(profile, "profile")
+        validate_compatibility_profile(profile)
+        _write_json(profile_path, profile)
 
         lock_path = staged_bundle / "bundle.lock.json"
         lock = _read_json(lock_path, "bundle lock")

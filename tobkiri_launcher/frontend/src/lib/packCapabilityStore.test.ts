@@ -52,6 +52,7 @@ const frontendCatalog = {
   version: 'rumi.ui.contribution.v1',
   profile_id: 'profile-a',
   profile_revision: 'sha256:profile',
+  activation_id: 'activation:profile-a',
   plan_hash: 'sha256:plan',
   contributions: [{
     contribution_id: 'file-inspect',
@@ -60,6 +61,10 @@ const frontendCatalog = {
     operation_id: operation.operation_id,
     provider_id: operation.provider_id,
     action_contract: operation.contract_id,
+    resolved_profile_id: samplePack.profileId,
+    resolved_profile_revision: samplePack.profileRevision,
+    resolved_activation_id: 'activation:profile-a',
+    resolved_plan_hash: samplePack.planDigest,
   }],
   diagnostics: [],
   quarantined_pack_ids: [],
@@ -234,6 +239,10 @@ test('store invokes only the verified Pack contribution and refreshes both proje
   ]);
   assert.equal(bodies.length, 1);
   assert.equal(typeof bodies[0].request_id, 'string');
+  assert.equal(bodies[0].profile_id, samplePack.profileId);
+  assert.equal(bodies[0].profile_revision, samplePack.profileRevision);
+  assert.equal(bodies[0].activation_id, frontendCatalog.activation_id);
+  assert.equal(bodies[0].plan_hash, samplePack.planDigest);
   assert.equal(bodies[0].owner_pack_id, samplePack.id);
   assert.equal(bodies[0].contract_id, operation.contract_id);
   assert.deepEqual(bodies[0].payload, {

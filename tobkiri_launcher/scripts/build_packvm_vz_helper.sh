@@ -126,7 +126,7 @@ if (
     or set(descriptor) != {"schema", "package", "version", "architecture", "source"}
     or descriptor["schema"] != "io.tobkiri.packvm-vz-bubblewrap-descriptor.v1"
     or descriptor["package"] != "bubblewrap"
-    or descriptor["version"] != "0.11.0-2+deb13u1"
+    or descriptor["version"] != "0.12.0-1~deb13u1"
     or descriptor["architecture"] != "arm64"
     or not isinstance(descriptor["source"], dict)
     or set(descriptor["source"]) != {"url", "size_bytes", "sha256"}
@@ -173,6 +173,12 @@ for entry in "${staged_inputs[@]}"; do
   fi
   safe_source_file "${source}"
   safe_destination_file "${app_bundle}/Contents/Resources/packvm-vz-provisioning/${destination}"
+  if [[ "${_name}" == "guest_runner" ]]; then
+    python3 -B "${launcher_dir}/../tobkiri_runtime/scripts/build_packvm_guest_bundle.py" \
+      --runtime-root "${launcher_dir}/../tobkiri_runtime" \
+      --output "${app_bundle}/Contents/Resources/packvm-vz-provisioning/${destination}"
+    continue
+  fi
   install -m 0444 "${source}" "${app_bundle}/Contents/Resources/packvm-vz-provisioning/${destination}"
 done
 

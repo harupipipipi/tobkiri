@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from typing import Any
 
 from .approval_state_json import (
@@ -24,13 +25,9 @@ from core_runtime.host_contract import host_contract_value
 
 _TOKEN_VERSION = "v1"
 _DEFAULT_EXPIRES_IN_SECONDS = 300
-_RUNTIME_SECRET = (
-    host_contract_value("approval_runtime_secret")
-    or get_approval_store().get_or_create_runtime_secret()
-)
-persist_runtime_secret_for_broker(_RUNTIME_SECRET)
 _LOCK = threading.RLock()
 _DEBUG_RESUME_HANDLES: dict[str, dict[str, Any]] = {}
+_NATIVE_RESUME_HANDLES: dict[str, dict[str, Any]] = {}
 _REQUESTS: dict[str, "ApprovalRequest"] = {}
 _USED_TOKEN_IDS: set[str] = set()
 
@@ -44,6 +41,17 @@ _ARG_HASH_IGNORE_KEYS = {
     "_raw_body",
     "_raw_body_base64",
 }
+
+
+@lru_cache(maxsize=1)
+def _runtime_secret() -> str:
+    """Load and publish the approval secret only when token work begins."""
+    secret = (
+        host_contract_value("approval_runtime_secret")
+        or get_approval_store().get_or_create_runtime_secret()
+    )
+    persist_runtime_secret_for_broker(secret)
+    return secret
 
 
 @dataclass
@@ -207,7 +215,7 @@ def _active_debug_binding(details: dict[str, Any]) -> dict[str, Any]:
     status = response.get("status") if isinstance(response, dict) else None
     if not isinstance(status, dict) or status.get("state") != "active":
         return {}
-    required = {
+    required: dict[str, Any] = {
         "debug_session_id": str(status.get("session_id") or ""),
         "lease_epoch": int(status.get("lease_epoch") or 0),
         "debug_run_id": str(status.get("run_id") or ""),
@@ -549,6 +557,71 @@ def resolve_debug_resume_handle(handle: str, request_id: str) -> str:
         return str(record.get("token") or "")
 
 
+def _native_resume_binding(request: dict[str, Any]) -> dict[str, str]:
+    """Return the immutable server-owned identity of one approved replay."""
+
+    raw_details = request.get("details")
+    details = raw_details if isinstance(raw_details, dict) else {}
+    return {
+        "request_id": str(request.get("request_id") or ""),
+        "operation": str(request.get("operation") or ""),
+        "args_hash": str(request.get("args_hash") or ""),
+        "conversation_id": str(
+            request.get("conversation_id") or details.get("conversation_id") or ""
+        ),
+        "tool_name": str(details.get("tool_name") or details.get("function_id") or ""),
+        "tool_call_id": str(details.get("tool_call_id") or ""),
+        "profile_id": str(request.get("profile_id") or details.get("profile_id") or ""),
+    }
+
+
+def register_native_resume_handle(
+    request: dict[str, Any],
+    token: str,
+) -> str:
+    """Keep an approval token server-side behind an exact, one-shot binding."""
+
+    binding = _native_resume_binding(request)
+    if (
+        request.get("status") != "approved"
+        or not token
+        or not binding["request_id"]
+        or not binding["operation"]
+        or not binding["args_hash"]
+        or not binding["conversation_id"]
+        or not binding["tool_name"]
+    ):
+        raise ValueError("native approval resume binding is incomplete")
+    handle = "native_resume_" + uuid.uuid4().hex
+    with _LOCK:
+        _NATIVE_RESUME_HANDLES[handle] = {
+            **binding,
+            "token": str(token),
+            "expires_at": int(request.get("expires_at") or 0),
+        }
+    return handle
+
+
+def claim_native_resume_handle(
+    handle: str,
+    request: dict[str, Any],
+) -> str:
+    """Atomically consume a native resume handle if every binding still matches."""
+
+    with _LOCK:
+        record = _NATIVE_RESUME_HANDLES.pop(str(handle), None)
+    if not isinstance(record, dict):
+        return ""
+    expected = _native_resume_binding(request)
+    if (
+        request.get("status") != "approved"
+        or int(record.get("expires_at") or 0) <= _now()
+        or any(str(record.get(key) or "") != value for key, value in expected.items())
+    ):
+        return ""
+    return str(record.get("token") or "")
+
+
 def approve_with_extended_expiry(
     request_id: str,
     *,
@@ -666,7 +739,7 @@ def issue_execution_token(
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     encoded = _b64url_encode(body)
     signature = hmac.new(
-        _RUNTIME_SECRET.encode("utf-8"),
+        _runtime_secret().encode("utf-8"),
         encoded.encode("ascii"),
         hashlib.sha256,
     ).digest()
@@ -688,7 +761,11 @@ def verify_execution_token(
         return TokenVerification(False, "APPROVAL_TOKEN_MISSING", "approval token is required")
     encoded, supplied_signature = token.rsplit(".", 1)
     expected_signature = _b64url_encode(
-        hmac.new(_RUNTIME_SECRET.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
+        hmac.new(
+            _runtime_secret().encode("utf-8"),
+            encoded.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
     )
     if not hmac.compare_digest(supplied_signature, expected_signature):
         return TokenVerification(
@@ -893,17 +970,20 @@ def list_approval_requests(
 
     merged: dict[str, dict[str, Any]] = {}
     for item in load_approval_state_requests():
-        request = normalize_json_approval_request(item)
-        if request is None:
+        normalized = normalize_json_approval_request(item)
+        if normalized is None:
             continue
-        if request.get("status") == "pending" and int(request.get("expires_at") or 0) < now:
-            request["status"] = "expired"
-            request["decision_at"] = now
-        request["display_summary"] = display_summary(
-            str(request.get("operation") or ""),
-            request.get("details") if isinstance(request.get("details"), dict) else {},
+        if normalized.get("status") == "pending" and int(
+            normalized.get("expires_at") or 0
+        ) < now:
+            normalized["status"] = "expired"
+            normalized["decision_at"] = now
+        raw_details = normalized.get("details")
+        normalized["display_summary"] = display_summary(
+            str(normalized.get("operation") or ""),
+            raw_details if isinstance(raw_details, dict) else {},
         )
-        merged[request["request_id"]] = request
+        merged[normalized["request_id"]] = normalized
     merged.update(sqlite_by_id)
 
     result = [

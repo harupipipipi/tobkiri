@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
@@ -28,6 +29,11 @@ ALLOWED_SYSTEM_ALIASES = {
 
 class DmgVerificationError(RuntimeError):
     """A fail-closed mounted-DMG verification error."""
+
+
+_ATTACH_TRANSIENT_ATTEMPTS = 3
+_ATTACH_TRANSIENT_DELAY_SECONDS = 0.5
+_ATTACH_TRANSIENT_ERROR = b"Resource temporarily unavailable"
 
 
 @dataclass(frozen=True)
@@ -245,24 +251,31 @@ class MountedDmg:
 
     def attach(self) -> None:
         """Attach read-only and bind the exact device and mounted root identity."""
-        self._verify_host_path()
-        result = _run(
-            self.hdiutil,
-            [
-                "attach",
-                "-plist",
-                "-readonly",
-                "-nobrowse",
-                "-mountpoint",
-                os.fspath(self.path),
-                os.fspath(self.dmg),
-            ],
-            capture_output=True,
-        )
-        if result.returncode != 0:
+        for attempt in range(_ATTACH_TRANSIENT_ATTEMPTS):
+            self._verify_host_path()
+            result = _run(
+                self.hdiutil,
+                [
+                    "attach",
+                    "-plist",
+                    "-readonly",
+                    "-nobrowse",
+                    "-mountpoint",
+                    os.fspath(self.path),
+                    os.fspath(self.dmg),
+                ],
+                capture_output=True,
+            )
+            if result.returncode == 0:
+                break
             if result.stderr:
                 sys.stderr.buffer.write(result.stderr)
-            raise DmgVerificationError("hdiutil attach failed")
+            if (
+                _ATTACH_TRANSIENT_ERROR not in result.stderr
+                or attempt + 1 == _ATTACH_TRANSIENT_ATTEMPTS
+            ):
+                raise DmgVerificationError("hdiutil attach failed")
+            time.sleep(_ATTACH_TRANSIENT_DELAY_SECONDS)
         device = _device_from_attach_plist(result.stdout, self.path)
         self._bind_mounted_path(device)
 

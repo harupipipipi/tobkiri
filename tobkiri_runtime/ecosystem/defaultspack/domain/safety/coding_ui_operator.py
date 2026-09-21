@@ -12,7 +12,7 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from domain.host_bridge.viewer_broker_client import ViewerBrokerClient
+from ..host_bridge.viewer_broker_client import ViewerBrokerClient
 
 
 class CodingUiOperatorError(ValueError):
@@ -49,7 +49,7 @@ def verify_coding_ui_operator(
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise CodingUiOperatorError("native ui_operator is required")
-    normalized = {
+    normalized: dict[str, Any] = {
         "version": payload.get("version"),
         "kind": str(payload.get("kind") or ""),
         "origin": str(payload.get("origin") or ""),

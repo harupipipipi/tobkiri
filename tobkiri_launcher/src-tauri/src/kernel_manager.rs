@@ -9,7 +9,7 @@
 use std::fs;
 #[cfg(unix)]
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -28,6 +28,9 @@ const MAX_AUTO_RESTARTS: u32 = 3;
 
 /// Seconds to wait after SIGTERM before sending SIGKILL.
 const KILL_TIMEOUT_SECS: u64 = 5;
+
+/// Grace period used specifically during application shutdown.
+const KERNEL_STOP_TIMEOUT: Duration = Duration::from_secs(2);
 
 fn python_runtime_env_vars() -> [(&'static str, &'static str); 4] {
     [
@@ -61,6 +64,76 @@ fn require_development_venv(config: &AppConfig) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Resolve the durable active Application authority, if one has been
+/// completely committed.  A Host-contract file is never used as the source
+/// of this decision: it is only a projection of the independently verified
+/// Profile authority.
+fn verified_active_application_authority(
+    config: &AppConfig,
+) -> Result<Option<crate::defaultspack_authority::ApplicationAuthority>> {
+    if !crate::defaultspack_authority::has_verified_active_profile(config)
+        .context("failed to inspect durable active Profile authority")?
+    {
+        return Ok(None);
+    }
+    match crate::defaultspack_authority::resolve(config) {
+        Ok(authority) => Ok(Some(authority)),
+        Err(error) if requires_setup_reconfirmation(&error) => {
+            // The Python Host must verify and reconfirm the successor before
+            // publishing any active execution identity or contributions.
+            Ok(None)
+        }
+        Err(error) => Err(error).context("failed to resolve durable active Application authority"),
+    }
+}
+
+fn requires_setup_reconfirmation(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<crate::defaultspack_authority::ShellReconfirmationRequired>()
+        .is_some()
+        || error
+            .downcast_ref::<crate::defaultspack_authority::ProfileReresolutionRequired>()
+            .is_some()
+}
+
+/// Publish contributions only from the independently verified active Application.
+pub(crate) fn write_kernel_host_contract(
+    config: &AppConfig,
+    bootstrap_secret: &str,
+) -> Result<PathBuf> {
+    match verified_active_application_authority(config)? {
+        Some(authority) => {
+            let identity = authority
+                .execution_identity()
+                .context("durable active Application execution identity is invalid")?;
+            let contributions =
+                crate::host_contract_contributions::collect_for_verified_application(&authority)
+                    .context("failed to collect verified active Host contract contributions")?;
+            crate::host_contract::write_contract(
+                config,
+                &identity,
+                [
+                    ("panel_bootstrap_secret", bootstrap_secret.to_owned()),
+                    (
+                        "system_pack_descriptors",
+                        contributions.system_pack_descriptors,
+                    ),
+                    (
+                        "update_target_descriptors",
+                        contributions.update_target_descriptors,
+                    ),
+                ],
+            )
+            .context("failed to publish the durable active Host contract")
+        }
+        None => crate::host_contract::write_bootstrap_contract(
+            config,
+            [("panel_bootstrap_secret", bootstrap_secret.to_owned())],
+        )
+        .context("failed to publish the bootstrap-only Host contract"),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +178,9 @@ pub struct KernelManager {
     last_exit_code: Option<i32>,
     /// Counter for consecutive non-42 restarts.
     restart_count: u32,
+    /// Monotonically increasing successful-start generation used to fence
+    /// background work from a Kernel process that has since restarted.
+    launch_generation: u64,
 }
 
 impl KernelManager {
@@ -115,6 +191,7 @@ impl KernelManager {
             panel_bootstrap_secret,
             last_exit_code: None,
             restart_count: 0,
+            launch_generation: 0,
         }
     }
 
@@ -167,14 +244,9 @@ impl KernelManager {
         );
 
         let dev_environment = cfg!(debug_assertions) || self.config.is_dev_workspace();
-        let host_contract_path = crate::host_contract::write_contract(
-            &self.config,
-            crate::host_contract::DEFAULT_PROFILE_ID,
-            [(
-                "panel_bootstrap_secret",
-                self.panel_bootstrap_secret.clone(),
-            )],
-        )?;
+        let host_contract_path =
+            write_kernel_host_contract(&self.config, &self.panel_bootstrap_secret)?;
+        let next_launch_generation = self.next_launch_generation()?;
 
         let child = crate::python_env::spawn_python_role(
             &self.config,
@@ -200,6 +272,13 @@ impl KernelManager {
                             .join("defaultspack")
                             .join("shared")
                             .join("frontend_settings.json"),
+                    )
+                    .env(
+                        "RUMI_DEFAULTSPACK_COMMAND_STATE_DIR",
+                        self.config
+                            .user_data_dir
+                            .join("defaultspack")
+                            .join("shared"),
                     )
                     .env("RUMI_LOG_DIR", &self.config.log_dir)
                     .env("RUMI_PORT", self.config.kernel_port.to_string())
@@ -227,8 +306,27 @@ impl KernelManager {
 
         info!("Kernel started (pid {})", child.id());
         self.child = Some(child);
+        self.launch_generation = next_launch_generation;
         self.last_exit_code = None;
         Ok(())
+    }
+
+    fn next_launch_generation(&self) -> Result<u64> {
+        self.launch_generation
+            .checked_add(1)
+            .context("Kernel launch generation overflow")
+    }
+
+    /// Return the start generation captured by asynchronous Launcher work.
+    pub(crate) fn launch_generation(&self) -> u64 {
+        self.launch_generation
+    }
+
+    /// Return whether a captured generation still names this Kernel.  The
+    /// zero generation is reserved for an authenticated Kernel that predates
+    /// this Launcher process and therefore has no managed child handle.
+    pub(crate) fn is_current_launch_generation(&mut self, generation: u64) -> bool {
+        self.launch_generation == generation && (generation == 0 || self.is_running())
     }
 
     pub fn current_pid(&self) -> Option<u32> {
@@ -372,18 +470,18 @@ impl KernelManager {
     #[cfg(unix)]
     fn unix_stop(child: &mut crate::python_env::PythonChild) -> Result<()> {
         use std::thread;
-        use std::time::Duration;
 
         let pid = child.id() as i32;
         let _ = process_utils::command("kill")
             .args(["-TERM", &pid.to_string()])
             .status();
 
-        for _ in 0..KILL_TIMEOUT_SECS {
-            thread::sleep(Duration::from_secs(1));
+        let deadline = Instant::now() + KERNEL_STOP_TIMEOUT;
+        while Instant::now() < deadline {
             if let Ok(Some(_)) = child.try_wait() {
                 return Ok(());
             }
+            thread::sleep(Duration::from_millis(100));
         }
 
         warn!("Kernel did not exit after SIGTERM, sending SIGKILL");
@@ -725,11 +823,137 @@ mod tests {
         assert!(!km.is_running());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn panel_reauthorization_preserves_a_kernel_with_slow_health_readiness() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::sync::{mpsc, Arc, Mutex};
+        use std::time::{Duration, Instant};
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let config = AppConfig {
+            app_dir: PathBuf::new(),
+            rumi_home: PathBuf::new(),
+            python_dir: PathBuf::new(),
+            uv_path: PathBuf::new(),
+            venv_dir: PathBuf::new(),
+            user_data_dir: PathBuf::new(),
+            log_dir: PathBuf::new(),
+            kernel_port: listener.local_addr().unwrap().port(),
+            dev_workspace_root: None,
+        };
+        let (stop_server, stop_requested) = mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let mut first_request = None;
+            while matches!(stop_requested.try_recv(), Err(mpsc::TryRecvError::Empty)) {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        // Accepted sockets may inherit nonblocking mode. Read
+                        // the complete request before closing the connection;
+                        // unread request bytes can turn the response into a reset.
+                        stream.set_nonblocking(false).unwrap();
+                        stream
+                            .set_read_timeout(Some(Duration::from_secs(1)))
+                            .unwrap();
+                        stream
+                            .set_write_timeout(Some(Duration::from_secs(1)))
+                            .unwrap();
+                        let mut request = Vec::new();
+                        let mut byte = [0];
+                        while !request.ends_with(b"\r\n\r\n") && request.len() < 8192 {
+                            if stream.read_exact(&mut byte).is_err() {
+                                break;
+                            }
+                            request.push(byte[0]);
+                        }
+                        if !request.ends_with(b"\r\n\r\n") {
+                            continue;
+                        }
+                        let started = first_request.get_or_insert_with(Instant::now);
+                        let ready = started.elapsed() >= Duration::from_secs(7);
+                        let status = if ready { "200 OK" } else { "503 Unavailable" };
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        );
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(error) => panic!("health fixture failed: {error}"),
+                }
+            }
+        });
+        let child = std::process::Command::new("/bin/sleep")
+            .arg("120")
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let mut manager = KernelManager::new(&config, "test-bootstrap".into());
+        manager.child = Some(crate::python_env::PythonChild::development(child));
+        let manager = Arc::new(Mutex::new(manager));
+
+        let result = crate::ensure_kernel_ready_for_panel_auth(&config, &manager);
+        stop_server.send(()).unwrap();
+        let mut kernel = manager.lock().unwrap();
+        let retained_pid = kernel.child.as_ref().map(|child| child.id());
+        let still_running = kernel.is_running();
+        kernel.stop().unwrap();
+        server.join().unwrap();
+        result.unwrap();
+        assert_eq!(retained_pid, Some(pid));
+        assert!(still_running);
+    }
+
     #[test]
     fn stop_without_start_is_ok() {
         let config = test_config();
         let mut km = KernelManager::new(&config, "test-bootstrap".into());
         assert!(km.stop().is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_force_kills_a_term_ignoring_kernel_within_quit_budget() {
+        let (root, config) = temporary_packaged_config("kernel-term-ignore");
+        let ready_file = std::env::temp_dir().join(format!(
+            "tobkiri-kernel-term-ignore-{}-{}.ready",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let script = format!(
+            "trap '' TERM; printf ready > {}; while :; do sleep 1; done",
+            ready_file.display()
+        );
+        let child = process_utils::command("/bin/sh")
+            .args(["-c", &script])
+            .spawn()
+            .unwrap();
+        let mut kernel = KernelManager::new(&config, "test-bootstrap".into());
+        kernel.child = Some(crate::python_env::PythonChild::development(child));
+        assert!((0..40).any(|_| {
+            if ready_file.exists() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+            false
+        }));
+
+        let started = Instant::now();
+        kernel.stop().unwrap();
+        fs::remove_file(ready_file).ok();
+
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "forced kernel shutdown exceeded its share of the quit budget"
+        );
+        assert!(kernel.child.is_none());
+        fs::remove_dir_all(root).ok();
     }
 
     #[test]
@@ -752,6 +976,25 @@ mod tests {
     }
 
     #[test]
+    fn successful_start_generation_rejects_stale_guardian_work() {
+        let config = test_config();
+        let mut km = KernelManager::new(&config, "test-bootstrap".into());
+
+        assert_eq!(km.launch_generation(), 0);
+        assert!(km.is_current_launch_generation(0));
+
+        let first_generation = km.next_launch_generation().unwrap();
+        km.launch_generation = first_generation;
+        let restarted_generation = km.next_launch_generation().unwrap();
+        km.launch_generation = restarted_generation;
+
+        assert_eq!(first_generation, 1);
+        assert_eq!(restarted_generation, 2);
+        assert_ne!(first_generation, restarted_generation);
+        assert!(!km.is_current_launch_generation(first_generation));
+    }
+
+    #[test]
     fn clean_exit_does_not_request_restart_without_child() {
         let config = test_config();
         let mut km = KernelManager::new(&config, "test-bootstrap".into());
@@ -770,6 +1013,18 @@ mod tests {
         assert!(envs.contains(&("PYTHONIOENCODING", "utf-8")));
         assert!(envs.contains(&("PYTHONUNBUFFERED", "1")));
         assert!(envs.contains(&("PYTHONDONTWRITEBYTECODE", "1")));
+    }
+
+    #[test]
+    fn only_typed_reconfirmation_states_fall_back_to_bootstrap() {
+        let shell = anyhow::Error::new(crate::defaultspack_authority::ShellReconfirmationRequired);
+        let profile =
+            anyhow::Error::new(crate::defaultspack_authority::ProfileReresolutionRequired);
+        let malformed = anyhow::anyhow!("active Profile pointer is malformed");
+
+        assert!(requires_setup_reconfirmation(&shell));
+        assert!(requires_setup_reconfirmation(&profile));
+        assert!(!requires_setup_reconfirmation(&malformed));
     }
 
     #[test]
@@ -810,6 +1065,50 @@ mod tests {
         // now the authoritative packaged role spawn, which still fails closed.
         assert!(error.contains("failed to verify and spawn Kernel process"));
         assert!(!error.contains("packaged runtime integrity verification failed"));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn no_active_profile_publishes_only_a_distinct_bootstrap_contract() {
+        let (root, config) = temporary_packaged_config("kernel-bootstrap-contract");
+
+        write_kernel_host_contract(&config, "bootstrap-secret").unwrap();
+
+        let contract: serde_json::Value = serde_json::from_slice(
+            &fs::read(crate::host_contract::contract_path(&config)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(contract["profile_id"], "defaults");
+        assert_ne!(
+            contract["profile_revision"],
+            serde_json::Value::String(format!("sha256:{}", "0".repeat(64))),
+            "bootstrap must not use the former all-zero digest"
+        );
+        assert_ne!(contract["profile_revision"], contract["plan_digest"]);
+        assert_eq!(
+            contract["values"]["panel_bootstrap_secret"],
+            "bootstrap-secret"
+        );
+        assert!(contract["values"].get("system_pack_descriptors").is_none());
+        assert!(crate::host_contract::read_identity(&config).is_none());
+        assert!(crate::host_contract::read_value(&config, "panel_bootstrap_secret").is_none());
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn malformed_active_pointer_fails_closed_instead_of_falling_back_to_bootstrap() {
+        let (root, config) = temporary_packaged_config("kernel-corrupt-active-contract");
+        let profiles = config.user_data_dir.join("profiles");
+        fs::create_dir_all(&profiles).unwrap();
+        fs::write(profiles.join("active.json"), br#"{"not":"an authority"}"#).unwrap();
+
+        let error = write_kernel_host_contract(&config, "bootstrap-secret").unwrap_err();
+
+        assert!(format!("{error:#}").contains("active Profile pointer"));
+        assert!(
+            !crate::host_contract::contract_path(&config).exists(),
+            "a corrupt active authority must not be replaced with a bootstrap contract"
+        );
         fs::remove_dir_all(root).ok();
     }
 

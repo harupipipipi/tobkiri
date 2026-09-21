@@ -47,6 +47,8 @@ def _bind_session(
         providers=providers,
         profile_id=profile_id,
         plan_digest="sha256:" + "1" * 64,
+        profile_revision="sha256:" + "2" * 64,
+        activation_id="activation:run-http-test",
     )
     container = DIContainer()
     container.set_instance("v4_dispatch_session", session)

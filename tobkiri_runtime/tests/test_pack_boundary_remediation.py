@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -26,10 +25,13 @@ def test_v4_catalog_resolves_only_explicit_pack_ids() -> None:
     """The catalog owns all Pack roots and rejects injected or missing IDs."""
 
     catalog = load_pack_catalog()
-    assert len(catalog) == 143
-    assert set(resolve_selected_pack_roots(["defaults", "defaultspack"])) == {
-        "defaults",
+    assert len(catalog) == 141
+    assert "tobkiri_workflow_pack" in catalog
+    assert set(
+        resolve_selected_pack_roots(["defaultspack", "tobkiri_workflow_pack"])
+    ) == {
         "defaultspack",
+        "tobkiri_workflow_pack",
     }
     assert resolve_pack_root("defaultspack").name == "defaultspack"
     with pytest.raises(PackBoundaryError):
@@ -53,8 +55,8 @@ def test_catalog_dependencies_are_finite_and_legacy_projection_is_clean() -> Non
             assert "defaultspack" not in payload.get("dependencies", {})
 
 
-def test_pack_architecture_boundary_categories_are_zero() -> None:
-    """Production source has no unscoped discovery or cross-Pack direct edges."""
+def test_pack_architecture_boundary_debt_is_exactly_baselined() -> None:
+    """Production boundary debt cannot grow outside the reviewed exact baseline."""
 
     scanner_dir = RUNTIME / "scripts" / "quality"
     sys.path.insert(0, str(scanner_dir))
@@ -63,16 +65,17 @@ def test_pack_architecture_boundary_categories_are_zero() -> None:
     finally:
         sys.path.pop(0)
 
+    baseline = scan_pack_architecture.load_baseline(
+        REPOSITORY / "scripts" / "quality" / "pack_architecture_baseline.json"
+    )
     violations = scan_pack_architecture.scan_repository(REPOSITORY)
-    counts = Counter(item.rule for item in violations)
-    forbidden = {
-        "unknown_manifest_dependency",
-        "unscoped_pack_discovery",
-        "cross_pack_import",
-        "sibling_pack_path",
-        "foreign_pack_id_branch",
-    }
-    assert {rule: counts[rule] for rule in forbidden} == {rule: 0 for rule in forbidden}
+
+    assert baseline == {}
+    assert violations == []
+    assert scan_pack_architecture.find_unbaselined_violations(violations, baseline) == []
+    assert scan_pack_architecture.find_stale_baseline_exceptions(
+        violations, baseline
+    ) == []
 
 
 def test_finite_boundary_rejects_symlinked_pack_roots_and_files(

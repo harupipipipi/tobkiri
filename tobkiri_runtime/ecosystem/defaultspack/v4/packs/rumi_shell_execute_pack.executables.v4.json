@@ -1,42 +1,145 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:86a822f1643905e4e4f1fa26bfabc98df3be217833fb321cdbcbdb0af0991e87",
   "pack_id": "rumi_shell_execute_pack",
-  "source_identity": "sha256:756b5c33097c9974f226e7374013be9e0deba6401d9df7d103ae45f66444c7bd",
+  "source_identity": "sha256:83702422ade2adc0814aa3c70e6810564f8dda333500c0e2ae446e3163134e25",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_shell_execute_pack.shell-execute.service.python",
       "function_id": "rumi_shell_execute_pack.shell-execute.service",
-      "implementation_digest": "sha256:b65219636656e0e3f5c820ed34aeeb97462bf83b1fb5e3017c3accda7a74887d",
       "implementation_path": "runtime/execute.py",
+      "implementation_digest": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.shell.execute.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "revision_digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9",
           "operation_id": "rumi_shell_execute_pack.shell-execute",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "command": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "env": {
+                "type": "object"
+              },
+              "plan_digest": {
+                "type": "string"
+              },
+              "redacted_plan": {
+                "type": "object"
+              },
+              "shell": {
+                "type": "boolean"
+              },
+              "timeout": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "workspace_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:137dfb5853ef4b6a9077ab8ca01055a9fa83a374e2119236c3e368df6a4a5b8d",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
+      ]
+    },
+    {
+      "variant_id": "rumi_shell_execute_pack.shell-prepare.service.python",
+      "function_id": "rumi_shell_execute_pack.shell-prepare.service",
+      "implementation_path": "runtime/execute.py",
+      "implementation_digest": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+      "execution_kind": "host_extension",
       "platform": "any",
+      "architecture": "any",
       "runtime_abi": "python3.13",
-      "variant_id": "rumi_shell_execute_pack.shell-execute.service.python"
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.shell.execute.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:fff0c0fa594d2dbfa06859e2f6c14748978cbb75dff4ec133d390f5001e1eab9",
+          "operation_id": "rumi_shell_execute_pack.shell-prepare",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "command": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "env": {
+                "type": "object"
+              },
+              "plan_digest": {
+                "type": "string"
+              },
+              "redacted_plan": {
+                "type": "object"
+              },
+              "shell": {
+                "type": "boolean"
+              },
+              "timeout": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "workspace_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:f334e96552075a89d1c6ba80a04150a5f676c70ca8ee58674de1121c0d303d48",
+  "catalog_digest": "sha256:5b5c67fd4743423fc83abfa06027eb32145734b9bc2efb799038da17b957957b"
 }

@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import {ArrowRight, GitBranch} from 'lucide-react';
 import {Link} from 'react-router';
 
@@ -5,15 +6,29 @@ import {AdvancedSurfaceFrame, EmptySurfacePanel} from '@/src/components/advanced
 import {RuntimeEvidenceCard} from '@/src/components/advanced/RuntimeEvidenceCard';
 import {Badge} from '@/src/components/ui/Badge';
 import {Card, CardContent, CardHeader, CardTitle} from '@/src/components/ui/Card';
+import {Input} from '@/src/components/ui/Input';
 import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
 import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
-import {extractExactPlanBindings} from '@/src/lib/runtimeSurface';
+import {extractExactPlanBindings, type RuntimePlanBinding} from '@/src/lib/runtimeSurface';
 import {panelRoutes} from '@/src/lib/routes';
+
+export function filterGraphBindings(bindings: readonly RuntimePlanBinding[], query: string): RuntimePlanBinding[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) return [...bindings];
+  return bindings.filter((binding) => [
+    binding.binding_id,
+    binding.source_principal_id,
+    binding.target_contract_id,
+    binding.operation_id,
+  ].some((value) => value.toLocaleLowerCase().includes(normalized)));
+}
 
 export function Graph() {
   const surface = useRuntimeSurface<unknown>('profile');
   const descriptor = LAUNCHER_ADVANCED_VIEWS.graph;
   const bindings = surface.data ? extractExactPlanBindings(surface.data.data) : null;
+  const [query, setQuery] = useState('');
+  const visibleBindings = bindings ? filterGraphBindings(bindings, query) : [];
 
   return (
     <AdvancedSurfaceFrame
@@ -25,7 +40,10 @@ export function Graph() {
       {surface.status === 'ready' && bindings && bindings.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><GitBranch className="h-4 w-4" aria-hidden="true" />Read-only Plan binding graph</CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2"><GitBranch className="h-4 w-4" aria-hidden="true" />Profile graph</CardTitle>
+              <Badge variant="outline">{bindings.length} edges</Badge>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-3">
             <Link
@@ -34,20 +52,22 @@ export function Graph() {
             >
               Change Profile closure in the v4 ceremony
             </Link>
-            {bindings.map((binding) => (
+            <Input label="Find a graph edge" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Principal, Contract, operation, or binding ID" />
+            {visibleBindings.map((binding) => (
               <div key={binding.binding_id} className="flex flex-col gap-3 rounded-lg border border-border bg-bg-main p-4 sm:flex-row sm:items-center">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Function principal</p>
+                  <p className="text-xs font-medium text-text-muted">Function principal</p>
                   <p className="mt-1 break-all font-mono text-xs text-text-main">{binding.source_principal_id}</p>
                 </div>
                 <ArrowRight className="hidden h-4 w-4 shrink-0 text-text-muted sm:block" aria-hidden="true" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Contract / operation</p>
+                  <p className="text-xs font-medium text-text-muted">Contract / operation</p>
                   <p className="mt-1 break-all font-mono text-xs text-text-main">{binding.target_contract_id} / {binding.operation_id}</p>
                 </div>
                 <Badge variant="outline">{binding.binding_id}</Badge>
               </div>
             ))}
+            {visibleBindings.length === 0 ? <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">No graph edges match “{query.trim()}”.</p> : null}
           </CardContent>
         </Card>
       ) : (

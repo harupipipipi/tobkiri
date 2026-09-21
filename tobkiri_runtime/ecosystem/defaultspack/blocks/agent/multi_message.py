@@ -11,7 +11,7 @@ from domain.company.models import DEFAULT_COMPANY_ID
 from domain.company.store import CompanyStore
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     """Compatibility wrapper for posting into a CompanySlackRuntime thread."""
     if not isinstance(input_data, dict):
         return error("input_data must be a dict")
@@ -28,7 +28,7 @@ def run(input_data, context):
         return error("team workspace not found: " + company_id, "NOT_FOUND")
     target_agent = str(input_data.get("target_agent") or "").strip()
     target_agent_ids = [_slug(target_agent)] if target_agent else None
-    result = CompanySlackRuntime().post_message(
+    result = CompanySlackRuntime(settings_owner=settings_owner).post_message(
         company_id,
         content=message,
         sender_id=str(input_data.get("sender_id") or "legacy_multi"),

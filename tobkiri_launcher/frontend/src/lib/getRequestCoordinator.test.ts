@@ -11,6 +11,43 @@ const request = <T>(
   timeoutMs = 1_000,
 ) => coordinator.request({factory, key, mode, timeoutMs});
 
+test('an explicit restart read budget is not cut short by the default transport timeout', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout']});
+  const coordinator = new GetRequestCoordinator({hardTimeoutMs: 10});
+  const pending = request(coordinator, '/setup', 'foreground', (signal) => new Promise<string>((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), {once: true});
+    setTimeout(() => resolve('active'), 20);
+  }), 60);
+  await Promise.resolve();
+  context.mock.timers.tick(20);
+  assert.equal(await pending, 'active');
+});
+
+test('a longer recovery read can join an existing short read while retaining a finite deadline', async (context) => {
+  context.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  for (const completes of [true, false]) {
+    const coordinator = new GetRequestCoordinator({hardTimeoutMs: 10});
+    const factory = (signal: AbortSignal) => new Promise<string>((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), {once: true});
+      if (completes) setTimeout(() => resolve('active'), 40);
+    });
+    const first = request(coordinator, '/setup', 'prefetch', factory, 5);
+    const firstTimeout = assert.rejects(first, RequestTimeoutError);
+    await Promise.resolve();
+    context.mock.timers.tick(6);
+    await firstTimeout;
+    const recovery = request(coordinator, '/setup', 'foreground', factory, 60);
+    if (completes) {
+      context.mock.timers.tick(34);
+      assert.equal(await recovery, 'active');
+    } else {
+      const bounded = assert.rejects(recovery, /Shared GET request exceeded 60ms/);
+      context.mock.timers.tick(54);
+      await bounded;
+    }
+  }
+});
+
 test('prefetch is consumed once by the first foreground request', async () => {
   const coordinator = new GetRequestCoordinator();
   let count = 0;

@@ -1,7 +1,14 @@
-//! Pack v4 authority resolution for the Launcher-owned Defaultspack guardian.
+//! Pack v4 authority resolution for a Launcher-owned application instance.
+//!
+//! The historical module name is retained because the current Launcher still
+//! uses the Defaultspack adapter at its composition root.  Authority itself is
+//! deliberately product-neutral: the active Profile (or the signed catalog's
+//! explicit bootstrap selection) supplies the Base, Shell, Application, and
+//! artifact identities.  No product ID is an authority rule.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
+use std::fmt;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -16,17 +23,31 @@ mod packaging_toolchain;
 
 use crate::config::AppConfig;
 
-const DEFAULT_PROFILE_ID: &str = "defaults";
-const DEFAULT_BASE_ID: &str = "defaults-basepack";
-const DEFAULT_SHELL_ID: &str = "shell.tauri.default";
-const DEFAULT_RUNTIME_ID: &str = "runtime.tauri.application.default";
 const DEFAULT_PROFILE_API_VERSION: &str = "io.tobkiri.profile.v5";
 const EXECUTABLE_CATALOG_API_VERSION: &str = "io.tobkiri.executable-catalog.v4";
 const MAX_CANONICAL_JSON_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CANONICAL_JSON_DEPTH: usize = 64;
 const MAX_SAFE_JSON_INTEGER: u64 = (1_u64 << 53) - 1;
+const BUNDLE_SCHEMA: &str = "io.tobkiri.defaultspack-bundle-lock.v1";
+const PACKVM_ACCEPTANCE_PACK_ID: &str = "tobkiri_packvm_sandbox_qa_pack";
+const PACKVM_ACCEPTANCE_ENABLE_ENV: &str = "TOBKIRI_PACKVM_ACCEPTANCE_ENABLE";
+const PACKVM_ACCEPTANCE_DIGEST_ENV: &str = "TOBKIRI_PACKVM_ACCEPTANCE_PACK_DIGEST";
+
+// These values are test-fixture coordinates, not production authority.  Keep
+// them scoped to the fixture helpers so a future Pack cannot accidentally be
+// admitted because it happens to reuse the historical Defaults identities.
+#[cfg(test)]
+const DEFAULT_PROFILE_ID: &str = "defaults";
+#[cfg(test)]
+const DEFAULT_BASE_ID: &str = "defaults-basepack";
+#[cfg(test)]
+const DEFAULT_SHELL_ID: &str = "shell.tauri.default";
+#[cfg(test)]
+const DEFAULT_RUNTIME_ID: &str = "runtime.tauri.application.default";
+#[cfg(test)]
 const DEFAULT_PROFILE_SOURCE: &str =
-    "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v4.json";
+    "tobkiri_runtime/ecosystem/defaultspack/v4/defaults.profile.v5.json";
+#[cfg(test)]
 const DEFAULT_PROVIDER_PACK_IDS: [&str; 13] = [
     "defaultspack",
     "rumi_ai_gateway_pack",
@@ -42,32 +63,156 @@ const DEFAULT_PROVIDER_PACK_IDS: [&str; 13] = [
     "rumi_provider_registry_pack",
     "tobkiri_host_pack_control",
 ];
-const BUNDLE_SCHEMA: &str = "io.tobkiri.defaultspack-bundle-lock.v1";
-const PROFILE_PATH: &str = "defaults.profile.v4.json";
+#[cfg(test)]
+const PROFILE_PATH: &str = "defaults.profile.v5.json";
+#[cfg(test)]
 const DEFAULTSPACK_PACK_PATH: &str = "packs/defaultspack.pack.v4.json";
+#[cfg(test)]
 const BASE_PACK_PATH: &str = "packs/defaults-basepack.pack.v4.json";
+#[cfg(test)]
 const SHELL_PACK_PATH: &str = "packs/shell.tauri.default.pack.v4.json";
+#[cfg(test)]
 const RUNTIME_PACK_PATH: &str = "packs/runtime.tauri.application.default.pack.v4.json";
 
-/// Exact, immutable authority captured for one guardian launch.
+/// Exact, immutable authority captured for one application launch.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GuardianAuthority {
+pub(crate) struct ApplicationAuthority {
     pub pack_root: PathBuf,
-    pub launch: GuardianLaunch,
+    /// Artifacts captured while resolving this selected Pack root.
+    /// Consumers must not re-read the mutable artifact index after resolution.
+    pub verified_artifacts: BTreeMap<String, VerifiedPackArtifact>,
+    pub materialized_pack_id: String,
+    pub launch: ApplicationLaunch,
     pub profile_id: String,
+    /// The source Profile bytes digest for bootstrap, or the Profile revision
+    /// captured by the active activation.
     pub profile_digest: String,
     pub catalog_revision: String,
+    pub profile_revision: Option<String>,
+    pub activation_id: Option<String>,
+    pub plan_digest: Option<String>,
+    pub base_pack_id: String,
+    pub shell_provider_id: String,
+    pub application_id: String,
+    pub launch_contribution: Option<RuntimeLaunchContribution>,
 }
 
-/// Verified process materialization for the application Pack's launch function.
+/// One artifact declaration accepted by the selected Pack verifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GuardianLaunch {
+pub(crate) struct VerifiedPackArtifact {
+    pub digest: String,
+    pub role: String,
+}
+
+/// Canonical Application launch selector carried by the active ResolvedPlan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RuntimeLaunchContribution {
+    pub provider_id: String,
+    pub contract_id: String,
+    pub operation_id: String,
+    pub platform: String,
+    pub architecture: String,
+    pub artifact_digest: String,
+    pub relative_path: String,
+    pub entrypoint: String,
+}
+
+/// Recoverable state when an internally valid activation cannot authorize the
+/// current signed Pack closure and must be explicitly resolved again.
+#[derive(Debug)]
+pub(crate) struct ProfileReresolutionRequired;
+
+impl fmt::Display for ProfileReresolutionRequired {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(
+            "active Profile cannot authorize the current packaged artifacts; profile reactivation or re-resolution is required",
+        )
+    }
+}
+
+impl std::error::Error for ProfileReresolutionRequired {}
+
+/// An internally consistent activation selects older bytes of the same Shell.
+/// This permits only Host setup; it never constitutes execution authority.
+#[derive(Debug)]
+pub(crate) struct ShellReconfirmationRequired;
+
+impl fmt::Display for ShellReconfirmationRequired {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("packaged Shell changed; explicit Profile reconfirmation is required")
+    }
+}
+
+impl std::error::Error for ShellReconfirmationRequired {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReconfirmationKind {
+    Profile,
+    Shell,
+}
+
+impl ProfileReresolutionRequired {
+    pub(crate) const CODE: &'static str = "PROFILE_RERESOLUTION_REQUIRED";
+    pub(crate) const ACTION: &'static str = "reactivate_or_reresolve_profile";
+}
+
+impl ApplicationAuthority {
+    /// Return the activation identity that is permitted to execute this
+    /// Application.  A signed bootstrap Profile is useful for setup and safe
+    /// repair, but it is deliberately not a normal launch authority.
+    pub(crate) fn execution_identity(
+        &self,
+    ) -> Result<crate::host_contract::ExecutionProfileIdentity> {
+        let profile_revision = self
+            .profile_revision
+            .as_deref()
+            .context("Application launch requires an active Profile revision")?;
+        let activation_id = self
+            .activation_id
+            .as_deref()
+            .context("Application launch requires an active activation")?;
+        let plan_digest = self
+            .plan_digest
+            .as_deref()
+            .context("Application launch requires a verified ResolvedPlan")?;
+        if self.profile_digest != profile_revision {
+            bail!("active Profile revision differs from the selected Profile bytes");
+        }
+        crate::host_contract::ExecutionProfileIdentity::new(
+            &self.profile_id,
+            profile_revision,
+            activation_id,
+            plan_digest,
+        )
+        .context("Application launch execution identity is invalid")
+    }
+
+    pub(crate) fn runtime_launch_contribution(&self) -> Result<&RuntimeLaunchContribution> {
+        self.launch_contribution
+            .as_ref()
+            .context("active ResolvedPlan has no Application launch contribution")
+    }
+}
+
+/// Compatibility alias for callers that still use the old guardian vocabulary.
+pub(crate) type GuardianAuthority = ApplicationAuthority;
+
+/// Verified process materialization for an Application Pack's launch function.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ApplicationLaunch {
     pub entrypoint: PathBuf,
     pub argv: Vec<OsString>,
+    pub artifact_id: String,
     pub artifact_digest: String,
+    pub entrypoint_digest: String,
     pub function_id: String,
     pub provider_id: String,
+    pub contract_namespace: String,
+    pub frontend_entry: crate::frontend_entry::VerifiedFrontendEntry,
 }
+
+/// Compatibility alias for the pre-generic Launcher composition root.
+pub(crate) type GuardianLaunch = ApplicationLaunch;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -98,6 +243,8 @@ enum BundleEntryKind {
 struct VerifiedBundleLock {
     authority_digests: BTreeMap<String, String>,
     sidecar_digests: BTreeMap<String, String>,
+    pack_paths: BTreeMap<String, String>,
+    authority_roles: BTreeMap<String, BundleEntryKind>,
 }
 
 #[derive(Deserialize)]
@@ -107,7 +254,19 @@ struct ExecutableCatalog {
     pack_id: String,
     source_identity: String,
     variants: Vec<ExecutableVariant>,
+    materialization_catalog_digest: Option<String>,
     catalog_digest: String,
+}
+
+/// Identity facts needed to bind a sidecar catalog to its Pack authority.
+///
+/// A generated Pack is a source-bound projection.  Its sidecar must preserve
+/// the digest of the canonical executable catalog that was used to materialize
+/// it.  Canonical and externally admitted Packs use `catalog_digest` directly
+/// and must not introduce that alias field.
+struct PackCatalogIdentity {
+    source_identity: String,
+    is_source_bound_projection: bool,
 }
 
 #[derive(Deserialize)]
@@ -143,104 +302,1221 @@ struct ExecutableOperation {
     idempotency: String,
 }
 
-/// Resolve guardian launch metadata solely from packaged v4 authorities.
+/// Resolve launch metadata from the signed catalog, an active Profile, and a
+/// sealed Application Pack.
 pub(crate) fn resolve(config: &AppConfig) -> Result<GuardianAuthority> {
-    let catalog = crate::presentation::load_catalog(config)
-        .context("Defaultspack guardian presentation authority was rejected")?;
-    if catalog.default_profile_id != DEFAULT_PROFILE_ID
-        || catalog.default_profile_source != DEFAULT_PROFILE_SOURCE
-        || catalog.default_selection.base_pack_id != DEFAULT_BASE_ID
-        || catalog.default_selection.shell_provider_id != DEFAULT_SHELL_ID
-        || catalog.base_packs.len() != 1
-        || catalog.shell_providers.len() != 1
-    {
-        bail!("Defaultspack guardian requires the exact Defaults Base and Tauri Shell Profile");
+    SignedApplicationResolver::resolve(config)
+}
+
+/// Return whether the durable active-Profile pointer is present and valid.
+///
+/// This deliberately validates the complete pointer/snapshot pair rather than
+/// treating an old Host-contract file as authority. Callers that receive
+/// ``true`` must still resolve the selected Application before launch.
+pub(crate) fn has_verified_active_profile(config: &AppConfig) -> Result<bool> {
+    Ok(read_active_profile_snapshot(config)?.is_some())
+}
+
+/// Generic resolver retained behind the historical module boundary until the
+/// Launcher composition root can be renamed without a migration fan-out.
+pub(crate) struct SignedApplicationResolver;
+
+impl SignedApplicationResolver {
+    /// Resolve one application instance without selecting a product by name.
+    pub(crate) fn resolve(config: &AppConfig) -> Result<ApplicationAuthority> {
+        let catalog = crate::presentation::load_catalog(config)
+            .context("signed presentation catalog authority was rejected")?;
+        let app_root = canonical_directory(&config.app_dir, "packaged application root")?;
+        let (_, bootstrap_profile_source, _) = catalog.bootstrap_profile_identity()?;
+        let packaged_bundle_root = packaged_bundle_root(&app_root, bootstrap_profile_source)?;
+        let pack_root = canonical_pack_root(&packaged_bundle_root)?;
+        let development_roots = if has_verified_active_profile(config)? {
+            development_defaults_roots(config)?
+        } else {
+            None
+        };
+        let (bundle_root, application_pack_root, pack_root, development_bundle) =
+            match development_roots {
+                Some((root, bundle, materialized_pack_root)) => {
+                    (bundle, root, materialized_pack_root, true)
+                }
+                None => (packaged_bundle_root, pack_root.clone(), pack_root, false),
+            };
+        verify_symlink_free_tree(&pack_root, &pack_root)?;
+        let bundle_lock = verify_bundle_lock(&bundle_root)?;
+        #[cfg(test)]
+        let catalog = fixture_catalog_with_shell_variant(catalog, &bundle_root, &bundle_lock)?;
+        let active = select_profile_authority(config, &catalog, &bundle_root, &bundle_lock)?;
+        let (mut selected, mut reconfirmation, mut previous_launch) =
+            match validate_profile(&active.profile, &catalog, &active, development_bundle) {
+                Ok(_) => (active, None, None),
+                Err(error)
+                    if error
+                        .downcast_ref::<ShellReconfirmationRequired>()
+                        .is_some() =>
+                {
+                    let candidate =
+                        select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
+                    ensure_reconfirmation_selection_is_stable(&active, &candidate)?;
+                    (
+                        candidate,
+                        Some(ReconfirmationKind::Shell),
+                        Some(
+                            active
+                                .launch_contribution
+                                .context("active launch selector is missing")?,
+                        ),
+                    )
+                }
+                Err(error)
+                    if error
+                        .downcast_ref::<ProfileReresolutionRequired>()
+                        .is_some() =>
+                {
+                    let candidate =
+                        select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
+                    ensure_reconfirmation_selection_is_stable(&active, &candidate)?;
+                    (
+                        candidate,
+                        Some(ReconfirmationKind::Profile),
+                        active.launch_contribution,
+                    )
+                }
+                Err(error) => return Err(error),
+            };
+        let mut selected_variant =
+            validate_profile(&selected.profile, &catalog, &selected, development_bundle)?;
+        if let Err(error) = validate_profile_pack_closure(
+            &selected,
+            &catalog,
+            &bundle_root,
+            &bundle_lock,
+            development_bundle,
+        ) {
+            if reconfirmation.is_some()
+                || error
+                    .downcast_ref::<ProfileReresolutionRequired>()
+                    .is_none()
+            {
+                return Err(error);
+            }
+            let candidate =
+                select_bootstrap_profile_authority(&catalog, &bundle_root, &bundle_lock)?;
+            ensure_reconfirmation_selection_is_stable(&selected, &candidate)?;
+            previous_launch = selected.launch_contribution;
+            selected = candidate;
+            selected_variant =
+                validate_profile(&selected.profile, &catalog, &selected, development_bundle)?;
+            if let Err(candidate_error) = validate_profile_pack_closure(
+                &selected,
+                &catalog,
+                &bundle_root,
+                &bundle_lock,
+                development_bundle,
+            ) {
+                bail!(
+                    "current signed bootstrap Profile Pack closure is invalid: {candidate_error:#}"
+                );
+            }
+            reconfirmation = Some(ReconfirmationKind::Profile);
+        }
+
+        let application_path =
+            bundle_pack_path(&bundle_root, &bundle_lock, &selected.application_pack_id)?;
+        let application_pack = read_json(&application_path, "selected Application Pack v4")?;
+        let launch = validate_application_pack(
+            &application_pack_root,
+            &pack_root,
+            &application_pack,
+            selected_variant,
+            selected.launch_contribution.as_ref(),
+            &selected.application_pack_id,
+            selected.application_artifact_digest.as_deref(),
+            selected.profile.get("frontend_entry_id"),
+        )?;
+        if let Some(previous) = previous_launch.as_ref() {
+            validate_application_selector(previous, selected_variant, &application_pack)?;
+            if previous.relative_path != selected_variant.artifact_ref
+                || previous.entrypoint != selected_variant.entrypoint
+            {
+                bail!("updated Shell changed the active launch target");
+            }
+        }
+
+        // The process root is still supplied by the current Launcher adapter,
+        // but its identity is obtained from the selected closure. This keeps
+        // the PackVM/artifact-index reconciliation in place while removing the
+        // old Defaultspack-only authority rule.
+        let root_pack = read_json(&pack_root.join("pack.v4.json"), "materialized Pack")?;
+        let root_pack_id = value_str(&root_pack, "/pack/id")
+            .context("materialized Pack is missing its Pack identity")?
+            .to_owned();
+        ensure_materialized_pack_selected(&root_pack_id, &selected.pack_ids)?;
+        let verified_artifacts =
+            verify_pack_artifact_index(&pack_root, &bundle_root, &root_pack_id)?;
+
+        let catalog_revision = crate::presentation::catalog_revision(&catalog)?;
+        if let Some(kind) = reconfirmation {
+            #[cfg(target_os = "macos")]
+            if selected_variant.platform == "macos" {
+                let artifact = pack_root
+                    .join("platform-artifacts")
+                    .join(safe_relative(&selected_variant.artifact_ref)?);
+                let status = std::process::Command::new("/usr/bin/codesign")
+                    .args(["--verify", "--deep", "--strict", "--all-architectures"])
+                    .arg(artifact)
+                    .status()
+                    .context("updated Shell signature could not be verified")?;
+                if !status.success() {
+                    bail!("updated Shell signature is invalid");
+                }
+            }
+            // All new packaged closure and artifact checks above must succeed
+            // before exposing setup. The candidate is never execution authority.
+            return Err(match kind {
+                ReconfirmationKind::Profile => ProfileReresolutionRequired.into(),
+                ReconfirmationKind::Shell => ShellReconfirmationRequired.into(),
+            });
+        }
+        Ok(ApplicationAuthority {
+            pack_root,
+            verified_artifacts,
+            materialized_pack_id: root_pack_id,
+            launch,
+            profile_id: selected.profile_id,
+            profile_digest: selected.profile_digest,
+            catalog_revision,
+            profile_revision: selected.profile_revision,
+            activation_id: selected.activation_id,
+            plan_digest: selected.plan_digest,
+            base_pack_id: selected.base_pack_id,
+            shell_provider_id: selected.shell_provider_id,
+            application_id: selected.application_pack_id,
+            launch_contribution: selected.launch_contribution,
+        })
     }
-    let base = &catalog.base_packs[0];
-    if base.pack_id != DEFAULT_BASE_ID || base.backend_provider_ids != ["defaultspack"] {
-        bail!("Defaults Base must bind exactly one Defaultspack backend provider");
-    }
-    let shell = &catalog.shell_providers[0];
-    if shell.provider_id != DEFAULT_SHELL_ID
-        || shell
-            .artifact_variants
-            .iter()
-            .any(|variant| variant.development_command.is_some())
+}
+
+fn ensure_reconfirmation_selection_is_stable(
+    active: &SelectedProfileAuthority,
+    candidate: &SelectedProfileAuthority,
+) -> Result<()> {
+    if candidate.profile_id != active.profile_id
+        || candidate.base_pack_id != active.base_pack_id
+        || candidate.shell_provider_id != active.shell_provider_id
+        || candidate.shell_pack_id != active.shell_pack_id
+        || candidate.application_pack_id != active.application_pack_id
     {
-        bail!("Defaultspack guardian Shell authority is not production-only");
+        bail!(
+            "updated bundle requires an unchanged Profile, Base, Shell, and Application selection"
+        );
+    }
+    Ok(())
+}
+
+fn ensure_materialized_pack_selected(
+    root_pack_id: &str,
+    selected_pack_ids: &BTreeSet<String>,
+) -> Result<()> {
+    if !selected_pack_ids.contains(root_pack_id) {
+        bail!("materialized Pack is outside the selected Profile closure");
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+struct SelectedProfileAuthority {
+    profile: Value,
+    lock: Option<Value>,
+    plan: Option<Value>,
+    profile_id: String,
+    profile_digest: String,
+    profile_revision: Option<String>,
+    activation_id: Option<String>,
+    plan_digest: Option<String>,
+    lock_digest: Option<String>,
+    base_pack_id: String,
+    shell_provider_id: String,
+    shell_pack_id: String,
+    application_pack_id: String,
+    application_artifact_digest: Option<String>,
+    launch_contribution: Option<RuntimeLaunchContribution>,
+    pack_ids: BTreeSet<String>,
+}
+
+#[derive(Debug)]
+struct ActiveProfileSnapshot {
+    profile: Value,
+    lock: Value,
+    plan: Value,
+    identity: crate::host_contract::ExecutionProfileIdentity,
+    profile_revision: String,
+    activation_id: String,
+    plan_digest: String,
+    lock_digest: String,
+}
+
+fn read_active_profile_snapshot(config: &AppConfig) -> Result<Option<ActiveProfileSnapshot>> {
+    match fs::symlink_metadata(&config.user_data_dir) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            bail!("Host state root must be a non-symlink directory");
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).context("failed to inspect Host state root"),
+    }
+    let user_data_root = canonical_directory(&config.user_data_dir, "Host state root")?;
+    let profiles_root = user_data_root.join("profiles");
+    let profiles_metadata = match fs::symlink_metadata(&profiles_root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).context("failed to inspect Profile authority directory"),
+    };
+    if profiles_metadata.file_type().is_symlink() || !profiles_metadata.is_dir() {
+        bail!("Profile authority directory must be a non-symlink directory");
+    }
+    let pointer_path = profiles_root.join("active.json");
+    let pointer_raw = match fs::symlink_metadata(&pointer_path) {
+        Ok(_) => read_regular_file(&pointer_path, "active Profile pointer")?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error).context("failed to inspect active Profile pointer"),
+    };
+    let pointer: Value =
+        serde_json::from_slice(&pointer_raw).context("active Profile pointer is malformed")?;
+    validate_canonical_json(&pointer, 0)?;
+    let pointer_object = pointer
+        .as_object()
+        .context("active Profile pointer must be an object")?;
+    let expected_fields = [
+        "schema",
+        "profile_id",
+        "profile_revision",
+        "activation_id",
+        "plan_digest",
+        "lock_digest",
+        "activation_snapshot_path",
+        "activation_snapshot_digest",
+        "catalog_revision",
+        "generation",
+        "updated_at",
+        "pointer_digest",
+    ]
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    if pointer_object
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>()
+        != expected_fields
+    {
+        bail!("active Profile pointer has unknown or missing fields");
+    }
+    if value_str(&pointer, "/schema") != Some("io.tobkiri.active-profile-pointer.v1") {
+        bail!("active Profile pointer schema is unsupported");
+    }
+    let pointer_digest = value_str(&pointer, "/pointer_digest")
+        .context("active Profile pointer digest is missing")?;
+    let mut unsigned_pointer = pointer.clone();
+    unsigned_pointer
+        .as_object_mut()
+        .context("active Profile pointer must be an object")?
+        .remove("pointer_digest");
+    if canonical_value_digest(&unsigned_pointer)? != pointer_digest {
+        bail!("active Profile pointer digest is invalid");
     }
 
-    let app_root = canonical_directory(&config.app_dir, "packaged application root")?;
-    let pack_root = canonical_child_directory(
-        &app_root,
-        Path::new("ecosystem/defaultspack"),
-        "Defaultspack Pack root",
+    let profile_id = value_str(&pointer, "/profile_id")
+        .context("active Profile pointer profile_id is missing")?;
+    let profile_revision = value_str(&pointer, "/profile_revision")
+        .context("active Profile pointer profile_revision is missing")?;
+    let activation_id = value_str(&pointer, "/activation_id")
+        .context("active Profile pointer activation_id is missing")?;
+    let plan_digest = value_str(&pointer, "/plan_digest")
+        .context("active Profile pointer plan_digest is missing")?;
+    let lock_digest = value_str(&pointer, "/lock_digest")
+        .context("active Profile pointer lock_digest is missing")?;
+    let snapshot_digest = value_str(&pointer, "/activation_snapshot_digest")
+        .context("active Profile pointer snapshot digest is missing")?;
+    if !valid_identifier(profile_id)
+        || !valid_digest(profile_revision)
+        || !valid_activation_id(activation_id)
+        || !valid_digest(plan_digest)
+        || !valid_digest(lock_digest)
+        || !valid_digest(snapshot_digest)
+    {
+        bail!("active Profile pointer identity is invalid");
+    }
+    if let Some(catalog_revision) = pointer
+        .pointer("/catalog_revision")
+        .filter(|value| !value.is_null())
+        .and_then(Value::as_str)
+    {
+        if !valid_digest(catalog_revision) {
+            bail!("active Profile pointer catalog revision is invalid");
+        }
+    } else if !pointer
+        .pointer("/catalog_revision")
+        .is_some_and(Value::is_null)
+    {
+        bail!("active Profile pointer catalog revision must be a digest or null");
+    }
+    for pointer_name in ["generation", "updated_at"] {
+        if pointer
+            .pointer(&format!("/{pointer_name}"))
+            .and_then(Value::as_u64)
+            .is_none()
+        {
+            bail!("active Profile pointer {pointer_name} is invalid");
+        }
+    }
+    if pointer.pointer("/generation").and_then(Value::as_u64) == Some(0) {
+        bail!("active Profile pointer generation must be positive");
+    }
+    let snapshot_relative = value_str(&pointer, "/activation_snapshot_path")
+        .context("active Profile pointer snapshot path is missing")?;
+    let snapshot_relative = safe_active_snapshot_path(snapshot_relative)?;
+    let snapshot_path = user_data_root.join(&snapshot_relative);
+    let snapshot_raw = read_rooted_regular_file(
+        &user_data_root,
+        &snapshot_path,
+        "active Profile activation snapshot",
     )?;
-    verify_symlink_free_tree(&pack_root, &pack_root)?;
-    let bundle_root = canonical_child_directory(&pack_root, Path::new("v4"), "Pack v4 root")?;
-    let bundle_lock = verify_bundle_lock(&bundle_root)?;
-    let entries = &bundle_lock.authority_digests;
+    let snapshot: Value = serde_json::from_slice(&snapshot_raw)
+        .context("active Profile activation snapshot is malformed")?;
+    validate_canonical_json(&snapshot, 0)?;
+    if canonical_value_digest(&snapshot)? != snapshot_digest {
+        bail!("active Profile activation snapshot digest is invalid");
+    }
+    let envelope = snapshot
+        .get("envelope")
+        .filter(|value| value.is_object())
+        .unwrap_or(&snapshot);
+    let profile = envelope
+        .get("profile")
+        .filter(|value| value.is_object())
+        .cloned()
+        .context("active Profile snapshot Profile record is missing")?;
+    let lock = envelope
+        .get("lock")
+        .filter(|value| value.is_object())
+        .cloned()
+        .context("active Profile snapshot ProfileLock record is missing")?;
+    let plan = envelope
+        .get("plan")
+        .filter(|value| value.is_object())
+        .cloned()
+        .context("active Profile snapshot ResolvedPlan record is missing")?;
+    let activation = envelope
+        .get("activation")
+        .filter(|value| value.is_object())
+        .context("active Profile snapshot ActivationRecord is missing")?;
+    if value_str(&profile, "/profile_id") != Some(profile_id)
+        || value_str(&plan, "/profile_revision") != Some(profile_revision)
+        || value_str(&plan, "/plan_digest") != Some(plan_digest)
+        || value_str(&lock, "/lock_digest") != Some(lock_digest)
+        || value_str(&lock, "/profile_revision") != Some(profile_revision)
+        || value_str(&lock, "/plan_digest") != Some(plan_digest)
+        || value_str(activation, "/profile_id") != Some(profile_id)
+        || value_str(activation, "/profile_revision") != Some(profile_revision)
+        || value_str(activation, "/activation_id") != Some(activation_id)
+        || value_str(activation, "/plan_digest") != Some(plan_digest)
+        || value_str(activation, "/lock_digest") != Some(lock_digest)
+        || value_str(activation, "/state") != Some("active")
+    {
+        bail!("active Profile snapshot identity does not match its pointer");
+    }
+    if let Some(catalog_revision) = pointer.pointer("/catalog_revision").and_then(Value::as_str) {
+        if value_str(&plan, "/catalog_revision") != Some(catalog_revision) {
+            bail!("active Profile snapshot catalog revision is stale");
+        }
+    }
+    if canonical_value_digest(&profile)? != profile_revision {
+        bail!("active Profile revision digest is stale");
+    }
+    if canonical_record_digest(&lock, "lock_digest")? != lock_digest {
+        bail!("active ProfileLock digest is stale");
+    }
+    if canonical_record_digest(&plan, "plan_digest")? != plan_digest {
+        bail!("active ResolvedPlan digest is stale");
+    }
+    let identity = crate::host_contract::ExecutionProfileIdentity::new(
+        profile_id,
+        profile_revision,
+        activation_id,
+        plan_digest,
+    )?;
+    Ok(Some(ActiveProfileSnapshot {
+        profile,
+        lock,
+        plan,
+        identity,
+        profile_revision: profile_revision.to_owned(),
+        activation_id: activation_id.to_owned(),
+        plan_digest: plan_digest.to_owned(),
+        lock_digest: lock_digest.to_owned(),
+    }))
+}
 
-    require_catalog_digest(
-        &entries,
-        BASE_PACK_PATH,
-        catalog.source_manifest_digests.get(DEFAULT_BASE_ID),
+fn safe_active_snapshot_path(value: &str) -> Result<PathBuf> {
+    let path = safe_relative(value)?;
+    if path
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+        != Some("workspaces")
+    {
+        bail!("active Profile snapshot must be below workspaces");
+    }
+    Ok(path)
+}
+
+fn read_rooted_regular_file(root: &Path, path: &Path, label: &str) -> Result<Vec<u8>> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("{label} is missing at {}", path.display()))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        bail!("{label} must be a regular non-symlink file");
+    }
+    if has_multiple_links(path, &metadata)? {
+        bail!("{label} must not be multiply linked");
+    }
+    let canonical = path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize {label}"))?;
+    if !canonical.starts_with(root) {
+        bail!("{label} escapes the Host state root");
+    }
+    fs::read(path).with_context(|| format!("failed to read {label} at {}", path.display()))
+}
+
+fn canonical_record_digest(value: &Value, digest_field: &str) -> Result<String> {
+    let mut unsigned = value.clone();
+    unsigned
+        .as_object_mut()
+        .context("digest-bound record must be an object")?
+        .remove(digest_field);
+    canonical_value_digest(&unsigned)
+}
+
+fn packaged_bundle_root(app_root: &Path, source: &str) -> Result<PathBuf> {
+    let source_path = safe_relative(source)?;
+    let components = source_path
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => value.to_str(),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let ecosystem_index = components
+        .iter()
+        .position(|component| *component == "ecosystem")
+        .context("Profile source does not identify an ecosystem bundle")?;
+    if ecosystem_index + 1 >= components.len() {
+        bail!("Profile source does not identify a Pack bundle root");
+    }
+    let bundle_components = &components[ecosystem_index..components.len() - 1];
+    if bundle_components.is_empty() {
+        bail!("Profile source does not identify a Pack bundle root");
+    }
+    let relative = bundle_components.iter().collect::<PathBuf>();
+    canonical_child_directory(app_root, &relative, "selected Pack v4 root")
+}
+
+#[cfg(debug_assertions)]
+fn development_defaults_roots(config: &AppConfig) -> Result<Option<(PathBuf, PathBuf, PathBuf)>> {
+    if !config.is_dev_workspace() {
+        return Ok(None);
+    }
+    let mut candidates = vec![(
+        config.app_dir.join("bundled/dev-defaults"),
+        config.app_dir.clone(),
+    )];
+    if let Some(workspace_root) = config.dev_workspace_root.as_ref() {
+        let target_root = workspace_root.join("tobkiri_launcher/src-tauri/target");
+        candidates.push((
+            target_root.join("dev-defaults"),
+            target_root.join("debug/app"),
+        ));
+    }
+    for (candidate, runtime_candidate) in candidates {
+        match fs::symlink_metadata(&candidate) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error).context("failed to inspect development Defaults root"),
+        }
+        let root = canonical_directory(&candidate, "development Defaults root")?;
+        let bundle = canonical_child_directory(&root, Path::new("v4"), "development Pack v4 root")?;
+        canonical_child_directory(
+            &root,
+            Path::new("platform-artifacts"),
+            "development Application artifact root",
+        )?;
+        verify_symlink_free_tree(&root, &root)?;
+        let runtime_root =
+            canonical_directory(&runtime_candidate, "development staged runtime root")?;
+        crate::runtime_resource_integrity::verify_subtree(&runtime_root, "ecosystem/defaultspack")
+            .context("development staged Pack seal is invalid")?;
+        let materialized_pack_root = canonical_child_directory(
+            &runtime_root,
+            Path::new("ecosystem/defaultspack"),
+            "development materialized Pack root",
+        )?;
+        return Ok(Some((root, bundle, materialized_pack_root)));
+    }
+    Ok(None)
+}
+
+#[cfg(not(debug_assertions))]
+fn development_defaults_roots(_config: &AppConfig) -> Result<Option<(PathBuf, PathBuf, PathBuf)>> {
+    Ok(None)
+}
+
+fn canonical_pack_root(bundle_root: &Path) -> Result<PathBuf> {
+    let parent = bundle_root
+        .parent()
+        .context("selected Pack v4 root has no Pack root parent")?;
+    let pack_root = canonical_directory(parent, "selected Pack root")?;
+    let bundle_name = bundle_root
+        .file_name()
+        .context("selected Pack v4 root has no directory name")?;
+    let revalidated_bundle_root = pack_root
+        .join(bundle_name)
+        .canonicalize()
+        .context("failed to revalidate selected Pack v4 root from its Pack root")?;
+    if revalidated_bundle_root.as_path() != bundle_root {
+        bail!("selected Pack v4 root does not remain beneath its Pack root");
+    }
+    Ok(pack_root)
+}
+
+fn select_profile_authority(
+    config: &AppConfig,
+    catalog: &crate::presentation::PresentationCatalog,
+    bundle_root: &Path,
+    bundle_lock: &VerifiedBundleLock,
+) -> Result<SelectedProfileAuthority> {
+    if let Some(active) = read_active_profile_snapshot(config)? {
+        let selected = selected_profile_from_documents(
+            active.profile,
+            Some(active.lock),
+            Some(active.plan),
+            active.identity.profile_id.clone(),
+            active.profile_revision.clone(),
+            Some(active.profile_revision),
+            Some(active.activation_id),
+            Some(active.plan_digest),
+            Some(active.lock_digest),
+        )?;
+        if selected.profile_id != active.identity.profile_id {
+            bail!("active Profile identity does not match its activation snapshot");
+        }
+        validate_plan_identity(&selected, &active.identity)?;
+        ensure_profile_selection_is_known(catalog, &selected, false)?;
+        return Ok(selected);
+    }
+
+    select_bootstrap_profile_authority(catalog, bundle_root, bundle_lock)
+}
+
+fn select_bootstrap_profile_authority(
+    catalog: &crate::presentation::PresentationCatalog,
+    bundle_root: &Path,
+    bundle_lock: &VerifiedBundleLock,
+) -> Result<SelectedProfileAuthority> {
+    // A signed catalog can explicitly describe a bootstrap candidate. This is
+    // a compatibility adapter for a fresh install only; it derives every
+    // identity from the catalog/profile bytes and never substitutes a
+    // Defaultspack or Tauri identifier.
+    let (bootstrap_profile_id, _, bootstrap_profile_digest) =
+        catalog.bootstrap_profile_identity()?;
+    let profile_path = bundle_lock
+        .authority_roles
+        .iter()
+        .find(|(path, role)| {
+            **role == BundleEntryKind::Profile
+                && bundle_lock
+                    .authority_digests
+                    .get(*path)
+                    .is_some_and(|digest| digest == bootstrap_profile_digest)
+        })
+        .map(|(path, _)| path)
+        .context("signed catalog Profile is absent from the Pack bundle")?;
+    let profile = read_json(
+        &bundle_root.join(profile_path),
+        "catalog-selected Profile v5",
     )?;
-    require_catalog_digest(
-        &entries,
-        DEFAULTSPACK_PACK_PATH,
-        catalog.source_manifest_digests.get("defaultspack"),
+    let selected = selected_profile_from_documents(
+        profile,
+        None,
+        None,
+        bootstrap_profile_id.to_owned(),
+        bootstrap_profile_digest.to_owned(),
+        None,
+        None,
+        None,
+        None,
     )?;
-    require_catalog_digest(
-        &entries,
-        PROFILE_PATH,
-        Some(&catalog.default_profile_digest),
-    )?;
-    // Shell and Application are intentional packaged successors of the signed
-    // source definitions. Their exact bytes are bound by the sealed bundle
-    // lock; Profile is additionally bound to the catalog above, and the
-    // selected release artifact is independently bound below.
-    for path in [SHELL_PACK_PATH, RUNTIME_PACK_PATH, PROFILE_PATH] {
-        if !entries.contains_key(path) {
-            bail!("packaged authority is absent from the bundle lock: {path}");
+    if selected.base_pack_id != catalog.default_selection.base_pack_id
+        || selected.shell_provider_id != catalog.default_selection.shell_provider_id
+    {
+        bail!("signed catalog selection differs from its selected Profile");
+    }
+    ensure_profile_selection_is_known(catalog, &selected, true)?;
+    Ok(selected)
+}
+
+fn selected_profile_from_documents(
+    profile: Value,
+    lock: Option<Value>,
+    plan: Option<Value>,
+    expected_profile_id: String,
+    profile_digest: String,
+    profile_revision: Option<String>,
+    activation_id: Option<String>,
+    plan_digest: Option<String>,
+    lock_digest: Option<String>,
+) -> Result<SelectedProfileAuthority> {
+    let profile_id = value_str(&profile, "/profile_id")
+        .context("selected Profile is missing profile_id")?
+        .to_owned();
+    if !valid_identifier(&profile_id) || profile_id != expected_profile_id {
+        bail!("selected Profile identity is unknown or inconsistent");
+    }
+    if !valid_digest(&profile_digest) {
+        bail!("selected Profile digest is invalid");
+    }
+    if let Some(revision) = profile_revision.as_deref() {
+        if !valid_digest(revision) || revision != profile_digest {
+            bail!("selected Profile revision does not match its definition digest");
+        }
+    }
+    if let Some(activation) = activation_id.as_deref() {
+        if !valid_activation_id(activation) {
+            bail!("selected Profile activation identity is invalid");
+        }
+    }
+    if let Some(digest) = plan_digest.as_deref() {
+        if !valid_digest(digest) {
+            bail!("selected Profile plan digest is invalid");
+        }
+    }
+    if lock_digest.is_some() && plan_digest.is_none() {
+        bail!("selected Profile Lock identity has no ResolvedPlan");
+    }
+    let base_pack_id = value_str(&profile, "/base/pack_id")
+        .context("selected Profile Base identity is missing")?
+        .to_owned();
+    let shell_provider_id = value_str(&profile, "/shell/provider_id")
+        .context("selected Profile Shell provider identity is missing")?
+        .to_owned();
+    let shell_pack_id = value_str(&profile, "/shell/pack_id")
+        .context("selected Profile Shell Pack identity is missing")?
+        .to_owned();
+    let packs = profile
+        .get("packs")
+        .and_then(Value::as_array)
+        .context("selected Profile packs must be an array")?;
+    let application = packs
+        .iter()
+        .filter(|pack| value_str(pack, "/role") == Some("application"))
+        .collect::<Vec<_>>();
+    if application.len() != 1 {
+        bail!("selected Profile must bind exactly one Application Pack");
+    }
+    let application_pack_id = value_str(application[0], "/pack_id")
+        .context("selected Application Pack identity is missing")?
+        .to_owned();
+    let application_artifact_digest =
+        value_str(application[0], "/artifact_digest").map(str::to_owned);
+    for identity in [
+        base_pack_id.as_str(),
+        shell_provider_id.as_str(),
+        shell_pack_id.as_str(),
+        application_pack_id.as_str(),
+    ] {
+        if !valid_identifier(identity) {
+            bail!("selected Profile contains an invalid authority identity");
+        }
+    }
+    if let Some(digest) = application_artifact_digest.as_deref() {
+        if !valid_digest(digest) {
+            bail!("selected Application Pack artifact digest is invalid");
         }
     }
 
-    let profile = read_json(&bundle_root.join(PROFILE_PATH), "Defaults Profile v5")?;
-    let selected_variant = validate_profile(&profile, &catalog)?;
-    validate_defaultspack_pack(&read_json(
-        &bundle_root.join(DEFAULTSPACK_PACK_PATH),
-        "Defaultspack Pack v4",
-    )?)?;
-    let launch = validate_application_pack(
-        &pack_root,
-        &read_json(
-            &bundle_root.join(RUNTIME_PACK_PATH),
-            "Defaultspack application Pack v4",
-        )?,
-        selected_variant,
-    )?;
-    verify_pack_artifact_index(&pack_root, &bundle_root)?;
-
-    let catalog_revision = crate::presentation::catalog_revision(&catalog)?;
-    let profile_digest = entries
-        .get(PROFILE_PATH)
-        .context("packaged Profile is absent from the bundle lock")?
-        .clone();
-    Ok(GuardianAuthority {
-        pack_root,
-        launch,
-        profile_id: DEFAULT_PROFILE_ID.to_string(),
+    let pack_ids = packs
+        .iter()
+        .filter_map(|pack| value_str(pack, "/pack_id"))
+        .map(str::to_owned)
+        .collect::<BTreeSet<_>>();
+    if pack_ids.len() != packs.len() {
+        bail!("selected Profile contains duplicate or incomplete Pack identities");
+    }
+    let launch_contribution = plan
+        .as_ref()
+        .map(runtime_launch_contribution_from_plan)
+        .transpose()?;
+    let selected = SelectedProfileAuthority {
+        profile,
+        lock,
+        plan,
+        profile_id,
         profile_digest,
-        catalog_revision,
-    })
+        profile_revision,
+        activation_id,
+        plan_digest,
+        base_pack_id,
+        shell_provider_id,
+        shell_pack_id,
+        application_pack_id,
+        application_artifact_digest,
+        launch_contribution,
+        lock_digest,
+        pack_ids,
+    };
+    if let Some(lock) = selected.lock.as_ref() {
+        validate_lock_graph(&selected, lock)?;
+    }
+    if selected.plan.is_some() {
+        let plan = selected.plan.as_ref().expect("plan presence was checked");
+        validate_plan_graph(&selected, plan)?;
+    }
+    Ok(selected)
+}
+
+fn runtime_launch_contribution_from_plan(plan: &Value) -> Result<RuntimeLaunchContribution> {
+    let Some(raw_contribution) = plan.get("launch_contribution") else {
+        return Err(ProfileReresolutionRequired.into());
+    };
+    if raw_contribution.is_null() {
+        return Err(ProfileReresolutionRequired.into());
+    }
+    let contribution = raw_contribution
+        .as_object()
+        .context("active ResolvedPlan launch_contribution is malformed")?;
+    let required = [
+        "provider_id",
+        "contract_id",
+        "operation_id",
+        "platform",
+        "architecture",
+        "artifact_digest",
+        "relative_path",
+        "entrypoint",
+    ];
+    if contribution.len() != required.len()
+        || required
+            .iter()
+            .any(|field| !contribution.contains_key(*field))
+    {
+        bail!("active ResolvedPlan launch_contribution shape is invalid");
+    }
+    let field = |name: &str| -> Result<String> {
+        contribution
+            .get(name)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+            .with_context(|| format!("launch_contribution {name} is invalid"))
+    };
+    let selector = RuntimeLaunchContribution {
+        provider_id: field("provider_id")?,
+        contract_id: field("contract_id")?,
+        operation_id: field("operation_id")?,
+        platform: field("platform")?,
+        architecture: field("architecture")?,
+        artifact_digest: field("artifact_digest")?,
+        relative_path: field("relative_path")?,
+        entrypoint: field("entrypoint")?,
+    };
+    if !valid_identifier(&selector.provider_id)
+        || !valid_contract_id(&selector.contract_id)
+        || !valid_identifier(&selector.operation_id)
+        || !valid_digest(&selector.artifact_digest)
+    {
+        bail!("active ResolvedPlan launch_contribution identity is invalid");
+    }
+    let artifact_path = safe_relative(&selector.relative_path)?;
+    let entrypoint_path = safe_relative(&selector.entrypoint)?;
+    if !entrypoint_path.starts_with(&artifact_path) {
+        bail!("active ResolvedPlan launch entrypoint escapes its artifact");
+    }
+    Ok(selector)
+}
+
+fn ensure_profile_selection_is_known(
+    catalog: &crate::presentation::PresentationCatalog,
+    selected: &SelectedProfileAuthority,
+    bootstrap: bool,
+) -> Result<()> {
+    let base = catalog
+        .base_packs
+        .iter()
+        .find(|base| base.pack_id == selected.base_pack_id)
+        .context("selected Profile Base identity is not in the signed catalog")?;
+    let shell = catalog
+        .shell_providers
+        .iter()
+        .find(|shell| shell.provider_id == selected.shell_provider_id)
+        .context("selected Profile Shell identity is not in the signed catalog")?;
+    if base.backend_provider_ids.is_empty()
+        || shell.artifact_variants.is_empty()
+        || (bootstrap
+            && (selected.base_pack_id != catalog.default_selection.base_pack_id
+                || selected.shell_provider_id != catalog.default_selection.shell_provider_id))
+    {
+        bail!("selected Profile presentation identities are incomplete");
+    }
+    Ok(())
+}
+
+fn validate_plan_identity(
+    selected: &SelectedProfileAuthority,
+    identity: &crate::host_contract::ExecutionProfileIdentity,
+) -> Result<()> {
+    if selected.profile_id != identity.profile_id
+        || selected.profile_revision.as_deref() != Some(identity.profile_revision.as_str())
+        || selected.activation_id.as_deref() != Some(identity.activation_id.as_str())
+        || selected.plan_digest.as_deref() != Some(identity.plan_digest.as_str())
+    {
+        bail!("active Profile identity is not bound to the selected ResolvedPlan");
+    }
+    Ok(())
+}
+
+fn validate_lock_graph(selected: &SelectedProfileAuthority, lock: &Value) -> Result<()> {
+    let expected_lock_digest = selected
+        .lock_digest
+        .as_deref()
+        .context("selected ProfileLock digest is missing")?;
+    if !valid_digest(expected_lock_digest)
+        || canonical_record_digest(lock, "lock_digest")? != expected_lock_digest
+    {
+        bail!("selected ProfileLock digest is stale");
+    }
+    if value_str(lock, "/profile_id") != Some(selected.profile_id.as_str())
+        || value_str(lock, "/profile_revision") != selected.profile_revision.as_deref()
+        || value_str(lock, "/plan_digest") != selected.plan_digest.as_deref()
+    {
+        bail!("selected ProfileLock identity does not match the active Profile");
+    }
+    if let Some(plan) = selected.plan.as_ref() {
+        for pointer in [
+            "/profile_authority_snapshot_digest",
+            "/catalog_revision",
+            "/bundle_digest",
+            "/application",
+            "/effective_set",
+            "/requested_edges_digest",
+            "/constraints_digest",
+            "/closure_digest",
+            "/provenance_digest",
+            "/security_epoch",
+        ] {
+            if lock.pointer(pointer) != plan.pointer(pointer) {
+                bail!("selected ProfileLock and ResolvedPlan bindings diverge");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_plan_graph(selected: &SelectedProfileAuthority, plan: &Value) -> Result<()> {
+    let plan_api =
+        value_str(plan, "/plan_api_version").context("ResolvedPlan API version is missing")?;
+    if !plan_api.starts_with("io.tobkiri.resolved-plan.v")
+        || plan_api.len() <= "io.tobkiri.resolved-plan.v".len()
+    {
+        bail!("ResolvedPlan API version is unsupported");
+    }
+    if value_str(plan, "/profile_id") != Some(selected.profile_id.as_str())
+        || value_str(plan, "/profile_revision") != selected.profile_revision.as_deref()
+        || value_str(plan, "/base/pack_id") != Some(selected.base_pack_id.as_str())
+        || value_str(plan, "/shell/provider_id") != Some(selected.shell_provider_id.as_str())
+        || value_str(plan, "/shell/pack_id") != Some(selected.shell_pack_id.as_str())
+        || value_str(plan, "/application/pack_id") != Some(selected.application_pack_id.as_str())
+    {
+        bail!("ResolvedPlan graph does not match the selected Profile");
+    }
+    let plan_digest = value_str(plan, "/plan_digest").context("ResolvedPlan digest is missing")?;
+    if !valid_digest(plan_digest) || selected.plan_digest.as_deref() != Some(plan_digest) {
+        bail!("ResolvedPlan digest does not match the active Profile identity");
+    }
+    let mut unsigned = plan.clone();
+    unsigned
+        .as_object_mut()
+        .context("ResolvedPlan must be an object")?
+        .remove("plan_digest");
+    if canonical_value_digest(&unsigned)? != plan_digest {
+        bail!("ResolvedPlan digest is stale");
+    }
+    let application_artifact_digest = value_str(plan, "/application/artifact_digest")
+        .context("ResolvedPlan Application artifact digest is missing")?;
+    if !valid_digest(application_artifact_digest)
+        || selected.application_artifact_digest.as_deref() != Some(application_artifact_digest)
+    {
+        bail!("ResolvedPlan Application artifact digest differs from the Profile");
+    }
+    let shell_artifact_digest = value_str(plan, "/shell/artifact_digest")
+        .context("ResolvedPlan Shell digest is missing")?;
+    if !valid_digest(shell_artifact_digest)
+        || value_str(&selected.profile, "/shell/artifact_digest") != Some(shell_artifact_digest)
+    {
+        bail!("ResolvedPlan Shell artifact digest differs from the Profile");
+    }
+    let launch = selected
+        .launch_contribution
+        .as_ref()
+        .context("active ResolvedPlan launch contribution is unavailable")?;
+    if value_str(&selected.profile, "/shell/platform") != Some(launch.platform.as_str())
+        || value_str(&selected.profile, "/shell/architecture") != Some(launch.architecture.as_str())
+    {
+        bail!("ResolvedPlan launch contribution targets a different Profile Shell");
+    }
+    Ok(())
+}
+
+fn validate_profile_pack_closure(
+    selected: &SelectedProfileAuthority,
+    catalog: &crate::presentation::PresentationCatalog,
+    bundle_root: &Path,
+    bundle_lock: &VerifiedBundleLock,
+    development_bundle: bool,
+) -> Result<()> {
+    let mut identities = selected.pack_ids.clone();
+    identities.insert(selected.base_pack_id.clone());
+    identities.insert(selected.shell_pack_id.clone());
+    for pack_id in identities {
+        let Some(relative) = bundle_lock.pack_paths.get(&pack_id) else {
+            if ci_e2e_external_pack_is_admissible(selected, &pack_id) {
+                continue;
+            }
+            bail!("selected Profile Pack is not in the signed bundle: {pack_id}");
+        };
+        let path = bundle_root.join(safe_relative(relative)?);
+        let pack = read_json(&path, "selected Profile Pack")?;
+        if value_str(&pack, "/pack/id") != Some(pack_id.as_str())
+            || value_str(&pack, "/pack_api_version") != Some("io.tobkiri.pack.v4")
+            || !profile_pack_migration_is_admissible(selected, &pack_id, &pack)
+        {
+            bail!("selected Profile Pack identity is inconsistent: {pack_id}");
+        }
+        if let Some(expected) = catalog.source_manifest_digests.get(&pack_id) {
+            let relative = path
+                .strip_prefix(bundle_root)
+                .context("selected Profile Pack escaped its bundle root")?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let generated_development_identity = development_bundle
+                && (pack_id == selected.application_pack_id || pack_id == selected.shell_pack_id);
+            if !generated_development_identity
+                && bundle_lock.authority_digests.get(&relative) != Some(expected)
+            {
+                bail!("selected Profile Pack source digest differs from the signed catalog");
+            }
+        }
+        let expected_artifact_digest = if pack_id == selected.application_pack_id {
+            selected.application_artifact_digest.as_deref()
+        } else if pack_id == selected.base_pack_id {
+            value_str(&selected.profile, "/base/artifact_digest")
+        } else if pack_id == selected.shell_pack_id && selected.plan.is_some() {
+            // A bootstrap Profile names the selected platform artifact tree
+            // here; an active Profile names the Shell Pack aggregate. Only
+            // the latter belongs in the Pack closure comparison below.
+            value_str(&selected.profile, "/shell/artifact_digest")
+        } else {
+            selected
+                .profile
+                .get("packs")
+                .and_then(Value::as_array)
+                .and_then(|packs| {
+                    packs
+                        .iter()
+                        .find(|item| value_str(item, "/pack_id") == Some(pack_id.as_str()))
+                })
+                .and_then(|item| value_str(item, "/artifact_digest"))
+        };
+        if let Some(expected) = expected_artifact_digest {
+            validate_selected_pack_artifact_digest(
+                expected,
+                value_str(&pack, "/pack/artifact_digest"),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn selected_ci_e2e_acceptance_pack_matches(
+    selected: &SelectedProfileAuthority,
+    pack_id: &str,
+    expected_digest: &str,
+) -> bool {
+    if pack_id != PACKVM_ACCEPTANCE_PACK_ID || !valid_digest(expected_digest) {
+        return false;
+    }
+    let profile_match = selected
+        .profile
+        .get("packs")
+        .and_then(Value::as_array)
+        .and_then(|packs| {
+            packs
+                .iter()
+                .find(|item| value_str(item, "/pack_id") == Some(pack_id))
+        })
+        .is_some_and(|item| {
+            value_str(item, "/role") == Some("provider")
+                && value_str(item, "/artifact_digest") == Some(expected_digest)
+        });
+    let pin_match = selected
+        .lock
+        .as_ref()
+        .and_then(|lock| lock.get("variant_pins"))
+        .and_then(Value::as_array)
+        .and_then(|pins| {
+            pins.iter()
+                .find(|item| value_str(item, "/pack_id") == Some(pack_id))
+        })
+        .is_some_and(|item| {
+            value_str(item, "/artifact_digest") == Some(expected_digest)
+                && value_str(item, "/execution_kind") == Some("pack_vm")
+                && value_str(item, "/domain_kind") == Some("dedicated_process")
+        });
+    profile_match && pin_match
+}
+
+fn ci_e2e_external_pack_is_admissible(selected: &SelectedProfileAuthority, pack_id: &str) -> bool {
+    #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
+    {
+        let enabled = std::env::var(PACKVM_ACCEPTANCE_ENABLE_ENV)
+            .ok()
+            .is_some_and(|value| matches!(value.trim(), "1" | "true" | "yes" | "on"));
+        let Ok(expected_digest) = std::env::var(PACKVM_ACCEPTANCE_DIGEST_ENV) else {
+            return false;
+        };
+        enabled && selected_ci_e2e_acceptance_pack_matches(selected, pack_id, &expected_digest)
+    }
+    #[cfg(not(any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+    {
+        let _ = (selected, pack_id);
+        false
+    }
+}
+
+fn validate_selected_pack_artifact_digest(expected: &str, actual: Option<&str>) -> Result<()> {
+    if !valid_digest(expected) || !actual.is_some_and(valid_digest) {
+        bail!("selected Profile Pack artifact digest is invalid");
+    }
+    if actual != Some(expected) {
+        return Err(ProfileReresolutionRequired.into());
+    }
+    Ok(())
+}
+
+fn profile_pack_migration_is_admissible(
+    selected: &SelectedProfileAuthority,
+    pack_id: &str,
+    pack: &Value,
+) -> bool {
+    // `read_only` describes the retained legacy compatibility projection; it
+    // is not an execution trust level. The v4 Pack remains authoritative and
+    // reaches this check only after its bytes and bundle role are digest-locked.
+    // Keep this narrower than execution admission: selected providers retain
+    // the projection only with their declared Host, sandbox, or inert boundary.
+    match value_str(pack, "/migration/compatibility") {
+        Some("none") => true,
+        Some("read_only") => {
+            if selected_profile_pack_role(selected, pack_id) != Some("provider") {
+                return false;
+            }
+            match value_str(pack, "/pack/kind") {
+                Some("host_extension") => true,
+                Some("application" | "normal_sandbox")
+                    if value_str(pack, "/requirements/execution_boundary") == Some("sandbox") =>
+                {
+                    pack.get("functions")
+                        .and_then(Value::as_array)
+                        .is_some_and(|functions| {
+                            functions
+                                .iter()
+                                .all(|function| value_str(function, "/role") == Some("brokered"))
+                        })
+                }
+                Some("application")
+                    if value_str(pack, "/requirements/execution_boundary")
+                        == Some("declarative_only") =>
+                {
+                    [
+                        "contracts",
+                        "functions",
+                        "operation_catalog",
+                        "provider_catalog",
+                    ]
+                    .iter()
+                    .all(|key| {
+                        pack.get(key)
+                            .and_then(Value::as_array)
+                            .is_some_and(Vec::is_empty)
+                    })
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+fn selected_profile_pack_role<'a>(
+    selected: &'a SelectedProfileAuthority,
+    pack_id: &str,
+) -> Option<&'a str> {
+    selected
+        .profile
+        .get("packs")?
+        .as_array()?
+        .iter()
+        .find(|item| value_str(item, "/pack_id") == Some(pack_id))
+        .and_then(|item| value_str(item, "/role"))
+}
+
+fn bundle_pack_path(
+    bundle_root: &Path,
+    bundle_lock: &VerifiedBundleLock,
+    pack_id: &str,
+) -> Result<PathBuf> {
+    let relative = bundle_lock
+        .pack_paths
+        .get(pack_id)
+        .with_context(|| format!("selected Profile Pack is not in the signed bundle: {pack_id}"))?;
+    Ok(bundle_root.join(safe_relative(relative)?))
+}
+
+fn validate_application_selector(
+    selector: &RuntimeLaunchContribution,
+    variant: &crate::presentation::ArtifactVariant,
+    pack: &Value,
+) -> Result<()> {
+    if Some(selector.provider_id.as_str()) != value_str(pack, "/provider_catalog/0/provider_id")
+        || Some(selector.contract_id.as_str())
+            != value_str(pack, "/provider_catalog/0/contract_reference")
+        || Some(selector.operation_id.as_str())
+            != value_str(pack, "/operation_catalog/0/operation_id")
+        || selector.platform != variant.platform
+        || selector.architecture != variant.architecture
+    {
+        bail!("Application Pack differs from the active launch contribution");
+    }
+    Ok(())
 }
 
 fn validate_application_pack(
-    pack_root: &Path,
+    application_pack_root: &Path,
+    contract_map_root: &Path,
     pack: &Value,
     selected_variant: &crate::presentation::ArtifactVariant,
-) -> Result<GuardianLaunch> {
+    launch_contribution: Option<&RuntimeLaunchContribution>,
+    expected_application_id: &str,
+    expected_artifact_digest: Option<&str>,
+    requested_frontend_entry: Option<&Value>,
+) -> Result<ApplicationLaunch> {
     let selected_platform = format!(
         "{}-{}",
         selected_variant.platform, selected_variant.architecture
@@ -262,42 +1538,84 @@ fn validate_application_pack(
         .and_then(Value::as_array)
         .context("application Pack artifacts must be an array")?;
     if value_str(pack, "/pack_api_version") != Some("io.tobkiri.pack.v4")
-        || value_str(pack, "/pack/id") != Some(DEFAULT_RUNTIME_ID)
+        || value_str(pack, "/pack/id") != Some(expected_application_id)
         || value_str(pack, "/pack/kind") != Some("application")
         || value_str(pack, "/migration/compatibility") != Some("none")
         || functions.len() != 1
         || providers.len() != 1
         || operations.len() != 1
         || artifacts.len() != 2
-        || value_str(&functions[0], "/id") != Some(DEFAULT_RUNTIME_ID)
+        || value_str(&functions[0], "/id") != Some(expected_application_id)
         || value_str(&functions[0], "/isolation") != Some("dedicated_process")
-        || functions[0]["operations"] != serde_json::json!(["launch"])
-        || value_str(&providers[0], "/provider_id") != Some(DEFAULT_RUNTIME_ID)
-        || value_str(&providers[0], "/owner") != Some(DEFAULT_RUNTIME_ID)
-        || value_str(&providers[0], "/contract_reference") != Some("runtime.tauri.application.v1")
-        || providers[0]["operations"] != serde_json::json!(["launch"])
+        || !contains_string(&functions[0], "/operations", "launch")
+        || value_str(&providers[0], "/provider_id") != Some(expected_application_id)
+        || value_str(&providers[0], "/owner") != value_str(&providers[0], "/provider_id")
+        || !valid_contract_id(value_str(&providers[0], "/contract_reference").unwrap_or_default())
+        || !contains_string(&providers[0], "/operations", "launch")
         || value_str(&operations[0], "/operation_id") != Some("launch")
-        || value_str(&operations[0], "/owner") != Some(DEFAULT_RUNTIME_ID)
-        || value_str(&operations[0], "/provider_id") != Some(DEFAULT_RUNTIME_ID)
-        || value_str(&operations[0], "/contract_reference") != Some("runtime.tauri.application.v1")
-        || value_str(&artifacts[0], "/kind") != Some("executable")
-        || value_str(&artifacts[0], "/platform") != Some(selected_platform.as_str())
-        || value_str(&artifacts[1], "/path") != Some("defaultspack/frontend_contract_map.v4.json")
-        || value_str(&artifacts[1], "/kind") != Some("asset")
-        || value_str(&artifacts[1], "/platform") != Some("host")
-        || artifacts[1].get("entrypoint").is_some()
-        || artifacts[1].get("argv").is_some()
+        || value_str(&operations[0], "/owner") != value_str(&providers[0], "/provider_id")
+        || value_str(&operations[0], "/provider_id") != value_str(&providers[0], "/provider_id")
+        || value_str(&operations[0], "/contract_reference")
+            != value_str(&providers[0], "/contract_reference")
     {
         bail!("application Pack launch identity is invalid");
     }
+    if let Some(selector) = launch_contribution {
+        validate_application_selector(selector, selected_variant, pack)?;
+    }
 
-    let artifact_digest = value_str(&artifacts[0], "/digest")
-        .context("application Pack artifact digest is missing")?;
-    let entrypoint_digest = value_str(&artifacts[0], "/entrypoint_digest")
+    let executable_index = artifacts
+        .iter()
+        .enumerate()
+        .find(|(_, artifact)| {
+            value_str(artifact, "/kind") == Some("executable")
+                && value_str(artifact, "/platform") == Some(selected_platform.as_str())
+        })
+        .map(|(index, _)| index)
+        .context("application Pack does not contain the selected executable artifact")?;
+    let executable = &artifacts[executable_index];
+    let asset_index = artifacts
+        .iter()
+        .enumerate()
+        .find(|(_, artifact)| value_str(artifact, "/kind") == Some("asset"))
+        .map(|(index, _)| index)
+        .context("application Pack frontend contract asset is missing")?;
+    if executable_index == asset_index
+        || artifacts.iter().enumerate().any(|(index, artifact)| {
+            index != executable_index
+                && index != asset_index
+                && value_str(artifact, "/kind") != Some("asset")
+        })
+    {
+        bail!("application Pack artifact set contains an unsupported artifact kind");
+    }
+    let artifact_digest =
+        value_str(executable, "/digest").context("application Pack artifact digest is missing")?;
+    let entrypoint_digest = value_str(executable, "/entrypoint_digest")
         .context("application Pack entrypoint digest is missing")?;
+    if !valid_digest(artifact_digest)
+        || !valid_digest(entrypoint_digest)
+        || expected_artifact_digest
+            .is_some_and(|expected| value_str(pack, "/pack/artifact_digest") != Some(expected))
+    {
+        bail!("application Pack artifact identity is invalid");
+    }
+    if let Some(selector) = launch_contribution {
+        if selector.artifact_digest != artifact_digest {
+            bail!("Application artifact digest differs from the active launch contribution");
+        }
+    }
     #[cfg(not(test))]
-    if selected_variant.sha256.as_deref() != Some(artifact_digest)
-        || selected_variant.entrypoint_sha256.as_deref() != Some(entrypoint_digest)
+    if selected_variant
+        .sha256
+        .as_deref()
+        .is_some_and(|digest| digest != artifact_digest)
+        || selected_variant
+            .entrypoint_sha256
+            .as_deref()
+            .is_some_and(|digest| digest != entrypoint_digest)
+        || (!cfg!(debug_assertions)
+            && (selected_variant.sha256.is_none() || selected_variant.entrypoint_sha256.is_none()))
     {
         bail!("application Pack differs from its signed release artifact");
     }
@@ -323,13 +1641,18 @@ fn validate_application_pack(
     }
 
     let artifact_path =
-        value_str(&artifacts[0], "/path").context("application Pack artifact path is missing")?;
-    let entrypoint = value_str(&artifacts[0], "/entrypoint")
-        .context("application Pack entrypoint is missing")?;
+        value_str(executable, "/path").context("application Pack artifact path is missing")?;
+    let entrypoint =
+        value_str(executable, "/entrypoint").context("application Pack entrypoint is missing")?;
     if artifact_path != selected_variant.artifact_ref || entrypoint != selected_variant.entrypoint {
         bail!("application Pack does not identify the selected Shell artifact");
     }
-    let argv = artifacts[0]
+    if let Some(selector) = launch_contribution {
+        if selector.relative_path != artifact_path || selector.entrypoint != entrypoint {
+            bail!("Application path differs from the active launch contribution");
+        }
+    }
+    let argv = executable
         .get("argv")
         .and_then(Value::as_array)
         .context("application Pack argv must be an array")?;
@@ -342,7 +1665,7 @@ fn validate_application_pack(
     if !relative.starts_with(&artifact_relative) {
         bail!("application Pack entrypoint escapes its selected artifact");
     }
-    let artifact_root = pack_root.join("platform-artifacts");
+    let artifact_root = application_pack_root.join("platform-artifacts");
     let artifact_candidate = artifact_root.join(&artifact_relative);
     let candidate = artifact_root.join(relative);
     let bytes = read_regular_file(&candidate, "application Pack entrypoint")?;
@@ -356,11 +1679,18 @@ fn validate_application_pack(
         bail!("application Pack entrypoint escaped or failed artifact verification");
     }
 
-    let contract_map_path = value_str(&artifacts[1], "/path")
+    let contract_asset = &artifacts[asset_index];
+    if value_str(contract_asset, "/platform") != Some("host")
+        || contract_asset.get("entrypoint").is_some()
+        || contract_asset.get("argv").is_some()
+    {
+        bail!("application Pack frontend contract asset metadata is invalid");
+    }
+    let contract_map_path = value_str(contract_asset, "/path")
         .context("application Pack frontend contract map path is missing")?;
-    let contract_map_digest = value_str(&artifacts[1], "/digest")
+    let contract_map_digest = value_str(contract_asset, "/digest")
         .context("application Pack frontend contract map digest is missing")?;
-    let contract_map_candidate = pack_root.join(safe_relative(contract_map_path)?);
+    let contract_map_candidate = contract_map_root.join(safe_relative(contract_map_path)?);
     let contract_map_bytes = read_regular_file(
         &contract_map_candidate,
         "application Pack frontend contract map",
@@ -368,15 +1698,52 @@ fn validate_application_pack(
     let contract_map_canonical = contract_map_candidate
         .canonicalize()
         .context("failed to canonicalize application Pack frontend contract map")?;
-    if !contract_map_canonical.starts_with(pack_root)
+    if !contract_map_canonical.starts_with(contract_map_root)
         || sha256(&contract_map_bytes) != contract_map_digest
     {
         bail!("application Pack frontend contract map escaped or failed artifact verification");
     }
     let contract_map: Value = serde_json::from_slice(&contract_map_bytes)
         .context("application Pack frontend contract map is malformed")?;
-    if value_str(&contract_map, "/schema") != Some("io.tobkiri.frontend-contract-map.v4")
-        || value_str(&contract_map, "/pack_id") != Some("defaultspack")
+    let contract_map_pack_id = application_contract_namespace(
+        &contract_map,
+        expected_application_id,
+        contract_map_path,
+        contract_map_digest,
+    )?;
+    let frontend_entry = crate::frontend_entry::resolve(
+        &contract_map,
+        contract_map_digest,
+        requested_frontend_entry,
+    )?;
+
+    Ok(ApplicationLaunch {
+        entrypoint: canonical,
+        argv: Vec::new(),
+        artifact_id: selected_variant.artifact_id.clone(),
+        artifact_digest: artifact_digest.to_string(),
+        entrypoint_digest: entrypoint_digest.to_string(),
+        function_id: value_str(&functions[0], "/id")
+            .expect("application function identity was checked")
+            .to_owned(),
+        provider_id: value_str(&providers[0], "/provider_id")
+            .expect("application provider identity was checked")
+            .to_owned(),
+        contract_namespace: contract_map_pack_id.to_owned(),
+        frontend_entry,
+    })
+}
+
+fn application_contract_namespace<'a>(
+    contract_map: &'a Value,
+    expected_application_id: &str,
+    artifact_path: &str,
+    artifact_digest: &str,
+) -> Result<&'a str> {
+    let pack_id = value_str(contract_map, "/pack_id")
+        .context("application Pack frontend route namespace is missing")?;
+    if value_str(contract_map, "/schema") != Some("io.tobkiri.frontend-contract-map.v4")
+        || !valid_identifier(pack_id)
         || contract_map
             .get("routes")
             .and_then(Value::as_array)
@@ -384,14 +1751,63 @@ fn validate_application_pack(
     {
         bail!("application Pack frontend contract map identity is invalid");
     }
+    if let Some(declared_path) = value_str(contract_map, "/artifact_path") {
+        if safe_relative(declared_path)? != safe_relative(artifact_path)? {
+            bail!("application Pack frontend contract map artifact path is stale");
+        }
+    } else if contract_map.get("artifact_path").is_some() {
+        bail!("application Pack frontend contract map artifact path is invalid");
+    }
+    if let Some(declared_digest) = value_str(contract_map, "/artifact_digest") {
+        if !valid_digest(declared_digest) || declared_digest != artifact_digest {
+            bail!("application Pack frontend contract map artifact digest is stale");
+        }
+    } else if contract_map.get("artifact_digest").is_some() {
+        bail!("application Pack frontend contract map artifact digest is invalid");
+    }
 
-    Ok(GuardianLaunch {
-        entrypoint: canonical,
-        argv: Vec::new(),
-        artifact_digest: entrypoint_digest.to_string(),
-        function_id: DEFAULT_RUNTIME_ID.to_string(),
-        provider_id: DEFAULT_RUNTIME_ID.to_string(),
-    })
+    let owner_present = contract_map.get("owner").is_some();
+    let application_present = contract_map.get("application_id").is_some();
+    if owner_present || application_present {
+        let owner = value_str(contract_map, "/owner")
+            .filter(|value| valid_identifier(value))
+            .context("application Pack frontend contract map owner is invalid")?;
+        let application_id = value_str(contract_map, "/application_id")
+            .filter(|value| valid_identifier(value))
+            .context("application Pack frontend contract map Application is invalid")?;
+        if pack_id != expected_application_id
+            || owner != expected_application_id
+            || application_id != expected_application_id
+        {
+            bail!("application Pack frontend contract map belongs to another Application");
+        }
+        return Ok(pack_id);
+    }
+
+    let artifact = safe_relative(artifact_path)?;
+    let path_namespace = if artifact.components().count() > 1 {
+        artifact
+            .components()
+            .next()
+            .and_then(|component| match component {
+                Component::Normal(value) => value.to_str(),
+                _ => None,
+            })
+            .context("application Pack frontend contract map path has no namespace")?
+    } else {
+        expected_application_id
+    };
+    if pack_id != expected_application_id && pack_id != path_namespace {
+        bail!("application Pack frontend contract map belongs to another Application");
+    }
+    Ok(pack_id)
+}
+
+fn contains_string(value: &Value, pointer: &str, expected: &str) -> bool {
+    value
+        .pointer(pointer)
+        .and_then(Value::as_array)
+        .is_some_and(|items| items.iter().any(|item| item.as_str() == Some(expected)))
 }
 
 fn canonical_directory(path: &Path, label: &str) -> Result<PathBuf> {
@@ -506,6 +1922,11 @@ fn sha256(bytes: &[u8]) -> String {
     format!("sha256:{:x}", Sha256::digest(bytes))
 }
 
+fn canonical_value_digest(value: &Value) -> Result<String> {
+    validate_canonical_json(value, 0)?;
+    Ok(sha256(&serde_json::to_vec(value)?))
+}
+
 fn artifact_tree_digest(path: &Path) -> Result<String> {
     fn visit(root: &Path, path: &Path, hasher: &mut Sha256) -> Result<()> {
         let metadata = fs::symlink_metadata(path)
@@ -615,6 +2036,17 @@ fn valid_identifier(value: &str) -> bool {
         })
 }
 
+fn valid_activation_id(value: &str) -> bool {
+    let Some(suffix) = value.strip_prefix("activation:") else {
+        return false;
+    };
+    (8..=128).contains(&suffix.len())
+        && suffix.as_bytes()[0].is_ascii_lowercase()
+        && suffix.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._-".contains(&byte)
+        })
+}
+
 fn valid_contract_id(value: &str) -> bool {
     if value.len() > 128 {
         return false;
@@ -677,6 +2109,10 @@ fn validate_executable_catalog(raw: &[u8], path: &str) -> Result<ExecutableCatal
         || !valid_identifier(&catalog.pack_id)
         || !valid_digest(&catalog.source_identity)
         || !valid_digest(&catalog.catalog_digest)
+        || catalog
+            .materialization_catalog_digest
+            .as_deref()
+            .is_some_and(|digest| !valid_digest(digest))
     {
         bail!("executable catalog identity is invalid: {path}");
     }
@@ -753,7 +2189,7 @@ fn validate_executable_catalog(raw: &[u8], path: &str) -> Result<ExecutableCatal
     Ok(catalog)
 }
 
-fn authority_pack_identity(raw: &[u8], path: &str) -> Result<(String, String)> {
+fn authority_pack_identity(raw: &[u8], path: &str) -> Result<(String, PackCatalogIdentity)> {
     let document: Value = serde_json::from_slice(raw)
         .with_context(|| format!("Pack authority is malformed: {path}"))?;
     let pack_id =
@@ -766,7 +2202,19 @@ fn authority_pack_identity(raw: &[u8], path: &str) -> Result<(String, String)> {
     {
         bail!("bundle entry does not contain a valid Pack authority: {path}");
     }
-    Ok((pack_id.to_owned(), source_identity.to_owned()))
+    let provenance = document.get("provenance").and_then(Value::as_object);
+    let is_source_bound_projection = provenance.is_some_and(|provenance| {
+        provenance.get("schema").and_then(Value::as_str) == Some("io.tobkiri.provenance.v2")
+            && provenance.get("source_kind").and_then(Value::as_str) == Some("generated")
+            && provenance.get("source_digest").and_then(Value::as_str) == Some(source_identity)
+    });
+    Ok((
+        pack_id.to_owned(),
+        PackCatalogIdentity {
+            source_identity: source_identity.to_owned(),
+            is_source_bound_projection,
+        },
+    ))
 }
 
 fn validate_authority_role(kind: BundleEntryKind, raw: &[u8], path: &str) -> Result<()> {
@@ -802,6 +2250,8 @@ fn verify_bundle_lock(root: &Path) -> Result<VerifiedBundleLock> {
     }
     let mut authority_digests = BTreeMap::new();
     let mut sidecar_digests = BTreeMap::new();
+    let mut pack_paths = BTreeMap::new();
+    let mut authority_roles = BTreeMap::new();
     let mut pack_identities = BTreeMap::new();
     let mut executable_catalogs = Vec::new();
     for entry in lock.entries {
@@ -830,7 +2280,14 @@ fn verify_bundle_lock(root: &Path) -> Result<VerifiedBundleLock> {
                 if pack_identities.insert(pack_id, source_identity).is_some() {
                     bail!("Pack v4 bundle contains a duplicate Pack identity");
                 }
+                let document: Value = serde_json::from_slice(&bytes)
+                    .context("Pack authority is malformed while indexing the bundle")?;
+                let pack_id = value_str(&document, "/pack/id")
+                    .expect("Pack identity was validated above")
+                    .to_owned();
+                pack_paths.insert(pack_id, entry.path.clone());
             }
+            authority_roles.insert(entry.path.clone(), entry.kind);
             authority_digests.insert(entry.path, entry.digest);
         }
     }
@@ -839,11 +2296,22 @@ fn verify_bundle_lock(root: &Path) -> Result<VerifiedBundleLock> {
         if !sidecar_pack_ids.insert(catalog.pack_id.clone()) {
             bail!("Pack v4 bundle contains duplicate executable catalogs");
         }
-        let source_identity = pack_identities
+        let pack_identity = pack_identities
             .get(&catalog.pack_id)
             .with_context(|| format!("executable catalog has no Pack authority: {path}"))?;
-        if source_identity != &catalog.source_identity {
+        if pack_identity.source_identity != catalog.source_identity {
             bail!("executable catalog source identity disagrees with its Pack: {path}");
+        }
+        if pack_identity.is_source_bound_projection {
+            if catalog.materialization_catalog_digest.is_none() {
+                bail!(
+                    "source-bound projected Pack executable catalog is missing its canonical materialization digest: {path}"
+                );
+            }
+        } else if catalog.materialization_catalog_digest.is_some() {
+            bail!(
+                "non-projected Pack executable catalog cannot replace its catalog identity: {path}"
+            );
         }
     }
     let mut actual = BTreeSet::new();
@@ -859,21 +2327,9 @@ fn verify_bundle_lock(root: &Path) -> Result<VerifiedBundleLock> {
     Ok(VerifiedBundleLock {
         authority_digests,
         sidecar_digests,
+        pack_paths,
+        authority_roles,
     })
-}
-
-fn require_catalog_digest(
-    entries: &BTreeMap<String, String>,
-    path: &str,
-    catalog_digest: Option<&String>,
-) -> Result<()> {
-    let locked = entries
-        .get(path)
-        .with_context(|| format!("Pack v4 lock is missing {path}"))?;
-    if catalog_digest.map(String::as_str) != Some(locked.as_str()) {
-        bail!("Packaged catalog and Pack v4 lock disagree for {path}");
-    }
-    Ok(())
 }
 
 fn value_str<'a>(value: &'a Value, pointer: &str) -> Option<&'a str> {
@@ -883,38 +2339,115 @@ fn value_str<'a>(value: &'a Value, pointer: &str) -> Option<&'a str> {
 fn validate_profile<'a>(
     profile: &Value,
     catalog: &'a crate::presentation::PresentationCatalog,
+    selected: &SelectedProfileAuthority,
+    development_bundle: bool,
 ) -> Result<&'a crate::presentation::ArtifactVariant> {
-    let shell_platform = value_str(profile, "/shell/platform")
-        .context("Defaults Profile Shell platform is missing")?;
-    let shell_architecture = value_str(profile, "/shell/architecture")
-        .context("Defaults Profile Shell architecture is missing")?;
-    let declared_production_variant = catalog
-        .shell_providers
-        .iter()
-        .find(|shell| shell.provider_id == DEFAULT_SHELL_ID)
-        .and_then(|shell| {
-            shell.artifact_variants.iter().find(|variant| {
-                variant.platform == shell_platform
-                    && variant.architecture == shell_architecture
-                    && variant.production
-                    && variant.prebuilt
-                    && variant.development_command.is_none()
-            })
-        })
-        .context("Defaults Profile has no exact packaged Shell variant")?;
+    let profile_id =
+        value_str(profile, "/profile_id").context("selected Profile identity is missing")?;
+    let state = value_str(profile, "/state").context("selected Profile state is missing")?;
     if value_str(profile, "/profile_api_version") != Some(DEFAULT_PROFILE_API_VERSION)
-        || value_str(profile, "/profile_id") != Some(DEFAULT_PROFILE_ID)
+        || profile_id != selected.profile_id
         || value_str(profile, "/mode") != Some("interactive")
-        || value_str(profile, "/state") != Some("needs_resolution")
-        || value_str(profile, "/base/pack_id") != Some(DEFAULT_BASE_ID)
-        || value_str(profile, "/shell/provider_id") != Some(DEFAULT_SHELL_ID)
-        || value_str(profile, "/shell/pack_id") != Some(DEFAULT_SHELL_ID)
+        || (selected.plan.is_some() && state != "resolved")
+        || (selected.plan.is_none() && state != "needs_resolution")
+        || value_str(profile, "/base/pack_id") != Some(selected.base_pack_id.as_str())
+        || value_str(profile, "/shell/provider_id") != Some(selected.shell_provider_id.as_str())
+        || value_str(profile, "/shell/pack_id") != Some(selected.shell_pack_id.as_str())
         || value_str(profile, "/shell/contract_id") != Some("app.shell.v1")
     {
-        bail!("Defaults Profile does not bind the exact Base and Tauri Shell");
+        bail!("selected Profile does not bind a valid Base and Shell");
     }
     validate_effective_pack_set(profile)?;
-    Ok(declared_production_variant)
+    let shell_platform = value_str(profile, "/shell/platform")
+        .context("selected Profile Shell platform is missing")?;
+    let shell_architecture = value_str(profile, "/shell/architecture")
+        .context("selected Profile Shell architecture is missing")?;
+    let shell = catalog
+        .shell_providers
+        .iter()
+        .find(|shell| shell.provider_id == selected.shell_provider_id)
+        .context("selected Profile Shell is missing from the signed catalog")?;
+    if shell.contract_id != "app.shell.v1" || shell.provider_id != selected.shell_provider_id {
+        bail!("selected Profile Shell contract identity is invalid");
+    }
+    let variants = shell
+        .artifact_variants
+        .iter()
+        .filter(|variant| {
+            variant.platform == shell_platform
+                && variant.architecture == shell_architecture
+                && variant.production
+                && variant.prebuilt
+                && variant.development_command.is_none()
+        })
+        .collect::<Vec<_>>();
+    if variants.len() != 1 {
+        bail!("selected Profile has no unique packaged Shell variant");
+    }
+    if selected.plan.is_none() {
+        let artifact_digest = value_str(profile, "/shell/artifact_digest")
+            .context("bootstrap Profile Shell artifact digest is missing")?;
+        let entrypoint_digest = value_str(profile, "/shell/executable_artifact_digest")
+            .context("bootstrap Profile Shell entrypoint digest is missing")?;
+        if !valid_digest(artifact_digest)
+            || !valid_digest(entrypoint_digest)
+            || !bootstrap_shell_variant_matches(variants[0], artifact_digest, entrypoint_digest)
+        {
+            bail!("bootstrap Profile Shell differs from its signed artifact variant");
+        }
+    } else {
+        let executable_digest = value_str(profile, "/shell/executable_artifact_digest")
+            .context("active Profile Shell executable digest is missing")?;
+        let launch = selected
+            .launch_contribution
+            .as_ref()
+            .context("active Profile has no runtime launch contribution")?;
+        validate_active_shell_variant(variants[0], launch, executable_digest, development_bundle)?;
+    }
+    Ok(variants[0])
+}
+
+/// Bind a catalog variant to the already verified active launch contribution.
+pub(crate) fn validate_active_shell_variant(
+    variant: &crate::presentation::ArtifactVariant,
+    launch: &RuntimeLaunchContribution,
+    executable_digest: &str,
+    development_bundle: bool,
+) -> Result<()> {
+    let variant_artifact_digest = variant.sha256.as_deref();
+    let variant_entrypoint_digest = variant.entrypoint_sha256.as_deref();
+    let development_digests_are_unsealed = cfg!(debug_assertions)
+        && development_bundle
+        && variant_artifact_digest.is_none()
+        && variant_entrypoint_digest.is_none();
+    if !valid_digest(executable_digest)
+        || !valid_digest(&launch.artifact_digest)
+        || (!development_digests_are_unsealed
+            && (!variant_artifact_digest.is_some_and(valid_digest)
+                || !variant_entrypoint_digest.is_some_and(valid_digest)))
+        || variant.artifact_ref != launch.relative_path
+        || variant.entrypoint != launch.entrypoint
+        || variant.platform != launch.platform
+        || variant.architecture != launch.architecture
+    {
+        bail!("active Profile Shell differs from its signed executable artifact");
+    }
+    if (!development_digests_are_unsealed && variant_entrypoint_digest != Some(executable_digest))
+        || (!development_digests_are_unsealed
+            && variant_artifact_digest != Some(launch.artifact_digest.as_str()))
+    {
+        return Err(ShellReconfirmationRequired.into());
+    }
+    Ok(())
+}
+
+fn bootstrap_shell_variant_matches(
+    variant: &crate::presentation::ArtifactVariant,
+    artifact_digest: &str,
+    entrypoint_digest: &str,
+) -> bool {
+    variant.sha256.as_deref() == Some(artifact_digest)
+        && variant.entrypoint_sha256.as_deref() == Some(entrypoint_digest)
 }
 
 fn validate_effective_pack_set(profile: &Value) -> Result<()> {
@@ -922,97 +2455,89 @@ fn validate_effective_pack_set(profile: &Value) -> Result<()> {
         .get("packs")
         .and_then(Value::as_array)
         .context("Defaults Profile packs must be an array")?;
-    let effective = packs
-        .iter()
-        .map(|item| {
-            Ok((
-                value_str(item, "/pack_id").context("Defaults Profile pack is missing pack_id")?,
-                value_str(item, "/role").context("Defaults Profile pack is missing role")?,
-            ))
-        })
-        .collect::<Result<BTreeSet<_>>>()?;
-    let mut expected = DEFAULT_PROVIDER_PACK_IDS
-        .iter()
-        .map(|pack_id| (*pack_id, "provider"))
-        .collect::<BTreeSet<_>>();
-    expected.insert((DEFAULT_RUNTIME_ID, "application"));
-    if packs.len() != expected.len()
-        || effective != expected
-        || effective
-            .iter()
-            .any(|(identity, _)| identity.starts_with("shell.cli.") || identity.starts_with("dev."))
-    {
-        bail!("Defaults Profile effective Pack set is not the finite production set");
+    let mut effective = BTreeSet::new();
+    let mut application_count = 0;
+    for item in packs {
+        let pack_id =
+            value_str(item, "/pack_id").context("selected Profile Pack is missing pack_id")?;
+        let role = value_str(item, "/role").context("selected Profile Pack is missing role")?;
+        if !valid_identifier(pack_id)
+            || !matches!(
+                role,
+                "backend" | "contribution" | "provider" | "application"
+            )
+            || pack_id.starts_with("shell.cli.")
+            || pack_id.starts_with("dev.")
+            || !effective.insert((pack_id, role))
+        {
+            bail!("selected Profile effective Pack set is invalid");
+        }
+        if role == "application" {
+            application_count += 1;
+        }
+    }
+    if application_count != 1 {
+        bail!("selected Profile effective Pack set must contain one Application");
     }
     Ok(())
 }
 
-fn validate_defaultspack_pack(pack: &Value) -> Result<()> {
-    let providers = pack
-        .get("provider_catalog")
-        .and_then(Value::as_array)
-        .context("Defaultspack provider catalog must be an array")?;
-    if value_str(pack, "/pack_api_version") != Some("io.tobkiri.pack.v4")
-        || value_str(pack, "/pack/id") != Some("defaultspack")
-        || value_str(pack, "/migration/compatibility") != Some("none")
-        || providers.len() != 1
-        || value_str(&providers[0], "/provider_id") != Some("defaultspack.conversation")
-    {
-        bail!("Defaultspack Pack v4 must expose exactly one canonical provider");
-    }
-    Ok(())
-}
-
-fn verify_pack_artifact_index(pack_root: &Path, bundle_root: &Path) -> Result<()> {
+fn verify_pack_artifact_index(
+    pack_root: &Path,
+    bundle_root: &Path,
+    expected_pack_id: &str,
+) -> Result<BTreeMap<String, VerifiedPackArtifact>> {
     let index = read_json(
         &pack_root.join("artifact-index.v4.json"),
-        "Defaultspack artifact index",
+        "selected Pack artifact index",
     )?;
     if value_str(&index, "/index_api_version") != Some("io.tobkiri.pack-artifact-index.v4")
-        || value_str(&index, "/pack_id") != Some("defaultspack")
+        || value_str(&index, "/pack_id") != Some(expected_pack_id)
     {
-        bail!("Defaultspack artifact index identity is invalid");
+        bail!("selected Pack artifact index identity is invalid");
     }
     let signed_digest = value_str(&index, "/integrity_seal/signed_digest")
         .context("Defaultspack artifact index seal is missing")?;
     let mut unsigned_index = index.clone();
     unsigned_index
         .as_object_mut()
-        .context("Defaultspack artifact index must be an object")?
+        .context("selected Pack artifact index must be an object")?
         .remove("integrity_seal");
     if sha256(&serde_json::to_vec(&unsigned_index)?) != signed_digest {
-        bail!("Defaultspack artifact index integrity seal is stale");
+        bail!("selected Pack artifact index integrity seal is stale");
     }
     let entries = index
         .get("artifacts")
         .and_then(Value::as_array)
-        .context("Defaultspack artifact index entries must be an array")?;
+        .context("selected Pack artifact index entries must be an array")?;
     let mut actual = BTreeMap::new();
     for entry in entries {
         let relative = value_str(entry, "/path").context("artifact index path is missing")?;
         let expected = value_str(entry, "/digest").context("artifact index digest is missing")?;
+        let role = value_str(entry, "/role").context("artifact index role is missing")?;
         let bytes = read_regular_file(&pack_root.join(safe_relative(relative)?), "Pack artifact")?;
-        if sha256(&bytes) != expected || actual.insert(relative, expected).is_some() {
-            bail!("Defaultspack artifact index contains a duplicate or stale artifact");
+        if sha256(&bytes) != expected
+            || actual
+                .insert(
+                    relative.to_owned(),
+                    VerifiedPackArtifact {
+                        digest: expected.to_owned(),
+                        role: role.to_owned(),
+                    },
+                )
+                .is_some()
+        {
+            bail!("selected Pack artifact index contains a duplicate or stale artifact");
         }
     }
-    for required in [
-        "pack.v4.json",
-        "contracts.v4.json",
-        "runtime/conversation.py",
-    ] {
-        if !actual.contains_key(required) {
-            bail!("Defaultspack artifact index is missing {required}");
-        }
+    if !actual.contains_key("pack.v4.json") {
+        bail!("selected Pack artifact index is missing pack.v4.json");
     }
     let root_pack = read_regular_file(&pack_root.join("pack.v4.json"), "Defaultspack Pack")?;
-    let bundled_pack = read_regular_file(
-        &bundle_root.join(DEFAULTSPACK_PACK_PATH),
-        "locked Defaultspack Pack",
-    )?;
-    if root_pack != bundled_pack {
-        bail!("Defaultspack root Pack differs from the locked Profile Pack");
-    }
+    let bundle_lock = verify_bundle_lock(bundle_root)?;
+    let bundled_pack_path = bundle_pack_path(bundle_root, &bundle_lock, expected_pack_id)?;
+    let bundled_pack = read_regular_file(&bundled_pack_path, "locked selected Pack")?;
+    verify_materialized_root_pack_binding(&root_pack, &bundled_pack)?;
     let pack: Value =
         serde_json::from_slice(&root_pack).context("Defaultspack Pack v4 is malformed")?;
     let artifact_set_digest = value_str(&index, "/artifact_set_digest");
@@ -1020,9 +2545,122 @@ fn verify_pack_artifact_index(pack_root: &Path, bundle_root: &Path) -> Result<()
         || artifact_set_digest != value_str(&pack, "/pack/artifact_digest")
         || value_str(&index, "/source_identity") != value_str(&pack, "/integrity/source_identity")
     {
-        bail!("Defaultspack artifact index is stale for its Pack v4 authority");
+        bail!("selected Pack artifact index is stale for its Pack v4 authority");
+    }
+    Ok(actual)
+}
+
+/// Bind the materialized Pack source to the Profile-locked Pack authority.
+///
+/// Older bundles carried the materialized Pack bytes directly.  Current Pack
+/// v4 bundles carry a generated, source-bound projection instead, because the
+/// projection pins generated sidecars without mutating the canonical Pack in
+/// the materialized runtime tree.  Both forms are safe, but a projection must
+/// prove that its immutable source digest is the exact materialized bytes.
+fn verify_materialized_root_pack_binding(root_pack: &[u8], bundled_pack: &[u8]) -> Result<()> {
+    if root_pack == bundled_pack {
+        return Ok(());
+    }
+    let root: Value = serde_json::from_slice(root_pack)
+        .context("materialized root Pack is malformed while binding its Profile projection")?;
+    let bundled: Value = serde_json::from_slice(bundled_pack)
+        .context("locked Profile Pack is malformed while binding its materialized source")?;
+    let root_pack_id = value_str(&root, "/pack/id").context(
+        "materialized root Pack identity is missing while binding its Profile projection",
+    )?;
+    let root_digest = sha256(root_pack);
+    let projection_is_bound = value_str(&bundled, "/pack/id") == Some(root_pack_id)
+        && value_str(&bundled, "/provenance/schema") == Some("io.tobkiri.provenance.v2")
+        && value_str(&bundled, "/provenance/source_kind") == Some("generated")
+        && bundled
+            .pointer("/provenance/normative")
+            .and_then(Value::as_bool)
+            == Some(true)
+        && value_str(&bundled, "/provenance/source_digest") == Some(root_digest.as_str())
+        && value_str(&bundled, "/integrity/source_identity") == Some(root_digest.as_str());
+    if !projection_is_bound {
+        bail!("materialized root Pack differs from the locked Profile Pack");
     }
     Ok(())
+}
+
+#[cfg(test)]
+fn fixture_catalog_with_shell_variant(
+    mut catalog: crate::presentation::PresentationCatalog,
+    bundle_root: &Path,
+    bundle_lock: &VerifiedBundleLock,
+) -> Result<crate::presentation::PresentationCatalog> {
+    let profile = read_json(&bundle_root.join(PROFILE_PATH), "fixture bootstrap Profile")?;
+    let platform = value_str(&profile, "/shell/platform")
+        .context("fixture bootstrap Profile Shell platform is missing")?;
+    let architecture = value_str(&profile, "/shell/architecture")
+        .context("fixture bootstrap Profile Shell architecture is missing")?;
+    let application_pack_ids = profile
+        .get("packs")
+        .and_then(Value::as_array)
+        .context("fixture bootstrap Profile Pack set is missing")?
+        .iter()
+        .filter(|pack| value_str(pack, "/role") == Some("application"))
+        .filter_map(|pack| value_str(pack, "/pack_id"))
+        .collect::<Vec<_>>();
+    if application_pack_ids.len() != 1 {
+        bail!("fixture bootstrap Profile must select one Application Pack");
+    }
+    let application_pack = read_json(
+        &bundle_pack_path(bundle_root, bundle_lock, application_pack_ids[0])?,
+        "fixture Application Pack",
+    )?;
+    let selected_platform = format!("{platform}-{architecture}");
+    let executable_artifacts = application_pack
+        .get("artifacts")
+        .and_then(Value::as_array)
+        .context("fixture Application Pack artifacts are missing")?
+        .iter()
+        .filter(|artifact| {
+            value_str(artifact, "/kind") == Some("executable")
+                && value_str(artifact, "/platform") == Some(selected_platform.as_str())
+        })
+        .collect::<Vec<_>>();
+    if executable_artifacts.len() != 1 {
+        bail!("fixture Application Pack must select one executable artifact");
+    }
+    let artifact_digest = value_str(executable_artifacts[0], "/digest")
+        .filter(|digest| valid_digest(digest))
+        .context("fixture Application Pack artifact digest is invalid")?;
+    let entrypoint_digest = value_str(executable_artifacts[0], "/entrypoint_digest")
+        .filter(|digest| valid_digest(digest))
+        .context("fixture Application Pack entrypoint digest is invalid")?;
+    let default_shell_provider_id = catalog.default_selection.shell_provider_id.clone();
+    let shell = catalog
+        .shell_providers
+        .iter_mut()
+        .find(|shell| shell.provider_id == default_shell_provider_id)
+        .context("fixture catalog default Shell is missing")?;
+    let variant = shell
+        .artifact_variants
+        .iter_mut()
+        .find(|variant| variant.platform == platform && variant.architecture == architecture)
+        .context("fixture catalog has no selected Shell variant")?;
+    let metadata_absent = variant.path.is_none()
+        && variant.sha256.is_none()
+        && variant.entrypoint_sha256.is_none()
+        && variant.size.is_none()
+        && variant.source_identity.is_none()
+        && variant.source_revision.is_none();
+    let metadata_complete = variant.path.is_some()
+        && variant.sha256.is_some()
+        && variant.entrypoint_sha256.is_some()
+        && variant.size.is_some()
+        && variant.source_identity.is_some()
+        && variant.source_revision.is_some();
+    if !metadata_absent && !metadata_complete {
+        bail!("fixture catalog Shell variant has partial installed artifact metadata");
+    }
+    if metadata_absent {
+        variant.sha256 = Some(artifact_digest.to_owned());
+        variant.entrypoint_sha256 = Some(entrypoint_digest.to_owned());
+    }
+    Ok(catalog)
 }
 
 #[cfg(test)]
@@ -1225,6 +2863,45 @@ mod tests {
         });
     }
 
+    fn rewrite_minimal_pack(root: &Path, mutate: impl FnOnce(&mut Value)) {
+        let relative = "packs/test_pack.pack.v4.json";
+        let path = root.join(relative);
+        let mut document: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        mutate(&mut document);
+        let raw = serde_json::to_vec(&document).unwrap();
+        fs::write(&path, &raw).unwrap();
+        rewrite_minimal_lock(root, |lock| {
+            let entry = lock["entries"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|entry| entry["path"] == relative)
+                .unwrap();
+            entry["digest"] = Value::String(sha256(&raw));
+        });
+    }
+
+    fn minimal_projected_sidecar_bundle(name: &str) -> PathBuf {
+        let root = minimal_sidecar_bundle(name);
+        let source_identity = format!("sha256:{}", "1".repeat(64));
+        rewrite_minimal_pack(&root, |pack| {
+            pack["provenance"] = serde_json::json!({
+                "schema": "io.tobkiri.provenance.v2",
+                "source_kind": "generated",
+                "source_digest": source_identity,
+            });
+        });
+        rewrite_minimal_sidecar(&root, |catalog| {
+            catalog["materialization_catalog_digest"] =
+                Value::String(format!("sha256:{}", "4".repeat(64)));
+            let object = catalog.as_object_mut().unwrap();
+            object.remove("catalog_digest");
+            let digest = sha256(&serde_json::to_vec(&catalog).unwrap());
+            catalog["catalog_digest"] = Value::String(digest);
+        });
+        root
+    }
+
     fn source_manifest_entries(source_checkout: &Path) -> BTreeMap<String, Value> {
         let manifest_path = source_checkout.join(SOURCE_MANIFEST_RELATIVE);
         let manifest = read_json(&manifest_path, "packaged Defaults source manifest").unwrap();
@@ -1253,6 +2930,8 @@ mod tests {
                 "ecosystem/defaultspack/v4",
                 "ecosystem/defaultspack/runtime",
                 "ecosystem/defaultspack/defaultspack",
+                "ecosystem/defaultspack/tools",
+                "ecosystem/defaultspack/extensions/tools",
             ])),
             "source manifest roots drifted"
         );
@@ -1704,22 +3383,23 @@ mod tests {
             "ecosystem/defaultspack/v4",
             "ecosystem/defaultspack/runtime",
             "ecosystem/defaultspack/defaultspack",
+            "ecosystem/defaultspack/tools",
+            "ecosystem/defaultspack/extensions/tools",
         ];
-        for root in roots {
+        for root in &roots {
             collect_source_files(&runtime_root, &runtime_root.join(root), &mut actual);
         }
-        for relative in [
-            "ecosystem/defaultspack/pack.v4.json",
-            "ecosystem/defaultspack/contracts.v4.json",
-            "ecosystem/defaultspack/artifact-index.v4.json",
-            "ecosystem/defaultspack/executables.v4.json",
-        ] {
+        for relative in expected.keys().filter(|relative| {
+            !roots
+                .iter()
+                .any(|root| relative.as_str() == *root || relative.starts_with(&format!("{root}/")))
+        }) {
             let path = runtime_root.join(relative);
             let metadata = fs::symlink_metadata(&path).expect("source file should exist");
             assert!(!metadata.file_type().is_symlink() && metadata.is_file());
             assert!(!has_multiple_links(&path, &metadata).unwrap());
             actual.insert(
-                relative.to_owned(),
+                relative.clone(),
                 serde_json::json!({
                     "path": relative,
                     "type": "regular-file",
@@ -1819,6 +3499,47 @@ mod tests {
             "relocated generator must not retain the repository helper fallback"
         );
         assert_source_manifest_exact(source_checkout);
+    }
+
+    fn selected_fixture_pack_digests(
+        bundle_root: &Path,
+        selected: &serde_json::Map<String, Value>,
+    ) -> Result<serde_json::Map<String, Value>> {
+        if selected.is_empty() {
+            bail!("fixture catalog selected Pack set is empty");
+        }
+        let canonical_bundle_root = bundle_root
+            .canonicalize()
+            .context("generated fixture bundle root is unavailable")?;
+        let bundle_lock = verify_bundle_lock(&canonical_bundle_root)
+            .context("generated fixture bundle lock is invalid")?;
+        let mut digests = serde_json::Map::new();
+        for pack_id in selected.keys() {
+            let relative = bundle_lock.pack_paths.get(pack_id).with_context(|| {
+                format!("generated fixture bundle is missing selected Pack: {pack_id}")
+            })?;
+            let digest = bundle_lock
+                .authority_digests
+                .get(relative)
+                .with_context(|| format!("generated fixture Pack has no digest: {pack_id}"))?;
+            if !valid_digest(digest) {
+                bail!("generated fixture Pack digest is invalid: {pack_id}");
+            }
+            if digests
+                .insert(pack_id.clone(), Value::String(digest.clone()))
+                .is_some()
+            {
+                bail!("generated fixture bundle contains a duplicate selected Pack");
+            }
+        }
+        if digests.len() != selected.len()
+            || selected
+                .keys()
+                .any(|pack_id| !digests.contains_key(pack_id))
+        {
+            bail!("generated fixture bundle is missing a selected catalog Pack");
+        }
+        Ok(digests)
     }
 
     fn package_fixture_application(
@@ -1961,13 +3682,59 @@ mod tests {
         )
         .unwrap();
         catalog["default_profile_digest"] = Value::String(sha256(&profile_raw));
+        let selected = catalog["source_manifest_digests"]
+            .as_object()
+            .expect("fixture catalog selected Pack set should be an object")
+            .clone();
+        let generated_digests = selected_fixture_pack_digests(&bundle_root, &selected)
+            .expect("generated fixture must contain the complete selected Pack set");
+        assert_eq!(
+            generated_digests.keys().collect::<BTreeSet<_>>(),
+            selected.keys().collect::<BTreeSet<_>>(),
+            "generated fixture digest projection must preserve the exact catalog selection"
+        );
+        catalog["source_manifest_digests"] = Value::Object(generated_digests);
         fs::write(
             config.app_dir.join("bundled/presentation_catalog.json"),
             serde_json::to_vec(&catalog).unwrap(),
         )
         .unwrap();
+        let profile: Value =
+            serde_json::from_slice(&fs::read(bundle_root.join(PROFILE_PATH)).unwrap()).unwrap();
+        assert_eq!(
+            value_str(&profile, "/provenance/schema"),
+            Some("io.tobkiri.provenance.v1"),
+            "compatibility Profile must retain its v1 provenance schema"
+        );
+        assert_eq!(
+            value_str(&profile, "/provenance/repository_commit"),
+            Some("working-tree"),
+            "compatibility Profile must remain non-release provenance"
+        );
+        assert_eq!(
+            profile
+                .pointer("/provenance/normative")
+                .and_then(Value::as_bool),
+            Some(false),
+            "compatibility Profile provenance must remain non-authoritative"
+        );
+        let mut compatibility_payload = profile.clone();
+        assert!(
+            compatibility_payload
+                .as_object_mut()
+                .unwrap()
+                .remove("provenance")
+                .is_some(),
+            "compatibility Profile must contain provenance"
+        );
+        let expected_source_digest = canonical_value_digest(&compatibility_payload).unwrap();
+        assert_eq!(
+            value_str(&profile, "/provenance/source_digest"),
+            Some(expected_source_digest.as_str()),
+            "compatibility Profile provenance source digest must bind its payload"
+        );
+
         for relative in [
-            PROFILE_PATH,
             "shell.tauri.default.shell.v1.json",
             SHELL_PACK_PATH,
             RUNTIME_PACK_PATH,
@@ -1978,6 +3745,13 @@ mod tests {
                 value_str(&document, "/provenance/repository_commit"),
                 Some(source_revision),
                 "packaged fixture must retain its isolated release provenance"
+            );
+            assert_eq!(
+                document
+                    .pointer("/provenance/normative")
+                    .and_then(Value::as_bool),
+                Some(true),
+                "normative generated artifact must retain authoritative provenance: {relative}"
             );
         }
     }
@@ -2017,12 +3791,25 @@ mod tests {
         let source_pack = source_checkout.join("tobkiri_runtime/ecosystem/defaultspack");
         let destination_pack = app_dir.join("ecosystem/defaultspack");
         copy_tree(&source_pack.join("v4"), &destination_pack.join("v4"));
+        let manifest: Value =
+            serde_json::from_slice(&fs::read(source_pack.join("pack.v4.json")).unwrap()).unwrap();
+        for artifact in manifest["artifacts"].as_array().unwrap() {
+            let relative = artifact["path"].as_str().unwrap();
+            let source = source_pack.join(relative);
+            assert_eq!(
+                format!("sha256:{}", source_file_digest(&source)),
+                artifact["digest"].as_str().unwrap(),
+                "fixture artifact must match the canonical Pack manifest: {relative}"
+            );
+            let destination = destination_pack.join(relative);
+            fs::create_dir_all(destination.parent().unwrap()).unwrap();
+            fs::copy(source, destination).unwrap();
+        }
         for relative in [
             "pack.v4.json",
             "contracts.v4.json",
             "artifact-index.v4.json",
-            "executables.v4.json",
-            "runtime/conversation.py",
+            "update_metadata.v1.json",
             "defaultspack/desktop_app.py",
             "defaultspack/frontend_contract_map.v4.json",
         ] {
@@ -2057,6 +3844,57 @@ mod tests {
     }
 
     #[test]
+    fn legacy_profile_marker_never_becomes_execution_authority() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-legacy-profile-pointer-{}-{unique}",
+            std::process::id()
+        ));
+        let user_data_dir = root.join("user_data");
+        let profiles = user_data_dir.join("profiles");
+        fs::create_dir_all(&profiles).unwrap();
+        let config = AppConfig {
+            app_dir: root.join("app"),
+            rumi_home: root.join("app"),
+            python_dir: root.join("python"),
+            uv_path: root.join("uv"),
+            venv_dir: root.join("venv"),
+            user_data_dir,
+            log_dir: root.join("logs"),
+            kernel_port: 8765,
+            dev_workspace_root: None,
+        };
+        let legacy = serde_json::json!({
+            "version": 1,
+            "active_profile_id": "default-profile"
+        });
+        fs::write(
+            profiles.join("active_profile.json"),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        assert!(read_active_profile_snapshot(&config).unwrap().is_none());
+
+        fs::write(
+            profiles.join("active.json"),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+        let error = read_active_profile_snapshot(&config)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("unknown or missing fields"),
+            "legacy bytes at the execution pointer path must fail closed: {error}"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn executable_catalog_is_verified_as_non_authority_sidecar() {
         let root = minimal_sidecar_bundle("valid");
         let verified = verify_bundle_lock(&root).unwrap();
@@ -2077,19 +3915,55 @@ mod tests {
 
     #[test]
     fn canonical_bundle_executable_catalogs_pass_rust_verifier() {
-        let bundle = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tobkiri_runtime/ecosystem/defaultspack/v4")
-            .canonicalize()
-            .unwrap();
-        let verified = verify_bundle_lock(&bundle).unwrap();
-        assert_eq!(verified.sidecar_digests.len(), 63);
-        assert_eq!(verified.authority_digests.len(), 72);
+        let source_bundle = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tobkiri_runtime/ecosystem/defaultspack/v4");
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "tobkiri-canonical-packaged-bundle-{}-{unique}",
+            std::process::id()
+        ));
+        let bundle = root.join("v4");
+        copy_tree(&source_bundle, &bundle);
+        for relative in [
+            "defaults.profile.intent.v1.json",
+            "defaults.profile.lock.v5.json",
+            "defaults.release.provenance.json",
+        ] {
+            fs::remove_file(bundle.join(relative)).unwrap();
+        }
+        let canonical_bundle = bundle.canonicalize().unwrap();
+        let verified = verify_bundle_lock(&canonical_bundle).unwrap();
+        let expected_sidecars: BTreeSet<String> = fs::read_dir(source_bundle.join("packs"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.ends_with(".executables.v4.json"))
+            .map(|name| format!("packs/{name}"))
+            .collect();
+        assert!(!expected_sidecars.is_empty());
+        assert_eq!(
+            verified
+                .sidecar_digests
+                .keys()
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+            expected_sidecars
+        );
+        for sidecar in verified.sidecar_digests.keys() {
+            let catalog = read_json(&source_bundle.join(sidecar), "canonical sidecar").unwrap();
+            let pack_id = value_str(&catalog, "/pack_id").unwrap();
+            let authority = &verified.pack_paths[pack_id];
+            assert!(verified.authority_digests.contains_key(authority));
+        }
         assert!(verified
             .sidecar_digests
             .contains_key("packs/defaultspack.executables.v4.json"));
         assert!(!verified
             .authority_digests
             .contains_key("packs/defaultspack.executables.v4.json"));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -2162,6 +4036,93 @@ mod tests {
     }
 
     #[test]
+    fn projected_executable_catalog_requires_materialization_digest() {
+        let root = minimal_projected_sidecar_bundle("projection-pin-required");
+        rewrite_minimal_sidecar(&root, |catalog| {
+            catalog
+                .as_object_mut()
+                .unwrap()
+                .remove("materialization_catalog_digest");
+            let object = catalog.as_object_mut().unwrap();
+            object.remove("catalog_digest");
+            let digest = sha256(&serde_json::to_vec(&catalog).unwrap());
+            catalog["catalog_digest"] = Value::String(digest);
+        });
+        let error = verify_bundle_lock(&root).unwrap_err().to_string();
+        assert!(
+            error.contains("missing its canonical materialization digest"),
+            "{error}"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn non_projected_executable_catalog_rejects_materialization_digest_alias() {
+        let root = minimal_sidecar_bundle("materialization-alias");
+        rewrite_minimal_sidecar(&root, |catalog| {
+            catalog["materialization_catalog_digest"] =
+                Value::String(format!("sha256:{}", "4".repeat(64)));
+            let object = catalog.as_object_mut().unwrap();
+            object.remove("catalog_digest");
+            let digest = sha256(&serde_json::to_vec(&catalog).unwrap());
+            catalog["catalog_digest"] = Value::String(digest);
+        });
+        let error = verify_bundle_lock(&root).unwrap_err().to_string();
+        assert!(
+            error.contains("cannot replace its catalog identity"),
+            "{error}"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn projected_executable_catalog_accepts_valid_materialization_digest() {
+        let root = minimal_projected_sidecar_bundle("projection-pin-valid");
+        assert!(verify_bundle_lock(&root).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn materialized_root_pack_must_bind_its_locked_projection_to_exact_bytes() {
+        let root_pack = serde_json::to_vec(&serde_json::json!({
+            "pack": {"id": "test_pack"},
+        }))
+        .unwrap();
+        let root_digest = sha256(&root_pack);
+        let projection = serde_json::to_vec(&serde_json::json!({
+            "pack": {"id": "test_pack"},
+            "integrity": {"source_identity": root_digest},
+            "provenance": {
+                "schema": "io.tobkiri.provenance.v2",
+                "source_kind": "generated",
+                "source_digest": root_digest,
+                "normative": true,
+            },
+        }))
+        .unwrap();
+        assert!(verify_materialized_root_pack_binding(&root_pack, &projection).is_ok());
+
+        let forged_projection = serde_json::to_vec(&serde_json::json!({
+            "pack": {"id": "test_pack"},
+            "integrity": {"source_identity": format!("sha256:{}", "0".repeat(64))},
+            "provenance": {
+                "schema": "io.tobkiri.provenance.v2",
+                "source_kind": "generated",
+                "source_digest": format!("sha256:{}", "0".repeat(64)),
+                "normative": true,
+            },
+        }))
+        .unwrap();
+        let error = verify_materialized_root_pack_binding(&root_pack, &forged_projection)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("materialized root Pack differs from the locked Profile Pack"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn executable_catalog_unknown_schema_field_fails_closed() {
         let root = minimal_sidecar_bundle("unknown-field");
         rewrite_minimal_sidecar(&root, |catalog| {
@@ -2177,20 +4138,7 @@ mod tests {
     }
 
     #[test]
-    fn finite_production_pack_set_tracks_canonical_defaults_profile() {
-        const AI_PACK_IDS: [&str; 10] = [
-            "rumi_ai_gateway_pack",
-            "rumi_ai_pipeline_pack",
-            "rumi_ai_routing_pack",
-            "rumi_ai_stream_pack",
-            "rumi_ai_tool_bridge_pack",
-            "rumi_ai_usage_pack",
-            "rumi_model_catalog_pack",
-            "rumi_model_registry_pack",
-            "rumi_provider_adapters_pack",
-            "rumi_provider_registry_pack",
-        ];
-
+    fn profile_pack_set_is_declared_and_fenced() {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let profile_path = repository.join(DEFAULT_PROFILE_SOURCE);
         let profile: Value = serde_json::from_slice(&fs::read(profile_path).unwrap()).unwrap();
@@ -2206,27 +4154,604 @@ mod tests {
         );
         validate_effective_pack_set(&profile).unwrap();
 
-        for pack_id in AI_PACK_IDS {
-            let mut missing = profile.clone();
-            missing["packs"]
-                .as_array_mut()
-                .unwrap()
-                .retain(|pack| value_str(pack, "/pack_id") != Some(pack_id));
+        let application_id = profile["packs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|pack| value_str(pack, "/role") == Some("application"))
+            .and_then(|pack| value_str(pack, "/pack_id"))
+            .unwrap()
+            .to_owned();
+        let mut missing_application = profile.clone();
+        missing_application["packs"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|pack| value_str(pack, "/pack_id") != Some(application_id.as_str()));
+        assert!(validate_effective_pack_set(&missing_application).is_err());
+
+        let mut duplicate = profile.clone();
+        duplicate["packs"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"pack_id": application_id, "role": "application"}));
+        assert!(validate_effective_pack_set(&duplicate).is_err());
+
+        let mut development = profile;
+        development["packs"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({"pack_id": "dev.test", "role": "provider"}));
+        assert!(validate_effective_pack_set(&development).is_err());
+    }
+
+    fn generic_profile(profile_id: &str, application_id: &str) -> Value {
+        serde_json::json!({
+            "profile_api_version": DEFAULT_PROFILE_API_VERSION,
+            "profile_id": profile_id,
+            "mode": "interactive",
+            "state": "resolved",
+            "base": {"pack_id": format!("{profile_id}.base")},
+            "shell": {
+                "provider_id": format!("{profile_id}.shell"),
+                "pack_id": format!("{profile_id}.shell"),
+                "contract_id": "app.shell.v1",
+                "platform": "linux",
+                "architecture": "x86_64"
+            },
+            "packs": [{"pack_id": application_id, "role": "application"}]
+        })
+    }
+
+    fn runtime_launch_plan() -> Value {
+        serde_json::json!({
+            "launch_contribution": {
+                "provider_id": "application.fixture",
+                "contract_id": "application.fixture.v1",
+                "operation_id": "launch",
+                "platform": "linux",
+                "architecture": "x86_64",
+                "artifact_digest": format!("sha256:{}", "a".repeat(64)),
+                "relative_path": "Fixture.AppImage",
+                "entrypoint": "Fixture.AppImage"
+            }
+        })
+    }
+
+    #[test]
+    fn shell_update_requires_reconfirmation_without_accepting_changed_launch_targets() {
+        let launch = runtime_launch_contribution_from_plan(&runtime_launch_plan()).unwrap();
+        let executable_digest = format!("sha256:{}", "b".repeat(64));
+        let mut variant: crate::presentation::ArtifactVariant =
+            serde_json::from_value(serde_json::json!({
+                "artifact_id": "fixture.shell", "variant": "linux-x86_64",
+                "platform": launch.platform, "architecture": launch.architecture,
+                "artifact_ref": launch.relative_path, "entrypoint": launch.entrypoint,
+                "artifact_kind": "appimage", "descriptor_digest": launch.artifact_digest,
+                "sha256": launch.artifact_digest, "entrypoint_sha256": executable_digest,
+                "prebuilt": true, "production": true
+            }))
+            .unwrap();
+        validate_active_shell_variant(&variant, &launch, &executable_digest, false).unwrap();
+        if cfg!(debug_assertions) {
+            let mut unsealed_development_variant = variant.clone();
+            unsealed_development_variant.sha256 = None;
+            unsealed_development_variant.entrypoint_sha256 = None;
+            assert!(validate_active_shell_variant(
+                &unsealed_development_variant,
+                &launch,
+                &executable_digest,
+                false,
+            )
+            .is_err());
+            validate_active_shell_variant(
+                &unsealed_development_variant,
+                &launch,
+                &executable_digest,
+                true,
+            )
+            .unwrap();
+            unsealed_development_variant.entrypoint = "different-executable".into();
+            assert!(validate_active_shell_variant(
+                &unsealed_development_variant,
+                &launch,
+                &executable_digest,
+                true,
+            )
+            .is_err());
+        }
+        variant.sha256 = Some(format!("sha256:{}", "c".repeat(64)));
+        assert!(
+            validate_active_shell_variant(&variant, &launch, &executable_digest, false)
+                .unwrap_err()
+                .downcast_ref::<ShellReconfirmationRequired>()
+                .is_some()
+        );
+
+        let updated = variant.clone();
+        let pack = serde_json::json!({
+            "provider_catalog": [{"provider_id": launch.provider_id, "contract_reference": launch.contract_id}],
+            "operation_catalog": [{"operation_id": launch.operation_id}]
+        });
+        validate_application_selector(&launch, &updated, &pack).unwrap();
+        for pointer in [
+            "/provider_catalog/0/provider_id",
+            "/provider_catalog/0/contract_reference",
+            "/operation_catalog/0/operation_id",
+        ] {
+            let mut corrupted = pack.clone();
+            *corrupted.pointer_mut(pointer).unwrap() = Value::String("different.identity".into());
+            assert!(validate_application_selector(&launch, &updated, &corrupted).is_err());
+        }
+        for field in [
+            "entrypoint",
+            "artifact_ref",
+            "platform",
+            "architecture",
+            "sha256",
+        ] {
+            variant = updated.clone();
+            match field {
+                "entrypoint" => variant.entrypoint = "Other.AppImage".into(),
+                "artifact_ref" => variant.artifact_ref = "Other.AppImage".into(),
+                "platform" => variant.platform = "windows".into(),
+                "architecture" => variant.architecture = "arm64".into(),
+                "sha256" => variant.sha256 = Some("invalid".into()),
+                _ => unreachable!(),
+            }
+            let error = validate_active_shell_variant(&variant, &launch, &executable_digest, false)
+                .unwrap_err();
+            if matches!(field, "platform" | "architecture") {
+                assert!(validate_application_selector(&launch, &variant, &pack).is_err());
+            }
             assert!(
-                validate_effective_pack_set(&missing).is_err(),
-                "missing required AI Pack was accepted: {pack_id}"
+                error
+                    .downcast_ref::<ShellReconfirmationRequired>()
+                    .is_none(),
+                "{field}"
             );
         }
+    }
 
-        let mut extra = profile;
-        extra["packs"]
+    #[test]
+    fn runtime_launch_selector_accepts_only_the_exact_plan_shape() {
+        let selector = runtime_launch_contribution_from_plan(&runtime_launch_plan()).unwrap();
+        assert_eq!(selector.provider_id, "application.fixture");
+        assert_eq!(selector.contract_id, "application.fixture.v1");
+        assert_eq!(selector.relative_path, "Fixture.AppImage");
+
+        let mut extra = runtime_launch_plan();
+        extra["launch_contribution"]["route"] = Value::String("/forbidden-in-selector".into());
+        assert!(runtime_launch_contribution_from_plan(&extra).is_err());
+
+        let mut escaped = runtime_launch_plan();
+        escaped["launch_contribution"]["entrypoint"] = Value::String("../outside".into());
+        assert!(runtime_launch_contribution_from_plan(&escaped).is_err());
+
+        let absent = runtime_launch_contribution_from_plan(&serde_json::json!({})).unwrap_err();
+        assert!(absent
+            .downcast_ref::<ProfileReresolutionRequired>()
+            .is_some());
+        assert!(absent.to_string().contains("reactivation or re-resolution"));
+
+        let null = runtime_launch_contribution_from_plan(&serde_json::json!({
+            "launch_contribution": null
+        }))
+        .unwrap_err();
+        assert!(null.downcast_ref::<ProfileReresolutionRequired>().is_some());
+        assert_eq!(
+            ProfileReresolutionRequired::CODE,
+            "PROFILE_RERESOLUTION_REQUIRED"
+        );
+        assert_eq!(
+            ProfileReresolutionRequired::ACTION,
+            "reactivate_or_reresolve_profile"
+        );
+
+        let malformed = runtime_launch_contribution_from_plan(&serde_json::json!({
+            "launch_contribution": "not-an-object"
+        }))
+        .unwrap_err();
+        assert!(malformed
+            .downcast_ref::<ProfileReresolutionRequired>()
+            .is_none());
+        assert!(malformed.to_string().contains("malformed"));
+    }
+
+    #[test]
+    fn changed_valid_pack_artifact_requires_profile_reresolution() {
+        let expected = format!("sha256:{}", "a".repeat(64));
+        let changed = format!("sha256:{}", "b".repeat(64));
+
+        validate_selected_pack_artifact_digest(&expected, Some(&expected)).unwrap();
+        let changed_error =
+            validate_selected_pack_artifact_digest(&expected, Some(&changed)).unwrap_err();
+        assert!(changed_error
+            .downcast_ref::<ProfileReresolutionRequired>()
+            .is_some());
+
+        let malformed_error =
+            validate_selected_pack_artifact_digest(&expected, Some("sha256:not-a-digest"))
+                .unwrap_err();
+        assert!(malformed_error
+            .downcast_ref::<ProfileReresolutionRequired>()
+            .is_none());
+        assert!(malformed_error.to_string().contains("digest is invalid"));
+    }
+
+    #[test]
+    fn rich_contract_map_identity_is_bound_to_the_selected_application() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let mut map = serde_json::json!({
+            "schema": "io.tobkiri.frontend-contract-map.v4",
+            "pack_id": "application.fixture",
+            "owner": "application.fixture",
+            "application_id": "application.fixture",
+            "artifact_path": "application.fixture/frontend_contract_map.v4.json",
+            "artifact_digest": digest,
+            "routes": []
+        });
+        assert_eq!(
+            application_contract_namespace(
+                &map,
+                "application.fixture",
+                "application.fixture/frontend_contract_map.v4.json",
+                map["artifact_digest"].as_str().unwrap(),
+            )
+            .unwrap(),
+            "application.fixture"
+        );
+
+        map["owner"] = Value::String("application.foreign".into());
+        let error = application_contract_namespace(
+            &map,
+            "application.fixture",
+            "application.fixture/frontend_contract_map.v4.json",
+            map["artifact_digest"].as_str().unwrap(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("another Application"));
+    }
+
+    #[test]
+    fn legacy_contract_map_namespace_must_match_its_signed_artifact_path() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let mut map = serde_json::json!({
+            "schema": "io.tobkiri.frontend-contract-map.v4",
+            "pack_id": "legacy.surface",
+            "routes": []
+        });
+        assert_eq!(
+            application_contract_namespace(
+                &map,
+                "application.fixture",
+                "legacy.surface/frontend_contract_map.v4.json",
+                &digest,
+            )
+            .unwrap(),
+            "legacy.surface"
+        );
+
+        map["pack_id"] = Value::String("forged.surface".into());
+        let error = application_contract_namespace(
+            &map,
+            "application.fixture",
+            "legacy.surface/frontend_contract_map.v4.json",
+            &digest,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("another Application"));
+    }
+
+    #[test]
+    fn signed_resolver_accepts_multiple_profiles_and_rejects_unknown_identity() {
+        let profile_a = generic_profile("profile.alpha", "application.alpha");
+        let profile_b = generic_profile("profile.beta", "application.beta");
+        let selected_a = selected_profile_from_documents(
+            profile_a.clone(),
+            None,
+            None,
+            "profile.alpha".into(),
+            canonical_value_digest(&profile_a).unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let selected_b = selected_profile_from_documents(
+            profile_b.clone(),
+            None,
+            None,
+            "profile.beta".into(),
+            canonical_value_digest(&profile_b).unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(selected_a.profile_id, "profile.alpha");
+        assert_eq!(selected_a.application_pack_id, "application.alpha");
+        assert_eq!(selected_b.profile_id, "profile.beta");
+        assert_eq!(selected_b.application_pack_id, "application.beta");
+        assert!(selected_profile_from_documents(
+            profile_a.clone(),
+            None,
+            None,
+            "profile.unknown".into(),
+            canonical_value_digest(&profile_a).unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn read_only_migration_requires_selected_provider_with_admissible_execution_kind() {
+        let mut profile = generic_profile("profile.migration", "application.migration");
+        profile["packs"]
             .as_array_mut()
             .unwrap()
             .push(serde_json::json!({
-                "pack_id": "unreviewed.extra.pack",
+                "pack_id": "provider.migration",
                 "role": "provider"
             }));
-        assert!(validate_effective_pack_set(&extra).is_err());
+        let selected = selected_profile_from_documents(
+            profile.clone(),
+            None,
+            None,
+            "profile.migration".into(),
+            canonical_value_digest(&profile).unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let host_extension = serde_json::json!({
+            "pack": {"id": "provider.migration", "kind": "host_extension"},
+            "migration": {"compatibility": "read_only"}
+        });
+        assert!(profile_pack_migration_is_admissible(
+            &selected,
+            "provider.migration",
+            &host_extension
+        ));
+
+        let mut application_binding = host_extension.clone();
+        application_binding["pack"]["id"] = Value::String("application.migration".into());
+        assert!(!profile_pack_migration_is_admissible(
+            &selected,
+            "application.migration",
+            &application_binding
+        ));
+
+        let mut ordinary_application = host_extension.clone();
+        ordinary_application["pack"]["kind"] = Value::String("application".into());
+        ordinary_application["functions"] = serde_json::json!([{
+            "id": "provider.migration.forged-host-capability",
+            "role": "host_capability_provider"
+        }]);
+        assert!(!profile_pack_migration_is_admissible(
+            &selected,
+            "provider.migration",
+            &ordinary_application
+        ));
+
+        let mut declarative = host_extension.clone();
+        declarative["pack"]["kind"] = serde_json::json!("application");
+        declarative["requirements"] = serde_json::json!({
+            "execution_boundary": "declarative_only"
+        });
+        for key in [
+            "contracts",
+            "functions",
+            "operation_catalog",
+            "provider_catalog",
+        ] {
+            declarative[key] = serde_json::json!([]);
+        }
+        assert!(profile_pack_migration_is_admissible(
+            &selected,
+            "provider.migration",
+            &declarative
+        ));
+        for key in [
+            "contracts",
+            "functions",
+            "operation_catalog",
+            "provider_catalog",
+        ] {
+            let mut executable = declarative.clone();
+            executable[key] = serde_json::json!([{"id": "forged-execution"}]);
+            assert!(!profile_pack_migration_is_admissible(
+                &selected,
+                "provider.migration",
+                &executable
+            ));
+        }
+
+        let mut ordinary_sandbox = host_extension.clone();
+        ordinary_sandbox["pack"]["kind"] = Value::String("normal_sandbox".into());
+        assert!(!profile_pack_migration_is_admissible(
+            &selected,
+            "provider.migration",
+            &ordinary_sandbox
+        ));
+        ordinary_sandbox["requirements"] = serde_json::json!({
+            "execution_boundary": "sandbox"
+        });
+        ordinary_sandbox["functions"] = serde_json::json!([{"role": "brokered"}]);
+        assert!(profile_pack_migration_is_admissible(
+            &selected,
+            "provider.migration",
+            &ordinary_sandbox
+        ));
+        ordinary_sandbox["functions"][0]["role"] = serde_json::json!("host_capability_provider");
+        assert!(!profile_pack_migration_is_admissible(
+            &selected,
+            "provider.migration",
+            &ordinary_sandbox
+        ));
+
+        let mut unknown_compatibility = host_extension;
+        unknown_compatibility["migration"]["compatibility"] = Value::String("legacy".into());
+        assert!(!profile_pack_migration_is_admissible(
+            &selected,
+            "provider.migration",
+            &unknown_compatibility
+        ));
+    }
+
+    #[test]
+    fn canonical_optional_pack_migrations_remain_admissible_after_enable() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tobkiri_runtime/ecosystem/defaultspack/v4/packs");
+        let packs: Vec<Value> = fs::read_dir(root)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.to_string_lossy().ends_with(".pack.v4.json"))
+            .map(|path| read_json(&path, "canonical Pack fixture").unwrap())
+            .filter(|pack| !matches!(value_str(pack, "/pack/kind"), Some("base" | "shell")))
+            .collect();
+        assert!(!packs.is_empty());
+        let mut profile = generic_profile("profile.catalog", "application.catalog");
+        for pack in &packs {
+            profile["packs"]
+                .as_array_mut()
+                .unwrap()
+                .push(serde_json::json!({
+                    "pack_id": value_str(pack, "/pack/id").unwrap(),
+                    "role": "provider"
+                }));
+        }
+        let selected = selected_profile_from_documents(
+            profile.clone(),
+            None,
+            None,
+            "profile.catalog".into(),
+            canonical_value_digest(&profile).unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        for pack in packs {
+            let pack_id = value_str(&pack, "/pack/id").unwrap();
+            assert!(
+                profile_pack_migration_is_admissible(&selected, pack_id, &pack),
+                "canonical optional Pack cannot survive Launcher restart: {pack_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn signed_resolver_rejects_resolved_plan_digest_mismatch() {
+        let mut profile = generic_profile("profile.digest", "application.digest");
+        profile["packs"][0]["artifact_digest"] =
+            Value::String(format!("sha256:{}", "1".repeat(64)));
+        let profile_revision = canonical_value_digest(&profile).unwrap();
+        let mut plan = serde_json::json!({
+            "plan_api_version": "io.tobkiri.resolved-plan.v2",
+            "profile_id": "profile.digest",
+            "profile_revision": profile_revision,
+            "base": {"pack_id": "profile.digest.base"},
+            "shell": {
+                "provider_id": "profile.digest.shell",
+                "pack_id": "profile.digest.shell"
+            },
+            "application": {
+                "pack_id": "application.digest",
+                "artifact_digest": format!("sha256:{}", "1".repeat(64))
+            }
+        });
+        let plan_digest = canonical_value_digest(&plan).unwrap();
+        plan["plan_digest"] = Value::String(plan_digest.clone());
+        plan["unexpected_extension"] = Value::String("stale".into());
+        assert!(selected_profile_from_documents(
+            profile,
+            None,
+            Some(plan),
+            "profile.digest".into(),
+            profile_revision.clone(),
+            Some(profile_revision),
+            Some("activation:digest-test".into()),
+            Some(plan_digest),
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn materialized_root_pack_must_be_in_the_selected_profile_closure() {
+        let selected =
+            BTreeSet::from(["application.alpha".to_owned(), "provider.alpha".to_owned()]);
+        assert!(ensure_materialized_pack_selected("application.alpha", &selected).is_ok());
+        assert!(ensure_materialized_pack_selected("provider.alpha", &selected).is_ok());
+        assert!(ensure_materialized_pack_selected("provider.foreign", &selected).is_err());
+    }
+
+    #[test]
+    fn ci_e2e_external_acceptance_pack_requires_exact_profile_and_packvm_pin() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let mut selected = SelectedProfileAuthority {
+            profile: serde_json::json!({
+                "packs": [{
+                    "pack_id": PACKVM_ACCEPTANCE_PACK_ID,
+                    "role": "provider",
+                    "artifact_digest": digest.clone(),
+                }]
+            }),
+            lock: Some(serde_json::json!({
+                "variant_pins": [{
+                    "pack_id": PACKVM_ACCEPTANCE_PACK_ID,
+                    "artifact_digest": digest.clone(),
+                    "execution_kind": "pack_vm",
+                    "domain_kind": "dedicated_process",
+                }]
+            })),
+            plan: Some(serde_json::json!({})),
+            profile_id: "defaults".into(),
+            profile_digest: format!("sha256:{}", "b".repeat(64)),
+            profile_revision: None,
+            activation_id: None,
+            plan_digest: None,
+            lock_digest: None,
+            base_pack_id: "defaults-basepack".into(),
+            shell_provider_id: "shell.tauri.default".into(),
+            shell_pack_id: "shell.tauri.default".into(),
+            application_pack_id: "runtime.tauri.application.default".into(),
+            application_artifact_digest: None,
+            launch_contribution: None,
+            pack_ids: BTreeSet::from([PACKVM_ACCEPTANCE_PACK_ID.into()]),
+        };
+
+        assert!(selected_ci_e2e_acceptance_pack_matches(
+            &selected,
+            PACKVM_ACCEPTANCE_PACK_ID,
+            &digest,
+        ));
+        assert!(!selected_ci_e2e_acceptance_pack_matches(
+            &selected,
+            "external.unrelated",
+            &digest,
+        ));
+        assert!(!selected_ci_e2e_acceptance_pack_matches(
+            &selected,
+            PACKVM_ACCEPTANCE_PACK_ID,
+            &format!("sha256:{}", "c".repeat(64)),
+        ));
+
+        selected.lock.as_mut().unwrap()["variant_pins"][0]["execution_kind"] =
+            serde_json::json!("host");
+        assert!(!selected_ci_e2e_acceptance_pack_matches(
+            &selected,
+            PACKVM_ACCEPTANCE_PACK_ID,
+            &digest,
+        ));
     }
 
     #[test]
@@ -2259,7 +4784,8 @@ mod tests {
             );
             assert_eq!(
                 first.launch.artifact_digest,
-                sha256(&fs::read(&first.launch.entrypoint).unwrap())
+                artifact_tree_digest(&first.pack_root.join("platform-artifacts/Tobkiri.app"))
+                    .unwrap()
             );
             assert_eq!(
                 first.pack_root,
@@ -2275,6 +4801,79 @@ mod tests {
             );
             fs::remove_dir_all(root).unwrap();
         }
+    }
+
+    #[test]
+    fn packaged_bootstrap_shell_tree_digest_is_not_the_shell_pack_aggregate() {
+        let (root, config) = fixture("bootstrap-shell-digest-domain");
+        let bundle_root = config.app_dir.join("ecosystem/defaultspack/v4");
+        let profile: Value =
+            serde_json::from_slice(&fs::read(bundle_root.join(PROFILE_PATH)).unwrap()).unwrap();
+        let shell_pack: Value =
+            serde_json::from_slice(&fs::read(bundle_root.join(SHELL_PACK_PATH)).unwrap()).unwrap();
+
+        let shell_tree_digest = value_str(&profile, "/shell/artifact_digest").unwrap();
+        assert_eq!(value_str(&profile, "/state"), Some("needs_resolution"));
+        assert!(valid_digest(shell_tree_digest));
+        assert_ne!(
+            Some(shell_tree_digest),
+            value_str(&shell_pack, "/pack/artifact_digest"),
+            "bootstrap Profile shell tree and Shell Pack aggregate must remain distinct domains"
+        );
+
+        resolve(&config).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bootstrap_profile_shell_digests_must_match_the_signed_variant() {
+        let (root, config) = fixture("bootstrap-shell-signed-variant");
+        let bundle_root = config.app_dir.join("ecosystem/defaultspack/v4");
+        let original_profile: Value =
+            serde_json::from_slice(&fs::read(bundle_root.join(PROFILE_PATH)).unwrap()).unwrap();
+        let original_shell = original_profile["shell"].clone();
+        let original_tree_digest = value_str(&original_profile, "/shell/artifact_digest")
+            .unwrap()
+            .to_owned();
+        let original_entrypoint_digest =
+            value_str(&original_profile, "/shell/executable_artifact_digest")
+                .unwrap()
+                .to_owned();
+
+        for field in ["artifact_digest", "executable_artifact_digest"] {
+            let expected = if field == "artifact_digest" {
+                &original_tree_digest
+            } else {
+                &original_entrypoint_digest
+            };
+            let replacement = if expected.ends_with(&"0".repeat(64)) {
+                format!("sha256:{}", "f".repeat(64))
+            } else {
+                format!("sha256:{}", "0".repeat(64))
+            };
+            rewrite_locked_document(&config, PROFILE_PATH, |profile| {
+                profile["shell"] = original_shell.clone();
+                profile["shell"][field] = Value::String(replacement.clone());
+            });
+
+            let profile_raw = fs::read(bundle_root.join(PROFILE_PATH)).unwrap();
+            let catalog = crate::presentation::load_catalog(&config).unwrap();
+            assert_eq!(catalog.default_profile_digest, sha256(&profile_raw));
+            let bundle_root = bundle_root.canonicalize().unwrap();
+            let bundle_lock = verify_bundle_lock(&bundle_root).unwrap();
+            assert_eq!(
+                bundle_lock.authority_digests.get(PROFILE_PATH),
+                Some(&catalog.default_profile_digest),
+                "the test must preserve the coherent lock/catalog Profile digest"
+            );
+            let error = resolve(&config).unwrap_err().to_string();
+            assert!(
+                error.contains("bootstrap Profile Shell differs from its signed artifact variant"),
+                "{field} mismatch was accepted or rejected for the wrong reason: {error}"
+            );
+        }
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -2345,6 +4944,14 @@ mod tests {
             |pack| {
                 pack["provider_catalog"][0]["provider_id"] = Value::String("wrong.provider".into());
             },
+            |pack| {
+                let foreign = Value::String("application.foreign".into());
+                pack["functions"][0]["id"] = foreign.clone();
+                pack["provider_catalog"][0]["provider_id"] = foreign.clone();
+                pack["provider_catalog"][0]["owner"] = foreign.clone();
+                pack["operation_catalog"][0]["owner"] = foreign.clone();
+                pack["operation_catalog"][0]["provider_id"] = foreign;
+            },
         ];
         for (index, mutation) in mutations.iter().enumerate() {
             let (root, config) = fixture(&format!("invalid-launch-{index}"));
@@ -2400,7 +5007,7 @@ mod tests {
         fs::remove_file(
             missing_config
                 .app_dir
-                .join("ecosystem/defaultspack/v4/defaults.profile.v4.json"),
+                .join("ecosystem/defaultspack/v4/defaults.profile.v5.json"),
         )
         .unwrap();
         assert!(resolve(&missing_config).is_err());
@@ -2410,7 +5017,7 @@ mod tests {
         fs::write(
             tampered_config
                 .app_dir
-                .join("ecosystem/defaultspack/v4/defaults.profile.v4.json"),
+                .join("ecosystem/defaultspack/v4/defaults.profile.v5.json"),
             b"{}",
         )
         .unwrap();
@@ -2436,7 +5043,7 @@ mod tests {
         let (symlink_root, symlink_config) = fixture("symlink");
         let profile = symlink_config
             .app_dir
-            .join("ecosystem/defaultspack/v4/defaults.profile.v4.json");
+            .join("ecosystem/defaultspack/v4/defaults.profile.v5.json");
         let outside = symlink_root.join("outside.profile.json");
         fs::rename(&profile, &outside).unwrap();
         symlink(&outside, &profile).unwrap();

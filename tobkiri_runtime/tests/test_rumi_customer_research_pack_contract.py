@@ -73,7 +73,7 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
     assert ecosystem["metadata"]["declarative_only"] is True
     assert ecosystem["metadata"]["consumes_existing_sources_only"] is True
     assert ecosystem["metadata"]["output_effect"] == "draft_and_handoff_only"
-    assert ecosystem["metadata"]["defaultspack_promotion_eligible"] is False
+    assert ecosystem["metadata"]["base_pack_promotion_eligible"] is False
     assert set(ecosystem["metadata"]["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(ecosystem["metadata"]["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
 
@@ -100,7 +100,7 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
         "executable_code": False,
         "supports_all_ok": False,
         "external_actions_are_handoffs": True,
-        "defaultspack_promotion_eligible": False,
+        "base_pack_promotion_eligible": False,
     }
 
 
@@ -137,9 +137,9 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert handed
     assert candidate.overlap_policy["tool_aliases"] == "prefer_explicit_pack_namespace"
 
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

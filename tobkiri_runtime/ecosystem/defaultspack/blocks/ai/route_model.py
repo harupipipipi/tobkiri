@@ -47,10 +47,16 @@ def _requested_tools(value):
     return result
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner=None):
     del context
     data = input_data if isinstance(input_data, dict) else {}
-    settings = data.get("settings") if isinstance(data.get("settings"), dict) else ModelRuntimeSettingsService().get_settings()
+    settings = (
+        data.get("settings")
+        if isinstance(data.get("settings"), dict)
+        else ModelRuntimeSettingsService(
+            settings_owner=settings_owner
+        ).get_settings()
+    )
     modalities = data.get("modalities") if isinstance(data.get("modalities"), dict) else {}
     tools = _requested_tools(data.get("tools"))
     request = ModelRoutingRequest(

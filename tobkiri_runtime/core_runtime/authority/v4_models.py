@@ -8,6 +8,7 @@ domain, activation, and security-epoch identities.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import math
 import re
@@ -15,7 +16,6 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, Mapping
-
 
 _DIGEST_RE = re.compile(r"^(?:sha256:)?[0-9a-f]{64}$")
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,254}$")
@@ -145,6 +145,39 @@ def _immutable_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return MappingProxyType(dict(value))
 
 
+def _immutable_redacted_metadata(value: Mapping[str, Any]) -> Mapping[str, str]:
+    """Freeze a bounded UI-safe metadata projection without secret fields."""
+
+    if not isinstance(value, Mapping) or len(value) > 32:
+        raise AuthorityValidationError("redacted metadata is invalid")
+    normalized: dict[str, str] = {}
+    forbidden = {
+        "authorization",
+        "credential",
+        "password",
+        "receipt",
+        "secret",
+        "token",
+    }
+    for key, raw_value in value.items():
+        name = str(key)
+        _require_id("redacted metadata key", name)
+        if any(fragment in name.lower() for fragment in forbidden):
+            raise AuthorityValidationError("redacted metadata may not contain secrets")
+        if not isinstance(raw_value, str) or not raw_value or len(raw_value) > 512:
+            raise AuthorityValidationError("redacted metadata values are invalid")
+        normalized[name] = raw_value
+    return MappingProxyType(dict(sorted(normalized.items())))
+
+
+def interactive_confirmation_digest(phrase: str) -> str:
+    """Return the non-reversible binding used for one typed confirmation phrase."""
+
+    if not isinstance(phrase, str) or not phrase:
+        raise AuthorityValidationError("typed confirmation phrase is invalid")
+    return authority_digest({"interactive_approval_confirmation": phrase})
+
+
 @dataclass(frozen=True, order=True)
 class FunctionPrincipal:
     """Exact Function/Operation authority principal from a verified artifact."""
@@ -157,7 +190,9 @@ class FunctionPrincipal:
 
     def __post_init__(self) -> None:
         _require_digest("parent_artifact_digest", self.parent_artifact_digest)
-        _require_digest("function_implementation_digest", self.function_implementation_digest)
+        _require_digest(
+            "function_implementation_digest", self.function_implementation_digest
+        )
         _require_digest("contract_revision_digest", self.contract_revision_digest)
         _require_id("function_id", self.function_id)
         _require_id("operation_id", self.operation_id)
@@ -179,7 +214,9 @@ class FunctionPrincipal:
 
         return cls(
             parent_artifact_digest=str(value.get("parent_artifact_digest") or ""),
-            function_implementation_digest=str(value.get("function_implementation_digest") or ""),
+            function_implementation_digest=str(
+                value.get("function_implementation_digest") or ""
+            ),
             function_id=str(value.get("function_id") or ""),
             contract_revision_digest=str(value.get("contract_revision_digest") or ""),
             operation_id=str(value.get("operation_id") or ""),
@@ -223,14 +260,24 @@ class AuthorityScope:
         normalized_quotas: dict[str, int] = {}
         for name, raw_value in dict(self.quotas).items():
             _require_id("scope quota", str(name))
-            if isinstance(raw_value, bool) or not isinstance(raw_value, int) or raw_value < 0:
-                raise AuthorityValidationError("scope quotas must be non-negative integers")
+            if (
+                isinstance(raw_value, bool)
+                or not isinstance(raw_value, int)
+                or raw_value < 0
+            ):
+                raise AuthorityValidationError(
+                    "scope quotas must be non-negative integers"
+                )
             normalized_quotas[str(name)] = raw_value
         if self.exact_request_digest is not None:
             _require_digest("exact_request_digest", self.exact_request_digest)
         if self.opaque and self.exact_request_digest is None:
-            raise AuthorityValidationError("opaque scope requires an exact request digest")
-        object.__setattr__(self, "dimensions", _immutable_mapping(normalized_dimensions))
+            raise AuthorityValidationError(
+                "opaque scope requires an exact request digest"
+            )
+        object.__setattr__(
+            self, "dimensions", _immutable_mapping(normalized_dimensions)
+        )
         object.__setattr__(self, "quotas", _immutable_mapping(normalized_quotas))
 
     @property
@@ -268,14 +315,22 @@ class AuthorityScope:
         dimensions = value.get("dimensions", {})
         quotas = value.get("quotas", {})
         if not isinstance(dimensions, Mapping) or not isinstance(quotas, Mapping):
-            raise AuthorityValidationError("scope dimensions and quotas must be objects")
+            raise AuthorityValidationError(
+                "scope dimensions and quotas must be objects"
+            )
         if any(
-            not isinstance(items, (list, tuple, set, frozenset)) for items in dimensions.values()
+            not isinstance(items, (list, tuple, set, frozenset))
+            for items in dimensions.values()
         ):
             raise AuthorityValidationError("scope dimension values must be arrays")
-        if any(not isinstance(item, str) for items in dimensions.values() for item in items):
+        if any(
+            not isinstance(item, str) for items in dimensions.values() for item in items
+        ):
             raise AuthorityValidationError("scope dimension values must be strings")
-        if any(isinstance(item, bool) or not isinstance(item, int) for item in quotas.values()):
+        if any(
+            isinstance(item, bool) or not isinstance(item, int)
+            for item in quotas.values()
+        ):
             raise AuthorityValidationError("scope quotas must be integers")
         return cls(
             capability=str(value.get("capability") or ""),
@@ -345,7 +400,8 @@ def intersect_scopes(*scopes: AuthorityScope) -> AuthorityScope:
         raise AuthorityValidationError("at least one scope is required")
     first = scopes[0]
     if any(
-        scope.capability != first.capability or scope.semantics_digest != first.semantics_digest
+        scope.capability != first.capability
+        or scope.semantics_digest != first.semantics_digest
         for scope in scopes[1:]
     ):
         raise AuthorityValidationError("scope semantics do not match")
@@ -369,7 +425,9 @@ def intersect_scopes(*scopes: AuthorityScope) -> AuthorityScope:
         for name in quota_names
     }
 
-    exact_values = {scope.exact_request_digest for scope in scopes if scope.exact_request_digest}
+    exact_values = {
+        scope.exact_request_digest for scope in scopes if scope.exact_request_digest
+    }
     if len(exact_values) > 1:
         raise AuthorityValidationError("exact request bindings conflict")
     opaque_values = {scope.opaque for scope in scopes}
@@ -443,18 +501,24 @@ class ExecutionDomain:
         _require_id("profile_id", self.profile_id)
         _require_id("activation_id", self.activation_id)
         _require_id("process_identity", self.process_identity)
-        _require_digest("authenticated_channel_digest", self.authenticated_channel_digest)
+        _require_digest(
+            "authenticated_channel_digest", self.authenticated_channel_digest
+        )
         _require_digest("sandbox_profile_digest", self.sandbox_profile_digest)
         _require_id("resource_namespace", self.resource_namespace)
         _require_positive_int("boot_epoch", self.boot_epoch)
         _require_positive_int("security_epoch", self.security_epoch)
         _require_positive_int("fencing_token", self.fencing_token)
         if not self.principals:
-            raise AuthorityValidationError("execution domain requires an exact principal")
+            raise AuthorityValidationError(
+                "execution domain requires an exact principal"
+            )
         principal_ids = tuple(sorted({item.principal_id for item in self.principals}))
         if len(principal_ids) != len(self.principals):
             raise AuthorityValidationError("execution domain principals must be unique")
-        mutual = tuple(sorted({str(item) for item in self.mutual_colocation_principals}))
+        mutual = tuple(
+            sorted({str(item) for item in self.mutual_colocation_principals})
+        )
         object.__setattr__(self, "mutual_colocation_principals", mutual)
         if len(self.principals) > 1:
             if self.boundary is not DomainBoundary.AUTHORITY_EQUIVALENCE:
@@ -465,8 +529,13 @@ class ExecutionDomain:
                 raise AuthorityValidationError(
                     "co-location requires complete mutual principal approval"
                 )
-        if self.boundary is DomainBoundary.AUTHORITY_EQUIVALENCE and self.equivalence is None:
-            raise AuthorityValidationError("equivalence domain requires security properties")
+        if (
+            self.boundary is DomainBoundary.AUTHORITY_EQUIVALENCE
+            and self.equivalence is None
+        ):
+            raise AuthorityValidationError(
+                "equivalence domain requires security properties"
+            )
 
     @property
     def principal_ids(self) -> frozenset[str]:
@@ -512,7 +581,9 @@ class ExecutionDomain:
             activation_id=str(value.get("activation_id") or ""),
             boot_epoch=int(value.get("boot_epoch") or 0),
             process_identity=str(value.get("process_identity") or ""),
-            authenticated_channel_digest=str(value.get("authenticated_channel_digest") or ""),
+            authenticated_channel_digest=str(
+                value.get("authenticated_channel_digest") or ""
+            ),
             sandbox_profile_digest=str(value.get("sandbox_profile_digest") or ""),
             resource_namespace=str(value.get("resource_namespace") or ""),
             principals=tuple(
@@ -561,7 +632,9 @@ class ProviderAuthorityRecord:
     def __post_init__(self) -> None:
         _require_id("record_id", self.record_id)
         _require_id("execution_domain_id", self.execution_domain_id)
-        _require_digest("execution_domain_identity_digest", self.execution_domain_identity_digest)
+        _require_digest(
+            "execution_domain_identity_digest", self.execution_domain_identity_digest
+        )
         _require_digest("trust_provenance_digest", self.trust_provenance_digest)
         _require_id("publisher_lineage", self.publisher_lineage)
         _require_id("host_extension_id", self.host_extension_id)
@@ -654,7 +727,9 @@ class HostExtensionTrustRecord:
         if self.expires_at is not None and self.expires_at <= self.valid_from:
             raise AuthorityValidationError("Host Extension trust expiry is invalid")
         if self.package_kind != "host_extension":
-            raise AuthorityValidationError("Host Extension trust has invalid package kind")
+            raise AuthorityValidationError(
+                "Host Extension trust has invalid package kind"
+            )
         normalized = tuple(sorted(set(self.provider_principal_ids)))
         if not normalized:
             raise AuthorityValidationError("Host Extension trust requires Providers")
@@ -682,7 +757,9 @@ class HostExtensionTrustRecord:
         return cls(
             **{
                 **dict(value),
-                "provider_principal_ids": tuple(value.get("provider_principal_ids", [])),
+                "provider_principal_ids": tuple(
+                    value.get("provider_principal_ids", [])
+                ),
             }
         )
 
@@ -741,6 +818,214 @@ class ApprovalRecord:
 
 
 @dataclass(frozen=True)
+class InteractiveApprovalRequest:
+    """Host-owned, immutable snapshot presented for one interactive decision.
+
+    This is intentionally not a Grant and cannot authorize execution on its
+    own.  The complete activation, plan, caller-session, and scope snapshot is
+    retained so a later decision cannot be replayed into another invocation.
+    """
+
+    request_id: str
+    request_digest: str
+    caller: FunctionPrincipal
+    target: FunctionPrincipal
+    profile_id: str
+    activation_id: str
+    activation_digest: str
+    plan_digest: str
+    profile_authority_digest: str
+    profile_revision: str
+    security_epoch: int
+    fencing_token: int
+    caller_domain_id: str
+    caller_boot_epoch: int
+    target_domain_id: str
+    target_boot_epoch: int
+    target_backend_digest: str
+    handle_namespace: str
+    base_scope: AuthorityScope
+    invocation_owner_id: str
+    presentation_owner_principal_id: str
+    presentation_owner_session_id: str
+    caller_session_id: str
+    caller_publisher_lineage: str
+    target_publisher_lineage: str
+    created_at: float
+    expires_at: float
+    redacted_metadata: Mapping[str, str] = field(default_factory=dict)
+    typed_confirmation_digest: str | None = None
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("request_id", self.request_id),
+            ("profile_id", self.profile_id),
+            ("activation_id", self.activation_id),
+            ("caller_domain_id", self.caller_domain_id),
+            ("target_domain_id", self.target_domain_id),
+            ("invocation_owner_id", self.invocation_owner_id),
+            ("presentation_owner_principal_id", self.presentation_owner_principal_id),
+            ("presentation_owner_session_id", self.presentation_owner_session_id),
+            ("caller_session_id", self.caller_session_id),
+            ("caller_publisher_lineage", self.caller_publisher_lineage),
+            ("target_publisher_lineage", self.target_publisher_lineage),
+        ):
+            _require_id(name, value)
+        for name, value in (
+            ("request_digest", self.request_digest),
+            ("activation_digest", self.activation_digest),
+            ("plan_digest", self.plan_digest),
+            ("profile_authority_digest", self.profile_authority_digest),
+            ("target_backend_digest", self.target_backend_digest),
+        ):
+            _require_digest(name, value)
+        if self.profile_revision:
+            _require_digest("profile_revision", self.profile_revision)
+        if not isinstance(self.handle_namespace, str) or not self.handle_namespace:
+            raise AuthorityValidationError(
+                "interactive approval handle namespace is invalid"
+            )
+        if self.typed_confirmation_digest is not None:
+            _require_digest("typed_confirmation_digest", self.typed_confirmation_digest)
+        _require_positive_int("security_epoch", self.security_epoch)
+        _require_positive_int("fencing_token", self.fencing_token)
+        _require_positive_int("caller_boot_epoch", self.caller_boot_epoch)
+        _require_positive_int("target_boot_epoch", self.target_boot_epoch)
+        _require_finite_time("created_at", self.created_at)
+        _require_finite_time("expires_at", self.expires_at)
+        if self.expires_at <= self.created_at:
+            raise AuthorityValidationError("interactive approval expiry is invalid")
+        metadata = _immutable_redacted_metadata(self.redacted_metadata)
+        if self.typed_confirmation_digest is not None:
+            phrase = metadata.get("confirmation_phrase")
+            if phrase is None or not hmac.compare_digest(
+                interactive_confirmation_digest(phrase),
+                self.typed_confirmation_digest,
+            ):
+                raise AuthorityValidationError(
+                    "interactive confirmation display phrase is invalid"
+                )
+        object.__setattr__(self, "redacted_metadata", metadata)
+
+    @property
+    def digest(self) -> str:
+        """Return the immutable approval-request snapshot digest."""
+
+        return authority_digest(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize a secret-free immutable request snapshot."""
+
+        return {
+            "request_id": self.request_id,
+            "request_digest": self.request_digest,
+            "caller": self.caller.to_dict(),
+            "target": self.target.to_dict(),
+            "profile_id": self.profile_id,
+            "activation_id": self.activation_id,
+            "activation_digest": self.activation_digest,
+            "plan_digest": self.plan_digest,
+            "profile_authority_digest": self.profile_authority_digest,
+            "profile_revision": self.profile_revision,
+            "security_epoch": self.security_epoch,
+            "fencing_token": self.fencing_token,
+            "caller_domain_id": self.caller_domain_id,
+            "caller_boot_epoch": self.caller_boot_epoch,
+            "target_domain_id": self.target_domain_id,
+            "target_boot_epoch": self.target_boot_epoch,
+            "target_backend_digest": self.target_backend_digest,
+            "handle_namespace": self.handle_namespace,
+            "base_scope": self.base_scope.to_dict(),
+            "invocation_owner_id": self.invocation_owner_id,
+            "presentation_owner_principal_id": self.presentation_owner_principal_id,
+            "presentation_owner_session_id": self.presentation_owner_session_id,
+            "caller_session_id": self.caller_session_id,
+            "caller_publisher_lineage": self.caller_publisher_lineage,
+            "target_publisher_lineage": self.target_publisher_lineage,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+            "redacted_metadata": dict(self.redacted_metadata),
+            "typed_confirmation_digest": self.typed_confirmation_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "InteractiveApprovalRequest":
+        """Parse one exact interactive approval request."""
+
+        return cls(
+            **{
+                **dict(value),
+                "caller": FunctionPrincipal.from_dict(value["caller"]),
+                "target": FunctionPrincipal.from_dict(value["target"]),
+                "base_scope": AuthorityScope.from_dict(value["base_scope"]),
+                "redacted_metadata": dict(value.get("redacted_metadata", {})),
+            }
+        )
+
+
+@dataclass(frozen=True)
+class InteractiveApprovalDecision:
+    """Immutable settlement of exactly one interactive approval request."""
+
+    decision_id: str
+    request_id: str
+    request_snapshot_digest: str
+    decision: str
+    actor_id: str
+    decided_at: float
+    security_epoch: int
+    ui_operator_digest: str
+    typed_confirmation_verified: bool
+    approval_id: str | None = None
+    grant_id: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_id("decision_id", self.decision_id)
+        _require_id("request_id", self.request_id)
+        if self.decision_id != self.request_id:
+            raise AuthorityValidationError(
+                "interactive approval decision must be unique per request"
+            )
+        _require_digest("request_snapshot_digest", self.request_snapshot_digest)
+        _require_id("actor_id", self.actor_id)
+        _require_digest("ui_operator_digest", self.ui_operator_digest)
+        _require_positive_int("security_epoch", self.security_epoch)
+        _require_finite_time("decided_at", self.decided_at)
+        if self.decision not in {"approved", "denied"}:
+            raise AuthorityValidationError("interactive approval decision is invalid")
+        if self.decision == "approved":
+            if self.approval_id is None or self.grant_id is None:
+                raise AuthorityValidationError(
+                    "approved interactive decision requires approval and Grant"
+                )
+            _require_id("approval_id", self.approval_id)
+            _require_id("grant_id", self.grant_id)
+        elif self.approval_id is not None or self.grant_id is not None:
+            raise AuthorityValidationError(
+                "denied interactive decision cannot mint authority"
+            )
+        if not isinstance(self.typed_confirmation_verified, bool):
+            raise AuthorityValidationError("typed confirmation proof is invalid")
+
+    @property
+    def digest(self) -> str:
+        """Return the immutable decision digest."""
+
+        return authority_digest(self.to_dict())
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize a secret-free decision record."""
+
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "InteractiveApprovalDecision":
+        """Parse one exact interactive approval decision."""
+
+        return cls(**dict(value))
+
+
+@dataclass(frozen=True)
 class GrantRecord:
     """Caller-specific persisted use authority."""
 
@@ -785,11 +1070,18 @@ class GrantRecord:
         if self.lifetime is GrantLifetime.ONE_SHOT and self.max_uses != 1:
             raise AuthorityValidationError("one-shot Grant must have max_uses=1")
         if self.scope.opaque and self.lifetime is not GrantLifetime.ONE_SHOT:
-            raise AuthorityValidationError("opaque semantics permit one-shot Grants only")
+            raise AuthorityValidationError(
+                "opaque semantics permit one-shot Grants only"
+            )
         if self.lifetime is GrantLifetime.SESSION and not self.session_id:
             raise AuthorityValidationError("session Grant requires session_id")
-        if self.lifetime is GrantLifetime.WORKFLOW_REVISION and not self.workflow_revision_digest:
-            raise AuthorityValidationError("workflow Grant requires a workflow revision digest")
+        if (
+            self.lifetime is GrantLifetime.WORKFLOW_REVISION
+            and not self.workflow_revision_digest
+        ):
+            raise AuthorityValidationError(
+                "workflow Grant requires a workflow revision digest"
+            )
         if self.workflow_revision_digest:
             _require_digest("workflow_revision_digest", self.workflow_revision_digest)
         if not self.delegation_allowed and self.max_delegation_depth != 0:
@@ -917,7 +1209,9 @@ class InvocationLease:
         _require_finite_time("expires_at", self.expires_at)
         if self.expires_at <= self.issued_at:
             raise AuthorityValidationError("lease expiry is invalid")
-        if len(self.call_chain) > 4 or len(set(self.call_chain)) != len(self.call_chain):
+        if len(self.call_chain) > 4 or len(set(self.call_chain)) != len(
+            self.call_chain
+        ):
             raise AuthorityValidationError("lease call chain is cyclic or too deep")
 
     @property
@@ -1017,8 +1311,12 @@ class InvocationContext:
         _require_positive_int("target_boot_epoch", self.target_boot_epoch)
         _require_positive_int("fencing_token", self.fencing_token)
         _require_positive_int("security_epoch", self.security_epoch)
-        if len(self.call_chain) > 4 or len(set(self.call_chain)) != len(self.call_chain):
-            raise AuthorityValidationError("invocation call chain is cyclic or too deep")
+        if len(self.call_chain) > 4 or len(set(self.call_chain)) != len(
+            self.call_chain
+        ):
+            raise AuthorityValidationError(
+                "invocation call chain is cyclic or too deep"
+            )
 
 
 @dataclass(frozen=True)
@@ -1034,7 +1332,9 @@ class UpdateTrustPolicy:
         _require_id("policy_id", self.policy_id)
         _require_id("publisher_lineage", self.publisher_lineage)
         if self.third_party_auto_update and not self.allow_non_expanding_successor:
-            raise AuthorityValidationError("third-party auto update cannot bypass successor policy")
+            raise AuthorityValidationError(
+                "third-party auto update cannot bypass successor policy"
+            )
 
 
 @dataclass(frozen=True)

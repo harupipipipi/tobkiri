@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:8c209b6a0286f4f86693a50680a0c32e3ee51027e0aba40fedc71d9b9601a335",
+  "catalog_digest": "sha256:3ed859a7db80902fc43a98bf98b2aad96e654b131de14bfaf8c5ec4b7d9acdc2",
   "pack_id": "rumi_qr_pairing_connector_pack",
-  "source_identity": "sha256:ad05a27dc86febc0c820750b855c359281a69e2cd2e8e37bdbc2f6104429328f",
+  "source_identity": "sha256:abe823b8606a12d666aa54829d14511c866f52d2018d9e7a9b2a1871b588b34d",
   "variants": [
     {
       "architecture": "any",
@@ -29,7 +29,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:4ae4f5aebae13501d88b1c7aab9172e79147981842aea670ec65931e99d2e7f2",
+          "revision_digest": "sha256:1170da2034ee00c86eaef202042775ead28cb71c4ef100b3d2aac7c9a6ac2b63",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

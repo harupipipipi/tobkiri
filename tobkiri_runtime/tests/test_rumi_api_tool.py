@@ -34,7 +34,7 @@ def test_rumi_api_function_subprocess_has_zero_legacy_routes():
     assert output["status"] == "ok"
     assert output["data"]["count"] == 0
     assert output["data"]["routes"] == []
-    assert output["data"]["dispatch"] == "captured_v4_qualified_operations_only"
+    assert output["data"]["dispatch"] == "disabled"
 
 
 class _CapturedSession:
@@ -52,7 +52,7 @@ class _CapturedSession:
         return {"value": "captured"}
 
 
-def test_rumi_api_dispatches_one_qualified_operation_through_captured_session():
+def test_rumi_api_retires_hidden_generic_dispatch_even_with_captured_session():
     from ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
 
     session = _CapturedSession()
@@ -70,27 +70,11 @@ def test_rumi_api_dispatches_one_qualified_operation_through_captured_session():
         },
     )
 
-    assert result == {
-        "status": "ok",
-        "data": {
-            "profile_id": "profile:defaults",
-            "result": {"value": "captured"},
-        },
-    }
-    assert session.calls == [
-        (
-            "company.messaging.v1",
-            "channels.list",
-            {
-                "workspace_id": "workspace:alpha",
-                "_contract_consumer_pack_id": "rumi_default_tools_pack",
-            },
-            ">=1,<2",
-        )
-    ]
+    assert result["error"]["code"] == "INVALID_ACTION"
+    assert session.calls == []
 
 
-def test_rumi_api_rejects_legacy_http_and_missing_session():
+def test_rumi_api_rejects_legacy_http_and_hidden_dispatch_without_session():
     from ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
 
     legacy = rumi_api.run(
@@ -108,10 +92,10 @@ def test_rumi_api_rejects_legacy_http_and_missing_session():
         },
         {"_tool_server_approved": True, "principal_id": "defaultspack"},
     )
-    assert missing["error"]["code"] == "V4_DISPATCH_SESSION_REQUIRED"
+    assert missing["error"]["code"] == "INVALID_ACTION"
 
 
-def test_rumi_api_rejects_forged_consumer_identity():
+def test_rumi_api_hidden_dispatch_does_not_inspect_forged_consumer_identity():
     from ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
 
     result = rumi_api.run(
@@ -127,4 +111,4 @@ def test_rumi_api_rejects_forged_consumer_identity():
             "v4_dispatch_session": _CapturedSession(),
         },
     )
-    assert result["error"]["code"] == "FORGED_CONSUMER_IDENTITY"
+    assert result["error"]["code"] == "INVALID_ACTION"

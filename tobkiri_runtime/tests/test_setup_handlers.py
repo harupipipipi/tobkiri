@@ -7,23 +7,163 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from core_runtime.api.setup_handlers import SetupHandlersMixin
+from core_runtime.bootstrap import profile_capture
+from ecosystem.defaultspack.domain.runtime_v4 import ProfileResolutionDenied
+from core_runtime.pack_api_server import PackAPIHandler
+from core_runtime.panel_auth import PanelAuthManager
 
 
 class _Handler(SetupHandlersMixin):
     pass
 
 
+@pytest.mark.parametrize("control_session,additions,expected_active", [
+    (False, False, True), (True, False, False),
+    (False, True, False), (True, True, False),
+])
+def test_setup_does_not_report_pending_runtime_or_proposal_as_active(
+    control_session: bool, additions: bool, expected_active: bool,
+) -> None:
+    handler = _Handler()
+    handler._dispatch_session = SimpleNamespace(
+        session_kind="host_profile_control" if control_session else "production",
+    )
+    handler.path = "/api/setup/packs" + (
+        "?include_source_additions=true" if additions else ""
+    )
+    with (
+        patch.object(profile_capture, "active_profile_exists", return_value=True),
+        patch.object(profile_capture, "capture_active_profile"),
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value={}) as listing,
+    ):
+        handler._setup_list_packs()
+    assert listing.call_args.kwargs["active"] is expected_active
+
+
+@pytest.mark.parametrize("query", [
+    "include_source_additions=false",
+    "include_source_additions=1",
+    "include_source_additions=true&include_source_additions=true",
+    "include_source_additions=true&unknown=1",
+    "unknown=1",
+])
+def test_setup_rejects_noncanonical_review_selector_without_activation(query: str) -> None:
+    handler = _Handler()
+    handler.path = f"/api/setup/packs/install?{query}"
+    with patch.object(profile_capture, "capture_bootstrap_profile") as capture:
+        result = handler._setup_install_pack(_request())
+    assert result["status_code"] == 409
+    assert result["write_set"] == []
+    capture.assert_not_called()
+
+
+@pytest.mark.parametrize("via_lifecycle", [False, True])
+def test_setup_forwards_same_additive_candidate_to_activation(via_lifecycle: bool) -> None:
+    handler = _Handler()
+    handler.path = "/api/setup/packs/install?include_source_additions=true"
+    with (
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()) as listing,
+        patch.object(profile_capture, "capture_bootstrap_profile", side_effect=ProfileResolutionDenied("test denial")) as capture,
+        patch.object(_Handler, "app_lifecycle_manager", None, create=True),
+    ):
+        if via_lifecycle:
+            _Handler.app_lifecycle_manager = SimpleNamespace(activate_bootstrap_profile=capture)
+        handler._setup_install_pack(_request())
+        listing.assert_called_once_with(include_source_additions=True)
+        if via_lifecycle:
+            capture.assert_called_once_with(_request()["confirmation"], include_source_additions=True)
+        else:
+            capture.assert_called_once_with(confirmation=_request()["confirmation"], include_source_additions=True)
+
+
+def test_reconfirmation_cannot_reactivate_an_incomplete_retained_profile() -> None:
+    handler = _Handler()
+    handler.path = "/api/setup/packs/install"
+    handler._dispatch_session = SimpleNamespace(session_kind="host_profile_control")
+    with (
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()),
+        patch.object(profile_capture, "active_profile_exists", return_value=True),
+        patch.object(profile_capture, "capture_bootstrap_profile") as capture,
+    ):
+        result = handler._setup_install_pack(_request())
+
+    assert result == {
+        "error": (
+            "Profile reconfirmation requires explicit review of new bundled "
+            "Profile Packs and operation bindings"
+        ),
+        "status_code": 409,
+        "state": "activation_denied",
+        "write_set": [],
+    }
+    capture.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("active_profile", "session_kind"),
+    [(False, "host_profile_control"), (True, "production")],
+)
+def test_reconfirmation_guard_preserves_fresh_and_application_activation(
+    active_profile: bool,
+    session_kind: str,
+) -> None:
+    handler = _Handler()
+    handler.path = "/api/setup/packs/install"
+    handler._dispatch_session = SimpleNamespace(session_kind=session_kind)
+    with (
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()),
+        patch.object(
+            profile_capture, "active_profile_exists", return_value=active_profile
+        ),
+        patch.object(
+            profile_capture,
+            "capture_bootstrap_profile",
+            side_effect=ProfileResolutionDenied("test denial"),
+        ) as capture,
+    ):
+        result = handler._setup_install_pack(_request())
+
+    assert result["state"] == "activation_rejected"
+    capture.assert_called_once_with(confirmation=_request()["confirmation"])
+
+
+def test_additive_setup_listing_uses_requested_candidate() -> None:
+    handler = _Handler()
+    handler.path = "/api/setup/packs?include_source_additions=true"
+    with (
+        patch.object(profile_capture, "active_profile_exists", return_value=False),
+        patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()) as listing,
+    ):
+        handler._setup_list_packs()
+    assert listing.call_args.kwargs["include_source_additions"] is True
+
+
+@pytest.fixture(autouse=True)
+def _install_profile_runtime() -> None:
+    """Compose the Pack port explicitly for this isolated Host-handler suite."""
+
+    from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+        install_defaultspack_profile_runtime,
+    )
+
+    install_defaultspack_profile_runtime()
+
+
 def _preview() -> dict[str, object]:
+    return _listing()["recommended_default_profile"]
+
+
+def _listing() -> dict[str, object]:
     fixture = (
         Path(__file__).resolve().parents[1]
         / "tobkiri_protocol"
         / "fixtures"
         / "defaults_setup_v4.canonical.json"
     )
-    return json.loads(fixture.read_text(encoding="utf-8"))[
-        "recommended_default_profile"
-    ]
+    return json.loads(fixture.read_text(encoding="utf-8"))
 
 
 def _request(*, confirmed: bool = True) -> dict[str, object]:
@@ -56,8 +196,8 @@ def _active() -> SimpleNamespace:
 def test_setup_lists_one_typed_finite_v4_transaction() -> None:
     with patch.object(
         SetupHandlersMixin,
-        "_recommended_default_profile_preview",
-        return_value=_preview(),
+        "_setup_listing",
+        return_value=_listing(),
     ):
         result = _Handler()._setup_list_packs()
 
@@ -74,11 +214,54 @@ def test_setup_lists_one_typed_finite_v4_transaction() -> None:
     ]
 
 
+def test_setup_reports_unavailable_development_shell_without_dropping_request() -> None:
+    with patch.object(
+        SetupHandlersMixin,
+        "_setup_listing",
+        side_effect=ProfileResolutionDenied(
+            "Shell artifact is unavailable for this source/build: shell.tauri.default"
+        ),
+    ):
+        result = _Handler()._setup_list_packs()
+
+    assert result == {
+        "error": "Shell artifact is unavailable for this source/build: shell.tauri.default",
+        "status_code": 409,
+        "state": "activation_denied",
+        "write_set": [],
+    }
+
+
+def test_development_bundle_requires_exact_source_runtime_and_generated_artifacts(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    runtime_root = tmp_path / "tobkiri_runtime"
+    runtime_root.mkdir()
+    generated_root = (
+        tmp_path
+        / "tobkiri_launcher"
+        / "src-tauri"
+        / "target"
+        / "dev-defaults"
+    )
+    bundle = generated_root / "v4"
+    artifacts = generated_root / "platform-artifacts"
+    bundle.mkdir(parents=True)
+    artifacts.mkdir()
+    monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
+    monkeypatch.setenv("RUMI_APP_DIR", str(runtime_root))
+
+    assert profile_capture._development_bundle_root(runtime_root) == bundle
+
+    monkeypatch.setenv("RUMI_APP_DIR", str(tmp_path / "different-runtime"))
+    assert profile_capture._development_bundle_root(runtime_root) is None
+
+
 def test_setup_rejects_tampered_confirmation() -> None:
     with patch.object(
         SetupHandlersMixin,
-        "_recommended_default_profile_preview",
-        return_value=_preview(),
+        "_setup_listing",
+        return_value=_listing(),
     ):
         request = _request()
         request["confirmation"] = {**request["confirmation"], "security_epoch": 8}
@@ -92,8 +275,8 @@ def test_setup_rejects_tampered_confirmation() -> None:
 def test_setup_rejects_tampered_or_extra_shell_digest_fields() -> None:
     with patch.object(
         SetupHandlersMixin,
-        "_recommended_default_profile_preview",
-        return_value=_preview(),
+        "_setup_listing",
+        return_value=_listing(),
     ):
         for shell_change in (
             {"executable_artifact_digest": "sha256:" + "0" * 64},
@@ -115,8 +298,8 @@ def test_setup_rejects_tampered_or_extra_shell_digest_fields() -> None:
 def test_setup_requires_explicit_confirmation() -> None:
     with patch.object(
         SetupHandlersMixin,
-        "_recommended_default_profile_preview",
-        return_value=_preview(),
+        "_setup_listing",
+        return_value=_listing(),
     ):
         result = _Handler()._setup_install_pack(_request(confirmed=False))
 
@@ -124,15 +307,15 @@ def test_setup_requires_explicit_confirmation() -> None:
     assert result["state"] == "confirmation_required"
 
 
-def test_setup_completes_canonical_capture_without_restart() -> None:
+def test_setup_completes_canonical_capture_and_requires_cold_restart() -> None:
     with (
         patch.object(
             SetupHandlersMixin,
-            "_recommended_default_profile_preview",
-            return_value=_preview(),
+            "_setup_listing",
+            return_value=_listing(),
         ),
         patch(
-            "core_runtime.bootstrap.profile_capture.capture_default_profile",
+            "core_runtime.bootstrap.profile_capture.capture_bootstrap_profile",
             return_value=_active(),
         ) as capture,
         patch(
@@ -164,14 +347,106 @@ def test_setup_completes_canonical_capture_without_restart() -> None:
             "activation_id": "activation:test",
             "fencing_token": 11,
         },
-        "restart_required": False,
+        "restart_required": True,
     }
 
 
+def test_setup_keeps_the_control_handler_and_closes_restart_only_session() -> None:
+    """Activation cannot publish a new session into the old HTTP handler."""
+
+    class RestartOnlySession:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    restart_only_session = RestartOnlySession()
+    control_session = object()
+    _Handler._dispatch_session = control_session
+    lifecycle = SimpleNamespace(
+        activate_bootstrap_profile=lambda _confirmation: (_active(), restart_only_session)
+    )
+    _Handler.app_lifecycle_manager = lifecycle
+    try:
+        with (
+            patch.object(
+                SetupHandlersMixin,
+                "_setup_listing",
+                return_value=_listing(),
+            ),
+            patch(
+                "core_runtime.bootstrap.profile_capture.activation_audit_receipt",
+                return_value={
+                    "reservation_id": "activation-reservation:test",
+                    "state": "committed",
+                    "activation_id": "activation:test",
+                    "fencing_token": 11,
+                },
+            ),
+        ):
+            result = _Handler()._setup_install_pack(_request())
+        preserved_handler_session = _Handler._dispatch_session
+    finally:
+        del _Handler.app_lifecycle_manager
+        _Handler._dispatch_session = None
+
+    assert result["state"] == "active"
+    assert result["restart_required"] is True
+    assert restart_only_session.close_calls == 1
+    assert preserved_handler_session is control_session
+
+
+def test_committed_setup_requests_restart_when_response_write_fails() -> None:
+    """A post-commit transport failure cannot strand the stale control Host."""
+
+    from core_runtime import restart_control
+
+    handler_type = PackAPIHandler.canonical_v4_server_handler(
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="test-bootstrap"),
+        dispatch_session=None,
+        app_lifecycle_manager=None,
+    )
+    handler = object.__new__(handler_type)
+    handler.path = "/api/setup/packs/install"
+    handler._reset_request_state = lambda: None
+    handler._handle_packvm_lifecycle = lambda _method, _path: False
+    handler._handle_contract_request = lambda _method: False
+    handler._is_retired_setup_complete_path = lambda: False
+    handler._setup_pre_auth_allowed = lambda: True
+    handler._parse_object_body = lambda: {}
+    handler._setup_install_pack = lambda _body: {"state": "active"}
+    events: list[str] = []
+
+    def fail_after_commit(_result: object) -> None:
+        events.append("send")
+        raise OSError("simulated post-commit response failure")
+
+    original_request_restart = restart_control.request_kernel_restart
+
+    def record_restart() -> None:
+        events.append("restart")
+        original_request_restart()
+
+    handler._send_mapping_result = fail_after_commit
+    restart_control.clear_kernel_restart_request()
+    try:
+        with patch.object(
+            restart_control,
+            "request_kernel_restart",
+            side_effect=record_restart,
+        ):
+            with pytest.raises(OSError, match="post-commit"):
+                handler.do_POST()
+        assert restart_control.is_kernel_restart_requested() is True
+    finally:
+        restart_control.clear_kernel_restart_request()
+
+    assert events == ["send", "restart"]
+
+
 def test_non_v4_install_shape_is_retired_without_capture() -> None:
-    with patch(
-        "core_runtime.bootstrap.profile_capture.capture_default_profile"
-    ) as capture:
+    with patch("core_runtime.bootstrap.profile_capture.capture_bootstrap_profile") as capture:
         result = _Handler()._setup_install_pack({"setup_pack_ids": ["legacy"]})
 
     capture.assert_not_called()
@@ -197,11 +472,47 @@ def test_real_preview_is_exact_and_integrity_checked() -> None:
     assert preview["profile_id"] == "defaults"
     assert preview["base_pack"] == "defaults-basepack"
     assert preview["shell"]["provider_id"] == "shell.tauri.default"
-    variant = load_packaged_profile_catalog().shells["shell.tauri.default"][
-        "launch"
-    ]["variants"][0]
-    assert preview["confirmation"]["shell"]["executable_artifact_digest"] == (
-        variant["entrypoint_digest"]
+    variant = load_packaged_profile_catalog().shells["shell.tauri.default"]["launch"]["variants"][0]
+    assert (
+        preview["confirmation"]["shell"]["executable_artifact_digest"]
+        == (variant["entrypoint_digest"])
     )
     assert len(preview["pack_ids"]) == len(set(preview["pack_ids"]))
     assert preview["conversation_provider"]
+
+
+def test_post_commit_capture_failure_requests_cold_verification(tmp_path: Path) -> None:
+    """A committed activation must not be reported as a rejected no-write request."""
+    from core_runtime.app_lifecycle_manager import AppLifecycleManager
+    from core_runtime import restart_control
+
+    def fail_capture(_active: object) -> None:
+        raise RuntimeError("private diagnostic must not reach the response")
+
+    lifecycle = AppLifecycleManager(
+        base_dir=tmp_path, runtime_capture_factory=fail_capture
+    )
+    handler_type = PackAPIHandler.canonical_v4_server_handler(
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="test-bootstrap"),
+        dispatch_session=None,
+        app_lifecycle_manager=lifecycle,
+    )
+    handler = object.__new__(handler_type)
+    restart_control.clear_kernel_restart_request()
+    try:
+        with (
+            patch.object(SetupHandlersMixin, "_setup_listing", return_value=_listing()),
+            patch.object(profile_capture, "capture_bootstrap_profile", return_value=_active()) as commit,
+        ):
+            result = handler._setup_install_pack(_request())
+        commit.assert_called_once()
+        assert result["state"] == "activation_committed"
+        assert result["status_code"] == 503
+        assert result["restart_required"] is True
+        assert "write_set" not in result
+        assert "private diagnostic" not in str(result)
+        assert handler._dispatch_session is None
+        handler._refresh_setup_runtime_after_response(result)
+        assert restart_control.is_kernel_restart_requested()
+    finally:
+        restart_control.clear_kernel_restart_request()

@@ -169,14 +169,29 @@ def test_defaultspack_ecosystem_registers_desktop_app_metadata():
     assert manifest["pack"]["artifact_digest"] == artifact_index["artifact_set_digest"]
     assert artifact_index["pack_id"] == manifest["pack"]["id"]
     assert artifact_index["integrity_seal"]["algorithm"] == "sha256-canonical-v1"
+    tool_paths = {
+        path.relative_to(DEFAULTSPACK_ROOT).as_posix()
+        for prefix in ("tools", "extensions/tools")
+        for path in (DEFAULTSPACK_ROOT / prefix).glob("*/manifest.json")
+    }
+    assert tool_paths
     assert {
         artifact["path"] for artifact in artifact_index["artifacts"]
     } == {
         "pack.v4.json",
         "contracts.v4.json",
         "executables.v4.json",
+        "host_contract_contributions.v1.json",
         "runtime/conversation.py",
-    }
+        "runtime/saved_conversation.py",
+        "runtime/application_presentation.py",
+        "update_metadata.v1.json",
+    } | tool_paths
+    assert all(
+        artifact["role"] == "sidecar"
+        for artifact in artifact_index["artifacts"]
+        if artifact["path"] in tool_paths
+    )
     executable_sidecars = [
         artifact
         for artifact in artifact_index["artifacts"]

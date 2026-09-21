@@ -6,9 +6,9 @@
   "metadata": {
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:7c08f69a6702c02d91ad608d5caaa4aaffd43e7a20389ecf0b490f480fb7ced0",
+      "artifact_digest": "sha256:12cd5760785b0430bb4e4a7c0240e45c021fc50083fb9144c85d804f3036901f",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:21c5542259b43c2aeb18d47a9cadcbfb565ad11b84bd2a0d1423d7be01412092"
+      "source_identity": "sha256:da196ab85efd4ce647f52f6f953ef2d223f08f193f722bc2e0bb41db366a1c02"
     },
     "executable_code": false,
     "format": "rumi.ecosystem.v1",
@@ -17,7 +17,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:21c5542259b43c2aeb18d47a9cadcbfb565ad11b84bd2a0d1423d7be01412092"
+      "source_content_hash": "sha256:da196ab85efd4ce647f52f6f953ef2d223f08f193f722bc2e0bb41db366a1c02"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -26,12 +26,7 @@
     },
     "manifest_authority": "v4-authoritative",
     "network_policy": "none_by_default",
-    "optional_integrations": [
-      {
-        "pack_id": "rumi_local_agent_pack",
-        "reason": "Route normalized connector handoffs into reusable local agent presets."
-      }
-    ],
+    "optional_integrations": [],
     "owner_surfaces": [
       "connector_namespace_policy",
       "channel_handoff_contracts",
@@ -45,7 +40,7 @@
   "pack_identity": "rumi:ecosystem/rumi_connector_gateway_pack",
   "provenance": {
     "build_identity": "rumi_connector_gateway_pack:0.1.0",
-    "content_hash": "sha256:7c08f69a6702c02d91ad608d5caaa4aaffd43e7a20389ecf0b490f480fb7ced0",
+    "content_hash": "sha256:12cd5760785b0430bb4e4a7c0240e45c021fc50083fb9144c85d804f3036901f",
     "signature": null,
     "trust_class": "local"
   },

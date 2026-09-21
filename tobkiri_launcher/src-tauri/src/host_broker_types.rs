@@ -125,6 +125,11 @@ pub struct HostBrokerStreamStopRequest {
     pub stop_token: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct HostBrokerAuthorityApprovalOpenRequest {
+    pub request_id: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct HostBrokerError {
     pub code: String,

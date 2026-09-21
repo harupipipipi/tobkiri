@@ -70,6 +70,10 @@ class ControlReconciliationConflictError(ControlReconciliationError):
     """Raised when a request conflicts with durable reconciliation state."""
 
 
+class ControlReconciliationNotFoundError(ControlReconciliationConflictError):
+    """Raised when an exact request identity is absent from the current store."""
+
+
 class ControlReconciliationUnavailableError(ControlReconciliationError):
     """Raised when durable reconciliation state is not safely available."""
 
@@ -672,6 +676,44 @@ class ControlReconciliationStore:
                 "SELECT * FROM control_operations WHERE request_id = ?",
                 (request_id,),
             ).fetchone()
+
+    def _read_only_journal_is_absent(self) -> bool:
+        """Return whether no journal exists without trusting symlinked ancestors."""
+
+        try:
+            journal_status = os.lstat(self.path)
+        except FileNotFoundError:
+            journal_status = None
+        except OSError as error:
+            raise ControlReconciliationUnavailableError(
+                "control journal path is unavailable"
+            ) from error
+        if journal_status is not None:
+            if stat.S_ISLNK(journal_status.st_mode):
+                raise ControlReconciliationUnavailableError(
+                    "control journal file identity is unsafe"
+                )
+            return False
+
+        # ``lstat(path)`` can report ENOENT through a dangling ancestor
+        # symlink. Walk every ancestor without following the final component
+        # so an absent journal is not confused with an unsafe alias.
+        for ancestor in self.path.parents:
+            try:
+                ancestor_status = os.lstat(ancestor)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                raise ControlReconciliationUnavailableError(
+                    "control journal path is unavailable"
+                ) from error
+            if stat.S_ISLNK(ancestor_status.st_mode) or not stat.S_ISDIR(
+                ancestor_status.st_mode
+            ):
+                raise ControlReconciliationUnavailableError(
+                    "control journal ancestor is unsafe"
+                )
+        return True
 
     def _initialize(self) -> None:
         self._assert_current_process()
@@ -1693,10 +1735,12 @@ class ControlReconciliationStore:
     def operation_status(self, request_id: str, *, session_id: str) -> Mapping[str, Any]:
         """Read one durable operation outcome for its originating session."""
 
+        if self._read_only_journal_is_absent():
+            raise ControlReconciliationNotFoundError("operation request is unknown")
         row = self._read_live_operation(request_id)
         record = _operation_record(row)
         if record is None:
-            raise ControlReconciliationConflictError("operation request is unknown")
+            raise ControlReconciliationNotFoundError("operation request is unknown")
         if record["session_digest"] != self.session_digest(session_id):
             raise ControlReconciliationConflictError("operation request belongs to another session")
         return self._operation_projection(record)
@@ -1880,7 +1924,6 @@ class ControlReconciliationStore:
     @staticmethod
     def _operation_projection(record: Mapping[str, Any]) -> Mapping[str, Any]:
         return {
-            "runtime_surface_api_version": "io.tobkiri.launcher.runtime-surface.v4",
             "operation_status_api_version": "io.tobkiri.control-operation-status.v1",
             "request_id": record["request_id"],
             "operation_id": record["operation_id"],

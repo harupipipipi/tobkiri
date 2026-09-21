@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 from typing import Any, Mapping
 
 from .store import CredentialBrokerStore
@@ -30,6 +31,11 @@ class CredentialBrokerService:
                 provider_instance_id=str(data.get("provider_instance_id") or ""),
                 profile_id=profile_id,
                 scopes=[str(item) for item in data.get("scopes", [])],
+                resource_binding=(
+                    data.get("resource_binding")
+                    if isinstance(data.get("resource_binding"), Mapping)
+                    else None
+                ),
                 purpose=str(data.get("purpose") or "provider.invoke"),
                 label=str(data.get("label") or ""),
                 expires_at=_optional_float(data.get("expires_at")),
@@ -68,10 +74,17 @@ class CredentialBrokerService:
 
 
 def _optional_float(value: Any) -> float | None:
+    if value is not None and (
+        isinstance(value, bool) or not isinstance(value, (int, float))
+    ):
+        raise ValueError("expires_at is invalid")
     try:
-        return float(value) if value is not None else None
+        normalized = float(value) if value is not None else None
     except (TypeError, ValueError):
         raise ValueError("expires_at is invalid") from None
+    if normalized is not None and not math.isfinite(normalized):
+        raise ValueError("expires_at is invalid")
+    return normalized
 
 
 def _required_profile_id(data: Mapping[str, Any]) -> str:

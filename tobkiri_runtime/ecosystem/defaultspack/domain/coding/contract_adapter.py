@@ -14,7 +14,6 @@ from domain.tool_policy.internal_context import (
     tool_server_approval_context_is_internal,
 )
 
-
 FILE_INSPECT = "rumi.service.file.inspect.v1"
 FILE_MUTATE = "rumi.service.file.mutate.v1"
 FILE_PATCH = "rumi.service.file.patch.v1"
@@ -116,8 +115,99 @@ def workspace_id(input_data: Mapping[str, Any]) -> str:
     return value
 
 
-def git_snapshot(selected_workspace_id: str) -> dict[str, Any]:
-    """Read the exact Git and mount snapshot required by a write provider."""
+def git_snapshot(
+    selected_workspace_id: str,
+    *,
+    paths: list[str] | None = None,
+    capture_commit: bool = False,
+    all_tracked: bool = False,
+    branch: str | None = None,
+    source: str | None = None,
+    expect_branch_absent: bool = False,
+) -> dict[str, Any]:
+    """Read the exact Git and mount snapshot required by a write provider.
+
+    ``paths`` lets stage/restore bind the content blobs they will touch;
+    ``branch`` additionally binds a branch operation's destination ref.
+    Neither field is caller authority: each is captured by the selected
+    read-only Git provider and later embedded in the Host receipt.
+    """
+
+    workspace = invoke_coding_contract(
+        WORKSPACE_RESOURCE,
+        "get",
+        {"workspace_id": selected_workspace_id},
+    )
+    mount_revision = int(workspace.get("mount_revision") or 0)
+    if mount_revision < 1:
+        raise RuntimeError("workspace mount revision is unavailable")
+    request: dict[str, Any] = {"workspace_id": selected_workspace_id}
+    if paths is not None:
+        request["paths"] = [str(path) for path in paths]
+    if capture_commit:
+        request["capture_commit"] = True
+        request["all_tracked"] = bool(all_tracked)
+    if branch:
+        request["branch"] = str(branch)
+        request["expect_branch_absent"] = bool(expect_branch_absent)
+    if source:
+        request["source"] = str(source)
+    snapshot = invoke_coding_contract(
+        GIT_READ,
+        "snapshot",
+        request,
+    )
+    required = {
+        "expected_head",
+        "expected_tree",
+        "expected_index_tree",
+        "expected_status_hash",
+        "expected_worktree_hash",
+    }
+    if not required.issubset(snapshot):
+        raise RuntimeError("Git snapshot is incomplete")
+    return {
+        "expected_head": str(snapshot["expected_head"]),
+        "expected_tree": str(snapshot["expected_tree"]),
+        "expected_index_tree": str(snapshot["expected_index_tree"]),
+        "expected_status_hash": str(snapshot["expected_status_hash"]),
+        "expected_worktree_hash": str(snapshot["expected_worktree_hash"]),
+        "expected_mount_revision": mount_revision,
+        **(
+            {"expected_path_entries": list(snapshot.get("expected_path_entries") or [])}
+            if paths is not None and not capture_commit
+            else {}
+        ),
+        **(
+            {
+                "expected_head_ref": str(snapshot["expected_head_ref"]),
+                "expected_commit_entries": list(
+                    snapshot.get("expected_commit_entries") or []
+                ),
+            }
+            if capture_commit
+            else {}
+        ),
+        **(
+            {"expected_restore_tree": str(snapshot["expected_restore_tree"])}
+            if snapshot.get("expected_restore_tree") and not capture_commit
+            else {}
+        ),
+        **(
+            {"expected_branch_oid": str(snapshot["expected_branch_oid"])}
+            if snapshot.get("expected_branch_oid")
+            else {}
+        ),
+    }
+
+
+def git_publish_snapshot(
+    selected_workspace_id: str,
+    *,
+    remote: str,
+    branch: str,
+) -> dict[str, Any]:
+    """Capture immutable local/remote ref inputs for one Git publication."""
 
     workspace = invoke_coding_contract(
         WORKSPACE_RESOURCE,
@@ -129,20 +219,26 @@ def git_snapshot(selected_workspace_id: str) -> dict[str, Any]:
         raise RuntimeError("workspace mount revision is unavailable")
     snapshot = invoke_coding_contract(
         GIT_READ,
-        "snapshot",
-        {"workspace_id": selected_workspace_id},
+        "publish_snapshot",
+        {
+            "workspace_id": selected_workspace_id,
+            "remote": str(remote),
+            "branch": str(branch),
+        },
     )
     required = {
-        "expected_head",
-        "expected_tree",
-        "expected_status_hash",
+        "expected_source_oid",
+        "expected_remote_oid",
+        "expected_remote_url",
+        "expected_remote_url_hash",
     }
     if not required.issubset(snapshot):
-        raise RuntimeError("Git snapshot is incomplete")
+        raise RuntimeError("Git publication snapshot is incomplete")
     return {
-        "expected_head": str(snapshot["expected_head"]),
-        "expected_tree": str(snapshot["expected_tree"]),
-        "expected_status_hash": str(snapshot["expected_status_hash"]),
+        "expected_source_oid": str(snapshot["expected_source_oid"]),
+        "expected_remote_oid": str(snapshot["expected_remote_oid"]),
+        "expected_remote_url": str(snapshot["expected_remote_url"]),
+        "expected_remote_url_hash": str(snapshot["expected_remote_url_hash"]),
         "expected_mount_revision": mount_revision,
     }
 
@@ -211,9 +307,7 @@ def authorize_legacy_coding_operation(
             }
     ctx = dict(context) if isinstance(context, Mapping) else {}
     caller_id = str(
-        ctx.get("principal_id")
-        or ctx.get("user_id")
-        or "defaultspack.local_user"
+        ctx.get("principal_id") or ctx.get("user_id") or "defaultspack.local_user"
     )
     scope = {
         "service_pack_id": service_pack_id,
@@ -231,7 +325,11 @@ def authorize_legacy_coding_operation(
     issued = invoke_coding_contract(HOST_AUTHORITY, "authorize", scope)
     if not issued.get("authorized"):
         return issued
-    return {**issued, **scope, "approval_request_id": getattr(verification, "request_id", "")}
+    return {
+        **issued,
+        **scope,
+        "approval_request_id": getattr(verification, "request_id", ""),
+    }
 
 
 def service_payload(
@@ -258,9 +356,7 @@ def _approval_token(input_data: Mapping[str, Any]) -> str:
     headers = input_data.get("_headers")
     if isinstance(headers, Mapping):
         return str(
-            headers.get("X-Rumi-Approval")
-            or headers.get("x-rumi-approval")
-            or ""
+            headers.get("X-Rumi-Approval") or headers.get("x-rumi-approval") or ""
         ).strip()
     return ""
 

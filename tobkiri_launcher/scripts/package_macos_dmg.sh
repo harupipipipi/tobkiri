@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
-# Package a signed Tauri macOS application without Finder automation.
+# Package an ad-hoc-signed Tauri macOS application without Finder automation.
 
 set -Eeuo pipefail
 
 usage() {
   cat >&2 <<'USAGE'
 Usage: package_macos_dmg.sh --app-bundle PATH --target TARGET --output-dir PATH \
-  [--signing-identity "Developer ID Application: ..." | --allow-ad-hoc-local | \
-   --ci-e2e-cert-sha256 SHA256]
+  [--ad-hoc | --ci-e2e-cert-sha256 SHA256]
 USAGE
 }
 
 app_bundle=''
 target=''
 output_dir=''
-signing_identity=''
-allow_ad_hoc_local=0
+ad_hoc=0
 ci_e2e_cert_sha256=''
 
 while (($# > 0)); do
@@ -35,20 +33,14 @@ while (($# > 0)); do
       output_dir=$2
       shift 2
       ;;
-    --signing-identity)
-      (($# >= 2)) || { usage; exit 2; }
-      ((allow_ad_hoc_local == 0)) || { usage; exit 2; }
-      signing_identity=$2
-      shift 2
-      ;;
-    --allow-ad-hoc-local)
-      [[ -z "$signing_identity" && -z "$ci_e2e_cert_sha256" ]] || { usage; exit 2; }
-      allow_ad_hoc_local=1
+    --ad-hoc)
+      [[ -z "$ci_e2e_cert_sha256" ]] || { usage; exit 2; }
+      ad_hoc=1
       shift
       ;;
     --ci-e2e-cert-sha256)
       (($# >= 2)) || { usage; exit 2; }
-      [[ -z "$signing_identity" && "$allow_ad_hoc_local" -eq 0 ]] || { usage; exit 2; }
+      [[ "$ad_hoc" -eq 0 ]] || { usage; exit 2; }
       ci_e2e_cert_sha256=$2
       shift 2
       ;;
@@ -107,12 +99,8 @@ command -v hdiutil >/dev/null 2>&1 || {
   exit 1
 }
 
-if [[ -n "$signing_identity" && "$signing_identity" != "Developer ID Application: "* ]]; then
-  printf '%s\n' 'release macOS signing identity must be Developer ID Application' >&2
-  exit 1
-fi
-if [[ -z "$signing_identity" && "$allow_ad_hoc_local" -ne 1 && -z "$ci_e2e_cert_sha256" ]]; then
-  printf '%s\n' 'a Developer ID identity or explicit non-publishable CI/E2E identity is required' >&2
+if [[ "$ad_hoc" -ne 1 && -z "$ci_e2e_cert_sha256" ]]; then
+  printf '%s\n' 'an explicit ad-hoc or CI/E2E artifact policy is required' >&2
   exit 1
 fi
 if [[ -n "$ci_e2e_cert_sha256" && ! "$ci_e2e_cert_sha256" =~ ^[0-9a-f]{64}$ ]]; then
@@ -491,9 +479,8 @@ verify_packvm_helper_signature() {
     }
   fi
   codesign -d --entitlements :- "$helper_path" 2>/dev/null \
-    | plutil -extract 'com\.apple\.security\.virtualization' raw -o - - \
-    | grep -qx true || {
-      printf '%s\n' 'PackVM VZ helper lacks the virtualization entitlement' >&2
+    | run_formal_python "$script_dir/verify_packvm_vz_entitlements.py" || {
+      printf '%s\n' 'PackVM VZ helper entitlements are not exact' >&2
       return 1
     }
 }
@@ -573,15 +560,15 @@ trap 'exit 130' INT
 trap 'exit 131' QUIT
 trap 'exit 143' TERM
 
-printf 'Verifying signed app bundle: %s\n' "$app_bundle"
+printf 'Verifying ad-hoc-signed app bundle: %s\n' "$app_bundle"
 verify_packvm_helper_signature "$app_bundle"
 run_formal_python "$script_dir/../../.github/scripts/macos_ci_artifact.py" \
   verify-packvm-bundle --app-bundle "$app_bundle"
 codesign --verify --strict --all-architectures --verbose=2 "$app_bundle"
-if [[ -n "$signing_identity" ]]; then
-  signing_details=$(codesign --display --verbose=4 "$app_bundle" 2>&1)
-  grep -Fqx "Authority=$signing_identity" <<<"$signing_details" || {
-    printf '%s\n' 'macOS app is not signed by the requested Developer ID identity' >&2
+if [[ "$ad_hoc" -eq 1 ]]; then
+  signing_details=$(codesign -d -r- --verbose=4 "$app_bundle" 2>&1)
+  grep -Fqx 'Signature=adhoc' <<<"$signing_details" || {
+    printf '%s\n' 'macOS app is not ad-hoc signed' >&2
     exit 1
   }
 elif [[ -n "$ci_e2e_cert_sha256" ]]; then
@@ -605,7 +592,7 @@ elif [[ -n "$ci_e2e_cert_sha256" ]]; then
     --app-bundle "$app_bundle" --expected-certificate-sha256 "$ci_e2e_cert_sha256"
 fi
 
-printf 'Staging signed app bundle for DMG: %s\n' "$app_name"
+printf 'Staging verified app bundle for DMG: %s\n' "$app_name"
 ditto "$app_bundle" "$staging_dir/$app_name"
 verify_packvm_helper_signature "$staging_dir/$app_name"
 run_formal_python "$script_dir/../../.github/scripts/macos_ci_artifact.py" \

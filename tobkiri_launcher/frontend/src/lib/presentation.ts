@@ -1,6 +1,7 @@
 import type {
   ApiBasePackDescriptor,
   ApiDynamicFrontendCatalog,
+  ApiFrontendContribution,
   ApiPresentationCatalog,
   ApiPresentationMaterialization,
   ApiPresentationSelection,
@@ -9,41 +10,135 @@ import type {
 
 export const SHELL_CONTRACT_ID = 'app.shell.v1';
 
-const CONVERSATION_CONTRIBUTION_ID = 'defaults.conversation.complete';
+export const DYNAMIC_FRONTEND_CATALOG_VERSION = 'rumi.ui.contribution.v1';
+export const CONVERSATION_VIEW_TYPE = 'conversation_v4';
+export const CONVERSATION_ACTION_CONTRACT = 'conversation.turn.v1';
+export const CONVERSATION_OPERATION_ID = 'complete';
 const SHA256_DIGEST = /^sha256:[0-9a-f]{64}$/;
 
+export interface VerifiedViewCapabilityQuery {
+  viewType: string;
+  actionContract?: string;
+  operationId?: string;
+}
+
+function nonEmpty(value: string | null | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function hasUniqueContributionIds(
+  contributions: ApiFrontendContribution[],
+): boolean {
+  const ids = contributions.map((contribution) => contribution.contribution_id);
+  return ids.every(nonEmpty) && new Set(ids).size === ids.length;
+}
+
+/**
+ * Check the catalog envelope before exposing any dynamic view capability.
+ * Unknown or ambiguous contribution rows invalidate the catalog so a stale
+ * or colliding row cannot become a launchable UI by accident.
+ */
+export function isVerifiedDynamicFrontendCatalog(
+  catalog: ApiDynamicFrontendCatalog | null,
+): catalog is ApiDynamicFrontendCatalog {
+  return Boolean(
+    catalog
+    && catalog.version === DYNAMIC_FRONTEND_CATALOG_VERSION
+    && nonEmpty(catalog.profile_id)
+    && SHA256_DIGEST.test(catalog.profile_revision)
+    && nonEmpty(catalog.activation_id)
+    && SHA256_DIGEST.test(catalog.plan_hash)
+    && SHA256_DIGEST.test(catalog.catalog_hash)
+    && Array.isArray(catalog.contributions)
+    && hasUniqueContributionIds(catalog.contributions)
+    && Array.isArray(catalog.quarantined_pack_ids)
+    && catalog.quarantined_pack_ids.every(nonEmpty),
+  );
+}
+
+function isVerifiedContributionBinding(
+  contribution: ApiFrontendContribution,
+  catalog: ApiDynamicFrontendCatalog,
+  query: VerifiedViewCapabilityQuery,
+): boolean {
+  return nonEmpty(contribution.contribution_id)
+    && nonEmpty(contribution.owner_pack_id)
+    && contribution.kind === 'route'
+    && contribution.mode === 'declarative'
+    && nonEmpty(contribution.route)
+    && nonEmpty(contribution.action_contract)
+    && nonEmpty(contribution.operation_id)
+    && nonEmpty(contribution.provider_id)
+    && nonEmpty(contribution.function_id)
+    && nonEmpty(contribution.build_identity)
+    && SHA256_DIGEST.test(contribution.owner_pack_hash ?? '')
+    && SHA256_DIGEST.test(contribution.descriptor_hash ?? '')
+    && contribution.resolved_profile_id === catalog.profile_id
+    && contribution.resolved_profile_revision === catalog.profile_revision
+    && contribution.resolved_activation_id === catalog.activation_id
+    && contribution.resolved_plan_hash === catalog.plan_hash
+    && contribution.view?.type === query.viewType
+    && (!query.actionContract || contribution.action_contract === query.actionContract)
+    && (!query.operationId || contribution.operation_id === query.operationId)
+    && !catalog.quarantined_pack_ids.includes(contribution.owner_pack_id);
+}
+
+/**
+ * Return verified route/view capabilities matching the requested semantic
+ * contract. The owner, provider, route, artifact hashes, and profile/plan
+ * binding remain data supplied by the accepted catalog.
+ */
+export function verifiedViewCapabilities(
+  catalog: ApiDynamicFrontendCatalog | null,
+  query: VerifiedViewCapabilityQuery,
+): ApiFrontendContribution[] {
+  if (!isVerifiedDynamicFrontendCatalog(catalog) || !nonEmpty(query.viewType)) return [];
+  return catalog.contributions.filter((contribution) => (
+    isVerifiedContributionBinding(contribution, catalog, query)
+  ));
+}
+
+/** Resolve one unambiguous capability, failing closed on collisions. */
+export function resolveVerifiedViewCapability(
+  catalog: ApiDynamicFrontendCatalog | null,
+  query: VerifiedViewCapabilityQuery,
+): ApiFrontendContribution | null {
+  const matches = verifiedViewCapabilities(catalog, query);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+/**
+ * Conversation is a semantic capability, not a product-owned route. Its
+ * presence is optional for every Profile and never gates bootstrap or Shell
+ * launch readiness.
+ */
 export function isConversationCapabilityReady(
   catalog: ApiDynamicFrontendCatalog | null,
 ): boolean {
-  if (
-    catalog?.version !== 'rumi.ui.contribution.v1'
-    || !catalog.profile_id
-    || !SHA256_DIGEST.test(catalog.profile_revision)
-    || !SHA256_DIGEST.test(catalog.plan_hash)
-    || !SHA256_DIGEST.test(catalog.catalog_hash)
-    || catalog.quarantined_pack_ids.includes('defaultspack')
-  ) {
-    return false;
-  }
-  const matches = catalog.contributions.filter(
-    (contribution) => contribution.contribution_id === CONVERSATION_CONTRIBUTION_ID,
-  );
-  if (matches.length !== 1) return false;
-  const contribution = matches[0];
-  return contribution.kind === 'route'
-    && contribution.mode === 'declarative'
-    && contribution.route === '/chat'
-    && contribution.owner_pack_id === 'defaultspack'
-    && contribution.action_contract === 'conversation.turn.v1'
-    && contribution.operation_id === 'complete'
-    && contribution.provider_id === 'defaultspack.conversation'
-    && contribution.function_id === 'defaultspack.conversation'
-    && contribution.build_identity === 'defaultspack.conversation'
-    && SHA256_DIGEST.test(contribution.owner_pack_hash ?? '')
-    && SHA256_DIGEST.test(contribution.descriptor_hash ?? '')
-    && contribution.resolved_profile_revision === catalog.profile_revision
-    && contribution.resolved_plan_hash === catalog.plan_hash
-    && contribution.view?.type === 'conversation_v4';
+  return resolveVerifiedViewCapability(catalog, {
+    viewType: CONVERSATION_VIEW_TYPE,
+    actionContract: CONVERSATION_ACTION_CONTRACT,
+    operationId: CONVERSATION_OPERATION_ID,
+  }) !== null;
+}
+
+/** Resolve the optional conversation view only for the Profile that owns it. */
+export function resolveConversationCapabilityForProfile(
+  catalog: ApiDynamicFrontendCatalog | null,
+  profileId: string,
+): ApiFrontendContribution | null {
+  if (!nonEmpty(profileId) || catalog?.profile_id !== profileId) return null;
+  return resolveVerifiedViewCapability(catalog, {
+    viewType: CONVERSATION_VIEW_TYPE,
+    actionContract: CONVERSATION_ACTION_CONTRACT,
+    operationId: CONVERSATION_OPERATION_ID,
+  });
+}
+
+export function verifiedCapabilityLabel(
+  capability: ApiFrontendContribution,
+): string {
+  return capability.label.trim() || capability.view?.type?.trim() || 'Verified capability';
 }
 
 export interface PresentationCompatibility {

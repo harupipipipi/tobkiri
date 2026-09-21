@@ -21,6 +21,7 @@ from core_runtime.profile_credentials import (
 from ecosystem.rumi_credential_broker_pack.runtime.service import (
     CredentialBrokerService,
 )
+from tests.conformance_support.host_contract import host_contract
 
 
 def _created(tmp_path: Path) -> tuple[CredentialBrokerService, dict[str, object]]:
@@ -122,7 +123,10 @@ def test_ambient_environment_cannot_inject_host_or_provider_credential(monkeypat
 
     assert OpenAIProvider()._api_key == ""
     with bind_host_contract(
-        {"profile_id": "profile-a", "values": {"desktop_api_token": "host-token"}}
+        host_contract(
+            profile_id="profile-a",
+            values={"desktop_api_token": "host-token"},
+        )
     ):
         assert host_contract_value("desktop_api_token", profile_id="profile-a") == "host-token"
         assert host_contract_value("desktop_api_token", profile_id="profile-b") == ""
@@ -135,11 +139,10 @@ def test_host_contract_rejects_ambient_path_symlink_and_unsafe_permissions(
     user_data = tmp_path / "user-data"
     user_data.mkdir()
     outside = tmp_path / "attacker.json"
-    payload = {
-        "schema_version": "tobkiri.host-contract.v1",
-        "profile_id": "profile-a",
-        "values": {"desktop_api_token": "attacker-token"},
-    }
+    payload = host_contract(
+        profile_id="profile-a",
+        values={"desktop_api_token": "attacker-token"},
+    )
     outside.write_text(json.dumps(payload), encoding="utf-8")
     os.chmod(outside, 0o600)
     monkeypatch.setenv("RUMI_USER_DATA", str(user_data))

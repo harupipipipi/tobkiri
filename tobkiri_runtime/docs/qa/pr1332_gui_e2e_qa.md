@@ -198,7 +198,7 @@ allowlist のどちらかに分類する。
    保存し、同じ response の confirmation に含まれる `profile_id`, `catalog_revision`,
    `profile_revision`, `plan_digest` を backend snapshot として保存する。
 3. exact confirmation checkbox を選択し、`Activate Defaults Profile` を押す。成功時の
-   `profile_id=defaults`、activation receipt、`restart_required=false` を backend と照合する。
+   `profile_id=defaults`、activation receipt、`restart_required=true` を backend と照合する。
 4. Presentation Selector で Base Pack/compatible Shell を確認し、verified materialization
    の後に `Save selection`、必要なら `Launch selected Shell` を実行する。Shell の
    `provider_id=shell.tauri.default`、`contract_id=app.shell.v1`、backend identity、

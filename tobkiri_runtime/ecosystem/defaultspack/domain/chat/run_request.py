@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import base64
 import copy
 import importlib
@@ -52,7 +54,7 @@ from domain.chat.tool_selection_preview import (
     ToolSelectionPreviewStore,
     preview_payload_bindings,
 )
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 from domain.human_operator.constants import HUMAN_OPERATOR_TOOL_NAME, is_human_operator_model
 from domain.vision.image_bridge import (
     apply_vision_bridge_to_messages,
@@ -260,6 +262,7 @@ class PreparedChatRun:
     provider_capabilities: dict[str, Any] = field(default_factory=dict)
     chat_references: dict[str, Any] = field(default_factory=dict)
     matched_skills: list[dict[str, Any]] = field(default_factory=list)
+    settings_owner: SettingsOwnerPort | None = None
 
 
 def validate_chat_run_input(input_data: dict[str, Any]) -> str | None:
@@ -294,7 +297,8 @@ def _resolve_template_tool_policy(
 
 
 def prepare_chat_run(
-    input_data: dict[str, Any], context: dict[str, Any] | None = None
+    input_data: dict[str, Any], context: dict[str, Any] | None = None, *,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> PreparedChatRun:
     validation_error = validate_chat_run_input(input_data if isinstance(input_data, dict) else {})
     if validation_error:
@@ -411,7 +415,7 @@ def prepare_chat_run(
     params.pop("tool_selection", None)
     if requested_model:
         model = requested_model
-    model_settings_service = ModelRuntimeSettingsService()
+    model_settings_service = ModelRuntimeSettingsService(settings_owner=settings_owner)
     model_settings = model_settings_service.get_settings()
     route_override = _consume_turn_model_route_override(
         store, conversation_id, conversation, metadata
@@ -621,7 +625,8 @@ def prepare_chat_run(
     )
 
     raw_tools, provider_tools, tool_context = _available_tools(
-        request_context, tool_resolution_input, user_text=user_text
+        request_context, tool_resolution_input, user_text=user_text,
+        settings_owner=settings_owner,
     )
     if frontend_precision:
         tool_context["frontend_precision"] = frontend_precision
@@ -635,7 +640,10 @@ def prepare_chat_run(
     _ensure_must_use_has_eligible_tools(tool_selection, raw_tools)
     modalities = detect_modalities(content, metadata)
     route_preferred_model = model
-    route_preferred_capabilities = get_model_capabilities(route_preferred_model) or {}
+    route_preferred_capabilities = get_model_capabilities(
+        route_preferred_model,
+        settings=model_settings,
+    ) or {}
     routing_decision = route_model_request(
         ModelRoutingRequest(
             conversation_id=conversation_id,
@@ -679,7 +687,10 @@ def prepare_chat_run(
             routing_decision.explanation = f"{model} selected because it was explicitly requested."
     else:
         model = routing_decision.selected_model
-    selected_capabilities = get_model_capabilities(model) or {}
+    selected_capabilities = get_model_capabilities(
+        model,
+        settings=model_settings,
+    ) or {}
     provider_model_metadata = None
     if selected_capabilities:
         provider_model_metadata = {
@@ -730,7 +741,7 @@ def prepare_chat_run(
         settings=(
             tool_context.get("capability_settings_snapshot")
             if isinstance(tool_context.get("capability_settings_snapshot"), dict)
-            else _read_frontend_settings()
+            else _read_frontend_settings(settings_owner=settings_owner)
         ),
         runtime_profile=(
             tool_context.get("runtime_profile")
@@ -896,8 +907,8 @@ def prepare_chat_run(
         request_context["matched_skill_instructions"] = matched_skills
         tool_context["matched_skill_instructions"] = matched_skills
         try:
-            from core_runtime.ai_input_token_estimator import estimate_tokens
-            from core_runtime.ai_input_trace_store import AiInputTraceStore
+            from ..ai_input.ai_input_token_estimator import estimate_tokens
+            from ..ai_input.ai_input_trace_store import AiInputTraceStore
             from domain.prompt.usage import append_runtime_prompt_segment, compact_prompt_usage_for_metadata
 
             skill_segment = {
@@ -994,6 +1005,7 @@ def prepare_chat_run(
         provider_capabilities=provider_capabilities,
         chat_references=chat_references,
         matched_skills=matched_skills,
+        settings_owner=settings_owner,
     )
 
 
@@ -1011,8 +1023,8 @@ def _apply_effective_ai_input_to_request_context(
     ):
         return request_context, ""
     try:
-        from core_runtime.ai_input_graph_builder import build_runtime_ai_input_trace
-        from core_runtime.ai_input_trace_store import AiInputTraceStore
+        from ..ai_input.ai_input_graph_builder import build_runtime_ai_input_trace
+        from ..ai_input.ai_input_trace_store import AiInputTraceStore
         from domain.prompt.usage import compact_prompt_usage_for_metadata, prompt_usage_from_trace
     except Exception:
         return request_context, ""
@@ -1806,7 +1818,9 @@ def prefocus_computer_use_target_window(prepared: PreparedChatRun) -> Any:
 
     from domain.tool.executor import ToolExecutor
 
-    return ToolExecutor().execute(tool_name, arguments, invoke_context)
+    return ToolExecutor(
+        settings_owner=getattr(prepared, "settings_owner", None)
+    ).execute(tool_name, arguments, invoke_context)
 
 
 def _computer_use_prefocus_is_preapproved(context: dict[str, Any] | None) -> bool:
@@ -3823,6 +3837,7 @@ def _available_tools(
     input_data: dict[str, Any],
     *,
     user_text: str = "",
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     selection = _normalize_tool_selection(input_data)
     caller_provider_tools = _caller_provider_tool_definitions(input_data)
@@ -3865,7 +3880,7 @@ def _available_tools(
     settings: dict[str, Any] = {}
     profile_filtered: list[dict[str, Any]] = []
     try:
-        settings = _read_frontend_settings()
+        settings = _read_frontend_settings(settings_owner=settings_owner)
         registry_tools = ToolRegistry().list_tools()
         profile_filtered = filter_tool_definitions_for_runtime_profile(
             registry_tools,
@@ -3887,6 +3902,7 @@ def _available_tools(
         service = ToolSelectionService(
             call_handler=resolved_context.get("call_handler"),
             settings=settings,
+            settings_owner=settings_owner,
         )
         decision = service.select(
             user_text,
@@ -3971,6 +3987,7 @@ def _available_tools(
                 fallback_decision = ToolSelectionService(
                     call_handler=resolved_context.get("call_handler"),
                     settings=fallback_settings,
+                    settings_owner=settings_owner,
                 ).select(
                     user_text,
                     profile_filtered,
@@ -4235,13 +4252,8 @@ def _tool_selection_selector_model(
     return ""
 
 
-def _read_frontend_settings() -> dict[str, Any]:
-    path = frontend_settings_path()
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
+def _read_frontend_settings(*, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    return read_optional_frontend_settings(settings_owner=settings_owner)
 
 
 def _ensure_must_use_has_eligible_tools(

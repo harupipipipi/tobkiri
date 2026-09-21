@@ -95,7 +95,7 @@ def test_capability_catalog_loads_plan_manifest():
     assert manifest["core_requires_api_key"] is False
     assert manifest["default_profile"] == "defaultspack.local_agent"
     assert manifest["counts"]["capabilities"] >= 11
-    assert manifest["counts"]["profiles"] >= 5
+    assert manifest["counts"]["profiles"] == len(manifest["profiles"]) == 2
     capability_ids = {item["id"] for item in manifest["capabilities"]}
     assert {"local_file", "terminal", "git", "safety", "artifact", "compact", "research"} <= capability_ids
 

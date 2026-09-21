@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Check, ChevronDown, Loader2, Search, X } from "lucide-react";
 
+import { ErrorNotice } from "../../components/ErrorNotice";
 import type { ModelSearchItem } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import {
@@ -286,7 +287,13 @@ export function ModelSearchPicker({
                 )}
               </label>
             )}
-            {error && <div className="border-t border-zinc-800 px-3 py-2 text-[11px] text-rose-300">{error}</div>}
+            {error && (
+              <ErrorNotice
+                className="rounded-none border-x-0 border-b-0 px-3 py-2 text-[11px]"
+                copyLabel="モデル検索エラーをコピー"
+                message={error}
+              />
+            )}
             {clearLabel && value && (
               <button
                 type="button"

@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "defaultspack-main", "authority-approval", "ambient-trigger", "finger-recording", "defaults-console", "host-permissions"],
+  "windows": ["main", "authority-approval", "ambient-trigger", "finger-recording", "defaults-console", "host-permissions"],
   "remote": {
     "urls": [
       "http://127.0.0.1:8765/*",

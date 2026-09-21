@@ -51,7 +51,7 @@ def test_static_mounts_are_finite_first_party_roots():
     assert handler._match_web_mount("/stale/index.html") is None
     assert {
         mount["path_prefix"] for mount in handler._fixed_web_mounts()
-    } == {"/panel", "/setup", "/desktops"}
+    } == {"/panel", "/setup"}
 
 
 def test_dynamic_pre_auth_table_is_physically_absent():

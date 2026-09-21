@@ -59,7 +59,7 @@
         "properties": {
           "path": {"type": "string", "minLength": 1},
           "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-          "kind": {"enum": ["executable", "schema", "asset", "variant", "sidecar"]},
+          "kind": {"enum": ["executable", "schema", "asset", "variant", "sidecar", "ui.contribution"]},
           "platform": {"type": "string"},
           "entrypoint": {"type": "string", "minLength": 1},
           "entrypoint_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},

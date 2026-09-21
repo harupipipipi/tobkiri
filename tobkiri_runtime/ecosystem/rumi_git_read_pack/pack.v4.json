@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:863462154b0c9a081e372455964836782bf818909c3f4ecc2a176eba32c9d4df",
+      "digest": "sha256:d7a837a9fd4e94e2d350db03f839ecd6330544d5282789502e511dbd5dffcb22",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:9f79fddc4bb747277a0623bb2ba6cab74944d20e4fdf35005f4d355c06d6f932",
+      "digest": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
       "kind": "executable",
       "path": "runtime/read.py"
     }
@@ -24,7 +24,7 @@
     {
       "contract_revision_digest": "sha256:620f8682cdb4a27c2ac2c94c22536575387b86aeff2cff3465411ae8789c37e5",
       "id": "rumi_git_read_pack.git-read.service",
-      "implementation_digest": "sha256:9f79fddc4bb747277a0623bb2ba6cab74944d20e4fdf35005f4d355c06d6f932",
+      "implementation_digest": "sha256:3149aa0b49c6ba98e79167e16d5cbede62cf0d2ac1a62562572d2860a8ae72a6",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_git_read_pack.git-read"
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:3eb22659cc6df47ce109abe7a6a0b0500b81d5216f22e18ec4f4d8fdbba05f6b",
-    "contract_catalog_digest": "sha256:84f78c9033e5e4c6b2ffba9976d22d97955ee513ad1138d070801b97bea3d836",
-    "source_identity": "sha256:5c8ae1efd0bfe6a847b2b3db070225fca4b0901ee80544c48d544663acb79882"
+    "artifact_set_digest": "sha256:2bcbb019fac7f2b21d2fa67b7bd79f392e7c10d60a1bb39664aef6b8387dab9f",
+    "contract_catalog_digest": "sha256:50004c6b8bb04d9c00abff6738aea91cd9bd77840cf11f2bf2a66fcdf7284845",
+    "source_identity": "sha256:ee42e6c72d3d42830180139999c7d9a7ed0cc992c95af86450b28ac0c0d25b31"
   },
   "migration": {
     "compatibility": "read_only",
@@ -61,7 +61,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:3eb22659cc6df47ce109abe7a6a0b0500b81d5216f22e18ec4f4d8fdbba05f6b",
+    "artifact_digest": "sha256:2bcbb019fac7f2b21d2fa67b7bd79f392e7c10d60a1bb39664aef6b8387dab9f",
     "display_name": "Rumi Git Read",
     "id": "rumi_git_read_pack",
     "kind": "host_extension",
@@ -71,7 +71,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:5c8ae1efd0bfe6a847b2b3db070225fca4b0901ee80544c48d544663acb79882",
+        "digest": "sha256:ee42e6c72d3d42830180139999c7d9a7ed0cc992c95af86450b28ac0c0d25b31",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -82,7 +82,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:5c8ae1efd0bfe6a847b2b3db070225fca4b0901ee80544c48d544663acb79882",
+    "source_digest": "sha256:ee42e6c72d3d42830180139999c7d9a7ed0cc992c95af86450b28ac0c0d25b31",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_git_read_pack"
   },

@@ -18,6 +18,7 @@ import core_runtime.control_reconciliation_v4 as reconciliation
 import core_runtime.process_identity as process_identity
 from core_runtime.control_reconciliation_v4 import (
     ControlReconciliationError,
+    ControlReconciliationNotFoundError,
     ControlReconciliationStore,
     ControlReconciliationUnavailableError,
     ProcessIdentityEvidence,
@@ -162,13 +163,27 @@ def test_read_only_status_on_missing_journal_is_filesystem_immutable(
     root = tmp_path / "absent"
     store = ControlReconciliationStore(root / "control" / "reconciliation-v4.sqlite3")
 
-    with pytest.raises(ControlReconciliationError, match="unavailable"):
+    with pytest.raises(ControlReconciliationNotFoundError, match="unknown"):
         store.operation_status(
             "00000000-0000-4000-8000-000000000000",
             session_id="session-a",
         )
 
     assert not root.exists()
+
+
+def test_read_only_status_rejects_dangling_ancestor_symlink(
+    tmp_path: Path,
+) -> None:
+    alias = tmp_path / "alias"
+    alias.symlink_to(tmp_path / "missing-target", target_is_directory=True)
+    store = ControlReconciliationStore(alias / "control" / "reconciliation-v4.sqlite3")
+
+    with pytest.raises(ControlReconciliationUnavailableError, match="unsafe"):
+        store.operation_status(
+            "00000000-0000-4000-8000-000000000000",
+            session_id="session-a",
+        )
 
 
 def test_first_authorized_operation_initializes_and_recovers_durable_state(
@@ -1076,7 +1091,7 @@ def test_operation_status_rejects_unknown_cross_session_and_tampered_replay(
     digest = canonical_digest({"payload": "exact"})
     _begin(store, request_id, request_digest=digest)
 
-    with pytest.raises(ControlReconciliationError, match="unknown"):
+    with pytest.raises(ControlReconciliationNotFoundError, match="unknown"):
         store.operation_status(
             "55555555-5555-4555-8555-555555555555",
             session_id="session-a",

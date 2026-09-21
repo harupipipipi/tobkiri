@@ -234,7 +234,7 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert metadata["network_policy"] == "none_by_default"
     assert metadata["executable_code"] is False
     assert metadata["declarative_only"] is True
-    assert metadata["defaultspack_promotion_eligible"] is False
+    assert metadata["base_pack_promotion_eligible"] is False
     assert set(metadata["owner_surfaces"]) >= OWNER_EXPECTED
     assert set(metadata["non_owner_surfaces"]) >= NON_OWNER_EXPECTED
 
@@ -252,7 +252,7 @@ def test_required_assets_and_ecosystem_contract() -> None:
     indexed_file_assets = {item for values in asset_index["categories"].values() for item in values}
     assert indexed_file_assets == shipped
     assert asset_index["invariants"]["external_actions_are_handoffs"] is True
-    assert asset_index["invariants"]["defaultspack_promotion_eligible"] is False
+    assert asset_index["invariants"]["base_pack_promotion_eligible"] is False
 
 
 def test_yaml_json_assets_parse() -> None:
@@ -280,9 +280,9 @@ def test_setup_pack_discoverable_and_overlap_scoped() -> None:
 
     for key, value in OVERLAP_EXPECTED.items():
         assert candidate.overlap_policy[key] == value
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
-    assert set(candidate.defaultspack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= PROMOTION_BLOCKERS
+    assert set(candidate.base_pack_promotion["promotion_evidence_required"]) >= PROMOTION_EVIDENCE
     assert candidate.marketplace["status"] == "verified"
     assert candidate.marketplace["category"] == "browser-safety"
     assert candidate.signing["verified"] is True

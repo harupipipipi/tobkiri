@@ -54,12 +54,13 @@ test('every restored Advanced route renders its named v4 surface and explicit su
   }
 });
 
-test('Graph and Profile Wiring state the unavailable v4 operation and provide the Profile ceremony path', () => {
+test('Graph and Profile Wiring wait for evidence before declaring bindings unavailable', () => {
   const graph = renderToStaticMarkup(<MemoryRouter><Graph /></MemoryRouter>);
   const wiring = renderToStaticMarkup(<MemoryRouter><ProfileWiring /></MemoryRouter>);
-  assert.match(graph, /v4 operation is not provided/);
-  assert.match(wiring, /v4 operation is not provided/);
-  assert.match(graph + wiring, /Profile projection|Profile ceremony/);
+  for (const html of [graph, wiring]) {
+    assert.match(html, /Loading the canonical v4 projection/);
+    assert.doesNotMatch(html, /v4 operation is not provided/);
+  }
 });
 
 test('Profile Advanced route presents the authoritative catalog source with Tobkiri naming', () => {

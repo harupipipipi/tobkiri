@@ -169,6 +169,9 @@ def test_arm_packaging_lock_is_generated_from_only_compatible_wheels() -> None:
         "031e2d5dd4bb9caa3ca9c82e5a197fd8ae680232cee62603d1a813f3f07e3d03",
         "ccdc4a71a4dabae05de219404f9f4abc38e3b58422177ff93d0da05967dafa07",
     }
+    assert exported[("wasmtime", "48.0.0")] == {
+        "ea69889a3c51702e9da5f5f441027ca934f7758f8926a4ed167b0d6877f092e8"
+    }
     locked = _locked_packages()
     for key, hashes in exported.items():
         compatible = set(LOCK_GENERATOR.compatible_wheel_hashes(locked[key], "arm64"))

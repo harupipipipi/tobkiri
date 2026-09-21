@@ -43,7 +43,7 @@
       "Unknown MCP servers must remain behind explicit namespace and user approval."
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Gateway metadata for unsupported MCP servers must remain opt-in and approval gated."
   },

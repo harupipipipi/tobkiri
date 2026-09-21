@@ -1,9 +1,9 @@
+import {ApiRequestTimeoutError} from './apiTransport';
 import {
-  ApiRequestTimeoutError,
   fetchFrontendContractOperation,
   invokeFrontendCapability,
   type FrontendContractMethod,
-} from './api';
+} from './defaultspackClient';
 import {
   generatedTargetFor,
   VERIFIED_GENERATED_RUNTIME_TARGETS,
@@ -164,7 +164,12 @@ export interface RuntimeProfileCatalogProjection {
   catalog_digest: string;
   bundle_lock_digest: string;
   catalog_ref: string;
-  active_profile_id: string;
+  active_profile_id: string | null;
+  selection?: {
+    state: 'active_execution' | 'browsing';
+    selected_profile_id: string;
+    execution_profile_id: string | null;
+  };
   count: number;
   profiles: RuntimeProfileCatalogEntry[];
 }
@@ -233,6 +238,7 @@ export interface RuntimeOperationDescriptor {
   invocation_reason: string | null;
   invokable: boolean;
   catalog_digest: string;
+  activation_id: string;
   function_id: string;
   function_principal_id: string;
   caller_function_id: string;
@@ -299,6 +305,15 @@ export interface RuntimeFlowDescriptor {
   label?: string;
   state: string;
   operation_ids: string[];
+  edges: RuntimeFlowEdgeDescriptor[];
+}
+
+/** One exact Profile edge admitted by a Flow composition. */
+export interface RuntimeFlowEdgeDescriptor {
+  caller_function_id: string;
+  target_provider_id: string;
+  contract_id: string;
+  operation_id: string;
 }
 
 export interface RuntimeArtifactEntry {
@@ -650,6 +665,35 @@ export function validateRuntimeSurfaceEnvelope<T>(
   if (!isRecord(value)) {
     throw new RuntimeSurfaceError('INVALID', runtimeSurfaceErrorMessage('INVALID'));
   }
+  if (
+    expectedSurface === 'profiles'
+    && exactObject(value, [
+      'runtime_surface_api_version',
+      'surface',
+      'state',
+      'host_catalog_digest',
+      'bundle_lock_digest',
+      'data',
+      'write_set',
+    ])
+    && value.runtime_surface_api_version === RUNTIME_SURFACE_API_VERSION
+    && value.surface === 'profiles'
+    && value.state === 'catalog_ready'
+    && isSha256Digest(value.host_catalog_digest)
+    && isSha256Digest(value.bundle_lock_digest)
+    && Array.isArray(value.write_set)
+  ) {
+    const catalog = extractExactProfileCatalog(value.data);
+    if (
+      !catalog
+      || catalog.active_profile_id !== null
+      || catalog.catalog_digest !== value.host_catalog_digest
+      || catalog.bundle_lock_digest !== value.bundle_lock_digest
+    ) {
+      throw new RuntimeSurfaceError('INVALID', runtimeSurfaceErrorMessage('INVALID'));
+    }
+    return value as unknown as RuntimeSurfaceEnvelope<T>;
+  }
   if (value.runtime_surface_api_version === RUNTIME_SURFACE_API_VERSION && value.state === 'error') {
     const errorKeys = ['runtime_surface_api_version', 'state', 'code', 'message', 'retryable', 'write_set'];
     if (
@@ -902,6 +946,17 @@ function relativeSourcePath(value: unknown): value is string {
     && !value.split('/').some((part) => part === '.' || part === '..');
 }
 
+function profileDefinitionSourcePath(value: unknown, provenance: unknown): value is string {
+  if (relativeSourcePath(value)) return true;
+  // Migration provenance names the original local file. It is display evidence,
+  // never a path the frontend opens or uses to select an executable artifact.
+  return validString(value) && isRecord(provenance)
+    && provenance.source_kind === 'migration' && provenance.source_path === value
+    && (value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value))
+    && !/[\u0000-\u001f]/.test(value)
+    && !value.split(/[\\/]/).some((part) => part === '.' || part === '..');
+}
+
 function nullableDateTime(value: unknown): string | null {
   return value === null ? null : isDateTime(value) ? value : null;
 }
@@ -1017,7 +1072,7 @@ function parseProfileCatalogEntry(value: unknown): RuntimeProfileCatalogEntry | 
     || !canonicalReference(value.definition.ref)
     || value.definition.ref !== `profile-v4://${value.profile_id}/${value.definition.digest}`
     || (value.definition.catalog_revision !== null && catalogRevision === null)
-    || !relativeSourcePath(value.definition.source_path)
+    || !profileDefinitionSourcePath(value.definition.source_path, value.definition.provenance)
     || !isRecord(value.definition.provenance)
   ) {
     return null;
@@ -1172,6 +1227,7 @@ function parseProfileCatalogEntry(value: unknown): RuntimeProfileCatalogEntry | 
 }
 
 export function extractExactProfileCatalog(value: unknown): RuntimeProfileCatalogProjection | null {
+  const hasSelection = isRecord(value) && Object.prototype.hasOwnProperty.call(value, 'selection');
   if (!exactObject(value, [
     'catalog_api_version',
     'catalog_digest',
@@ -1180,6 +1236,7 @@ export function extractExactProfileCatalog(value: unknown): RuntimeProfileCatalo
     'active_profile_id',
     'count',
     'profiles',
+    ...(hasSelection ? ['selection'] : []),
   ])) {
     return null;
   }
@@ -1189,7 +1246,7 @@ export function extractExactProfileCatalog(value: unknown): RuntimeProfileCatalo
     || !isSha256Digest(value.bundle_lock_digest)
     || !canonicalReference(value.catalog_ref)
     || value.catalog_ref !== `profile-catalog-v4://bundle/${value.catalog_digest}`
-    || !validString(value.active_profile_id)
+    || (value.active_profile_id !== null && !validString(value.active_profile_id))
     || typeof value.count !== 'number'
     || !Number.isSafeInteger(value.count)
     || value.count < 0
@@ -1208,20 +1265,37 @@ export function extractExactProfileCatalog(value: unknown): RuntimeProfileCatalo
     if (entry.active) activeCount += 1;
     profiles.push(entry);
   }
-  if (profiles.length > 0 && (activeCount !== 1 || !profiles.some((item) => (
+  if (activeCount === 0 && value.active_profile_id !== null) return null;
+  if (activeCount === 1 && !profiles.some((item) => (
     item.active && item.profile_id === value.active_profile_id
-  )))) {
+  ))) {
     return null;
   }
-  if (profiles.length === 0 && activeCount !== 0) return null;
+  if (activeCount > 1) return null;
+  let selection: RuntimeProfileCatalogProjection['selection'];
+  if (hasSelection) {
+    const selected = value.selection;
+    if (!exactObject(selected, ['state', 'selected_profile_id', 'execution_profile_id'])
+      || !validString(selected.selected_profile_id)
+      || !profileIds.has(selected.selected_profile_id)
+      || selected.execution_profile_id !== value.active_profile_id
+      || selected.state !== (selected.selected_profile_id === value.active_profile_id
+        ? 'active_execution' : 'browsing')) return null;
+    selection = {
+      state: selected.state as 'active_execution' | 'browsing',
+      selected_profile_id: selected.selected_profile_id,
+      execution_profile_id: selected.execution_profile_id as string | null,
+    };
+  }
   return {
     catalog_api_version: value.catalog_api_version,
     catalog_digest: value.catalog_digest,
     bundle_lock_digest: value.bundle_lock_digest,
     catalog_ref: value.catalog_ref,
-    active_profile_id: value.active_profile_id,
+    active_profile_id: value.active_profile_id as string | null,
     count: value.count,
     profiles,
+    ...(selection ? {selection} : {}),
   };
 }
 
@@ -1451,6 +1525,7 @@ export function extractExactOperationDescriptors(
     ) {
       return [];
     }
+    if (!validString(candidate.activation_id)) return [];
     const operationIdentity: Pick<
       RuntimeOperationDescriptor,
       'contract_id' | 'operation_id' | 'function_id' | 'owner_pack_id'
@@ -1480,6 +1555,7 @@ export function extractExactOperationDescriptors(
       invocation_reason: invocationReason,
       invokable: candidate.invokable,
       catalog_digest: candidate.catalog_digest,
+      activation_id: candidate.activation_id,
       function_id: candidate.function_id,
       function_principal_id: candidate.function_principal_id,
       caller_function_id: candidate.caller_function_id,
@@ -1619,22 +1695,70 @@ export function extractExactRouteDescriptors(value: unknown): RuntimeRouteDescri
 
 /** Flow rows must be declared composition records, never Pack-name matches. */
 export function extractExactFlowDescriptors(value: unknown): RuntimeFlowDescriptor[] {
-  return extractExactArray(value, 'flows').flatMap((candidate) => {
+  if (!isRecord(value) || !Array.isArray(value.flows) || !value.flows.every(isRecord)) {
+    return [];
+  }
+  const flows = value.flows.map((candidate): RuntimeFlowDescriptor | null => {
     const operationIds = candidate.operation_ids;
+    const edges = candidate.edges;
+    const state = candidate.state;
     if (
       !validString(candidate.flow_id)
-      || !validString(candidate.state)
+      || !validString(state)
+      || !['ready', 'browsing', 'unavailable'].includes(state)
       || !isStringArray(operationIds)
+      || !Array.isArray(edges)
+      || edges.length === 0
     ) {
-      return [];
+      return null;
     }
-    return [{
+    const exactEdges = edges.map((edge): RuntimeFlowEdgeDescriptor | null => {
+      if (
+        !isRecord(edge)
+        || edge.caller_function_id !== candidate.flow_id
+        || !validString(edge.caller_function_id)
+        || !validString(edge.target_provider_id)
+        || !validString(edge.contract_id)
+        || !validString(edge.operation_id)
+      ) {
+        return null;
+      }
+      return {
+        caller_function_id: edge.caller_function_id,
+        target_provider_id: edge.target_provider_id,
+        contract_id: edge.contract_id,
+        operation_id: edge.operation_id,
+      };
+    });
+    if (exactEdges.some((edge) => edge === null)) return null;
+    const declaredEdges = exactEdges as RuntimeFlowEdgeDescriptor[];
+    const edgeKeys = new Set(declaredEdges.map((edge) => JSON.stringify([
+      edge.caller_function_id,
+      edge.target_provider_id,
+      edge.contract_id,
+      edge.operation_id,
+    ])));
+    if (
+      edgeKeys.size !== declaredEdges.length
+      || new Set(operationIds).size !== operationIds.length
+      || operationIds.some((operationId) => !declaredEdges.some((edge) => edge.operation_id === operationId))
+      || new Set(declaredEdges.map((edge) => edge.operation_id)).size !== operationIds.length
+    ) {
+      return null;
+    }
+    return {
       flow_id: candidate.flow_id,
-      state: candidate.state,
+      state,
       operation_ids: operationIds,
+      edges: declaredEdges,
       ...(validString(candidate.label) ? {label: candidate.label} : {}),
-    }];
+    };
   });
+  if (flows.some((flow) => flow === null)) return [];
+  const descriptors = flows as RuntimeFlowDescriptor[];
+  return new Set(descriptors.map((flow) => flow.flow_id)).size === descriptors.length
+    ? descriptors
+    : [];
 }
 
 function isSafeRelativeArtifactPath(value: unknown): value is string {
@@ -1700,6 +1824,7 @@ function runtimeOperationMatchesSnapshot(
     && candidate.invocation_reason === operation.invocation_reason
     && candidate.invokable === operation.invokable
     && candidate.catalog_digest === operation.catalog_digest
+    && candidate.activation_id === operation.activation_id
     && candidate.function_id === operation.function_id
     && candidate.function_principal_id === operation.function_principal_id
     && candidate.caller_function_id === operation.caller_function_id
@@ -1758,6 +1883,7 @@ export function invokeRuntimeOperation({
     || !validString(operation.function_principal_id)
     || !validString(operation.caller_function_id)
     || !validString(operation.authority_reference)
+    || !validString(operation.activation_id)
     || !isRecord(operation.schema)
     || !isSha256Digest(operation.catalog_digest)
     || (operation.invocation_contribution_id !== null
@@ -1789,6 +1915,9 @@ export function invokeRuntimeOperation({
     'authority',
     'authority_reference',
     'profile_id',
+    'profile_revision',
+    'activation_id',
+    'plan_digest',
     'plan_hash',
     'catalog_hash',
   ]);
@@ -1832,8 +1961,9 @@ export function invokeRuntimeOperation({
   }
   if (
     !envelope.catalog_revision
+    // invocation_catalog_hash is a distinct Application capability-map hash
+    // and is revalidated by the Broker when the request is dispatched.
     || operation.catalog_digest !== envelope.catalog_revision
-    || operation.invocation_catalog_hash !== envelope.catalog_revision
   ) {
     return Promise.reject(new RuntimeSurfaceError(
       'DIGEST_MISMATCH',
@@ -1855,6 +1985,8 @@ export function invokeRuntimeOperation({
   }
   return invokeFrontendCapability({
     profileId: envelope.profile_id,
+    profileRevision: envelope.profile_revision,
+    activationId: operation.activation_id,
     planHash: envelope.plan_digest,
     catalogHash: operation.invocation_catalog_hash,
     contributionId: operation.invocation_contribution_id,

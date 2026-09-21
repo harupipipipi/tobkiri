@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from core_runtime.authority.v4 import AuthorityStore
 
 from .artifact_compiler import CompiledPack, compile_pack_root, routes_for_plan
+from .acceptance_receipts import AcceptanceReceipt, AcceptanceReceiptPort
 from .backends import BackendRegistry
-from .broker import RequestAdmissionPort, RequestBroker
+from .broker import NestedCancellationProof, RequestAdmissionPort, RequestBroker
 from .authority_v4 import AuthorityV4Adapter
 from .composition import AuthorityCeilings, HostV4Composition
 from .contracts import AdapterExecutor, AdapterPlanner
@@ -37,7 +39,7 @@ class ProductionRuntimeV4:
         pack_roots: Mapping[str, Path],
         supporting_artifacts: Sequence[PackArtifact],
         verified_effective_artifacts: Mapping[str, str],
-        authority_ceilings: Mapping[tuple[str, str], AuthorityCeilings],
+        authority_ceilings: Mapping[tuple[str, ...], AuthorityCeilings],
     ) -> "ProductionRuntimeV4":
         """Compile only exact plan Pack roots and capture the active graph."""
         binding_pack_ids = {item["pack_id"] for item in plan["bindings"]}
@@ -72,6 +74,7 @@ class ProductionRuntimeV4:
         reconciliation: ReconciliationStore,
         terminate_domain: Callable[[str], None] | None = None,
         authority_adapter: AuthorityV4Adapter | None = None,
+        acceptance_receipts: AcceptanceReceiptPort | None = None,
     ) -> RequestBroker:
         """Build the sole request Broker using this captured authority adapter."""
         authority = authority_adapter or self.composition.authority_adapter(
@@ -87,6 +90,7 @@ class ProductionRuntimeV4:
             authority=authority,
             audit=authority,
             reconciliation=reconciliation,
+            acceptance_receipts=acceptance_receipts,
         )
 
     def dispatch_session(
@@ -94,7 +98,7 @@ class ProductionRuntimeV4:
         *,
         broker: RequestBroker,
         context_for: Callable[..., RequestContext],
-        effect_scope_for: Callable[[str, str, Mapping[str, Any]], Mapping[str, Any]],
+        effect_scope_for: Callable[..., Mapping[str, Any]],
         providers: Mapping[str, tuple[Mapping[str, Any], ...]],
         authority_control: AuthorityV4Adapter | None = None,
         current_capture_check: Callable[[], None] | None = None,
@@ -110,6 +114,10 @@ class ProductionRuntimeV4:
             providers=providers,
             profile_id=str(self.composition.profile["profile_id"]),
             plan_digest=str(self.composition.plan["plan_digest"]),
+            profile_revision=str(self.composition.plan["profile_revision"]),
+            activation_id=str(self.composition.activation["activation_id"]),
+            frontend_entry_id=str(self.composition.profile.get("frontend_entry_id") or ""),
+            security_epoch=int(self.composition.activation["security_epoch"]),
             authority_control=authority_control,
             current_capture_check=current_capture_check,
             owned_authority_store=owned_authority_store,
@@ -124,30 +132,52 @@ class V4DispatchSession:
 
     broker: RequestBroker
     context_for: Callable[..., RequestContext]
-    effect_scope_for: Callable[[str, str, Mapping[str, Any]], Mapping[str, Any]]
+    effect_scope_for: Callable[..., Mapping[str, Any]]
     providers: Mapping[str, tuple[Mapping[str, Any], ...]]
     profile_id: str
     plan_digest: str
+    profile_revision: str
+    activation_id: str
+    frontend_entry_id: str = ""
+    security_epoch: int = 0
     authority_control: AuthorityV4Adapter | None = None
     current_capture_check: Callable[[], None] | None = None
     owned_authority_store: AuthorityStore | None = None
     close_callbacks: tuple[Callable[[], None], ...] = ()
     stop_callbacks: tuple[Callable[[], None], ...] = ()
+    _close_lock: Any = field(default_factory=threading.RLock, init=False, repr=False, compare=False)
+    _completed_closes: set[int] = field(default_factory=set, init=False, repr=False, compare=False)
 
     def cancel_pending_reads(self) -> None:
         """Fence server-owned reads at a reusable stop/restart boundary."""
 
+        self.broker.cancel_pending_requests()
         for callback in self.stop_callbacks:
             callback()
 
     def close(self) -> None:
-        """Close the Broker, then its owned Authority database, idempotently."""
+        """Fence dispatch and retry failed cleanup without skipping other owners."""
 
-        self.broker.close()
-        for callback in self.close_callbacks:
-            callback()
-        if self.owned_authority_store is not None:
-            self.owned_authority_store.close()
+        with self._close_lock:
+            self.broker.close()
+            failed = False
+            for index, callback in enumerate(self.close_callbacks):
+                if index in self._completed_closes:
+                    continue
+                try:
+                    callback()
+                except Exception:
+                    failed = True
+                else:
+                    self._completed_closes.add(index)
+            if failed:
+                # Keep Authority available for cleanup retries. A callback's
+                # exception is not permission to abandon another live owner.
+                raise RuntimeError("captured Provider cleanup is incomplete")
+            authority_index = len(self.close_callbacks)
+            if self.owned_authority_store is not None and authority_index not in self._completed_closes:
+                self.owned_authority_store.close()
+                self._completed_closes.add(authority_index)
 
     def __enter__(self) -> "V4DispatchSession":
         """Return this captured session for explicit scoped ownership."""
@@ -197,6 +227,8 @@ class V4DispatchSession:
             "backend_id": backend.status.backend_id,
             "backend_digest": backend.status.backend_digest,
             "profile_id": self.profile_id,
+            "profile_revision": self.profile_revision,
+            "activation_id": self.activation_id,
             "plan_digest": self.plan_digest,
         }
         if any(provider.get(key) != value for key, value in expected.items()):
@@ -209,12 +241,18 @@ class V4DispatchSession:
         payload: Mapping[str, Any],
         *,
         version_range: str | None = None,
+        parent_deadline_monotonic: float | None = None,
+        parent_cancellation: threading.Event | None = None,
+        parent_cancellation_proof: NestedCancellationProof | None = None,
+        before_dispatch: Callable[[], None] | None = None,
     ) -> Mapping[str, Any]:
         """Dispatch through the captured Broker without identity from payload.
 
         An omitted compatibility requirement is bound to the exact Contract
         version in the immutable plan.  A caller-supplied range remains a
         strict additional constraint and can never select another Provider.
+        The optional parent deadline is a Host-only absolute ceiling, never
+        derived from application payload fields or renewed for nested work.
         """
         arguments = dict(payload)
         session_id = str(arguments.pop("_session_id", "")).strip()
@@ -225,16 +263,111 @@ class V4DispatchSession:
             context = self.context_for(contract_id, operation_id, session_id)
         else:
             context = self.context_for(contract_id, operation_id)
-        return self.broker.invoke(
-            InvocationFrame(
-                contract_id=contract_id,
-                version_range=version_range,
-                operation_id=operation_id,
-                payload=arguments,
-            ),
-            context,
-            effect_scope=self.effect_scope_for(contract_id, operation_id, arguments),
+        scope_parameter_count = len(inspect.signature(self.effect_scope_for).parameters)
+        if scope_parameter_count >= 4:
+            scope = self.effect_scope_for(
+                contract_id,
+                operation_id,
+                arguments,
+                context,
+            )
+        else:
+            # Compatibility for the small conformance adapters that still
+            # expose the original three-argument callback.  Production
+            # capture always supplies the context-aware form above.
+            scope = self.effect_scope_for(contract_id, operation_id, arguments)
+        invocation = InvocationFrame(
+            contract_id=contract_id,
+            version_range=version_range,
+            operation_id=operation_id,
+            payload=arguments,
         )
+        if (
+            parent_deadline_monotonic is None
+            and parent_cancellation is None
+            and parent_cancellation_proof is None
+            and before_dispatch is None
+        ):
+            return self.broker.invoke(invocation, context, effect_scope=scope)
+        return self.broker.invoke(
+            invocation,
+            context,
+            effect_scope=scope,
+            parent_deadline_monotonic=parent_deadline_monotonic,
+            parent_cancellation=parent_cancellation,
+            parent_cancellation_proof=parent_cancellation_proof,
+            before_dispatch=before_dispatch,
+        )
+
+    def run_packvm_acceptance(
+        self,
+        scenario: str,
+        nonce: str,
+        *,
+        session_id: str,
+    ) -> AcceptanceReceipt:
+        """Run one finite CI/E2E scenario and consume its Broker-owned receipt."""
+
+        operation_scenario = {
+            "original_deadline": "deadline_hold",
+            "cancel": "cancel_hold",
+            "resource_cleanup": "probe_isolation",
+        }.get(scenario, scenario)
+        allowed = {
+            "probe_isolation",
+            "stdin_overflow",
+            "stdout_overflow",
+            "stderr_overflow",
+            "deadline_hold",
+            "cancel_hold",
+            "abnormal_exit",
+        }
+        if operation_scenario not in allowed:
+            raise ValueError("PackVM acceptance scenario is invalid")
+        if len(nonce) != 64 or any(
+            character not in "0123456789abcdef" for character in nonce
+        ):
+            raise ValueError("PackVM acceptance nonce is invalid")
+        if not session_id.strip() or len(session_id) > 512:
+            raise ValueError("PackVM acceptance session binding is invalid")
+        contract_id = "tobkiri.acceptance.packvm.sandbox.v1"
+        operation_id = f"tobkiri_packvm_sandbox_qa_pack.{operation_scenario}"
+        context = self.context_for(contract_id, operation_id, session_id)
+        payload: dict[str, object] = {"nonce": nonce}
+        if scenario == "stdin_overflow":
+            payload["fill"] = "x" * (1024 * 1024 + 1)
+        scope = self.effect_scope_for(contract_id, operation_id, payload, context)
+        cancellation = threading.Event()
+        timer: threading.Timer | None = None
+
+        def schedule_cancel() -> None:
+            nonlocal timer
+            timer = threading.Timer(0.05, cancellation.set)
+            timer.daemon = True
+            timer.start()
+
+        try:
+            self.broker.invoke(
+                InvocationFrame(
+                    contract_id=contract_id,
+                    version_range=None,
+                    operation_id=operation_id,
+                    payload=payload,
+                ),
+                context,
+                effect_scope=scope,
+                parent_cancellation=(cancellation if scenario == "cancel" else None),
+                before_dispatch=(schedule_cancel if scenario == "cancel" else None),
+            )
+        except Exception:
+            # Expected timeout, cancellation, overflow, and abnormal-exit paths
+            # are accepted only if the typed receipt below proves their exact
+            # terminal state and cleanup. No exception text crosses the route.
+            pass
+        finally:
+            if timer is not None:
+                timer.cancel()
+        return self.broker.take_acceptance_receipt(context.request_id, nonce)
 
 
 class DispatchContainer(Protocol):
@@ -255,6 +388,14 @@ class CapturedDispatchSession(Protocol):
     def plan_digest(self) -> str:
         """Return the exact captured ResolvedPlan digest."""
 
+    @property
+    def profile_revision(self) -> str:
+        """Return the exact captured Profile revision."""
+
+    @property
+    def activation_id(self) -> str:
+        """Return the exact captured activation identity."""
+
 
 def install_dispatch_session(
     container: DispatchContainer, session: CapturedDispatchSession
@@ -264,6 +405,10 @@ def install_dispatch_session(
         raise ValueError("v4 dispatch session profile_id must be non-empty")
     if not session.plan_digest.startswith("sha256:"):
         raise ValueError("v4 dispatch session plan_digest must be canonical")
+    if not session.profile_revision.startswith("sha256:"):
+        raise ValueError("v4 dispatch session profile_revision must be canonical")
+    if not session.activation_id.strip():
+        raise ValueError("v4 dispatch session activation_id must be non-empty")
     container.set_instance("v4_dispatch_session", session)
 
 

@@ -21,6 +21,7 @@ domains:
     path: domain/agent_runtime
   ai_client:
     may_import:
+    - domain/ai_input
     - domain/components
     - domain/connections
     - domain/extensions
@@ -33,7 +34,14 @@ domains:
     - domain/chat/ir_blocks
     - domain/chat/ir_legacy_adapter
     - domain/chat/store
+    - domain/frontend_settings
+    - domain/frontend_settings_client
     - domain/frontend_settings_store
+  ai_input:
+    may_import:
+    - domain/prompt
+    - domain/tool
+    path: domain/ai_input
   ambient:
     may_import:
     - domain/input
@@ -67,6 +75,7 @@ domains:
   chat:
     may_import:
     - domain/ai_client
+    - domain/ai_input
     - domain/capabilities
     - domain/coding
     - domain/context_engine
@@ -174,7 +183,23 @@ domains:
     path: domain/frontend
     public_imports:
     - domain/capability/catalog
+    - domain/frontend_builtin_catalog
+    - domain/frontend_command_catalog
+    - domain/frontend_settings_catalog
+    - domain/frontend_settings_client
     - domain/frontend_settings_store
+  frontend_builtin_catalog:
+    may_import: []
+    path: domain/frontend_builtin_catalog.py
+  frontend_command_catalog:
+    may_import: []
+    path: domain/frontend_command_catalog.py
+  frontend_settings_catalog:
+    may_import: []
+    path: domain/frontend_settings_catalog.py
+  frontend_settings_client:
+    may_import: []
+    path: domain/frontend_settings_client.py
   frontend_settings_store:
     may_import: []
     path: domain/frontend_settings_store.py
@@ -273,6 +298,7 @@ domains:
     path: domain/p2p
   prompt:
     may_import:
+    - domain/ai_input
     - domain/capability
     - domain/components
     - domain/extensions
@@ -297,6 +323,10 @@ domains:
   runtime_v4:
     may_import: []
     path: domain/runtime_v4
+  runtime_surface_v4:
+    may_import:
+    - domain/runtime_v4
+    path: domain/runtime_surface_v4.py
   safety:
     may_import:
     - domain/host_bridge

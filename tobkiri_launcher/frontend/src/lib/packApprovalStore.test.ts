@@ -109,13 +109,13 @@ function installFetch(handler: (route: string, init?: RequestInit) => Promise<Re
   return routes;
 }
 
-function binding() {
+function binding(catalogRevision = samplePack.catalogRevision) {
   return {
     profile_id: samplePack.profileId,
     workspace_id: samplePack.workspaceId,
     profile_revision: samplePack.profileRevision,
     plan_digest: samplePack.planDigest,
-    catalog_revision: samplePack.catalogRevision,
+    catalog_revision: catalogRevision,
   };
 }
 
@@ -124,6 +124,7 @@ function dynamicCatalog() {
     version: 'rumi.ui.contribution.v1',
     profile_id: samplePack.profileId,
     profile_revision: samplePack.profileRevision,
+    activation_id: 'activation:profile-a',
     plan_hash: samplePack.planDigest,
     contributions: [],
     diagnostics: [],
@@ -173,7 +174,7 @@ test('store revoke action calls the typed route, refreshes catalog, and confirms
     if (route === 'GET /api/pack-control/catalog') {
       return new Response(JSON.stringify({
         success: true,
-        data: {...binding(), packs: [revokedCatalogPack], count: 1},
+        data: {...binding(revokedCatalogPack.catalog_revision), packs: [revokedCatalogPack], count: 1},
       }), {headers: {'Content-Type': 'application/json'}});
     }
     assert.equal(route, 'GET /api/ui/catalog');
@@ -246,7 +247,7 @@ test('store revoke action clears pending and surfaces a timeout without changing
     assert.equal(route, 'GET /api/pack-control/catalog');
     return new Response(JSON.stringify({
       success: true,
-      data: {...binding(), packs: [approvedCatalogPack], count: 1},
+      data: {...binding(approvedCatalogPack.catalog_revision), packs: [approvedCatalogPack], count: 1},
     }), {headers: {'Content-Type': 'application/json'}});
   });
   const errors: string[] = [];
@@ -326,7 +327,7 @@ test('approval guards the entire candidate-to-approve chain against duplicate su
     if (route === 'GET /api/pack-control/catalog') {
       return new Response(JSON.stringify({
         success: true,
-        data: {...binding(), packs: [approvedCatalogPack], count: 1},
+        data: {...binding(approvedCatalogPack.catalog_revision), packs: [approvedCatalogPack], count: 1},
       }), {headers: {'Content-Type': 'application/json'}});
     }
     assert.equal(route, 'GET /api/ui/catalog');

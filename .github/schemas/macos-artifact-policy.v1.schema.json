@@ -36,7 +36,7 @@
       "then": {
         "properties": {
           "publishable": {"const": true},
-          "bundle_identifier": {"const": "dev.tobkiri.launcher"},
+          "bundle_identifier": {"const": "dev.rumiai.app"},
           "display_name": {"const": "Tobkiri Launcher"}
         }
       }

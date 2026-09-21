@@ -23,17 +23,64 @@ if str(ROOT) not in sys.path:
 
 from tobkiri_protocol.canonical import canonical_json  # noqa: E402
 from tobkiri_protocol.validation import validate_document  # noqa: E402
+from core_runtime.profile_projection_migration import (  # noqa: E402
+    COMPATIBILITY_RELEASE,
+    REMOVE_NO_EARLIER_THAN_RELEASE,
+    RETIREMENTS,
+    SUNSET_AT,
+)
 
 ECOSYSTEM = ROOT / "ecosystem"
 CATALOG = ROOT / "schemas" / "pack_v4_catalog.v1.json"
-AUTHORITY = ROOT / "schemas" / "manifest_authority.v1.json"
 EXECUTABLE_SOURCES = ROOT / "schemas" / "executable_sources.v1.json"
-EXCLUDED_PACKS: frozenset[str] = frozenset()
+EXCLUDED_PACKS: frozenset[str] = frozenset(
+    {
+        "rumi_agent_services_pack",
+        "rumi_local_agent_pack",
+        "rumi_pack_suite_pack",
+        "rumi_reference_ui_pack",
+    }
+)
 GENERATOR = "tobkiri.scripts.migrate_pack_artifacts_v4"
 GENERATOR_VERSION = "1.0.0"
 START_COMMIT = "1329f300cd2a8e15170edb1accce8d7c3167882b"
 EMPTY_SCHEMA: dict[str, Any] = {"type": "object"}
 VERSION_SUFFIX = re.compile(r"\.v[1-9][0-9]*$")
+IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
+SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+# An artifact-index role classifies an already sealed byte stream.  It is not
+# an authority grant: consumers must still choose which sealed roles they
+# understand, and validate the content under their own policy.
+ARTIFACT_INDEX_ROLES: frozenset[str] = frozenset(
+    {
+        "canonical_manifest",
+        "contract_catalog",
+        "runtime",
+        "asset",
+        "schema",
+        "sidecar",
+        "host_contract_contribution",
+        "host_contract_update_metadata",
+    }
+)
+RUNTIME_ARTIFACT_KINDS: frozenset[str] = frozenset(
+    {"executable", "schema", "asset", "variant", "sidecar"}
+)
+EXPLICIT_FUNCTION_REQUIRED_FIELDS: frozenset[str] = frozenset(
+    {
+        "function_id",
+        "contract_id",
+        "operation_ids",
+        "implementation_digest",
+    }
+)
+EXPLICIT_FUNCTION_FIELDS: frozenset[str] = (
+    EXPLICIT_FUNCTION_REQUIRED_FIELDS | {"isolation"}
+)
+FUNCTION_ISOLATIONS: frozenset[str] = frozenset(
+    {"wasm_component", "pack_vm", "dedicated_process", "remote"}
+)
 
 
 class PackV4MigrationError(ValueError):
@@ -124,6 +171,24 @@ def _workspace_boundary(capabilities: Iterable[str], host_execution: bool) -> st
     if any(token in values for token in ("workspace", "file", "shell", "git")):
         return "workspace_brokered"
     return "pack_local"
+
+
+def _explicit_contract_owner(contract: Mapping[str, Any]) -> str | None:
+    """Return an owner explicitly present in the migration source.
+
+    Ownership is semantic input.  It must never be selected from the order of
+    Pack directories or from the set of providers discovered by this script.
+    """
+    lifecycle = contract.get("lifecycle")
+    candidates = (
+        contract.get("owner"),
+        lifecycle.get("owner") if isinstance(lifecycle, Mapping) else None,
+        lifecycle.get("data_owner") if isinstance(lifecycle, Mapping) else None,
+    )
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
 
 
 def _approval_policy(
@@ -239,13 +304,21 @@ def _migration_source_view(path: Path) -> dict[str, Any]:
 def _source_evidence(pack_root: Path, paths: Iterable[Path]) -> list[dict[str, str]]:
     return [
         {
-            "path": path.relative_to(ROOT).as_posix(),
+            "path": _source_evidence_path(path),
             "rule_id": "pack-v4-one-way-migration-input",
             "digest": _digest(_migration_source_view(path)),
         }
         for path in paths
         if path.is_file() and path.is_relative_to(pack_root)
     ]
+
+
+def _source_evidence_path(path: Path) -> str:
+    """Return a stable relative label for repository or temporary inputs."""
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return f"external:{path.resolve().as_posix()}"
 
 
 def _entrypoint_implementation_digest(entrypoint: Mapping[str, Any]) -> str | None:
@@ -258,6 +331,55 @@ def _entrypoint_implementation_digest(entrypoint: Mapping[str, Any]) -> str | No
     if not candidate.is_file():
         raise PackV4MigrationError(f"v3 entrypoint module is missing: {candidate}")
     return _file_digest(candidate)
+
+
+def _executable_source_for_contract(
+    pack_id: str,
+    contract_id: str,
+) -> Mapping[str, Any] | None:
+    """Resolve one source record from a function-keyed executable registry.
+
+    The source registry is intentionally operation-complete, so a Pack can
+    have several Function records instead of one lossy Pack-level record.  A
+    legacy import still needs the schema override for one Contract; resolve
+    that record explicitly and reject conflicting source claims.
+    """
+
+    payload = json.loads(EXECUTABLE_SOURCES.read_text(encoding="utf-8"))
+    source_records = payload.get("packs") if isinstance(payload, Mapping) else None
+    if not isinstance(source_records, Mapping):
+        raise PackV4MigrationError("executable source registry is malformed")
+    candidates = [
+        entry
+        for entry in source_records.values()
+        if isinstance(entry, Mapping)
+        and entry.get("pack_id") == pack_id
+        and entry.get("contract_id") == contract_id
+    ]
+    direct = source_records.get(pack_id)
+    if (
+        isinstance(direct, Mapping)
+        and direct.get("pack_id") == pack_id
+        and direct.get("contract_id") == contract_id
+        and direct not in candidates
+    ):
+        candidates.append(direct)
+    if not candidates:
+        return None
+    first = candidates[0]
+    comparable_fields = (
+        "contract_version",
+        "implementation_path",
+        "input_schema",
+        "output_schema",
+        "error_schema",
+    )
+    for candidate in candidates[1:]:
+        if any(candidate.get(field) != first.get(field) for field in comparable_fields):
+            raise PackV4MigrationError(
+                f"conflicting executable source records: {pack_id}:{contract_id}"
+            )
+    return first
 
 
 def _import_record(pack_root: Path) -> dict[str, Any]:
@@ -306,8 +428,7 @@ def _import_record(pack_root: Path) -> dict[str, Any]:
             }
             for item in operation_sources
         ]
-        provided.append(
-            {
+        provided_contract = {
                 "contract_id": _contract_id(contract["id"]),
                 "version": contract["version"],
                 "provider_id": _canonical_id(
@@ -327,22 +448,57 @@ def _import_record(pack_root: Path) -> dict[str, Any]:
                     if key in contract
                 },
             }
+        owner = _explicit_contract_owner(contract)
+        if owner is not None:
+            provided_contract["owner"] = owner
+        provided.append(provided_contract)
+    for provided_contract in provided:
+        executable_source = _executable_source_for_contract(
+            pack_root.name,
+            str(provided_contract["contract_id"]),
         )
-    executable_sources = json.loads(EXECUTABLE_SOURCES.read_text(encoding="utf-8"))["packs"]
-    executable_source = executable_sources.get(pack_root.name)
-    if executable_source is not None:
-        matches = [
-            item for item in provided if item["contract_id"] == executable_source["contract_id"]
-        ]
-        if len(matches) != 1:
-            raise PackV4MigrationError(f"canonical executable Contract mismatch: {pack_root.name}")
-        matches[0]["schemas"] = {
+        if executable_source is None:
+            continue
+        required_schema_fields = ("input_schema", "output_schema", "error_schema")
+        if any(field not in executable_source for field in required_schema_fields):
+            raise PackV4MigrationError(
+                f"canonical executable source schema is incomplete: {pack_root.name}"
+            )
+        provided_contract["schemas"] = {
             "input": executable_source["input_schema"],
             "output": executable_source["output_schema"],
             "error": executable_source["error_schema"],
         }
-        implementation_digest = _file_digest(pack_root / executable_source["implementation_path"])
-        for operation in matches[0]["operations"]:
+        implementation_path = Path(str(executable_source.get("implementation_path") or ""))
+        if implementation_path.is_absolute() or ".." in implementation_path.parts:
+            raise PackV4MigrationError(
+                f"canonical executable source escapes Pack: {pack_root.name}"
+            )
+        local_implementation = (pack_root / implementation_path).resolve()
+        try:
+            local_implementation.relative_to(pack_root.resolve())
+        except ValueError as exc:
+            raise PackV4MigrationError(
+                f"canonical executable source escapes Pack: {pack_root.name}"
+            ) from exc
+        implementation = local_implementation
+        if not implementation.is_file():
+            repository_implementation = (
+                ECOSYSTEM / pack_root.name / implementation_path
+            ).resolve()
+            try:
+                repository_implementation.relative_to(ECOSYSTEM.resolve())
+            except ValueError as exc:
+                raise PackV4MigrationError(
+                    f"repository executable source escapes Pack: {pack_root.name}"
+                ) from exc
+            implementation = repository_implementation
+        if not implementation.is_file():
+            raise PackV4MigrationError(
+                f"canonical executable source is missing: {implementation}"
+            )
+        implementation_digest = _file_digest(implementation)
+        for operation in provided_contract["operations"]:
             operation["implementation_digest"] = implementation_digest
     required = []
     for item in contracts.get("requires", []):
@@ -364,7 +520,7 @@ def _import_record(pack_root: Path) -> dict[str, Any]:
             pack_data.get("display_name") or legacy.get("display_name") or pack_root.name
         ),
         "description": str(pack_data.get("description") or legacy.get("description") or ""),
-        "authority": "v4-authoritative",
+        "authority": "migration-draft",
         "source_provenance": {
             "owner": pack_root.name,
             "mode": "offline-one-way-import",
@@ -409,229 +565,48 @@ def _import_record(pack_root: Path) -> dict[str, Any]:
     return record
 
 
-def _import_bundled_record(pack_id: str) -> dict[str, Any]:
-    """Import the two finite Defaults v4 sources without legacy authority."""
-    exact_source_path = (
-        ECOSYSTEM
-        / "defaultspack"
-        / "v4"
-        / "packs"
-        / f"{pack_id.replace('_', '-')}.pack.v4.json"
+def import_legacy(*, check: bool, output: Path | None = None) -> dict[str, Any]:
+    """Create an offline migration draft without changing v4 authority.
+
+    Legacy input is intentionally not promoted to the canonical catalog.  A
+    caller must choose an output outside the production catalog so a bulk
+    shape conversion cannot silently become an authoritative migration.
+    """
+    if output is None:
+        raise PackV4MigrationError(
+            "legacy import requires --draft-output; it only creates a draft"
+        )
+    output = output.resolve()
+    if output == CATALOG.resolve():
+        raise PackV4MigrationError(
+            "legacy migration draft cannot overwrite the canonical v4 catalog"
+        )
+    legacy_roots = sorted(
+        path.parent
+        for path in ECOSYSTEM.glob("*/ecosystem.json")
+        if path.is_file()
     )
-    if exact_source_path.is_file():
-        source_path = exact_source_path
-        source = json.loads(source_path.read_text(encoding="utf-8"))
-        executable = json.loads(
-            (ECOSYSTEM / pack_id / "executables.v4.json").read_text(encoding="utf-8")
-        )["variants"][0]
-        operation = executable["operations"][0]
-        function = source["functions"][0]
-        contract = source["contracts"][0]
-        return {
-            "pack_id": pack_id,
-            "version": source["pack"]["version"],
-            "kind": source["pack"]["kind"],
-            "display_name": source["pack"]["display_name"],
-            "description": (
-                "Finite read-only Pack catalog provider for the selected control-panel UI."
-            ),
-            "authority": "v4-authoritative",
-            "source_provenance": {
-                "owner": pack_id,
-                "mode": "canonical-v4",
-                "source_format": "pack.v4.json",
-                "historical_classification": "modern-only",
-            },
-            "dependencies": {},
-            "required_contracts": [],
-            "capabilities": ["pack.catalog.read"],
-            "network": {"allowed_domains": [], "allowed_ports": []},
-            "secrets": [],
-            "execution_boundary": "host_brokered",
-            "approval_policy": "capability_gated",
-            "workspace_boundary": "host_brokered",
-            "provided_contracts": [
-                {
-                    "contract_id": contract["contract_id"],
-                    "version": "1.0.0",
-                    "provider_id": function["id"],
-                    "operations": [
-                        {
-                            "id": operation["operation_id"],
-                            "entrypoint_id": operation["operation_id"],
-                            "implementation_digest": function["implementation_digest"],
-                        }
-                    ],
-                    "schemas": {
-                        "input": operation["input_schema"],
-                        "output": operation["output_schema"],
-                        "error": operation["error_schema"],
-                    },
-                    "cardinality": "one",
-                    "security": "sensitive",
-                    "failure": "fail_closed",
-                    "isolation": "in_process",
-                    "required_capabilities": ["pack.catalog.read"],
-                    "lifecycle": {
-                        "introduced": "1.0.0",
-                        "deprecated": False,
-                    },
-                }
-            ],
-            "legacy_operations": [],
-            "runtime_artifacts": list(source["artifacts"]),
-            "legacy_ids": [],
-            "migration": {
-                "compatibility": "none",
-                "removal_wave": 0,
-                "sunset_at": "2026-08-05",
-            },
-            "source_evidence": [],
-        }
-    source_name = (
-        "defaults-basepack.pack.v4.json" if pack_id == "defaults" else "defaultspack.pack.v4.json"
-    )
-    source_path = ECOSYSTEM / "defaultspack" / "v4" / "packs" / source_name
-    source = json.loads(source_path.read_text(encoding="utf-8"))
-    pack = source["pack"]
-    provided: list[dict[str, Any]] = []
-    executable_source: dict[str, Any] | None = None
-    implementation_digest: str | None = None
-    if pack_id == "defaultspack":
-        source_path = EXECUTABLE_SOURCES
-        pack = {
-            "id": "defaultspack",
-            "version": "4.0.0",
-            "kind": "normal_sandbox",
-            "display_name": "Tobkiri Defaults Providers",
-        }
-        executable_source = json.loads(EXECUTABLE_SOURCES.read_text(encoding="utf-8"))["packs"][
-            pack_id
-        ]
-        implementation_digest = _file_digest(
-            ECOSYSTEM / pack_id / executable_source["implementation_path"]
-        )
-        provided.append(
-            {
-                "contract_id": executable_source["contract_id"],
-                "version": "1.0.0",
-                "provider_id": executable_source["function_id"],
-                "operations": [
-                    {
-                        "id": executable_source["operation_id"],
-                        "entrypoint_id": executable_source["operation_id"],
-                        "implementation_digest": implementation_digest,
-                    }
-                ],
-                "schemas": {
-                    "input": executable_source["input_schema"],
-                    "output": executable_source["output_schema"],
-                    "error": executable_source["error_schema"],
-                },
-                "cardinality": "one",
-                "security": "restricted",
-                "failure": "fail_closed",
-                "isolation": "sandbox",
-                "required_capabilities": [],
-                "lifecycle": {
-                    "introduced": "4.0.0",
-                    "deprecated": False,
-                },
-            }
-        )
-    return {
-        "pack_id": pack_id,
-        "version": pack["version"],
-        "kind": "base" if pack_id == "defaults" else pack["kind"],
-        "display_name": pack["display_name"],
-        "description": "Canonical Defaults v4 composition artifact.",
-        "authority": "v4-authoritative",
-        "source_provenance": {
-            "owner": pack_id,
-            "mode": "canonical-v4",
-            "source_format": "pack.v4.json",
-            "historical_classification": "modern-only",
-        },
-        "dependencies": {},
-        "required_contracts": [],
-        "capabilities": [],
-        "network": {"allowed_domains": [], "allowed_ports": []},
-        "secrets": [],
-        "execution_boundary": ("declarative_only" if pack_id == "defaults" else "sandbox"),
-        "approval_policy": "none",
-        "workspace_boundary": "pack_local",
-        "provided_contracts": provided,
-        "legacy_operations": [],
-        "runtime_artifacts": (
-            [
-                {
-                    "path": executable_source["implementation_path"],
-                    "digest": implementation_digest,
-                    "kind": "executable",
-                }
-            ]
-            if executable_source is not None and implementation_digest is not None
-            else []
-        ),
-        "legacy_ids": [],
-        "migration": {
-            "compatibility": "none",
-            "removal_wave": 0,
-            "sunset_at": "2026-08-05",
-        },
-        "source_evidence": [
-            {
-                "path": source_path.relative_to(ROOT).as_posix(),
-                "rule_id": "canonical-bundled-v4-source",
-                "digest": _file_digest(source_path),
-            }
-        ],
-    }
-
-
-def _assign_contract_owners(records: list[dict[str, Any]]) -> None:
-    """Record one deterministic owner for every multiply-provided contract."""
-    providers: dict[str, list[str]] = {}
-    for record in records:
-        for contract in record["provided_contracts"]:
-            providers.setdefault(contract["contract_id"], []).append(record["pack_id"])
-    owners = {contract_id: sorted(pack_ids)[0] for contract_id, pack_ids in providers.items()}
-    for record in records:
-        for contract in record["provided_contracts"]:
-            contract["owner"] = owners[contract["contract_id"]]
-
-
-def import_legacy(*, check: bool) -> None:
-    authority_payload = json.loads(AUTHORITY.read_text(encoding="utf-8"))
-    authorities = authority_payload["packs"]
-    pack_names = sorted(set(authorities) - EXCLUDED_PACKS)
-    records = [
-        (
-            _import_bundled_record(name)
-            if name
-            in {
-                "defaults",
-                "defaultspack",
-                "tobkiri_host_pack_control",
-            }
-            else _import_record(ECOSYSTEM / name)
-        )
-        for name in pack_names
-    ]
-    _assign_contract_owners(records)
+    if not legacy_roots:
+        raise PackV4MigrationError("no legacy Pack sources were found")
+    records = [_import_record(pack_root) for pack_root in legacy_roots]
+    pack_ids = [str(record["pack_id"]) for record in records]
     payload = {
-        "catalog_api_version": "io.tobkiri.pack-source-catalog.v1",
+        "catalog_api_version": "io.tobkiri.pack-migration-draft.v1",
+        "status": "generated-draft",
         "migration_commit": START_COMMIT,
         "excluded_packs": sorted(EXCLUDED_PACKS),
-        "pack_ids": pack_names,
+        "pack_ids": pack_ids,
         "packs": records,
+        "note": "Offline input only; owner review and semantic conformance are required.",
     }
     text = _json_text(payload)
     if check:
-        if not CATALOG.is_file() or CATALOG.read_text(encoding="utf-8") != text:
-            raise PackV4MigrationError("canonical Pack v4 source catalog drift")
-        return
-    CATALOG.write_text(text, encoding="utf-8")
+        if not output.is_file() or output.read_text(encoding="utf-8") != text:
+            raise PackV4MigrationError("migration draft drift")
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(text, encoding="utf-8")
+    return payload
 
 
 def _provenance(record: Mapping[str, Any], source_identity: str) -> dict[str, Any]:
@@ -660,6 +635,11 @@ def _contract_document(
     source_identity: str,
     source: Mapping[str, Any],
 ) -> dict[str, Any]:
+    owner = source.get("owner")
+    if not isinstance(owner, str) or not owner.strip():
+        raise PackV4MigrationError(
+            f"Contract owner is not explicit in the canonical source: {source['contract_id']}"
+        )
     schemas = source["schemas"]
     input_schema = schemas.get("input", EMPTY_SCHEMA)
     output_schema = schemas.get("output", schemas.get("event", EMPTY_SCHEMA))
@@ -673,20 +653,35 @@ def _contract_document(
         record["secrets"],
         host_execution=record["execution_boundary"] == "host_brokered",
     )
-    operations = [
-        {
-            "operation_id": item["id"],
-            "input_schema_digest": _digest(input_schema),
-            "output_schema_digest": _digest(output_schema),
-            "error_schema_digest": _digest(error_schema),
-            "effect_ceiling": effects,
-            "scope_semantics": (
-                "host_broker" if record["execution_boundary"] == "host_brokered" else "declarative"
-            ),
-            "idempotency": {"mode": "none"},
-        }
-        for item in source["operations"]
-    ]
+    operations = []
+    for item in source["operations"]:
+        operation_effects = item.get("effect_ceiling", effects)
+        if (
+            not isinstance(operation_effects, list)
+            or any(
+                not isinstance(effect, str) or not effect or effect not in effects
+                for effect in operation_effects
+            )
+            or len(operation_effects) != len(set(operation_effects))
+        ):
+            raise PackV4MigrationError(
+                f"Contract Operation effect ceiling is invalid: {source['contract_id']}/{item['id']}"
+            )
+        operations.append(
+            {
+                "operation_id": item["id"],
+                "input_schema_digest": _digest(input_schema),
+                "output_schema_digest": _digest(output_schema),
+                "error_schema_digest": _digest(error_schema),
+                "effect_ceiling": operation_effects,
+                "scope_semantics": (
+                    "host_broker"
+                    if record["execution_boundary"] == "host_brokered"
+                    else "declarative"
+                ),
+                "idempotency": {"mode": "none"},
+            }
+        )
     semantics = {
         key: copy.deepcopy(source[key])
         for key in (
@@ -709,7 +704,7 @@ def _contract_document(
         "contract_api_version": "io.tobkiri.contract.v4",
         "contract_id": source["contract_id"],
         "version": source["version"],
-        "owner": source["owner"],
+        "owner": owner,
         "status": "deprecated" if source["lifecycle"].get("deprecated") else "accepted",
         "operations": operations,
         "schema_catalog": schema_catalog,
@@ -721,6 +716,200 @@ def _contract_document(
         "revision_digest": revision,
         "provenance": _provenance(record, source_identity),
     }
+
+
+def _is_identifier(value: Any) -> bool:
+    """Return whether ``value`` is an artifact-schema identifier."""
+
+    return isinstance(value, str) and bool(IDENTIFIER.fullmatch(value))
+
+
+def _is_digest(value: Any) -> bool:
+    """Return whether ``value`` is a canonical SHA-256 digest string."""
+
+    return isinstance(value, str) and bool(SHA256_DIGEST.fullmatch(value))
+
+
+def _is_relative_artifact_path(value: Any) -> bool:
+    """Return whether ``value`` is a non-escaping normalized artifact path."""
+
+    if not isinstance(value, str) or not value:
+        return False
+    path = Path(value)
+    return not path.is_absolute() and ".." not in path.parts and str(path) != "."
+
+
+def _validated_runtime_artifacts(record: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+    """Index sealed runtime artifacts and reject ambiguous classifications."""
+
+    artifacts = record.get("runtime_artifacts")
+    if not isinstance(artifacts, list):
+        raise PackV4MigrationError("canonical runtime artifacts must be a list")
+    by_path: dict[str, Mapping[str, Any]] = {}
+    for artifact in artifacts:
+        if not isinstance(artifact, Mapping):
+            raise PackV4MigrationError("canonical runtime artifact is malformed")
+        path = artifact.get("path")
+        digest = artifact.get("digest")
+        kind = artifact.get("kind")
+        role = artifact.get("index_role", "runtime")
+        if (
+            not _is_relative_artifact_path(path)
+            or not _is_digest(digest)
+            or kind not in RUNTIME_ARTIFACT_KINDS
+            or role not in ARTIFACT_INDEX_ROLES
+            or str(path) in by_path
+        ):
+            raise PackV4MigrationError("canonical runtime artifact is invalid")
+        by_path[str(path)] = artifact
+    return by_path
+
+
+def _provided_contract_sources(
+    record: Mapping[str, Any],
+) -> dict[str, Mapping[str, Any]]:
+    """Index canonical Contract sources and their finite Operations."""
+
+    provided = record.get("provided_contracts")
+    if not isinstance(provided, list):
+        raise PackV4MigrationError("canonical provided Contracts must be a list")
+    contracts: dict[str, Mapping[str, Any]] = {}
+    for contract in provided:
+        if not isinstance(contract, Mapping):
+            raise PackV4MigrationError("canonical provided Contract is malformed")
+        contract_id = contract.get("contract_id")
+        operations = contract.get("operations")
+        if not _is_identifier(contract_id) or not VERSION_SUFFIX.search(str(contract_id)):
+            raise PackV4MigrationError("canonical provided Contract ID is invalid")
+        if str(contract_id) in contracts or not isinstance(operations, list) or not operations:
+            raise PackV4MigrationError("canonical provided Contract operations are invalid")
+        operation_ids: set[str] = set()
+        for operation in operations:
+            operation_id = operation.get("id") if isinstance(operation, Mapping) else None
+            if not _is_identifier(operation_id) or str(operation_id) in operation_ids:
+                raise PackV4MigrationError("canonical provided Contract has duplicate Operations")
+            operation_ids.add(str(operation_id))
+        contracts[str(contract_id)] = contract
+    return contracts
+
+
+def _explicit_function_sources(record: Mapping[str, Any]) -> list[Mapping[str, Any]] | None:
+    """Validate the optional multi-Function source form for one Pack record.
+
+    The legacy record form intentionally remains valid and retains its exact
+    output.  When the optional ``functions`` field is present it becomes the
+    sole Function authority: every provided Contract Operation must be bound
+    exactly once to one explicit implementation digest.  That digest must
+    resolve to exactly one runtime executable artifact; its Python variant is
+    the deterministic ``<function_id>.python`` projection.
+    """
+
+    if "functions" not in record:
+        return None
+    raw_functions = record.get("functions")
+    if not isinstance(raw_functions, list):
+        raise PackV4MigrationError("explicit Functions must be a list")
+    contracts = _provided_contract_sources(record)
+    runtime_artifacts = _validated_runtime_artifacts(record)
+    if not raw_functions and contracts:
+        raise PackV4MigrationError("provided Contracts require explicit Functions")
+
+    seen_functions: set[str] = set()
+    assigned_operations: dict[str, set[str]] = {contract_id: set() for contract_id in contracts}
+    for function in raw_functions:
+        if (
+            not isinstance(function, Mapping)
+            or not EXPLICIT_FUNCTION_REQUIRED_FIELDS.issubset(function)
+            or not set(function).issubset(EXPLICIT_FUNCTION_FIELDS)
+        ):
+            raise PackV4MigrationError("explicit Function fields are invalid")
+        function_id = function.get("function_id")
+        contract_id = function.get("contract_id")
+        operation_ids = function.get("operation_ids")
+        implementation_digest = function.get("implementation_digest")
+        if (
+            not _is_identifier(function_id)
+            or str(function_id) in seen_functions
+            or not isinstance(contract_id, str)
+            or contract_id not in contracts
+            or not isinstance(operation_ids, list)
+            or not operation_ids
+            or any(not _is_identifier(operation_id) for operation_id in operation_ids)
+            or len(operation_ids) != len(set(operation_ids))
+            or not _is_digest(implementation_digest)
+            or (
+                "isolation" in function
+                and function.get("isolation") not in FUNCTION_ISOLATIONS
+            )
+        ):
+            raise PackV4MigrationError("explicit Function identity is invalid")
+        seen_functions.add(str(function_id))
+
+        implementation_artifacts = [
+            artifact
+            for artifact in runtime_artifacts.values()
+            if artifact.get("digest") == implementation_digest
+            and artifact.get("kind") == "executable"
+            and artifact.get("index_role", "runtime") == "runtime"
+        ]
+        if len(implementation_artifacts) != 1:
+            raise PackV4MigrationError("explicit Function implementation artifact is invalid")
+
+        contract = contracts[str(contract_id)]
+        declared_operations = {
+            str(operation["id"])
+            for operation in contract["operations"]
+            if isinstance(operation, Mapping)
+        }
+        function_operations = {str(operation_id) for operation_id in operation_ids}
+        if not function_operations.issubset(declared_operations):
+            raise PackV4MigrationError("explicit Function references a Contract-external Operation")
+        if assigned_operations[str(contract_id)] & function_operations:
+            raise PackV4MigrationError("explicit Function Operation is duplicated")
+        for operation in contract["operations"]:
+            if (
+                isinstance(operation, Mapping)
+                and operation.get("id") in function_operations
+                and operation.get("implementation_digest") != implementation_digest
+            ):
+                raise PackV4MigrationError(
+                    "explicit Function implementation digest is inconsistent"
+                )
+        assigned_operations[str(contract_id)].update(function_operations)
+
+    for contract_id, contract in contracts.items():
+        declared_operations = {
+            str(operation["id"])
+            for operation in contract["operations"]
+            if isinstance(operation, Mapping)
+        }
+        if assigned_operations[contract_id] != declared_operations:
+            raise PackV4MigrationError("explicit Functions do not cover Contract Operations")
+    return list(raw_functions)
+
+
+def _function_sources(record: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return explicit Function bindings or the preserved legacy projection."""
+
+    explicit = _explicit_function_sources(record)
+    if explicit is not None:
+        return sorted(explicit, key=lambda item: str(item["function_id"]))
+    return [
+        {
+            "function_id": source["provider_id"],
+            "contract_id": source["contract_id"],
+            "operation_ids": [item["id"] for item in source["operations"]],
+            "implementation_digest": next(
+                (
+                    item["implementation_digest"]
+                    for item in source["operations"]
+                    if item.get("implementation_digest")
+                ),
+                None,
+            ),
+        }
+        for source in record["provided_contracts"]
+    ]
 
 
 def _artifact_set_digest(artifacts: list[Mapping[str, Any]]) -> str:
@@ -752,18 +941,21 @@ def _manifest_document(
     functions = []
     operation_catalog = []
     provider_catalog = []
-    for source in record["provided_contracts"]:
-        contract = contract_by_id[source["contract_id"]]
-        operations = [item["id"] for item in source["operations"]]
-        implementation = next(
-            (
-                item["implementation_digest"]
-                for item in source["operations"]
-                if item.get("implementation_digest")
-            ),
-            artifact_set_digest,
-        )
-        isolation = source["isolation"]
+    contract_source_by_id = {
+        str(source["contract_id"]): source for source in record["provided_contracts"]
+    }
+    for function_source in _function_sources(record):
+        contract_id = str(function_source["contract_id"])
+        source = contract_source_by_id[contract_id]
+        contract = contract_by_id[contract_id]
+        operations = list(function_source["operation_ids"])
+        implementation = function_source.get("implementation_digest") or artifact_set_digest
+        isolation = function_source.get("isolation") or {
+            "in_process": "dedicated_process",
+            "process": "dedicated_process",
+            "sandbox": "pack_vm",
+            "remote": "remote",
+        }[source["isolation"]]
         role = (
             "host_capability_provider"
             if record["execution_boundary"] == "host_brokered"
@@ -771,36 +963,34 @@ def _manifest_document(
         )
         functions.append(
             {
-                "id": source["provider_id"],
+                "id": function_source["function_id"],
                 "implementation_digest": implementation,
                 "contract_revision_digest": contract["revision_digest"],
                 "operations": operations,
                 "role": role,
-                "isolation": {
-                    "in_process": "dedicated_process",
-                    "process": "dedicated_process",
-                    "sandbox": "pack_vm",
-                    "remote": "remote",
-                }[isolation],
+                "isolation": isolation,
             }
         )
         provider_catalog.append(
             {
-                "provider_id": source["provider_id"],
+                "provider_id": function_source["function_id"],
                 "owner": record["pack_id"],
-                "contract_reference": source["contract_id"],
+                "contract_reference": contract_id,
                 "operations": operations,
             }
         )
-        effects = next(iter(contract["operations"]), {}).get("effect_ceiling", [])
+        effects_by_operation = {
+            str(operation["operation_id"]): operation["effect_ceiling"]
+            for operation in contract["operations"]
+        }
         operation_catalog.extend(
             {
                 "operation_id": operation,
                 "owner": record["pack_id"],
-                "contract_reference": source["contract_id"],
-                "provider_id": source["provider_id"],
+                "contract_reference": contract_id,
+                "provider_id": function_source["function_id"],
                 "source_kind": "canonical_v4_contract",
-                "effect_ceiling": effects,
+                "effect_ceiling": effects_by_operation[operation],
             }
             for operation in operations
         )
@@ -1019,6 +1209,26 @@ def verify_rendered_artifacts(files: Mapping[str, str]) -> None:
     }
     if executable["catalog_digest"] != _digest(unsigned_executable):
         raise PackV4MigrationError("executable catalog digest is stale")
+    functions = manifest["functions"]
+    variants = executable["variants"]
+    expected_variants = {
+        (
+            str(function["id"]),
+            (
+                f"{function['id']}.wasm"
+                if function.get("isolation") == "wasm_component"
+                else f"{function['id']}.python"
+            ),
+        )
+        for function in functions
+    }
+    actual_variants = {
+        (str(variant.get("function_id")), str(variant.get("variant_id")))
+        for variant in variants
+        if isinstance(variant, Mapping)
+    }
+    if len(actual_variants) != len(variants) or actual_variants != expected_variants:
+        raise PackV4MigrationError("executable variants do not match explicit Functions")
     unsigned = {key: value for key, value in index.items() if key != "integrity_seal"}
     if index["integrity_seal"]["signed_digest"] != _digest(unsigned):
         raise PackV4MigrationError("artifact index integrity seal is invalid")
@@ -1085,6 +1295,7 @@ def _verify_function_operation_principals(manifest: Mapping[str, Any]) -> None:
     }
     expected_operations: set[tuple[str, str, str]] = set()
     expected_providers: set[tuple[str, str, tuple[str, ...]]] = set()
+    assigned_operation_ids: set[str] = set()
     for function in functions:
         if not isinstance(function, Mapping):
             raise PackV4MigrationError(f"malformed Function principal in Pack: {pack_id}")
@@ -1110,6 +1321,11 @@ def _verify_function_operation_principals(manifest: Mapping[str, Any]) -> None:
             raise PackV4MigrationError(
                 f"Function references an unknown Operation: {pack_id}/{function_id}"
             )
+        if assigned_operation_ids.intersection(operations):
+            raise PackV4MigrationError(
+                f"Operation belongs to more than one Function: {pack_id}/{function_id}"
+            )
+        assigned_operation_ids.update(str(operation) for operation in operations)
         implementation_digest = function.get("implementation_digest")
         artifact_digests = {
             item.get("digest")
@@ -1182,8 +1398,8 @@ def _validate_catalog_payload(payload: Mapping[str, Any]) -> list[Mapping[str, A
         raise PackV4MigrationError("canonical catalog contains duplicate Pack IDs")
     if pack_ids != sorted(pack_ids) or record_ids != pack_ids:
         raise PackV4MigrationError("canonical catalog has missing or unknown Pack IDs")
-    if len(records) != 143:
-        raise PackV4MigrationError("canonical catalog must contain exactly 143 Packs")
+    if not records:
+        raise PackV4MigrationError("canonical Pack source catalog must not be empty")
     required = {
         "version",
         "kind",
@@ -1221,11 +1437,22 @@ def _validate_catalog_payload(payload: Mapping[str, Any]) -> list[Mapping[str, A
             raise PackV4MigrationError(
                 f"canonical v4 authority provenance is invalid: {record['pack_id']}"
             )
+        for contract in record.get("provided_contracts", []):
+            if not isinstance(contract, Mapping) or not isinstance(
+                contract.get("owner"), str
+            ) or not contract["owner"].strip():
+                raise PackV4MigrationError(
+                    "canonical Contract ownership must be explicit: "
+                    f"{record['pack_id']}"
+                )
+        _validated_runtime_artifacts(record)
+        _provided_contract_sources(record)
+        _explicit_function_sources(record)
     return records
 
 
 def _verify_global_uniqueness(rendered: Mapping[str, Mapping[str, str]]) -> None:
-    owners: dict[str, str] = {}
+    contract_declarations: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
     providers: dict[str, str] = {}
     operations: dict[str, str] = {}
     for pack_id, files in rendered.items():
@@ -1233,12 +1460,9 @@ def _verify_global_uniqueness(rendered: Mapping[str, Mapping[str, str]]) -> None
         manifest = json.loads(files["pack.v4.json"])
         contract_catalog = json.loads(files["contracts.v4.json"])
         for contract in contract_catalog["contracts"]:
-            owner = contract["owner"]
-            prior = owners.setdefault(contract["contract_id"], owner)
-            if prior != owner:
-                raise PackV4MigrationError(
-                    f"duplicate contract owner {contract['contract_id']}: {prior}, {owner}"
-                )
+            contract_declarations.setdefault(contract["contract_id"], []).append(
+                (pack_id, contract)
+            )
         for provider in manifest["provider_catalog"]:
             prior = providers.setdefault(provider["provider_id"], pack_id)
             if prior != pack_id:
@@ -1248,12 +1472,69 @@ def _verify_global_uniqueness(rendered: Mapping[str, Mapping[str, str]]) -> None
             if prior != pack_id:
                 raise PackV4MigrationError(f"duplicate operation {operation['operation_id']}")
 
+    for contract_id, declarations in contract_declarations.items():
+        if len(declarations) == 1:
+            continue
+        self_owners = {
+            pack_id
+            for pack_id, contract in declarations
+            if contract["owner"] == pack_id
+        }
+        if not self_owners:
+            raise PackV4MigrationError(
+                f"shared contract has no Pack-qualified owner: {contract_id}"
+            )
+        versions = {str(contract["version"]) for _, contract in declarations}
+        cardinalities = {
+            str(contract["provider_semantics"]["cardinality"])
+            for _, contract in declarations
+        }
+        schema_catalogs = {
+            canonical_json(contract["schema_catalog"])
+            for _, contract in declarations
+        }
+        if len(versions) != 1 or cardinalities != {"many"} or len(schema_catalogs) != 1:
+            raise PackV4MigrationError(
+                f"shared contract semantics disagree: {contract_id}"
+            )
+        declaring_packs = {pack_id for pack_id, _ in declarations}
+        for pack_id, contract in declarations:
+            owner = str(contract["owner"])
+            if owner not in declaring_packs or owner not in self_owners | {pack_id}:
+                raise PackV4MigrationError(
+                    f"shared contract owner is not Pack-qualified: {contract_id}/{owner}"
+                )
+
+
+def _verify_runtime_artifact_sources(record: Mapping[str, Any]) -> None:
+    """Check declared source bytes before writing or checking projections."""
+    pack_root = (ECOSYSTEM / str(record["pack_id"])).resolve()
+    for relative, artifact in _validated_runtime_artifacts(record).items():
+        candidate = pack_root / relative
+        try:
+            candidate.resolve(strict=True).relative_to(pack_root)
+            digest = _file_digest(candidate)
+        except OSError as exc:
+            raise PackV4MigrationError(
+                f"canonical runtime artifact is unreadable: {candidate}"
+            ) from exc
+        except ValueError as exc:
+            raise PackV4MigrationError(
+                f"canonical runtime artifact escapes Pack root: {candidate}"
+            ) from exc
+        if digest != artifact["digest"]:
+            raise PackV4MigrationError(
+                f"canonical runtime artifact digest is stale: {candidate}"
+            )
+
 
 def generate(*, check: bool) -> dict[str, int]:
     if not CATALOG.is_file():
         raise PackV4MigrationError("missing canonical Pack v4 source catalog")
     payload = json.loads(CATALOG.read_text(encoding="utf-8"))
     records = _validate_catalog_payload(payload)
+    for record in records:
+        _verify_runtime_artifact_sources(record)
     rendered = {record["pack_id"]: _render_record(record) for record in records}
     _verify_global_uniqueness(rendered)
     for pack_id, files in rendered.items():
@@ -1267,6 +1548,45 @@ def generate(*, check: bool) -> dict[str, int]:
                     raise PackV4MigrationError(f"generated Pack v4 artifact drift: {path}")
             else:
                 path.write_text(text, encoding="utf-8")
+    forbidden_alias_artifacts = {
+        "artifact-index.v4.json",
+        "contracts.v4.json",
+        "ecosystem.json",
+        "executables.v4.json",
+        "pack.v4.json",
+    }
+    for retirement in RETIREMENTS:
+        pack_root = ECOSYSTEM / retirement.legacy_pack_id
+        descriptor = retirement.resolved()
+        alias_text = _json_text(
+            {
+                "schema": "io.tobkiri.profile-projection-compatibility-alias.v1",
+                "legacy_pack_id": retirement.legacy_pack_id,
+                "projection_id": retirement.projection_id,
+                "artifact_root": retirement.artifact_root,
+                "content_digest": descriptor["content_digest"],
+                "read_only": True,
+                "runtime_authority": False,
+                "compatibility_release": COMPATIBILITY_RELEASE,
+                "remove_no_earlier_than_release": REMOVE_NO_EARLIER_THAN_RELEASE,
+                "sunset_at": SUNSET_AT,
+            }
+        )
+        alias_path = pack_root / "compatibility-alias.v1.json"
+        if check:
+            if any((pack_root / name).exists() for name in forbidden_alias_artifacts):
+                raise PackV4MigrationError(
+                    f"retired Pack alias still contains authority artifacts: {pack_root}"
+                )
+            if not alias_path.is_file() or alias_path.read_text(
+                encoding="utf-8"
+            ) != alias_text:
+                raise PackV4MigrationError(
+                    f"retired Pack alias metadata drift: {alias_path}"
+                )
+        else:
+            pack_root.mkdir(parents=True, exist_ok=True)
+            alias_path.write_text(alias_text, encoding="utf-8")
     return {
         "packs": len(rendered),
         "valid": len(rendered),
@@ -1281,16 +1601,21 @@ def generate(*, check: bool) -> dict[str, int]:
 
 
 def main() -> None:
-    """Run the one-way importer or deterministic v4 artifact generator."""
+    """Run the deterministic v4 artifact generator or an offline draft import."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--import-legacy", action="store_true")
+    parser.add_argument(
+        "--draft-output",
+        type=Path,
+        help="write an explicit offline migration draft; never the canonical catalog",
+    )
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     if args.import_legacy:
-        import_legacy(check=args.check)
-        if args.check:
-            generate(check=True)
+        import_legacy(check=args.check, output=args.draft_output)
         return
+    if args.draft_output is not None:
+        parser.error("--draft-output requires --import-legacy")
     print(json.dumps(generate(check=args.check), sort_keys=True))
 
 

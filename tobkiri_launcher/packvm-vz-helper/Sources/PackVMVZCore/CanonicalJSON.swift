@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 public let helperProtocol = "io.tobkiri.packvm-supervisor.v1"
@@ -38,7 +39,14 @@ public enum CanonicalJSON {
         guard JSONSerialization.isValidJSONObject(value) else {
             throw HelperError.invalidRequest("INVALID_JSON_VALUE")
         }
-        return try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+        // Keep the byte-level protocol identical to the Host's UTF-8
+        // canonical JSON: in particular, `/` is not escaped.  These bytes
+        // are HMACed and included in binding digests, so semantically
+        // equivalent JSON encodings are not interchangeable here.
+        return try JSONSerialization.data(
+            withJSONObject: value,
+            options: [.sortedKeys, .withoutEscapingSlashes]
+        )
     }
 
     public static func object(_ data: Data) throws -> [String: Any] {
@@ -220,16 +228,41 @@ public final class BoundedLineReader {
                 }
                 return Data(line)
             }
-            guard buffered.count <= maxProtocolLineBytes else {
+            // The helper's Host protocol is JSONL over a pipe.  Foundation's
+            // ``read(upToCount:)`` can wait to fill its requested buffer on a
+            // pipe, which deadlocks a short request when the Host waits for
+            // the response before writing another request.  A direct POSIX
+            // read returns as soon as the pipe has a byte available.
+            guard buffered.count < maxProtocolLineBytes else {
                 throw HelperError.protocolTooLarge
             }
-            guard let chunk = try handle.read(upToCount: 4096), !chunk.isEmpty else {
+            let maximumChunkBytes = min(4096, maxProtocolLineBytes - buffered.count)
+            guard let chunk = try readPipeChunk(upToCount: maximumChunkBytes) else {
                 guard !buffered.isEmpty else { return nil }
                 let line = buffered
                 buffered.removeAll(keepingCapacity: false)
                 return line
             }
             buffered.append(chunk)
+        }
+    }
+
+    private func readPipeChunk(upToCount count: Int) throws -> Data? {
+        var bytes = [UInt8](repeating: 0, count: count)
+        while true {
+            let received = bytes.withUnsafeMutableBufferPointer { buffer in
+                Darwin.read(handle.fileDescriptor, buffer.baseAddress, buffer.count)
+            }
+            if received > 0 {
+                return Data(bytes.prefix(Int(received)))
+            }
+            if received == 0 {
+                return nil
+            }
+            if errno == EINTR {
+                continue
+            }
+            throw HelperError.unavailable("PROTOCOL_READ_FAILED")
         }
     }
 }

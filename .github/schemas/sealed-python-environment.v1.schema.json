@@ -43,7 +43,7 @@
           ]
         },
         "package_id": {
-          "const": "dev.tobkiri.launcher"
+          "const": "dev.rumiai.app"
         },
         "release_digest": {
           "$ref": "#/$defs/sha256"

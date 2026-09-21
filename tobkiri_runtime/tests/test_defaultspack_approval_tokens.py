@@ -91,17 +91,37 @@ def test_terminal_stream_starts_real_read_only_process(tmp_path, monkeypatch):
     assert result["data"]["workspace_id"] == "trusted"
 
 
-def test_git_branch_switch_requires_signed_one_shot_approval(tmp_path, monkeypatch):
+def test_git_branch_checkout_is_unavailable_without_consuming_approval(
+    tmp_path, monkeypatch
+):
     from blocks.coding.git_branch import run as git_branch_run
-    from domain.safety.approval import approve, reset_approval_state_for_tests
+    from domain.safety.approval import reset_approval_state_for_tests
     from tests._coding_contract_fixture import bind_verified_coding_contracts
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
     bind_verified_coding_contracts(monkeypatch, tmp_path)
     reset_approval_state_for_tests()
-    subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True, text=True)
     subprocess.run(
-        ["git", "-C", str(tmp_path), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial"],
+        ["git", "init", "-b", "main"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "initial",
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -114,19 +134,35 @@ def test_git_branch_switch_requires_signed_one_shot_approval(tmp_path, monkeypat
         "workspace_id": "trusted",
         "workspace_root": str(tmp_path),
     }
-    request = git_branch_run(args, {})
+    unavailable = git_branch_run(args, {})
 
-    assert request["status"] == "ok"
-    assert request["data"]["approval_required"] is True
-    assert request["data"]["operation"] == "git.branch.create"
+    assert unavailable["status"] == "error"
+    assert unavailable["error"]["code"] == "GIT_UNAVAILABLE"
+    assert "exclusive workspace mutation lease" in unavailable["error"]["message"]
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(tmp_path),
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "feature/local-first",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).returncode
+        == 1
+    )
+    assert (
+        subprocess.check_output(
+            ["git", "-C", str(tmp_path), "branch", "--show-current"], text=True
+        ).strip()
+        == "main"
+    )
 
-    approval = approve(request["data"]["approval_request_id"])
-    switched = git_branch_run({**args, "approval_token": approval["token"]}, {})
-
-    assert switched["status"] == "ok"
-    assert switched["data"]["branch"] == "feature/local-first"
-    assert switched["data"]["created"] is True
-
-    replay = git_branch_run({**args, "approval_token": approval["token"]}, {})
-    assert replay["status"] == "error"
-    assert replay["error"]["code"] == "APPROVAL_TOKEN_USED"
+    with_token = git_branch_run({**args, "approval_token": "not-consumed"}, {})
+    assert with_token["status"] == "error"
+    assert with_token["error"]["code"] == "GIT_UNAVAILABLE"

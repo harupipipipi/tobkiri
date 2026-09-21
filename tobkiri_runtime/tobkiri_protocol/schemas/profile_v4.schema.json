@@ -50,6 +50,11 @@
         }
       }
     },
+    "content_projections": {
+      "type": "array",
+      "items": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/profile-content-projection.v1.schema.json#/$defs/resolvedProjection"},
+      "uniqueItems": true
+    },
     "requested_edges": {
       "type": "array",
       "items": {

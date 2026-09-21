@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import html
 import json
 import os
@@ -1916,8 +1918,10 @@ class ChatRunEngine:
         store: ChatStore | None = None,
         client: AIClient | None = None,
         gateway: LLMGateway | None = None,
+        settings_owner: SettingsOwnerPort | None = None,
     ) -> None:
         self._store = store or ChatStore()
+        self._settings_owner = settings_owner
         self._gateway = gateway or LLMGateway(client=client)
         self._run_id = ""
         self._conversation_id = ""
@@ -2047,7 +2051,7 @@ class ChatRunEngine:
     ) -> Iterator[dict[str, Any]]:
         context = context or {}
         try:
-            prepared = prepare_chat_run(input_data, context)
+            prepared = prepare_chat_run(input_data, context, settings_owner=self._settings_owner)
         except Exception:
             self._mark_subagent_prepare_failed(input_data, context)
             raise
@@ -4621,7 +4625,9 @@ class ChatRunEngine:
                 },
             )
         else:
-            executed = ToolExecutor().execute(tool_name, arguments, invoke_context)
+            executed = ToolExecutor(settings_owner=self._settings_owner).execute(
+                tool_name, arguments, invoke_context,
+            )
             result = {"status": "ok", "data": executed}
 
         log = {

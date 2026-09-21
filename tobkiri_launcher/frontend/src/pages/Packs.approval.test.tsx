@@ -7,6 +7,7 @@ import {MemoryRouter, Route, Routes} from 'react-router';
 
 import {DialogContainer} from '@/src/components/ui/DialogContainer';
 import {ApiContractError} from '@/src/lib/api';
+import type {PackControlBinding} from '@/src/lib/apiTypes';
 import {type Pack, useAppStore} from '@/src/store';
 import {Packs} from './Packs';
 
@@ -42,6 +43,14 @@ const revokedPack: Pack = {
   approvalReason: 'approval_revoked',
   approved: false,
   approvalIssues: ['approval_revoked'],
+};
+
+const activePackBinding: PackControlBinding = {
+  profile_id: samplePack.profileId,
+  workspace_id: samplePack.workspaceId,
+  profile_revision: samplePack.profileRevision,
+  plan_digest: samplePack.planDigest,
+  catalog_revision: samplePack.catalogRevision,
 };
 
 function createSurface(): {dom: JSDOM; container: HTMLElement; root: Root} {
@@ -88,6 +97,7 @@ test('Pack approval revocation opens an accessible confirmation and can be cance
   let revokeCount = 0;
   useAppStore.setState({
     packs: [samplePack],
+    packCatalogBinding: activePackBinding,
     dialog: null,
     packApprovalPending: {},
     loadPacks: async () => {},
@@ -132,13 +142,14 @@ test('successful Pack approval revocation refreshes state and removes enablement
   let revokeCount = 0;
   useAppStore.setState({
     packs: [samplePack],
+    packCatalogBinding: activePackBinding,
     dialog: null,
     packApprovalPending: {},
     loadPacks: async () => {},
     revokePackApproval: async (id) => {
       revokeCount += 1;
       assert.equal(id, samplePack.id);
-      useAppStore.setState({packs: [revokedPack]});
+      useAppStore.setState({packs: [revokedPack], packCatalogBinding: activePackBinding});
     },
   });
   await renderSurface(root);
@@ -170,12 +181,92 @@ test('successful Pack approval revocation refreshes state and removes enablement
   }
 });
 
+test('unknown Pack mutations expose a distinct status icon and stable error-copy action', serialTestOptions, async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  useAppStore.setState({
+    packs: [samplePack],
+    packCatalogBinding: activePackBinding,
+    packMutationUnknown: {
+      'pack:toggle:research-pack:disable': {
+        key: 'pack:toggle:research-pack:disable',
+        requestId: 'e9e7f7fb-e8db-4f21-bb5a-81b8f0f6ae01',
+        state: 'unknown',
+        createdAt: 1,
+        metadata: {kind: 'pack.toggle', pack_id: samplePack.id},
+      },
+    },
+    loadPacks: async () => {},
+  });
+
+  try {
+    await renderSurface(root);
+    assert.match(container.textContent ?? '', /The result of a Pack mutation is unknown/);
+    assert.ok(container.querySelector('[data-error-icon="pack-mutation-unknown"]'));
+    const copy = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Copy unknown Pack mutation result"]',
+    );
+    assert.ok(copy);
+    assert.ok(copy.querySelector('svg.lucide-copy'));
+  } finally {
+    await act(async () => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
+test('verified legacy absence requires confirmation and clears only the exact local lock', serialTestOptions, async () => {
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createSurface();
+  const record = {
+    key: 'pack:toggle:research-pack:disable',
+    requestId: 'e9e7f7fb-e8db-4f21-bb5a-81b8f0f6ae02',
+    state: 'unknown' as const,
+    createdAt: 1,
+    metadata: {
+      kind: 'pack.toggle',
+      pack_id: samplePack.id,
+      expected_enabled: false,
+      journal_migration: 'legacy-unscoped-v1',
+    },
+  };
+  const cleared: Array<[string, string]> = [];
+  useAppStore.setState({
+    packs: [samplePack],
+    packCatalogBinding: activePackBinding,
+    dialog: null,
+    packMutationUnknown: {[record.key]: record},
+    packLegacyRecovery: {[record.key]: record},
+    loadPacks: async () => {},
+    clearAbsentLegacyPackMutation: (key, requestId) => {
+      cleared.push([key, requestId]);
+    },
+  });
+
+  try {
+    await renderSurface(root);
+    assert.match(container.textContent ?? '', /absent from the current data root/);
+    await act(async () => buttonWithText(container, 'Review recovery').click());
+    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent ?? '', /does not install, approve, enable, disable/);
+    assert.deepEqual(cleared, []);
+    await act(async () => buttonWithText(dialog, 'Clear local lock').click());
+    assert.deepEqual(cleared, [[record.key, record.requestId]]);
+  } finally {
+    await act(async () => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
 test('failed Pack approval revocation stays approved and surfaces the typed failure', serialTestOptions, async () => {
   const previousState = useAppStore.getState();
   const {dom, container, root} = createSurface();
   const errors: string[] = [];
   useAppStore.setState({
     packs: [samplePack],
+    packCatalogBinding: activePackBinding,
     dialog: null,
     packApprovalPending: {},
     loadPacks: async () => {},
@@ -231,6 +322,7 @@ test('approval confirmation prevents double submission while the revoke is pendi
   });
   useAppStore.setState({
     packs: [samplePack],
+    packCatalogBinding: activePackBinding,
     dialog: null,
     packApprovalPending: {},
     loadPacks: async () => {},

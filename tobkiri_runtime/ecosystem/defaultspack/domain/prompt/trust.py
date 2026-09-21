@@ -89,6 +89,8 @@ def _source_pack_root(source_path: str | Path, pack_id: str) -> Path | None:
 
 def is_trusted_prompt_pack(pack_id: str, approval_manager: Any = None) -> tuple[bool, str | None]:
     normalized = str(pack_id or "").strip()
+    if _selected_projection_root(normalized) is not None:
+        return True, None
     if normalized in TRUSTED_BUILTIN_PROMPT_PACK_IDS and _bundled_prompt_pack_root(normalized) is not None:
         return True, None
     return is_pack_trusted(pack_id, approval_manager=approval_manager)
@@ -105,6 +107,9 @@ def prompt_pack_source_is_trusted(
     approval_manager: Any = None,
 ) -> bool:
     normalized = str(pack_id or "").strip()
+    projection_root = _selected_projection_root(normalized)
+    if projection_root is not None:
+        return _source_path_within_pack(source_path, projection_root)
     if normalized in TRUSTED_BUILTIN_PROMPT_PACK_IDS:
         return _source_path_within_pack(source_path, _bundled_prompt_pack_root(normalized))
     trusted, _reason = is_pack_trusted(normalized, approval_manager=approval_manager)
@@ -115,3 +120,17 @@ def prompt_pack_source_is_trusted(
     if not isinstance(source_path, (str, Path)):
         return False
     return _source_pack_root(source_path, normalized) is not None
+
+
+def _selected_projection_root(projection_id: str) -> Path | None:
+    """Resolve trust only from the captured Profile's digest-bound selection."""
+
+    from core_runtime.profile_content_projection import selected_projection_roots
+    from core_runtime.resolved_profile_scope import effective_profile_projections
+
+    for selected_id, root in selected_projection_roots(
+        effective_profile_projections(), kind="profile_content"
+    ):
+        if selected_id == projection_id:
+            return root
+    return None

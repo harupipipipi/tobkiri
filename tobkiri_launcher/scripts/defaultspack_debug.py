@@ -1543,7 +1543,7 @@ def default_connection_path() -> Path:
         Path.home()
         / "Library"
         / "Application Support"
-        / "dev.tobkiri.launcher"
+        / "dev.rumiai.app"
         / "user_data"
         / "host_broker"
         / "connection.json"

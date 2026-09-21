@@ -271,7 +271,6 @@ class DesktopAppManager:
         env["RUMI_PACK_ID"] = pack_id
         if effective_api_token:
             env[_PACK_API_TOKEN_ENV] = effective_api_token
-            env["RUMI_DEFAULTSPACK_LOCAL_TOKEN"] = effective_api_token
         if issued_desktop_token:
             env["RUMI_TOKEN"] = issued_desktop_token
             env.setdefault("RUMI_PORT", os.environ.get("RUMI_PORT", "8765"))

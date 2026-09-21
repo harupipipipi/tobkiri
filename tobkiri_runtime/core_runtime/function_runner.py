@@ -10,6 +10,7 @@ import errno
 import importlib.util
 import json
 import os
+import platform
 import sys
 from pathlib import Path
 from typing import Any, Callable, Dict
@@ -33,20 +34,59 @@ _BLOCKED_PROCESS_AUDIT_EVENTS = frozenset(
         "subprocess.Popen",
     }
 )
-_BLOCKED_PROCESS_SYSCALLS = (
+_REQUIRED_BLOCKED_PROCESS_SYSCALLS = (
     b"clone",
     b"clone3",
     b"execve",
     b"execveat",
+)
+# ``fork`` and ``vfork`` are separate system calls on most Linux ABIs, but are
+# intentionally absent from the arm64 Linux syscall table.
+_FORK_VFORK_SYSCALLS = (
     b"fork",
     b"vfork",
 )
+_FORK_VFORK_ABSENT_LINUX_ABIS = frozenset({"aarch64", "arm64"})
 _SCMP_ACT_ALLOW = 0x7FFF0000
 _SCMP_ACT_ERRNO = 0x00050000
 
 
 class SandboxProcessDenied(PermissionError):
     """Raised when untrusted Pack code attempts to create a child process."""
+
+
+def _resolved_blocked_process_syscalls(
+    resolve_name: Callable[[bytes], int],
+    *,
+    machine: str | None = None,
+) -> tuple[int, ...]:
+    """Resolve every native child-process syscall without weakening the filter.
+
+    The clone and exec variants are required on every supported Linux guest.
+    ``fork`` and ``vfork`` are also required except for the arm64 Linux ABI,
+    which does not expose those legacy aliases. A missing required syscall is
+    therefore a fail-closed configuration error; no resolver mismatch can
+    silently weaken x86_64 or another ABI's filter.
+    """
+    machine_name = machine if machine is not None else platform.machine()
+    architecture = machine_name.strip().casefold()
+    required_syscalls: tuple[bytes, ...] = _REQUIRED_BLOCKED_PROCESS_SYSCALLS
+    if architecture not in _FORK_VFORK_ABSENT_LINUX_ABIS:
+        required_syscalls += _FORK_VFORK_SYSCALLS
+
+    resolved: list[int] = []
+    missing_required: list[str] = []
+    for syscall_name in required_syscalls:
+        syscall = resolve_name(syscall_name)
+        if syscall < 0:
+            missing_required.append(syscall_name.decode("ascii"))
+            continue
+        resolved.append(syscall)
+    if missing_required:
+        missing = ", ".join(missing_required)
+        raise RuntimeError(f"Sandbox child process policy is incomplete: {missing}")
+
+    return tuple(resolved)
 
 
 def _install_seccomp_child_process_filter() -> None:
@@ -79,10 +119,9 @@ def _install_seccomp_child_process_filter() -> None:
         raise RuntimeError("Sandbox child process policy initialization failed")
     deny_action = _SCMP_ACT_ERRNO | errno.EPERM
     try:
-        for syscall_name in _BLOCKED_PROCESS_SYSCALLS:
-            syscall = seccomp.seccomp_syscall_resolve_name(syscall_name)
-            if syscall < 0:
-                raise RuntimeError("Sandbox child process policy is incomplete")
+        for syscall in _resolved_blocked_process_syscalls(
+            seccomp.seccomp_syscall_resolve_name
+        ):
             if seccomp.seccomp_rule_add(context, deny_action, syscall, 0) != 0:
                 raise RuntimeError("Sandbox child process policy rule failed")
         if seccomp.seccomp_load(context) != 0:

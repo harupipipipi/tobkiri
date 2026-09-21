@@ -11,6 +11,19 @@ from core_runtime.pack_api_server import PackAPIHandler, PackAPIServer
 from core_runtime.panel_auth import PanelAuthManager
 
 
+class _Dispatch:
+    """Minimal captured Host identity required by panel authentication."""
+
+    profile_id = "defaults"
+    profile_revision = "sha256:" + "b" * 64
+    activation_id = "activation:desktop-handlers"
+    plan_digest = "sha256:" + "a" * 64
+    security_epoch = 1
+
+    def assert_current(self) -> None:
+        """Provide the verified dispatch-session check used by the API server."""
+
+
 def _request(
     server: PackAPIServer,
     method: str,
@@ -40,6 +53,7 @@ class TestDesktopHandlers(unittest.TestCase):
             panel_auth_manager=PanelAuthManager(
                 bootstrap_secret="verified-desktop"
             ),
+            dispatch_session=_Dispatch(),
         )
         self.server.start()
 

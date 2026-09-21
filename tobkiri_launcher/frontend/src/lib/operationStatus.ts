@@ -1,4 +1,5 @@
 import {fetchRuntimeOperationStatus} from './api.ts';
+import {ApiContractError} from './apiTransport.ts';
 import {
   bindMutationStatusDigest,
   completeMutation,
@@ -47,6 +48,16 @@ export class OperationStatusValidationError extends Error {
   }
 }
 
+export class OperationStatusNotFoundError extends Error {
+  readonly requestId: string;
+
+  constructor(requestId: string) {
+    super('The operation is absent from the current data root.');
+    this.name = 'OperationStatusNotFoundError';
+    this.requestId = requestId;
+  }
+}
+
 export interface ReconciledMutationStatus {
   state: OperationStatusState | 'stale';
   status: OperationStatus;
@@ -86,6 +97,14 @@ const OPERATION_STATUS_KEYS = [
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isCurrentRootOperationAbsent(error: unknown): boolean {
+  if (!(error instanceof ApiContractError) || !isRecord(error.data)) return false;
+  return error.data.host_operation_api_version === 'io.tobkiri.host.operation.v1'
+    && error.data.state === 'error'
+    && error.data.code === 'OPERATION_NOT_FOUND'
+    && error.data.retryable === false;
 }
 
 function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
@@ -285,6 +304,12 @@ export function fetchOperationStatus(
   const existing = statusRequests.get(key);
   if (existing) return existing;
   const request = cancellableStatusFetch(fetcher, binding.requestId, signal)
+    .catch((error: unknown) => {
+      if (isCurrentRootOperationAbsent(error)) {
+        throw new OperationStatusNotFoundError(binding.requestId);
+      }
+      throw error;
+    })
     .then((value) => validateOperationStatus(value, binding))
     .finally(() => {
       if (statusRequests.get(key) === request) statusRequests.delete(key);

@@ -18,6 +18,7 @@ export function Header() {
   const runtimeError = useAppStore(state => state.runtimeError);
   const runtimeDisconnected = useAppStore(state => state.runtimeDisconnected);
   const lastRuntimeHealthyAt = useAppStore(state => state.lastRuntimeHealthyAt);
+  const devtoolsEnabled = useAppStore(state => state.devtoolsEnabled);
   const location = useLocation();
   const runtimeBadge = describeRuntimeBadge({
     runtimeReady,
@@ -30,34 +31,16 @@ export function Header() {
 
   const pageTitle = t(panelRouteTitleKey(location.pathname));
 
-  const runtimePill = (() => {
-    if (profileReconfirmationRequired) {
-      return {
-        label: 'Profile reconfirmation required',
-        dotClass: 'bg-amber-500',
-        textClass: 'text-amber-600 dark:text-amber-400',
-      };
-    }
-    if (runtimeStatus === 'error') {
-      return {
-        label: 'Runtime error',
-        dotClass: 'bg-red-500',
-        textClass: 'text-red-600 dark:text-red-400',
-      };
-    }
-    if (!runtimeReady) {
-      return {
-        label: 'Warming up',
-        dotClass: 'bg-amber-500 animate-pulse',
-        textClass: 'text-amber-600 dark:text-amber-400',
-      };
-    }
-    return {
-      label: 'Runtime ready',
-      dotClass: 'bg-emerald-500',
-      textClass: 'text-emerald-600 dark:text-emerald-400',
-    };
-  })();
+  // describeRuntimeBadge is the single source of runtime presentation state.
+  // The header shows it once; Layout owns the expanded banner for the detail.
+  const runtimePill = {
+    label: profileReconfirmationRequired ? 'Profile reconfirmation required' : runtimeBadge.label,
+    toneClass: runtimeBadge.tone === 'success'
+      ? 'text-success'
+      : runtimeBadge.tone === 'danger'
+        ? 'text-destructive'
+        : 'text-warning',
+  };
 
   return (
     <header
@@ -72,9 +55,16 @@ export function Header() {
             </PopoverTrigger>
             <PopoverContent align="left" className="w-64" role="dialog" aria-label={t('nav.mobile_navigation')}>
               <nav aria-label={t('nav.mobile_navigation')} className="max-h-[70vh] overflow-y-auto p-1">
-                {viewerNavGroups.map((group) => (
-                  <div key={group.id} className="py-1">
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted/70">
+                {viewerNavGroups(devtoolsEnabled).map((group) => (
+                  <section
+                    key={group.id}
+                    className="py-1"
+                    aria-labelledby={`mobile-nav-group-${group.id}`}
+                  >
+                    <div
+                      id={`mobile-nav-group-${group.id}`}
+                      className="px-2 py-1 text-xs font-medium text-text-muted"
+                    >
                       {t(group.labelKey)}
                     </div>
                     <div className="flex flex-col gap-1">
@@ -96,29 +86,13 @@ export function Header() {
                         );
                       })}
                     </div>
-                  </div>
+                  </section>
                 ))}
               </nav>
             </PopoverContent>
           </Popover>
         </div>
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="truncate text-sm font-medium text-text-main">{pageTitle}</h1>
-            <span
-              className={`hidden rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] sm:inline-flex ${
-                runtimeBadge.tone === 'success'
-                  ? 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-300'
-                  : runtimeBadge.tone === 'danger'
-                    ? 'bg-red-500/12 text-red-600 dark:text-red-300'
-                    : 'bg-amber-500/12 text-amber-600 dark:text-amber-300'
-              }`}
-            >
-              {runtimeBadge.label}
-            </span>
-          </div>
-          <p className="hidden truncate text-[11px] text-text-muted sm:block">{runtimeBadge.detail}</p>
-        </div>
+        <h1 className="min-w-0 truncate text-base font-semibold text-text-main">{pageTitle}</h1>
       </div>
 
       <div className="flex items-center gap-3">
@@ -127,29 +101,29 @@ export function Header() {
             to={panelRoutes.setup}
             className={cn(
               "rumi-control-pill inline-flex min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]",
-              runtimePill.textClass,
+              runtimePill.toneClass,
             )}
             aria-label="Profile reconfirmation required. Open Setup to review and activate the Profile."
             aria-live="polite"
-            title={runtimePill.label}
+            title={runtimeBadge.detail || runtimePill.label}
           >
-            <span className={cn("rumi-control-pill-dot", runtimePill.dotClass)} />
+            <span aria-hidden="true" className="rumi-control-pill-dot" />
             <span>{runtimePill.label}</span>
           </Link>
         ) : (
           <div
             className={cn(
               "rumi-control-pill hidden md:inline-flex",
-              runtimePill.textClass,
+              runtimePill.toneClass,
             )}
             role="status"
             aria-live="polite"
-            title={runtimePill.label}
+            title={runtimeBadge.detail || runtimePill.label}
           >
             {!runtimeReady && runtimeStatus !== 'error' ? (
               <TobkiriLoadingMark className="h-3 w-6" />
             ) : (
-              <span className={cn("rumi-control-pill-dot", runtimePill.dotClass)} />
+              <span aria-hidden="true" className="rumi-control-pill-dot" />
             )}
             <span>{runtimePill.label}</span>
           </div>

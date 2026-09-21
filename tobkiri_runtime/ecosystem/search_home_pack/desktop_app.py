@@ -17,8 +17,15 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
+from core_runtime.global_contracts.http_contract_dispatch import (
+    HTTPContractBinding,
+    HTTPContractRouteError,
+    HTTPContractTarget,
+    resolve_contract_route,
+)
+
 _SETTINGS_MODEL_KEY = "preferred" + "_model"
-_SEARCH_HOME_CONTRACT_ROUTES = {
+_SEARCH_HOME_ROUTE_POLICIES = {
     ("GET", "/api/health"): {"approval_required": False},
     ("GET", "/api/models"): {"approval_required": False},
     ("GET", "/api/settings"): {"approval_required": False},
@@ -28,6 +35,33 @@ _SEARCH_HOME_CONTRACT_ROUTES = {
     ("POST", "/api/settings/model"): {"approval_required": False},
     ("POST", "/api/route-state"): {"approval_required": False},
 }
+
+
+def _search_home_contract_routes() -> dict[tuple[str, str], HTTPContractBinding]:
+    """Build Search Home's immutable routes for the generic Host parser."""
+
+    return {
+        (method, path): HTTPContractBinding(
+            method=method,
+            path=path,
+            presentation="search_home_result",
+            targets=(
+                HTTPContractTarget(
+                    contribution_id=f"search-home.{method.lower()}.{path[5:].replace('/', '.')}",
+                    contract_id="search-home.ui.v1",
+                    operation_id=path.removeprefix("/api/").replace("/", "."),
+                    provider_id="search-home.desktop",
+                    function_id="search-home.desktop",
+                ),
+            ),
+            application_id="search_home_pack",
+            route_namespace="search_home_pack",
+        )
+        for (method, path) in _SEARCH_HOME_ROUTE_POLICIES
+    }
+
+
+_SEARCH_HOME_CONTRACT_ROUTES = _search_home_contract_routes()
 
 
 def _pack_root() -> Path:
@@ -208,10 +242,6 @@ def _open_desktop_surface(url: str, title: str = "Rumi Search Home") -> str:
 
 
 def _make_handler(pack_root: Path):
-    from core_runtime.frontend_contract_routes import (
-        ContractRouteError,
-        resolve_contract_route,
-    )
     from ecosystem.search_home_pack.domain.defaultspack_bridge import DefaultspackBridge
     from ecosystem.search_home_pack.domain.search_target_resolver import SearchTargetResolver
 
@@ -232,10 +262,9 @@ def _make_handler(pack_root: Path):
                     self,
                     method,
                     path,
-                    pack_id="search_home_pack",
-                    route_families=(),
+                    namespace="search_home_pack",
                 )
-            except ContractRouteError as exc:
+            except HTTPContractRouteError as exc:
                 self._json_response(
                     {
                         "status": "error",
@@ -247,10 +276,11 @@ def _make_handler(pack_root: Path):
             return resolved.path if resolved is not None else path
 
         def do_GET(self) -> None:  # noqa: N802
-            path = urlparse(self.path).path
-            path = self._resolve_contract_path("GET", path)
-            if path is None:
+            request_path = urlparse(self.path).path
+            resolved_path = self._resolve_contract_path("GET", request_path)
+            if resolved_path is None:
                 return
+            path = resolved_path
             if path in {"/health", "/api/health"}:
                 self._json_response(
                     {
@@ -272,10 +302,11 @@ def _make_handler(pack_root: Path):
             self._serve_static(path)
 
         def do_POST(self) -> None:  # noqa: N802
-            path = urlparse(self.path).path
-            path = self._resolve_contract_path("POST", path)
-            if path is None:
+            request_path = urlparse(self.path).path
+            resolved_path = self._resolve_contract_path("POST", request_path)
+            if resolved_path is None:
                 return
+            path = resolved_path
             try:
                 payload = self._read_json()
             except ValueError as exc:

@@ -5,6 +5,76 @@ import Testing
 
 struct LaunchAssetsTests {
     @Test
+    func fixtureCleanupReleasesDescriptorOnlyOnce() throws {
+        let fixture = try LaunchFixture()
+        fixture.cleanup()
+        #expect(fixture.diagnosticsFD == -1)
+        let nextDescriptor = open("/dev/null", O_WRONLY | O_CLOEXEC)
+        #expect(nextDescriptor >= 0)
+        defer { _ = Darwin.close(nextDescriptor) }
+
+        fixture.cleanup()
+
+        #expect(fcntl(nextDescriptor, F_GETFD) >= 0)
+        #expect(!FileManager.default.fileExists(atPath: fixture.root.path))
+    }
+
+    @Test
+    func debugSerialCaptureIsPrivateAndBounded() throws {
+        let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+            ".tobkiri-packvm-vz-test-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let diagnostics = try DirectSerialDiagnostics.create(runRoot: root.path)
+        diagnostics.record("HOST_VM_START_SUCCEEDED")
+        let writer = FileHandle(fileDescriptor: diagnostics.writeFD, closeOnDealloc: false)
+        writer.write(Data(repeating: 0x61, count: 132 * 1024))
+        diagnostics.close()
+
+        let capture = root.appendingPathComponent("serial-console.log")
+        let content = try Data(contentsOf: capture)
+        #expect(content.count == 128 * 1024)
+        #expect(content.starts(with: Data("TOBKIRI_HOST:HOST_VM_START_SUCCEEDED\n".utf8)))
+        var metadata = stat()
+        #expect(lstat(capture.path, &metadata) == 0)
+        #expect(metadata.st_mode & 0o777 == 0o600)
+    }
+
+    @Test
+    func preparesAndRemovesRegularEFIStoreInsidePrivateRunRoot() throws {
+        let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+            ".tobkiri-packvm-vz-test-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700]
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = root.appendingPathComponent("prepared-efi-variable-store.bin")
+
+        let prepared = try SecureLaunchAssetValidator.prepareEFIStore(
+            runRoot: root.path,
+            path: path.path
+        )
+
+        #expect(prepared.descriptor.path == path.path)
+        #expect(FileManager.default.fileExists(atPath: path.path))
+        try SecureLaunchAssetValidator.removePreparedEFIStore(
+            prepared,
+            runRoot: root.path
+        )
+        #expect(!FileManager.default.fileExists(atPath: path.path))
+    }
+
+    @Test
     func rejectsWorldWritableLaunchAsset() throws {
         let fixture = try LaunchFixture()
         defer { fixture.cleanup() }
@@ -77,11 +147,24 @@ struct LaunchAssetsTests {
             }
         }
     }
+
+    @Test
+    func directBindingAcceptsHostDigestLeaseIdentifier() throws {
+        let fixture = try LaunchFixture()
+        defer { fixture.cleanup() }
+        let leaseID = CanonicalJSON.sha256Text("host-lease")
+
+        let binding = try DirectLaunchBinding.parse(
+            fixture.directRawLaunch(leaseID: leaseID)
+        )
+
+        #expect(binding.leaseID == leaseID)
+    }
 }
 
 private final class LaunchFixture {
     let root: URL
-    let diagnosticsFD: Int32
+    private(set) var diagnosticsFD: Int32
     private let names = ["image", "kernel", "initrd", "agent", "config", "disk"]
 
     init() throws {
@@ -118,7 +201,10 @@ private final class LaunchFixture {
     }
 
     func cleanup() {
-        _ = Darwin.close(diagnosticsFD)
+        guard diagnosticsFD >= 0 else { return }
+        let descriptor = diagnosticsFD
+        diagnosticsFD = -1
+        _ = Darwin.close(descriptor)
         try? FileManager.default.removeItem(at: root)
     }
 
@@ -173,9 +259,8 @@ private final class LaunchFixture {
         try LaunchBinding.parse(rawLaunch(bootMode: "linux"))
     }
 
-    func directRawLaunch() -> [String: Any] {
+    func directRawLaunch(leaseID: String = "lease-1") -> [String: Any] {
         let domainID = "domain-1"
-        let leaseID = "lease-1"
         let reservationID = "reservation-1"
         let publicKey = Data(repeating: 7, count: 32)
         let imageDigest = digest("image.raw")

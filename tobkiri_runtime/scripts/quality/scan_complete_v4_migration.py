@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import importlib.util
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -65,20 +65,20 @@ def _nodeids() -> list[str]:
 def _counts(report: dict[str, Any]) -> dict[str, Any]:
     """Flatten evidence lists into handoff-friendly deterministic counts."""
     findings = report["findings"]
-    source_sets = report["pack_inventory"]["authority_source_sets"]
+    source_sets = report["pack_inventory"]["declared_source_sets"]
     return {
         "production_pack_directories": report["pack_inventory"][
             "production_pack_directories"
         ],
-        "expected_production_pack_directories": report["pack_inventory"][
-            "expected_production_pack_directories"
+        "catalog_pack_directories": report["pack_inventory"][
+            "catalog_pack_directories"
         ],
         "v4_artifacts_per_pack": report["pack_inventory"]["v4_artifacts_per_pack"],
         "v4_artifact_files": report["pack_inventory"]["v4_artifact_files"],
         "v4_pack_artifacts": len(report["pack_inventory"]["v4_pack_artifacts"]),
         "v4_profile_artifacts": len(report["pack_inventory"]["v4_profile_artifacts"]),
-        "authority_classification": report["pack_inventory"]["authority_counts"],
-        "manifest_authority_source_packs": len(source_sets["manifest_ids"]),
+        "migration_status": report["pack_inventory"]["migration_status_counts"],
+        "legacy_manifest_declared_packs": len(source_sets["manifest_ids"]),
         "v4_only_packs": len(source_sets["v4_only_ids"]),
         "canonical_source_packs": len(report["pack_inventory"]["canonical_source_ids"]),
         "gates": {
@@ -93,11 +93,13 @@ def build_evidence() -> dict[str, Any]:
     """Build the complete current-tree evidence document."""
     gate_module = _load_gate_module()
     report = gate_module._audit_snapshot()
-    return {
-        "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v1",
+    evidence = {
+        "schema": "io.tobkiri.quality.complete-v4-migration-evidence.v2",
         "source": {
             "test_file": TEST_PATH.relative_to(ROOT).as_posix(),
+            "freshness_basis": "deterministic-semantic-recomputation",
             "observed_head_sha": report["head_sha"],
+            "semantic_digest": "",
         },
         "nodeids": _nodeids(),
         "counts": _counts(report),
@@ -106,76 +108,32 @@ def build_evidence() -> dict[str, Any]:
         "pack_inventory": report["pack_inventory"],
         "findings": report["findings"],
     }
+    evidence["source"]["semantic_digest"] = _semantic_digest(evidence)
+    return evidence
 
 
 def _semantic_document(evidence: dict[str, Any]) -> dict[str, Any]:
-    """Return evidence content without the self-referential commit field."""
+    """Return evidence content without informational and self-digest fields."""
 
     normalized = json.loads(json.dumps(evidence))
     source = normalized.get("source")
     if isinstance(source, dict):
         source.pop("observed_head_sha", None)
+        source.pop("semantic_digest", None)
     return normalized
 
 
-def provenance_errors(
-    *,
-    tracked_sha: object,
-    event_name: str,
-    current_sha: str,
-    current_parents: tuple[str, ...],
-    pr_head_sha: str = "",
-    pr_head_parents: tuple[str, ...] = (),
-) -> list[str]:
-    """Validate evidence provenance against one explicit CI event topology."""
+def _semantic_digest(evidence: dict[str, Any]) -> str:
+    """Digest the complete recomputed scan without recursive metadata."""
 
-    if not isinstance(tracked_sha, str) or not COMMIT_SHA_RE.fullmatch(tracked_sha):
-        return [f"tracked observed_head_sha is missing or malformed: {tracked_sha!r}"]
-    if not COMMIT_SHA_RE.fullmatch(current_sha) or any(
-        not COMMIT_SHA_RE.fullmatch(parent) for parent in current_parents
-    ):
-        return ["checkout commit topology is malformed"]
-
-    accepted: set[str]
-    if event_name == "push":
-        accepted = {current_sha}
-        if current_parents:
-            accepted.add(current_parents[0])
-    elif event_name == "pull_request":
-        if not COMMIT_SHA_RE.fullmatch(pr_head_sha):
-            return ["pull_request head SHA is missing or malformed"]
-        if pr_head_sha not in current_parents:
-            return ["pull_request head SHA is not a direct checkout parent"]
-        if not pr_head_parents or any(
-            not COMMIT_SHA_RE.fullmatch(parent) for parent in pr_head_parents
-        ):
-            return ["pull_request head topology is missing or malformed"]
-        accepted = {pr_head_sha, pr_head_parents[0]}
-    else:
-        return [f"unsupported or missing CI event name: {event_name!r}"]
-
-    if tracked_sha not in accepted:
-        return [
-            "tracked observed_head_sha is stale for "
-            f"{event_name}: expected one of {sorted(accepted)}, got {tracked_sha!r}"
-        ]
-    return []
-
-
-def _git_sha(*args: str) -> str:
-    """Return one exact commit SHA or fail the freshness check."""
-
-    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
-
-
-def _git_parents(revision: str) -> tuple[str, ...]:
-    """Return the ordered direct parents for one verified revision."""
-
-    verified = _git_sha("rev-parse", "--verify", f"{revision}^{{commit}}")
-    if not COMMIT_SHA_RE.fullmatch(verified):
-        raise RuntimeError(f"invalid commit revision: {revision}")
-    parents = _git_sha("show", "-s", "--format=%P", verified)
-    return tuple(parents.split()) if parents else ()
+    encoded = json.dumps(
+        _semantic_document(evidence),
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def evidence_drift(
@@ -185,41 +143,93 @@ def evidence_drift(
     event_name: str,
     pr_head_sha: str = "",
 ) -> list[str]:
-    """Return fail-closed semantic and provenance evidence errors."""
+    """Return fail-closed deterministic evidence errors.
+
+    Commit identity is deliberately informational: binding a checked-in file
+    to the commit that contains that same file is recursively impossible.
+    Freshness instead requires exact semantic recomputation and a content
+    digest over that recomputed document.
+    """
 
     errors: list[str] = []
     if _semantic_document(tracked) != _semantic_document(observed):
         errors.append("tracked evidence differs from the current semantic scan")
-
-    source = tracked.get("source")
-    tracked_sha = source.get("observed_head_sha") if isinstance(source, dict) else None
-    try:
-        current_sha = _git_sha("rev-parse", "--verify", "HEAD^{commit}")
-        current_parents = _git_parents(current_sha)
-        pr_head_parents = (
-            _git_parents(pr_head_sha)
-            if event_name == "pull_request" and COMMIT_SHA_RE.fullmatch(pr_head_sha)
-            else ()
-        )
-    except (OSError, subprocess.CalledProcessError, RuntimeError) as error:
-        errors.append(f"evidence provenance cannot inspect git topology: {error}")
-        return errors
-    errors.extend(
-        provenance_errors(
-            tracked_sha=tracked_sha,
-            event_name=event_name,
-            current_sha=current_sha,
-            current_parents=current_parents,
-            pr_head_sha=pr_head_sha,
-            pr_head_parents=pr_head_parents,
-        )
-    )
+    del event_name, pr_head_sha
+    for label, document in (("tracked", tracked), ("observed", observed)):
+        source = document.get("source")
+        if not isinstance(source, dict):
+            errors.append(f"{label} evidence source is missing")
+            continue
+        observed_sha = source.get("observed_head_sha")
+        if not isinstance(observed_sha, str) or not COMMIT_SHA_RE.fullmatch(observed_sha):
+            errors.append(f"{label} informational HEAD is malformed")
+        if source.get("freshness_basis") != "deterministic-semantic-recomputation":
+            errors.append(f"{label} evidence freshness basis is invalid")
+        semantic_digest = source.get("semantic_digest")
+        if semantic_digest != _semantic_digest(document):
+            errors.append(f"{label} evidence semantic digest is invalid")
     return errors
 
 
+def _summary_markdown(
+    evidence: dict[str, Any],
+    drift: list[str],
+    *,
+    freshness_only: bool,
+) -> str:
+    """Return a concise CI summary without overstating migration completion."""
+
+    gate_status = evidence["gate"]["status"]
+    freshness_status = "FAIL" if drift else "PASS"
+    enforcement = "report-only" if freshness_only else "blocking"
+    lines = [
+        "## Pack v4 migration evidence",
+        "",
+        f"- Evidence freshness: **{freshness_status}**",
+        f"- Semantic migration status: **{gate_status}** ({enforcement})",
+    ]
+    if gate_status == "RED" and freshness_only:
+        migration_findings = evidence.get("findings", {}).get(
+            "migration_evidence", []
+        )
+        missing = sum(
+            finding.get("unverified_count", 0)
+            for finding in migration_findings
+            if isinstance(finding, dict)
+        )
+        lines.append(
+            "- Phase 0 keeps genuine semantic findings visible without claiming "
+            f"migration completion ({missing} Pack release proof(s) missing)."
+        )
+    if drift:
+        lines.extend(["", "Freshness errors:"])
+        lines.extend(f"- {error}" for error in drift)
+    return "\n".join(lines) + "\n"
+
+
+def _exit_code(
+    evidence: dict[str, Any],
+    drift: list[str],
+    *,
+    freshness_only: bool,
+) -> int:
+    """Return the process status for strict or Phase 0 freshness enforcement."""
+
+    if drift:
+        return 1
+    if freshness_only:
+        return 0
+    return 0 if evidence["gate"]["status"] == "GREEN" else 1
+
+
 def main() -> int:
-    """Write evidence and return non-zero while any migration gate is RED."""
+    """Write evidence and enforce strict or explicit Phase 0 exit semantics."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="check evidence without writing the output file",
+    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -241,14 +251,30 @@ def main() -> int:
         default=os.environ.get("TOBKIRI_PR_HEAD_SHA", ""),
         help="exact pull_request head SHA supplied by the workflow event",
     )
+    parser.add_argument(
+        "--freshness-only",
+        action="store_true",
+        help=(
+            "Phase 0 mode: fail on evidence drift while reporting, but not enforcing, "
+            "the semantic migration status"
+        ),
+    )
+    parser.add_argument(
+        "--summary-file",
+        type=Path,
+        help="append a concise migration status report to this CI summary file",
+    )
     args = parser.parse_args()
     output = args.output if args.output.is_absolute() else ROOT / args.output
     evidence = build_evidence()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    if not args.check:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    elif args.check_against is None:
+        args.check_against = output
     drift: list[str] = []
     if args.check_against is not None:
         tracked_path = (
@@ -280,6 +306,9 @@ def main() -> int:
             {
                 "output": output_name,
                 "status": evidence["gate"]["status"],
+                "enforcement": (
+                    "freshness-only" if args.freshness_only else "semantic-and-freshness"
+                ),
                 "nodeids": len(evidence["nodeids"]),
                 "counts": counts,
                 "drift": drift,
@@ -288,7 +317,22 @@ def main() -> int:
             sort_keys=True,
         )
     )
-    return 0 if evidence["gate"]["status"] == "GREEN" and not drift else 1
+    if args.summary_file is not None:
+        summary_file = (
+            args.summary_file
+            if args.summary_file.is_absolute()
+            else ROOT / args.summary_file
+        )
+        summary_file.parent.mkdir(parents=True, exist_ok=True)
+        with summary_file.open("a", encoding="utf-8") as stream:
+            stream.write(
+                _summary_markdown(
+                    evidence,
+                    drift,
+                    freshness_only=args.freshness_only,
+                )
+            )
+    return _exit_code(evidence, drift, freshness_only=args.freshness_only)
 
 
 if __name__ == "__main__":

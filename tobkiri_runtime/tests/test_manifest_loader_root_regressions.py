@@ -66,7 +66,7 @@ def test_repository_authority_catalog_is_exact_and_has_no_loader_gaps() -> None:
     direct_pack_ids = {
         path.name
         for path in ECOSYSTEM.iterdir()
-        if path.is_dir() and path.name != "setup_pack" and not path.name.startswith(".")
+        if (path / "pack.v4.json").is_file()
     }
     authority.validate_manifest_authority_scope(
         direct_pack_ids,
@@ -74,15 +74,16 @@ def test_repository_authority_catalog_is_exact_and_has_no_loader_gaps() -> None:
     )
     catalog = authority.load_manifest_authority_catalog()
 
-    assert len(locations) == 141
-    assert len(catalog) == 143
+    assert len(locations) == 137
+    assert len(catalog) == 141
     assert set(catalog) == direct_pack_ids
     assert set(catalog.values()) == {"v4-authoritative"}
-    assert catalog["defaults"] == "v4-authoritative"
     assert catalog["defaultspack"] == "v4-authoritative"
     assert direct_pack_ids - {location.pack_id for location in locations} == {
-        "defaults",
         "defaultspack",
+        "rumi_command_protocol_pack",
+        "tobkiri_mcp_connection_pack",
+        "tobkiri_ui_settings_pack",
     }
 
     for location in locations:
@@ -103,7 +104,7 @@ def test_repository_authority_catalog_is_exact_and_has_no_loader_gaps() -> None:
 
 
 def test_all_repository_legacy_manifests_validate_without_silent_exclusion() -> None:
-    """The legacy projection audit must accept all 141 repository manifests."""
+    """The legacy projection audit must accept every repository manifest."""
     paths = sorted(ECOSYSTEM.glob("*/ecosystem.json"))
     errors: list[str] = []
     for path in paths:
@@ -112,7 +113,7 @@ def test_all_repository_legacy_manifests_validate_without_silent_exclusion() -> 
         except (OSError, json.JSONDecodeError, SchemaValidationError) as exc:
             errors.append(f"{path.parent.name}: {exc}")
 
-    assert len(paths) == 141
+    assert len(paths) == 137
     assert not errors, "legacy manifest diagnostics: " + " | ".join(errors[:8])
 
 

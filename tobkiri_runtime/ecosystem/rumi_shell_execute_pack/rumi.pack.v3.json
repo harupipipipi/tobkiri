@@ -49,7 +49,7 @@
   },
   "entrypoints": [
     {
-      "artifact_hash": "sha256:b65219636656e0e3f5c820ed34aeeb97462bf83b1fb5e3017c3accda7a74887d",
+      "artifact_hash": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
       "contract_id": "rumi.service.shell.execute.v1",
       "id": "shell-execute",
       "loader": "python",
@@ -88,9 +88,9 @@
           "authority": "execute",
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:38768971fd95113b40ddb1e241814a97377700f0f5e11e81316db3e6d0176184",
+            "artifact_digest": "sha256:afc4be167b207b364b6f7b5907264bb735def147c56aab45613657d8d4e97116",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:756b5c33097c9974f226e7374013be9e0deba6401d9df7d103ae45f66444c7bd"
+            "source_identity": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223"
           },
           "policy_owner": "rumi_shell_policy_pack",
           "projection_owner": "scripts/migrate_manifest_authority.py",
@@ -101,7 +101,7 @@
         "pack_identity": "rumi:ecosystem/rumi_shell_execute_pack",
         "provenance": {
           "build_identity": "rumi_shell_execute_pack:1.0.0",
-          "content_hash": "sha256:b65219636656e0e3f5c820ed34aeeb97462bf83b1fb5e3017c3accda7a74887d",
+          "content_hash": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
           "signature": null,
           "trust_class": "local"
         },
@@ -140,7 +140,7 @@
       "owner": "rumi_shell_execute_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:756b5c33097c9974f226e7374013be9e0deba6401d9df7d103ae45f66444c7bd"
+      "source_identity": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223"
     }
   },
   "migration": {
@@ -186,7 +186,7 @@
   ],
   "provenance": {
     "build_identity": "rumi_shell_execute_pack:1.0.0",
-    "content_hash": "sha256:b65219636656e0e3f5c820ed34aeeb97462bf83b1fb5e3017c3accda7a74887d",
+    "content_hash": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
     "signature": null,
     "trust_class": "local"
   },

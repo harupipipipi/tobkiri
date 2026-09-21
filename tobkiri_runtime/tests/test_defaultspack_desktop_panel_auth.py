@@ -13,6 +13,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.conformance_support.host_contract import host_contract
+
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
@@ -28,11 +30,20 @@ from defaultspack import desktop_app
 manager = desktop_app._require_host_panel_auth_manager()
 server = PackAPIServer(port=0, panel_auth_manager=manager)
 server.start()
+try:
+    server.issue_panel_login_code()
+except RuntimeError:
+    handoff_denied = True
+else:
+    handoff_denied = False
 print(json.dumps({
     "port": server.port,
     "manager_id": id(manager),
     "singleton": manager is get_panel_auth_manager(),
     "server_manager": server._panel_auth_manager is manager,
+    "handoff_denied": handoff_denied,
+    "codes": len(manager._active_codes),
+    "sessions": len(manager._active_sessions),
 }), flush=True)
 if sys.stdin.readline().strip() != "restart":
     raise RuntimeError("restart command is required")
@@ -40,11 +51,20 @@ server.stop()
 restarted_manager = desktop_app._require_host_panel_auth_manager()
 server = PackAPIServer(port=0, panel_auth_manager=restarted_manager)
 server.start()
+try:
+    server.issue_panel_login_code()
+except RuntimeError:
+    handoff_denied = True
+else:
+    handoff_denied = False
 print(json.dumps({
     "port": server.port,
     "manager_id": id(restarted_manager),
     "singleton": restarted_manager is get_panel_auth_manager(),
     "server_manager": server._panel_auth_manager is restarted_manager,
+    "handoff_denied": handoff_denied,
+    "codes": len(restarted_manager._active_codes),
+    "sessions": len(restarted_manager._active_sessions),
 }), flush=True)
 if sys.stdin.readline().strip() != "stop":
     raise RuntimeError("stop command is required")
@@ -58,11 +78,9 @@ def _write_host_contract(root: Path, secret: str) -> Path:
     path = root / "host_contract.json"
     path.write_text(
         json.dumps(
-            {
-                "schema_version": "tobkiri.host-contract.v1",
-                "profile_id": "defaults",
-                "values": {"panel_bootstrap_secret": secret},
-            }
+            host_contract(
+                values={"panel_bootstrap_secret": secret},
+            )
         ),
         encoding="utf-8",
     )
@@ -97,7 +115,7 @@ def _read_child_state(process: subprocess.Popen[str]) -> dict[str, object]:
     return json.loads(line)
 
 
-def test_desktop_panel_auth_uses_exact_host_contract_across_restart(
+def test_desktop_panel_auth_rejects_host_contract_without_dispatch_across_restart(
     tmp_path: Path,
 ) -> None:
     secret = "host-owned-panel-bootstrap-secret"
@@ -129,6 +147,9 @@ def test_desktop_panel_auth_uses_exact_host_contract_across_restart(
         first_port = int(first["port"])
         assert first["singleton"] is True
         assert first["server_manager"] is True
+        assert first["handoff_denied"] is True
+        assert first["codes"] == 0
+        assert first["sessions"] == 0
 
         for headers, body in (
             ({}, {}),
@@ -144,15 +165,17 @@ def test_desktop_panel_auth_uses_exact_host_contract_across_restart(
             observed_payloads.append(payload)
             assert status == 401
 
-        status, bootstrap, _ = _request(
+        status, rejected, response_headers = _request(
             first_port,
             "/api/panel/auth/bootstrap",
             body={},
             headers={"X-Rumi-Desktop-Bootstrap": secret},
         )
-        observed_payloads.append(bootstrap)
-        assert status == 200
-        code = str(bootstrap["data"]["code"])
+        observed_payloads.append(rejected)
+        assert status == 401
+        assert not any(
+            key.lower() == "set-cookie" for key, _value in response_headers
+        )
 
         assert process.stdin is not None
         process.stdin.write("restart\n")
@@ -162,33 +185,34 @@ def test_desktop_panel_auth_uses_exact_host_contract_across_restart(
         assert restarted["manager_id"] == first["manager_id"]
         assert restarted["singleton"] is True
         assert restarted["server_manager"] is True
+        assert restarted["handoff_denied"] is True
+        assert restarted["codes"] == 0
+        assert restarted["sessions"] == 0
 
         origin = f"http://127.0.0.1:{restarted_port}"
         status, exchange, response_headers = _request(
             restarted_port,
             "/api/panel/auth/exchange",
-            body={"code": code},
+            body={"code": "host-contract-only-code"},
             headers={"Origin": origin},
         )
         observed_payloads.append(exchange)
-        assert status == 200
-        cookie = next(
-            value
-            for key, value in response_headers
-            if key.lower() == "set-cookie"
+        assert status == 401
+        assert not any(
+            key.lower() == "set-cookie" for key, _value in response_headers
         )
-        assert "HttpOnly" in cookie
-        assert "SameSite=Strict" in cookie
-        assert exchange["data"]["csrf_token"]
 
-        replay_status, replay, _ = _request(
+        bootstrap_status, bootstrap, bootstrap_headers = _request(
             restarted_port,
-            "/api/panel/auth/exchange",
-            body={"code": code},
-            headers={"Origin": origin},
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": secret},
         )
-        observed_payloads.append(replay)
-        assert replay_status == 401
+        observed_payloads.append(bootstrap)
+        assert bootstrap_status == 401
+        assert not any(
+            key.lower() == "set-cookie" for key, _value in bootstrap_headers
+        )
 
         process.stdin.write("stop\n")
         process.stdin.flush()
@@ -219,7 +243,7 @@ def test_desktop_panel_auth_fails_closed_without_host_contract(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from defaultspack import desktop_app
+    from ecosystem.defaultspack.defaultspack import desktop_app
 
     user_data = tmp_path / "standalone-user-data"
     user_data.mkdir(mode=0o700)
@@ -231,7 +255,7 @@ def test_desktop_panel_auth_fails_closed_without_host_contract(
     monkeypatch.setattr(
         desktop_app,
         "_restore_active_profile_contracts",
-        lambda: (None, ()),
+        lambda _packvm_lifecycle, **_kwargs: (None, ()),
     )
     monkeypatch.setattr(desktop_app, "_write_launch_event", lambda *_args, **_kwargs: None)
 

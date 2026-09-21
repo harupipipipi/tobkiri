@@ -333,12 +333,6 @@ def _register_defaults(container: DIContainer) -> None:
         from .desktop_capability import DesktopCapabilityHandler
         return DesktopCapabilityHandler()
 
-    # --- Managed sandbox boundary ---
-    def _managed_sandbox_supervisor_factory() -> Any:
-        from ecosystem.defaultspack.backend.sandbox.isolation import ManagedSandboxSupervisor
-
-        return ManagedSandboxSupervisor()
-
     # --- Register all (each name exactly once) ---
     container.register("audit_logger", _audit_logger_factory)
     container.register("hmac_key_manager", _hmac_key_manager_factory)
@@ -358,4 +352,3 @@ def _register_defaults(container: DIContainer) -> None:
     container.register("metrics_collector", _metrics_collector_factory)
     container.register("profiler", _profiler_factory)
     container.register("desktop_capability_handler", _desktop_capability_handler_factory)
-    container.register("managed_sandbox_supervisor", _managed_sandbox_supervisor_factory)

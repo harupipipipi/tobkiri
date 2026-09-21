@@ -1,6 +1,8 @@
 import {useRef, useState, type FormEvent} from 'react';
+import {AlertCircle} from 'lucide-react';
 
 import {Button} from '@/src/components/ui/Button';
+import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Card, CardContent, CardHeader, CardTitle} from '@/src/components/ui/Card';
 import type {Pack, PackOperation} from '@/src/store';
 import {formatUserFacingError} from '@/src/lib/userFacingError';
@@ -201,7 +203,7 @@ export function FileInspectOperation({
             >
               {busy ? 'Inspecting…' : 'Inspect file'}
             </Button>
-            {error ? <p className="text-sm text-destructive" role="alert">{error}</p> : null}
+            {error ? <div className="flex items-start gap-2 text-sm text-destructive" role="alert"><AlertCircle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" /><p className="min-w-0 flex-1 break-words">{error}</p><CopyErrorButton label="Copy file inspection error" text={error} /></div> : null}
           </div>
         </form>
         {result !== null ? (

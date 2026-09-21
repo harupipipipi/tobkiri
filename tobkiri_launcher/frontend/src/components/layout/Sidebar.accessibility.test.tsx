@@ -65,3 +65,50 @@ test('bottom-left avatar opens Profile/Settings with native links and returns fo
     Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
   }
 });
+
+test('desktop navigation exposes one labelled Devtools group with selected-state semantics', async () => {
+  const previousState = useAppStore.getState();
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createSurface();
+  useAppStore.setState({devtoolsEnabled: true, isSidebarOpen: true});
+  try {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/graphs']}>
+          <Sidebar />
+        </MemoryRouter>,
+      );
+    });
+    const devtoolsGroup = container.querySelector<HTMLElement>(
+      'li[aria-labelledby="sidebar-group-devtools"]',
+    );
+    assert.ok(devtoolsGroup);
+    assert.equal(
+      devtoolsGroup.querySelector('#sidebar-group-devtools')?.textContent,
+      'Devtools',
+    );
+    assert.equal(devtoolsGroup.querySelectorAll('a').length, 7);
+    const selected = devtoolsGroup.querySelector<HTMLAnchorElement>(
+      'a[href="/graphs"]',
+    );
+    assert.ok(selected);
+    assert.equal(selected.getAttribute('aria-current'), 'page');
+    selected.focus();
+    assert.equal(dom.window.document.activeElement, selected);
+
+    await act(async () => {
+      useAppStore.getState().setDevtoolsEnabled(false);
+    });
+    assert.equal(
+      container.querySelector('li[aria-labelledby="sidebar-group-devtools"]'),
+      null,
+    );
+  } finally {
+    act(() => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});

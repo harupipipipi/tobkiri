@@ -12,29 +12,15 @@ import re
 import stat
 import tempfile
 import time
-from contextlib import contextmanager
-from dataclasses import asdict, replace
+from contextlib import AbstractContextManager, contextmanager
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Protocol
+from typing import Any, Callable, Iterator, Mapping, Protocol
 
 from core_runtime.hmac_key_manager import (
     SigningKeyError,
     _secure_windows_signing_key,
     generate_or_load_signing_key,
-)
-from ecosystem.defaultspack.backend.sandbox.isolation.lima_runtime import (
-    PACKVM_CLEANUP_PREFIX,
-    PackVMDoctor,
-    PackVMProcessError,
-    PackVMProvisioningPlan,
-    PackVMProvisioningRequest,
-)
-from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
-    default_packvm_provisioner,
-)
-from ecosystem.defaultspack.backend.sandbox.isolation.packvm_image_cache import (
-    PackVMImageCancelled,
-    PackVMImageProgress,
 )
 from tobkiri_protocol.secure_persistence import (
     SecureDirectory,
@@ -52,6 +38,45 @@ _JOURNAL_LOCKS_GUARD = threading.Lock()
 _JOURNAL_LOCKS: dict[str, threading.RLock] = {}
 _WINDOWS_VERIFIED_LOCKS_GUARD = threading.Lock()
 _WINDOWS_VERIFIED_LOCKS: set[tuple[int, int, int]] = set()
+_PACKVM_CLEANUP_PREFIX = "DELETE"
+_PACKVM_IMAGE_CANCELLED_CODE = "packvm_image_cancelled"
+
+
+@dataclass(frozen=True)
+class PackVMProvisioningRequest:
+    """Provider-neutral authorization for one exact PackVM plan.
+
+    Provisioners consume this structurally.  Keeping the request at the Host
+    lifecycle boundary prevents core from importing one application's Lima or
+    VZ implementation while preserving the exact consent binding.
+    """
+
+    plan_digest: str
+    ceremony_nonce: str
+    confirmation: str
+    approve_image_download: bool = False
+    session_digest: str | None = None
+    operation_id: str | None = None
+    previous_attestation_digest: str | None = None
+    storage_rebind_digest: str | None = None
+
+
+class PackVMLifecycleCancelled(RuntimeError):
+    """Internal cancellation used to unwind a provisioner progress callback."""
+
+    code = _PACKVM_IMAGE_CANCELLED_CODE
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+    def diagnostic(self) -> dict[str, str]:
+        """Return the same bounded diagnostic shape as Pack backends."""
+
+        return {
+            "code": self.code,
+            "stage": "image_prefetch",
+            "kind": "download",
+        }
 
 
 class PackVMLifecycleProvisioner(Protocol):
@@ -61,19 +86,33 @@ class PackVMLifecycleProvisioner(Protocol):
     def state_path(self) -> Path:
         """Return the durable authenticated state path."""
 
-    def operation_gate(self, operation: str, binding: Mapping[str, str | int], **kwargs: Any) -> Any:
+    def operation_gate(
+        self,
+        operation: str,
+        binding: Mapping[str, str | int],
+        *,
+        recover_claim: bool = False,
+        preserve_claim_on_error: bool = False,
+        retain_claim_on_success: bool = False,
+    ) -> AbstractContextManager[None]:
         """Serialize exactly one authenticated lifecycle operation."""
 
     def recovery_identity(self) -> dict[str, int | str]:
         """Return non-secret recovery identity facts."""
 
-    def prepare(self) -> PackVMProvisioningPlan:
+    def prepare(self) -> Any:
         """Return one explicit provisioning plan."""
 
-    def provision(self, request: PackVMProvisioningRequest, **kwargs: Any) -> PackVMDoctor:
+    def provision(
+        self,
+        request: PackVMProvisioningRequest,
+        *,
+        progress: Callable[[Any], None] | None = None,
+        cancelled: Callable[[], bool] | None = None,
+    ) -> Any:
         """Provision from one consumed authorization."""
 
-    def doctor(self) -> PackVMDoctor:
+    def doctor(self) -> Any:
         """Return the current authenticated health projection."""
 
     def readiness_snapshot(self) -> dict[str, Any]:
@@ -90,7 +129,7 @@ class PackVMLifecycleProvisioner(Protocol):
     ) -> dict[str, Any]:
         """Recoverably remove an exact failed provisioning instance."""
 
-    def recover_provision_operation(self, expected_proof: Mapping[str, Any]) -> PackVMDoctor:
+    def recover_provision_operation(self, expected_proof: Mapping[str, Any]) -> Any:
         """Reconcile an in-flight provision after host restart."""
 
 
@@ -99,18 +138,16 @@ class PackVMLifecycleV4:
 
     def __init__(
         self,
-        provisioner: PackVMLifecycleProvisioner | None = None,
+        provisioner: PackVMLifecycleProvisioner,
         *,
         archive_max_bytes: int = PACKVM_OPERATIONS_ARCHIVE_MAX_BYTES,
         archive_max_records: int = PACKVM_OPERATIONS_ARCHIVE_MAX_RECORDS,
     ) -> None:
-        # Lima is deliberately not a default production path.  Tests and
-        # conformance environments may still inject ``PackVMLimaProvisioner``
-        # explicitly, but a normal Launcher lifecycle selects direct VZ and
-        # reports unavailable if its signed prerequisites are not installed.
-        self._provisioner = provisioner or default_packvm_provisioner()
-        self._plans: dict[str, tuple[PackVMProvisioningPlan, str]] = {}
-        self._consents: dict[str, tuple[PackVMProvisioningRequest, PackVMProvisioningPlan]] = {}
+        # The selected Application composes the concrete VZ/Lima provisioner.
+        # Core owns the authenticated ceremony and never imports a Pack backend.
+        self._provisioner = provisioner
+        self._plans: dict[str, tuple[Any, str]] = {}
+        self._consents: dict[str, tuple[PackVMProvisioningRequest, Any]] = {}
         self._operations_path = self._provisioner.state_path.parent / "packvm-operations.json"
         self._operations_key_path = self._provisioner.state_path.parent / "packvm-operations.key"
         self._operations_archive_path = (
@@ -136,6 +173,7 @@ class PackVMLifecycleV4:
         self._loaded_state_digest: str | None = None
         self._loaded_archive_size = 0
         self._operations_generation = 0
+        self._journal_recovery_changed = False
         self._journal_loaded = False
         if self._operations_lock_path.parent.is_dir():
             with self._journal_transaction(recover=True):
@@ -169,7 +207,10 @@ class PackVMLifecycleV4:
             "confirmation",
             "approve_image_download",
         }
-        if set(payload) != expected_keys:
+        if set(payload) not in (
+            expected_keys, expected_keys | {"previous_attestation_digest"},
+            expected_keys | {"previous_attestation_digest", "storage_rebind_digest"},
+        ):
             raise ValueError("PackVM consent payload does not match the typed contract")
         plan_digest = payload.get("plan_digest")
         ceremony_nonce = payload.get("ceremony_nonce")
@@ -194,6 +235,24 @@ class PackVMLifecycleV4:
                 or not secrets.compare_digest(plan.confirmation, confirmation)
             ):
                 raise ValueError("PackVM consent does not match a pending plan")
+            update = plan.registration_update
+            previous_attestation = (
+                update["previous_attestation_digest"] if update is not None else None
+            )
+            if update is not None:
+                expected_keys.add("previous_attestation_digest")
+            rebind = plan.storage_rebind
+            rebind_digest = rebind["digest"] if rebind is not None else None
+            if rebind is not None:
+                if update is None or not isinstance(rebind_digest, str):
+                    raise ValueError("PackVM storage re-registration plan is invalid")
+                expected_keys.add("storage_rebind_digest")
+            if (
+                set(payload) != expected_keys
+                or payload.get("previous_attestation_digest") != previous_attestation
+                or payload.get("storage_rebind_digest") != rebind_digest
+            ):
+                raise ValueError("PackVM registration update requires exact explicit consent")
             if plan.image_download_required and not approve_download:
                 raise ValueError(
                     "PackVM image download requires explicit consent for the displayed source, size, and digest"
@@ -215,6 +274,8 @@ class PackVMLifecycleV4:
                         confirmation=confirmation,
                         approve_image_download=approve_download,
                         session_digest=current_session_digest,
+                        previous_attestation_digest=previous_attestation,
+                        storage_rebind_digest=rebind_digest,
                     ),
                     plan,
                 )
@@ -225,6 +286,8 @@ class PackVMLifecycleV4:
                 "image_digest": plan.image_digest,
                 "image_size_bytes": plan.image_size_bytes,
                 "image_download_approved": approve_download,
+                "previous_attestation_digest": previous_attestation,
+                "storage_rebind_digest": rebind_digest,
             }
 
     def provision(
@@ -279,6 +342,10 @@ class PackVMLifecycleV4:
                     "image_digest": plan.image_digest,
                     "guest_runner_digest": plan.guest_runner_digest,
                     "host_build_digest": plan.host_build_digest,
+                    **({"previous_attestation_digest": request.previous_attestation_digest}
+                       if request.previous_attestation_digest is not None else {}),
+                    **({"storage_rebind_digest": request.storage_rebind_digest}
+                       if request.storage_rebind_digest is not None else {}),
                     **self._provisioner.recovery_identity(),
                 },
                 "updated_unix": int(time.time()),
@@ -376,6 +443,30 @@ class PackVMLifecycleV4:
         except (OSError, ValueError):
             return None
 
+    def recover_interrupted_allocation(
+        self,
+        *,
+        domain_id: str,
+        reservation_id: str,
+        executable_digest: str,
+    ) -> bool:
+        """Confirm exact pre-launch child cleanup for admission recovery."""
+
+        candidate = getattr(self._provisioner, "recover_interrupted_allocation", None)
+        if not callable(candidate):
+            return False
+        with self._lock:
+            try:
+                return bool(
+                    candidate(
+                        domain_id=domain_id,
+                        reservation_id=reservation_id,
+                        executable_digest=executable_digest,
+                    )
+                )
+            except (OSError, ValueError):
+                return False
+
     def stop(self, payload: Mapping[str, object]) -> Mapping[str, Any]:
         """Stop only the authenticated v4 instance after exact confirmation."""
 
@@ -412,7 +503,7 @@ class PackVMLifecycleV4:
             raise ValueError("PackVM cleanup payload types are invalid")
         current_session_digest = _session_digest(session_id)
         instance = str(self._provisioner.doctor().instance)
-        expected_confirmation = f"{PACKVM_CLEANUP_PREFIX} {instance}"
+        expected_confirmation = f"{_PACKVM_CLEANUP_PREFIX} {instance}"
         if not secrets.compare_digest(confirmation, expected_confirmation):
             raise ValueError(f"PackVM cleanup requires exact confirmation: {expected_confirmation}")
         with self._journal_transaction():
@@ -440,14 +531,47 @@ class PackVMLifecycleV4:
                 ):
                     raise ValueError("PackVM failed-provision cleanup source is invalid")
                 bound_cleanup = source.get("cleanup_operation_id")
-                if bound_cleanup is not None and bound_cleanup != operation_id:
+                if not _cleanup_binding_is_retryable(
+                    self._operations, bound_cleanup, operation_id
+                ):
                     raise ValueError("PackVM failed-provision cleanup is already bound")
                 source["cleanup_operation_id"] = operation_id
-                proof = dict(source["recovery_proof"])
                 plan_digest = str(source["plan_digest"])
-                mode = "failed_provision"
+                if self._provisioner.state_path.exists():
+                    # A preflight failure may coexist with an older, fully
+                    # authenticated instance.  Its explicit deletion is the
+                    # ordinary attested cleanup ceremony; failed-provision
+                    # proof remains reserved for an orphan with no state.
+                    proof = None
+                    mode = "attested"
+                else:
+                    proof = dict(source["recovery_proof"])
+                    mode = "failed_provision"
             elif not self._provisioner.state_path.exists():
-                raise ValueError("PackVM cleanup requires failed-provision recovery evidence")
+                # A Launcher restart rotates the authenticated panel session,
+                # so the new UI cannot read the prior session's operation.
+                # Recover only when the durable journal contains exactly one
+                # unfinished failed provision with its Host-created proof.
+                recoverable = [
+                    (source_id, source)
+                    for source_id, source in self._operations.items()
+                    if source.get("operation_kind") == "provision"
+                    and source.get("state") in {"failed", "interrupted"}
+                    and isinstance(source.get("recovery_proof"), dict)
+                    and _cleanup_binding_is_retryable(
+                        self._operations,
+                        source.get("cleanup_operation_id"),
+                        operation_id,
+                    )
+                ]
+                if len(recoverable) != 1:
+                    raise ValueError("PackVM cleanup requires failed-provision recovery evidence")
+                recovered_source_id, recovered_source = recoverable[0]
+                recovered_source["cleanup_operation_id"] = operation_id
+                source_operation_id = recovered_source_id
+                proof = dict(recovered_source["recovery_proof"])
+                plan_digest = str(recovered_source["plan_digest"])
+                mode = "failed_provision"
             record: dict[str, Any] = {
                 "operation_id": operation_id,
                 "operation_kind": "cleanup",
@@ -490,20 +614,20 @@ class PackVMLifecycleV4:
                     cancelled=lambda: self._operation_cancel_requested(operation_id),
                 )
             )
-        except PackVMImageCancelled:
-            with self._journal_transaction():
-                record = self._operations[operation_id]
-                record.update(
-                    {
-                        "state": "cancelled",
-                        "stage": "image_prefetch",
-                        "updated_unix": int(time.time()),
-                    }
-                )
-                record.pop("cancel_requested", None)
-                self._persist_operations()
-            return
         except Exception as error:
+            if _is_packvm_cancelled(error):
+                with self._journal_transaction():
+                    record = self._operations[operation_id]
+                    record.update(
+                        {
+                            "state": "cancelled",
+                            "stage": "image_prefetch",
+                            "updated_unix": int(time.time()),
+                        }
+                    )
+                    record.pop("cancel_requested", None)
+                    self._persist_operations()
+                return
             with self._journal_transaction():
                 record = self._operations[operation_id]
                 failure = _operation_failure(error)
@@ -522,15 +646,14 @@ class PackVMLifecycleV4:
             self._compact_operations()
             self._persist_operations()
 
-    def _record_prefetch_progress(self, operation_id: str, update: PackVMImageProgress) -> None:
+    def _record_prefetch_progress(self, operation_id: str, update: Any) -> None:
         """Persist bounded typed download progress without exposing cache paths."""
 
         with self._journal_transaction():
             record = self._operations[operation_id]
             if update.stage == "verified" and record.get("cancel_requested"):
-                raise PackVMImageCancelled(
-                    "packvm_image_cancelled",
-                    "PackVM image download was cancelled before provisioning",
+                raise PackVMLifecycleCancelled(
+                    "PackVM image download was cancelled before provisioning"
                 )
             record.update(
                 {
@@ -567,7 +690,7 @@ class PackVMLifecycleV4:
             cleanup_result = {
                 "ready": False,
                 "instance": instance,
-                "cleanup_confirmation": f"{PACKVM_CLEANUP_PREFIX} {instance}",
+                "cleanup_confirmation": f"{_PACKVM_CLEANUP_PREFIX} {instance}",
                 "missing": missing,
             }
         except Exception as error:
@@ -613,9 +736,27 @@ class PackVMLifecycleV4:
                 acquired = True
                 if reload or first_load:
                     self._reload_operations(recover=recover or first_load)
-                    if first_load and (self._operations or self._archived_operations):
+                    if first_load:
+                        # Startup normally only reads the authenticated
+                        # journal. Rewriting it here used to bump its
+                        # generation/HMAC on every Launcher boot, even when
+                        # recovery and compaction had made no changes. Keep
+                        # the compatibility compaction behavior, but persist
+                        # only when the in-memory journal or archive actually
+                        # changed. This makes a read-only startup harmless to
+                        # another app instance that owns the same PackVM.
+                        before_operations = _canonical_json(self._operations)
+                        before_archived = _canonical_json(self._archived_operations)
+                        before_checkpoint = _canonical_json(self._archive_checkpoint)
                         self._compact_operations()
-                        self._persist_operations()
+                        changed = (
+                            self._journal_recovery_changed
+                            or before_operations != _canonical_json(self._operations)
+                            or before_archived != _canonical_json(self._archived_operations)
+                            or before_checkpoint != _canonical_json(self._archive_checkpoint)
+                        )
+                        if changed:
+                            self._persist_operations()
                     self._journal_loaded = True
                 yield
             finally:
@@ -628,6 +769,7 @@ class PackVMLifecycleV4:
     def _reload_operations(self, *, recover: bool) -> None:
         """Reload both authenticated journals while holding the process lock."""
 
+        self._journal_recovery_changed = False
         (
             self._archived_operations,
             self._archive_checkpoint,
@@ -742,6 +884,7 @@ class PackVMLifecycleV4:
                     )
                     record["error_type"] = "PackVMOperationInterrupted"
                 record["updated_unix"] = int(time.time())
+                self._journal_recovery_changed = True
             operations[operation_id] = record
         return operations
 
@@ -1170,6 +1313,32 @@ def _canonical_operation_id(value: str) -> bool:
     return re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", value) is not None
 
 
+def _cleanup_binding_is_retryable(
+    operations: Mapping[str, Mapping[str, Any]],
+    bound_cleanup: object,
+    operation_id: str,
+) -> bool:
+    if bound_cleanup is None or bound_cleanup == operation_id:
+        return True
+    if not isinstance(bound_cleanup, str):
+        return False
+    record = operations.get(bound_cleanup)
+    return bool(
+        isinstance(record, Mapping)
+        and record.get("operation_kind") == "cleanup"
+        and record.get("state") in {"failed", "interrupted", "cancelled"}
+    )
+
+
+def _is_packvm_cancelled(error: BaseException) -> bool:
+    """Recognize the stable provider-neutral cancellation code."""
+
+    return secrets.compare_digest(
+        str(getattr(error, "code", "")),
+        _PACKVM_IMAGE_CANCELLED_CODE,
+    )
+
+
 def _operation_failure(error: Exception) -> dict[str, Any]:
     """Normalize failures without exposing host paths or unbounded stderr."""
 
@@ -1179,8 +1348,9 @@ def _operation_failure(error: Exception) -> dict[str, Any]:
         "error": message[:1000] or "PackVM operation failed",
         "error_type": type(error).__name__,
     }
-    if isinstance(error, PackVMProcessError) or hasattr(error, "diagnostic"):
-        result["diagnostic"] = error.diagnostic()
+    diagnostic = getattr(error, "diagnostic", None)
+    if callable(diagnostic):
+        result["diagnostic"] = diagnostic()
     return result
 
 

@@ -1,12 +1,12 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:4574c9aaef9bedc0b62f1c3e81d1d23915fd8b49fba36db12d3bf4040463ffe6",
+      "digest": "sha256:29b55d7f3a9418dfea988820ff32d547c8192a776d8bfdfad7ecb40234945f88",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
     {
-      "digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+      "digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
       "kind": "executable",
       "path": "runtime/gateway.py"
     }
@@ -17,14 +17,14 @@
       "operations": [
         "rumi_mcp_gateway_pack.mcp-tool-call"
       ],
-      "revision_digest": "sha256:8ef6ff26343e457a1b65180c49f61f975a0a3c026198ccef77448058a73810f8"
+      "revision_digest": "sha256:d1117f854fadb21187afcade4c13675587b2b129f71237c2a689bf6a791e333e"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:8ef6ff26343e457a1b65180c49f61f975a0a3c026198ccef77448058a73810f8",
+      "contract_revision_digest": "sha256:d1117f854fadb21187afcade4c13675587b2b129f71237c2a689bf6a791e333e",
       "id": "rumi_mcp_gateway_pack.mcp-gateway.call",
-      "implementation_digest": "sha256:9e2f3c61f5ec2364192ab8d86965e126f9d83bb647d7cf942f6d3ff002c9e162",
+      "implementation_digest": "sha256:8e4ffd7d83e78a528f233fd8a36b40392e58b5d9456c563996f9baf211c4b7c1",
       "isolation": "dedicated_process",
       "operations": [
         "rumi_mcp_gateway_pack.mcp-tool-call"
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
-    "contract_catalog_digest": "sha256:9cd1973d02da6e6eed723e08cf5dc27d748a7adf8c55b2788956a3a0925ee318",
-    "source_identity": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda"
+    "artifact_set_digest": "sha256:c40504befcc685174c4085d5458887d20ece0bdac74a4b216c662b99b3a479e8",
+    "contract_catalog_digest": "sha256:9973c78f8eee53104ae48978e76653ff87b2e9e9353b1ee46af7db0a8ebf3224",
+    "source_identity": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d"
   },
   "migration": {
     "compatibility": "read_only",
@@ -60,8 +60,8 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:537127d7d310ff87abc9a2e8b079108872f9fb300131d9d181f93eb8c9854fc8",
-    "display_name": "Rumi MCP Gateway",
+    "artifact_digest": "sha256:c40504befcc685174c4085d5458887d20ece0bdac74a4b216c662b99b3a479e8",
+    "display_name": "Tobkiri MCP Gateway",
     "id": "rumi_mcp_gateway_pack",
     "kind": "normal_sandbox",
     "version": "1.1.0"
@@ -70,7 +70,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda",
+        "digest": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -81,7 +81,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:99eedbd309d55d19cb992ca0cfff49f04b4c8a40ddd658289637b2648a8a2cda",
+    "source_digest": "sha256:3af5e73a9fdd3afdaec7ee7ccfe4e2e6bf2a26e71665684fa7330a9f1a5b985d",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_mcp_gateway_pack"
   },
@@ -101,7 +101,14 @@
       "mcp.invoke",
       "mcp.tool.call"
     ],
-    "contract_dependencies": [],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.mcp.connection.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
+      }
+    ],
     "execution_boundary": "sandbox",
     "network": {
       "allowed_domains": [],

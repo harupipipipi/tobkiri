@@ -26,7 +26,6 @@ if str(_PACK_ROOT) not in sys.path:
 from domain.runtime_v4 import BundledCatalog, DefaultProfileV4Error  # noqa: E402
 
 PROTOCOL = "io.tobkiri.cli.io.v1"
-DEFAULT_PROFILE_ID = "defaults"
 DEFAULT_OUTPUT_LIMIT = 1_048_576
 MAX_OUTPUT_LIMIT = 1_048_576
 INVALID_REQUEST_ID = "cli:req:invalid000"
@@ -154,7 +153,11 @@ def _handle_request(
             output_limit=output_limit,
         )
     if command == "profile.identity":
-        profile_id = str(request.get("profile_id") or DEFAULT_PROFILE_ID)
+        profile_id = request.get("profile_id")
+        if not isinstance(profile_id, str) or not profile_id:
+            raise CliShellError(
+                "profile identity requires a Host-captured active Profile v4 activation"
+            )
         if profile_id not in catalog.profiles:
             raise CliShellError(f"profile is not cataloged: {profile_id}")
         raise CliShellError(
@@ -174,17 +177,20 @@ def _result(
 ) -> dict[str, Any]:
     if len(stdout.encode("utf-8")) + len(stderr.encode("utf-8")) > output_limit:
         raise CliShellError("structured output exceeds the requested limit")
-    return {
+    result = {
         "protocol": PROTOCOL,
         "type": "result",
         "request_id": request["request_id"],
-        "profile_id": request.get("profile_id") or DEFAULT_PROFILE_ID,
         "shell_provider_id": request.get("shell_provider_id") or "shell.cli.default",
         "stdout": stdout,
         "stderr": stderr,
         "exit_status": exit_status,
         "stream": stream,
     }
+    profile_id = request.get("profile_id")
+    if isinstance(profile_id, str) and profile_id:
+        result["profile_id"] = profile_id
+    return result
 
 
 def _validated_response(response: dict[str, Any]) -> dict[str, Any]:

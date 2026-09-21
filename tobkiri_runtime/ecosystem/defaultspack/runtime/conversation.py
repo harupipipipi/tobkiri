@@ -151,14 +151,14 @@ def tobkiri_packvm_invoke(
         raise TypeError("PackVM conversation payload must be an object")
 
     # The outer operation payload can include Host/UI routing metadata.  It is
-    # deliberately not bridged: only messages survive, and the guest creates
-    # its own fixed capability request below.
+    # deliberately not bridged. Only messages and the bounded model reference
+    # survive; the guest still creates its own fixed capability request.
     if (
         "messages" in payload
         and "continuation" not in payload
         and "bridge_result" not in payload
     ):
-        return _bridge_request_for_messages(payload["messages"])
+        return _bridge_request_for_messages(payload["messages"], payload)
     if set(payload) == {"continuation", "bridge_result"}:
         return _resume_bridge_result(
             payload["continuation"],
@@ -170,7 +170,9 @@ def tobkiri_packvm_invoke(
     )
 
 
-def _bridge_request_for_messages(messages: Any) -> dict[str, Any]:
+def _bridge_request_for_messages(
+    messages: Any, payload: Mapping[str, Any],
+) -> dict[str, Any]:
     """Create one Host-mediated generate request from a bounded turn."""
 
     if not isinstance(messages, list) or not messages:
@@ -184,6 +186,17 @@ def _bridge_request_for_messages(messages: Any) -> dict[str, Any]:
         "messages": _bounded_json_value(messages),
         "requirements": {"request_surface": "defaultspack.conversation"},
     }
+    if "model" in payload:
+        model = payload["model"]
+        if (
+            not isinstance(model, str)
+            or not model
+            or model != model.strip()
+            or len(model) > 256
+            or any(ord(char) < 32 or ord(char) == 127 for char in model)
+        ):
+            raise ValueError("model must be a bounded nonempty reference")
+        request["model_reference"] = model
     _assert_encoded_size(request, _MAX_BRIDGE_REQUEST_BYTES, "bridge request")
     request_digest = _canonical_digest(request)
     continuation = {

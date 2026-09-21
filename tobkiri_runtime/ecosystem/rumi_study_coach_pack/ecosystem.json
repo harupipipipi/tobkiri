@@ -77,15 +77,15 @@
         "templates/artifact_card.template.md"
       ]
     },
+    "base_pack_promotion_eligible": false,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:a7837f556d5c492c64105a8988efbf22f7917dad9d5018c277a55afdb7433714",
+      "artifact_digest": "sha256:18ae6243113c8876a048597cecf08731bf666805b18fff7d04b943658be53c8c",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:8751721c92a4501658039951b619748efd2bcd389917ab7b16c51f563e2f2138"
+      "source_identity": "sha256:25f63bff88ce632cd9754da957ff9d2d79fba8edaef397516e2e0c582d0b2e92"
     },
     "consumes_existing_sources_only": true,
     "declarative_only": true,
-    "defaultspack_promotion_eligible": false,
     "executable_code": false,
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -93,7 +93,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:8751721c92a4501658039951b619748efd2bcd389917ab7b16c51f563e2f2138"
+      "source_content_hash": "sha256:25f63bff88ce632cd9754da957ff9d2d79fba8edaef397516e2e0c582d0b2e92"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -154,7 +154,7 @@
   "pack_identity": "rumi:ecosystem/rumi_study_coach_pack",
   "provenance": {
     "build_identity": "rumi_study_coach_pack:0.1.0",
-    "content_hash": "sha256:a7837f556d5c492c64105a8988efbf22f7917dad9d5018c277a55afdb7433714",
+    "content_hash": "sha256:18ae6243113c8876a048597cecf08731bf666805b18fff7d04b943658be53c8c",
     "signature": null,
     "trust_class": "local"
   },

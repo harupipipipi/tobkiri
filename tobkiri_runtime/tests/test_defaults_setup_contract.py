@@ -11,8 +11,12 @@ from urllib.request import urlopen
 
 import pytest
 
-from core_runtime.api.defaults_setup_contract import validate_defaults_setup_payload
-from core_runtime.bootstrap.runtime import Kernel
+from ecosystem.defaultspack.defaultspack.setup_contract import (
+    validate_defaults_setup_payload,
+)
+from ecosystem.defaultspack.defaultspack.runtime_composition import (
+    create_defaultspack_kernel,
+)
 from core_runtime.panel_auth import PanelAuthManager, reset_panel_auth_manager_for_tests
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.errors import SchemaValidationError
@@ -24,9 +28,7 @@ pytestmark = pytest.mark.contract
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_ROOT = RUNTIME_ROOT / "tobkiri_protocol" / "fixtures"
 CANONICAL_FIXTURE = FIXTURE_ROOT / "defaults_setup_v4.canonical.json"
-PRE_FIX_BINDING_FIXTURE = (
-    FIXTURE_ROOT / "defaults_setup_v4.pre_fix_binding_shape.json"
-)
+PRE_FIX_BINDING_FIXTURE = FIXTURE_ROOT / "defaults_setup_v4.pre_fix_binding_shape.json"
 
 
 def _fixture() -> dict[str, Any]:
@@ -36,11 +38,7 @@ def _fixture() -> dict[str, Any]:
 def _resign(payload: dict[str, Any]) -> None:
     confirmation = payload["recommended_default_profile"]["confirmation"]
     confirmation["confirmation_digest"] = canonical_digest(
-        {
-            key: value
-            for key, value in confirmation.items()
-            if key != "confirmation_digest"
-        }
+        {key: value for key, value in confirmation.items() if key != "confirmation_digest"}
     )
 
 
@@ -73,18 +71,16 @@ def test_canonical_fixture_is_schema_and_semantically_exact() -> None:
     "mutate",
     [
         lambda payload: payload.__setitem__("unknown", True),
-        lambda payload: payload["recommended_default_profile"].__setitem__(
-            "available", False
-        ),
+        lambda payload: payload["recommended_default_profile"].__setitem__("available", False),
         lambda payload: payload["recommended_default_profile"]["confirmation"].__setitem__(
             "security_epoch", "1"
         ),
-        lambda payload: payload["recommended_default_profile"]["confirmation"][
-            "bindings"
-        ][0].__setitem__("variant_id", 7),
-        lambda payload: payload["recommended_default_profile"]["confirmation"][
-            "bindings"
-        ][0].__setitem__("adapter_digests", ["sha256:" + "0" * 64] * 2),
+        lambda payload: payload["recommended_default_profile"]["confirmation"]["bindings"][
+            0
+        ].__setitem__("variant_id", 7),
+        lambda payload: payload["recommended_default_profile"]["confirmation"]["bindings"][
+            0
+        ].__setitem__("adapter_digests", ["sha256:" + "0" * 64] * 2),
     ],
 )
 def test_schema_rejects_unknown_unavailable_and_wrong_type_payloads(mutate) -> None:
@@ -97,14 +93,10 @@ def test_schema_rejects_unknown_unavailable_and_wrong_type_payloads(mutate) -> N
 def test_pre_fix_binding_shape_reproduces_missing_executable_placement() -> None:
     payload = _fixture()
     pre_fix = json.loads(PRE_FIX_BINDING_FIXTURE.read_text(encoding="utf-8"))
-    canonical_binding = payload["recommended_default_profile"]["confirmation"][
-        "bindings"
-    ][0]
+    canonical_binding = payload["recommended_default_profile"]["confirmation"]["bindings"][0]
     missing = [key for key in canonical_binding if key not in pre_fix["binding"]]
     assert missing == pre_fix["missing_canonical_fields"]
-    payload["recommended_default_profile"]["confirmation"]["bindings"][0] = (
-        pre_fix["binding"]
-    )
+    payload["recommended_default_profile"]["confirmation"]["bindings"][0] = pre_fix["binding"]
     _resign(payload)
     with pytest.raises(SchemaValidationError, match="required propert"):
         validate_defaults_setup_payload(payload)
@@ -112,9 +104,7 @@ def test_pre_fix_binding_shape_reproduces_missing_executable_placement() -> None
 
 def test_stale_digest_duplicate_binding_and_principal_tamper_fail_closed() -> None:
     stale = _fixture()
-    stale["recommended_default_profile"]["confirmation"]["catalog_revision"] = (
-        "sha256:" + "0" * 64
-    )
+    stale["recommended_default_profile"]["confirmation"]["catalog_revision"] = "sha256:" + "0" * 64
     with pytest.raises(SchemaValidationError, match="confirmation_digest"):
         validate_defaults_setup_payload(stale)
 
@@ -126,9 +116,9 @@ def test_stale_digest_duplicate_binding_and_principal_tamper_fail_closed() -> No
         validate_defaults_setup_payload(duplicate)
 
     principal_tamper = _fixture()
-    principal_tamper["recommended_default_profile"]["confirmation"]["bindings"][
-        0
-    ]["function_principal"]["parent_artifact_digest"] = "sha256:" + "0" * 64
+    principal_tamper["recommended_default_profile"]["confirmation"]["bindings"][0][
+        "function_principal"
+    ]["parent_artifact_digest"] = "sha256:" + "0" * 64
     _resign(principal_tamper)
     with pytest.raises(SchemaValidationError, match="parent artifact"):
         validate_defaults_setup_payload(principal_tamper)
@@ -144,10 +134,8 @@ def test_real_pack_api_server_payload_matches_cross_language_fixture_shape(
     monkeypatch.setenv("RUMI_PORT", str(port))
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path / "user_data"))
     monkeypatch.setenv("RUMI_LOG_DIR", str(tmp_path / "logs"))
-    reset_panel_auth_manager_for_tests(
-        PanelAuthManager(bootstrap_secret="defaults-contract-test")
-    )
-    kernel = Kernel()
+    reset_panel_auth_manager_for_tests(PanelAuthManager(bootstrap_secret="defaults-contract-test"))
+    kernel = create_defaultspack_kernel()
     try:
         kernel.run_startup_until("api_init")
         remaining = kernel.run_startup_remaining()

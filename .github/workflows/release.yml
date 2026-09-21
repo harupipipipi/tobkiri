@@ -14,6 +14,9 @@ permissions:
 
 env:
   TOBKIRI_RELEASE_REPOSITORY: harupipipipi/tobkiri
+  # Keep this JSON array identical to the target matrix below. Add a target
+  # here only in the same change that adds its real packaging job.
+  TOBKIRI_REQUIRED_RELEASE_TARGETS: '["aarch64-apple-darwin"]'
   PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
@@ -25,6 +28,7 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             shell_bundles: app
+            signing_args: --no-sign
             presentation_variant: shell.tauri.default.macos-arm64
             presentation_platform: macos
             presentation_architecture: arm64
@@ -62,8 +66,8 @@ jobs:
           identity_launcher="$RUNNER_TEMP/tobkiri-packaging-identity-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN.py"
           test "$(/usr/bin/stat -f '%Su:%Lp' "$formal_git")" = "root:755"
           /usr/bin/codesign --verify --strict --all-architectures "$formal_git"
-          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -qx 'Identifier=com.apple.git'
-          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -qx 'TeamIdentifier=59GAB85EFG'
+          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -Fx 'Identifier=com.apple.git' > /dev/null
+          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -Fx 'TeamIdentifier=59GAB85EFG' > /dev/null
           export GIT_CONFIG=/dev/null GIT_CONFIG_GLOBAL=/dev/null
           export GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
           export GIT_ATTR_NOSYSTEM=1 GIT_EXEC_PATH=/private/var/empty
@@ -287,15 +291,8 @@ jobs:
               output.write(f"source_revision={source_revision}\n")
               output.write(f"source_tree={source_tree}\n")
 
-      - name: Verify exact release tag, versions, and production trust policy
+      - name: Verify exact release tag and synchronized versions
         shell: python
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           import os
           import subprocess
@@ -314,22 +311,18 @@ jobs:
               ],
               check=True,
           )
-          subprocess.run(
-              [
-                  sys.executable,
-                  "scripts/release_gate.py",
-                  "signing",
-                  "--mode",
-                  "production",
-                  "--platform",
-                  "${{ matrix.presentation_platform }}",
-                  "--check-tools",
-              ],
-              check=True,
-          )
 
       - name: Install locked runtime and test dependencies
         run: python .github/scripts/install_locked_python_test_dependencies.py
+
+      - name: Enforce Command Protocol production activation gate
+        working-directory: tobkiri_runtime
+        run: >-
+          python -m pytest -q
+          tests/test_complete_v4_migration_gate.py::test_signed_frontend_maps_do_not_activate_uncaptured_command_protocol
+          tests/test_complete_v4_migration_gate.py::test_application_route_map_policy_rejects_renamed_v5_signed_map
+          tests/test_defaultspack_command_protocol.py::test_command_protocol_routes_are_not_legacy_transport_routes
+          tests/test_production_frontend_contract_http.py::test_command_protocol_paths_are_inert_in_captured_production_http
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -419,85 +412,67 @@ jobs:
           --target ${{ matrix.target }}
           --profile release
 
-      - name: Build verified Tauri Shell artifact
+      - name: Build unsigned Tauri Shell artifact
         working-directory: tobkiri_launcher
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: cargo tauri build --target ${{ matrix.target }} --config src-tauri/tauri.shell.conf.json --bundles ${{ matrix.shell_bundles }} --ci
+        run: >-
+          python -B scripts/run_tauri_build.py build --target ${{ matrix.target }}
+          --config src-tauri/tauri.shell.conf.json --bundles ${{ matrix.shell_bundles }}
+          --ci ${{ matrix.signing_args }}
 
-      - name: Notarize and staple macOS Shell artifact
+      - name: Ad-hoc sign macOS Tauri Shell artifact
         if: runner.os == 'macOS'
         shell: bash
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          artifact="$(find "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name 'Tobkiri.app' -print -quit)"
-          test -n "$artifact"
-          python scripts/release_gate.py sign-artifacts \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --mode production \
-            --platform macos \
-            --app-bundle "$artifact" \
-            --artifact "$artifact"
+          artifact="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri.app"
+          test -d "$artifact"
+          /usr/bin/codesign --force --sign - --timestamp=none "$artifact"
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$artifact"
 
-      - name: Build signed macOS application
+      - name: Build unsigned macOS application
         if: runner.os == 'macOS'
         working-directory: tobkiri_launcher
         env:
           TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: cargo tauri build --target ${{ matrix.target }} --bundles app --ci
+        run: >-
+          python -B scripts/run_tauri_build.py build --target ${{ matrix.target }}
+          --bundles app --ci ${{ matrix.signing_args }}
 
-      - name: Stage and sign macOS PackVM VZ helper
+      - name: Stage and ad-hoc sign macOS PackVM VZ helper and application
         if: runner.os == 'macOS'
         shell: bash
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher.app"
           helper="$app/Contents/MacOS/tobkiri-packvm-vz-helper"
           test -d "$app"
+          bundle_identifier=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")
+          test "$bundle_identifier" = dev.rumiai.app
           bash tobkiri_launcher/scripts/build_packvm_vz_helper.sh \
             --target '${{ matrix.target }}' --app-bundle "$app"
           test -f "$helper"
           test ! -L "$helper"
           test -f "$app/Contents/Resources/packvm-vz-provisioning.v1.json"
           test ! -L "$app/Contents/Resources/packvm-vz-provisioning.v1.json"
-          /usr/bin/codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+          /usr/bin/codesign --force --sign - --timestamp=none \
             --identifier dev.tobkiri.launcher.packvm-vz-helper \
-            --options runtime --timestamp \
             --entitlements tobkiri_launcher/packvm-vz-helper/Entitlements/tobkiri-packvm-vz-helper.entitlements \
             "$helper"
           /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$helper"
           helper_details=$(/usr/bin/codesign -d -r- --verbose=4 "$helper" 2>&1)
           /usr/bin/grep -Fqx 'Identifier=dev.tobkiri.launcher.packvm-vz-helper' <<<"$helper_details"
-          /usr/bin/grep -Fq 'designated => identifier "dev.tobkiri.launcher.packvm-vz-helper"' <<<"$helper_details"
+          /usr/bin/grep -Fqx 'Signature=adhoc' <<<"$helper_details"
           /usr/bin/codesign -d --entitlements :- "$helper" 2>/dev/null \
             | /usr/bin/plutil -extract 'com\.apple\.security\.virtualization' raw -o - - \
             | /usr/bin/grep -qx true
           python .github/scripts/macos_ci_artifact.py write-packvm-bundle-manifest \
             --app-bundle "$app" \
-            --expected-signing-mode developer-id \
-            --expected-team-id "$APPLE_TEAM_ID"
-          /usr/bin/codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
-            --options runtime --timestamp "$app"
+            --expected-signing-mode ad-hoc
+          /usr/bin/codesign --force --sign - --timestamp=none "$app"
           /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$app"
+          app_details=$(/usr/bin/codesign -d -r- --verbose=4 "$app" 2>&1)
+          /usr/bin/grep -Fqx 'Identifier=dev.rumiai.app' <<<"$app_details"
+          /usr/bin/grep -Fqx 'Signature=adhoc' <<<"$app_details"
 
       - name: Host-seal and launch-test packaged Python application resources
         if: runner.os == 'macOS'
@@ -515,28 +490,23 @@ jobs:
             --native-smoke
           test ! -e "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher.app/Contents/Resources/app/logs"
 
-      - name: Verify Developer ID signed macOS application
+      - name: Verify ad-hoc macOS application
         if: runner.os == 'macOS'
         working-directory: tobkiri_launcher
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           bash scripts/verify_macos_release.sh \
-            --app-bundle "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher.app" \
-            --signing-identity "$APPLE_SIGNING_IDENTITY"
+            --app-bundle "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher.app"
 
       - name: Build macOS DMG installer
         if: runner.os == 'macOS'
         working-directory: tobkiri_launcher
         shell: bash
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -o pipefail
           bash scripts/package_macos_dmg.sh \
             --app-bundle "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher.app" \
             --target '${{ matrix.target }}' \
-            --signing-identity "$APPLE_SIGNING_IDENTITY" \
+            --ad-hoc \
             --output-dir "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg" \
             2>&1 | tee "$RUNNER_TEMP/tobkiri-macos-dmg-${{ matrix.target }}.log"
 
@@ -550,32 +520,6 @@ jobs:
             --dmg "$dmg" \
             --target '${{ matrix.target }}' \
             --expected-manifest-sha256 "$TOBKIRI_PACKAGED_PYTHON_INVENTORY_SHA256"
-
-      - name: Notarize and staple macOS release DMG
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher.app"
-          test -d "$app"
-          dmg="$(find "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
-          test -n "$dmg"
-          test -s "$dmg"
-          python scripts/release_gate.py sign-artifacts \
-            --repo-root "$GITHUB_WORKSPACE" \
-            --mode production \
-            --platform macos \
-            --app-bundle "$app" \
-            --artifact "$app" \
-            --artifact "$dmg"
-
 
       - name: Prepare immutable target release upload
         shell: python
@@ -765,30 +709,47 @@ jobs:
           GATHER_ROOT: ${{ runner.temp }}/tobkiri-release-gather
         run: |
           import hashlib
+          import json
           import os
           import subprocess
           import sys
 
           root = os.environ["GATHER_ROOT"]
           inventory_path = os.path.join(root, "release-inventory.json")
-          subprocess.run(
-              [
-                  sys.executable,
-                  "scripts/release_inventory.py",
-                  "create",
-                  "--root",
-                  root,
-                  "--output",
-                  inventory_path,
-                  "--assets-dir",
-                  os.path.join(root, "release-assets"),
-                  "--source-revision",
-                  os.environ["SOURCE_REVISION"],
-                  "--tag",
-                  os.environ["GITHUB_REF_NAME"],
-              ],
-              check=True,
+          required_targets = json.loads(
+              os.environ["TOBKIRI_REQUIRED_RELEASE_TARGETS"]
           )
+          if (
+              not isinstance(required_targets, list)
+              or not required_targets
+              or any(
+                  not isinstance(target, str) or not target
+                  for target in required_targets
+              )
+              or len(required_targets) != len(set(required_targets))
+          ):
+              raise SystemExit(
+                  "TOBKIRI_REQUIRED_RELEASE_TARGETS must be a non-empty, "
+                  "duplicate-free JSON list"
+              )
+          command = [
+              sys.executable,
+              "scripts/release_inventory.py",
+              "create",
+              "--root",
+              root,
+              "--output",
+              inventory_path,
+              "--assets-dir",
+              os.path.join(root, "release-assets"),
+              "--source-revision",
+              os.environ["SOURCE_REVISION"],
+              "--tag",
+              os.environ["GITHUB_REF_NAME"],
+          ]
+          for required_target in required_targets:
+              command.extend(["--required-target", required_target])
+          subprocess.run(command, check=True)
           with open(inventory_path, "rb") as inventory_file:
               inventory_sha256 = "sha256:" + hashlib.sha256(
                   inventory_file.read()
@@ -803,28 +764,45 @@ jobs:
           SOURCE_REVISION: ${{ steps.checked_out_source.outputs.source_revision }}
           GATHER_ROOT: ${{ runner.temp }}/tobkiri-release-gather
         run: |
+          import json
           import os
           import subprocess
           import sys
 
-          subprocess.run(
-              [
-                  sys.executable,
-                  "scripts/release_inventory.py",
-                  "verify",
-                  "--inventory",
-                  os.path.join(os.environ["GATHER_ROOT"], "release-inventory.json"),
-                  "--assets-dir",
-                  os.path.join(os.environ["GATHER_ROOT"], "release-assets"),
-                  "--source-revision",
-                  os.environ["SOURCE_REVISION"],
-                  "--tag",
-                  os.environ["GITHUB_REF_NAME"],
-                  "--inventory-sha256",
-                  os.environ["INVENTORY_SHA256"],
-              ],
-              check=True,
+          required_targets = json.loads(
+              os.environ["TOBKIRI_REQUIRED_RELEASE_TARGETS"]
           )
+          if (
+              not isinstance(required_targets, list)
+              or not required_targets
+              or any(
+                  not isinstance(target, str) or not target
+                  for target in required_targets
+              )
+              or len(required_targets) != len(set(required_targets))
+          ):
+              raise SystemExit(
+                  "TOBKIRI_REQUIRED_RELEASE_TARGETS must be a non-empty, "
+                  "duplicate-free JSON list"
+              )
+          command = [
+              sys.executable,
+              "scripts/release_inventory.py",
+              "verify",
+              "--inventory",
+              os.path.join(os.environ["GATHER_ROOT"], "release-inventory.json"),
+              "--assets-dir",
+              os.path.join(os.environ["GATHER_ROOT"], "release-assets"),
+              "--source-revision",
+              os.environ["SOURCE_REVISION"],
+              "--tag",
+              os.environ["GITHUB_REF_NAME"],
+              "--inventory-sha256",
+              os.environ["INVENTORY_SHA256"],
+          ]
+          for required_target in required_targets:
+              command.extend(["--required-target", required_target])
+          subprocess.run(command, check=True)
 
       - name: Attest the single release inventory subject
         uses: actions/attest-build-provenance@bd77c077858b8d561b7a36cbe48ef4cc642ca39d # v2.2.2
@@ -852,28 +830,45 @@ jobs:
           SOURCE_REVISION: ${{ steps.checked_out_source.outputs.source_revision }}
           GATHER_ROOT: ${{ runner.temp }}/tobkiri-release-gather
         run: |
+          import json
           import os
           import subprocess
           import sys
 
-          subprocess.run(
-              [
-                  sys.executable,
-                  "scripts/release_inventory.py",
-                  "verify",
-                  "--inventory",
-                  os.path.join(os.environ["GATHER_ROOT"], "release-inventory.json"),
-                  "--assets-dir",
-                  os.path.join(os.environ["GATHER_ROOT"], "release-assets"),
-                  "--source-revision",
-                  os.environ["SOURCE_REVISION"],
-                  "--tag",
-                  os.environ["GITHUB_REF_NAME"],
-                  "--inventory-sha256",
-                  os.environ["INVENTORY_SHA256"],
-              ],
-              check=True,
+          required_targets = json.loads(
+              os.environ["TOBKIRI_REQUIRED_RELEASE_TARGETS"]
           )
+          if (
+              not isinstance(required_targets, list)
+              or not required_targets
+              or any(
+                  not isinstance(target, str) or not target
+                  for target in required_targets
+              )
+              or len(required_targets) != len(set(required_targets))
+          ):
+              raise SystemExit(
+                  "TOBKIRI_REQUIRED_RELEASE_TARGETS must be a non-empty, "
+                  "duplicate-free JSON list"
+              )
+          command = [
+              sys.executable,
+              "scripts/release_inventory.py",
+              "verify",
+              "--inventory",
+              os.path.join(os.environ["GATHER_ROOT"], "release-inventory.json"),
+              "--assets-dir",
+              os.path.join(os.environ["GATHER_ROOT"], "release-assets"),
+              "--source-revision",
+              os.environ["SOURCE_REVISION"],
+              "--tag",
+              os.environ["GITHUB_REF_NAME"],
+              "--inventory-sha256",
+              os.environ["INVENTORY_SHA256"],
+          ]
+          for required_target in required_targets:
+              command.extend(["--required-target", required_target])
+          subprocess.run(command, check=True)
 
       - name: Upload one reviewable draft release
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
@@ -884,3 +879,9 @@ jobs:
           # after checking the attested inventory and release notes.
           draft: true
           generate_release_notes: true
+          body: |
+            ## Distribution notice
+
+            macOS artifacts are unsigned/ad-hoc and not notarized. See
+            `tobkiri_runtime/docs/macos-unsigned-distribution.md`
+            before publishing this draft.

@@ -1131,6 +1131,16 @@ def test_tool_executor_does_not_fallback_to_local_computer_use_with_yolo_policy(
     assert captured == {}
 
 
+def test_file_reader_declares_the_contract_backed_compatibility_entrypoint():
+    pack = ROOT / "ecosystem" / "rumi_default_tools_pack"
+    manifest = json.loads((pack / "tools/file_reader/manifest.json").read_text())
+    assert manifest["config"]["execution"] == {
+        "type": "rumi_function", "qualified_name": "defaultspack:tool_file_reader",
+    }
+    assert not (pack / "functions/file_reader/main.py").exists()
+    assert not (pack / "functions/file_reader/manifest.json").exists()
+
+
 def test_tool_file_reader_ignores_caller_supplied_workspace_root(
     tmp_path,
     monkeypatch,
@@ -1142,19 +1152,19 @@ def test_tool_file_reader_ignores_caller_supplied_workspace_root(
     outside = tmp_path / "outside"
     workspace.mkdir()
     outside.mkdir()
+    (workspace / "secret.txt").write_text("SELECTED WORKSPACE", encoding="utf-8")
     (outside / "secret.txt").write_text("SECRET", encoding="utf-8")
     bind_verified_coding_contracts(monkeypatch, workspace)
 
     result = run_defaultspack_function(
         "tool_file_reader",
         {"path": "secret.txt", "workspace_root": str(outside)},
-        {"workspace_root": str(workspace), "workspace_id": "workspace-test"},
+        {"workspace_root": str(workspace), "workspace_id": "trusted"},
     )
 
     assert result["status"] == "ok"
-    assert result["data"]["is_error"] is True
-    assert "workspace mount is unknown" in result["data"]["result"]
-    assert result["data"]["widget"]["error"]["code"] == "READ_ERROR"
+    assert result["data"]["is_error"] is False
+    assert result["data"]["result"] == "SELECTED WORKSPACE"
     assert "SECRET" not in str(result)
 
 
@@ -1210,9 +1220,13 @@ def test_sandbox_exec_fails_closed_after_internal_tool_decision_until_managed_ru
 
     result = ToolExecutor().execute("sandbox_exec", {"command": "pwd"}, context)
 
-    assert result["is_error"] is True
-    assert result["widget"]["error"]["code"] == "MANAGED_RUNTIME_NOT_READY"
-    assert result["widget"]["error"]["argv"] == ["pwd"]
+    assert result["widget"]["type"] == "approval_request"
+    # An internal decision does not bypass the executor's outer approval gate.
+    # Exercise the post-gate handler separately without relaxing that gate.
+    handled = sandbox_tools.sandbox_exec({"command": "pwd"}, context)
+    assert handled["is_error"] is True
+    assert handled["widget"]["error"]["code"] == "MANAGED_RUNTIME_NOT_READY"
+    assert handled["widget"]["error"]["argv"] == ["pwd"]
 
 
 def test_sandbox_exec_creates_ephemeral_sandbox_when_no_sandbox_id(
@@ -1268,8 +1282,12 @@ def test_sandbox_exec_rejects_shell_strings_after_internal_tool_decision(
 
     result = ToolExecutor().execute("sandbox_exec", {"command": "echo ok && echo nope"}, context)
 
-    assert result["is_error"] is True
-    assert result["widget"]["error"]["code"] == "SANDBOX_SHELL_STRING_REJECTED"
+    assert result["widget"]["type"] == "approval_request"
+    from domain.tool import sandbox_tools
+
+    handled = sandbox_tools.sandbox_exec({"command": "echo ok && echo nope"}, context)
+    assert handled["is_error"] is True
+    assert handled["widget"]["error"]["code"] == "SANDBOX_SHELL_STRING_REJECTED"
 
 
 def test_sandbox_exec_command_string_preserves_quoted_whitespace(tmp_path, monkeypatch):
@@ -1868,8 +1886,12 @@ def test_package_install_plan_never_executes_packages(tmp_path):
     )
 
     assert result["is_error"] is False
-    assert result["widget"]["data"]["executes"] is False
-    assert result["widget"]["data"]["command"][-1] == "requests"
+    assert result["widget"]["type"] == "approval_request"
+    from domain.tool.sandbox_tools import package_install_plan
+
+    plan = package_install_plan({"manager": "pip", "packages": ["requests"]})
+    assert plan["widget"]["data"]["executes"] is False
+    assert plan["widget"]["data"]["command"][-1] == "requests"
 
 
 def test_connector_approval_request_redacts_secret_arguments(
@@ -1910,10 +1932,18 @@ def test_connector_dry_run_redacts_secret_arguments_after_internal_approval(
     )
 
     assert result["is_error"] is False
-    message = result["widget"]["data"]["message"]
+    assert result["widget"]["type"] == "approval_request"
+    from domain.tool.external_connector_tools import slack_send
+
+    handled = slack_send(
+        {"text": "hello", "bot_token": "xoxb-secret", "nested": {"api_key": "secret-key"}},
+        context,
+    )
+    message = handled["widget"]["data"]["message"]
     assert message["bot_token"] == "[redacted]"
     assert message["nested"]["api_key"] == "[redacted]"
     assert "xoxb-secret" not in result["result"]
+    assert "xoxb-secret" not in str(handled)
 
 
 def test_rumi_api_manifest_and_executor_require_approval():
@@ -1951,11 +1981,37 @@ class _CapturedRumiApiSession:
         return self.result
 
 
-def test_rumi_api_dispatch_requires_approved_context():
+@pytest.mark.parametrize("action,expected", [
+    ("list_routes", {
+        "status": "ok", "data": {
+            "routes": [], "count": 0,
+            "dispatch": "disabled",
+        },
+    }),
+    ("request", {
+        "status": "error", "error": {
+            "code": "LEGACY_HTTP_DISABLED",
+            "message": "Legacy HTTP routes are disabled; use a declared Host operation",
+        },
+    }),
+    ("unknown", {
+        "status": "error", "error": {
+            "code": "INVALID_ACTION", "message": "unsupported action: unknown",
+        },
+    }),
+])
+def test_rumi_api_pack_owned_response_preserves_wire_envelope(action, expected):
     from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
 
     session = _CapturedRumiApiSession({"unexpected": True})
+    assert rumi_api.run({"action": action}, {"v4_dispatch_session": session}) == expected
+    assert session.calls == []
 
+
+def test_rumi_api_hidden_generic_dispatch_is_retired():
+    from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
+
+    session = _CapturedRumiApiSession({"unexpected": True})
     result = rumi_api.run(
         {
             "action": "dispatch",
@@ -1963,62 +2019,17 @@ def test_rumi_api_dispatch_requires_approved_context():
             "operation_id": "channels.list",
             "payload": {},
         },
-        {"v4_dispatch_session": session},
-    )
-
-    assert result["status"] == "ok"
-    assert result["data"]["approval_required"] is True
-    assert result["data"]["tool_name"] == "rumi_api"
-    assert session.calls == []
-
-
-def test_rumi_api_dispatch_uses_internal_approval_and_captured_session():
-    from tobkiri_runtime.ecosystem.rumi_default_tools_pack.domain.tool import rumi_api
-
-    session = _CapturedRumiApiSession({"ok": True})
-
-    result = rumi_api.run(
         {
-            "action": "dispatch",
-            "contract_id": "company.messaging.v1",
-            "operation_id": "channels.list",
-            "payload": {"workspace_id": "workspace:alpha"},
-        },
-        {
-            "_tool_server_approved": True,
-            "principal_id": "defaultspack",
             "v4_dispatch_session": session,
+            "_tool_server_approved": True,
+            "_tool_server_approval_token_valid": True,
         },
     )
-
     assert result == {
-        "status": "ok",
-        "data": {"profile_id": "profile:captured", "result": {"ok": True}},
+        "status": "error",
+        "error": {
+            "code": "INVALID_ACTION",
+            "message": "unsupported action: dispatch",
+        },
     }
-    assert session.calls == [
-        (
-            "company.messaging.v1",
-            "channels.list",
-            {
-                "workspace_id": "workspace:alpha",
-                "_contract_consumer_pack_id": "rumi_default_tools_pack",
-            },
-            ">=1,<2",
-        )
-    ]
-
-    forged = rumi_api.run(
-        {
-            "action": "dispatch",
-            "contract_id": "company.messaging.v1",
-            "operation_id": "channels.list",
-            "payload": {"_contract_consumer_pack_id": "forged"},
-        },
-        {
-            "_tool_server_approved": True,
-            "principal_id": "defaultspack",
-            "v4_dispatch_session": session,
-        },
-    )
-    assert forged["error"]["code"] == "FORGED_CONSUMER_IDENTITY"
-    assert len(session.calls) == 1
+    assert session.calls == []

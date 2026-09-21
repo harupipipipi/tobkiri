@@ -5,6 +5,7 @@ import type {
   ApiPackVMOperation,
   ApiPackVMOperationState,
   ApiPackVMProvisioningPlan,
+  ApiPackVMStorageRebind,
 } from './apiTypes';
 import {getBrowserStorage, readSafeStorageValue, removeSafeStorageValue, writeSafeStorageValue} from './safeStorage';
 
@@ -43,7 +44,7 @@ export const PACKVM_RECOVERY_CODES = [
 export type PackVMRecoveryCode = typeof PACKVM_RECOVERY_CODES[number];
 
 const PACKVM_RECOVERY_MESSAGES: Record<PackVMRecoveryCode, string> = {
-  PROFILE_NOT_ACTIVE: 'The active Defaults Profile is unavailable; PackVM remains blocked.',
+  PROFILE_NOT_ACTIVE: 'The active Profile is unavailable; PackVM remains blocked.',
   STALE_REVISION: 'The verified Profile revision is stale; refresh authoritative state before retrying.',
   DIGEST_MISMATCH: 'Integrity verification failed: the Profile, Pack v4 lock, and presentation catalog do not agree.',
   UNAPPROVED: 'Host approval is required; no PackVM operation was replayed.',
@@ -88,6 +89,12 @@ export function classifyPackVMRecoveryCode(error: unknown): PackVMRecoveryCode {
     : typeof error === 'string'
       ? error.toLowerCase()
       : '';
+  // A doctor result can legitimately report that a previously provisioned
+  // VM is stale because the packaged helper changed. That is a local
+  // cleanup/reprovision condition, not a Profile/catalog integrity failure.
+  if (/^packvm vz helper_digest changed\.?$/.test(text.trim())) {
+    return 'API_FAILURE';
+  }
   if (
     text.includes('digest')
     || text.includes('integrity')
@@ -216,6 +223,36 @@ export function isCanonicalPackVMOperationId(value: string): boolean {
   return UUID.test(value);
 }
 
+function normalizeStorageRebind(value: unknown): ApiPackVMStorageRebind | null {
+  if (value == null) return null;
+  const payload = record(value);
+  if (Object.keys(payload).sort().join(',') !== [
+    'current_device', 'digest', 'instance_root', 'instance_root_inode',
+    'previous_attestation_digest', 'previous_device', 'state_root', 'state_root_inode',
+  ].join(',')) {
+    throw new PackVMLifecycleProtocolError('Tobkiri returned invalid PackVM storage evidence.');
+  }
+  const stateRoot = stringField(payload, 'state_root');
+  const instanceRoot = stringField(payload, 'instance_root');
+  for (const path of [stateRoot, instanceRoot]) {
+    if (!path.startsWith('/') || path.length > 4096
+      || path.split('/').slice(1).some((part) => !part || part === '.' || part === '..')
+      || /[\u0000-\u001f\u007f]/.test(path)) {
+      throw new PackVMLifecycleProtocolError('Tobkiri returned an invalid PackVM storage path.');
+    }
+  }
+  return {
+    digest: stringField(payload, 'digest', {digest: true}),
+    previous_attestation_digest: stringField(payload, 'previous_attestation_digest', {digest: true}),
+    state_root: stateRoot,
+    instance_root: instanceRoot,
+    previous_device: positiveIntegerField(payload, 'previous_device'),
+    current_device: positiveIntegerField(payload, 'current_device'),
+    state_root_inode: positiveIntegerField(payload, 'state_root_inode'),
+    instance_root_inode: positiveIntegerField(payload, 'instance_root_inode'),
+  };
+}
+
 export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
   const payload = record(value);
   const imageDownloadRequired = booleanField(payload, 'image_download_required');
@@ -257,6 +294,23 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
   } else {
     normalizedImageSource = safeHttpsUrl(payload, 'image_source');
   }
+  const update = payload.registration_update == null ? null : record(payload.registration_update);
+  const rebind = normalizeStorageRebind(payload.storage_rebind);
+  if (update && (
+    imageDownloadRequired || imageSource === 'unavailable'
+    || Object.keys(update).sort().join(',') !== [
+      'asset_manifest_digest', 'previous_attestation_digest', 'previous_config_digest',
+      'previous_guest_runner_digest', 'previous_host_build_digest',
+    ].join(',')
+  )) {
+    throw new PackVMLifecycleProtocolError('Tobkiri returned an invalid PackVM registration update.');
+  }
+  if (rebind && (!update
+    || rebind.previous_attestation_digest !== update.previous_attestation_digest
+    || rebind.current_device === rebind.previous_device
+    || rebind.instance_root !== `${rebind.state_root}/instances/${payload.instance}`)) {
+    throw new PackVMLifecycleProtocolError('Tobkiri returned inconsistent PackVM storage evidence.');
+  }
   return {
     backend_id: stringField(payload, 'backend_id', {identifier: true}),
     instance: stringField(payload, 'instance', {identifier: true}),
@@ -267,12 +321,24 @@ export function normalizePackVMPlan(value: unknown): ApiPackVMProvisioningPlan {
     image_digest: imageDigest,
     image_size_bytes: positiveIntegerField(payload, 'image_size_bytes'),
     image_download_required: imageDownloadRequired,
+    host_free_space_required_bytes: positiveIntegerField(
+      payload,
+      'host_free_space_required_bytes',
+    ),
     config_digest: configDigest,
     guest_runner_digest: guestRunnerDigest,
     host_build_digest: hostBuildDigest,
     ceremony_nonce: stringField(payload, 'ceremony_nonce'),
     plan_digest: stringField(payload, 'plan_digest', {digest: true}),
     confirmation: stringField(payload, 'confirmation'),
+    storage_rebind: rebind,
+    registration_update: update ? {
+      previous_attestation_digest: stringField(update, 'previous_attestation_digest', {digest: true}),
+      previous_config_digest: stringField(update, 'previous_config_digest', {digest: true}),
+      previous_guest_runner_digest: stringField(update, 'previous_guest_runner_digest', {digest: true}),
+      previous_host_build_digest: stringField(update, 'previous_host_build_digest', {digest: true}),
+      asset_manifest_digest: stringField(update, 'asset_manifest_digest', {digest: true}),
+    } : null,
   };
 }
 
@@ -285,6 +351,8 @@ export function normalizePackVMConsent(value: unknown): ApiPackVMConsent {
     image_digest: stringField(payload, 'image_digest', {digest: true}),
     image_size_bytes: positiveIntegerField(payload, 'image_size_bytes'),
     image_download_approved: booleanField(payload, 'image_download_approved'),
+    previous_attestation_digest: optionalDigest(payload, 'previous_attestation_digest'),
+    storage_rebind_digest: optionalDigest(payload, 'storage_rebind_digest'),
   };
 }
 
@@ -379,11 +447,14 @@ export function operationIsPolling(state: ApiPackVMOperationState): boolean {
   return state === 'queued' || state === 'running';
 }
 
-export function operationStatusLabel(state: ApiPackVMOperationState): string {
+export function operationStatusLabel(
+  state: ApiPackVMOperationState,
+  operationKind: ApiPackVMOperation['operation_kind'] = 'provision',
+): string {
   switch (state) {
     case 'queued': return 'Queued';
-    case 'running': return 'Provisioning';
-    case 'succeeded': return 'Provisioned';
+    case 'running': return operationKind === 'cleanup' ? 'Cleaning up' : 'Provisioning';
+    case 'succeeded': return operationKind === 'cleanup' ? 'Cleaned up' : 'Provisioned';
     case 'failed': return 'Failed';
     case 'cancelled': return 'Cancelled';
     case 'interrupted': return 'Interrupted — restart detected';

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from blocks._common import error
 from domain.agent_runtime.tool_ledger import ToolLedger
 from domain.agent_runtime.run_store import AgentRunStore
@@ -31,10 +33,16 @@ def _is_cancelled(context: dict[str, Any] | None) -> bool:
 class ToolOrchestrator:
     """Approval, policy, sandbox, ledger, and execution gateway for tools."""
 
-    def __init__(self, registry: ToolRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry | None = None,
+        *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self.registry = registry or ToolRegistry()
         self.ledger = ToolLedger()
         self.store = AgentRunStore()
+        self._settings_owner = settings_owner
 
     def run(self, tool_name: str, arguments: dict[str, Any] | None, context: dict[str, Any] | None) -> dict[str, Any]:
         profile_policy_trusted = profile_policy_context_is_trusted(context)
@@ -90,7 +98,7 @@ class ToolOrchestrator:
         # non-core Tool boundary directly and retain the orchestrator envelope.
         from domain.tool.executor import ToolExecutor
 
-        executor = ToolExecutor()
+        executor = ToolExecutor(settings_owner=self._settings_owner)
         executor._registry = self.registry
         executed = executor.execute(tool_name, arguments or {}, invoke_context)
         result = _tool_result_envelope(executed)

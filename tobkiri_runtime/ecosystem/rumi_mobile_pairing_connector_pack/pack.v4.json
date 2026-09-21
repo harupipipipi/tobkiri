@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:ce73cda65f4a2d2b1819d4a912aa2f96ac502fa098f9c53dcdd1ef99315fe93a",
+      "digest": "sha256:1441297c649051ee4776ff72c63f5f918ab015b1936f0035902f549a46370892",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -17,12 +17,12 @@
       "operations": [
         "rumi_mobile_pairing_connector_pack.mobile-pairing-adapter"
       ],
-      "revision_digest": "sha256:1826a605996d2beef9d29c9f365f61f3c21a0d104779128f17430b5f3b2b6299"
+      "revision_digest": "sha256:afde263510cb01641f3135fe0e3cb2f0e5be239ca1ae3ff84778357f5fb61e18"
     }
   ],
   "functions": [
     {
-      "contract_revision_digest": "sha256:1826a605996d2beef9d29c9f365f61f3c21a0d104779128f17430b5f3b2b6299",
+      "contract_revision_digest": "sha256:afde263510cb01641f3135fe0e3cb2f0e5be239ca1ae3ff84778357f5fb61e18",
       "id": "rumi_mobile_pairing_connector_pack.connector.mobile_pairing",
       "implementation_digest": "sha256:a36fb70dcb0688c414dd734e1398b64a8799f74d2ddbb707595ebb47a42dae87",
       "isolation": "dedicated_process",
@@ -33,9 +33,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:2ec5f84cb655635c4dbf601f79d383d420613ce41655f753ac7d0cd1ede59627",
-    "contract_catalog_digest": "sha256:b0984997a7ab1e498812f982901679f3b82e85050f418e10d303599d1d694291",
-    "source_identity": "sha256:6d88e518267df71cb8dcf9bb5dd704a334bdb83556fe08ac5af6ca889129037b"
+    "artifact_set_digest": "sha256:42efe0de1057152c7e4c6368cadff853e878f185eaa3d493cc13cabd86331ec5",
+    "contract_catalog_digest": "sha256:2d2127e0dc3e12834e4625a3a80d77ef55dc07bdc940d325bab50e6bd5f7c0a2",
+    "source_identity": "sha256:da724561c797e0e7d7f0ca5c251cfda7eaa5b0c5d4ce7e7d0ce694433ae2973c"
   },
   "migration": {
     "compatibility": "read_only",
@@ -61,7 +61,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:2ec5f84cb655635c4dbf601f79d383d420613ce41655f753ac7d0cd1ede59627",
+    "artifact_digest": "sha256:42efe0de1057152c7e4c6368cadff853e878f185eaa3d493cc13cabd86331ec5",
     "display_name": "Rumi Mobile Pairing Connector",
     "id": "rumi_mobile_pairing_connector_pack",
     "kind": "normal_sandbox",
@@ -71,7 +71,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:6d88e518267df71cb8dcf9bb5dd704a334bdb83556fe08ac5af6ca889129037b",
+        "digest": "sha256:da724561c797e0e7d7f0ca5c251cfda7eaa5b0c5d4ce7e7d0ce694433ae2973c",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -82,7 +82,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:6d88e518267df71cb8dcf9bb5dd704a334bdb83556fe08ac5af6ca889129037b",
+    "source_digest": "sha256:da724561c797e0e7d7f0ca5c251cfda7eaa5b0c5d4ce7e7d0ce694433ae2973c",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_mobile_pairing_connector_pack"
   },
