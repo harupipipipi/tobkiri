@@ -1,0 +1,76 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:31703018f6570f6f327e7a46acfa42a55bce477d77496a1347d1083d51b0efe3",
+  "pack_id": "rumi_schedule_store_pack",
+  "source_identity": "sha256:2bc4498c0994b83e28217b5c57b3892e782ff4f6e1b6c9b1f670876ee1fb41c4",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_schedule_store_pack.schedule-store.action",
+      "implementation_digest": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779",
+      "implementation_path": "runtime/store.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.schedule.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_schedule_store_pack.schedule-action",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:6579ff13cf85aeed81d819dc0e92182c9c05ec7ceebdd9dc999910bfe1b91d1c",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_schedule_store_pack.schedule-store.action.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_schedule_store_pack.schedule-store.resource",
+      "implementation_digest": "sha256:0a3b6ca1181907e66b9a42f90c257bf1bf312fbbe0a0dd47fcbc28945f112779",
+      "implementation_path": "runtime/store.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.schedule.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_schedule_store_pack.schedule-resource",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:58b74bdc43db876d2a0fd73cf116710b68fc6a44972e280174628e88553885d7",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_schedule_store_pack.schedule-store.resource.python"
+    }
+  ]
+}

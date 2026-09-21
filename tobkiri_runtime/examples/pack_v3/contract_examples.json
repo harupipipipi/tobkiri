@@ -1,0 +1,44 @@
+[
+  {
+    "id": "rumi.service.ai.generate.v1",
+    "version": "1.0.0",
+    "cardinality": "keyed",
+    "security": "sensitive",
+    "failure": "fail_closed"
+  },
+  {
+    "id": "rumi.action.tool.execute.v1",
+    "version": "1.0.0",
+    "cardinality": "one",
+    "security": "restricted",
+    "failure": "fail_closed"
+  },
+  {
+    "id": "rumi.ui.route.module.v1",
+    "version": "1.0.0",
+    "cardinality": "many",
+    "security": "public",
+    "failure": "isolate"
+  },
+  {
+    "id": "rumi.storage.record.v1",
+    "version": "1.0.0",
+    "cardinality": "one",
+    "security": "sensitive",
+    "failure": "fail_closed"
+  },
+  {
+    "id": "rumi.event.audit.recorded.v1",
+    "version": "1.0.0",
+    "cardinality": "fanout",
+    "security": "restricted",
+    "failure": "best_effort"
+  },
+  {
+    "id": "rumi.policy.operation.guard.v1",
+    "version": "1.0.0",
+    "cardinality": "chain",
+    "security": "restricted",
+    "failure": "continue_chain"
+  }
+]

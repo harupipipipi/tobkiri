@@ -1,0 +1,7 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:3df44bc07086532acaa63a1b7129243882ef15bd5cd45115a98cb59b4396eccf",
+  "pack_id": "rumi_ambient_trigger_pack",
+  "source_identity": "sha256:189ae4c4633f9f1c55df17caa7f07c030813dae62267a766a2c0797b726225bc",
+  "variants": []
+}

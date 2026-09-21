@@ -1,0 +1,59 @@
+{
+  "pack_api_version": "rumi.pack.v3",
+  "pack": {
+    "id": "example.echo.service",
+    "version": "1.0.0",
+    "kind": "service",
+    "display_name": "Echo service"
+  },
+  "contracts": {
+    "provides": [
+      {
+        "id": "rumi.service.example.echo.v1",
+        "version": "1.0.0",
+        "provider_instance_id": "echo.local",
+        "cardinality": "one",
+        "security": "internal",
+        "failure": "fail_closed",
+        "lifecycle": {
+          "introduced": "1.0.0",
+          "deprecated": false
+        },
+        "schemas": {
+          "input": {"type": "object"},
+          "output": {"type": "object"}
+        },
+        "isolation": "process",
+        "required_capabilities": []
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "id": "echo",
+      "contract_id": "rumi.service.example.echo.v1",
+      "loader": "python",
+      "module": "example_echo.main",
+      "symbol": "activate",
+      "artifact_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "resources": [],
+  "storage": [],
+  "permissions": [],
+  "provenance": {
+    "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "build_identity": "example-only",
+    "trust_class": "untrusted",
+    "signature": null
+  },
+  "migration": {
+    "from": [],
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31",
+    "rollback": "Remove the example pack."
+  }
+}

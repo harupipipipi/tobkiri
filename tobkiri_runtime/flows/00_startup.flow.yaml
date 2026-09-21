@@ -123,6 +123,13 @@ steps:
     input:
       handler: "component_phase:setup"
 
+  - id: defaults_compat_build
+    phase: ecosystem
+    priority: 55
+    type: handler
+    input:
+      handler: "kernel:defaults.compat.build"
+
   - id: lib_process_all
     phase: ecosystem
     priority: 60

@@ -8,25 +8,28 @@ None.
 
 None by default.
 
-## Grants
+## Permissions
 
-`supports_all_ok` is false. This pack does not install runtime tools.
+- `profile.prompt.author.read`
+- `profile.prompt.author.write` (approval required)
+- `profile.prompt.author.migrate` (approval required)
 
 ## Inputs
 
-Reviewed local artifacts and source evidence supplied by the user or by an adjacent owner pack.
+Active profile ID, declared prompt operations, optimistic revision hashes, and
+fixed-root migration inventories.
 
 ## Outputs
 
-Schema-valid records, policy-reviewed checklists, evidence ledgers, version ledger entries, and handoff templates.
+Typed prompt resources and actions through:
 
-## Handoffs
-
-- `rumi_model_evals_pack`
-- `rumi_memory_knowledge_pack`
-- `rumi_code_ide_pack`
-- `rumi_knowledge_marketplace_pack`
+- `rumi.resource.prompt.studio.v1`
+- `rumi.action.prompt.author.v1`
+- `rumi.action.prompt.version.v1`
+- `rumi.action.prompt.test.v1`
+- `rumi.action.prompt.migrate.v1`
 
 ## Does Not Provide
 
-Model benchmarking, model routing, persistent memory storage, tool/API creation, runtime execution, and code edits are not Prompt Studio interfaces.
+Model benchmarking/routing, provider credentials, persistent memory,
+conversation storage, tool/API creation, code edits, or authority approval.

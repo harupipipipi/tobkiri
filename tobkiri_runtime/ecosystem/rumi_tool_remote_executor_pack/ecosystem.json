@@ -1,0 +1,68 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.execute.v1"
+    ],
+    "requires": [
+      "rumi.service.tool.remote.operation.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Generic selected remote-service adapter executor.",
+  "display_name": "Rumi Tool Remote Executor",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:7ee28a7ef8da430033f103c3ba8b9ca0929562b87a6e4bf48526230026eb53f8",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:bb47f63458185304712a21e1c98755d6684997a730ab915678365e2c8a48eddf"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:bb47f63458185304712a21e1c98755d6684997a730ab915678365e2c8a48eddf"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "remote_tool_execution"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "credential_owner": false,
+      "exact_provider": true,
+      "network_policy_owner": false
+    }
+  },
+  "pack_id": "rumi_tool_remote_executor_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_remote_executor_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_remote_executor_pack:1.0.0",
+    "content_hash": "sha256:59098fa917f79189b1ee657882ffe5df4e43656c15c20c2a362a1bc74355978e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.execute"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

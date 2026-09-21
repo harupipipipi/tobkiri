@@ -1,5 +1,6 @@
 import sys
 import os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import json
@@ -7,8 +8,10 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import ssl
+from typing import Any, Dict, List
 
 from domain.ai_client.base_provider import BaseProvider
+from domain.ai_client.api_key_store import read_provider_api_key
 
 
 class GensparkProvider(BaseProvider):
@@ -23,17 +26,29 @@ class GensparkProvider(BaseProvider):
     DEFAULT_BASE_URL = "https://www.genspark.ai/api/llm_proxy/v1"
 
     KNOWN_MODELS = [
-        {"id": "genspark/gpt-5",        "name": "GPT-5",        "provider": "genspark", "type": "chat"},
-        {"id": "genspark/gpt-5.1",      "name": "GPT-5.1",      "provider": "genspark", "type": "chat"},
-        {"id": "genspark/gpt-5.2",      "name": "GPT-5.2",      "provider": "genspark", "type": "chat"},
-        {"id": "genspark/gpt-5-mini",   "name": "GPT-5 Mini",   "provider": "genspark", "type": "chat"},
-        {"id": "genspark/gpt-5-nano",   "name": "GPT-5 Nano",   "provider": "genspark", "type": "chat"},
-        {"id": "genspark/gpt-5-codex",  "name": "GPT-5 Codex",  "provider": "genspark", "type": "chat"},
-        {"id": "genspark/gpt-5.2-codex","name": "GPT-5.2 Codex","provider": "genspark", "type": "chat"},
+        {"id": "genspark/gpt-5", "name": "GPT-5", "provider": "genspark", "type": "chat"},
+        {"id": "genspark/gpt-5.1", "name": "GPT-5.1", "provider": "genspark", "type": "chat"},
+        {"id": "genspark/gpt-5.2", "name": "GPT-5.2", "provider": "genspark", "type": "chat"},
+        {"id": "genspark/gpt-5-mini", "name": "GPT-5 Mini", "provider": "genspark", "type": "chat"},
+        {"id": "genspark/gpt-5-nano", "name": "GPT-5 Nano", "provider": "genspark", "type": "chat"},
+        {
+            "id": "genspark/gpt-5-codex",
+            "name": "GPT-5 Codex",
+            "provider": "genspark",
+            "type": "chat",
+        },
+        {
+            "id": "genspark/gpt-5.2-codex",
+            "name": "GPT-5.2 Codex",
+            "provider": "genspark",
+            "type": "chat",
+        },
     ]
+    # Account inventory is fetched from the OpenAI-compatible endpoint.
+    KNOWN_MODELS: List[Dict[str, Any]] = []
 
-    def __init__(self):
-        self._api_key = self._resolve_api_key()
+    def __init__(self, api_key: str | None = None):
+        self._api_key = str(api_key or self._resolve_api_key() or "").strip()
         self._base_url = self._resolve_base_url()
         self._ssl_ctx = ssl.create_default_context()
 
@@ -46,11 +61,12 @@ class GensparkProvider(BaseProvider):
         2. ~/.genspark_llm.yaml の openai.api_key
         3. OPENAI_API_KEY 環境変数（OpenAI 互換エンドポイントで共用する場合）
         """
-        key = os.environ.get("GENSPARK_API_KEY", "")
+        key = read_provider_api_key("genspark", "legacy") or ""
         if key:
             return key
         try:
             import yaml
+
             config_path = os.path.join(os.path.expanduser("~"), ".genspark_llm.yaml")
             if os.path.exists(config_path):
                 with open(config_path, "r", encoding="utf-8") as f:
@@ -60,7 +76,7 @@ class GensparkProvider(BaseProvider):
                     return key
         except Exception:
             pass
-        return os.environ.get("OPENAI_API_KEY", "")
+        return read_provider_api_key("openai", "legacy") or ""
 
     def _resolve_base_url(self):
         """
@@ -80,6 +96,7 @@ class GensparkProvider(BaseProvider):
         # ~/.genspark_llm.yaml から読む（GenSpark 公式設定ファイル）
         try:
             import yaml
+
             config_path = os.path.join(os.path.expanduser("~"), ".genspark_llm.yaml")
             if os.path.exists(config_path):
                 with open(config_path, "r", encoding="utf-8") as f:
@@ -106,12 +123,73 @@ class GensparkProvider(BaseProvider):
             h["Content-Type"] = content_type
         return h
 
+    def list_models(self):
+        if not self._api_key:
+            return []
+        request = urllib.request.Request(
+            self._base_url + "/models",
+            headers=self._headers(content_type=None),
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, context=self._ssl_ctx, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (
+            urllib.error.HTTPError,
+            urllib.error.URLError,
+            TimeoutError,
+            json.JSONDecodeError,
+            ValueError,
+        ):
+            return []
+        records = (
+            payload.get("data")
+            if isinstance(payload, dict)
+            else payload.get("models")
+            if isinstance(payload, dict)
+            else []
+        )
+        models = []
+        for raw in records if isinstance(records, list) else []:
+            source = raw if isinstance(raw, dict) else {"id": raw}
+            model_id = str(
+                source.get("id") or source.get("model_id") or source.get("name") or ""
+            ).strip()
+            if not model_id or any(item["model_id"] == model_id for item in models):
+                continue
+            models.append(
+                {
+                    "id": f"genspark/{model_id}",
+                    "model_id": model_id,
+                    "provider_id": "genspark",
+                    "provider": "genspark",
+                    "name": str(
+                        source.get("display_name") or source.get("displayName") or model_id
+                    ),
+                    "display_name": str(
+                        source.get("display_name") or source.get("displayName") or model_id
+                    ),
+                    "type": "chat",
+                    "capabilities": {
+                        "chat": True,
+                        "text_input": True,
+                        "text_output": True,
+                        "streaming": True,
+                    },
+                    "metadata": {
+                        "source": "openai_models_endpoint",
+                        "source_endpoint": "/models",
+                        "visibility_scope": "account",
+                    },
+                }
+            )
+        return models
+
     def _request_json(self, path, body):
         """POST して JSON をパースして返す"""
         if not self._api_key:
             raise RuntimeError(
-                "Genspark API key is not set. "
-                "Set GENSPARK_API_KEY environment variable."
+                "Genspark API key is not set. Set GENSPARK_API_KEY environment variable."
             )
         url = self._base_url + path
         data = json.dumps(body).encode("utf-8")
@@ -123,33 +201,27 @@ class GensparkProvider(BaseProvider):
             err_body = e.read().decode("utf-8", errors="replace")
             if e.code == 401:
                 raise RuntimeError(
-                    "Genspark API authentication error (401): Invalid API key. "
-                    "err={}".format(err_body)
+                    "Genspark API authentication error (401): Invalid API key. err={}".format(
+                        err_body
+                    )
                 )
             elif e.code == 429:
-                raise RuntimeError(
-                    "Genspark API rate limit exceeded (429): {}".format(err_body)
-                )
+                raise RuntimeError("Genspark API rate limit exceeded (429): {}".format(err_body))
             elif e.code == 400:
-                raise RuntimeError(
-                    "Genspark API bad request (400): {}".format(err_body)
-                )
+                raise RuntimeError("Genspark API bad request (400): {}".format(err_body))
             raise RuntimeError("Genspark API error {}: {}".format(e.code, err_body))
         except urllib.error.URLError as e:
             raise RuntimeError("Genspark API connection error: {}".format(e.reason))
         try:
             return json.loads(raw_bytes)
         except (json.JSONDecodeError, ValueError):
-            raise RuntimeError(
-                "Genspark API returned invalid JSON: {}".format(raw_bytes[:500])
-            )
+            raise RuntimeError("Genspark API returned invalid JSON: {}".format(raw_bytes[:500]))
 
     def _request_stream(self, path, body):
         """POST して SSE ストリームレスポンスを返す"""
         if not self._api_key:
             raise RuntimeError(
-                "Genspark API key is not set. "
-                "Set GENSPARK_API_KEY environment variable."
+                "Genspark API key is not set. Set GENSPARK_API_KEY environment variable."
             )
         url = self._base_url + path
         body["stream"] = True
@@ -160,13 +232,9 @@ class GensparkProvider(BaseProvider):
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="replace")
             if e.code == 401:
-                raise RuntimeError(
-                    "Genspark API authentication error (401): {}".format(err_body)
-                )
+                raise RuntimeError("Genspark API authentication error (401): {}".format(err_body))
             elif e.code == 429:
-                raise RuntimeError(
-                    "Genspark API rate limit exceeded (429): {}".format(err_body)
-                )
+                raise RuntimeError("Genspark API rate limit exceeded (429): {}".format(err_body))
             raise RuntimeError("Genspark API error {}: {}".format(e.code, err_body))
         except urllib.error.URLError as e:
             raise RuntimeError("Genspark API connection error: {}".format(e.reason))
@@ -206,10 +274,12 @@ class GensparkProvider(BaseProvider):
                         src = c["source"]
                         b64 = src.get("data", "")
                         media = src.get("media_type", "image/png")
-                        parts.append({
-                            "type": "image_url",
-                            "image_url": {"url": "data:{};base64,{}".format(media, b64)},
-                        })
+                        parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "data:{};base64,{}".format(media, b64)},
+                            }
+                        )
                     else:
                         parts.append(c)
                 converted.append({"role": role, "content": parts})
@@ -233,12 +303,14 @@ class GensparkProvider(BaseProvider):
         tool_calls = message.get("tool_calls")
         if tool_calls:
             for tc in tool_calls:
-                content.append({
-                    "type": "tool_use",
-                    "id": tc.get("id", ""),
-                    "name": tc.get("function", {}).get("name", ""),
-                    "input": tc.get("function", {}).get("arguments", "{}"),
-                })
+                content.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc.get("id", ""),
+                        "name": tc.get("function", {}).get("name", ""),
+                        "input": tc.get("function", {}).get("arguments", "{}"),
+                    }
+                )
         return {
             "content": content,
             "finish_reason": finish,
@@ -256,9 +328,13 @@ class GensparkProvider(BaseProvider):
         if tools:
             body["tools"] = tools
         for k in (
-            "temperature", "max_tokens", "top_p",
-            "frequency_penalty", "presence_penalty",
-            "stop", "response_format",
+            "temperature",
+            "max_tokens",
+            "top_p",
+            "frequency_penalty",
+            "presence_penalty",
+            "stop",
+            "response_format",
         ):
             if k in params:
                 body[k] = params[k]
@@ -270,9 +346,13 @@ class GensparkProvider(BaseProvider):
         if tools:
             body["tools"] = tools
         for k in (
-            "temperature", "max_tokens", "top_p",
-            "frequency_penalty", "presence_penalty",
-            "stop", "response_format",
+            "temperature",
+            "max_tokens",
+            "top_p",
+            "frequency_penalty",
+            "presence_penalty",
+            "stop",
+            "response_format",
         ):
             if k in params:
                 body[k] = params[k]
@@ -358,19 +438,13 @@ class GensparkProvider(BaseProvider):
         ]
         body = {"model": model, "messages": messages}
         raw = self._request_json("/chat/completions", body)
-        text = (
-            raw.get("choices", [{}])[0].get("message", {}).get("content", "")
-        )
+        text = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
         return {"text": text}
 
     def transcribe(self, model, audio, params):
         """音声テキスト変換（Genspark がサポートする場合）"""
-        raise NotImplementedError(
-            "Genspark provider does not support transcription."
-        )
+        raise NotImplementedError("Genspark provider does not support transcription.")
 
     def tts(self, model, text, voice):
         """テキスト音声合成（Genspark がサポートする場合）"""
-        raise NotImplementedError(
-            "Genspark provider does not support TTS."
-        )
+        raise NotImplementedError("Genspark provider does not support TTS.")

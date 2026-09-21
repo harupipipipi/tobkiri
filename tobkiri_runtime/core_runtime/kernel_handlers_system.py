@@ -153,6 +153,7 @@ class KernelSystemHandlersMixin:
             "kernel:api.init": self._h_api_init,
             "kernel:container.start_approved": self._h_container_start_approved,
             "kernel:component.discover": self._h_component_discover,
+            "kernel:defaults.compat.build": self._h_defaults_compat_build,
             "kernel:component.load": self._h_component_load,
             "kernel:emit": self._h_emit,
             "kernel:startup.failed": self._h_startup_failed,
@@ -1103,6 +1104,56 @@ class KernelSystemHandlersMixin:
     # ------------------------------------------------------------------
     # component discover / load
     # ------------------------------------------------------------------
+
+    def _clear_defaults_compat_handles(self) -> None:
+        """Clear only the kernel-owned compatibility handle retention field."""
+        self._defaults_compat_handles = ()
+
+    def _h_defaults_compat_build(
+        self,
+        args: dict[str, Any],
+        ctx: dict[str, Any],
+    ) -> Any:
+        """Build and retain the immutable Defaults compatibility metadata."""
+        from .global_contracts.defaults_compat import (
+            build_defaults_compatibility_handle,
+            defaults_compatibility_api_inventory,
+            legacy_inventory_from_components,
+        )
+
+        self._defaults_compat_handles = ()
+        try:
+            legacy_inventory = args.get("legacy_inventory")
+            if legacy_inventory is None:
+                legacy_inventory = legacy_inventory_from_components(
+                    ctx.get("_discovered_component_objects", ())
+                )
+            api_inventory = args.get("api_inventory")
+            if api_inventory is None:
+                api_inventory = defaults_compatibility_api_inventory()
+            handle = build_defaults_compatibility_handle(
+                legacy_inventory,
+                api_inventory,
+            )
+        except (AttributeError, TypeError, ValueError) as exc:
+            return _failed_step_result(
+                "kernel:defaults.compat.build",
+                exc,
+            )
+
+        self._defaults_compat_handles = (handle,)
+        if not getattr(
+            self,
+            "_defaults_compat_shutdown_registered",
+            False,
+        ):
+            self.on_shutdown(self._clear_defaults_compat_handles)
+            self._defaults_compat_shutdown_registered = True
+        return {
+            "_kernel_step_status": "success",
+            "_kernel_step_meta": {"compatibility_ids": len(handle.entries)},
+            "output": handle,
+        }
 
     def _h_component_discover(self, args: Dict[str, Any], ctx: Dict[str, Any]) -> Any:
         approved_only = args.get("approved_only", True)
