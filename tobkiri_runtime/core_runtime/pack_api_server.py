@@ -1977,12 +1977,17 @@ class PackAPIHandler(
             return
         code_value = body.get("code")
         code = code_value.strip() if isinstance(code_value, str) else ""
+        request_id_value = body.get("request_id")
+        presenter_request_id = (
+            request_id_value.strip() if isinstance(request_id_value, str) else ""
+        )
         binding = self._current_panel_auth_binding()
         exchange = (
             manager.exchange_code(
                 code,
                 binding,
                 previous_session=self._parse_cookie_header().get("rumi_panel_session", ""),
+                presenter_request_id=presenter_request_id,
             )
             if manager is not None and binding is not None
             else None
@@ -2050,10 +2055,13 @@ class PackAPIHandler(
         document = f"""<!doctype html><meta charset=\"utf-8\"><title>Tobkiri</title>
 <script>
 document.addEventListener('DOMContentLoaded',()=>{{
-const code=new URL(location.href).searchParams.get('code');
+const params=new URL(location.href).searchParams;
+const code=params.get('code');
+const requestId=params.get('request_id');
 if(!code){{document.body.textContent='Tobkiri Launcher authentication required';}}
 else fetch('/api/panel/auth/exchange',{{method:'POST',credentials:'same-origin',
-headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
+headers:{{'Content-Type':'application/json'}},
+body:JSON.stringify(requestId?{{code,request_id:requestId}}:{{code}})}})
 .then(r=>{{if(!r.ok)throw new Error('authentication failed');return r.json()}})
 .then(v=>{{if(!v.data?.csrf_token||!v.data?.journal_scope)throw new Error('authentication failed');
 sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);
