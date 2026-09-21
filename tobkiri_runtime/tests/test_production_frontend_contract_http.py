@@ -2597,6 +2597,61 @@ def test_model_search_uses_captured_provider_and_nested_profile_edge(
     assert payload["data"]["models"] == []
 
 
+def test_model_search_projects_float_metadata_into_canonical_json(
+    production_server,
+    tmp_path: Path,
+) -> None:
+    """Catalog float metadata must survive durable canonical JSON journaling.
+
+    Provider catalog entries legitimately carry floating point request
+    defaults (for example ``temperature``); the durable operation journal
+    digests the provider result as canonical JSON, which admits no floats, so
+    the composition delegate projects them deterministically before the
+    brokered result is journaled.
+    """
+    from ecosystem.rumi_model_registry_pack.runtime.registry import ModelRegistry
+
+    registry = ModelRegistry("defaults", user_data_root=tmp_path / "user-data")
+    registry.save(
+        {
+            "model_profile_id": "float-search-model",
+            "display_name": "Float defaults fixture",
+            "model_id": "fixture-float-7b",
+            "credential_handle": "opaque:test-only",
+            "metadata": {
+                "provider_connection_id": "provider.fixture",
+                "request_defaults": {
+                    "temperature": 0.2,
+                    "top_p": 0.95,
+                    "attempts": 2.0,
+                },
+            },
+        },
+        expected_revision=0,
+    )
+    server, _session, _authority = production_server
+    cookie, csrf, origin = _authenticate(server)
+    headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    status, payload, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/ai/models/search"),
+        body={"query": "fixture-float", "max_results": 50},
+        headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, payload
+    models = payload["data"]["models"]
+    assert [item["profile_id"] for item in models] == ["float-search-model"]
+    # Non-integral floats project to exact decimal strings and integral floats
+    # to integers so the journaled result stays canonical.
+    assert models[0]["metadata"]["request_defaults"] == {
+        "temperature": "0.2",
+        "top_p": "0.95",
+        "attempts": 2,
+    }
+
+
 def test_model_search_rejects_unauthorized_and_malformed_payloads(
     production_server,
     monkeypatch: pytest.MonkeyPatch,

@@ -72,6 +72,41 @@ def _open_authority_approval_window(request_id: str) -> Mapping[str, object]:
     return {"opened": True}
 
 
+_MAX_RESULT_PROJECTION_DEPTH = 24
+_MAX_SAFE_JSON_INTEGER = (2**53) - 1
+
+
+def _canonical_result_projection(value: object, depth: int = 0) -> object:
+    """Project one domain value into the canonical JSON result subset.
+
+    Durable operation journaling digests results as canonical JSON, which
+    admits no floating point values.  Model catalog metadata can legitimately
+    carry floats (for example request defaults such as ``top_p``), so an
+    integral float becomes an integer and every other float becomes its exact
+    shortest decimal string.  The projection is deterministic and preserves
+    every field the picker consumes.
+    """
+
+    if depth > _MAX_RESULT_PROJECTION_DEPTH:
+        raise PermissionError("Model search result exceeds the projection bound")
+    if isinstance(value, bool) or value is None or isinstance(value, str):
+        return value
+    if isinstance(value, int):
+        return value if abs(value) <= _MAX_SAFE_JSON_INTEGER else str(value)
+    if isinstance(value, float):
+        if value.is_integer() and abs(value) <= _MAX_SAFE_JSON_INTEGER:
+            return int(value)
+        return repr(value)
+    if isinstance(value, Mapping):
+        return {
+            str(key): _canonical_result_projection(item, depth + 1)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_canonical_result_projection(item, depth + 1) for item in value]
+    return str(value)
+
+
 def _model_search(
     filters: Mapping[str, object],
     profiles: list[Mapping[str, object]],
@@ -119,7 +154,10 @@ def _model_search(
     result = search_models(dict(filters), profiles=catalog, settings=settings)
     if not isinstance(result, Mapping):
         raise PermissionError("model search is unavailable")
-    return result
+    projected = _canonical_result_projection(result)
+    if not isinstance(projected, dict):
+        raise PermissionError("model search is unavailable")
+    return projected
 
 
 def defaultspack_activation_snapshot_loader(

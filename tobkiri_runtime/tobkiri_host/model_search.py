@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from tobkiri_protocol.canonical import canonical_json
+from tobkiri_protocol.errors import CanonicalizationError
+
 from .ports import ModelSearchCommand
 
 
@@ -40,7 +43,16 @@ class ModelSearchController:
             or not isinstance(result.get("filters_applied"), Mapping)
         ):
             raise PermissionError("model search is unavailable")
-        return {
+        projected = {
             "models": result["models"],
             "filters_applied": dict(result["filters_applied"]),
         }
+        # Durable operation journaling digests the result as canonical JSON;
+        # fail closed here rather than surfacing an opaque journal rejection.
+        try:
+            canonical_json(projected)
+        except CanonicalizationError as error:
+            raise PermissionError(
+                "model search result is not canonical JSON"
+            ) from error
+        return projected
