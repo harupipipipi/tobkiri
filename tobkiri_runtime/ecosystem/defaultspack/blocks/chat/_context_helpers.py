@@ -7,11 +7,8 @@
 呼び出し元のフローを中断しない。
 """
 
-import sys
-import os
 import json
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.prompt.renderer import render as render_template
 from core_runtime.di_container import get_container

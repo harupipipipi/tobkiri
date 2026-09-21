@@ -1,6 +1,3 @@
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import error, ok
 
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService

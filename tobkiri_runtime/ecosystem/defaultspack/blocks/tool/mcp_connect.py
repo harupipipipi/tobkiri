@@ -1,30 +1,26 @@
 import json
-import os
-import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _common import error, ok  # noqa: E402
+from blocks._common import error, ok
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from domain.tool.mcp_client import McpClient  # noqa: E402
-from domain.tool.mcp_approval import (  # noqa: E402
+from domain.tool.mcp_client import McpClient
+from domain.tool.mcp_approval import (
     build_mcp_snapshot,
     create_mcp_approval_request,
     obsolete_mcp_approvals,
     verify_mcp_approval,
 )
-from domain.tool.mcp_registry import McpRegistry  # noqa: E402
-from domain.tool.registry import ToolRegistry  # noqa: E402
-from domain.tool_policy.internal_context import (  # noqa: E402
+from domain.tool.mcp_registry import McpRegistry
+from domain.tool.registry import ToolRegistry
+from domain.tool_policy.internal_context import (
     tool_server_approval_context_is_internal,
 )
-from blocks.tool._safety import (  # noqa: E402
+from blocks.tool._safety import (
     record_tool_attempt,
     record_tool_execution,
     record_tool_failure,
 )
-from domain.safety.audit import record_approval, record_denial  # noqa: E402
+from domain.safety.audit import record_approval, record_denial
 
 
 OPERATION = "tool.mcp_connect"

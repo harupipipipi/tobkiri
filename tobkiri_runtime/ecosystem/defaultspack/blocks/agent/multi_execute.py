@@ -1,8 +1,5 @@
-import os
 import re
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from blocks.agent._state import set_multi_session

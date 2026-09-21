@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -68,7 +69,9 @@ def _purge(prefixes: tuple[str, ...]) -> None:
 
 
 # Modules reachable from the model-search / provider-dispatch import chain in
-# the sealed defaultspack role.  Each is exercised under the frozen guard.
+# the sealed defaultspack role, plus representative modules from every layer
+# that can be imported in-process by the host (function dispatch, transports,
+# flows, block adapter).  Each is exercised under the frozen guard.
 _SEALED_IMPORTABLE_MODULES = (
     "ecosystem.defaultspack.domain.ai_client.model_search",
     "ecosystem.defaultspack.backend.ai_client.provider_catalog",
@@ -87,7 +90,38 @@ _SEALED_IMPORTABLE_MODULES = (
     "ecosystem.defaultspack.domain.ai_client.model_profiles",
     "ecosystem.defaultspack.domain.ai_client.task_analyzer",
     "ecosystem.defaultspack.blocks.chat._prompt_helpers",
+    # Sibling-import rewrite: ``from _common import`` -> ``blocks._common``.
+    "ecosystem.defaultspack.blocks.ui.catalog",
+    "ecosystem.defaultspack.blocks.tool.list",
+    "ecosystem.defaultspack.blocks.chat.group_storage",
+    # In-function sys.path inserts removed from runtime tool blocks.
+    "ecosystem.defaultspack.blocks.tool.runtime.create",
+    "ecosystem.defaultspack.blocks.tool.runtime.validate",
+    # Other in-process layers that used to mutate sys.path at import time.
+    "ecosystem.defaultspack.domain.agent.planner",
+    "ecosystem.defaultspack.domain.flow.engine",
+    "ecosystem.defaultspack.domain.tool.runtime_creator",
+    "ecosystem.defaultspack.domain.chat.run_request",
+    "ecosystem.defaultspack.flows.simple_chat.handler",
+    "ecosystem.defaultspack.transport.stdio",
+    "ecosystem.defaultspack.bridge.block_adapter",
 )
+
+
+def test_block_adapter_import_prep_is_sealed_safe(frozen_sys_path) -> None:
+    """invoke_block's sys.path surgery must be a no-op under the frozen path."""
+    _purge(("ecosystem.defaultspack.bridge", "bridge", "blocks.ui.catalog"))
+    from ecosystem.defaultspack.bridge.block_adapter import invoke_block
+
+    def _echo(input_data, context):
+        return {"ok": True, "input": input_data}
+
+    sys.modules["blocks.ui.catalog"] = types.SimpleNamespace(run=_echo)
+    try:
+        result = invoke_block("blocks.ui.catalog", {"a": 1}, {})
+    finally:
+        sys.modules.pop("blocks.ui.catalog", None)
+    assert result == {"ok": True, "input": {"a": 1}}
 
 
 @pytest.mark.parametrize("module_name", _SEALED_IMPORTABLE_MODULES)
@@ -97,11 +131,18 @@ def test_pack_module_imports_without_sys_path_mutation(
     """Each module must import under the sealed frozen sys.path guard."""
     _purge(
         (
-            "ecosystem.defaultspack.domain.ai_client",
-            "ecosystem.defaultspack.backend.ai_client",
-            "ecosystem.defaultspack.blocks.chat._prompt_helpers",
-            "domain.ai_client",
-            "blocks.chat._prompt_helpers",
+            "ecosystem.defaultspack.domain",
+            "ecosystem.defaultspack.backend",
+            "ecosystem.defaultspack.blocks",
+            "ecosystem.defaultspack.flows",
+            "ecosystem.defaultspack.transport",
+            "ecosystem.defaultspack.bridge",
+            "domain",
+            "backend",
+            "blocks",
+            "flows",
+            "transport",
+            "bridge",
         )
     )
     importlib.import_module(module_name)
