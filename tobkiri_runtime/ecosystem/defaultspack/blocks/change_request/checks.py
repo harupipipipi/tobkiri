@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from blocks._common import error, ok
-from blocks.change_request._helpers import invalid_input_response, not_found_response, service, service_error_response
+from blocks.change_request._helpers import invalid_input_response, mutation_conflict_response, not_found_response, service, service_error_response
 from blocks.coding._workspace import workspace_error_response
+from domain.change_request.store import ChangeRequestIdempotencyConflict, ChangeRequestRevisionConflict
 
 
 def run(input_data, context=None):
@@ -26,6 +27,8 @@ def run(input_data, context=None):
         return error("unsupported method", code="METHOD_NOT_ALLOWED")
     except KeyError:
         return not_found_response("change request check not found", code="CHANGE_REQUEST_CHECK_NOT_FOUND")
+    except (ChangeRequestRevisionConflict, ChangeRequestIdempotencyConflict) as exc:
+        return mutation_conflict_response(exc)
     except ValueError as exc:
         return invalid_input_response(exc)
     except Exception as exc:

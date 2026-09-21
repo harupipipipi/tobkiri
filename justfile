@@ -14,7 +14,7 @@ root-test *args:
 
 # Run tobkiri_runtime tests. Pass pytest selectors after the recipe name.
 test *args:
-    cd tobkiri_runtime && python -m pytest "$@"
+    cd tobkiri_runtime && python -m pytest {{args}}
 
 # Run the focused defaultspack coding/tooling regression cluster.
 tooling-test:

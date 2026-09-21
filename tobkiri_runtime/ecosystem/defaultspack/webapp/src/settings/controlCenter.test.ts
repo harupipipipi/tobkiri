@@ -29,6 +29,24 @@ test("settings control center keeps the required section order", () => {
   ]);
 });
 
+test("provider and API controls remain in Models & API without pack contributions", () => {
+  const sections = buildControlCenterSections([
+    {
+      id: "models",
+      label: "Models",
+      fields: [{ id: "provider_select", label: "Provider", type: "provider_select" }],
+    },
+    {
+      id: "apis",
+      label: "APIs / Tokens",
+      fields: [{ id: "api_keys", label: "API Keys / Tokens", type: "api_keys" }],
+    },
+  ] as SettingsSection[]);
+
+  const modelsApi = sections.find((section) => section.id === "models_api");
+  assert.deepEqual(modelsApi?.fields.map((field) => field.id), ["provider_select", "api_keys"]);
+});
+
 test("Japanese settings use task-oriented copy while preserving technical search aliases", () => {
   const sections = buildControlCenterSections([
     {

@@ -1,3 +1,12 @@
+metadata_defaults:
+  auth_mode: transport_local_guard
+  principal: authenticated_when_present
+  csrf_origin: local_origin_and_csrf_for_sensitive_mutations
+  rate_limit: transport_default
+  audit_category: defaultspack.http.legacy
+  function_id: none
+  legacy_until: v2.4
+
 legacy_routes:
 - method: POST
   pattern: /api/remote-images/consents
@@ -173,62 +182,6 @@ legacy_routes:
   replacement_function_id: ''
   owner: tool
   reason: tracked compatibility fallback for Tool UX v3 local embedding cache rebuild
-  remove_after: v2.4
-- method: GET
-  pattern: /api/chat/channels
-  legacy_block_module: blocks.chat.channel.list
-  replacement_function_id: chat_channel_list
-  owner: chat
-  reason: tracked compatibility fallback during HTTP function migration
-  remove_after: v2.4
-- method: POST
-  pattern: /api/chat/channels
-  legacy_block_module: blocks.chat.channel.create
-  replacement_function_id: chat_channel_create
-  owner: chat
-  reason: tracked compatibility fallback during HTTP function migration
-  remove_after: v2.4
-- method: GET
-  pattern: /api/chat/channels/{id}
-  legacy_block_module: blocks.chat.channel.get
-  replacement_function_id: chat_channel_get
-  owner: chat
-  reason: tracked compatibility fallback during HTTP function migration
-  remove_after: v2.4
-- method: POST
-  pattern: /api/chat/channels/{id}/join
-  legacy_block_module: blocks.chat.channel.join
-  replacement_function_id: chat_channel_join
-  owner: chat
-  reason: tracked compatibility fallback during HTTP function migration
-  remove_after: v2.4
-- method: POST
-  pattern: /api/chat/channels/{id}/leave
-  legacy_block_module: blocks.chat.channel.leave
-  replacement_function_id: chat_channel_leave
-  owner: chat
-  reason: tracked compatibility fallback during HTTP function migration
-  remove_after: v2.4
-- method: POST
-  pattern: /api/chat/channels/{id}/messages
-  legacy_block_module: blocks.chat.channel.send_message
-  replacement_function_id: chat_channel_send_message
-  owner: chat
-  reason: tracked compatibility fallback during HTTP function migration
-  remove_after: v2.4
-- method: GET
-  pattern: /api/chat/channels/{id}/messages
-  legacy_block_module: blocks.chat.channel.get_messages
-  replacement_function_id: chat_channel_get_messages
-  owner: chat
-  reason: tracked compatibility fallback during HTTP function migration
-  remove_after: v2.4
-- method: POST
-  pattern: /api/chat/channels/{id}/messages/{msg_id}/reply
-  legacy_block_module: blocks.chat.channel.reply
-  replacement_function_id: chat_channel_reply
-  owner: chat
-  reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
 - method: POST
   pattern: /api/chat/conversations/{id}/summarize

@@ -18,6 +18,7 @@ import {
   fetchDesktopSystemInfo,
   hasPendingPanelBootstrapCode,
   isDesktopShellAvailable,
+  launchDefaultspackDesktop,
   openExternalUrl,
   sendToBackground,
   setStartupProfileNodeOverride,
@@ -65,6 +66,7 @@ let tauriOpenExternalCount = 0;
 let tauriSendToBackgroundCount = 0;
 let tauriShowAppWindowCount = 0;
 let tauriDesktopInfoCount = 0;
+let tauriDesktopLaunchCount = 0;
 let sessionStorageRef: MemoryStorage;
 let fetchHandler: ((input: string | URL | Request, init?: RequestInit) => Promise<Response>) | null = null;
 
@@ -134,6 +136,10 @@ function installBrowser(href: string): MemoryStorage {
                 },
               ],
             };
+          }
+          if (command === 'launch_defaultspack_desktop') {
+            tauriDesktopLaunchCount += 1;
+            return 'http://127.0.0.1:8766';
           }
           throw new Error(`Unknown command: ${command}`);
         },
@@ -223,6 +229,7 @@ beforeEach(() => {
   tauriSendToBackgroundCount = 0;
   tauriShowAppWindowCount = 0;
   tauriDesktopInfoCount = 0;
+  tauriDesktopLaunchCount = 0;
   installBrowser('http://127.0.0.1:8765/panel/');
   installFetchMock();
 });
@@ -485,6 +492,13 @@ test('openExternalUrl uses the desktop shell when Tauri is available', async () 
 
   assert.equal(tauriOpenExternalCount, 1);
   assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/');
+});
+
+test('launchDefaultspackDesktop delegates launch to the viewer shell', async () => {
+  const url = await launchDefaultspackDesktop();
+
+  assert.equal(url, 'http://127.0.0.1:8766');
+  assert.equal(tauriDesktopLaunchCount, 1);
 });
 
 test('desktop shell helpers expose background control commands', async () => {

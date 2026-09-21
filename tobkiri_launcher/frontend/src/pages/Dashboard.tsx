@@ -533,8 +533,6 @@ export function Dashboard() {
           </div>
         )}
 
-        <SupervisorSnapshot data={dashboard.supervisor} loading={dashboardLoading} error={dashboardError} />
-
         {/* Profile Grid */}
         {visibleProfiles.length === 0 ? (
           <section className="rounded-xl border border-dashed border-border bg-bg-card/50 px-8 py-16 text-center">
@@ -932,9 +930,12 @@ function EditPanel({
   const firstPreviewError = previewDiagnostics.find((item) => item.level === 'error')?.message ?? null;
 
   return (
-    <section className="rounded-xl border border-border bg-bg-card p-6">
+    <section
+      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-bg-main"
+      aria-label={`Edit ${draft.name}`}
+    >
       {/* Edit header */}
-      <div className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex shrink-0 flex-col gap-4 border-b border-border bg-bg-card px-6 py-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
           <button
             onClick={() => patchSearchParams({ edit: null })}
@@ -973,7 +974,7 @@ function EditPanel({
       </div>
 
       {/* Edit body */}
-      <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_280px]">
+      <div className="mx-auto grid min-h-0 w-full max-w-[1400px] flex-1 gap-6 overflow-y-auto px-6 py-6 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-6">
           {/* General settings */}
           <div className="rounded-lg border border-border bg-bg-main p-5">

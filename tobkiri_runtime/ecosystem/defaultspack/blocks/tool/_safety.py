@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from blocks._common import ok
 from blocks.coding._approval import (
@@ -53,6 +54,8 @@ def _audit_args(input_data: dict[str, Any]) -> dict[str, Any]:
         "tool_name",
         "server_id",
         "server_name",
+        "config_digest",
+        "action",
         "id",
         "transport",
         "image",
@@ -63,11 +66,17 @@ def _audit_args(input_data: dict[str, Any]) -> dict[str, Any]:
             summary[key] = args.get(key)
     if "config" in args and isinstance(args.get("config"), dict):
         config = args["config"]
-        summary["config"] = {
+        config_summary = {
             key: config.get(key)
-            for key in ("server_id", "name", "transport", "command", "url")
+            for key in ("server_id", "name", "transport")
             if key in config
         }
+        if "command" in config:
+            command = str(config.get("command") or "")
+            config_summary["command"] = "[redacted command]" if _looks_sensitive(command) else command
+        if "url" in config:
+            config_summary["url"] = _redacted_url(config.get("url"))
+        summary["config"] = config_summary
     if "parameters" in args:
         summary["has_parameters"] = True
     if "handler_code" in args:
@@ -78,6 +87,26 @@ def _audit_args(input_data: dict[str, Any]) -> dict[str, Any]:
         payload = args["payload"]
         summary["payload_keys"] = sorted(str(key) for key in payload.keys())
     return summary
+
+
+def _looks_sensitive(value: str) -> bool:
+    marker = value.lower()
+    return any(token in marker for token in ("token", "secret", "password", "apikey", "api-key", "authorization", "cookie"))
+
+
+def _redacted_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        hostname = parsed.hostname or ""
+        if not hostname:
+            return "[redacted endpoint]"
+        netloc = hostname if parsed.port is None else f"{hostname}:{parsed.port}"
+        return urlunsplit((parsed.scheme, netloc, parsed.path, "[redacted]" if parsed.query else "", ""))
+    except ValueError:
+        return "[redacted endpoint]"
 
 
 def _error_passthrough(message: str, code: str = "ERROR"):

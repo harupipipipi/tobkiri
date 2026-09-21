@@ -12,6 +12,7 @@ const CONTROL_CHARACTER_RE = /[\u0000-\u001f\u007f]/;
 const ENCODED_CONTROL_RE = /%(?:0[0-9a-f]|1[0-9a-f]|7f)/i;
 const WEB_PROTOCOLS = new Set(["http:", "https:"]);
 const SECRET_QUERY_KEY_RE = /(?:^|[_-])(token|secret|password|passwd|key|signature|credential|auth|code)(?:$|[_-])/i;
+const EXPLICIT_URL_INPUT_RE = /^(?:[a-z][a-z0-9+.-]*:|\/\/|\\\\)/i;
 
 function blocked(reason: string, details: string): DestinationPolicyResult {
   return { verdict: "block", normalized_url: "", display_host: "", reason, details };
@@ -116,6 +117,17 @@ export function evaluateDestination(value: unknown): DestinationPolicyResult {
     reason: reasons.join("+") || "safe_https_destination",
     details: explanation || `Destination host: ${parsed.host}`,
   };
+}
+
+/**
+ * Classify input that explicitly looks like a URL before it is sent to a
+ * resolver, search engine, or answer backend. Plain search text returns null.
+ */
+export function evaluateExplicitDestinationInput(value: unknown): DestinationPolicyResult | null {
+  if (typeof value !== "string" || !EXPLICIT_URL_INPUT_RE.test(value)) {
+    return null;
+  }
+  return evaluateDestination(value);
 }
 
 export function evaluateRedirectDestination(

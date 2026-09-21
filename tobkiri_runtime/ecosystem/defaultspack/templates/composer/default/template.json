@@ -74,6 +74,54 @@
           "voice_input": true,
           "context_preview": true
         },
+        "field_layout": "popover_above",
+        "fields": [
+          {
+            "id": "intent",
+            "type": "select",
+            "label": "やってほしいこと",
+            "description": "依頼の進め方をAIに明示します。",
+            "default": "do",
+            "required": true,
+            "options": [
+              { "value": "do", "label": "実行・作成する" },
+              { "value": "explain", "label": "説明する" },
+              { "value": "review", "label": "レビューする" },
+              { "value": "plan", "label": "計画を作る" }
+            ]
+          },
+          {
+            "id": "response_style",
+            "type": "select",
+            "label": "回答スタイル",
+            "description": "回答の詳しさと形式を選びます。",
+            "default": "balanced",
+            "options": [
+              { "value": "concise", "label": "短く要点だけ" },
+              { "value": "balanced", "label": "標準" },
+              { "value": "detailed", "label": "詳しく" },
+              { "value": "step_by_step", "label": "手順で" }
+            ]
+          },
+          {
+            "id": "priority",
+            "type": "select",
+            "label": "優先すること",
+            "default": "quality",
+            "options": [
+              { "value": "quality", "label": "品質" },
+              { "value": "speed", "label": "スピード" },
+              { "value": "safety", "label": "安全性" },
+              { "value": "creativity", "label": "創造性" }
+            ]
+          },
+          {
+            "id": "constraints",
+            "type": "text",
+            "label": "追加条件",
+            "placeholder": "例: 既存APIは変更しない"
+          }
+        ],
         "commands": [
           "context_txt"
         ],

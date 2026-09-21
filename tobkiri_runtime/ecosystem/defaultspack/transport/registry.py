@@ -356,8 +356,10 @@ def _read_yaml(path: Path) -> dict[str, Any]:
 def _read_legacy_routes_yaml_without_pyyaml(text: str) -> dict[str, Any]:
     """Parse the simple legacy route allowlist when PyYAML is unavailable."""
     routes: list[dict[str, str]] = []
+    metadata_defaults: dict[str, str] = {}
     current: dict[str, str] | None = None
     in_legacy_routes = False
+    in_metadata_defaults = False
     for raw_line in text.splitlines():
         line = raw_line.split("#", 1)[0].rstrip()
         stripped = line.strip()
@@ -374,6 +376,12 @@ def _read_legacy_routes_yaml_without_pyyaml(text: str) -> dict[str, Any]:
                 continue
         elif not line.startswith(" "):
             in_legacy_routes = stripped == "legacy_routes:"
+            in_metadata_defaults = stripped == "metadata_defaults:"
+            continue
+        if in_metadata_defaults and not in_legacy_routes:
+            if ":" in stripped:
+                key, value = stripped.split(":", 1)
+                metadata_defaults[key.strip()] = value.strip().strip("\"'")
             continue
         if not in_legacy_routes:
             continue
@@ -383,7 +391,12 @@ def _read_legacy_routes_yaml_without_pyyaml(text: str) -> dict[str, Any]:
         current[key.strip()] = value.strip().strip("\"'")
     if current:
         routes.append(current)
-    return {"legacy_routes": routes} if routes else {}
+    result: dict[str, Any] = {}
+    if metadata_defaults:
+        result["metadata_defaults"] = metadata_defaults
+    if routes:
+        result["legacy_routes"] = routes
+    return result
 
 
 def _read_flow_yaml(path: Path) -> dict[str, Any]:
@@ -397,6 +410,9 @@ def _legacy_http_routes_path() -> Path:
 @lru_cache(maxsize=1)
 def load_legacy_http_route_allowlist() -> dict[tuple[str, str, str], dict[str, Any]]:
     data = _read_yaml(_legacy_http_routes_path())
+    metadata_defaults = data.get("metadata_defaults")
+    if not isinstance(metadata_defaults, dict):
+        metadata_defaults = {}
     allowlist: dict[tuple[str, str, str], dict[str, Any]] = {}
     for route in data.get("legacy_routes") or []:
         if not isinstance(route, dict):
@@ -406,9 +422,23 @@ def load_legacy_http_route_allowlist() -> dict[tuple[str, str, str], dict[str, A
         legacy_block_module = str(route.get("legacy_block_module") or "").strip()
         if not method or not pattern or not legacy_block_module:
             continue
-        allowlist[(method, pattern, legacy_block_module)] = route
-    allowlist.setdefault(
-        ("GET", "/api/company/{company_id}/status", "blocks.company.status"),
+        metadata = dict(metadata_defaults)
+        metadata.update(route)
+        metadata["function_id"] = str(
+            route.get("function_id")
+            or route.get("replacement_function_id")
+            or metadata_defaults.get("function_id")
+            or ""
+        ).strip()
+        metadata["legacy_until"] = str(
+            route.get("legacy_until")
+            or route.get("remove_after")
+            or metadata_defaults.get("legacy_until")
+            or ""
+        ).strip()
+        allowlist[(method, pattern, legacy_block_module)] = metadata
+    compatibility = dict(metadata_defaults)
+    compatibility.update(
         {
             "method": "GET",
             "pattern": "/api/company/{company_id}/status",
@@ -417,9 +447,56 @@ def load_legacy_http_route_allowlist() -> dict[tuple[str, str, str], dict[str, A
             "owner": "defaultspack",
             "reason": "Company status route alias for harness compatibility.",
             "remove_after": "v2.4",
-        },
+        }
+    )
+    compatibility["function_id"] = str(compatibility.get("function_id") or "").strip()
+    compatibility["legacy_until"] = str(compatibility.get("legacy_until") or compatibility.get("remove_after") or "").strip()
+    allowlist.setdefault(
+        ("GET", "/api/company/{company_id}/status", "blocks.company.status"),
+        compatibility,
     )
     return allowlist
+
+
+_REQUIRED_LEGACY_ROUTE_METADATA = frozenset(
+    {
+        "owner",
+        "reason",
+        "auth_mode",
+        "principal",
+        "csrf_origin",
+        "rate_limit",
+        "audit_category",
+        "function_id",
+        "legacy_until",
+    }
+)
+
+
+def legacy_http_route_metadata(spec: HttpRouteSpec) -> dict[str, Any]:
+    """Return complete policy metadata for an allowlisted compatibility route."""
+    legacy_block_module = str(spec.legacy_block_module or "").strip()
+    key = (
+        str(spec.method or "").upper(),
+        str(spec.pattern or "").strip(),
+        legacy_block_module,
+    )
+    metadata = load_legacy_http_route_allowlist().get(key)
+    if metadata is None:
+        raise ValueError(
+            f"legacy HTTP route is not allowlisted: {key[0]} {key[1]} -> {legacy_block_module}"
+        )
+    missing = sorted(
+        field
+        for field in _REQUIRED_LEGACY_ROUTE_METADATA
+        if not str(metadata.get(field) or "").strip()
+    )
+    if missing:
+        raise ValueError(
+            "legacy HTTP route allowlist metadata is incomplete for "
+            f"{key[0]} {key[1]} -> {legacy_block_module}: {', '.join(missing)}"
+        )
+    return dict(metadata)
 
 
 def require_legacy_route_allowlisted(spec: HttpRouteSpec) -> None:
@@ -432,6 +509,7 @@ def require_legacy_route_allowlisted(spec: HttpRouteSpec) -> None:
         legacy_block_module,
     )
     if key in load_legacy_http_route_allowlist():
+        legacy_http_route_metadata(spec)
         return
     if _legacy_route_matches_mobile_contract(spec, legacy_block_module):
         return
@@ -767,42 +845,42 @@ _FALLBACK_HTTP_ROUTE_SPECS = [
         block_module="blocks.chat.export_conversation",
         path_inject={"id": "conversation_id"},
     ),
-    HttpRouteSpec("GET", "/api/chat/channels", block_module="blocks.chat.channel.list"),
-    HttpRouteSpec("POST", "/api/chat/channels", block_module="blocks.chat.channel.create"),
+    HttpRouteSpec("GET", "/api/chat/channels", function_id="chat_channel_list"),
+    HttpRouteSpec("POST", "/api/chat/channels", function_id="chat_channel_create"),
     HttpRouteSpec(
         "GET",
         "/api/chat/channels/{id}",
-        block_module="blocks.chat.channel.get",
+        function_id="chat_channel_get",
         path_inject={"id": "id"},
     ),
     HttpRouteSpec(
         "POST",
         "/api/chat/channels/{id}/join",
-        block_module="blocks.chat.channel.join",
+        function_id="chat_channel_join",
         path_inject={"id": "id"},
     ),
     HttpRouteSpec(
         "POST",
         "/api/chat/channels/{id}/leave",
-        block_module="blocks.chat.channel.leave",
+        function_id="chat_channel_leave",
         path_inject={"id": "id"},
     ),
     HttpRouteSpec(
         "POST",
         "/api/chat/channels/{id}/messages",
-        block_module="blocks.chat.channel.send_message",
+        function_id="chat_channel_send_message",
         path_inject={"id": "id"},
     ),
     HttpRouteSpec(
         "GET",
         "/api/chat/channels/{id}/messages",
-        block_module="blocks.chat.channel.get_messages",
+        function_id="chat_channel_get_messages",
         path_inject={"id": "id"},
     ),
     HttpRouteSpec(
         "POST",
         "/api/chat/channels/{id}/messages/{msg_id}/reply",
-        block_module="blocks.chat.channel.reply",
+        function_id="chat_channel_reply",
         path_inject={"id": "id", "msg_id": "msg_id"},
     ),
     HttpRouteSpec(

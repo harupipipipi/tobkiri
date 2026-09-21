@@ -1,11 +1,12 @@
 import { RefreshCw, ShieldAlert } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { CodingApprovalDecision, CodingApprovalRequest } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { codingResources } from "../../features/coding/resources/codingResources";
 import { codingApprovalViewModel } from "../../lib/approvalPresentation";
 import { ApprovalDecisionSurface } from "../ApprovalDecisionSurface";
+import { mcpApprovalReviewRows } from "./mcpApproval";
 
 function approvalTimestampMs(value?: number): number | null {
   if (!value) return null;
@@ -41,16 +42,19 @@ export function ApprovalQueue({
   initialApprovals,
   limit = 30,
   onApproved,
+  onDenied,
   refreshSignal = 0,
 }: {
   initialApprovals?: CodingApprovalRequest[];
   limit?: number;
-  onApproved?: (decision: CodingApprovalDecision, request: CodingApprovalRequest) => void;
+  onApproved?: (decision: CodingApprovalDecision, request: CodingApprovalRequest) => void | Promise<void>;
+  onDenied?: (request: CodingApprovalRequest) => void;
   refreshSignal?: number;
 }) {
   const [requests, setRequests] = useState<CodingApprovalRequest[]>(initialApprovals ?? []);
   const [busy, setBusy] = useState<{ id: string; decision: "approve" | "deny" } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const activeDecisionsRef = useRef(new Set<string>());
 
   const load = useCallback(async () => {
     if (initialApprovals) return;
@@ -69,15 +73,21 @@ export function ApprovalQueue({
   }, [load, refreshSignal]);
 
   const decide = async (requestId: string, decision: "approve" | "deny") => {
+    if (activeDecisionsRef.current.has(requestId)) return;
+    activeDecisionsRef.current.add(requestId);
     const request = requests.find((item) => item.request_id === requestId);
     setBusy({ id: requestId, decision });
     setError(null);
     try {
       if (decision === "approve") {
         const approved = await codingResources.approveCodingApproval(requestId);
-        if (request) onApproved?.(approved, request);
+        if (!approved.approved) {
+          throw new Error(approved.reason || `Approval is ${approved.status || "already settled"}. Refresh and try again.`);
+        }
+        if (request) await onApproved?.(approved, request);
       } else {
         await codingResources.denyCodingApproval(requestId, "User denied the request from the shared approval surface");
+        if (request) onDenied?.(request);
       }
       await load();
       if (initialApprovals) {
@@ -89,6 +99,7 @@ export function ApprovalQueue({
       console.error(err);
       setError("判断を保存できませんでした。状態を更新してから再試行してください。");
     } finally {
+      activeDecisionsRef.current.delete(requestId);
       setBusy(null);
     }
   };
@@ -112,6 +123,16 @@ export function ApprovalQueue({
           className={cn(!active && "opacity-75")}
         />
         <p className="mt-1 px-1 text-[10px] text-zinc-600">{formatApprovalTime(request.created_at)} · {approvalStatusLabel(request, now)}</p>
+        {mcpApprovalReviewRows(request).length > 0 && (
+          <dl className="mt-2 grid gap-1 rounded border border-zinc-800/70 bg-black/20 p-2">
+            {mcpApprovalReviewRows(request).map((row) => (
+              <div key={row.label} className="grid grid-cols-[94px_minmax(0,1fr)] gap-2 text-[10px]">
+                <dt className="text-zinc-600">{row.label}</dt>
+                <dd className="break-words font-mono text-zinc-400">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
       </div>
     );
   };

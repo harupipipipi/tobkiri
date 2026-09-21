@@ -142,10 +142,39 @@ class NotificationService:
 
         notifications = []
         agents_to_reply = []
+        unresolved_mentions = []
+        notified_targets = set()
+        member_by_key = {}
+        for member_id in channel_members:
+            member_by_key.setdefault(str(member_id).casefold(), []).append(member_id)
 
-        if "all" in mentions:
+        def resolve_member(identifier):
+            candidates = member_by_key.get(str(identifier).casefold(), [])
+            return candidates[0] if len(candidates) == 1 else None
+
+        def add_mention_notification(target_id):
+            target_key = str(target_id).casefold()
+            if target_key in notified_targets or target_key == str(sender_id).casefold():
+                return
+            notified_targets.add(target_key)
+            notif = Notification(
+                channel_id=channel_id,
+                message_id=message_id,
+                target_id=target_id,
+                notification_type="mention",
+                sender_id=sender_id,
+                sender_name=sender_name,
+                content_preview=content,
+            )
+            with self._lock:
+                self._notifications.append(notif)
+            notifications.append(notif.to_dict())
+            if self.is_agent(target_id) and target_id not in agents_to_reply:
+                agents_to_reply.append(target_id)
+
+        if any(str(mention).casefold() == "all" for mention in mentions):
             for member_id in channel_members:
-                if member_id == sender_id:
+                if str(member_id).casefold() == str(sender_id).casefold():
                     continue
                 notif = Notification(
                     channel_id=channel_id,
@@ -159,51 +188,29 @@ class NotificationService:
                 with self._lock:
                     self._notifications.append(notif)
                 notifications.append(notif.to_dict())
+                notified_targets.add(str(member_id).casefold())
                 if self.is_agent(member_id):
                     agents_to_reply.append(member_id)
 
         for mention_name in mentions:
-            if mention_name == "all":
+            mention_key = str(mention_name).casefold()
+            if mention_key == "all":
                 continue
             agent_info = self.get_agent(mention_name)
             if agent_info is not None:
-                target_id = agent_info["agent_id"]
-                if target_id == sender_id:
+                target_id = resolve_member(agent_info["agent_id"])
+                if target_id is None:
+                    unresolved_mentions.append(mention_name)
                     continue
-                notif = Notification(
-                    channel_id=channel_id,
-                    message_id=message_id,
-                    target_id=target_id,
-                    notification_type="mention",
-                    sender_id=sender_id,
-                    sender_name=sender_name,
-                    content_preview=content,
-                )
-                with self._lock:
-                    self._notifications.append(notif)
-                notifications.append(notif.to_dict())
-                if target_id not in agents_to_reply:
-                    agents_to_reply.append(target_id)
+                add_mention_notification(target_id)
             else:
-                for member_id in channel_members:
-                    if member_id == sender_id:
-                        continue
-                    if member_id.lower() == mention_name.lower() or mention_name.lower() in member_id.lower():
-                        notif = Notification(
-                            channel_id=channel_id,
-                            message_id=message_id,
-                            target_id=member_id,
-                            notification_type="mention",
-                            sender_id=sender_id,
-                            sender_name=sender_name,
-                            content_preview=content,
-                        )
-                        with self._lock:
-                            self._notifications.append(notif)
-                        notifications.append(notif.to_dict())
-                        if self.is_agent(member_id):
-                            if member_id not in agents_to_reply:
-                                agents_to_reply.append(member_id)
+                target_id = resolve_member(mention_name)
+                if target_id is None:
+                    unresolved_mentions.append(mention_name)
+                    continue
+                add_mention_notification(target_id)
+
+        message["unresolved_mentions"] = list(dict.fromkeys(unresolved_mentions))
 
         return notifications, agents_to_reply
 

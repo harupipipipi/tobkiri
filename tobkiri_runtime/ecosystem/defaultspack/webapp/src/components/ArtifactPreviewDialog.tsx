@@ -1,7 +1,7 @@
 import { Code2, ExternalLink, FileText, Image as ImageIcon, Wrench, X } from "lucide-react";
-import { useEffect } from "react";
 
 import { cn } from "../lib/cn";
+import { ModalFoundation } from "./ModalFoundation";
 
 export type ArtifactPreviewDetail = {
   label: string;
@@ -44,15 +44,6 @@ export function ArtifactPreviewDialog({
   item: ArtifactPreviewDialogItem | null;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    if (!item) return undefined;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [item, onClose]);
-
   if (!item) return null;
 
   const Icon = iconFor(item.kind);
@@ -60,14 +51,14 @@ export function ArtifactPreviewDialog({
   const contentLines = linesFor(item.content);
 
   return (
-    <div
-      className="rumi-image-preview-backdrop fixed inset-0 rumi-layer-modal flex items-center justify-center bg-black/72 px-4 py-5 backdrop-blur-md"
-      role="dialog"
-      aria-modal="true"
-      aria-label={item.title}
+    <ModalFoundation
+      variant="trusted-window"
+      title={item.title}
+      description={item.subtitle || kindLabel(item.kind)}
+      onClose={onClose}
+      backdropClassName="rumi-image-preview-backdrop fixed inset-0 rumi-layer-modal flex items-center justify-center bg-black/72 px-4 py-5 backdrop-blur-md motion-reduce:backdrop-blur-none"
+      panelClassName="rumi-image-preview-shell relative flex h-[min(88dvh,980px)] w-[min(94vw,1180px)] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b0b0d] shadow-[0_28px_90px_rgba(0,0,0,0.55)] outline-none"
     >
-      <button type="button" className="absolute inset-0 cursor-default" aria-label="プレビューを閉じる" onClick={onClose} />
-      <section className="rumi-image-preview-shell relative flex h-[min(88vh,980px)] w-[min(94vw,1180px)] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-[#0b0b0d] shadow-[0_28px_90px_rgba(0,0,0,0.55)]">
         <header className="flex min-h-12 items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/95 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-200/10 bg-gradient-to-br from-amber-200/14 via-orange-300/10 to-stone-200/10 text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
@@ -143,7 +134,6 @@ export function ArtifactPreviewDialog({
             ))}
           </dl>
         )}
-      </section>
-    </div>
+    </ModalFoundation>
   );
 }

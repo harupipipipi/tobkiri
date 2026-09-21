@@ -340,6 +340,40 @@ export type CodingApprovalRequest = {
   display_summary?: string;
 };
 
+export type McpApprovalReview = {
+  executable?: string;
+  normalized_executable?: string;
+  transport?: string;
+  args?: unknown[];
+  normalized_args?: unknown[];
+  cwd?: string;
+  normalized_cwd?: string;
+  redacted_env?: Record<string, unknown> | unknown[];
+  environment_redacted?: Record<string, unknown> | unknown[];
+  env?: Record<string, unknown>;
+  server_source?: string;
+  source?: string;
+  capabilities?: unknown;
+  tools?: unknown;
+  network?: unknown;
+  filesystem?: unknown;
+  persistence?: unknown;
+  consequences?: unknown;
+};
+
+export type McpConnectResponse = {
+  server_id?: string;
+  server_name?: string;
+  workspace_id?: string | null;
+  status?: string;
+  approval_required?: boolean;
+  approval_request_id?: string;
+  approval_request?: CodingApprovalRequest;
+  tools_added?: number;
+  tools?: unknown[];
+  [key: string]: unknown;
+};
+
 export type CodingApprovalDecision = {
   request_id: string;
   status: string;
@@ -557,6 +591,18 @@ export type McpServerRecord = {
   tools?: unknown[];
   permissions?: Record<string, unknown>;
   config?: Record<string, unknown>;
+  inspect?: {
+    server_id?: string;
+    name?: string;
+    transport?: string;
+    status?: string;
+    connected?: boolean;
+    command?: string | null;
+    args?: string[];
+    endpoint?: string | null;
+    tools?: string[];
+    updated_at?: string;
+  };
 };
 
 export type CodingAgentSession = {
@@ -1063,11 +1109,61 @@ export type P2PPairing = {
   reason?: string;
 };
 
+export type MobileDevice = {
+  device_id: string;
+  label: string;
+  profile_id?: string;
+  platform?: string;
+  scopes?: string[];
+  status?: string;
+  encryption_key_configured?: boolean;
+};
+
+export type MobileDevicesResponse = { devices: MobileDevice[]; count?: number };
+
+export type CredentialTransferStatus =
+  | "awaiting_confirmation" | "pending" | "accepted" | "completed"
+  | "rejected" | "expired" | "revoked" | "cancelled";
+
+export type CredentialTransfer = {
+  transfer_id: string;
+  status: CredentialTransferStatus;
+  device_id: string;
+  device_label: string;
+  profile_id: string;
+  provider_id: string;
+  api_id: string;
+  provider_label: string;
+  created_at: number;
+  expires_at: number;
+};
+
 export type P2PStatusResponse = {
   p2p: P2PSettings;
   peer_count: number;
   approved_peer_count: number;
 };
+
+export type MobilePairingStatus = {
+  pairing_id: string;
+  status: string;
+  expires_at?: number;
+  token_pickup_consumed_at?: number;
+};
+
+export type MobilePairingReview = {
+  pairing: { pairing_id: string; status: string; expires_at: number; claimed_at?: number };
+  claim: {
+    device_label: string;
+    device_id_preview?: string;
+    requested_scopes: string[];
+    allowed_scopes: string[];
+    verification_code?: string;
+  };
+  claim_hash: string;
+};
+
+export type MobilePairingApprovePayload = { claim_hash: string; scopes?: string[] };
 
 export type ConversationListOptions = {
   tag?: string;
@@ -1681,6 +1777,22 @@ export type ComposerCommandExecuteResult = {
   selected_model?: string | ModelCommandCandidate | null;
 };
 
+export type TemplateComposerFieldOption = {
+  value: string;
+  label?: string;
+};
+
+export type TemplateComposerField = {
+  id: string;
+  type?: "select" | "text" | "textarea";
+  label?: string;
+  description?: string;
+  placeholder?: string;
+  default?: string;
+  required?: boolean;
+  options?: TemplateComposerFieldOption[];
+};
+
 export type TemplateComposerInput = {
   id: string;
   label?: string;
@@ -1689,6 +1801,8 @@ export type TemplateComposerInput = {
   help?: string;
   accepted_modalities?: string[];
   feature_flags?: Record<string, boolean | string | number | null | undefined>;
+  fields?: TemplateComposerField[];
+  field_layout?: "popover_above" | "inline";
   modes?: ComposerCommandMode[];
   enabled?: boolean;
   component?: string;
@@ -2844,9 +2958,10 @@ export const api = {
     return request<UICatalog>("/api/ui/catalog");
   },
 
-  uiSettings() {
+  uiSettings(options: { full?: boolean } = {}) {
+    const query = options.full ? "?full=true" : "";
     return request<{ sections: SettingsSection[]; values: Record<string, Record<string, unknown>> }>(
-      "/api/ui/settings",
+      `/api/ui/settings${query}`,
       { cache: "no-store" },
     );
   },
@@ -4076,6 +4191,66 @@ export const api = {
     });
   },
 
+  listMobileDevices() {
+    return request<MobileDevicesResponse>("/api/mobile/v1/devices", { cache: "no-store" });
+  },
+
+  createCredentialTransfer(payload: { device_id: string; provider_id: string; api_id: string; provider_label?: string }) {
+    return request<{ transfer: CredentialTransfer }>("/api/mobile/v1/credential-transfers", {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+
+  confirmCredentialTransfer(transferId: string, payload: { device_id: string; provider_id: string; api_id: string; user_confirmed: true }) {
+    return request<{ transfer: CredentialTransfer }>(`/api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/confirm`, {
+      method: "POST", body: JSON.stringify(payload),
+    });
+  },
+
+  getCredentialTransferStatus(transferId: string) {
+    return request<{ transfer: CredentialTransfer }>(`/api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/status`, { cache: "no-store" });
+  },
+
+  cancelCredentialTransfer(transferId: string) {
+    return request<{ transfer: CredentialTransfer }>(`/api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/cancel`, {
+      method: "POST", body: JSON.stringify({ reason: "cancelled by PC user" }),
+    });
+  },
+
+  revokeCredentialTransfer(transferId: string) {
+    return request<{ transfer: CredentialTransfer }>(`/api/mobile/v1/credential-transfers/${encodeURIComponent(transferId)}/revoke`, {
+      method: "POST", body: JSON.stringify({ reason: "revoked by PC user" }),
+    });
+  },
+
+  getMobilePairingStatus(pairingId: string) {
+    return request<MobilePairingStatus>(
+      `/api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/status`,
+      { cache: "no-store" },
+    );
+  },
+
+  getMobilePairingReview(pairingId: string) {
+    return request<MobilePairingReview>(
+      `/api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/review`,
+      { cache: "no-store" },
+    );
+  },
+
+  approveMobilePairing(pairingId: string, payload: MobilePairingApprovePayload) {
+    return request<{ pairing?: MobilePairingStatus }>(
+      `/api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/approve`,
+      { method: "POST", body: JSON.stringify(payload) },
+    );
+  },
+
+  rejectMobilePairing(pairingId: string, reason?: string) {
+    return request<{ pairing?: MobilePairingStatus }>(
+      `/api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/reject`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+    );
+  },
+
   sendP2PMessage(peerId: string, payload: {
     text?: string;
     message?: string;
@@ -4465,8 +4640,21 @@ export const api = {
     server_name?: string;
     config?: Record<string, unknown>;
     approval_token?: string;
+    workspace_id?: string | null;
   }) {
-    return request<Record<string, unknown>>("/api/tools/mcp/connect", {
+    return request<McpConnectResponse>("/api/tools/mcp/connect", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  manageMcpServer(payload: {
+    action: "disconnect" | "reconnect" | "remove";
+    server_id: string;
+    confirm?: boolean;
+    approval_token?: string;
+  }) {
+    return request<Record<string, unknown>>("/api/tools/mcp", {
       method: "POST",
       body: JSON.stringify(payload),
     });

@@ -6,10 +6,12 @@ import { cn } from "../lib/cn";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
 import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
+import { MobilePairingApproval } from "../components/MobilePairingApproval";
 import { normalizeLocale, t } from "../lib/i18n";
 import { buildBuiltinPlacementManifests, filterPlacementCandidates, normalizePinnedPlacements, togglePinnedPlacement, type PlacementManifest } from "../lib/placement";
 import { selectedApisForModel, toggleModelApiRoute, updateModelApiRouteText } from "../lib/modelApiRoutes";
 import { settingsFieldSearchText, settingsSectionSearchText } from "../lib/settingsSearch";
+import { reviewConnectionDraft, reviewOAuthDestination, type CredentialImportReview, type OAuthDestinationReview } from "../lib/oauthConnectionReview";
 import { settingsApiResources } from "../features/settings/resources/settingsApiResources";
 import { availabilityCopy, type ModelAvailabilityAfterKeySave } from "../features/settings/resources/useModelAvailability";
 import { ContinuitySettingsField } from "../features/continuity/ContinuitySettingsField";
@@ -39,6 +41,13 @@ import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsF
 const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
   ...builtinSettingsFieldRendererEntries,
   {
+    id: "builtin-settings-mobile-pairing-review",
+    types: ["mobile_pairing_review"],
+    renderers: ["mobile_pairing_review", "MobilePairingApproval"],
+    component: "MobilePairingApproval",
+    render: MobilePairingReviewField,
+  },
+  {
     id: "builtin-settings-model-routing",
     types: ["model_api_routes"],
     renderers: ["model_routing", "model_api_routes", "ModelApiRoutesSettingsField"],
@@ -53,6 +62,37 @@ const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
     render: ContinuitySettingsField,
   },
 ]);
+
+type PendingOAuthReview = OAuthDestinationReview & {
+  popup: Window | null;
+  scopes: string[];
+};
+
+function MobilePairingReviewField({ sectionId, field, value, onChange }: SettingsFieldRendererProps) {
+  const pairingId = String(value ?? "").trim();
+  const originRef = useRef<HTMLInputElement>(null);
+  const [dismissedId, setDismissedId] = useState("");
+  const visible = pairingId.length > 0 && dismissedId !== pairingId;
+  return (
+    <div className="space-y-3" data-settings-renderer="mobile_pairing_review">
+      <label className="block text-sm text-zinc-300">
+        {field.label}
+        <input
+          ref={originRef}
+          value={String(value ?? "")}
+          onChange={(event) => { setDismissedId(""); onChange(sectionId, field.id, event.target.value); }}
+          placeholder="pair-…"
+          autoComplete="off"
+          spellCheck={false}
+          className="mt-2 h-10 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 font-mono text-sm outline-none focus:border-zinc-500"
+        />
+      </label>
+      <p className="text-xs leading-5 text-zinc-500">PCで作成したpairing IDを入力すると、authoritative requestを再取得して安全に確認します。</p>
+      {visible ? <MobilePairingApproval pairingId={pairingId} originRef={originRef} onClose={() => setDismissedId(pairingId)} /> : null}
+      {!visible && pairingId ? <button type="button" onClick={() => setDismissedId("")} className="text-xs underline">接続要求をもう一度開く</button> : null}
+    </div>
+  );
+}
 
 function formatReadonlyValue(value: unknown, fallback: unknown): string {
   const resolved = value ?? fallback ?? "";
@@ -102,6 +142,7 @@ function settingsFieldTakesFullWidth(field: SettingsSection["fields"][number]): 
     || type === "model_api_routes"
     || type === "continuity"
     || type === "device_lock"
+    || type === "mobile_pairing_review"
     || type === "slash_commands"
     || field.id.endsWith("_setup_guide")
   );
@@ -270,10 +311,10 @@ function oauthProviderRows(providers: Array<Record<string, unknown>>): Array<Rec
   });
 }
 
-function activeSettingsProfileLabel(settingsValues: Record<string, Record<string, unknown>>, catalog: SettingsModalRendererProps["catalog"]): {
-  label: string;
-  detail: string;
-} {
+function activeSettingsProfileLabel(
+  settingsValues: Record<string, Record<string, unknown>>,
+  catalog: SettingsModalRendererProps["catalog"],
+): string {
   const candidates = [
     settingsValues.profiles?.active_profile,
     settingsValues.profiles?.profile_id,
@@ -285,17 +326,7 @@ function activeSettingsProfileLabel(settingsValues: Record<string, Record<string
     catalog?.settings?.values?.profiles?.active_profile,
     catalog?.settings?.values?.models?.preferred_model,
   ].map((value) => String(value ?? "").trim()).filter(Boolean);
-  const label = candidates[0] ?? "";
-  if (!label) {
-    return {
-      label: "No active profile reported",
-      detail: "Profile-aware settings will show live state after the runtime reports a profile.",
-    };
-  }
-  return {
-    label,
-    detail: "Profile-aware settings use the runtime profile currently reported by settings data.",
-  };
+  return candidates[0] ?? "No active profile reported";
 }
 
 function apiRowLabel(api: Record<string, unknown>): string {
@@ -968,24 +999,6 @@ function publicUrlConfig(value: unknown, fallback: unknown): Record<string, unkn
   return {};
 }
 
-function connectionDraftKind(value: string): "connection_import" | "oauth_client" {
-  const text = value.trim();
-  if (!text.startsWith("{")) return text.includes("=") ? "connection_import" : "oauth_client";
-  try {
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    const importsConnection = String(parsed.schema ?? "") === "rumi.connection.credential_bundle.v1"
-      || "access_token" in parsed
-      || "api_token" in parsed
-      || "token" in parsed;
-    return importsConnection
-      ? "connection_import"
-      : "oauth_client";
-  } catch {
-    return "oauth_client";
-  }
-}
-
-
 function providerAccentClass(providerId: string): string {
   switch (providerId) {
     case "cloudflare":
@@ -1146,6 +1159,8 @@ function ProviderOAuthPanel({
   const [clientDrafts, setClientDrafts] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState("");
   const [messages, setMessages] = useState<Record<string, { tone: "success" | "error"; text: string }>>({});
+  const [oauthReviews, setOauthReviews] = useState<Record<string, PendingOAuthReview>>({});
+  const [draftReviews, setDraftReviews] = useState<Record<string, CredentialImportReview>>({});
   const oauthProviders = oauthProviderRows(providers);
 
   if (!oauthProviders.length) {
@@ -1153,6 +1168,56 @@ function ProviderOAuthPanel({
   }
 
   const refresh = (providerId: string) => onRefresh(sectionId, fieldId, { action: "oauth_refresh", provider_id: providerId });
+
+  const beginOAuthReview = async (providerId: string) => {
+    let popup: Window | null = null;
+    try {
+      popup = window.open("", `rumi-oauth-${providerId}`, "popup=yes,width=560,height=760");
+      setBusyAction(`${providerId}:start`);
+      const result = await settingsApiResources.startProviderOAuth(
+        providerId,
+        providerId === "google" ? { scopeMode: "google_ai", services: ["identity", "generative_language"] } : undefined,
+      );
+      const destination = reviewOAuthDestination(providerId, result.authorize_url);
+      setOauthReviews((current) => ({ ...current, [providerId]: { ...destination, popup, scopes: result.scopes ?? [] } }));
+      setMessages((current) => ({ ...current, [providerId]: { tone: "success", text: "Review the provider destination and permissions before opening OAuth." } }));
+    } catch {
+      if (popup && !popup.closed) popup.close();
+      setMessages((current) => ({ ...current, [providerId]: { tone: "error", text: "OAuth could not be started because the destination was not approved." } }));
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const confirmOAuthReview = (providerId: string) => {
+    const review = oauthReviews[providerId];
+    if (!review) return;
+    const popup = review.popup && !review.popup.closed
+      ? review.popup
+      : window.open("", `rumi-oauth-${providerId}`, "popup=yes,width=560,height=760");
+    if (!popup) {
+      setMessages((current) => ({ ...current, [providerId]: { tone: "error", text: "Popup was blocked. Your Settings draft was preserved; allow a popup and retry." } }));
+      return;
+    }
+    popup.location.replace(review.authorizeUrl);
+    popup.focus();
+    setOauthReviews((current) => {
+      const next = { ...current };
+      delete next[providerId];
+      return next;
+    });
+    setMessages((current) => ({ ...current, [providerId]: { tone: "success", text: "Authorization page opened. Connection is not complete until the provider callback is verified." } }));
+  };
+
+  const cancelOAuthReview = (providerId: string) => {
+    const review = oauthReviews[providerId];
+    if (review?.popup && !review.popup.closed) review.popup.close();
+    setOauthReviews((current) => {
+      const next = { ...current };
+      delete next[providerId];
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-3">
@@ -1178,7 +1243,9 @@ function ProviderOAuthPanel({
           : {};
         const credentialRefId = String(credentialRef.credential_id ?? "");
         const draft = clientDrafts[providerId] ?? "";
-        const isBusy = busyAction.startsWith(`${providerId}:`);
+        const oauthReview = oauthReviews[providerId];
+        const draftReview = draftReviews[providerId];
+        const isBusy = busyAction.startsWith(`${providerId}:`) || Boolean(oauthReview);
         const banner = messages[providerId];
         const oauthSurfaceLabel = providerId === "google" ? "Google AI browser login" : `${providerId} browser login`;
         const stateLabel = connected ? "Connected" : String(oauth.status_label ?? "") || (connectEnabled ? "Ready to connect" : "Client config needed");
@@ -1218,40 +1285,7 @@ function ProviderOAuthPanel({
                   type="button"
                   disabled={isBusy || !connectEnabled}
                   title={connectEnabled ? undefined : String(oauth.disabled_reason ?? hint)}
-                  onClick={async () => {
-                    let popup: Window | null = null;
-                    try {
-                      popup = window.open("", `rumi-oauth-${providerId}`, "popup=yes,width=560,height=760");
-                      setBusyAction(`${providerId}:start`);
-                      const result = await settingsApiResources.startProviderOAuth(
-                        providerId,
-                        providerId === "google" ? { scopeMode: "google_ai", services: ["identity", "generative_language"] } : undefined,
-                      );
-                      if (popup) {
-                        popup.location.href = result.authorize_url;
-                        popup.focus();
-                      } else {
-                        window.location.href = result.authorize_url;
-                      }
-                      setMessages((current) => ({
-                        ...current,
-                        [providerId]: { tone: "success", text: "Browser login opened in a new window." },
-                      }));
-                    } catch (errorValue) {
-                      if (popup && !popup.closed) {
-                        popup.close();
-                      }
-                      setMessages((current) => ({
-                        ...current,
-                        [providerId]: {
-                          tone: "error",
-                          text: errorValue instanceof Error ? errorValue.message : "Failed to start browser login.",
-                        },
-                      }));
-                    } finally {
-                      setBusyAction("");
-                    }
-                  }}
+                  onClick={() => void beginOAuthReview(providerId)}
                   className={cn(
                     "rounded-lg border px-3 py-2 text-xs transition-colors",
                     isBusy || !connectEnabled
@@ -1336,6 +1370,11 @@ function ProviderOAuthPanel({
                 onChange={(event) => {
                   const nextValue = event.target.value;
                   setClientDrafts((current) => ({ ...current, [providerId]: nextValue }));
+                  setDraftReviews((current) => {
+                    const next = { ...current };
+                    delete next[providerId];
+                    return next;
+                  });
                   setMessages((current) => {
                     if (!(providerId in current)) return current;
                     const next = { ...current };
@@ -1350,31 +1389,11 @@ function ProviderOAuthPanel({
                 <button
                   type="button"
                   disabled={isBusy || !draft.trim()}
-                  onClick={async () => {
+                  onClick={() => {
                     try {
-                      setBusyAction(`${providerId}:save`);
-                      const kind = connectionDraftKind(draft);
-                      if (kind === "connection_import") {
-                        await settingsApiResources.importProviderConnection(providerId, draft);
-                      } else {
-                        await settingsApiResources.saveProviderOAuthClientConfig(providerId, draft);
-                      }
-                      setClientDrafts((current) => ({ ...current, [providerId]: "" }));
-                      refresh(providerId);
-                      setMessages((current) => ({
-                        ...current,
-                        [providerId]: { tone: "success", text: kind === "connection_import" ? "Connection credential imported." : "OAuth client config saved." },
-                      }));
-                    } catch (errorValue) {
-                      setMessages((current) => ({
-                        ...current,
-                        [providerId]: {
-                          tone: "error",
-                          text: errorValue instanceof Error ? errorValue.message : "Failed to save OAuth client config.",
-                        },
-                      }));
-                    } finally {
-                      setBusyAction("");
+                      setDraftReviews((current) => ({ ...current, [providerId]: reviewConnectionDraft(draft) }));
+                    } catch {
+                      setMessages((current) => ({ ...current, [providerId]: { tone: "error", text: "Credential data must be valid, reviewable JSON before it can be saved." } }));
                     }
                   }}
                   className={cn(
@@ -1408,6 +1427,43 @@ function ProviderOAuthPanel({
                 )}
               </div>
             </div>
+            {oauthReview && (
+              <div className="mt-3 rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-xs text-amber-50" role="status">
+                <div className="font-medium">Review external authorization</div>
+                <p className="mt-1 break-all text-amber-100/80">{oauthReview.host}{oauthReview.path}</p>
+                <p className="mt-1 text-amber-100/75">The provider may let you choose an account. This only opens the provider page; connection is verified after its callback.</p>
+                {oauthReview.scopes.length > 0 && <p className="mt-1 text-amber-100/75">Requested scopes: {oauthReview.scopes.join(", ")}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => confirmOAuthReview(providerId)} className="rounded border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-zinc-950">Open reviewed provider page</button>
+                  <button type="button" onClick={() => cancelOAuthReview(providerId)} className="rounded border border-amber-300/40 px-2.5 py-1.5 text-xs text-amber-50">Cancel</button>
+                </div>
+              </div>
+            )}
+            {draftReview && (
+              <div className="mt-3 rounded-lg border border-violet-500/35 bg-violet-500/10 p-3 text-xs text-violet-100" role="status">
+                <div className="font-medium">Review before saving</div>
+                <p className="mt-1 text-violet-100/75">{draftReview.kind === "connection_import" ? "Credential import" : "OAuth client configuration"}; {draftReview.secretFieldCount} secret field(s) detected and redacted from this review.</p>
+                {draftReview.fields.length > 0 && <p className="mt-1 text-violet-100/75">Non-secret fields: {draftReview.fields.join(", ")}</p>}
+                {draftReview.endpoints.length > 0 && <p className="mt-1 text-violet-100/75">HTTPS endpoints: {draftReview.endpoints.join(", ")}</p>}
+                {draftReview.scopes.length > 0 && <p className="mt-1 text-violet-100/75">Requested scopes: {draftReview.scopes.join(", ")}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" onClick={async () => {
+                    try {
+                      setBusyAction(`${providerId}:save`);
+                      if (draftReview.kind === "connection_import") await settingsApiResources.importProviderConnection(providerId, draft);
+                      else await settingsApiResources.saveProviderOAuthClientConfig(providerId, draft);
+                      setClientDrafts((current) => ({ ...current, [providerId]: "" }));
+                      setDraftReviews((current) => { const next = { ...current }; delete next[providerId]; return next; });
+                      refresh(providerId);
+                      setMessages((current) => ({ ...current, [providerId]: { tone: "success", text: "Saved. Status will be refreshed from the local authority." } }));
+                    } catch {
+                      setMessages((current) => ({ ...current, [providerId]: { tone: "error", text: "The credential was not confirmed as saved. Review the local status and retry if needed." } }));
+                    } finally { setBusyAction(""); }
+                  }} className="rounded border border-violet-300 bg-violet-100 px-2.5 py-1.5 text-xs font-medium text-zinc-950">Confirm and save</button>
+                  <button type="button" onClick={() => setDraftReviews((current) => { const next = { ...current }; delete next[providerId]; return next; })} className="rounded border border-violet-300/40 px-2.5 py-1.5 text-xs text-violet-100">Keep editing</button>
+                </div>
+              </div>
+            )}
             {banner && (
               <p className={cn("mt-3 text-[11px]", banner.tone === "success" ? "text-emerald-400" : "text-rose-300")}>
                 {banner.text}
@@ -3128,6 +3184,8 @@ export function SettingsModalRenderer({
   const [connectionMessages, setConnectionMessages] = useState<Record<string, { tone: "success" | "error"; text: string }>>({});
   const [connectionScopeModes, setConnectionScopeModes] = useState<Record<string, string>>({});
   const [connectionCredentialDrafts, setConnectionCredentialDrafts] = useState<Record<string, string>>({});
+  const [connectionOAuthReviews, setConnectionOAuthReviews] = useState<Record<string, PendingOAuthReview>>({});
+  const [connectionDraftReviews, setConnectionDraftReviews] = useState<Record<string, CredentialImportReview>>({});
   const [codexAppServerDraft, setCodexAppServerDraft] = useState<CodexAppServerConfig>({
     transport: "off",
     enabled: false,
@@ -3153,7 +3211,7 @@ export function SettingsModalRenderer({
     () => buildCodexAppServerPrelude(settingsValues),
     [settingsValues],
   );
-  const activeProfile = useMemo(
+  const activeProfileLabel = useMemo(
     () => activeSettingsProfileLabel(settingsValues, catalog),
     [catalog, settingsValues],
   );
@@ -3357,29 +3415,57 @@ export function SettingsModalRenderer({
       popup = window.open("", `rumi-oauth-${card.providerId}`, "popup=yes,width=560,height=760");
       setConnectionBusy(`${card.providerId}:start`);
       const result = await settingsApiResources.startProviderOAuth(card.providerId, { scopeMode, services });
-      if (popup) {
-        popup.location.href = result.authorize_url;
-        popup.focus();
-      } else {
-        window.location.href = result.authorize_url;
-      }
+      const destination = reviewOAuthDestination(card.providerId, result.authorize_url);
+      setConnectionOAuthReviews((current) => ({
+        ...current,
+        [card.providerId]: { ...destination, popup, scopes: result.scopes ?? [] },
+      }));
       setConnectionMessages((current) => ({
         ...current,
-        [card.providerId]: { tone: "success", text: `${card.label} OAuth opened with ${selectedOption?.label ?? scopeMode ?? "selected"} scopes.` },
+        [card.providerId]: { tone: "success", text: `${card.label} destination is ready for review; no external page has opened yet.` },
       }));
-      refreshConnectionStatus(card.providerId);
-    } catch (errorValue) {
+    } catch {
       if (popup && !popup.closed) popup.close();
       setConnectionMessages((current) => ({
         ...current,
         [card.providerId]: {
           tone: "error",
-          text: errorValue instanceof Error ? errorValue.message : `Failed to start ${card.label} OAuth.`,
+          text: `Failed to start ${card.label} OAuth because the provider destination was not approved.`,
         },
       }));
     } finally {
       setConnectionBusy("");
     }
+  };
+
+  const confirmAccountConnectionOAuth = (card: AccountConnectionPreludeCard) => {
+    const review = connectionOAuthReviews[card.providerId];
+    if (!review) return;
+    const popup = review.popup && !review.popup.closed
+      ? review.popup
+      : window.open("", `rumi-oauth-${card.providerId}`, "popup=yes,width=560,height=760");
+    if (!popup) {
+      setConnectionMessages((current) => ({ ...current, [card.providerId]: { tone: "error", text: "Popup was blocked. Settings state was preserved; allow a popup and retry." } }));
+      return;
+    }
+    popup.location.replace(review.authorizeUrl);
+    popup.focus();
+    setConnectionOAuthReviews((current) => {
+      const next = { ...current };
+      delete next[card.providerId];
+      return next;
+    });
+    setConnectionMessages((current) => ({ ...current, [card.providerId]: { tone: "success", text: "Authorization page opened. It is not connected until the local callback status is verified." } }));
+  };
+
+  const cancelAccountConnectionOAuth = (card: AccountConnectionPreludeCard) => {
+    const review = connectionOAuthReviews[card.providerId];
+    if (review?.popup && !review.popup.closed) review.popup.close();
+    setConnectionOAuthReviews((current) => {
+      const next = { ...current };
+      delete next[card.providerId];
+      return next;
+    });
   };
 
   const saveConnectionCredential = async (card: AccountConnectionPreludeCard) => {
@@ -3448,27 +3534,37 @@ export function SettingsModalRenderer({
       return;
     }
     try {
-      setConnectionBusy(`${card.providerId}:save_json`);
-      const kind = connectionDraftKind(draft);
-      if (kind === "connection_import") {
-        await settingsApiResources.importProviderConnection(card.providerId, draft);
-      } else {
-        await settingsApiResources.saveProviderOAuthClientConfig(card.providerId, draft);
-      }
-      setConnectionCredentialDrafts((current) => ({ ...current, [card.providerId]: "" }));
-      setConnectionMessages((current) => ({
-        ...current,
-        [card.providerId]: { tone: "success", text: kind === "connection_import" ? "Connection credential imported." : "OAuth client config saved." },
-      }));
-      refreshConnectionStatus(card.providerId);
-    } catch (errorValue) {
+      setConnectionDraftReviews((current) => ({ ...current, [card.providerId]: reviewConnectionDraft(draft) }));
+      setConnectionMessages((current) => ({ ...current, [card.providerId]: { tone: "success", text: "Review the redacted credential summary before saving." } }));
+    } catch {
       setConnectionMessages((current) => ({
         ...current,
         [card.providerId]: {
           tone: "error",
-          text: errorValue instanceof Error ? errorValue.message : "Failed to save connection JSON.",
+          text: "Credential data must be valid, reviewable JSON before it can be saved.",
         },
       }));
+    }
+  };
+
+  const confirmAccountConnectionJson = async (card: AccountConnectionPreludeCard) => {
+    const review = connectionDraftReviews[card.providerId];
+    const draft = String(connectionCredentialDrafts[card.providerId] ?? "").trim();
+    if (!review || !draft) return;
+    try {
+      setConnectionBusy(`${card.providerId}:save_json`);
+      if (review.kind === "connection_import") await settingsApiResources.importProviderConnection(card.providerId, draft);
+      else await settingsApiResources.saveProviderOAuthClientConfig(card.providerId, draft);
+      setConnectionCredentialDrafts((current) => ({ ...current, [card.providerId]: "" }));
+      setConnectionDraftReviews((current) => {
+        const next = { ...current };
+        delete next[card.providerId];
+        return next;
+      });
+      setConnectionMessages((current) => ({ ...current, [card.providerId]: { tone: "success", text: "Saved. Local connection status will now be refreshed." } }));
+      refreshConnectionStatus(card.providerId);
+    } catch {
+      setConnectionMessages((current) => ({ ...current, [card.providerId]: { tone: "error", text: "The credential was not confirmed as saved. Check local status and retry if necessary." } }));
     } finally {
       setConnectionBusy("");
     }
@@ -3567,7 +3663,7 @@ export function SettingsModalRenderer({
     <div
       key={`${field.sourceSectionId}.${field.id}`}
       className={cn(
-        "min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/50 p-4",
+        "min-w-0 rounded-lg border border-zinc-800 bg-zinc-950/50 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-950/60",
         settingsFieldTakesFullWidth(field) ? "lg:col-span-2" : "",
       )}
     >
@@ -3647,25 +3743,10 @@ export function SettingsModalRenderer({
   const renderSectionPrelude = (section: ControlCenterSection): ReactElement | null => {
     if (section.id === "quick_setup") {
       return (
-        <div className="grid gap-3 xl:grid-cols-3">
-          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
-            <div className="text-sm font-medium text-emerald-100">Setup path</div>
-            <p className="mt-1 text-xs leading-5 text-emerald-100/75">
-              Models, API keys, account connections, MCP requirements, and computer approvals are surfaced first.
-            </p>
-          </div>
-          <div className="rounded-lg border border-sky-500/20 bg-sky-500/10 p-4">
-            <div className="text-sm font-medium text-sky-100">Official app / self-host</div>
-            <p className="mt-1 text-xs leading-5 text-sky-100/75">
-              Cloud continuation uses the hosted OAuth broker, or a self-host OAuth client configured by the user.
-            </p>
-          </div>
-          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-4">
-            <div className="text-sm font-medium text-zinc-100">Registry contract</div>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">
-              Pack settings are validated before they join this control center.
-            </p>
-          </div>
+        <div className="divide-y divide-zinc-800 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/35 text-xs">
+          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr]"><span className="font-medium text-zinc-300">基本設定</span><span className="text-zinc-500">モデル、APIキー、アカウント接続を設定します。</span></div>
+          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr]"><span className="font-medium text-zinc-300">実行権限</span><span className="text-zinc-500">MCPとコンピューター操作は必要な権限だけを有効にします。</span></div>
+          <div className="grid gap-1 px-4 py-3 sm:grid-cols-[150px_1fr]"><span className="font-medium text-zinc-300">Pack設定</span><span className="text-zinc-500">検証済みの項目だけがこの画面へ追加されます。</span></div>
         </div>
       );
     }
@@ -3675,8 +3756,8 @@ export function SettingsModalRenderer({
       const blockedCount = accountConnectionCards.filter((card) => card.disabledReason && !card.connected && !card.credential?.configured).length;
       return (
         <div className="space-y-4">
-          <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/70">
-            <div className="bg-gradient-to-r from-cyan-500/15 via-violet-500/10 to-amber-500/15 px-4 py-4 sm:px-5">
+          <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40">
+            <div className="px-4 py-4 sm:px-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="max-w-2xl">
                   <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-200/80">{localizedCopy("Accounts & Connections", "アカウントと接続")}</div>
@@ -3686,15 +3767,15 @@ export function SettingsModalRenderer({
                   </p>
                 </div>
                 <div className="grid min-w-[220px] grid-cols-3 gap-2 text-center text-[11px]">
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-emerald-200">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-zinc-200">
                     <div className="text-base font-semibold">{connectedCount}</div>
                     <div className="text-[10px] text-emerald-200/70">{localizedCopy("connected", "接続済み")}</div>
                   </div>
-                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-100">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-zinc-200">
                     <div className="text-base font-semibold">{approvalCount}</div>
                     <div className="text-[10px] text-amber-100/70">{localizedCopy("approval", "承認待ち")}</div>
                   </div>
-                  <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 px-3 py-2 text-zinc-300">
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-zinc-200">
                     <div className="text-base font-semibold">{blockedCount}</div>
                     <div className="text-[10px] text-zinc-500">{localizedCopy("needs setup", "設定が必要")}</div>
                   </div>
@@ -3710,7 +3791,9 @@ export function SettingsModalRenderer({
 
           <div className="grid gap-4 xl:grid-cols-2">
             {accountConnectionCards.map((card) => {
-              const isBusy = connectionBusy === `${card.providerId}:start`;
+              const oauthReview = connectionOAuthReviews[card.providerId];
+              const draftReview = connectionDraftReviews[card.providerId];
+              const isBusy = connectionBusy === `${card.providerId}:start` || Boolean(oauthReview);
               const jsonBusy = connectionBusy === `${card.providerId}:save_json`;
               const message = connectionMessages[card.providerId];
               const selectedScopeOption = selectedConnectionScopeMode(card);
@@ -3721,12 +3804,11 @@ export function SettingsModalRenderer({
               const cloudflareFacts = card.providerId === "cloudflare" ? cloudflareProvisioningFacts(card.provisioning, isJapanese) : [];
               const cloudflareBlockers = card.providerId === "cloudflare" ? cloudflareProvisioningBlockers(card.provisioning, isJapanese) : [];
               return (
-                <article key={card.providerId} className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/70 shadow-2xl shadow-black/20">
-                  <div className={cn("absolute inset-x-0 top-0 h-1 bg-gradient-to-r", providerAccentClass(card.providerId))} />
+                <article key={card.providerId} className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/55">
                   <div className="p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex min-w-0 gap-3">
-                        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-sm font-semibold text-black", providerAccentClass(card.providerId))}>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-xs font-semibold text-zinc-300">
                           {card.label.slice(0, 2).toUpperCase()}
                         </div>
                         <div className="min-w-0">
@@ -3895,7 +3977,14 @@ export function SettingsModalRenderer({
                           type="password"
                           autoComplete="off"
                           value={connectionCredentialDrafts[card.providerId] ?? ""}
-                          onChange={(event) => setConnectionCredentialDrafts((current) => ({ ...current, [card.providerId]: event.target.value }))}
+                          onChange={(event) => {
+                            setConnectionCredentialDrafts((current) => ({ ...current, [card.providerId]: event.target.value }));
+                            setConnectionDraftReviews((current) => {
+                              const next = { ...current };
+                              delete next[card.providerId];
+                              return next;
+                            });
+                          }}
                           placeholder={card.credential.placeholder}
                           className="mt-3 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-500"
                         />
@@ -3919,7 +4008,14 @@ export function SettingsModalRenderer({
                         </div>
                         <textarea
                           value={connectionCredentialDrafts[card.providerId] ?? ""}
-                          onChange={(event) => setConnectionCredentialDrafts((current) => ({ ...current, [card.providerId]: event.target.value }))}
+                          onChange={(event) => {
+                            setConnectionCredentialDrafts((current) => ({ ...current, [card.providerId]: event.target.value }));
+                            setConnectionDraftReviews((current) => {
+                              const next = { ...current };
+                              delete next[card.providerId];
+                              return next;
+                            });
+                          }}
                           placeholder={importPlaceholderForProvider(card.providerId, isJapanese ? "ja" : "en")}
                           spellCheck={false}
                           className="mt-3 min-h-28 w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-[11px] leading-5 text-zinc-100 outline-none placeholder:text-zinc-700 focus:border-cyan-600"
@@ -3935,6 +4031,32 @@ export function SettingsModalRenderer({
                             {card.configureLabel}
                           </button>
                         </div>
+                        {draftReview && (
+                          <div className="mt-3 rounded-lg border border-violet-500/35 bg-violet-500/10 p-3 text-[11px] leading-5 text-violet-100" role="status">
+                            <div className="font-medium">{localizedCopy("Review before saving", "保存前の確認")}</div>
+                            <p className="mt-1 text-violet-100/75">{draftReview.kind === "connection_import" ? localizedCopy("Credential import", "認証情報の読み込み") : localizedCopy("OAuth client configuration", "OAuthクライアント設定")} — {localizedCopy(`${draftReview.secretFieldCount} secret field(s) are redacted.`, `秘密情報の項目 ${draftReview.secretFieldCount} 件は表示しません。`)}</p>
+                            {draftReview.fields.length > 0 && <p className="mt-1 text-violet-100/75">{localizedCopy("Non-secret fields", "秘密情報以外の項目")}: {draftReview.fields.join(", ")}</p>}
+                            {draftReview.endpoints.length > 0 && <p className="mt-1 text-violet-100/75">HTTPS endpoints: {draftReview.endpoints.join(", ")}</p>}
+                            {draftReview.scopes.length > 0 && <p className="mt-1 text-violet-100/75">{localizedCopy("Requested scopes", "要求される権限")}: {draftReview.scopes.join(", ")}</p>}
+                            <p className="mt-2 text-amber-100/85">{localizedCopy("Saving may replace the existing local connection. This action remains subject to local approval and audit policy.", "保存すると既存のローカル接続を置き換える場合があります。ローカルの承認・監査ポリシーはこの画面では変更されません。")}</p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button type="button" disabled={jsonBusy} onClick={() => void confirmAccountConnectionJson(card)} className="rounded border border-violet-300 bg-violet-100 px-2.5 py-1.5 text-xs font-medium text-zinc-950 disabled:opacity-50">{jsonBusy ? localizedCopy("Saving...", "保存中...") : localizedCopy("Confirm and save", "確認して保存")}</button>
+                              <button type="button" onClick={() => setConnectionDraftReviews((current) => { const next = { ...current }; delete next[card.providerId]; return next; })} className="rounded border border-violet-300/40 px-2.5 py-1.5 text-xs text-violet-100">{localizedCopy("Keep editing", "編集を続ける")}</button>
+                            </div>
+                          </div>
+                        )}
+                        {oauthReview && (
+                          <div className="mt-3 rounded-lg border border-amber-500/35 bg-amber-500/10 p-3 text-[11px] leading-5 text-amber-50" role="status">
+                            <div className="font-medium">{localizedCopy("Review external authorization", "外部認可ページの確認")}</div>
+                            <p className="mt-1 break-all text-amber-100/80">{oauthReview.host}{oauthReview.path}</p>
+                            <p className="mt-1 text-amber-100/75">{localizedCopy("Choose the expected provider account. Opening this page does not mean the connection completed.", "想定したプロバイダーアカウントを選択してください。このページを開いても接続完了ではありません。")}</p>
+                            {oauthReview.scopes.length > 0 && <p className="mt-1 text-amber-100/75">{localizedCopy("Requested scopes", "要求される権限")}: {oauthReview.scopes.join(", ")}</p>}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button type="button" onClick={() => confirmAccountConnectionOAuth(card)} className="rounded border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-zinc-950">{localizedCopy("Open reviewed provider page", "確認したページを開く")}</button>
+                              <button type="button" onClick={() => cancelAccountConnectionOAuth(card)} className="rounded border border-amber-300/40 px-2.5 py-1.5 text-xs text-amber-50">{localizedCopy("Cancel", "キャンセル")}</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -3981,9 +4103,9 @@ export function SettingsModalRenderer({
         <div className="space-y-4">
           <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
             <div className="space-y-4">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">Tools & MCP</div>
-                <h3 className="mt-2 text-sm font-semibold text-zinc-50">Tools are not logins</h3>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/45 p-4">
+                <div className="text-[11px] font-medium text-zinc-500">Tools & MCP</div>
+                <h3 className="mt-1 text-sm font-semibold text-zinc-50">ツールとログインは別に管理されます</h3>
                 <p className="mt-2 text-xs leading-5 text-zinc-500">MCP servers and tool sources define callable actions. Account login, OAuth tokens, and access tokens remain in Accounts & Connections.</p>
                 <div className="mt-4 grid gap-2 text-[11px]">
                   <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Credential</span> → Accounts & Connections</div>
@@ -3991,7 +4113,7 @@ export function SettingsModalRenderer({
                   <div className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2"><span className="text-zinc-300">Readiness</span> → Computer & Automation</div>
                 </div>
               </div>
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 p-4">
                 <div className="flex items-center gap-2 text-sm font-medium text-amber-100"><AlertTriangle className="h-4 w-4" /> Safety rules</div>
                 <ul className="mt-3 space-y-2 text-[11px] leading-5 text-amber-100/75">
                   <li>Remote WebSocket requires a separate App Server token or shared secret.</li>
@@ -4001,8 +4123,7 @@ export function SettingsModalRenderer({
               </div>
             </div>
 
-            <div className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/70 shadow-2xl shadow-black/20">
-              <div className={cn("absolute inset-x-0 top-0 h-1 bg-gradient-to-r", providerAccentClass("codex"))} />
+            <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/55">
               <div className="p-4 sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -4029,7 +4150,7 @@ export function SettingsModalRenderer({
                             key={option.value}
                             type="button"
                             onClick={() => setCodexAppServerDraft((current) => ({ ...current, transport: option.value, enabled: option.value === "off" ? false : current.enabled }))}
-                            className={cn("rounded-lg border px-3 py-2 text-left transition-colors", selected ? "border-cyan-500/60 bg-cyan-500/10" : "border-zinc-800 bg-black/20 hover:border-zinc-700")}
+                            className={cn("rounded-lg border px-3 py-2 text-left transition-colors", selected ? "border-zinc-500 bg-zinc-800/70" : "border-zinc-800 bg-black/20 hover:border-zinc-700")}
                           >
                             <div className="text-xs font-medium text-zinc-100">{option.label}</div>
                             <div className="mt-0.5 text-[11px] leading-4 text-zinc-500">{option.detail}</div>
@@ -4103,9 +4224,11 @@ export function SettingsModalRenderer({
         </section>
         <section className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
           <div className="text-xs font-medium uppercase tracking-normal text-zinc-500">{localizedCopy("Active profile", "使用中のプロファイル")}</div>
-          <div className="mt-2 break-words text-sm text-zinc-100">{isJapanese && activeProfile.label === "No active profile reported" ? "使用中のプロファイルは報告されていません" : activeProfile.label}</div>
+          <div className="mt-2 break-words text-sm text-zinc-100">{isJapanese && activeProfileLabel === "No active profile reported" ? "使用中のプロファイルは報告されていません" : activeProfileLabel}</div>
           <p className="mt-2 text-xs leading-5 text-zinc-500">
-            {isJapanese && activeProfile.label === "No active profile reported" ? "バックエンドが使用中のプロファイルを返していません。" : activeProfile.detail}
+            {activeProfileLabel === "No active profile reported"
+              ? localizedCopy("Profile-aware settings will show live state after the runtime reports a profile.", "バックエンドが使用中のプロファイルを返すと、プロファイル別の設定状態を表示します。")
+              : localizedCopy("Settings below apply to the profile reported by the runtime.", "以下の設定はruntimeが報告したプロファイルに適用されます。")}
           </p>
         </section>
         <section className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
@@ -4146,7 +4269,8 @@ export function SettingsModalRenderer({
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className="relative h-[min(820px,calc(100vh-48px))] w-[min(1180px,calc(100vw-32px))] bg-[#09090b] border border-zinc-800 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            transition={{ type: "spring", stiffness: 360, damping: 32 }}
+            className="relative flex h-[min(860px,calc(100vh-32px))] w-[min(1240px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d0f11] shadow-2xl shadow-black/60"
           >
             <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center">
               <div className="min-w-0">
@@ -4166,6 +4290,7 @@ export function SettingsModalRenderer({
                     pack: health?.pack ?? "defaultspack",
                   })}
                 </p>
+                <p className="mt-1 truncate text-[10px] text-zinc-600">Profile: {activeProfileLabel}</p>
               </div>
               <div className="flex items-center gap-2">
                 <div className="relative">
@@ -4224,9 +4349,9 @@ export function SettingsModalRenderer({
                 </button>
               </div>
             </div>
-            <div className="grid flex-1 min-h-0 md:grid-cols-[220px_minmax(0,1fr)_260px]">
-              <nav className="border-b border-zinc-800 bg-zinc-950/50 p-3 md:border-b-0 md:border-r overflow-x-auto md:overflow-y-auto">
-                <label className="mb-3 flex h-9 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 focus-within:border-zinc-600 focus-within:text-zinc-300">
+            <div className="grid min-h-0 flex-1 md:grid-cols-[220px_minmax(0,1fr)_260px]">
+              <nav className="overflow-x-auto border-b border-white/7 bg-black/20 p-3 md:overflow-y-auto md:border-b-0 md:border-r">
+                <label className="mb-3 flex h-10 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 transition-colors focus-within:border-zinc-600 focus-within:text-zinc-300">
                   <Search size={14} />
                   <input
                     value={settingsSearch}
@@ -4245,7 +4370,7 @@ export function SettingsModalRenderer({
                     </button>
                   )}
                 </label>
-                <div className="flex gap-2 md:flex-col">
+                <div className="flex gap-1.5 md:flex-col">
                   {visibleSections.map((section) => {
                     const primaryFieldCount = section.fields.filter((field) => !field.advanced).length;
                     return (
@@ -4254,14 +4379,15 @@ export function SettingsModalRenderer({
                         type="button"
                         onClick={() => setActiveSectionId(section.id)}
                         className={cn(
-                          "flex-shrink-0 rounded-lg px-3 py-2 text-left text-xs transition-colors border",
+                          "group relative flex-shrink-0 overflow-hidden rounded-xl border px-3 py-2.5 text-left text-xs transition-colors",
                           activeSection?.id === section.id
-                            ? "border-zinc-600 bg-zinc-800 text-zinc-100"
-                            : "border-transparent text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300",
+                            ? "border-zinc-700 bg-zinc-800 text-zinc-100"
+                            : "border-transparent text-zinc-500 hover:bg-white/[0.035] hover:text-zinc-300",
                         )}
                       >
+                        {activeSection?.id === section.id && <span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-zinc-300" />}
                         <span className="block font-medium">{section.label}</span>
-                        <span className="mt-0.5 block text-[10px] text-zinc-600">{t(locale, "settings.controls", { count: primaryFieldCount })}</span>
+                        <span className="mt-1 block text-[10px] text-zinc-600 group-hover:text-zinc-500">{t(locale, "settings.controls", { count: primaryFieldCount })}</span>
                       </button>
                     );
                   })}
@@ -4273,7 +4399,7 @@ export function SettingsModalRenderer({
                 </div>
               </nav>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+              <div className="flex-1 space-y-8 overflow-y-auto p-5 sm:p-7">
                 {pinnedSettingsPlacements.length > 0 && (
                   <section className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
@@ -4292,13 +4418,13 @@ export function SettingsModalRenderer({
                 )}
                 {activeSection && (
                   <section className="space-y-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="sticky -top-7 rumi-layer-panel -mx-1 flex flex-wrap items-start justify-between gap-3 border-b border-white/7 bg-[#0e1012] px-1 py-4">
                       <div>
-                      <h3 className="text-sm font-medium text-zinc-100">{activeSection.label}</h3>
-                      {activeSection.description && <p className="text-xs text-zinc-500 mt-1">{activeSection.description}</p>}
+                      <h3 className="text-xl font-semibold tracking-tight text-zinc-100">{activeSection.label}</h3>
+                      {activeSection.description && <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">{activeSection.description}</p>}
                       </div>
                       <span className="rounded-full border border-zinc-800 bg-zinc-950/60 px-2.5 py-1 text-[10px] text-zinc-500">
-                        {activeSection.order}
+                        {visiblePrimaryFields.length + visibleAdvancedFields.length} fields
                       </span>
                     </div>
                     {renderSectionPrelude(activeSection)}
@@ -4312,7 +4438,7 @@ export function SettingsModalRenderer({
                     {activeSection.id === "computer_automation" && (
                       <SystemInfoPanel info={desktopSystemInfo} />
                     )}
-                    <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="grid gap-4 2xl:grid-cols-2">
                       {visiblePrimaryFields.map(renderField)}
                     </div>
                     {normalizedSearch && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
@@ -4320,7 +4446,15 @@ export function SettingsModalRenderer({
                         {t(locale, "settings.noFields")}
                       </div>
                     )}
-                    {!normalizedSearch && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
+                    {!normalizedSearch && settingsSections.length === 0 && (
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
+                        {localizedCopy(
+                          "Loading built-in settings and provider information…",
+                          "組み込み設定とProvider情報を読み込んでいます…",
+                        )}
+                      </div>
+                    )}
+                    {!normalizedSearch && settingsSections.length > 0 && visiblePrimaryFields.length === 0 && visibleAdvancedFields.length === 0 && (
                       <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
                         {localizedCopy(
                           "Pack or provider contributions for this section will appear here after registry validation.",

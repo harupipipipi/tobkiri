@@ -37,6 +37,7 @@ import type { ModelCommandCandidate, ModelProfile, ModelSearchItem } from "../li
 import { CodingWorkspaceBadge } from "../components/coding/CodingWorkspaceBadge";
 import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicker";
 import { RuntimeCapabilityBanner } from "../components/RuntimeCapabilityBanner";
+import { StructuredComposerPanel } from "../components/StructuredComposerPanel";
 import { WarmActionIcon } from "../components/WarmActionIcon";
 import { chatComposerResources } from "../features/chat/resources/chatComposerResources";
 import { ActionApprovalControl } from "../features/tools/ActionApprovalControl";
@@ -1550,6 +1551,7 @@ export function ComposerRenderer({
   skillExtensions = [],
   commands = [],
   composerInput = null,
+  structuredInputValues = {},
   modelCommandCandidates = [],
   modelPickerRequestId = 0,
   yoloMode = false,
@@ -1591,6 +1593,7 @@ export function ComposerRenderer({
   onProviderApiKeySave,
   onThinkingLevelChange,
   onInputChange,
+  onStructuredInputChange,
   onSubmit,
   onStopGenerating,
   onSteerSubmit,
@@ -3108,6 +3111,14 @@ export function ComposerRenderer({
               }}
               onNoTools={() => onToolSelectionReviewNoTools?.()}
               onCancel={() => onToolSelectionReviewCancel?.()}
+            />
+          )}
+
+          {!isSteerMode && (
+            <StructuredComposerPanel
+              composerInput={composerInput}
+              values={structuredInputValues}
+              onApply={(values) => onStructuredInputChange?.(values)}
             />
           )}
 

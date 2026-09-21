@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Dict
 
 from ..di_container import get_container
@@ -72,9 +74,27 @@ class SetupHandlersMixin:
         return payload
 
     def _setup_list_packs(self) -> Dict[str, Any]:
-        return self._normalize_setup_pack_selection_payload(
+        result = self._normalize_setup_pack_selection_payload(
             get_setup_pack_manager().list_packs()
         )
+        result["review_revision"] = self._setup_pack_review_revision(result.get("packs"))
+        return result
+
+    @staticmethod
+    def _setup_pack_review_revision(packs: Any) -> str:
+        reviewed = []
+        for item in packs if isinstance(packs, list) else []:
+            if not isinstance(item, dict):
+                continue
+            reviewed.append({
+                key: item.get(key)
+                for key in (
+                    "pack_id", "version", "source_path", "description", "risk_level",
+                    "supports_all_ok", "required_permissions", "depends_on", "conflicts_with",
+                )
+            })
+        encoded = json.dumps(reviewed, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return "setup-review-v1:" + hashlib.sha256(encoded).hexdigest()
 
     @staticmethod
     def _normalize_setup_pack_selection_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -141,6 +161,18 @@ class SetupHandlersMixin:
             if not setup_pack_id:
                 return {"error": "setup_pack_id or setup_pack_ids is required", "status_code": 400}
             setup_pack_ids = setup_pack_id
+
+        selected = [str(item).strip() for item in (setup_pack_ids if isinstance(setup_pack_ids, list) else [setup_pack_ids]) if str(item).strip()]
+        reviewed = [str(item).strip() for item in payload.get("reviewed_pack_ids") or [] if str(item).strip()]
+        current = self._normalize_setup_pack_selection_payload(get_setup_pack_manager().list_packs())
+        revision = self._setup_pack_review_revision(current.get("packs"))
+        if payload.get("review_revision") != revision or reviewed != selected:
+            return {"error": "Setup pack review is missing or stale; refresh and review the exact install plan", "status_code": 409}
+        confirmed = {str(item).strip() for item in payload.get("confirmed_privileged_pack_ids") or [] if str(item).strip()}
+        by_id = {str(item.get("pack_id") or ""): item for item in current.get("packs") or [] if isinstance(item, dict)}
+        privileged = {pack_id for pack_id in selected if by_id.get(pack_id, {}).get("supports_all_ok") or by_id.get(pack_id, {}).get("risk_level") == "high"}
+        if not privileged.issubset(confirmed):
+            return {"error": "Each high-risk or all-OK-capable pack requires explicit item-level confirmation", "status_code": 400}
 
         result = get_setup_pack_manager().install(setup_pack_ids)
         if "error" in result:

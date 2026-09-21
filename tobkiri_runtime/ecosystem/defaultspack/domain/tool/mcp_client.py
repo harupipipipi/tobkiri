@@ -3,6 +3,7 @@ MCP (Model Context Protocol) クライアント実装。
 JSON-RPC 2.0 準拠。stdio / SSE トランスポート対応。
 外部ライブラリ不使用（標準ライブラリのみ）。
 """
+
 import json
 import os
 import re
@@ -32,10 +33,7 @@ def _expand_placeholders(value):
     if isinstance(value, tuple):
         return [_expand_placeholders(item) for item in value]
     if isinstance(value, dict):
-        return {
-            str(key): _expand_placeholders(item)
-            for key, item in value.items()
-        }
+        return {str(key): _expand_placeholders(item) for key, item in value.items()}
     return value
 
 
@@ -88,12 +86,13 @@ class _TransportBase:
 class _StdioTransport(_TransportBase):
     """サブプロセスの stdin/stdout で通信する stdio トランスポート"""
 
-    def __init__(self, command, env=None):
+    def __init__(self, command, env=None, cwd=None):
         if isinstance(command, str):
             self._command = command.split()
         else:
             self._command = list(command)
         self._env = env
+        self._cwd = cwd
         self._proc = None
         self._reader_thread = None
         self._queue = queue.Queue()
@@ -107,10 +106,9 @@ class _StdioTransport(_TransportBase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self._env,
+            cwd=self._cwd,
         )
-        self._reader_thread = threading.Thread(
-            target=self._read_loop, daemon=True
-        )
+        self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
         self._reader_thread.start()
 
     def stop(self):
@@ -187,14 +185,10 @@ class _SseTransport(_TransportBase):
     def start(self):
         self._stop_event.clear()
         self._ready_event.clear()
-        self._reader_thread = threading.Thread(
-            target=self._sse_loop, daemon=True
-        )
+        self._reader_thread = threading.Thread(target=self._sse_loop, daemon=True)
         self._reader_thread.start()
         if not self._ready_event.wait(timeout=_DEFAULT_TIMEOUT):
-            raise RuntimeError(
-                "SSE transport: failed to receive endpoint event within timeout"
-            )
+            raise RuntimeError("SSE transport: failed to receive endpoint event within timeout")
 
     def stop(self):
         self._stop_event.set()
@@ -221,9 +215,7 @@ class _SseTransport(_TransportBase):
             with urllib.request.urlopen(req, timeout=_DEFAULT_TIMEOUT) as resp:
                 resp.read()
         except urllib.error.HTTPError as exc:
-            raise RuntimeError(
-                "SSE POST failed: {} {}".format(exc.code, exc.reason)
-            )
+            raise RuntimeError("SSE POST failed: {} {}".format(exc.code, exc.reason))
 
     def recv(self, timeout=_DEFAULT_TIMEOUT):
         try:
@@ -233,10 +225,7 @@ class _SseTransport(_TransportBase):
 
     @property
     def is_alive(self):
-        return (
-            self._reader_thread is not None
-            and self._reader_thread.is_alive()
-        )
+        return self._reader_thread is not None and self._reader_thread.is_alive()
 
     # -- internal --
 
@@ -257,9 +246,9 @@ class _SseTransport(_TransportBase):
                     break
                 line = raw_line.decode("utf-8", errors="replace").rstrip("\n").rstrip("\r")
                 if line.startswith("event:"):
-                    event_type = line[len("event:"):].strip()
+                    event_type = line[len("event:") :].strip()
                 elif line.startswith("data:"):
-                    data_buf.append(line[len("data:"):].strip())
+                    data_buf.append(line[len("data:") :].strip())
                 elif line == "":
                     if data_buf:
                         data_str = "\n".join(data_buf)
@@ -318,7 +307,8 @@ class _ServerConnection:
             if isinstance(config_env, dict):
                 for key, value in config_env.items():
                     env[str(key)] = str(value)
-            self._transport = _StdioTransport(command_parts, env=env)
+            cwd = _expand_placeholders(self.config.get("cwd"))
+            self._transport = _StdioTransport(command_parts, env=env, cwd=cwd)
         elif transport_type == "sse":
             url = _expand_placeholders(self.config.get("url"))
             if not url:
@@ -347,10 +337,13 @@ class _ServerConnection:
         return self.connect()
 
     def call_tool(self, tool_name, arguments):
-        resp = self._send_request("tools/call", {
-            "name": tool_name,
-            "arguments": arguments or {},
-        })
+        resp = self._send_request(
+            "tools/call",
+            {
+                "name": tool_name,
+                "arguments": arguments or {},
+            },
+        )
         if "error" in resp:
             return {
                 "result": resp["error"].get("message", "MCP error"),
@@ -381,9 +374,7 @@ class _ServerConnection:
 
     def _send_request(self, method, params=None):
         if self._transport is None:
-            raise RuntimeError(
-                "Not connected to server '{}'".format(self.server_name)
-            )
+            raise RuntimeError("Not connected to server '{}'".format(self.server_name))
         msg_id = self._next_id()
         request = {
             "jsonrpc": "2.0",
@@ -399,16 +390,12 @@ class _ServerConnection:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError(
-                    "Timeout waiting for response to '{}' (id={})".format(
-                        method, msg_id
-                    )
+                    "Timeout waiting for response to '{}' (id={})".format(method, msg_id)
                 )
             msg = self._transport.recv(timeout=remaining)
             if msg is None:
                 raise TimeoutError(
-                    "Timeout waiting for response to '{}' (id={})".format(
-                        method, msg_id
-                    )
+                    "Timeout waiting for response to '{}' (id={})".format(method, msg_id)
                 )
             if msg.get("id") == msg_id:
                 return msg
@@ -427,16 +414,17 @@ class _ServerConnection:
         self._transport.send(raw)
 
     def _initialize(self):
-        resp = self._send_request("initialize", {
-            "protocolVersion": _PROTOCOL_VERSION,
-            "capabilities": {},
-            "clientInfo": _CLIENT_INFO,
-        })
+        resp = self._send_request(
+            "initialize",
+            {
+                "protocolVersion": _PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": _CLIENT_INFO,
+            },
+        )
         if "error" in resp:
             raise RuntimeError(
-                "MCP initialize failed: {}".format(
-                    resp["error"].get("message", "unknown error")
-                )
+                "MCP initialize failed: {}".format(resp["error"].get("message", "unknown error"))
             )
         result = resp.get("result", {})
         self.server_capabilities = result.get("capabilities", {})
@@ -460,6 +448,7 @@ class McpClient:
     MCP クライアント（シングルトン）。
     複数の MCP サーバー接続を管理する。
     """
+
     _instance = None
 
     def __new__(cls):
@@ -497,11 +486,7 @@ class McpClient:
             conn.tools = []
             with self._lock:
                 self._servers[server_name] = conn
-            raise RuntimeError(
-                "Failed to connect to MCP server '{}': {}".format(
-                    server_name, exc
-                )
-            )
+            raise RuntimeError("Failed to connect to MCP server '{}': {}".format(server_name, exc))
         with self._lock:
             self._servers[server_name] = conn
         return tools_added
@@ -518,9 +503,7 @@ class McpClient:
         with self._lock:
             conn = self._servers.get(server_name)
         if conn is None:
-            raise RuntimeError(
-                "MCP server '{}' not found".format(server_name)
-            )
+            raise RuntimeError("MCP server '{}' not found".format(server_name))
         return conn.reconnect()
 
     def list_servers(self):
@@ -538,11 +521,13 @@ class McpClient:
                     tool_names.append(t.get("name", ""))
                 else:
                     tool_names.append(str(t))
-            result.append({
-                "name": conn.server_name,
-                "status": conn.status,
-                "tools": tool_names,
-            })
+            result.append(
+                {
+                    "name": conn.server_name,
+                    "status": conn.status,
+                    "tools": tool_names,
+                }
+            )
         return result
 
     def get_server_tools(self, server_name):
@@ -571,9 +556,7 @@ class McpClient:
             }
         if conn.status != "connected":
             return {
-                "result": "MCP server '{}' status: {}".format(
-                    server_name, conn.status
-                ),
+                "result": "MCP server '{}' status: {}".format(server_name, conn.status),
                 "is_error": True,
                 "widget": None,
             }

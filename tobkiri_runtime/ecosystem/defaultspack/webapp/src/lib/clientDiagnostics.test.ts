@@ -10,6 +10,7 @@ import {
   prepareClientDiagnostic,
   redactDiagnosticText,
   reportClientDiagnostic,
+  reportClientDiagnosticResult,
   sanitizeDiagnosticDetail,
   type ClientDiagnosticPayloadV2,
 } from "./clientDiagnostics";
@@ -221,4 +222,13 @@ test("reportClientDiagnostic does not claim success without server acknowledgeme
   } finally {
     api.reportClientEvent = originalReportClientEvent;
   }
+});
+
+test("detailed diagnostic result exposes only sanitized acknowledgement ids", async () => {
+  const originalReportClientEvent = api.reportClientEvent;
+  api.reportClientEvent = async () => ({ recorded: true, diagnostic_id: "diag-safe/reference" });
+  try {
+    const result = await reportClientDiagnosticResult({ message: "safe", fingerprint: `result-${Date.now()}` });
+    assert.deepEqual(result, { recorded: true, diagnosticId: "diag-safe_reference" });
+  } finally { api.reportClientEvent = originalReportClientEvent; }
 });

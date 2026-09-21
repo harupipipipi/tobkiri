@@ -1118,11 +1118,12 @@ class ControlPanelHandlersMixin:
                 continue
             flow_id = key[5:]
             meta = info.get("last_meta") or {}
+            filename, pack_id = self._panel_flow_source_info(meta)
             flows.append({
                 "flow_id": flow_id,
                 "name": meta.get("name", flow_id),
-                "pack_id": meta.get("owner_pack") or meta.get("pack_id") or meta.get("source", ""),
-                "filename": meta.get("filename", ""),
+                "pack_id": pack_id,
+                "filename": filename,
             })
 
         return sorted(flows, key=lambda f: f["flow_id"])
@@ -1149,7 +1150,7 @@ class ControlPanelHandlersMixin:
 
         info = all_keys[flow_key]
         meta = info.get("last_meta") or {}
-        filename = meta.get("filename", "")
+        filename, pack_id = self._panel_flow_source_info(meta)
 
         yaml_content = ""
         if filename:
@@ -1164,10 +1165,46 @@ class ControlPanelHandlersMixin:
         return {
             "flow_id": flow_id,
             "name": meta.get("name", flow_id),
-            "pack_id": meta.get("owner_pack") or meta.get("pack_id") or meta.get("source", ""),
+            "pack_id": pack_id,
             "filename": filename,
             "yaml_content": yaml_content,
         }
+
+    @staticmethod
+    def _panel_flow_source_info(meta: Dict[str, Any]) -> tuple[str, str]:
+        """Return the display filename and owner pack from FlowLoader metadata."""
+        source_file = str(
+            meta.get("_source_file")
+            or meta.get("source_path")
+            or meta.get("_source_path")
+            or ""
+        ).strip()
+        filename = str(meta.get("filename") or "").strip()
+        if not filename and source_file:
+            filename = Path(source_file).name
+
+        pack_id = str(
+            meta.get("owner_pack")
+            or meta.get("_owner_pack")
+            or meta.get("pack_id")
+            or meta.get("source")
+            or ""
+        ).strip()
+        if not pack_id and source_file:
+            parts = Path(source_file).parts
+            ecosystem_index = next(
+                (
+                    index
+                    for index, part in enumerate(parts)
+                    if part.lower() == "ecosystem"
+                ),
+                -1,
+            )
+            if 0 <= ecosystem_index < len(parts) - 1:
+                pack_id = parts[ecosystem_index + 1]
+            elif Path(source_file).parent.name.lower() == "flows":
+                pack_id = "core"
+        return filename, pack_id
 
     def _panel_create_flow(self, body: Dict[str, Any]) -> Dict[str, Any]:
         """POST /api/panel/flows — Flow 新規作成"""
@@ -1302,7 +1339,11 @@ class ControlPanelHandlersMixin:
 
     def _panel_resolve_flow_path(self, filename: str, meta: Dict[str, Any]) -> Optional[Path]:
         """Flow のファイルパスを解決する"""
-        source_path = meta.get("source_path") or meta.get("_source_path")
+        source_path = (
+            meta.get("_source_file")
+            or meta.get("source_path")
+            or meta.get("_source_path")
+        )
         if source_path:
             p = Path(source_path)
             if p.is_file():

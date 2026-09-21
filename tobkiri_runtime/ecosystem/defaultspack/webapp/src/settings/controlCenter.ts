@@ -238,7 +238,7 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "general.spotlight_shortcut_text_input": { label: "入力中も会話検索を開く", help: "入力欄にカーソルがあるときも会話検索のショートカットを使えます。" },
   "general.language": { label: "表示言語", help: "Tobkiriの画面で使う言語を選びます。拡張機能に翻訳がない場合は元の文言を表示します。", options: { auto: "端末に合わせる" } },
   "preview.default_mode": { label: "プレビューの表示方法" },
-  "chat_rendering.unknown_block_strategy": { label: "未対応の内容の表示", help: "Rumiがまだ対応していない形式を受け取ったときの表示方法です。", options: { json: "元データを表示" } },
+  "chat_rendering.unknown_block_strategy": { label: "未対応の内容の表示", help: "未対応形式は安全な案内だけを表示します。開発者向け情報にも値や秘密は含まれません。", options: { placeholder: "安全な案内", debug: "開発者向け情報（制限済み）" } },
   "models.preferred_model": { label: "普段使うモデル", help: "新しい会話で最初に使うモデルを選びます。" },
   "models.on_switch_to_non_vision_with_images": { label: "画像非対応モデルへ切り替えるとき", help: "画像のある会話で、画像を読めないモデルを選んだときの動作です。", options: { auto_bridge: "画像を読み取って引き継ぐ", ask: "切り替える前に確認", block: "切り替えない", ignore: "画像を渡さず切り替える" } },
   "tools.semantic_backend": { label: "機能候補の探し方", options: { embedding: "意味が近い機能を探す", lexical: "名前や説明から探す" } },

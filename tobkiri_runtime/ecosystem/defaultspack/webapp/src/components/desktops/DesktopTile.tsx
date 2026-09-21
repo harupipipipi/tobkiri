@@ -1,5 +1,5 @@
-import { AlertTriangle, Bot, Circle, Monitor, UserCheck } from "lucide-react";
-import { useRef, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
+import { AlertTriangle, Bot, Circle, Keyboard, Monitor, UserCheck } from "lucide-react";
+import { useEffect, useRef, useState, type ClipboardEvent, type CompositionEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
 
 import { cn } from "../../lib/cn";
 import type { DesktopInputAction, DesktopInstance } from "../../features/sandboxes/types";
@@ -79,6 +79,41 @@ function desktopKey(event: KeyboardEvent<HTMLDivElement>): string | null {
   return map[event.key] ?? null;
 }
 
+function desktopKeyCombo(event: KeyboardEvent<HTMLDivElement>): string | null {
+  const key = desktopKey(event) ?? (event.key.length === 1 ? event.key.toLowerCase() : null);
+  if (!key) return null;
+  const modifiers = [
+    event.ctrlKey ? "ctrl" : null,
+    event.altKey ? "alt" : null,
+    event.metaKey ? "super" : null,
+    event.shiftKey && event.key.length > 1 ? "shift" : null,
+  ].filter(Boolean);
+  return [...modifiers, key].join("+");
+}
+
+type KeyboardCaptureDecision =
+  | { kind: "release" }
+  | { kind: "ignore" }
+  | { kind: "type"; text: string }
+  | { kind: "key"; key: string };
+
+export function keyboardCaptureDecision(event: {
+  key: string;
+  ctrlKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  isComposing?: boolean;
+}): KeyboardCaptureDecision {
+  if (event.key === "Escape") return { kind: "release" };
+  if (event.isComposing || event.key === "Process" || event.key === "Dead") return { kind: "ignore" };
+  if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    return { kind: "type", text: event.key };
+  }
+  const key = desktopKeyCombo(event as KeyboardEvent<HTMLDivElement>);
+  return key ? { kind: "key", key } : { kind: "ignore" };
+}
+
 export function DesktopTile({
   desktop,
   selected,
@@ -97,6 +132,8 @@ export function DesktopTile({
   onDelete,
 }: DesktopTileProps) {
   const frameRegionRef = useRef<HTMLDivElement | null>(null);
+  const keyboardControlButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [keyboardCaptured, setKeyboardCaptured] = useState(false);
   const pointerSessionRef = useRef<PointerSession | null>(null);
   const lastMoveRef = useRef(0);
   const { frame, error, ageMs, pollNow } = useDesktopFrame({
@@ -116,6 +153,17 @@ export function DesktopTile({
     : desktop.control?.holder === "ai"
       ? "AI control"
       : "Control available";
+
+  const releaseKeyboard = () => {
+    setKeyboardCaptured(false);
+    requestAnimationFrame(() => keyboardControlButtonRef.current?.focus());
+  };
+
+  useEffect(() => {
+    if (keyboardCaptured && (!hasLease || desktop.status !== "running")) {
+      releaseKeyboard();
+    }
+  }, [desktop.status, hasLease, keyboardCaptured]);
 
   const mapPointer = (event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement> | WheelEvent<HTMLDivElement>) => {
     if (!hasLease || !frame || !frameRegionRef.current) return;
@@ -201,24 +249,44 @@ export function DesktopTile({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!hasLease || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (event.key.length === 1) {
+    if (!hasLease || !keyboardCaptured) return;
+    const decision = keyboardCaptureDecision({
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      shiftKey: event.shiftKey,
+      isComposing: event.nativeEvent.isComposing,
+    });
+    if (decision.kind === "release") {
       event.preventDefault();
-      onInput({ action: "type_text", text: event.key });
+      event.stopPropagation();
+      releaseKeyboard();
       return;
     }
-    const key = desktopKey(event);
-    if (!key) return;
+    if (decision.kind === "ignore") return;
+    if (decision.kind === "type") {
+      event.preventDefault();
+      onInput({ action: "type_text", text: decision.text });
+      return;
+    }
     event.preventDefault();
-    onInput({ action: "key", key });
+    event.stopPropagation();
+    onInput({ action: "key", key: decision.key });
   };
 
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
-    if (!hasLease) return;
+    if (!hasLease || !keyboardCaptured) return;
     const text = event.clipboardData.getData("text");
     if (!text) return;
     event.preventDefault();
     onInput({ action: "type_text", text });
+  };
+
+  const handleCompositionEnd = (event: CompositionEvent<HTMLDivElement>) => {
+    if (!hasLease || !keyboardCaptured || !event.data) return;
+    event.preventDefault();
+    onInput({ action: "type_text", text: event.data });
   };
 
   return (
@@ -252,6 +320,33 @@ export function DesktopTile({
         </span>
       </button>
 
+      {hasLease && (
+        <div className="mx-3 mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-950/70 px-3 py-2">
+          <div id={`desktop-keyboard-help-${desktop.seat_id}`} role="status" aria-live="polite" className="min-w-0 text-[11px] text-zinc-400">
+            <span className="font-medium text-zinc-200">{keyboardCaptured ? `Keyboard control active for ${desktop.name}.` : `Keyboard control is off for ${desktop.name}.`}</span>{" "}
+            {keyboardCaptured ? "Press Escape or Ctrl+Alt+Shift+Escape to release. Tab and shortcuts are sent remotely." : "Start explicitly to send typing, paste, IME text, navigation keys, and shortcuts remotely."}
+          </div>
+          <button
+            ref={keyboardControlButtonRef}
+            type="button"
+            aria-pressed={keyboardCaptured}
+            disabled={desktop.status !== "running"}
+            onClick={() => {
+              if (keyboardCaptured) {
+                releaseKeyboard();
+              } else {
+                setKeyboardCaptured(true);
+                requestAnimationFrame(() => frameRegionRef.current?.focus());
+              }
+            }}
+            className="flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+          >
+            <Keyboard size={13} />
+            {keyboardCaptured ? "Release keyboard control" : "Start keyboard control"}
+          </button>
+        </div>
+      )}
+
       <div
         ref={frameRegionRef}
         onPointerDown={handlePointerDown}
@@ -262,6 +357,7 @@ export function DesktopTile({
         onWheel={handleWheel}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
+        onCompositionEnd={handleCompositionEnd}
         onContextMenu={(event) => {
           if (hasLease) event.preventDefault();
         }}
@@ -269,12 +365,14 @@ export function DesktopTile({
         className={cn(
           "relative m-3 flex min-h-[154px] items-center justify-center overflow-hidden rounded-md border border-zinc-800 bg-black",
           hasLease ? "cursor-crosshair" : "cursor-default",
+          keyboardCaptured && "ring-2 ring-emerald-400/80",
           dense && "min-h-[128px]",
           prominent && "m-2 min-h-[520px] flex-1",
         )}
         style={{ aspectRatio: frameAspectRatio }}
-        role="application"
-        aria-label={`${desktop.name} live snapshot`}
+        role={keyboardCaptured ? "application" : "group"}
+        aria-label={`${desktop.name} live snapshot${keyboardCaptured ? ", keyboard control active" : ""}`}
+        aria-describedby={hasLease ? `desktop-keyboard-help-${desktop.seat_id}` : undefined}
       >
         {frame ? (
           <img src={frame.object_url} alt="" className="h-full w-full object-contain" draggable={false} />

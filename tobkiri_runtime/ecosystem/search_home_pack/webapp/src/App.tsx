@@ -23,6 +23,8 @@ import {
   type RouteSessionState,
 } from "./routerTypes";
 import { NavigationReview } from "./NavigationReview";
+import { conversationHref, normalizeAnswerResponse, type AnswerResult } from "./answerState";
+import { evaluateExplicitDestinationInput } from "./destinationPolicy";
 
 const ROUTE_DECISION_STORAGE_KEY = "rumi-search-home-route-decision";
 const ANSWER_ROUTE_TYPES = new Set(["ASK_AI", "ASK_AI_WITH_SEARCH"]);
@@ -276,12 +278,15 @@ export default function App() {
   const [modelFilter, setModelFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [answerLoading, setAnswerLoading] = useState(false);
+  const [answerResult, setAnswerResult] = useState<(AnswerResult & { query: string; requestedModel: string }) | null>(null);
+  const [answerTransportError, setAnswerTransportError] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const modelPickerRef = useRef<HTMLDivElement | null>(null);
   const modelFilterRef = useRef<HTMLInputElement | null>(null);
   const committedNavigationRef = useRef(false);
+  const answerRequestRef = useRef(0);
 
   const currentDecision = useMemo(() => {
     if (!decision) {
@@ -425,13 +430,19 @@ export default function App() {
       setDecision(baseDecision);
       setSelectedIndex(-1);
       persistRouteState(baseDecision, -1);
+      const requestRevision = ++answerRequestRef.current;
+      setAnswerResult(null);
+      setAnswerTransportError("");
       setAnswerLoading(true);
       try {
-        await answerInput(query, selectedModel);
-      } catch (error) {
-        console.warn("Search Home answer failed", error);
+        const payload = await answerInput(query, selectedModel);
+        if (requestRevision !== answerRequestRef.current) return;
+        setAnswerResult({ ...normalizeAnswerResponse(payload), query, requestedModel: selectedModel });
+      } catch {
+        if (requestRevision !== answerRequestRef.current) return;
+        setAnswerTransportError("The answer request could not be completed. Check the connection and retry intentionally.");
       } finally {
-        setAnswerLoading(false);
+        if (requestRevision === answerRequestRef.current) setAnswerLoading(false);
       }
     },
     [persistRouteState, selectedModel],
@@ -446,6 +457,25 @@ export default function App() {
       committedNavigationRef.current = false;
       setLoading(true);
       try {
+        const explicitDestination = evaluateExplicitDestinationInput(query);
+        if (explicitDestination?.verdict === "block") {
+          const blockedDecision: RouteDecision = {
+            route_type: "BLOCKED_DESTINATION_INPUT",
+            query: "Blocked URL input",
+            target_url: query,
+            target_candidates: [],
+            selected_index: -1,
+            fallback_url: query,
+            resolution_reason: `input_policy:${explicitDestination.reason}`,
+            used_ai_judge: false,
+            used_visual_judge: false,
+            metadata: { input_policy_blocked: true },
+          };
+          setInput("");
+          setDecision(blockedDecision);
+          setSelectedIndex(-1);
+          return;
+        }
         if (action === "answer") {
           await runAnswer(query);
           return;
@@ -704,6 +734,47 @@ export default function App() {
             ) : null}
           </div>
         </form>
+
+        {answerLoading ? (
+          <section className="answer-card" aria-busy="true" aria-live="polite">
+            <strong>Answer in progress</strong>
+            <p>The request is committed. Duplicate submission is disabled until it settles.</p>
+          </section>
+        ) : null}
+
+        {answerTransportError ? (
+          <section className="answer-card answer-card-error" role="alert">
+            <strong>Answer request failed</strong>
+            <p>{answerTransportError}</p>
+            <button type="button" onClick={() => void runAnswer(input.trim())}>Retry intentionally</button>
+          </section>
+        ) : null}
+
+        {answerResult ? (
+          <section className={`answer-card answer-card-${answerResult.kind}`} aria-live="polite" aria-labelledby="search-answer-title">
+            <header>
+              <div>
+                <span>{answerResult.kind === "success" ? "AI Answer" : "Answer status"}</span>
+                <h2 id="search-answer-title">{answerResult.message}</h2>
+              </div>
+              <span>{answerResult.model || answerResult.requestedModel || "Default model"}</span>
+            </header>
+            {answerResult.answer ? <p className="answer-text">{answerResult.answer}</p> : null}
+            {answerResult.degradedReason ? <p className="answer-warning">Tool use unavailable: {answerResult.degradedReason}</p> : null}
+            <dl>
+              <div><dt>Original query</dt><dd>{answerResult.query}</dd></div>
+              <div><dt>Tools used</dt><dd>{answerResult.usedToolsCount ? `${answerResult.usedToolsCount} tool action(s)` : "None reported"}</dd></div>
+            </dl>
+            <div className="answer-actions">
+              {answerResult.conversationId ? (
+                <a href={conversationHref(answerResult.conversationId)}>Open conversation / Continue in Rumi</a>
+              ) : null}
+              <button type="button" onClick={() => void runAnswer(answerResult.query)}>Retry intentionally</button>
+              <button type="button" onClick={() => { setAnswerResult(null); setAnswerTransportError(""); }}>Dismiss</button>
+            </div>
+            <p className="answer-privacy-note">Answer text is kept in memory only. Reload recovery uses the durable Rumi conversation link when available.</p>
+          </section>
+        ) : null}
       </section>
 
       {currentDecision && !isAnswerRoute(currentDecision) ? (

@@ -41,7 +41,7 @@ export const viewerNavGroups = [
   {
     id: 'workspace',
     labelKey: 'nav.group.workspace',
-    routes: ['home', 'packs', 'flows', 'nodes', 'startup'] satisfies PanelRouteKey[],
+    routes: ['home', 'packs', 'flows', 'nodes'] satisfies PanelRouteKey[],
   },
   {
     id: 'advanced',

@@ -902,6 +902,21 @@ class FrontendRegistry:
                 ],
             },
             {
+                "id": "mobile",
+                "label": "Mobile",
+                "description": "スマホ接続要求をauthoritative pairing recordで確認します。",
+                "fields": [
+                    {
+                        "id": "pairing_review_id",
+                        "label": "Mobile Pairing Review",
+                        "type": "mobile_pairing_review",
+                        "renderer": "MobilePairingApproval",
+                        "default": "",
+                        "help": "PCで作成したpairing IDを入力し、保留・拒否・キャンセルを明示的に選びます。",
+                    },
+                ],
+            },
+            {
                 "id": "calendar",
                 "label": "Calendar",
                 "description": "カレンダー画面のクリック追加、週表示、予定色を調整します。",
@@ -1042,11 +1057,10 @@ class FrontendRegistry:
                         "id": "unknown_block_strategy",
                         "label": "Unknown Block Strategy",
                         "type": "select",
-                        "default": "hidden",
+                        "default": "placeholder",
                         "options": [
-                            {"value": "hidden", "label": "Hide"},
-                            {"value": "text", "label": "Plain Text"},
-                            {"value": "json", "label": "JSON Fallback"},
+                            {"value": "placeholder", "label": "Safe placeholder"},
+                            {"value": "debug", "label": "Developer diagnostics (redacted)"},
                         ],
                     },
                 ],
@@ -2791,7 +2805,7 @@ class FrontendRegistry:
                 "event_color": "green",
                 "max_items_per_day": 3,
             },
-            "chat_rendering": {"show_widgets": True, "unknown_block_strategy": "hidden"},
+            "chat_rendering": {"show_widgets": True, "unknown_block_strategy": "placeholder"},
             "models": {
                 **ModelRuntimeSettingsService(self._pack_root).default_model_settings(),
             },

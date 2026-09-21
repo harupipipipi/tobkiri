@@ -4,6 +4,8 @@ import json
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -173,6 +175,17 @@ def _working_tree_hash(record: dict[str, Any]) -> str:
     raise AssertionError("change_request snapshot must expose working_tree_hash")
 
 
+def _revision_payload(service: Any, record: dict[str, Any], *, key: str) -> dict[str, Any]:
+    current = service.get(_get_change_request_id(record))
+    assert isinstance(current, dict)
+    return {
+        "expected_revision": record["revision"],
+        "expected_snapshot_working_tree_hash": _working_tree_hash(record),
+        "expected_current_working_tree_hash": current.get("current_working_tree_hash") or _working_tree_hash(record),
+        "idempotency_key": key,
+    }
+
+
 def _detect_drift(store: Any, record: dict[str, Any], workspace_root: Path) -> dict[str, Any]:
     change_request_id = _get_change_request_id(record)
     for method_name in ("check_drift", "detect_drift", "drift_status", "refresh"):
@@ -225,6 +238,65 @@ def test_store_persists_outside_reviewed_repo_and_snapshots_dirty_files(tmp_path
     statuses = _status_by_path(persisted)
     assert statuses.get("tracked.txt") in {"modified", "dirty", "M", "changed"}
     assert statuses.get("untracked.txt") in {"untracked", "new", "A", "added"}
+
+
+def test_revision_mutation_does_not_block_unrelated_change_request(tmp_path):
+    store_cls = _change_request_store_class()
+    store = store_cls(tmp_path / "change_requests.json")
+    for change_request_id in ("cr_slow", "cr_fast"):
+        store.create(
+            {
+                "id": change_request_id,
+                "title": change_request_id,
+                "revision": 1,
+                "latest_snapshot": {"working_tree_hash": "tree-1"},
+            }
+        )
+
+    slow_started = threading.Event()
+    release_slow = threading.Event()
+
+    def slow_mutator(record):
+        slow_started.set()
+        assert release_slow.wait(timeout=5)
+        record["description"] = "slow complete"
+        return record, {"completed": True}
+
+    slow_thread = threading.Thread(
+        target=lambda: store.mutate_with_revision(
+            "cr_slow",
+            expected_revision=1,
+            expected_snapshot_working_tree_hash="tree-1",
+            expected_current_working_tree_hash="tree-1",
+            current_working_tree_hash="tree-1",
+            idempotency_key="slow-key",
+            fingerprint="slow-fingerprint",
+            mutator=slow_mutator,
+        )
+    )
+    slow_thread.start()
+    assert slow_started.wait(timeout=2)
+
+    started_at = time.monotonic()
+    fast, result, replayed = store.mutate_with_revision(
+        "cr_fast",
+        expected_revision=1,
+        expected_snapshot_working_tree_hash="tree-1",
+        expected_current_working_tree_hash="tree-1",
+        current_working_tree_hash="tree-1",
+        idempotency_key="fast-key",
+        fingerprint="fast-fingerprint",
+        mutator=lambda record: (record, {"completed": True}),
+    )
+    elapsed = time.monotonic() - started_at
+
+    assert elapsed < 1
+    assert fast["revision"] == 2
+    assert result == {"completed": True}
+    assert replayed is False
+    release_slow.set()
+    slow_thread.join(timeout=2)
+    assert not slow_thread.is_alive()
 
 
 def test_store_normalizes_legacy_check_full_log_to_bounded_refs(tmp_path):
@@ -338,7 +410,10 @@ def test_stale_drift_detection_reports_snapshot_mismatch(tmp_path, monkeypatch):
     original_hash = _working_tree_hash(created)
     (workspace / "tracked.txt").write_text("drift after review shell opened\n", encoding="utf-8")
 
-    drift = _detect_drift(store, created, workspace)
+    drift = store.refresh(
+        _get_change_request_id(created),
+        _revision_payload(store, created, key="test-drift-refresh"),
+    )
 
     drift_payload = drift.get("drift") if isinstance(drift.get("drift"), dict) else drift
     assert (
@@ -382,7 +457,10 @@ def test_service_payloads_hide_absolute_roots_and_drop_patch_metadata(tmp_path, 
     )
     listed = service.list(workspace_root=str(workspace))
     fetched = service.get(change_request_id)
-    refreshed = service.refresh(change_request_id)
+    refreshed = service.refresh(
+        change_request_id,
+        _revision_payload(service, fetched, key="test-redacted-refresh"),
+    )
 
     for payload in (created, patched, listed, fetched, refreshed):
         encoded = json.dumps(payload, sort_keys=True)

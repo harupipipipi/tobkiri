@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { buildVisibleModelOptions, SettingsModalRenderer } from "./SettingsModalRenderer";
+import { CredentialTransferModal, credentialTransferCanClose, credentialTransferFocusTarget } from "../components/CredentialTransferModal";
 import { createSettingsFieldRendererRegistry, SettingsFieldRendererHost } from "./settings/fieldRendererRegistry";
 import { builtinSettingsFieldRendererEntries } from "./settings/builtinSettingsFieldRenderers";
 import {
@@ -24,6 +25,28 @@ function makeModelOption(index: number) {
     model_id: `model-${index}`,
   };
 }
+
+test("CredentialTransferModal never renders cleartext credentials or a legacy QR payload", () => {
+  const html = renderToStaticMarkup(createElement(CredentialTransferModal, {
+    providerId: "google",
+    providerLabel: "Google",
+    apiId: "main",
+    onClose: () => undefined,
+  }));
+  assert.doesNotMatch(html, /rumi_api/i);
+  assert.doesNotMatch(html, /data:image/);
+  assert.doesNotMatch(html, /credential[^<]*(?:value|secret)/i);
+});
+
+test("CredentialTransferModal guards active transfer close and traps focus", () => {
+  assert.equal(credentialTransferCanClose("awaiting_confirmation", false), false);
+  assert.equal(credentialTransferCanClose("pending", false), false);
+  assert.equal(credentialTransferCanClose("accepted", false), true);
+  assert.equal(credentialTransferCanClose("completed", true), false);
+  assert.equal(credentialTransferFocusTarget(2, 3, false), 0);
+  assert.equal(credentialTransferFocusTarget(0, 3, true), 2);
+  assert.equal(credentialTransferFocusTarget(0, 0, false), null);
+});
 
 test("settings field renderer host falls back for unknown fields", () => {
   const registry = createSettingsFieldRendererRegistry();

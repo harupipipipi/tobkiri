@@ -6,8 +6,24 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { DesktopInstance } from "../../features/sandboxes/types";
 import { resolveVisibleSelectedDesktop, resolveVisibleSelectedSeatId, shouldShowDesktopList } from "./DesktopMonitorWorkspace";
 import { DesktopGrid } from "./DesktopGrid";
+import { keyboardCaptureDecision } from "./DesktopTile";
 
 const noop = () => undefined;
+const key = (value: string, overrides = {}) => ({ key: value, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, ...overrides });
+
+test("desktop keyboard capture reserves escape and preserves remote shortcuts", () => {
+  assert.deepEqual(keyboardCaptureDecision(key("Escape")), { kind: "release" });
+  assert.deepEqual(keyboardCaptureDecision(key("Escape", { ctrlKey: true, altKey: true, shiftKey: true })), { kind: "release" });
+  assert.deepEqual(keyboardCaptureDecision(key("Tab")), { kind: "key", key: "Tab" });
+  assert.deepEqual(keyboardCaptureDecision(key("Tab", { shiftKey: true })), { kind: "key", key: "shift+Tab" });
+  assert.deepEqual(keyboardCaptureDecision(key("l", { ctrlKey: true })), { kind: "key", key: "ctrl+l" });
+});
+
+test("desktop keyboard capture avoids duplicate IME events", () => {
+  assert.deepEqual(keyboardCaptureDecision(key("é")), { kind: "type", text: "é" });
+  assert.deepEqual(keyboardCaptureDecision(key("Process", { isComposing: true })), { kind: "ignore" });
+  assert.deepEqual(keyboardCaptureDecision(key("Dead")), { kind: "ignore" });
+});
 
 function desktop(seatId: string): DesktopInstance {
   return {

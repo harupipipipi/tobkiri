@@ -159,6 +159,45 @@ test("composer mention filters retain known tools and files while typing", () =>
   assert.deepEqual(filterAtMentionFiles(["src/App.tsx", "README.md"], "README"), ["README.md"]);
 });
 
+test("structured composer controls stay above the textarea without rewriting its text", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "本文だけを保持",
+      placeholder: "メッセージを入力...",
+      isGenerating: false,
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      composerInput: {
+        id: "structured",
+        label: "入力オプション",
+        fields: [
+          { id: "intent", type: "select", options: [{ value: "review", label: "レビュー" }] },
+          { id: "constraints", type: "text" },
+        ],
+      },
+      structuredInputValues: { intent: "review" },
+      onInputChange: () => undefined,
+      onStructuredInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-structured-composer="structured"/);
+  assert.match(html, /本文だけを保持/);
+  assert.doesNotMatch(html, /&lt;rumi:input&gt;/);
+});
+
 test("composer mention Enter selects candidates and does not submit raw unmatched text", () => {
   assert.deepEqual(atMentionMenuKeyAction("Enter", false, 0, 2), {
     handled: true,

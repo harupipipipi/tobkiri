@@ -791,6 +791,24 @@ class ToolRegistry:
         with self._lock:
             return dict(self._mcp_servers)
 
+    def unregister_mcp_server(self, server_name):
+        """Remove runtime MCP connection metadata and the server's ephemeral tools."""
+        normalized = str(server_name or "").strip()
+        if not normalized:
+            return []
+        with self._lock:
+            self._mcp_servers.pop(normalized, None)
+            removed = []
+            for tool_id, tool_def in list(self._tools.items()):
+                execution = tool_def.get("execution") if isinstance(tool_def, dict) else {}
+                if not isinstance(execution, dict) or execution.get("type") != "mcp":
+                    continue
+                if str(execution.get("server_name") or "") != normalized:
+                    continue
+                self._tools.pop(tool_id, None)
+                removed.append(tool_id)
+            return removed
+
 
 def _first_party_memo_tool_manifests():
     base_properties = {

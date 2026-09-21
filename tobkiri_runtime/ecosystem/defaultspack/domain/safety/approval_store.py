@@ -150,7 +150,9 @@ class ApprovalStore:
             ).fetchone()
         return self._row_to_request(row) if row is not None else None
 
-    def update_request_status(self, request_id: str, status: str, *, decision_at: int | None = None) -> None:
+    def update_request_status(
+        self, request_id: str, status: str, *, decision_at: int | None = None
+    ) -> None:
         self._ensure_schema()
         with self._lock, self._connect() as conn:
             conn.execute(
@@ -158,7 +160,58 @@ class ApprovalStore:
                 (str(status), decision_at, str(request_id)),
             )
 
-    def list_requests(self, *, status: str | None = None, include_expired: bool = True, limit: int = 100) -> list[dict[str, Any]]:
+    def settle_request(
+        self,
+        request_id: str,
+        status: str,
+        *,
+        allowed_statuses: tuple[str, ...] = ("pending",),
+        decision_at: int | None = None,
+    ) -> tuple[bool, dict[str, Any] | None]:
+        """Atomically settle a request if its current state is allowed.
+
+        The conditional update is performed while holding a SQLite write lock,
+        so approve/deny races across runtime processes cannot both win.
+        """
+        self._ensure_schema()
+        settled_at = int(decision_at or time.time())
+        with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM approval_requests WHERE request_id = ?",
+                (str(request_id),),
+            ).fetchone()
+            if row is None:
+                return False, None
+            current = self._row_to_request(row)
+            if str(current.get("status") or "") not in allowed_statuses:
+                return False, current
+            cursor = conn.execute(
+                """
+                UPDATE approval_requests
+                SET status = ?, decision_at = ?
+                WHERE request_id = ? AND status = ?
+                """,
+                (
+                    str(status),
+                    settled_at,
+                    str(request_id),
+                    str(current.get("status") or ""),
+                ),
+            )
+            if cursor.rowcount != 1:
+                latest = conn.execute(
+                    "SELECT * FROM approval_requests WHERE request_id = ?",
+                    (str(request_id),),
+                ).fetchone()
+                return False, self._row_to_request(latest) if latest else None
+            current["status"] = str(status)
+            current["decision_at"] = settled_at
+            return True, current
+
+    def list_requests(
+        self, *, status: str | None = None, include_expired: bool = True, limit: int = 100
+    ) -> list[dict[str, Any]]:
         self._ensure_schema()
         limit = max(1, min(500, int(limit or 100)))
         params: list[Any] = []
@@ -177,10 +230,39 @@ class ApprovalStore:
             ).fetchall()
         return [self._row_to_request(row) for row in rows]
 
-    def mark_token_used(self, jti: str, request_id: str, operation: str, args_hash: str, *, consumed_at: int | None = None) -> bool:
+    def mark_token_used(
+        self,
+        jti: str,
+        request_id: str,
+        operation: str,
+        args_hash: str,
+        *,
+        consumed_at: int | None = None,
+    ) -> bool:
+        """Atomically consume a token only while its request is approved.
+
+        Keeping the token ledger insert and request transition in one SQLite
+        transaction prevents a concurrent deny/obsolete transition from being
+        overwritten by execution in another runtime process.
+        """
         self._ensure_schema()
         consumed = int(consumed_at or time.time())
         with self._lock, self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            request = conn.execute(
+                """
+                SELECT status, operation, args_hash
+                FROM approval_requests WHERE request_id = ?
+                """,
+                (str(request_id),),
+            ).fetchone()
+            if (
+                request is None
+                or str(request["status"]) != "approved"
+                or str(request["operation"]) != str(operation)
+                or str(request["args_hash"]) != str(args_hash)
+            ):
+                return False
             try:
                 conn.execute(
                     """
@@ -191,10 +273,17 @@ class ApprovalStore:
                 )
             except sqlite3.IntegrityError:
                 return False
-            conn.execute(
-                "UPDATE approval_requests SET status = ?, decision_at = ? WHERE request_id = ?",
+            cursor = conn.execute(
+                """
+                UPDATE approval_requests SET status = ?, decision_at = ?
+                WHERE request_id = ? AND status = 'approved'
+                """,
                 ("consumed", consumed, str(request_id)),
             )
+            if cursor.rowcount != 1:
+                raise sqlite3.DatabaseError(
+                    "approval request changed during atomic token consumption"
+                )
         return True
 
     def is_token_used(self, jti: str) -> bool:

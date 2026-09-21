@@ -9,7 +9,8 @@ import {
   hasSelectedSetupPack,
   setupPackSelectionUrl,
 } from '@/src/lib/setupPacks';
-import { Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { LAUNCHER_DISPLAY_NAME } from '@/src/lib/launcherBrand';
 
 export function Setup() {
@@ -187,54 +188,56 @@ export function Setup() {
   if (linked) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-bg-main p-6">
-        <div className="flex w-full max-w-sm flex-col items-center gap-6 text-center page-enter">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-            <CheckCircle2 className="h-7 w-7 text-emerald-500" />
-          </div>
+        <motion.div initial={{opacity: 0, scale: .96}} animate={{opacity: 1, scale: 1}} className="relative flex w-full max-w-sm flex-col items-center gap-6 text-center">
+          <motion.div initial={{scale: .8}} animate={{scale: 1}} transition={{type: 'spring', stiffness: 260, damping: 22}} className="flex h-14 w-14 items-center justify-center rounded-xl border border-border bg-bg-card">
+            <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+          </motion.div>
           <div>
             <h1 className="text-xl font-semibold text-text-main">{t('setup.linked_title') || 'Account Linked!'}</h1>
             <p className="mt-2 text-sm text-text-muted">{t('setup.redirecting') || 'Redirecting to dashboard...'}</p>
           </div>
           <Loader2 className="h-5 w-5 animate-spin text-accent" />
-        </div>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg-main p-6">
-      <div className="flex w-full max-w-md flex-col items-center gap-10 text-center page-enter">
-        {/* Logo + Title */}
-        <div className="flex flex-col items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/10">
-            <span className="text-2xl font-bold text-accent">T</span>
+    <div className="flex min-h-screen bg-bg-main">
+      <div className="mx-auto grid w-full max-w-4xl items-center gap-10 px-6 py-10 lg:grid-cols-[1fr_400px]">
+        <motion.section initial={{opacity: 0, x: -18}} animate={{opacity: 1, x: 0}} transition={{duration: .45}} className="max-w-xl">
+          <div className="mb-10 flex items-center gap-3 text-sm font-semibold text-text-main">
+            <span className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-bg-card text-text-main">T</span>
+            {LAUNCHER_DISPLAY_NAME}
           </div>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-text-main">Welcome to {LAUNCHER_DISPLAY_NAME}</h1>
-            <p className="mt-2 text-sm text-text-muted">{t('setup.subtitle')}</p>
+            <span className="text-xs font-medium text-text-muted">初期設定</span>
+            <h1 className="mt-3 text-3xl font-semibold tracking-[-.035em] text-text-main sm:text-4xl">Tobkiriをセットアップ</h1>
+            <p className="mt-4 max-w-md text-sm leading-7 text-text-muted">アカウントと起動時に読み込むpackを設定します。どちらもあとから変更できます。</p>
           </div>
-        </div>
+          <div className="mt-9 space-y-3 border-l border-border pl-4 text-xs leading-5 text-text-muted">
+            <p>1. アカウントを接続</p>
+            <p>2. 起動時のpackと権限を確認</p>
+          </div>
+        </motion.section>
 
-        {/* Step indicator */}
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 w-8 rounded-full bg-accent" />
-          <div className="h-1.5 w-8 rounded-full bg-border" />
-        </div>
-
-        {/* Actions: primary right, secondary left */}
-        <div className="flex w-full flex-col gap-3">
-          <Button size="lg" className="w-full" onClick={handleConnect} disabled={loading} loading={loading}>
-            {t('setup.connect_rumi')}
-          </Button>
-          {setupPackError ? (
-            <p className="text-sm text-red-500">{setupPackError}</p>
-          ) : null}
-          <div className="flex justify-start">
-            <Button variant="ghost" onClick={handleSkip} disabled={loading}>
-              {t('setup.choose_packs')}
+        <motion.section initial={{opacity: 0, y: 14}} animate={{opacity: 1, y: 0}} transition={{delay: .06, duration: .36}} className="rounded-[18px] border border-border bg-bg-card p-6 shadow-lg sm:p-7">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-text-muted">初期セットアップ</span>
+            <span className="rounded-full border border-border bg-bg-main px-2.5 py-1 text-[10px] font-semibold text-text-muted">1 / 2</span>
+          </div>
+          <div className="mt-4 flex gap-1.5"><i className="h-1 flex-1 rounded-full bg-text-main" /><i className="h-1 flex-1 rounded-full bg-border" /></div>
+          <h2 className="mt-7 text-lg font-semibold text-text-main">アカウント</h2>
+          <p className="mt-2 text-sm leading-6 text-text-muted">接続するとプロファイルを同期できます。接続せずにpack選択へ進むこともできます。</p>
+          <div className="mt-7 flex flex-col gap-3">
+            <Button size="lg" className="w-full justify-between" onClick={handleConnect} disabled={loading} loading={loading}>
+              <span>{t('setup.connect_rumi')}</span>{!loading && <ArrowRight className="h-4 w-4" />}
             </Button>
+            <Button variant="outline" size="lg" className="w-full" onClick={handleSkip} disabled={loading}>{t('setup.choose_packs')}</Button>
           </div>
-        </div>
+          {setupPackError && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-500">{setupPackError}</p>}
+          <p className="mt-6 border-t border-border pt-4 text-[11px] leading-5 text-text-muted">packごとの権限は次の画面で確認します。</p>
+        </motion.section>
       </div>
     </div>
   );

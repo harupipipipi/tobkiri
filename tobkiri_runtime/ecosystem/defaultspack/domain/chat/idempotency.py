@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -15,6 +16,14 @@ from typing import Any, Iterator
 _KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
 _RETENTION_SECONDS = 7 * 24 * 60 * 60
 _MAX_RECORDS = 10_000
+_INIT_LOCK_GUARD = threading.Lock()
+_INIT_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _init_lock(path: Path) -> threading.Lock:
+    key = str(path.expanduser().resolve())
+    with _INIT_LOCK_GUARD:
+        return _INIT_LOCKS.setdefault(key, threading.Lock())
 
 
 class IdempotencyConflictError(ValueError):
@@ -163,15 +172,17 @@ class ChatIdempotencyStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.path, timeout=30, isolation_level=None)
         try:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute("PRAGMA synchronous=FULL")
-            connection.execute(
-                "CREATE TABLE IF NOT EXISTS operations ("
-                "scope TEXT NOT NULL, operation_key TEXT NOT NULL, "
-                "payload_hash TEXT NOT NULL, status TEXT NOT NULL, "
-                "events_json TEXT NOT NULL, created_at REAL NOT NULL, "
-                "updated_at REAL NOT NULL, PRIMARY KEY (scope, operation_key))"
-            )
+            connection.execute("PRAGMA busy_timeout=30000")
+            with _init_lock(self.path):
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("PRAGMA synchronous=FULL")
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS operations ("
+                    "scope TEXT NOT NULL, operation_key TEXT NOT NULL, "
+                    "payload_hash TEXT NOT NULL, status TEXT NOT NULL, "
+                    "events_json TEXT NOT NULL, created_at REAL NOT NULL, "
+                    "updated_at REAL NOT NULL, PRIMARY KEY (scope, operation_key))"
+                )
             yield connection
             connection.commit()
         except Exception:

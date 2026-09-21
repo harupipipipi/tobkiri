@@ -435,6 +435,40 @@
       "description": "Pack が宣言する API ルート定義のリスト",
       "items": {
         "type": "object",
+        "properties": {
+          "auth_mode": {
+            "type": "string",
+            "description": "Transport authentication mode required before dispatch"
+          },
+          "principal": {
+            "type": "string",
+            "description": "Principal requirement for route authorization"
+          },
+          "csrf_origin_required": {
+            "type": "boolean",
+            "description": "Whether cookie-backed mutations require the transport CSRF/origin guard"
+          },
+          "rate_limit": {
+            "type": "string",
+            "description": "Named transport rate-limit policy"
+          },
+          "audit_category": {
+            "type": "string",
+            "description": "Audit ownership category for route execution"
+          },
+          "function_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Function invoked by manifest route dispatch"
+          },
+          "legacy_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Compatibility deadline, or null once no fallback remains"
+          }
+        },
         "additionalProperties": true
       }
     },

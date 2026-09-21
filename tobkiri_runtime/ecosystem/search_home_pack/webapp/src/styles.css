@@ -12,6 +12,42 @@
   color: #f5f5f4;
 }
 
+.answer-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.88);
+  overflow-wrap: anywhere;
+}
+
+.answer-card header,
+.answer-actions,
+.answer-card dl div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.answer-card-error,
+.answer-card-structured-error,
+.answer-card-malformed,
+.answer-card-empty { border-color: rgba(248, 113, 113, 0.45); }
+.answer-card-partial { border-color: rgba(251, 191, 36, 0.5); }
+.answer-text { white-space: pre-wrap; line-height: 1.7; }
+.answer-warning { color: #fcd34d; }
+.answer-card dl { display: grid; gap: 6px; margin: 0; }
+.answer-card dt { color: #94a3b8; }
+.answer-card dd { margin: 0; }
+.answer-actions { justify-content: flex-start; }
+.answer-actions a,
+.answer-actions button,
+.answer-card-error button { min-height: 44px; padding: 10px 14px; }
+.answer-privacy-note { color: #94a3b8; font-size: 0.78rem; }
+
 * {
   box-sizing: border-box;
 }

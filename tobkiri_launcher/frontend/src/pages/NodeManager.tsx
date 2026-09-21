@@ -271,7 +271,7 @@ export function NodeManager() {
                 className={cn(
                   "w-full rounded-md border px-3 py-2 text-left transition-colors",
                   selectedProfileId === profile.profile_id
-                    ? "border-accent bg-accent/10 text-text-main"
+                    ? "border-text-muted/50 bg-bg-hover text-text-main"
                     : "border-border text-text-muted hover:bg-bg-hover hover:text-text-main",
                 )}
                 onClick={() => setSelectedProfileId(profile.profile_id)}
@@ -312,23 +312,24 @@ export function NodeManager() {
               <button
                 key={node.node_id}
                 className={cn(
-                  "min-h-28 rounded-lg border p-3 text-left transition-colors",
+                  "block w-full px-3 py-3 text-left transition-colors",
                   selectedNodeId === node.node_id
-                    ? "border-accent bg-accent/10"
-                    : "border-border hover:bg-bg-hover",
+                    ? "bg-bg-hover"
+                    : "hover:bg-bg-hover/70",
                 )}
                 onClick={() => setSelectedNodeId(node.node_id)}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-text-main">{node.label}</div>
-                    <div className="truncate text-xs text-text-muted">{node.node_id}</div>
+                    <div className="mt-0.5 truncate font-mono text-[10px] text-text-muted">{node.node_id}</div>
                   </div>
                   <Badge variant={statusVariant(node.state?.status)}>{node.state?.status ?? 'unknown'}</Badge>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-1">
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-text-muted">{capabilityNodeDescription(node)}</p>
+                <div className="mt-2 flex flex-wrap gap-1">
                   {capabilityNodePorts(node).slice(0, 4).map(port => (
-                    <span key={port.id} className="rounded border border-border px-1.5 py-0.5 text-[11px] text-text-muted">
+                    <span key={port.id} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
                       {port.direction === 'input' ? 'in' : port.direction === 'output' ? 'out' : 'bi'}:{port.id}
                     </span>
                   ))}

@@ -22,7 +22,10 @@ from .approval_store import get_approval_store, persist_runtime_secret_for_broke
 
 _TOKEN_VERSION = "v1"
 _DEFAULT_EXPIRES_IN_SECONDS = 300
-_RUNTIME_SECRET = os.environ.get("RUMI_DEFAULTSPACK_APPROVAL_SECRET") or get_approval_store().get_or_create_runtime_secret()
+_RUNTIME_SECRET = (
+    os.environ.get("RUMI_DEFAULTSPACK_APPROVAL_SECRET")
+    or get_approval_store().get_or_create_runtime_secret()
+)
 persist_runtime_secret_for_broker(_RUNTIME_SECRET)
 _LOCK = threading.RLock()
 _REQUESTS: dict[str, "ApprovalRequest"] = {}
@@ -200,12 +203,50 @@ def deny(request_id: str, reason: str = "") -> dict[str, Any]:
         )
         if request is None:
             return asdict(
-                ApprovalDecision(str(request_id), "missing", False, reason="approval request not found")
+                ApprovalDecision(
+                    str(request_id), "missing", False, reason="approval request not found"
+                )
+            )
+        now = _now()
+        if request.expires_at < now and request.status == "pending":
+            get_approval_store().settle_request(
+                request.request_id,
+                "expired",
+                allowed_statuses=("pending",),
+                decision_at=now,
+            )
+            request.status = "expired"
+            request.decision_at = now
+            _REQUESTS[request.request_id] = request
+            _refresh_approval_state_mirrors_from_store()
+            return asdict(
+                ApprovalDecision(
+                    request.request_id,
+                    request.status,
+                    False,
+                    reason="approval request expired",
+                )
+            )
+        settled, latest = get_approval_store().settle_request(
+            request.request_id,
+            "denied",
+            allowed_statuses=("pending",),
+            decision_at=now,
+        )
+        if not settled:
+            latest_request = _request_from_mapping(latest)
+            status = latest_request.status if latest_request else request.status
+            return asdict(
+                ApprovalDecision(
+                    request.request_id,
+                    status,
+                    False,
+                    reason=f"approval request already settled as '{status}'",
+                )
             )
         request.status = "denied"
-        request.decision_at = _now()
+        request.decision_at = now
         _REQUESTS[request.request_id] = request
-        get_approval_store().save_request(request)
         _refresh_approval_state_mirrors_from_store()
         return asdict(ApprovalDecision(request.request_id, request.status, False, reason=reason))
 
@@ -217,32 +258,63 @@ def mark_obsolete(request_id: str, reason: str = "") -> dict[str, Any]:
         )
         if request is None:
             return asdict(
-                ApprovalDecision(str(request_id), "missing", False, reason="approval request not found")
+                ApprovalDecision(
+                    str(request_id), "missing", False, reason="approval request not found"
+                )
             )
         if request.status == "consumed":
             return asdict(
-                ApprovalDecision(request.request_id, request.status, False, reason="approval request already consumed")
+                ApprovalDecision(
+                    request.request_id,
+                    request.status,
+                    False,
+                    reason="approval request already consumed",
+                )
             )
         if request.status == "denied":
             return asdict(
-                ApprovalDecision(request.request_id, request.status, False, reason="approval request denied")
+                ApprovalDecision(
+                    request.request_id, request.status, False, reason="approval request denied"
+                )
             )
         if request.status == "obsolete":
-            return asdict(ApprovalDecision(request.request_id, request.status, False, reason=reason))
+            return asdict(
+                ApprovalDecision(request.request_id, request.status, False, reason=reason)
+            )
         if request.status not in {"pending", "approved", "expired"}:
             return asdict(
                 ApprovalDecision(
                     request.request_id,
                     request.status,
                     False,
-                    reason="approval request cannot be obsoleted from status '{}'".format(request.status),
+                    reason="approval request cannot be obsoleted from status '{}'".format(
+                        request.status
+                    ),
                 )
             )
-        request.status = "obsolete"
-        request.decision_at = _now()
+        now = _now()
         details = request.details if isinstance(request.details, dict) else {}
         if reason:
             request.details = {**details, "obsolete_reason": str(reason)}
+        settled, latest = get_approval_store().settle_request(
+            request.request_id,
+            "obsolete",
+            allowed_statuses=("pending", "approved", "expired"),
+            decision_at=now,
+        )
+        if not settled:
+            latest_request = _request_from_mapping(latest)
+            status = latest_request.status if latest_request else request.status
+            return asdict(
+                ApprovalDecision(
+                    request.request_id,
+                    status,
+                    False,
+                    reason=f"approval request already settled as '{status}'",
+                )
+            )
+        request.status = "obsolete"
+        request.decision_at = now
         _REQUESTS[request.request_id] = request
         get_approval_store().save_request(request)
         _refresh_approval_state_mirrors_from_store()
@@ -257,15 +329,24 @@ def approve(request_id: str) -> dict[str, Any]:
         now = _now()
         if request is None:
             return asdict(
-                ApprovalDecision(str(request_id), "missing", False, reason="approval request not found")
+                ApprovalDecision(
+                    str(request_id), "missing", False, reason="approval request not found"
+                )
             )
         if request.status == "consumed":
             return asdict(
-                ApprovalDecision(request.request_id, request.status, False, reason="approval request already consumed")
+                ApprovalDecision(
+                    request.request_id,
+                    request.status,
+                    False,
+                    reason="approval request already consumed",
+                )
             )
         if request.status == "denied":
             return asdict(
-                ApprovalDecision(request.request_id, request.status, False, reason="approval request denied")
+                ApprovalDecision(
+                    request.request_id, request.status, False, reason="approval request denied"
+                )
             )
         if request.expires_at < now:
             request.status = "expired"
@@ -274,12 +355,39 @@ def approve(request_id: str) -> dict[str, Any]:
             get_approval_store().save_request(request)
             _refresh_approval_state_mirrors_from_store()
             return asdict(
-                ApprovalDecision(request.request_id, request.status, False, reason="approval request expired")
+                ApprovalDecision(
+                    request.request_id, request.status, False, reason="approval request expired"
+                )
+            )
+        if request.status != "pending":
+            return asdict(
+                ApprovalDecision(
+                    request.request_id,
+                    request.status,
+                    False,
+                    reason=f"approval request already settled as '{request.status}'",
+                )
+            )
+        settled, latest = get_approval_store().settle_request(
+            request.request_id,
+            "approved",
+            allowed_statuses=("pending",),
+            decision_at=now,
+        )
+        if not settled:
+            latest_request = _request_from_mapping(latest)
+            status = latest_request.status if latest_request else request.status
+            return asdict(
+                ApprovalDecision(
+                    request.request_id,
+                    status,
+                    False,
+                    reason=f"approval request already settled as '{status}'",
+                )
             )
         request.status = "approved"
         request.decision_at = now
         _REQUESTS[request.request_id] = request
-        get_approval_store().save_request(request)
         _refresh_approval_state_mirrors_from_store()
         details = request.details if isinstance(request.details, dict) else {}
         token = issue_execution_token(
@@ -290,6 +398,7 @@ def approve(request_id: str) -> dict[str, Any]:
             function_id=str(details.get("function_id") or details.get("action") or ""),
             pack_id=str(details.get("pack_id") or ""),
             conversation_id=str(details.get("conversation_id") or ""),
+            scope_digest=str(details.get("approval_scope_digest") or ""),
         )
         return asdict(
             ApprovalDecision(
@@ -321,15 +430,24 @@ def approve_with_extended_expiry(
         now = _now()
         if request is None:
             return asdict(
-                ApprovalDecision(str(request_id), "missing", False, reason="approval request not found")
+                ApprovalDecision(
+                    str(request_id), "missing", False, reason="approval request not found"
+                )
             )
         if request.status == "consumed":
             return asdict(
-                ApprovalDecision(request.request_id, request.status, False, reason="approval request already consumed")
+                ApprovalDecision(
+                    request.request_id,
+                    request.status,
+                    False,
+                    reason="approval request already consumed",
+                )
             )
         if request.status == "denied":
             return asdict(
-                ApprovalDecision(request.request_id, request.status, False, reason="approval request denied")
+                ApprovalDecision(
+                    request.request_id, request.status, False, reason="approval request denied"
+                )
             )
         if request.status not in {"pending", "approved", "expired"}:
             return asdict(
@@ -337,7 +455,9 @@ def approve_with_extended_expiry(
                     request.request_id,
                     request.status,
                     False,
-                    reason="approval request cannot be extended from status '{}'".format(request.status),
+                    reason="approval request cannot be extended from status '{}'".format(
+                        request.status
+                    ),
                 )
             )
         try:
@@ -359,6 +479,7 @@ def approve_with_extended_expiry(
             function_id=str(details.get("function_id") or details.get("action") or ""),
             pack_id=str(details.get("pack_id") or ""),
             conversation_id=str(details.get("conversation_id") or ""),
+            scope_digest=str(details.get("approval_scope_digest") or ""),
         )
         return asdict(
             ApprovalDecision(
@@ -380,6 +501,7 @@ def issue_execution_token(
     function_id: str = "",
     pack_id: str = "",
     conversation_id: str = "",
+    scope_digest: str = "",
 ) -> str:
     payload = {
         "version": _TOKEN_VERSION,
@@ -396,6 +518,8 @@ def issue_execution_token(
         payload["pack_id"] = str(pack_id)
     if conversation_id:
         payload["conversation_id"] = str(conversation_id)
+    if scope_digest:
+        payload["scope_digest"] = str(scope_digest)
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     encoded = _b64url_encode(body)
     signature = hmac.new(
@@ -414,6 +538,7 @@ def verify_execution_token(
     consume: bool = True,
     pack_id: str = "",
     conversation_id: str = "",
+    scope_digest: str = "",
 ) -> TokenVerification:
     token = str(token or "")
     if "." not in token:
@@ -423,13 +548,19 @@ def verify_execution_token(
         hmac.new(_RUNTIME_SECRET.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
     )
     if not hmac.compare_digest(supplied_signature, expected_signature):
-        return TokenVerification(False, "APPROVAL_SIGNATURE_INVALID", "approval token signature is invalid")
+        return TokenVerification(
+            False, "APPROVAL_SIGNATURE_INVALID", "approval token signature is invalid"
+        )
     try:
         payload = json.loads(_b64url_decode(encoded).decode("utf-8"))
     except Exception:
-        return TokenVerification(False, "APPROVAL_TOKEN_INVALID", "approval token payload is invalid")
+        return TokenVerification(
+            False, "APPROVAL_TOKEN_INVALID", "approval token payload is invalid"
+        )
     if payload.get("version") != _TOKEN_VERSION:
-        return TokenVerification(False, "APPROVAL_TOKEN_INVALID", "approval token version is invalid")
+        return TokenVerification(
+            False, "APPROVAL_TOKEN_INVALID", "approval token version is invalid"
+        )
     if int(payload.get("expires_at") or 0) < _now():
         return TokenVerification(False, "APPROVAL_EXPIRED", "approval token expired")
     token_operation = str(payload.get("operation") or "")
@@ -460,6 +591,14 @@ def verify_execution_token(
             "APPROVAL_ARGUMENTS_CHANGED",
             "approval token does not match request arguments",
         )
+    expected_scope_digest = str(scope_digest or "")
+    token_scope_digest = str(payload.get("scope_digest") or "")
+    if expected_scope_digest and token_scope_digest != expected_scope_digest:
+        return TokenVerification(
+            False,
+            "APPROVAL_SCOPE_MISMATCH",
+            "approval token scope mismatch",
+        )
     request_id = str(payload.get("request_id") or "")
     jti = str(payload.get("jti") or "")
     with _LOCK:
@@ -470,9 +609,13 @@ def verify_execution_token(
                 "approval token has already been used",
                 request_id,
             )
-        request = _REQUESTS.get(request_id) or _request_from_mapping(get_approval_store().get_request(request_id))
+        request = _REQUESTS.get(request_id) or _request_from_mapping(
+            get_approval_store().get_request(request_id)
+        )
         if request is None:
-            return TokenVerification(False, "APPROVAL_REQUEST_MISSING", "approval request is missing")
+            return TokenVerification(
+                False, "APPROVAL_REQUEST_MISSING", "approval request is missing"
+            )
         if request.operation != operation:
             return TokenVerification(
                 False,
@@ -492,6 +635,15 @@ def verify_execution_token(
                 False,
                 "APPROVAL_NOT_APPROVED",
                 "approval request is not approved",
+                request_id,
+            )
+        details = request.details if isinstance(request.details, dict) else {}
+        request_scope_digest = str(details.get("approval_scope_digest") or "")
+        if request_scope_digest and token_scope_digest != request_scope_digest:
+            return TokenVerification(
+                False,
+                "APPROVAL_SCOPE_MISMATCH",
+                "approval token scope mismatch",
                 request_id,
             )
         if consume:
@@ -528,7 +680,9 @@ def get_approval_request(request_id: str) -> dict[str, Any] | None:
     return asdict(request)
 
 
-def list_approval_requests(status: str | None = None, *, include_expired: bool = True, limit: int = 100) -> list[dict[str, Any]]:
+def list_approval_requests(
+    status: str | None = None, *, include_expired: bool = True, limit: int = 100
+) -> list[dict[str, Any]]:
     limit = max(1, min(500, int(limit or 100)))
     requests = get_approval_store().list_requests(include_expired=True, limit=500)
     sqlite_by_id: dict[str, dict[str, Any]] = {}

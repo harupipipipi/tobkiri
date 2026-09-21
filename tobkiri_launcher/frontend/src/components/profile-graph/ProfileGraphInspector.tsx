@@ -89,19 +89,15 @@ export function ProfileGraphInspector({
         </div>
       ) : null}
 
-      <div className="mt-4">
-        <div className="mb-2 text-sm font-medium text-text-main">Metadata</div>
-        <pre className="max-h-[360px] overflow-auto rounded-xl border border-border bg-bg-main/70 p-3 text-xs text-text-muted">
-          {JSON.stringify(node.metadata ?? {}, null, 2)}
-        </pre>
-      </div>
+      <details className="mt-4 rounded-lg border border-border bg-bg-main/70">
+        <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-text-main">Source metadata</summary>
+        <pre className="max-h-56 overflow-auto border-t border-border p-3 text-xs text-text-muted">{JSON.stringify(node.metadata ?? {}, null, 2)}</pre>
+      </details>
 
-      <div className="mt-4">
-        <div className="mb-2 text-sm font-medium text-text-main">Selected Buckets</div>
-        <pre className="overflow-auto rounded-xl border border-border bg-bg-main/70 p-3 text-xs text-text-muted">
-          {JSON.stringify(document.selected, null, 2)}
-        </pre>
-      </div>
+      <details className="mt-2 rounded-lg border border-border bg-bg-main/70">
+        <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-text-main">Selected buckets</summary>
+        <pre className="max-h-56 overflow-auto border-t border-border p-3 text-xs text-text-muted">{JSON.stringify(document.selected, null, 2)}</pre>
+      </details>
     </section>
   );
 }

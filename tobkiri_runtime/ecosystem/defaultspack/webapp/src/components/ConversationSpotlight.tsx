@@ -6,6 +6,7 @@ import { cn } from "../lib/cn";
 import { SPOTLIGHT_FILTERS, type SpotlightFilter } from "../lib/conversationSpotlight";
 import { formatRelativeTime } from "../lib/chat";
 import { t, type LocaleSetting } from "../lib/i18n";
+import { ModalFoundation } from "./ModalFoundation";
 
 export function ConversationSpotlight({
   isOpen,
@@ -38,11 +39,13 @@ export function ConversationSpotlight({
 }) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 rumi-layer-modal flex items-start justify-center bg-black/45 px-4 pt-[9vh] backdrop-blur-sm rumi-anim-fade-in" onMouseDown={onClose}>
-      <div
-        className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/95 shadow-[0_32px_120px_rgba(0,0,0,0.65)] ring-1 ring-white/5 rumi-anim-pop-in"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
+    <ModalFoundation
+      title={t(locale, "spotlight.placeholder")}
+      description={t(locale, "spotlight.shortcut")}
+      onClose={onClose}
+      backdropClassName="fixed inset-0 rumi-layer-modal flex items-start justify-center bg-black/45 px-4 pt-[9dvh] backdrop-blur-sm rumi-anim-fade-in motion-reduce:animate-none motion-reduce:backdrop-blur-none"
+      panelClassName="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/95 shadow-[0_32px_120px_rgba(0,0,0,0.65)] ring-1 ring-white/5 rumi-anim-pop-in motion-reduce:animate-none outline-none"
+    >
         <div className="flex items-center gap-3 border-b border-zinc-800/80 px-4 py-3">
           <Search size={20} className="text-emerald-300" />
           <input
@@ -56,7 +59,7 @@ export function ConversationSpotlight({
           <div className="hidden rounded-full border border-zinc-800 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500 sm:block">
             {shortcutLabel || t(locale, "spotlight.shortcut")}
           </div>
-          <button type="button" onClick={onClose} className="rounded-full p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">
+          <button type="button" aria-label={t(locale, "spotlight.close")} onClick={onClose} className="flex min-h-10 min-w-10 items-center justify-center rounded-full p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">
             <X size={16} />
           </button>
         </div>
@@ -132,7 +135,6 @@ export function ConversationSpotlight({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </ModalFoundation>
   );
 }

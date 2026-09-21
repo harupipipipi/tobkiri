@@ -67,6 +67,7 @@ def run(input_data, context):
         content=content,
         thread_id=actual_thread_id,
         metadata=metadata,
+        mention_values=channel["members"],
     )
 
     manager.touch_channel(channel_id)
@@ -111,4 +112,5 @@ def run(input_data, context):
         "thread_total": thread_total,
         "notifications": all_notifications,
         "agent_replies": agent_replies,
+        "unresolved_mentions": reply_msg.get("unresolved_mentions", []),
     })

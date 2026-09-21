@@ -157,6 +157,29 @@ class TestPanelGetFlows(unittest.TestCase):
         # kernel なしなので空リスト
         self.assertEqual(result["count"], 0)
 
+    def test_flows_use_flow_loader_source_metadata(self):
+        class FakeRegistry:
+            def list(self, include_meta=False):
+                return {
+                    "flow.defaultspack.compile": {
+                        "last_meta": {
+                            "_source_file": str(
+                                Path("ecosystem")
+                                / "defaultspack"
+                                / "flows"
+                                / "compile.flow.yaml"
+                            )
+                        }
+                    }
+                }
+
+        handler = _FakeHandler()
+        handler.kernel = SimpleNamespace(interface_registry=FakeRegistry())
+        result = handler._panel_get_flows()
+
+        self.assertEqual(result["flows"][0]["filename"], "compile.flow.yaml")
+        self.assertEqual(result["flows"][0]["pack_id"], "defaultspack")
+
 
 class TestPanelGetFlowDetail(unittest.TestCase):
     """GET /api/panel/flows/{id} のレスポンス形式テスト"""
@@ -167,6 +190,34 @@ class TestPanelGetFlowDetail(unittest.TestCase):
         self.assertIn("error", result)
         self.assertIn("status_code", result)
         self.assertEqual(result["status_code"], 503)
+
+    def test_flow_detail_reads_yaml_from_flow_loader_source_file(self):
+        class FakeRegistry:
+            def __init__(self, source_file):
+                self.source_file = source_file
+
+            def list(self, include_meta=False):
+                return {
+                    "flow.test.flow": {
+                        "last_meta": {"_source_file": str(self.source_file)}
+                    }
+                }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source_file = Path(tmpdir) / "test.flow.yaml"
+            source_file.write_text(
+                "flow_id: test.flow\nsteps:\n  - id: work\n",
+                encoding="utf-8",
+            )
+            handler = _FakeHandler()
+            handler.kernel = SimpleNamespace(
+                interface_registry=FakeRegistry(source_file)
+            )
+
+            result = handler._panel_get_flow_detail("test.flow")
+
+        self.assertEqual(result["filename"], "test.flow.yaml")
+        self.assertIn("id: work", result["yaml_content"])
 
 
 class TestPanelCreateFlow(unittest.TestCase):

@@ -401,6 +401,20 @@
      Flow Styles (preserved)
      ---------------------------------- */
   .flow-focus-shell {
+    --flow-canvas-top: var(--bg-main);
+    --flow-canvas-bottom: var(--bg-main);
+    --flow-grid-color: color-mix(in srgb, var(--text-muted) 16%, transparent);
+    --flow-node-fill: var(--bg-card);
+    --flow-node-border: var(--border);
+    --flow-node-shadow: rgba(0, 0, 0, 0.18);
+    --flow-node-cap: color-mix(in srgb, var(--bg-hover) 78%, var(--bg-card));
+    --flow-node-cap-text: var(--text-main);
+    --flow-node-text: var(--text-main);
+    --flow-node-muted: var(--text-muted);
+    --flow-port-fill: var(--bg-main);
+    --flow-port-border: var(--border);
+    --flow-port-handle: var(--text-muted);
+    --flow-port-handle-border: var(--bg-card);
     --flow-canvas: linear-gradient(
       180deg,
       color-mix(in srgb, var(--flow-canvas-top) 62%, var(--bg-main) 38%) 0%,
@@ -428,28 +442,28 @@
 
   .flow-node-shell {
     position: relative;
-    padding-top: 0.9rem;
+    min-width: 220px;
+    padding-top: 0;
     color: var(--flow-node-text);
-    filter: drop-shadow(0 14px 22px var(--flow-node-shadow));
+    filter: none;
   }
 
   .flow-node-card {
     position: relative;
     overflow: hidden;
-    border: 1.5px solid var(--flow-node-border);
-    border-radius: 1.4rem;
+    border: 1px solid var(--flow-node-border);
+    border-radius: 0.8rem;
     background: var(--flow-node-fill);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.04),
-      0 12px 24px rgba(0, 0, 0, 0.2);
+      inset 0 1px 0 rgba(255, 255, 255, 0.025),
+      0 8px 20px var(--flow-node-shadow);
   }
 
   .flow-node-shell.is-selected .flow-node-card {
     border-color: color-mix(in srgb, var(--flow-node-selected) 58%, var(--flow-node-border));
     box-shadow:
-      0 0 0 3px color-mix(in srgb, var(--flow-node-selected) 26%, transparent),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 14px 28px rgba(0, 0, 0, 0.24);
+      0 0 0 2px color-mix(in srgb, var(--flow-node-selected) 22%, transparent),
+      0 8px 20px var(--flow-node-shadow);
   }
 
   .flow-node-shell.is-running .flow-node-card {
@@ -465,28 +479,37 @@
   }
 
   .flow-node-cap {
-    position: absolute;
-    top: 0;
-    left: 1rem;
-    z-index: 4;
-    display: inline-flex;
-    max-width: calc(100% - 2rem);
+    position: relative;
+    z-index: 2;
+    display: flex;
+    width: 100%;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.52rem 1rem;
-    border-radius: 0.85rem;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid var(--flow-node-border);
     background: var(--flow-node-cap);
     color: var(--flow-node-cap-text);
-    font-size: 0.78rem;
-    font-weight: 700;
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
-    pointer-events: none;
+    font-size: 0.75rem;
+    font-weight: 650;
     user-select: none;
   }
 
+  .flow-node-status-dot {
+    width: 0.42rem;
+    height: 0.42rem;
+    flex: none;
+    border-radius: 999px;
+    background: var(--text-muted);
+  }
+
+  .flow-node-shell.is-running .flow-node-status-dot { background: var(--flow-node-running); }
+  .flow-node-shell.is-success .flow-node-status-dot { background: var(--flow-node-success); }
+  .flow-node-shell.is-error .flow-node-status-dot { background: var(--flow-node-error); }
+
   .flow-node-body {
-    min-height: 138px;
-    padding: 2.2rem 4.75rem 1.3rem;
+    min-height: 104px;
+    padding: 1.1rem 4.1rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -497,30 +520,30 @@
     max-width: 100%;
     flex-direction: column;
     align-items: center;
-    gap: 0.7rem;
+    gap: 0.45rem;
     text-align: center;
   }
 
   .flow-node-subtitle {
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: 0.67rem;
+    font-weight: 600;
     color: var(--flow-node-muted);
     text-transform: uppercase;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.08em;
   }
 
   .flow-node-token {
     display: inline-flex;
-    min-width: 96px;
-    max-width: 150px;
+    min-width: 0;
+    max-width: 138px;
     flex-direction: column;
     align-items: center;
     gap: 0.2rem;
-    border: 1px solid color-mix(in srgb, var(--flow-port-border) 62%, transparent);
-    border-radius: 0.9rem;
-    background: color-mix(in srgb, var(--flow-port-fill) 88%, var(--flow-node-fill) 12%);
-    padding: 0.78rem 1rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    box-shadow: none;
   }
 
   .flow-node-token-title {
@@ -528,8 +551,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.95rem;
-    font-weight: 700;
+    font-size: 0.82rem;
+    font-weight: 650;
     color: var(--flow-node-text);
   }
 
@@ -548,17 +571,17 @@
     z-index: 3;
     display: flex;
     flex-direction: column;
-    gap: 0.7rem;
+    gap: 0.55rem;
     transform: translateY(-50%);
   }
 
   .flow-port-stack-left {
-    left: 0.85rem;
+    left: 0.65rem;
     align-items: flex-start;
   }
 
   .flow-port-stack-right {
-    right: 0.85rem;
+    right: 0.65rem;
     align-items: flex-end;
   }
 
@@ -569,22 +592,22 @@
   }
 
   .flow-port-tag {
-    max-width: 84px;
+    max-width: 72px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     border: 1px solid color-mix(in srgb, var(--flow-port-border) 62%, transparent);
-    border-radius: 0.65rem;
+    border-radius: 0.42rem;
     background: color-mix(in srgb, var(--flow-port-fill) 92%, var(--flow-node-fill) 8%);
-    padding: 0.32rem 0.55rem;
-    font-size: 0.68rem;
-    font-weight: 600;
+    padding: 0.25rem 0.42rem;
+    font-size: 0.62rem;
+    font-weight: 550;
     color: var(--flow-node-muted);
   }
 
   .flow-port-handle {
-    width: 12px !important;
-    height: 12px !important;
+    width: 10px !important;
+    height: 10px !important;
     border-color: var(--flow-port-handle-border) !important;
     background: var(--flow-port-handle) !important;
   }

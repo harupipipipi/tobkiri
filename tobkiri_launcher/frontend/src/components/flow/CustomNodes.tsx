@@ -135,19 +135,19 @@ function NodeShell({
   return (
     <div
       className={cn(
-        'flow-node-shell min-w-[240px] transition-transform duration-150',
+        'flow-node-shell min-w-[220px] transition-transform duration-150',
         selected && 'is-selected scale-[1.01]',
         statusAccent(status),
       )}
     >
-      <div className="flow-node-cap">
-        <div className="flex items-center gap-2 truncate">
-          {icon}
-          <span className="truncate">{title}</span>
-        </div>
-      </div>
-
       <div className="flow-node-card">
+        <div className="flow-node-cap">
+          <div className="flex items-center gap-2 truncate">
+            {icon}
+            <span className="truncate">{title}</span>
+          </div>
+          <span className="flow-node-status-dot" aria-hidden="true" />
+        </div>
         <PortStack ports={inputPorts} side="left" />
         <PortStack ports={outputPorts} side="right" />
 

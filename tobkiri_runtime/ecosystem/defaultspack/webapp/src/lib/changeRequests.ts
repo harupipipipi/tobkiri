@@ -113,6 +113,7 @@ export type ChangeRequestDrift = {
 
 export type ChangeRequestRecord = {
   id: string;
+  revision?: number;
   status: ChangeRequestStatus;
   decision?: ChangeRequestDecision;
   title?: string;
@@ -139,6 +140,35 @@ export type ChangeRequestRecord = {
   snapshot_working_tree_hash?: string;
   files?: ChangeRequestFile[];
 };
+
+export type ChangeRequestMutationContext = {
+  expected_revision?: number;
+  expected_updated_at?: string;
+  expected_snapshot_working_tree_hash?: string;
+  expected_current_working_tree_hash?: string;
+  idempotency_key: string;
+};
+
+export class ChangeRequestMutationConflictError extends Error {
+  readonly code = "CHANGE_REQUEST_CONFLICT";
+}
+
+export class ChangeRequestApiUnavailableError extends Error {
+  readonly code = "CHANGE_REQUEST_API_UNAVAILABLE";
+}
+
+export function changeRequestMutationContext(review: ChangeRequestRecord, action: string): ChangeRequestMutationContext {
+  const actionKey = action.slice(0, 120);
+  return {
+    expected_revision: review.revision,
+    expected_updated_at: review.updated_at,
+    expected_snapshot_working_tree_hash: review.snapshot_working_tree_hash ?? review.snapshot?.signature,
+    expected_current_working_tree_hash: review.current_working_tree_hash,
+    // Revision-scoped deterministic keys make a timeout retry a replay rather
+    // than a second mutation. A changed payload with the same key fails closed.
+    idempotency_key: `cr:${review.id}:${review.revision ?? "unknown"}:${actionKey}`,
+  };
+}
 
 export type ChangeRequestListResponse = {
   reviews: ChangeRequestRecord[];
@@ -399,6 +429,7 @@ function normalizeReview(value: unknown): ChangeRequestRecord | null {
   const drift = normalizeDrift(record.drift ?? record.last_drift);
   return {
     id,
+    revision: readNumber(record, ["revision", "version", "etag_version"]),
     status,
     decision: readString(record, ["decision"]),
     title: readString(record, ["title", "name"]),
@@ -421,8 +452,8 @@ function normalizeReview(value: unknown): ChangeRequestRecord | null {
     snapshot,
     drift,
     is_stale: readBoolean(record, ["is_stale", "stale"]),
-    current_working_tree_hash: readString(record, ["current_working_tree_hash", "current_worktree_hash"]),
-    snapshot_working_tree_hash: readString(record, ["snapshot_working_tree_hash", "snapshot_worktree_hash"]),
+    current_working_tree_hash: readString(record, ["current_working_tree_hash", "current_worktree_hash", "working_tree_hash"]) ?? snapshot?.signature,
+    snapshot_working_tree_hash: readString(record, ["snapshot_working_tree_hash", "snapshot_worktree_hash"]) ?? snapshot?.signature,
     files: mergeFiles(topLevelFiles, snapshot?.files),
   };
 }
@@ -445,9 +476,15 @@ async function decodeResponse<T>(response: Response): Promise<T> {
   return (envelope.data ?? envelope) as T;
 }
 
-async function requestChangeRequest<T>(path: string, init?: RequestInit): Promise<T | null> {
+async function requestChangeRequest<T>(path: string, init?: RequestInit, options?: { unavailableReturnsNull?: boolean }): Promise<T | null> {
   const response = await defaultspackApiFetch(path, { cache: "no-store", ...init });
-  if (response.status === 404 || response.status === 405) return null;
+  if (response.status === 409 || response.status === 412) {
+    throw new ChangeRequestMutationConflictError("Review changed on another client. Reload before retrying.");
+  }
+  if (response.status === 404 || response.status === 405) {
+    if (options?.unavailableReturnsNull !== false) return null;
+    throw new ChangeRequestApiUnavailableError("Change request API is unavailable. Enable or configure it before retrying.");
+  }
   return decodeResponse<T>(response);
 }
 
@@ -492,11 +529,11 @@ export async function getChangeRequest(reviewId: string): Promise<ChangeRequestR
   return normalizeReview(record?.review ?? record?.change_request ?? result);
 }
 
-export async function refreshChangeRequest(reviewId: string, payload: { workspace_id?: string | null }): Promise<ChangeRequestRecord | null> {
+export async function refreshChangeRequest(reviewId: string, payload: { workspace_id?: string | null } & Partial<ChangeRequestMutationContext>): Promise<ChangeRequestRecord | null> {
   const result = await requestChangeRequest<unknown>(`/api/change-requests/${encodeURIComponent(reviewId)}/refresh`, {
     method: "POST",
-    body: JSON.stringify({ workspace_id: payload.workspace_id }),
-  });
+    body: JSON.stringify(payload),
+  }, { unavailableReturnsNull: false });
   const record = asRecord(result);
   const review = normalizeReview(record?.review ?? record?.change_request ?? result);
   if (!review) return null;
@@ -513,11 +550,11 @@ export async function addChangeRequestComment(reviewId: string, payload: {
   path?: string;
   line?: number | null;
   suggested_patch?: string;
-}): Promise<ChangeRequestRecord | null> {
+} & Partial<ChangeRequestMutationContext>): Promise<ChangeRequestRecord | null> {
   const result = await requestChangeRequest<unknown>(`/api/change-requests/${encodeURIComponent(reviewId)}/comments`, {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, { unavailableReturnsNull: false });
   const record = asRecord(result);
   return normalizeReview(record?.change_request ?? record?.review ?? result);
 }
@@ -526,29 +563,29 @@ export async function updateChangeRequestComment(reviewId: string, commentId: st
   body?: string;
   resolved?: boolean;
   suggested_patch?: string;
-}): Promise<ChangeRequestRecord | null> {
+} & Partial<ChangeRequestMutationContext>): Promise<ChangeRequestRecord | null> {
   const result = await requestChangeRequest<unknown>(`/api/change-requests/${encodeURIComponent(reviewId)}/comments/${encodeURIComponent(commentId)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
-  });
+  }, { unavailableReturnsNull: false });
   const record = asRecord(result);
   return normalizeReview(record?.change_request ?? record?.review ?? result);
 }
 
-export async function submitChangeRequestDecision(reviewId: string, payload: { decision: "approve" | "request_changes" | "comment" | "approved" | "changes_requested" | "commented"; body?: string }): Promise<ChangeRequestRecord | null> {
+export async function submitChangeRequestDecision(reviewId: string, payload: { decision: "approve" | "request_changes" | "comment" | "approved" | "changes_requested" | "commented"; body?: string } & Partial<ChangeRequestMutationContext>): Promise<ChangeRequestRecord | null> {
   const result = await requestChangeRequest<unknown>(`/api/change-requests/${encodeURIComponent(reviewId)}/decision`, {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, { unavailableReturnsNull: false });
   const record = asRecord(result);
   return normalizeReview(record?.change_request ?? record?.review ?? result);
 }
 
-export async function setChangeRequestViewedFile(reviewId: string, path: string, viewed: boolean): Promise<ChangeRequestRecord | null> {
+export async function setChangeRequestViewedFile(reviewId: string, path: string, viewed: boolean, context?: ChangeRequestMutationContext): Promise<ChangeRequestRecord | null> {
   const result = await requestChangeRequest<unknown>(`/api/change-requests/${encodeURIComponent(reviewId)}/viewed-files`, {
     method: "PATCH",
-    body: JSON.stringify({ path, viewed }),
-  });
+    body: JSON.stringify({ path, viewed, ...(context ?? {}) }),
+  }, { unavailableReturnsNull: false });
   const record = asRecord(result);
   return normalizeReview(record?.change_request ?? record?.review ?? result);
 }
@@ -564,11 +601,11 @@ export async function listChangeRequestChecks(reviewId: string): Promise<{ revie
   };
 }
 
-export async function runChangeRequestCheck(reviewId: string, command: string): Promise<{ review: ChangeRequestRecord | null; check: ChangeRequestCheck | null }> {
+export async function runChangeRequestCheck(reviewId: string, command: string, context?: ChangeRequestMutationContext): Promise<{ review: ChangeRequestRecord | null; check: ChangeRequestCheck | null }> {
   const result = await requestChangeRequest<unknown>(`/api/change-requests/${encodeURIComponent(reviewId)}/checks/run`, {
     method: "POST",
-    body: JSON.stringify({ command }),
-  });
+    body: JSON.stringify({ command, ...(context ?? {}) }),
+  }, { unavailableReturnsNull: false });
   const record = asRecord(result);
   return {
     review: normalizeReview(record?.change_request ?? record?.review ?? result),
@@ -600,7 +637,7 @@ export const changeRequestCommitEnabled = CHANGE_REQUEST_COMMIT_ENABLED_VALUES.h
   String((import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_RUMI_REVIEW_ENABLE_COMMIT ?? "").trim().toLowerCase(),
 );
 
-export async function commitChangeRequest(reviewId: string, message: string): Promise<ChangeRequestCommitResult | null> {
+export async function commitChangeRequest(reviewId: string, message: string, context?: ChangeRequestMutationContext): Promise<ChangeRequestCommitResult | null> {
   if (!changeRequestCommitEnabled) {
     return {
       committed: false,
@@ -611,8 +648,8 @@ export async function commitChangeRequest(reviewId: string, message: string): Pr
   }
   const result = await requestChangeRequest<unknown>(`/api/change-requests/${encodeURIComponent(reviewId)}/commit`, {
     method: "POST",
-    body: JSON.stringify({ message }),
-  });
+    body: JSON.stringify({ message, ...(context ?? {}) }),
+  }, { unavailableReturnsNull: false });
   const record = asRecord(result);
   if (!record) return null;
   return {

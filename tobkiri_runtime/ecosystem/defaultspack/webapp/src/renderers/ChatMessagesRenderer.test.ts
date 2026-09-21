@@ -43,6 +43,41 @@ test("message copy text falls back to raw text", () => {
   assert.equal(messageCopyText(message({ rawText: "fallback text" })), "fallback text");
 });
 
+test("unknown blocks fail closed in DOM and copy for legacy strategies", () => {
+  const unknown = {
+    type: "provider.future",
+    token: "never-render-token",
+    tool_arguments: { path: "/private/work", secret: "never-render-secret" },
+    hidden_reasoning: "never-render-reasoning",
+  };
+  for (const unknownBlockStrategy of ["hidden", "text", "json", "placeholder"]) {
+    const unsafeMessage = message({ content: [unknown] });
+    const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+      error: null, isMessagesRegionVisible: true, isLoading: false,
+      isNewConversation: false, isGenerating: false, messages: [unsafeMessage],
+      messagesEndRef: { current: null }, unknownBlockStrategy,
+      showActivityInMessages: true, showWidgets: true, onSuggestionClick: () => undefined,
+    }));
+    assert.match(html, /data-testid="unsupported-chat-block"/);
+    assert.match(html, /この内容は現在のRumiでは表示できません/);
+    assert.doesNotMatch(html, /never-render|private\/work|hidden_reasoning|tool_arguments/);
+    assert.equal(messageCopyText(unsafeMessage), "");
+  }
+});
+
+test("debug unknown block disclosure is explicit, bounded, and value-free", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null, isMessagesRegionVisible: true, isLoading: false,
+    isNewConversation: false, isGenerating: false,
+    messages: [message({ content: [{ type: "future.v3", version: "3", status: "secret-looking-value", token: "never-render-token" }] })],
+    messagesEndRef: { current: null }, unknownBlockStrategy: "debug",
+    showActivityInMessages: true, showWidgets: true, onSuggestionClick: () => undefined,
+  }));
+  assert.match(html, /開発者向けの制限済み情報/);
+  assert.match(html, /rumi.chat.public.v1/);
+  assert.doesNotMatch(html, /secret-looking-value|never-render-token/);
+});
+
 test("user messages restore human mention badges from semantic metadata", () => {
   const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null,
@@ -74,6 +109,29 @@ test("user messages restore human mention badges from semantic metadata", () => 
   assert.match(html, /data-testid="message-mention-badge"/);
   assert.match(html, /@Browser Computer/);
   assert.doesNotMatch(html, />@browser_computer</);
+});
+
+test("markdown links render as destination-aware review controls", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      role: "agent",
+      content: [{ type: "markdown", text: "[Account portal](https://example.com/account)" }],
+      rawText: "[Account portal](https://example.com/account)",
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /<button[^>]+aria-label="Account portal; destination example\.com; web"/);
+  assert.doesNotMatch(html, /<a[^>]+href="https:\/\/example\.com/);
 });
 
 test("assistant authority retry boilerplate is stripped while preserving the answer", () => {

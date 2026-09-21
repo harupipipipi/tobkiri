@@ -17,6 +17,7 @@ import { DiffPanel } from "./DiffPanel";
 import { RumiLogPanel } from "./RumiLogPanel";
 import { TerminalPanel, type ApprovedTerminalDecision } from "./TerminalPanel";
 import { nextApprovalQueueRefreshSignal } from "./approvalQueueSync";
+import { approvedMcpRetryReason, isMcpApprovalRequest, sameMcpDraft, type McpConnectionDraft, type PendingMcpConnection } from "./mcpApproval";
 
 function workspaceLabel(workspace: CodingWorkspaceRecord): string {
   return workspace.label || workspace.workspace_id;
@@ -45,6 +46,15 @@ function parseMcpArgs(value: string): string[] {
   return trimmed.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 }
 
+type McpLifecycleAction = "disconnect" | "reconnect" | "remove";
+
+type PendingMcpApproval = {
+  requestId: string;
+  serverId: string;
+  action: McpLifecycleAction;
+  token?: string;
+};
+
 export function CodingCockpit({
   workspaces,
   selectedWorkspaceId,
@@ -52,7 +62,6 @@ export function CodingCockpit({
   onWorkspaceCreate,
   onWorkspaceTrust,
   onWorkspacesRefresh,
-  consoleScopeKey,
   variant = "sidecar",
 }: {
   workspaces: CodingWorkspaceRecord[];
@@ -61,6 +70,7 @@ export function CodingCockpit({
   onWorkspaceCreate?: () => void;
   onWorkspaceTrust?: (workspaceId: string) => void;
   onWorkspacesRefresh?: () => void;
+  /** @deprecated Terminal history is intentionally private and memory-only. */
   consoleScopeKey?: string;
   variant?: "sidecar" | "sidebar";
 }) {
@@ -81,6 +91,10 @@ export function CodingCockpit({
   const [mcpCommand, setMcpCommand] = useState("");
   const [mcpArgs, setMcpArgs] = useState("");
   const [mcpBusy, setMcpBusy] = useState(false);
+  const [pendingMcp, setPendingMcp] = useState<PendingMcpConnection | null>(null);
+  const [mcpInspecting, setMcpInspecting] = useState<string | null>(null);
+  const [mcpRemovalCandidate, setMcpRemovalCandidate] = useState<string | null>(null);
+  const [pendingMcpApproval, setPendingMcpApproval] = useState<PendingMcpApproval | null>(null);
   const [activeCockpitTab, setActiveCockpitTab] = useState<"review" | "workspace">("review");
   const isSidebar = variant === "sidebar";
 
@@ -101,6 +115,13 @@ export function CodingCockpit({
   useEffect(() => {
     void loadSidecarState();
   }, [loadSidecarState]);
+
+  useEffect(() => {
+    if (!pendingMcp) return;
+    if (!sameMcpDraft(pendingMcp.draft, {
+      serverId: mcpServerId.trim(), command: mcpCommand.trim(), args: parseMcpArgs(mcpArgs), workspaceId: activeWorkspaceId,
+    })) setStatus("MCP configuration or workspace changed. The pending review is stale; connect again for a new review.");
+  }, [activeWorkspaceId, mcpArgs, mcpCommand, mcpServerId, pendingMcp]);
 
   const createSession = async () => {
     const task = sessionTask.trim() || "Inspect workspace changes";
@@ -131,7 +152,30 @@ export function CodingCockpit({
     setSessions(refreshed);
   };
 
-  const handleApprovalApproved = (decision: CodingApprovalDecision, request: CodingApprovalRequest) => {
+  const currentMcpDraft = (): McpConnectionDraft => ({
+    serverId: mcpServerId.trim(), command: mcpCommand.trim(), args: parseMcpArgs(mcpArgs), workspaceId: activeWorkspaceId,
+  });
+
+  const rememberPendingMcp = (requestId: string, draft: McpConnectionDraft) => {
+    setPendingMcp({ requestId, draft });
+    setApprovalRefreshSignal((value) => value + 1);
+    setActiveCockpitTab("workspace");
+    setStatus(`MCP approval required for ${draft.serverId}. Review the shared approval request below.`);
+  };
+
+  const finishMcpConnection = async (serverId: string, tools: unknown[]) => {
+    setPendingMcp(null);
+    setMcpServerId(""); setMcpCommand(""); setMcpArgs("");
+    await loadSidecarState();
+    setStatus(`MCP connected: ${serverId}${tools.length ? ` (${tools.length} tools)` : ""}`);
+  };
+
+  const handleApprovalApproved = async (decision: CodingApprovalDecision, request: CodingApprovalRequest) => {
+    if (pendingMcpApproval?.requestId === request.request_id && decision.token) {
+      setPendingMcpApproval((pending) => pending ? { ...pending, token: decision.token } : pending);
+      setStatus(`MCP ${pendingMcpApproval.action} approved. Press the action again to continue.`);
+      return;
+    }
     const approvedDecision = {
       request_id: decision.request_id,
       approved: decision.approved,
@@ -140,9 +184,38 @@ export function CodingCockpit({
     };
     if (request.operation === "terminal.exec") {
       setApprovedTerminalDecision(approvedDecision);
+      return;
     } else if (request.operation === "file.restore") {
       setApprovedCheckpointDecision(approvedDecision);
+      return;
     }
+    if (!isMcpApprovalRequest(request)) return;
+    const draft = currentMcpDraft();
+    const retryReason = approvedMcpRetryReason(pendingMcp, draft, decision);
+    if (retryReason) { setPendingMcp(null); setApprovalRefreshSignal((value) => value + 1); setStatus(retryReason); return; }
+    if (!pendingMcp || !decision.token || mcpBusy) return;
+    const approvedAttempt = pendingMcp;
+    setPendingMcp(null);
+    setMcpBusy(true);
+    try {
+      const result = await codingResources.connectMcpServer({
+        server_id: approvedAttempt.draft.serverId,
+        workspace_id: approvedAttempt.draft.workspaceId,
+        approval_token: decision.token,
+      });
+      const nextRequestId = typeof result.approval_request_id === "string" ? result.approval_request_id : result.approval_request?.request_id;
+      if (result.approval_required && nextRequestId) { rememberPendingMcp(nextRequestId, approvedAttempt.draft); return; }
+      await finishMcpConnection(approvedAttempt.draft.serverId, Array.isArray(result.tools) ? result.tools : []);
+    } catch (err) {
+      setApprovalRefreshSignal((value) => value + 1);
+      setStatus(`MCP start or reconnect failed. Review the configuration and try again. ${err instanceof Error ? err.message : String(err)}`);
+    } finally { setMcpBusy(false); }
+  };
+
+  const handleApprovalDenied = (request: CodingApprovalRequest) => {
+    if (!isMcpApprovalRequest(request) || pendingMcp?.requestId !== request.request_id) return;
+    setPendingMcp(null);
+    setStatus("MCP connection denied. You can edit the configuration and connect again.");
   };
 
   const handleCodingActionResult = useCallback((result: unknown) => {
@@ -158,32 +231,59 @@ export function CodingCockpit({
     setMcpBusy(true);
     setStatus(null);
     try {
+      const draft = currentMcpDraft();
       const config = {
         server_id: serverId,
         name: serverId,
         transport: "stdio",
         command,
-        args: parseMcpArgs(mcpArgs),
+        args: draft.args,
       };
       await codingResources.registerMcpServer({ server_id: serverId, name: serverId, config });
-      const result = await codingResources.connectMcpServer({ server_id: serverId });
-      if (result.approval_required && typeof result.approval_request_id === "string") {
-        await loadSidecarState();
+      const result = await codingResources.connectMcpServer({ server_id: serverId, workspace_id: activeWorkspaceId });
+      const requestId = typeof result.approval_request_id === "string" ? result.approval_request_id : result.approval_request?.request_id;
+      if (result.approval_required) {
+        if (!requestId) throw new Error("MCP approval response did not include a request id");
+        rememberPendingMcp(requestId, draft);
+        return;
+      }
+      await finishMcpConnection(serverId, Array.isArray(result.tools) ? result.tools : []);
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err));
+    } finally {
+      setMcpBusy(false);
+    }
+  };
+
+  const manageMcpServer = async (server: McpServerRecord, action: McpLifecycleAction) => {
+    const serverId = String(server.server_id || server.server_name || server.name || "").trim();
+    if (!serverId || mcpBusy) return;
+    const matchingApproval = pendingMcpApproval?.serverId === serverId && pendingMcpApproval.action === action
+      ? pendingMcpApproval
+      : null;
+    setMcpBusy(true);
+    setStatus(null);
+    try {
+      const result = await codingResources.manageMcpServer({
+        action,
+        server_id: serverId,
+        ...(action === "remove" ? { confirm: true } : {}),
+        ...(matchingApproval?.token ? { approval_token: matchingApproval.token } : {}),
+      });
+      handleCodingActionResult(result);
+      if (result.approval_required === true && typeof result.approval_request_id === "string") {
+        setPendingMcpApproval({ requestId: result.approval_request_id, serverId, action });
         setStatus(
-          `MCP approval required for ${serverId}. Review request ${result.approval_request_id} ` +
-            "in the separate Approvals queue, then press Connect again. " +
-            "The requesting form cannot approve its own request.",
+          `MCP ${action} requires approval. Review request ${result.approval_request_id} in the separate Approvals queue, then press the action again.`,
         );
         return;
       }
-      const tools = Array.isArray(result.tools) ? result.tools.length : 0;
-      setMcpServerId("");
-      setMcpCommand("");
-      setMcpArgs("");
+      setPendingMcpApproval(null);
+      setMcpRemovalCandidate(null);
       await loadSidecarState();
-      setStatus(`MCP connected: ${serverId}${tools ? ` (${tools} tools)` : ""}`);
+      setStatus(action === "remove" ? `MCP registration removed: ${serverId}` : `MCP ${action}ed: ${serverId}`);
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      setStatus(`MCP ${action} failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setMcpBusy(false);
     }
@@ -284,6 +384,7 @@ export function CodingCockpit({
           <RumiLogPanel workspaceId={activeWorkspaceId} />
           <ApprovalQueue
             onApproved={handleApprovalApproved}
+            onDenied={handleApprovalDenied}
             refreshSignal={approvalRefreshSignal}
           />
           <DiffPanel workspaceId={activeWorkspaceId} />
@@ -296,7 +397,6 @@ export function CodingCockpit({
             workspaceId={activeWorkspaceId}
             approvedDecision={approvedTerminalDecision}
             onActionResult={handleCodingActionResult}
-            storageKey={`rumi-terminal-logs:${consoleScopeKey ?? activeWorkspaceId ?? "default"}`}
           />
 
           <section className="border-b border-zinc-800/60 p-3" aria-label="Browser artifacts">
@@ -364,10 +464,77 @@ export function CodingCockpit({
             </div>
             <div className="space-y-1.5">
               {mcpServers.map((server) => (
-                <div key={server.server_id || server.server_name || server.name} className="flex items-center justify-between gap-2 rounded-md border border-zinc-800 bg-zinc-950/40 px-2 py-1.5">
-                  <span className="min-w-0 truncate font-mono text-[11px] text-zinc-300">{server.name || server.server_name || server.server_id}</span>
-                  <span className="flex-shrink-0 text-[10px] text-zinc-600">{serverPermission(server)}</span>
-                </div>
+                (() => {
+                  const serverId = String(server.server_id || server.server_name || server.name || "").trim();
+                  const isInspecting = mcpInspecting === serverId;
+                  const isConfirmingRemoval = mcpRemovalCandidate === serverId;
+                  const inspect = server.inspect;
+                  return (
+                    <div key={serverId} className="rounded-md border border-zinc-800 bg-zinc-950/40 px-2 py-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate font-mono text-[11px] text-zinc-300">{server.name || server.server_name || server.server_id}</span>
+                        <span className="flex-shrink-0 text-[10px] text-zinc-600">{serverPermission(server)}</span>
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setMcpInspecting((current) => current === serverId ? null : serverId)}
+                          className="rounded border border-zinc-700 px-1.5 py-1 text-[10px] text-zinc-300 hover:bg-zinc-800"
+                          aria-expanded={isInspecting}
+                        >
+                          {isInspecting ? "Hide details" : "Inspect"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void manageMcpServer(server, server.connected ? "disconnect" : "reconnect")}
+                          disabled={mcpBusy}
+                          className="rounded border border-zinc-700 px-1.5 py-1 text-[10px] text-zinc-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          {server.connected ? "Disconnect" : "Reconnect"}
+                        </button>
+                        {!isConfirmingRemoval ? (
+                          <button
+                            type="button"
+                            onClick={() => setMcpRemovalCandidate(serverId)}
+                            disabled={mcpBusy}
+                            className="rounded border border-red-900/70 px-1.5 py-1 text-[10px] text-red-300 hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            Remove
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void manageMcpServer(server, "remove")}
+                              disabled={mcpBusy}
+                              className="rounded bg-red-500/90 px-1.5 py-1 text-[10px] font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              Confirm removal
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setMcpRemovalCandidate(null)}
+                              disabled={mcpBusy}
+                              className="rounded border border-zinc-700 px-1.5 py-1 text-[10px] text-zinc-300 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {isInspecting && (
+                        <dl className="mt-2 grid gap-1 rounded border border-zinc-800 bg-black/20 p-2 text-[10px] text-zinc-500">
+                          <div><dt className="inline text-zinc-600">Transport: </dt><dd className="inline font-mono text-zinc-300">{inspect?.transport || server.transport || "unknown"}</dd></div>
+                          <div><dt className="inline text-zinc-600">State: </dt><dd className="inline font-mono text-zinc-300">{inspect?.status || server.status || "registered"}</dd></div>
+                          {inspect?.command && <div><dt className="inline text-zinc-600">Command: </dt><dd className="inline break-all font-mono text-zinc-300">{inspect.command}</dd></div>}
+                          {inspect?.args && inspect.args.length > 0 && <div><dt className="inline text-zinc-600">Args: </dt><dd className="inline break-all font-mono text-zinc-300">{inspect.args.join(" ")}</dd></div>}
+                          {inspect?.endpoint && <div><dt className="inline text-zinc-600">Endpoint: </dt><dd className="inline break-all font-mono text-zinc-300">{inspect.endpoint}</dd></div>}
+                          <p className="text-zinc-600">Credentials and environment values are not shown.</p>
+                        </dl>
+                      )}
+                    </div>
+                  );
+                })()
               ))}
               {mcpServers.length === 0 && <p className="py-3 text-center text-[11px] text-zinc-600">No MCP servers</p>}
             </div>

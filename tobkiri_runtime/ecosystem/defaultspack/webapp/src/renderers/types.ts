@@ -171,6 +171,7 @@ export type ComposerRendererProps = {
   skillExtensions?: ComposerSkillItem[];
   commands?: ComposerCommandItem[];
   composerInput?: TemplateComposerInput | null;
+  structuredInputValues?: Record<string, string>;
   modelCommandCandidates?: ModelCommandCandidate[];
   modelPickerRequestId?: number;
   yoloMode?: boolean;
@@ -212,6 +213,7 @@ export type ComposerRendererProps = {
   onProviderApiKeySave?: (providerId: string, value: string) => Promise<void> | void;
   onThinkingLevelChange: (level: string | null) => void;
   onInputChange: (value: string) => void;
+  onStructuredInputChange?: (values: Record<string, string>) => void;
   onSubmit: (event: FormEvent) => void;
   onStopGenerating?: () => void;
   onSteerSubmit?: (prompt: string) => void;

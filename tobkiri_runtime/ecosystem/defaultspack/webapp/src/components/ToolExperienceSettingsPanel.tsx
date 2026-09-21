@@ -5,6 +5,7 @@ import type { ModelSearchItem, SidebarItem, ToolCatalogResponse, ToolCatalogServ
 import { toolResources } from "../features/tools/resources/toolResources";
 import { cn } from "../lib/cn";
 import { ToolSettingsPanel } from "./ToolSettingsPanel";
+import { ModalFoundation } from "./ModalFoundation";
 
 type PermissionDecision = "auto" | "confirm" | "block";
 type ToolSettings = Record<string, unknown>;
@@ -694,8 +695,14 @@ export function ToolExperienceSettingsPanel({
         </div>
       </details>
       {warningStrategy && (
-        <div className="fixed inset-0 rumi-layer-modal flex items-center justify-center bg-black/55 p-4">
-          <div className="max-w-lg rounded-xl border border-amber-500/30 bg-zinc-950 p-5 shadow-2xl">
+        <ModalFoundation
+          variant="alertdialog"
+          title="大量のツールスキーマを読み込みます"
+          description="この方式はメインAIへ渡す情報が増え、遅くなったりコストが増えたりします。"
+          onClose={() => setWarningStrategy(null)}
+          backdropClassName="fixed inset-0 rumi-layer-modal flex items-center justify-center bg-black/55 p-4"
+          panelClassName="max-w-lg rounded-xl border border-amber-500/30 bg-zinc-950 p-5 shadow-2xl outline-none"
+        >
             <div className="flex gap-3">
               <AlertTriangle size={20} className="mt-0.5 flex-shrink-0 text-amber-300" />
               <div>
@@ -709,8 +716,7 @@ export function ToolExperienceSettingsPanel({
               <button type="button" onClick={() => setWarningStrategy(null)} className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-300">キャンセル</button>
               <button type="button" onClick={() => { updateToolSetting("selection_strategy", warningStrategy); setWarningStrategy(null); }} className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">保存する</button>
             </div>
-          </div>
-        </div>
+        </ModalFoundation>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { Play, Terminal as TerminalIcon } from "lucide-react";
+import { Play, Shield, Terminal as TerminalIcon, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { CodingTerminalResponse } from "../../lib/api";
@@ -11,8 +11,6 @@ type TerminalLog = CodingTerminalResponse & {
   timeout?: number;
   replay_status?: "retrying" | "replayed";
 };
-
-const EMPTY_LOGS: TerminalLog[] = [];
 
 export type ApprovedTerminalDecision = {
   request_id: string;
@@ -27,52 +25,36 @@ function classificationTone(classification?: string): string {
   return "text-emerald-300";
 }
 
-function readStoredLogs(storageKey: string | undefined, fallback: TerminalLog[]): TerminalLog[] {
-  if (!storageKey) return fallback;
-  try {
-    const parsed = JSON.parse(localStorage.getItem(storageKey) || "[]");
-    return Array.isArray(parsed) ? parsed.slice(0, 8) as TerminalLog[] : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function writeStoredLogs(storageKey: string | undefined, logs: TerminalLog[]) {
-  if (!storageKey) return;
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(logs.slice(0, 8)));
-  } catch {
-    // localStorage can be unavailable in restricted contexts.
-  }
-}
+export const TERMINAL_HISTORY_POLICY = {
+  durable: false,
+  scope: "private-session",
+  retention: "until-cleared-or-panel-closed",
+} as const;
 
 export function TerminalPanel({
   workspaceId,
-  initialLogs = EMPTY_LOGS,
   approvedDecision,
-  storageKey,
   onActionResult,
 }: {
   workspaceId?: string | null;
-  initialLogs?: TerminalLog[];
   approvedDecision?: ApprovedTerminalDecision | null;
-  storageKey?: string;
   onActionResult?: (result: unknown) => void;
 }) {
   const [command, setCommand] = useState("git status");
-  const [logs, setLogs] = useState<TerminalLog[]>(() => readStoredLogs(storageKey, initialLogs));
+  const [logs, setLogs] = useState<TerminalLog[]>([]);
   const [busy, setBusy] = useState(false);
   const handledApprovalKeys = useRef<Set<string>>(new Set());
+  const sessionPendingApprovals = useRef<Map<string, TerminalLog>>(new Map());
 
   useEffect(() => {
-    setLogs(readStoredLogs(storageKey, initialLogs));
-  }, [initialLogs, storageKey]);
-
-  useEffect(() => {
-    writeStoredLogs(storageKey, logs);
-  }, [logs, storageKey]);
+    setLogs([]);
+    sessionPendingApprovals.current.clear();
+  }, [workspaceId]);
 
   const pushLog = (log: TerminalLog) => {
+    if (log.approval_required && log.approval_request_id) {
+      sessionPendingApprovals.current.set(log.approval_request_id, log);
+    }
     setLogs((items) => [log, ...items].slice(0, 8));
   };
 
@@ -117,9 +99,10 @@ export function TerminalPanel({
     if (!approvedDecision?.approved || !approvedDecision.token) return;
     const key = `${approvedDecision.nonce}:${approvedDecision.request_id}`;
     if (handledApprovalKeys.current.has(key)) return;
-    const pending = logs.find((log) => log.approval_request_id === approvedDecision.request_id);
+    const pending = sessionPendingApprovals.current.get(approvedDecision.request_id);
     if (!pending) return;
     handledApprovalKeys.current.add(key);
+    sessionPendingApprovals.current.delete(approvedDecision.request_id);
     const approvalToken = approvedDecision.token;
 
     const retry = async () => {
@@ -155,14 +138,34 @@ export function TerminalPanel({
     };
 
     void retry();
-  }, [approvedDecision, logs, onActionResult, workspaceId]);
+  }, [approvedDecision, onActionResult, workspaceId]);
 
   return (
     <section className="border-b border-zinc-800/60 p-3" aria-label="Terminal">
       <div className="mb-2 flex items-center gap-2">
         <TerminalIcon size={14} className="text-emerald-300" />
         <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-zinc-400">Terminal</h2>
+        <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-2 py-1 text-[10px] text-emerald-200" title="Commands and output remain only in this private panel session">
+          <Shield size={10} /> Memory only
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            sessionPendingApprovals.current.clear();
+            setLogs([]);
+          }}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-40"
+          aria-label="Clear terminal history from this private session"
+          title="Clear terminal history"
+          disabled={logs.length === 0}
+        >
+          <Trash2 size={13} />
+        </button>
       </div>
+
+      <p role="status" className="mb-2 text-[10px] leading-4 text-zinc-600">
+        Private session · not saved to browser storage · cleared when this panel closes
+      </p>
 
       <div className="flex items-center gap-1.5">
         <input

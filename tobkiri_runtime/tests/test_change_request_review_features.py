@@ -55,6 +55,17 @@ def _workspace(tmp_path: Path) -> Path:
     return workspace
 
 
+def _bound(service: Any, change_request_id: str, payload: dict[str, Any], key: str) -> dict[str, Any]:
+    current = service.get(change_request_id)
+    return {
+        **payload,
+        "expected_revision": current["revision"],
+        "expected_snapshot_working_tree_hash": current["snapshot_working_tree_hash"],
+        "expected_current_working_tree_hash": current["current_working_tree_hash"],
+        "idempotency_key": key,
+    }
+
+
 def test_comments_decisions_and_viewed_files_are_persisted(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     service = _service(tmp_path, monkeypatch)
@@ -63,13 +74,13 @@ def test_comments_decisions_and_viewed_files_are_persisted(tmp_path, monkeypatch
 
     commented = service.add_comment(
         cr_id,
-        {
+        _bound(service, cr_id, {
             "kind": "suggestion",
             "body": "Prefer a helper.",
             "path": "app.py",
             "line": 1,
             "suggested_patch": "diff --git a/app.py b/app.py\n",
-        },
+        }, "comment-1"),
     )
     comment = commented["comment"]
     fetched = service.get(cr_id)
@@ -77,9 +88,9 @@ def test_comments_decisions_and_viewed_files_are_persisted(tmp_path, monkeypatch
     assert fetched["suggestion_count"] == 1
     assert fetched["comments"][0]["suggested_patch"]
 
-    service.update_comment(cr_id, comment["id"], {"resolved": True})
-    decided = service.submit_decision(cr_id, {"decision": "approve"})
-    viewed = service.set_viewed_file(cr_id, {"path": "app.py", "viewed": True})
+    service.update_comment(cr_id, comment["id"], _bound(service, cr_id, {"resolved": True}, "resolve-1"))
+    decided = service.submit_decision(cr_id, _bound(service, cr_id, {"decision": "approve"}, "decision-1"))
+    viewed = service.set_viewed_file(cr_id, _bound(service, cr_id, {"path": "app.py", "viewed": True}, "viewed-1"))
     fetched = service.get(cr_id)
 
     assert fetched["unresolved_count"] == 0
@@ -105,7 +116,7 @@ def test_run_check_uses_allowlist_and_persists_log_tail(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         service.run_check(created["id"], {"command": ["python", "-m", "pytest", "--rootdir", "../outside"]})
 
-    result = service.run_check(created["id"], {"command": "python -m pytest test_sample.py -q -s"})
+    result = service.run_check(created["id"], _bound(service, created["id"], {"command": "python -m pytest test_sample.py -q -s"}, "check-1"))
     check = result["check"]
     fetched = service.get(created["id"])
     stored_payload = json.loads(service.store.storage_path.read_text(encoding="utf-8"))
@@ -146,15 +157,15 @@ def test_commit_seal_blocks_drift_and_commit_updates_status(tmp_path, monkeypatc
     service = _service(tmp_path, monkeypatch)
     created = service.create(workspace_root=str(workspace), title="Review")
 
-    service.submit_decision(created["id"], {"decision": "approve"})
+    service.submit_decision(created["id"], _bound(service, created["id"], {"decision": "approve"}, "decision-drift-1"))
     (workspace / "app.py").write_text("print('drift')\n", encoding="utf-8")
-    blocked = service.commit(created["id"], {"message": "sealed"})
+    blocked = service.commit(created["id"], _bound(service, created["id"], {"message": "sealed"}, "commit-drift-1"))
     assert blocked["blocked"] is True
     assert blocked["reason"] == "seal_mismatch"
 
-    refreshed = service.refresh(created["id"])["change_request"]
-    service.submit_decision(refreshed["id"], {"decision": "approve"})
-    committed = service.commit(refreshed["id"], {"message": "sealed"})
+    refreshed = service.refresh(created["id"], _bound(service, created["id"], {}, "refresh-drift-1"))["change_request"]
+    service.submit_decision(refreshed["id"], _bound(service, refreshed["id"], {"decision": "approve"}, "decision-drift-2"))
+    committed = service.commit(refreshed["id"], _bound(service, refreshed["id"], {"message": "sealed"}, "commit-drift-2"))
 
     assert committed["committed"] is True
     assert committed["change_request"]["status"] == "committed"
@@ -166,22 +177,22 @@ def test_commit_requires_approved_review_and_clear_blockers(tmp_path, monkeypatc
     service = _service(tmp_path, monkeypatch)
     created = service.create(workspace_root=str(workspace), title="Review")
 
-    blocked = service.commit(created["id"], {"message": "sealed"})
+    blocked = service.commit(created["id"], _bound(service, created["id"], {"message": "sealed"}, "blocked-unapproved"))
     assert blocked["blocked"] is True
     assert blocked["reason"] == "review_not_approved"
     assert blocked["review_decision"] == "none"
 
-    service.submit_decision(created["id"], {"decision": "approve"})
+    service.submit_decision(created["id"], _bound(service, created["id"], {"decision": "approve"}, "decision-blockers"))
     commented = service.add_comment(
         created["id"],
-        {"kind": "comment", "body": "Please address this first.", "path": "app.py", "line": 1},
+        _bound(service, created["id"], {"kind": "comment", "body": "Please address this first.", "path": "app.py", "line": 1}, "comment-blocker"),
     )
-    blocked = service.commit(created["id"], {"message": "sealed"})
+    blocked = service.commit(created["id"], _bound(service, created["id"], {"message": "sealed"}, "blocked-comment"))
     assert blocked["blocked"] is True
     assert blocked["reason"] == "unresolved_review_comments"
     assert blocked["unresolved_count"] == 1
 
-    service.update_comment(created["id"], commented["comment"]["id"], {"resolved": True})
+    service.update_comment(created["id"], commented["comment"]["id"], _bound(service, created["id"], {"resolved": True}, "resolve-blocker"))
 
     def add_failed_check(record):
         record["checks"] = [
@@ -196,7 +207,7 @@ def test_commit_requires_approved_review_and_clear_blockers(tmp_path, monkeypatc
         return record
 
     service.store.mutate(created["id"], add_failed_check)
-    blocked = service.commit(created["id"], {"message": "sealed"})
+    blocked = service.commit(created["id"], _bound(service, created["id"], {"message": "sealed"}, "blocked-check"))
     assert blocked["blocked"] is True
     assert blocked["reason"] == "failing_checks"
     assert blocked["check_summary"]["failed"] == 1

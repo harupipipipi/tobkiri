@@ -1,10 +1,12 @@
 import { AlertTriangle, CheckCircle2, Download, FileSearch, GitCommit, MessageSquare, RefreshCw, RotateCw, ShieldCheck, SplitSquareHorizontal } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CodingDiffResponse, CodingGitStatus } from "../../lib/api";
 import type { ChangeRequestRecord } from "../../lib/changeRequests";
 import {
   addChangeRequestComment,
+  ChangeRequestMutationConflictError,
+  changeRequestMutationContext,
   changeRequestCommitEnabled,
   commitChangeRequest,
   createChangeRequest,
@@ -99,11 +101,15 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
   const [busy, setBusy] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [commentBody, setCommentBody] = useState("");
   const [suggestionPatch, setSuggestionPatch] = useState("");
   const [checkCommand, setCheckCommand] = useState("");
   const [commitMessage, setCommitMessage] = useState("Rumi Review commit");
+  const selectionRequestRef = useRef(0);
+  const activeActionKeysRef = useRef(new Set<string>());
+  const [pendingViewed, setPendingViewed] = useState<Record<string, boolean>>({});
 
   const changedFiles = useMemo(() => filesFromStatusAndDiff(status, diff), [status, diff]);
   const selectedReview = reviews.find((review) => review.id === selectedReviewId) ?? null;
@@ -123,6 +129,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
   const failingChecks = failedChecks(selectedReview);
   const sealValid = selectedReview?.commit_seal?.valid !== false && !stale;
   const commitReady = Boolean(selectedReview && selectedReview.status === "approved" && sealValid && allFilesViewed && unresolvedCount === 0 && failingChecks === 0);
+  const pendingViewedCount = Object.keys(pendingViewed).length;
   const visibleReviews = reviews.filter((review) => {
     const closed = String(review.status).toLowerCase().includes("closed");
     return filter === "closed" ? closed : !closed;
@@ -142,24 +149,31 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
       setReviews(nextReviews.reviews);
       setApiAvailable(nextReviews.apiAvailable);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof ChangeRequestMutationConflictError) setConflict(message);
+      else setError(message);
     } finally {
       setBusy(false);
     }
   }, [workspaceId]);
 
   const handleSelectReview = useCallback(async (nextReview: ChangeRequestRecord) => {
+    const requestId = selectionRequestRef.current + 1;
+    selectionRequestRef.current = requestId;
     setSelectedReviewId(nextReview.id);
     setDetailTab("summary");
     setError(null);
+    setConflict(null);
     try {
       const hydrated = await getChangeRequest(nextReview.id);
+      if (requestId !== selectionRequestRef.current) return;
       if (hydrated) {
         setReviews((items) => items.map((item) => item.id === hydrated.id ? hydrated : item));
       } else {
         setApiAvailable(false);
       }
     } catch (err) {
+      if (requestId !== selectionRequestRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
@@ -180,7 +194,9 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
         setApiAvailable(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof ChangeRequestMutationConflictError) setConflict(message);
+      else setError(message);
     } finally {
       setBusy(false);
     }
@@ -191,14 +207,19 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
     setBusy(true);
     setError(null);
     try {
-      const refreshed = await refreshChangeRequest(selectedReview.id, { workspace_id: workspaceId });
+      const refreshed = await refreshChangeRequest(selectedReview.id, {
+        workspace_id: workspaceId,
+        ...changeRequestMutationContext(selectedReview, "refresh"),
+      });
       if (refreshed) {
         setReviews((items) => items.map((item) => item.id === refreshed.id ? refreshed : item));
       } else {
         setApiAvailable(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof ChangeRequestMutationConflictError) setConflict(message);
+      else setError(message);
     } finally {
       setBusy(false);
     }
@@ -210,34 +231,40 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
   }, []);
 
   const runReviewAction = useCallback(async (key: string, action: () => Promise<void>) => {
+    if (activeActionKeysRef.current.has(key)) return;
+    activeActionKeysRef.current.add(key);
     setActionBusy(key);
     setError(null);
+    setConflict(null);
     setNotice(null);
     try {
       await action();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof ChangeRequestMutationConflictError) setConflict(message);
+      else setError(message);
     } finally {
+      activeActionKeysRef.current.delete(key);
       setActionBusy(null);
     }
   }, []);
 
   const handleViewedChange = useCallback((path: string, nextViewed: boolean) => {
     if (!selectedReview) return;
-    const reviewId = selectedReview.id;
-    setReviews((items) => items.map((item) => {
-      if (item.id !== reviewId) return item;
-      return {
-        ...item,
-        viewed_files: {
-          ...(item.viewed_files ?? {}),
-          [path]: { path, viewed: nextViewed, updated_at: new Date().toISOString() },
-        },
-      };
-    }));
-    void runReviewAction("viewed", async () => {
-      const updated = await setChangeRequestViewedFile(reviewId, path, nextViewed);
-      replaceReview(updated);
+    const review = selectedReview;
+    const actionKey = `viewed:${review.id}:${path}`;
+    setPendingViewed((current) => ({ ...current, [`${review.id}:${path}`]: nextViewed }));
+    void runReviewAction(actionKey, async () => {
+      try {
+        const updated = await setChangeRequestViewedFile(review.id, path, nextViewed, changeRequestMutationContext(review, `viewed:${path}`));
+        replaceReview(updated);
+      } finally {
+        setPendingViewed((current) => {
+          const next = { ...current };
+          delete next[`${review.id}:${path}`];
+          return next;
+        });
+      }
     });
   }, [replaceReview, runReviewAction, selectedReview]);
 
@@ -251,6 +278,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
     }
     void runReviewAction("comment", async () => {
       const updated = await addChangeRequestComment(selectedReview.id, {
+        ...changeRequestMutationContext(selectedReview, `comment:${kind}`),
         kind,
         body,
         suggested_patch: kind === "suggestion" ? patch : undefined,
@@ -265,7 +293,10 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
   const handleResolveComment = (commentId: string, resolved: boolean) => {
     if (!selectedReview) return;
     void runReviewAction(`resolve-${commentId}`, async () => {
-      const updated = await updateChangeRequestComment(selectedReview.id, commentId, { resolved });
+      const updated = await updateChangeRequestComment(selectedReview.id, commentId, {
+        ...changeRequestMutationContext(selectedReview, `comment:${commentId}`),
+        resolved,
+      });
       replaceReview(updated);
     });
   };
@@ -274,6 +305,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
     if (!selectedReview) return;
     void runReviewAction(`decision-${decision}`, async () => {
       const updated = await submitChangeRequestDecision(selectedReview.id, {
+        ...changeRequestMutationContext(selectedReview, `decision:${decision}`),
         decision,
         body: decision === "comment" ? commentBody.trim() : undefined,
       });
@@ -285,7 +317,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
   const handleRunCheck = (command: string) => {
     if (!selectedReview || !command.trim()) return;
     void runReviewAction(`check-${command}`, async () => {
-      const result = await runChangeRequestCheck(selectedReview.id, command.trim());
+      const result = await runChangeRequestCheck(selectedReview.id, command.trim(), changeRequestMutationContext(selectedReview, `check:${command.trim()}`));
       replaceReview(result.review);
       setCheckCommand("");
       setNotice(result.check ? `Check ${result.check.status ?? "finished"}: ${result.check.command ?? command}` : "Check finished");
@@ -313,7 +345,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
   const handleCommit = () => {
     if (!selectedReview || !changeRequestCommitEnabled || !commitReady) return;
     void runReviewAction("commit", async () => {
-      const result = await commitChangeRequest(selectedReview.id, commitMessage);
+      const result = await commitChangeRequest(selectedReview.id, commitMessage, changeRequestMutationContext(selectedReview, "commit"));
       if (!result) return;
       replaceReview(result.review ?? null);
       if (result.approval_required) {
@@ -367,6 +399,16 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
       </div>
 
       {error && <p className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-200">{error}</p>}
+      {conflict && (
+        <div className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-100" role="alert">
+          <p>{conflict} Draft text is preserved.</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <button type="button" onClick={() => { if (selectedReview) void handleSelectReview(selectedReview); }} className="h-7 rounded border border-amber-500/30 px-2 text-[11px] hover:bg-amber-500/10">Reload latest</button>
+            <button type="button" onClick={() => setDetailTab("files")} className="h-7 rounded border border-amber-500/30 px-2 text-[11px] hover:bg-amber-500/10">Compare</button>
+            <button type="button" onClick={() => setConflict(null)} className="h-7 rounded border border-amber-500/30 px-2 text-[11px] hover:bg-amber-500/10">Cancel</button>
+          </div>
+        </div>
+      )}
       {notice && <p className="mb-2 rounded border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-[11px] text-teal-100">{notice}</p>}
       {!apiAvailable && (
         <p className="mb-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
@@ -496,6 +538,7 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
                 {selectedReview?.decision && <span className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">decision {selectedReview.decision}</span>}
                 {selectedReview?.unresolved_count !== undefined && <span className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{selectedReview.unresolved_count} unresolved</span>}
                 {selectedReview?.viewed_file_count !== undefined && <span className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{selectedReview.viewed_file_count} viewed</span>}
+                {pendingViewedCount > 0 && <span className="rounded border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-200">{pendingViewedCount} view update{pendingViewedCount === 1 ? "" : "s"} pending</span>}
                 <span className="rounded border border-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-500">{checkLabel(selectedReview ?? { id: "working-tree", status: "open" })}</span>
               </div>
               {selectedReview && (

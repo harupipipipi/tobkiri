@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { KanbanCard, KanbanColumn, ModelProfile } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { KanbanRunBadge } from "./KanbanRunBadge";
+import { ModalFoundation } from "../ModalFoundation";
 
 export type KanbanAgentAction = "start" | "refresh" | "ready" | "apply" | "dismiss";
 
@@ -108,14 +109,16 @@ export function KanbanCardDrawer({
   };
 
   return createPortal(
-    <>
-      <button
-        type="button"
-        aria-label="Close Kanban card drawer"
-        className="fixed inset-0 rumi-layer-modal-backdrop cursor-default bg-transparent"
-        onClick={onClose}
-      />
-      <aside className="fixed inset-y-0 right-0 rumi-layer-modal flex w-[min(440px,calc(100vw-56px))] flex-col border-l border-zinc-800 bg-[#0b0b0e] shadow-2xl">
+    <ModalFoundation
+      variant="drawer"
+      title={isCreate ? "New card" : `Card detail: ${card?.title ?? ""}`}
+      description="Edit this Kanban card. Escape closes the topmost drawer."
+      onClose={onClose}
+      dismissible={!busy}
+      backdropClassName="fixed inset-0 rumi-layer-modal flex justify-end bg-black/35 motion-reduce:transition-none"
+      panelClassName="h-full w-[min(440px,calc(100vw-56px))] overflow-hidden border-l border-zinc-800 bg-[#0b0b0e] shadow-2xl outline-none"
+    >
+      <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-3">
         <div className="min-w-0">
           <h3 className="truncate text-[13px] font-semibold text-zinc-100">{isCreate ? "New card" : "Card detail"}</h3>
@@ -334,8 +337,8 @@ export function KanbanCardDrawer({
           </button>
         </div>
       </footer>
-      </aside>
-    </>,
+      </div>
+    </ModalFoundation>,
     document.body,
   );
 }

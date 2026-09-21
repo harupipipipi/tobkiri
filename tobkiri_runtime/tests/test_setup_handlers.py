@@ -9,6 +9,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 class TestSetupHandlers(unittest.TestCase):
+    @staticmethod
+    def _reviewed_payload(handler, pack_ids):
+        packs = [{"pack_id": pack_id, "risk_level": "low", "supports_all_ok": False} for pack_id in pack_ids]
+        return packs, {
+            "setup_pack_ids": pack_ids,
+            "reviewed_pack_ids": pack_ids,
+            "review_revision": handler._setup_pack_review_revision(packs),
+            "confirmed_privileged_pack_ids": [],
+        }
     class _FakeFunctionRegistry:
         def __init__(self, registered=None):
             self._registered = set(registered or [])
@@ -37,7 +46,37 @@ class TestSetupHandlers(unittest.TestCase):
         ) as mocked:
             mocked.return_value.list_packs.return_value = {"packs": []}
             result = handler._setup_list_packs()
-        self.assertEqual(result, {"packs": []})
+        self.assertEqual(result["packs"], [])
+        self.assertRegex(result["review_revision"], r"^setup-review-v1:[0-9a-f]{64}$")
+
+    def test_setup_install_rejects_stale_tampered_and_unconfirmed_privileged_reviews(self):
+        from core_runtime.api.setup_handlers import SetupHandlersMixin
+
+        class _Handler(SetupHandlersMixin):
+            pass
+
+        handler = _Handler()
+        packs = [{"pack_id": "danger", "version": "2", "risk_level": "high", "supports_all_ok": True}]
+        revision = handler._setup_pack_review_revision(packs)
+        with patch("core_runtime.api.setup_handlers.get_setup_pack_manager") as mocked:
+            mocked.return_value.list_packs.return_value = {"packs": packs}
+            stale = handler._setup_install_pack({
+                "setup_pack_ids": ["danger"], "reviewed_pack_ids": ["danger"],
+                "review_revision": "setup-review-v1:stale", "confirmed_privileged_pack_ids": ["danger"],
+            })
+            tampered = handler._setup_install_pack({
+                "setup_pack_ids": ["danger"], "reviewed_pack_ids": [],
+                "review_revision": revision, "confirmed_privileged_pack_ids": ["danger"],
+            })
+            unconfirmed = handler._setup_install_pack({
+                "setup_pack_ids": ["danger"], "reviewed_pack_ids": ["danger"],
+                "review_revision": revision, "confirmed_privileged_pack_ids": [],
+            })
+
+        self.assertEqual(stale["status_code"], 409)
+        self.assertEqual(tampered["status_code"], 409)
+        self.assertEqual(unconfirmed["status_code"], 400)
+        mocked.return_value.install.assert_not_called()
 
     def test_setup_handler_filters_stale_selected_setup_packs(self):
         from core_runtime.api.setup_handlers import SetupHandlersMixin
@@ -117,7 +156,9 @@ class TestSetupHandlers(unittest.TestCase):
             return_value=self._FakeContainer(),
         ):
             mocked.return_value.install.return_value = install_result
-            result = handler._setup_install_pack({"setup_pack_ids": ["alpha", "beta"]})
+            packs, payload = self._reviewed_payload(handler, ["alpha", "beta"])
+            mocked.return_value.list_packs.return_value = {"packs": packs}
+            result = handler._setup_install_pack(payload)
 
         mocked.return_value.install.assert_called_once_with(["alpha", "beta"])
         invoke.assert_not_called()
@@ -168,13 +209,15 @@ class TestSetupHandlers(unittest.TestCase):
             ],
         ) as invoke:
             mocked.return_value.install.return_value = install_result
+            packs, payload = self._reviewed_payload(handler, ["alpha"])
+            mocked.return_value.list_packs.return_value = {"packs": packs}
             with patch(
                 "core_runtime.api.setup_handlers.get_container",
                 return_value=self._FakeContainer(registry),
             ):
-                result = handler._setup_install_pack({"setup_pack_id": "alpha"})
+                result = handler._setup_install_pack(payload)
 
-        mocked.return_value.install.assert_called_once_with("alpha")
+        mocked.return_value.install.assert_called_once_with(["alpha"])
         self.assertEqual(invoke.call_count, 3)
         self.assertEqual(result["migrations"], {"alpha": {"migrated": True}})
         self.assertEqual(
@@ -222,11 +265,13 @@ class TestSetupHandlers(unittest.TestCase):
             side_effect=_invoke,
         ) as invoke:
             mocked.return_value.install.return_value = install_result
+            packs, payload = self._reviewed_payload(handler, ["beta", "gamma"])
+            mocked.return_value.list_packs.return_value = {"packs": packs}
             with patch(
                 "core_runtime.api.setup_handlers.get_container",
                 return_value=self._FakeContainer(registry),
             ):
-                result = handler._setup_install_pack({"setup_pack_ids": ["beta", "gamma"]})
+                result = handler._setup_install_pack(payload)
 
         mocked.return_value.install.assert_called_once_with(["beta", "gamma"])
         self.assertEqual(invoke.call_count, 3)

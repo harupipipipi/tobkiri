@@ -138,12 +138,12 @@ export function ProfileGraphEditorShell({
     : graphData?.diagnostics || [];
 
   return (
-    <div className="flex flex-1 flex-col gap-5 overflow-y-auto bg-bg-main p-6 animate-in fade-in slide-in-from-bottom-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-bg-main p-4 animate-in fade-in slide-in-from-bottom-4 xl:overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-text-main">Profile Graph</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Wire tools, webhooks, API routes, rules, frontend pieces, flows, and launch nodes into a visible runtime profile.
+          <h1 className="text-xl font-semibold text-text-main">Profile Wiring</h1>
+          <p className="mt-0.5 text-xs text-text-muted">
+            Choose the tools, policy routes, prompts, UI, and launch graph used by this profile.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -164,35 +164,21 @@ export function ProfileGraphEditorShell({
         </div>
       ) : null}
 
-      <div className="grid gap-4 2xl:grid-cols-[260px_minmax(0,1fr)_300px]">
-        <section className="space-y-4">
-          <div className="rounded-2xl border border-border bg-bg-card p-4">
-            <div className="mb-3 flex items-center gap-2">
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[220px_minmax(0,1fr)_270px]">
+        <section className="flex min-h-0 flex-col gap-3 overflow-hidden">
+          <div className="shrink-0 rounded-xl border border-border bg-bg-card p-3">
+            <div className="mb-2 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold text-text-main">Profiles</h2>
+              <h2 className="text-xs font-semibold text-text-main">Profile</h2>
             </div>
-            <div className="space-y-2">
-              {profiles.map((profile) => (
-                <button
-                  key={profile.profile_id}
-                  type="button"
-                  className={cn(
-                    'w-full rounded-xl border px-3 py-3 text-left transition-colors',
-                    selectedProfileId === profile.profile_id
-                      ? 'border-accent bg-accent/10'
-                      : 'border-border hover:bg-bg-hover',
-                  )}
-                  onClick={() => onSelectProfile(profile.profile_id)}
-                >
-                  <div className="truncate text-sm font-semibold text-text-main">{profile.name}</div>
-                  <div className="truncate text-xs text-text-muted">{profile.profile_id}</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Badge variant="outline">{profile.base_pack}</Badge>
-                    {profile.system_prompt_id ? <Badge variant="secondary">rule</Badge> : null}
-                  </div>
-                </button>
-              ))}
-            </div>
+            <select
+              value={selectedProfileId}
+              onChange={(event) => onSelectProfile(event.target.value)}
+              className="rumi-select h-9 w-full rounded-md border border-border px-3 pr-9 text-xs"
+              aria-label="Profile"
+            >
+              {profiles.map((profile) => <option key={profile.profile_id} value={profile.profile_id}>{profile.name}</option>)}
+            </select>
           </div>
 
           <ProfileGraphPalette
@@ -206,7 +192,7 @@ export function ProfileGraphEditorShell({
           />
         </section>
 
-        <section className="space-y-4">
+        <section className="flex min-h-0 flex-col gap-3 overflow-hidden">
           <ProfileGraphToolbar
             dirty={dirty}
             saving={saving}
@@ -218,22 +204,24 @@ export function ProfileGraphEditorShell({
           />
 
           {loading || graphLoading ? (
-            <div className="flex min-h-[540px] items-center justify-center rounded-2xl border border-border bg-bg-card">
+            <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-border bg-bg-card">
               <div className="flex items-center gap-3 text-text-muted">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <span>Loading profile graph</span>
               </div>
             </div>
           ) : (
-            <ProfileGraphCanvas
-              nodes={draft?.nodes || []}
-              edges={draft?.edges || []}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={onSelectNode}
-            />
+            <div className="min-h-0 flex-1">
+              <ProfileGraphCanvas
+                nodes={draft?.nodes || []}
+                edges={draft?.edges || []}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={onSelectNode}
+              />
+            </div>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="hidden">
             <article className="rounded-2xl border border-border bg-bg-card p-4">
               <div className="mb-3 flex items-center gap-2">
                 <Wand2 className="h-4 w-4 text-accent" />
@@ -280,13 +268,40 @@ export function ProfileGraphEditorShell({
           </div>
         </section>
 
-        <section className="space-y-4">
+        <section className="min-h-0 space-y-3 overflow-y-auto pr-1">
           <ProfileGraphInspector
             document={draft || normalizeProfileGraphDocument(selectedProfileId, null)}
             node={selectedNode}
             preview={preview?.profile_graph_runtime_preview || null}
             onRemoveSelection={onRemoveSelection}
           />
+
+          <article className="rounded-xl border border-border bg-bg-card p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2"><Wand2 className="h-4 w-4 text-accent" /><h2 className="text-sm font-semibold text-text-main">Runtime preview</h2></div>
+              {preview ? <Badge variant={preview.compile_preview.ok ? 'success' : 'warning'}>{preview.compile_preview.ok ? 'Ready' : 'Check'}</Badge> : null}
+            </div>
+            {preview ? (
+              <dl className="mt-3 grid gap-2 text-xs">
+                <div className="flex justify-between gap-3"><dt className="text-text-muted">Prompt</dt><dd className="truncate text-text-main">{String(preview.profile_graph_runtime_preview.prompt_resolution?.selected_prompt_id ?? 'default')}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-text-muted">Launch node</dt><dd className="truncate text-text-main">{String(preview.compile_preview.surface_launch_target?.node_id ?? preview.compile_preview.capability_graph?.surface_launch_target?.node_id ?? '--')}</dd></div>
+                <div className="flex justify-between gap-3"><dt className="text-text-muted">API policy</dt><dd className="text-text-main">{preview.profile_graph_runtime_preview.api_route_policy?.enforce ? 'Strict' : 'Open'}</dd></div>
+              </dl>
+            ) : <p className="mt-2 text-xs text-text-muted">Use Preview Runtime to verify the effective selection before applying it.</p>}
+          </article>
+
+          {diagnostics.length ? (
+            <article className="rounded-xl border border-border bg-bg-card p-3">
+              <div className="mb-2 flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-400" /><h2 className="text-sm font-semibold text-text-main">Diagnostics</h2></div>
+              <div className="space-y-2">
+                {diagnostics.map((diagnostic, index) => (
+                  <div key={`${diagnostic.code}-${index}`} className="rounded-lg border border-border bg-bg-main px-2.5 py-2 text-xs text-text-muted">
+                    <div className="font-medium text-text-main">{diagnostic.code}</div><div className="mt-0.5">{diagnostic.message}</div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
 
           <article className="rounded-2xl border border-border bg-bg-card p-4">
             <div className="mb-3 flex items-center gap-2">

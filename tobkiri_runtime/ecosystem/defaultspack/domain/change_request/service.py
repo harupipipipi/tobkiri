@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -24,7 +25,7 @@ from .models import (
     utc_now,
 )
 from .snapshot import ChangeRequestSnapshotter, _porcelain_paths
-from .store import ChangeRequestStore
+from .store import ChangeRequestRevisionConflict, ChangeRequestStore
 
 
 class ChangeRequestService:
@@ -127,26 +128,32 @@ class ChangeRequestService:
             if current is None:
                 raise KeyError(change_request_id)
             return self._public_record(current)
-        return self._public_record(self.store.update(change_request_id, allowed))
-
-    def refresh(self, change_request_id: str) -> dict[str, Any]:
-        record = self.store.get(change_request_id)
-        if record is None:
-            raise KeyError(change_request_id)
-        previous = record.get("latest_snapshot") if isinstance(record.get("latest_snapshot"), dict) else {}
-        snapshot = ChangeRequestSnapshotter(record["workspace_root"]).snapshot()
-        drift = compare_snapshots(previous, snapshot)
-        history = record.get("snapshot_history") if isinstance(record.get("snapshot_history"), list) else []
-        history = [*history[-19:], snapshot_summary(snapshot)]
-        updated = self.store.update(
+        updated, _, _ = self._mutate_bound(
             change_request_id,
-            {
-                "latest_snapshot": snapshot,
-                "snapshot_history": history,
-                "last_drift": drift,
-            },
+            updates,
+            action="metadata",
+            mutator=lambda record: (record.update(allowed) or {"fields": sorted(allowed)}),
         )
-        return {"change_request": self._public_record(updated), "snapshot": public_snapshot(snapshot, updated), "drift": drift}
+        return self._public_record(updated)
+
+    def refresh(self, change_request_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        def mutate(record: dict[str, Any]) -> dict[str, Any]:
+            previous = record.get("latest_snapshot") if isinstance(record.get("latest_snapshot"), dict) else {}
+            snapshot = ChangeRequestSnapshotter(record["workspace_root"]).snapshot()
+            drift = compare_snapshots(previous, snapshot)
+            history = record.get("snapshot_history") if isinstance(record.get("snapshot_history"), list) else []
+            record["latest_snapshot"] = snapshot
+            record["snapshot_history"] = [*history[-19:], snapshot_summary(snapshot)]
+            record["last_drift"] = drift
+            return {"drift": drift}
+
+        updated, result, _ = self._mutate_bound(change_request_id, payload, action="refresh", mutator=mutate)
+        snapshot = result.get("snapshot") if isinstance(result.get("snapshot"), dict) else updated.get("latest_snapshot")
+        return {
+            "change_request": self._public_record(updated),
+            "snapshot": public_snapshot(snapshot, updated) if isinstance(snapshot, dict) else {},
+            "drift": result.get("drift") if isinstance(result.get("drift"), dict) else updated.get("last_drift"),
+        }
 
     def export_patch(self, change_request_id: str) -> dict[str, Any]:
         record = self.store.get(change_request_id)
@@ -197,10 +204,11 @@ class ChangeRequestService:
             if record.get("decision") == "none" and kind == "change_request":
                 record["decision"] = "commented"
             refresh_review_counts(record)
-            return record
+            return {"comment_id": comment["id"]}
 
-        updated = self.store.mutate(change_request_id, mutate)
-        return {"change_request": self._public_record(updated), "comment": comment}
+        updated, result, _ = self._mutate_bound(change_request_id, payload, action="comment", mutator=mutate)
+        persisted = next((item for item in self._comments(updated) if item.get("id") == result.get("comment_id")), comment)
+        return {"change_request": self._public_record(updated), "comment": persisted}
 
     def update_comment(self, change_request_id: str, comment_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         now = utc_now()
@@ -227,8 +235,8 @@ class ChangeRequestService:
                         record["comments"] = comments
                         record["review_threads"] = threads
                         refresh_review_counts(record)
-                        result["thread"] = thread
-                        return record
+                        result["thread_id"] = str(thread.get("id") or comment_id)
+                        return result
                 raise KeyError(comment_id)
             if "body" in payload or "text" in payload:
                 matched["body"] = str(payload.get("body") or payload.get("text") or "")
@@ -245,13 +253,15 @@ class ChangeRequestService:
             record["comments"] = comments
             record["review_threads"] = update_thread_resolution_from_comments(threads, comments, str(matched.get("thread_id") or ""), now)
             refresh_review_counts(record)
-            result["comment"] = matched
-            return record
+            result["comment_id"] = str(matched.get("id") or comment_id)
+            return result
 
-        updated = self.store.mutate(change_request_id, mutate)
-        if "thread" in result:
-            return {"change_request": self._public_record(updated), "thread": result["thread"]}
-        return {"change_request": self._public_record(updated), "comment": result.get("comment")}
+        updated, receipt, _ = self._mutate_bound(change_request_id, payload, action=f"comment:{comment_id}", mutator=mutate)
+        if receipt.get("thread_id"):
+            thread = next((item for item in self._threads(updated) if item.get("id") == receipt["thread_id"]), None)
+            return {"change_request": self._public_record(updated), "thread": thread}
+        comment = next((item for item in self._comments(updated) if item.get("id") == receipt.get("comment_id")), None)
+        return {"change_request": self._public_record(updated), "comment": comment}
 
     def submit_decision(self, change_request_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         decision = normalize_decision(payload.get("decision") or payload.get("action") or payload.get("status"))
@@ -288,14 +298,14 @@ class ChangeRequestService:
                 }
                 record["comments"] = [*self._comments(record), comment]
                 record["review_threads"] = ensure_thread(self._threads(record), comment["thread_id"], path="", line=None, now=now)
-                result["comment"] = comment
+                result["comment_id"] = comment["id"]
             refresh_review_counts(record)
-            return record
+            return result
 
-        updated = self.store.mutate(change_request_id, mutate)
-        response = {"change_request": self._public_record(updated), "decision": event}
-        if "comment" in result:
-            response["comment"] = result["comment"]
+        updated, receipt, _ = self._mutate_bound(change_request_id, payload, action="decision", mutator=mutate)
+        response = {"change_request": self._public_record(updated), "decision": receipt.get("decision", event)}
+        if receipt.get("comment_id"):
+            response["comment"] = next((item for item in self._comments(updated) if item.get("id") == receipt["comment_id"]), None)
         return response
 
     def set_viewed_file(self, change_request_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -315,9 +325,9 @@ class ChangeRequestService:
                 viewed_files[path] = {"path": path, "viewed": bool(payload.get("viewed", True)), "updated_at": now}
             record["viewed_files"] = viewed_files
             refresh_review_counts(record)
-            return record
+            return {"paths": sorted(viewed_files)}
 
-        updated = self.store.mutate(change_request_id, mutate)
+        updated, _, _ = self._mutate_bound(change_request_id, payload, action="viewed_files", mutator=mutate)
         return {"change_request": self._public_record(updated), "viewed_files": updated.get("viewed_files") or {}}
 
     def list_checks(self, change_request_id: str) -> dict[str, Any]:
@@ -337,33 +347,28 @@ class ChangeRequestService:
         raise KeyError(check_id)
 
     def run_check(self, change_request_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        record = self._record_or_raise(change_request_id)
-        _require_registered_record_workspace(record, operation="run change request check")
-        command = payload.get("command")
-        if not command and payload.get("suggested_check_id"):
-            command = self._command_for_suggestion(record, str(payload.get("suggested_check_id") or ""))
-        result = run_allowed_check(record["workspace_root"], command, cwd=payload.get("cwd"))
-        full_log = str(result.pop("_full_log", ""))
-        check_id = new_review_check_id()
-        log_ref = f"store://change_request/{change_request_id}/checks/{check_id}/log"
-        self.store.write_check_log(change_request_id, check_id, full_log)
-        check = {
-            "id": check_id,
-            "log_ref": log_ref,
-            "full_log_ref": log_ref,
-            **result,
-        }
+        def mutate(record: dict[str, Any]) -> dict[str, Any]:
+            _require_registered_record_workspace(record, operation="run change request check")
+            command = payload.get("command")
+            if not command and payload.get("suggested_check_id"):
+                command = self._command_for_suggestion(record, str(payload.get("suggested_check_id") or ""))
+            result = run_allowed_check(record["workspace_root"], command, cwd=payload.get("cwd"))
+            full_log = str(result.pop("_full_log", ""))
+            check_id = new_review_check_id()
+            log_ref = f"store://change_request/{change_request_id}/checks/{check_id}/log"
+            self.store.write_check_log(change_request_id, check_id, full_log)
+            check = {
+                "id": check_id,
+                "log_ref": log_ref,
+                "full_log_ref": log_ref,
+                **result,
+            }
+            record["checks"] = [*self._checks(record), check]
+            refresh_review_counts(record)
+            return {"check_id": check_id}
 
-        def mutate(current: dict[str, Any]) -> dict[str, Any]:
-            current["checks"] = [*self._checks(current), check]
-            refresh_review_counts(current)
-            return current
-
-        updated = self.store.mutate(change_request_id, mutate)
-        persisted_check = next(
-            (item for item in self._checks(updated) if item.get("id") == check_id),
-            check,
-        )
+        updated, receipt, _ = self._mutate_bound(change_request_id, payload, action="run_check", mutator=mutate)
+        persisted_check = next((item for item in self._checks(updated) if item.get("id") == receipt.get("check_id")), None)
         return {
             "change_request": self._public_record(updated),
             "check": persisted_check,
@@ -373,66 +378,40 @@ class ChangeRequestService:
         }
 
     def commit(self, change_request_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        record = self._record_or_raise(change_request_id)
         message = str(payload.get("message") or "").strip()
         if not message:
             raise ValueError("message is required")
-        readiness_block = self._commit_readiness_block(record)
-        if readiness_block:
-            return {
-                "committed": False,
-                "blocked": True,
-                **readiness_block,
-                "change_request": self._public_record(record),
-            }
-        seal = self.commit_seal(change_request_id)
-        if not seal.get("valid"):
-            return {
-                "committed": False,
-                "blocked": True,
-                "reason": "seal_mismatch",
-                "seal": seal,
-                "change_request": self._public_record(record),
-            }
-        snapshot = record.get("latest_snapshot") if isinstance(record.get("latest_snapshot"), dict) else {}
-        paths = selected_snapshot_paths(snapshot)
-        if not paths:
-            return {
-                "committed": False,
-                "blocked": True,
-                "reason": "no_snapshot_files",
-                "seal": seal,
-                "change_request": self._public_record(record),
-            }
-        outside_staged = staged_paths_outside_snapshot(record, paths)
-        if outside_staged:
-            return {
-                "committed": False,
-                "blocked": True,
-                "reason": "existing_staged_outside_snapshot",
-                "existing_staged_paths": outside_staged,
-                "seal": seal,
-                "change_request": self._public_record(record),
-            }
-        git = GitOps(record["workspace_root"])
-        result = git.commit(
-            message,
-            paths=paths,
-            actor_id=payload.get("actor_id") or payload.get("agent_id"),
-            agent_role=payload.get("agent_role"),
-            session_id=payload.get("session_id"),
-            metadata={"change_request_id": change_request_id, "snapshot_working_tree_hash": seal.get("snapshot_working_tree_hash")},
-        )
-        now = utc_now()
-        updated = self._update_with_counts(
-            change_request_id,
-            {
-                "status": "committed",
-                "commit": {**result, "committed_at": now, "seal": seal},
-                "commit_seal": {**seal, "committed_at": now},
-            },
-        )
-        return {"committed": True, "commit": result, "change_request": self._public_record(updated), "seal": seal}
+        def mutate(record: dict[str, Any]) -> dict[str, Any]:
+            readiness_block = self._commit_readiness_block(record)
+            if readiness_block:
+                return {"committed": False, "blocked": True, **readiness_block}
+            seal = self._commit_seal_for_record(record)
+            if not seal.get("valid"):
+                return {"committed": False, "blocked": True, "reason": "seal_mismatch", "seal": seal}
+            snapshot = record.get("latest_snapshot") if isinstance(record.get("latest_snapshot"), dict) else {}
+            paths = selected_snapshot_paths(snapshot)
+            if not paths:
+                return {"committed": False, "blocked": True, "reason": "no_snapshot_files", "seal": seal}
+            outside_staged = staged_paths_outside_snapshot(record, paths)
+            if outside_staged:
+                return {"committed": False, "blocked": True, "reason": "existing_staged_outside_snapshot", "existing_staged_paths": outside_staged, "seal": seal}
+            result = GitOps(record["workspace_root"]).commit(
+                message,
+                paths=paths,
+                actor_id=payload.get("actor_id") or payload.get("agent_id"),
+                agent_role=payload.get("agent_role"),
+                session_id=payload.get("session_id"),
+                metadata={"change_request_id": change_request_id, "snapshot_working_tree_hash": seal.get("snapshot_working_tree_hash")},
+            )
+            now = utc_now()
+            record["status"] = "committed"
+            record["commit"] = {**result, "committed_at": now, "seal": seal}
+            record["commit_seal"] = {**seal, "committed_at": now}
+            refresh_review_counts(record)
+            return {"committed": True, "commit": result, "seal": seal}
+
+        updated, result, _ = self._mutate_bound(change_request_id, payload, action="commit", mutator=mutate)
+        return {**result, "change_request": self._public_record(updated)}
 
     def _commit_readiness_block(self, record: dict[str, Any]) -> dict[str, Any] | None:
         decision = str(record.get("decision") or "none")
@@ -460,6 +439,9 @@ class ChangeRequestService:
 
     def commit_seal(self, change_request_id: str) -> dict[str, Any]:
         record = self._record_or_raise(change_request_id)
+        return self._commit_seal_for_record(record)
+
+    def _commit_seal_for_record(self, record: dict[str, Any]) -> dict[str, Any]:
         previous = record.get("latest_snapshot") if isinstance(record.get("latest_snapshot"), dict) else {}
         if not previous:
             return {"valid": False, "reason": "missing_snapshot"}
@@ -479,6 +461,50 @@ class ChangeRequestService:
             "mismatch_paths": sorted(set(drift.get("added_paths", []) + drift.get("removed_paths", []) + drift.get("changed_paths", []))),
             "drift": drift,
         }
+
+    def _mutate_bound(self, change_request_id: str, payload: dict[str, Any], *, action: str, mutator: Any) -> tuple[dict[str, Any], dict[str, Any], bool]:
+        """Apply a mutation only to the exact revision and live tree the client inspected."""
+        record = self._record_or_raise(change_request_id)
+        expected_revision = payload.get("expected_revision")
+        expected_snapshot = str(payload.get("expected_snapshot_working_tree_hash") or "").strip()
+        expected_current = str(payload.get("expected_current_working_tree_hash") or "").strip()
+        idempotency_key = str(payload.get("idempotency_key") or "").strip()
+        if not isinstance(expected_revision, int) or expected_revision < 1:
+            raise ChangeRequestRevisionConflict("expected_revision is required")
+        if not expected_snapshot or not expected_current:
+            raise ChangeRequestRevisionConflict("expected snapshot and current working tree hashes are required")
+        if not idempotency_key:
+            raise ChangeRequestRevisionConflict("idempotency_key is required")
+        snapshot = record.get("latest_snapshot") if isinstance(record.get("latest_snapshot"), dict) else {}
+        snapshot_hash = str(snapshot.get("working_tree_hash") or "")
+        current_hash = str(ChangeRequestSnapshotter(record["workspace_root"]).snapshot().get("working_tree_hash") or "")
+        if snapshot_hash != expected_snapshot or current_hash != expected_current:
+            raise ChangeRequestRevisionConflict("review changed or working tree no longer matches the requested mutation")
+
+        def guarded_mutator(draft: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+            live_hash = str(ChangeRequestSnapshotter(draft["workspace_root"]).snapshot().get("working_tree_hash") or "")
+            if live_hash != expected_current:
+                raise ChangeRequestRevisionConflict("working tree changed before the mutation could be applied")
+            result = mutator(draft)
+            return draft, result if isinstance(result, dict) else {}
+
+        return self.store.mutate_with_revision(
+            change_request_id,
+            expected_revision=expected_revision,
+            expected_snapshot_working_tree_hash=expected_snapshot,
+            expected_current_working_tree_hash=expected_current,
+            current_working_tree_hash=current_hash,
+            idempotency_key=idempotency_key,
+            fingerprint=self._mutation_fingerprint(action, payload),
+            mutator=guarded_mutator,
+        )
+
+    @staticmethod
+    def _mutation_fingerprint(action: str, payload: dict[str, Any]) -> str:
+        excluded = {"expected_revision", "expected_updated_at", "expected_snapshot_working_tree_hash", "expected_current_working_tree_hash", "idempotency_key", "id", "_method"}
+        stable = {key: value for key, value in payload.items() if key not in excluded}
+        encoded = json.dumps({"action": action, "payload": stable}, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     def _public_record(self, record: dict[str, Any]) -> dict[str, Any]:
         public = public_record(record)
@@ -536,6 +562,7 @@ class ChangeRequestService:
         workspace_hash = workspace_hash_for(record.get("workspace_root"))
         return {
             "id": record.get("id"),
+            "revision": record.get("revision"),
             "title": record.get("title"),
             "description": record.get("description"),
             "status": record.get("status"),

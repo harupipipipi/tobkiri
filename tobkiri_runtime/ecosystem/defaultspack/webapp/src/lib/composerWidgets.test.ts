@@ -29,6 +29,11 @@ import {
   utf16OffsetToCodePointIndex,
 } from "./mentionContract";
 import type { ComposerExtensionItem } from "../renderers/types";
+import {
+  initialComposerFieldValues,
+  normalizeComposerFields,
+  structuredComposerPayload,
+} from "./structuredComposer";
 
 type BoundaryFixture = {
   active_query: string | null;
@@ -359,4 +364,27 @@ test("copy and paste keeps human mention text literal without exposing an intern
 
   assert.equal(pastedText.includes("browser_computer"), false);
   assert.deepEqual(toolMentionIdsFromText(pastedText, tools), []);
+});
+
+test("structured composer normalizes pack JSON fields and select defaults", () => {
+  const fields = normalizeComposerFields([
+    { id: "intent", label: "Intent", type: "select", options: ["Plan", { value: "build", label: "Build" }] },
+    { id: "notes", type: "text", default: "short" },
+    { id: "broken", type: "select", options: [] },
+  ]);
+
+  assert.deepEqual(fields.map((field) => field.id), ["intent", "notes"]);
+  assert.deepEqual(initialComposerFieldValues(fields), { intent: "Plan", notes: "short" });
+});
+
+test("structured composer keeps field JSON separate and omits empty values", () => {
+  const fields = normalizeComposerFields([
+    { id: "output", type: "select", options: ["summary", "code"] },
+    { id: "detail", type: "textarea" },
+  ]);
+
+  assert.deepEqual(
+    structuredComposerPayload(fields, { output: "summary", detail: "" }),
+    { output: "summary" },
+  );
 });

@@ -333,14 +333,16 @@ function pruneDiagnosticState(now: number) {
   }
 }
 
-export async function reportClientDiagnostic(input: ClientDiagnosticInput): Promise<boolean> {
+export type ClientDiagnosticReportResult = { recorded: boolean; diagnosticId?: string };
+
+export async function reportClientDiagnosticResult(input: ClientDiagnosticInput): Promise<ClientDiagnosticReportResult> {
   const normalized = prepareClientDiagnostic(input);
-  if (!normalized) return false;
+  if (!normalized) return { recorded: false };
   const now = Date.now();
   pruneDiagnosticState(now);
-  if (recentDiagnosticAttempts.length >= DIAGNOSTIC_RATE_LIMIT) return false;
+  if (recentDiagnosticAttempts.length >= DIAGNOSTIC_RATE_LIMIT) return { recorded: false };
   const lastSentAt = sentDiagnostics.get(normalized.fingerprint);
-  if (lastSentAt && now - lastSentAt < DIAGNOSTIC_TTL_MS) return false;
+  if (lastSentAt && now - lastSentAt < DIAGNOSTIC_TTL_MS) return { recorded: false };
 
   recentDiagnosticAttempts.push(now);
   sentDiagnostics.set(normalized.fingerprint, now);
@@ -349,11 +351,15 @@ export async function reportClientDiagnostic(input: ClientDiagnosticInput): Prom
     if (!acknowledgment || typeof acknowledgment !== "object" || acknowledgment.recorded !== true) {
       throw new Error("diagnostic was not acknowledged");
     }
-    return true;
+    return { recorded: true, diagnosticId: normalizedIdentifier(acknowledgment.diagnostic_id) || normalized.event_id };
   } catch {
     sentDiagnostics.delete(normalized.fingerprint);
-    return false;
+    return { recorded: false };
   }
+}
+
+export async function reportClientDiagnostic(input: ClientDiagnosticInput): Promise<boolean> {
+  return (await reportClientDiagnosticResult(input)).recorded;
 }
 
 export function installGlobalClientDiagnostics(

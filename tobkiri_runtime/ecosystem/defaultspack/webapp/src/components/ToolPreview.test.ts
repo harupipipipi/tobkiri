@@ -18,6 +18,15 @@ import {
   WEB_PREVIEW_IFRAME_SANDBOX,
   type ToolPreviewItem,
 } from "./ToolPreview";
+import { modalStackTransition } from "./ModalFoundation";
+
+test("modal layer stack closes only the requested layer and preserves nesting", () => {
+  const parent = modalStackTransition([], "open", "settings");
+  const nested = modalStackTransition(parent, "open", "artifact");
+  assert.deepEqual(nested, ["settings", "artifact"]);
+  assert.deepEqual(modalStackTransition(nested, "close", "artifact"), ["settings"]);
+  assert.deepEqual(modalStackTransition(nested, "close", "settings"), ["artifact"]);
+});
 
 const previews: ToolPreviewItem[] = [
   {

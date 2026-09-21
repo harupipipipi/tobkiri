@@ -14,6 +14,12 @@ export type PendingChatRequest = {
 export const PENDING_CHAT_REQUEST_TTL_MS = 6 * 60 * 60_000;
 export const PENDING_USER_ONLY_GRACE_MS = 8_000;
 
+export function shouldForgetPendingAfterPollError(errorValue: unknown): boolean {
+  const message = errorValue instanceof Error ? errorValue.message : String(errorValue ?? "");
+  return /(?:^|\n)HTTP (?:404|410)\b/i.test(message)
+    || /\b(?:NOT_FOUND|EXPIRED)\b/i.test(message);
+}
+
 export function isAssistantMessageStillRunning(message: ChatMessage | undefined): boolean {
   if (!message || message.role === "user") return false;
   const metadata = message.metadata && typeof message.metadata === "object" ? message.metadata : {};

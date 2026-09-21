@@ -176,6 +176,10 @@ jobs:
         working-directory: tobkiri_runtime
         run: python scripts/quality/scan_defaultspack_boundaries.py
 
+      - name: Validate defaultspack HTTP fallback metadata
+        working-directory: tobkiri_runtime
+        run: python scripts/quality/check_defaultspack_http_fallbacks.py
+
   frontend-security-audit:
     strategy:
       fail-fast: false
@@ -320,6 +324,71 @@ jobs:
           name: package-pytest-${{ matrix.python-version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/package-pytest-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}-py${{ matrix.python-version }}.log
           if-no-files-found: ignore
+
+  desktop-contract-smoke:
+    name: Desktop contracts (baseline)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            tobkiri_runtime/requirements.txt
+            tobkiri_runtime/requirements-dev.txt
+
+      - name: Install Python dependencies
+        working-directory: tobkiri_runtime
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tobkiri_launcher/frontend/package-lock.json
+
+      - name: Install viewer frontend dependencies
+        working-directory: tobkiri_launcher/frontend
+        run: npm ci
+
+      - name: Run viewer launch contracts
+        id: viewer_launch
+        run: |
+          set -o pipefail
+          PYTEST_LOG="${RUNNER_TEMP}/viewer-launch-pytest.log"
+          FRONTEND_LOG="${RUNNER_TEMP}/viewer-launch-frontend.log"
+          (cd tobkiri_runtime && python -m pytest tests/test_defaultspack_desktop_launch_flow.py -v) 2>&1 | tee "$PYTEST_LOG"
+          (cd tobkiri_launcher/frontend && node --import tsx --test src/lib/api.test.ts) 2>&1 | tee "$FRONTEND_LOG"
+
+      - name: Run desktop/computer-use delegation contracts
+        id: computer_delegation
+        working-directory: tobkiri_runtime
+        run: |
+          set -o pipefail
+          PYTEST_LOG="${RUNNER_TEMP}/computer-delegation-pytest.log"
+          python -m pytest \
+            tests/test_computer_desktop_action_delegation.py \
+            tests/test_browser_computer_seat_delegation.py \
+            -v 2>&1 | tee "$PYTEST_LOG"
+
+      - name: Upload desktop contract failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-contract-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/viewer-launch-pytest.log
+            ${{ runner.temp }}/viewer-launch-frontend.log
+            ${{ runner.temp }}/computer-delegation-pytest.log
+          if-no-files-found: warn
 
   rust-test:
     runs-on: ubuntu-latest
@@ -473,6 +542,12 @@ jobs:
           pytest tests/test_mac_cgevent_pid_driver.py tests/test_browser_cdp_driver.py tests/test_computer_fallback_order.py tests/test_computer_seat_service.py tests/test_computer_seat_default_factory.py -v
 
   mac-computer-use-visuals:
+    if: >
+      github.event_name != 'pull_request' ||
+      (
+        github.event.pull_request.draft == false &&
+        contains(github.event.pull_request.labels.*.name, 'full-ci')
+      )
     runs-on: macos-latest
     steps:
       - name: Checkout

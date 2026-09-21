@@ -3192,15 +3192,15 @@ def test_scheduler_replay_refreshes_expired_auto_approval_token_for_todo(tmp_pat
             "company_id": "mimo-coding-company",
         },
     }
-    real_approve = approval.approve
     real_extended_approve = approval.approve_with_extended_expiry
     approve_calls: list[dict] = []
+    refresh_calls: list[dict] = []
     expired_followup_token: dict[str, str] = {}
 
     def approve_with_expired_first_token(request_id, **kwargs):
         decision = dict(real_extended_approve(request_id, **kwargs))
-        approve_calls.append(dict(decision))
-        if len(approve_calls) == 1 and decision.get("approved"):
+        if not approve_calls and decision.get("approved"):
+            approve_calls.append(dict(decision))
             stored = approval.get_approval_request(request_id)
             details = stored.get("details") if isinstance(stored, dict) else {}
             expired = approval.issue_execution_token(
@@ -3215,17 +3215,11 @@ def test_scheduler_replay_refreshes_expired_auto_approval_token_for_todo(tmp_pat
             expired_followup_token["token"] = expired
             decision["token"] = expired
             decision["expires_at"] = approval._now() - 10
-        return decision
-
-    refresh_calls: list[dict] = []
-
-    def approve_counting_refresh(request_id):
-        decision = dict(real_approve(request_id))
-        refresh_calls.append(dict(decision))
+        elif decision.get("approved"):
+            refresh_calls.append(dict(decision))
         return decision
 
     monkeypatch.setattr(approval, "approve_with_extended_expiry", approve_with_expired_first_token)
-    monkeypatch.setattr(approval, "approve", approve_counting_refresh)
     approved = approve_schedule_pending_approval(task_cfg, pending, conversation_id=conversation_id)
     assert approved is not None
     followup = approved["followup"]

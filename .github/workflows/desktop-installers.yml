@@ -28,7 +28,6 @@ permissions:
   contents: read
 
 env:
-  UV_VERSION: "0.11.14"
   CARGO_HTTP_MULTIPLEXING: "false"
   CARGO_NET_RETRY: "10"
 
@@ -153,17 +152,9 @@ jobs:
       - name: Build panel frontend
         working-directory: tobkiri_launcher/frontend
         run: npm run build
-
       - name: Build defaultspack frontend
         working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
         run: npm run build
-
-      - name: Build pack-shell runtime
-        working-directory: pack-shell
-        run: cargo build --locked --release --target ${{ matrix.target }}
-
-      - name: Prepare bundled Rumi runtime
-        run: python .github/scripts/prepare_tauri_resources.py --target ${{ matrix.target }} --uv-version ${{ env.UV_VERSION }} --require-runtime-tools
 
       - name: Run rumi viewer Rust tests
         working-directory: tobkiri_launcher/src-tauri

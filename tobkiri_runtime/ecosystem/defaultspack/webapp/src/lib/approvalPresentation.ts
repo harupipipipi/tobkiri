@@ -105,6 +105,9 @@ export function codingApprovalViewModel(request: CodingApprovalRequest, now = Da
   const expiresAt = request.expires_at ? (request.expires_at > 1e12 ? request.expires_at : request.expires_at * 1000) : null;
   const status = request.status === "pending" && expiresAt && expiresAt <= now ? "expired" : request.status;
   const details = request.details ?? {};
+  const presentedDetails = request.operation === "tool.mcp_connect"
+    ? { mcp_review: details.mcp_review ?? details.review ?? details.connection_review ?? {} }
+    : details;
   return {
     id: request.request_id,
     source: "coding",
@@ -116,7 +119,7 @@ export function codingApprovalViewModel(request: CodingApprovalRequest, now = Da
     scope: "この1回の操作のみ",
     persistence: "承認はこのリクエストにだけ使用されます。",
     auditText: "判断と操作内容はローカルの監査記録に残ります。",
-    technicalDetails: { request_id: request.request_id, operation: request.operation, risk_level: request.risk_level, args_hash: request.args_hash, details },
+    technicalDetails: { request_id: request.request_id, operation: request.operation, risk_level: request.risk_level, args_hash: request.args_hash, details: presentedDetails },
     status: (status === "approved" || status === "denied" || status === "expired" || status === "pending") ? status : "stale",
   };
 }

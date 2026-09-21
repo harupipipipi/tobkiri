@@ -16,6 +16,7 @@ export const codingResources = {
   listMcpServers: api.listMcpServers,
   registerMcpServer: api.registerMcpServer,
   connectMcpServer: api.connectMcpServer,
+  manageMcpServer: api.manageMcpServer,
   listBrowserArtifacts: api.listBrowserArtifacts,
   createCodingAgentSession: api.createCodingAgentSession,
   getCodingAgentSessionStatus: api.getCodingAgentSessionStatus,

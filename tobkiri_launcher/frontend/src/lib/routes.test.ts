@@ -60,9 +60,9 @@ test('registered panel routes expose stable header title metadata', () => {
 });
 
 test('viewer navigation groups use route metadata and i18n keys', () => {
-  const navRoutes = new Set(viewerNavGroups.flatMap((group) => group.routes));
+  const navRoutes = new Set<string>(viewerNavGroups.flatMap((group) => group.routes));
   assert.ok(navRoutes.has('aiInput'));
-  assert.ok(navRoutes.has('startup'));
+  assert.ok(!navRoutes.has('startup'));
 
   for (const group of viewerNavGroups) {
     assert.match(group.labelKey, /^nav\./);

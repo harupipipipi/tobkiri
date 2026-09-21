@@ -46,20 +46,14 @@ def test_setup_state_hides_raw_json_behind_debug_disclosure() -> None:
     assert 'document.createElement("details")' in source
 
 
-def test_visible_setup_profiles_are_capped_at_five() -> None:
-    """The default chooser should present grouped profiles instead of every raw pack."""
+def test_setup_never_infers_or_auto_selects_recommendations() -> None:
+    """Selection must be explicit and independent of names, order, and recommended flags."""
     source = setup_ui_source()
-    profile_block = re.search(
-        r"const PROFILE_CARDS = \[(?P<body>.*?)\n    \];",
-        source,
-        re.S,
-    )
-
-    assert profile_block is not None
-    assert profile_block.group("body").count("id:") <= 5
-    assert "PROFILE_CARDS.slice(0, 5)" in source
-    assert "Advanced custom selection" in source
-    assert 'if (assigned.has(packId)) continue;' in source
+    assert "PROFILE_CARDS" not in source
+    assert "matchingPacks" not in source
+    assert "matches.push(packs[0])" not in source
+    assert "pack.recommended" not in source
+    assert 'summary.textContent = "Choose setup packs individually (no automatic recommendation)"' in source
 
 
 def test_setup_cards_are_full_clickable_labels() -> None:
@@ -67,11 +61,11 @@ def test_setup_cards_are_full_clickable_labels() -> None:
     source = setup_ui_source()
 
     assert 'document.createElement("label")' in source
-    assert 'card.className = "pack"' in source
+    assert 'label.className = "pack"' in source
     assert "cursor: pointer;" in source
     assert "min-height: 44px;" in source
-    assert "dataset.profilePackIds" in source
-    assert 'input.setAttribute("aria-label", "Include " + profile.title)' in source
+    assert "dataset.selectPack" in source
+    assert 'input.setAttribute("aria-label", "Include " + (pack.display_name || pack.pack_id || "pack"))' in source
     assert '.pack:has(input:focus-visible)' in source
 
 
@@ -92,7 +86,9 @@ def test_install_action_sends_selected_ids_and_reports_feedback() -> None:
     source = setup_ui_source()
 
     assert "const selected = selectedSetupPackIds();" in source
-    assert 'body: JSON.stringify({ setup_pack_ids: selected })' in source
+    assert "reviewed_pack_ids: selected" in source
+    assert "review_revision: currentReviewRevision" in source
+    assert "confirmed_privileged_pack_ids" in source
     assert 'getJson("/api/setup/packs/install"' in source
     assert 'setInstallProgress("pending")' in source
     assert 'setInstallProgress("success")' in source
@@ -104,3 +100,12 @@ def test_install_action_sends_selected_ids_and_reports_feedback() -> None:
     assert 'aria-live="polite"' in source
     assert 'setStatus("Installing setup packs…"' in source
     assert 'setStatus("Setup packs installed"' in source
+
+
+def test_install_review_discloses_pack_risk_and_requires_privileged_confirmation() -> None:
+    source = setup_ui_source()
+
+    for field in ("source_path", "description", "risk_level", "required_permissions", "supports_all_ok", "depends_on", "conflicts_with", "version"):
+        assert field in source
+    assert "I explicitly confirm this privileged pack" in source
+    assert "Review required before install" in source

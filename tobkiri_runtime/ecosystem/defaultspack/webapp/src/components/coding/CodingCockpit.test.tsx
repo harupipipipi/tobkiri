@@ -9,7 +9,7 @@ import { ApprovalQueue } from "./ApprovalQueue";
 import { CheckpointPanel } from "./CheckpointPanel";
 import { CodingCockpit } from "./CodingCockpit";
 import { DiffPanel } from "./DiffPanel";
-import { TerminalPanel } from "./TerminalPanel";
+import { TERMINAL_HISTORY_POLICY, TerminalPanel } from "./TerminalPanel";
 import { codingApprovalRequestId } from "./CheckpointPanel";
 import {
   codingActionRequiresApproval,
@@ -114,27 +114,23 @@ test("checkpoint panel renders refresh and restore-review controls for supplied 
   assert.match(html, /-before/);
 });
 
-test("terminal panel renders classification and risk reasons", () => {
+test("terminal panel starts empty and accepts no initial history", () => {
   const html = renderToStaticMarkup(
-    createElement(TerminalPanel, {
-      initialLogs: [
-        {
-          id: "log-1",
-          command: "git push origin main",
-          approval_required: true,
-          classification: "high",
-          risk_reasons: ["network"],
-          exit_code: null,
-          stdout: "",
-          stderr: "",
-        },
-      ],
-    }),
+    createElement(TerminalPanel, {}),
   );
 
-  assert.match(html, /git push origin main/);
-  assert.match(html, /approval/);
-  assert.match(html, /network/);
+  assert.match(html, /No terminal runs/);
+  assert.match(html, /Memory only/);
+  assert.match(html, /not saved to browser storage/);
+  assert.match(html, /aria-label="Clear terminal history from this private session"/);
+  assert.equal(TERMINAL_HISTORY_POLICY.durable, false);
+});
+
+test("terminal history never reads or writes raw browser storage", () => {
+  const source = readFileSync(resolve(import.meta.dirname, "TerminalPanel.tsx"), "utf8");
+  assert.doesNotMatch(source, /localStorage|sessionStorage|indexedDB/);
+  assert.doesNotMatch(source, /approval_request_id\s*===/);
+  assert.match(source, /sessionPendingApprovals\.current\.get/);
 });
 
 test("coding cockpit renders workspace and sidecar sections", () => {
@@ -158,6 +154,7 @@ test("coding cockpit renders workspace and sidecar sections", () => {
 test("MCP requester never approves its own request", () => {
   const source = readFileSync(resolve(import.meta.dirname, "CodingCockpit.tsx"), "utf8");
   assert.doesNotMatch(source, /codingResources\.approveCodingApproval/);
-  assert.match(source, /separate Approvals queue/);
-  assert.match(source, /requesting form cannot approve its own request/);
+  assert.match(source, /Review the shared approval request below/);
+  assert.match(source, /onApproved=\{handleApprovalApproved\}/);
+  assert.match(source, /approval_token: decision\.token/);
 });

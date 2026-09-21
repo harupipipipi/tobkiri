@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 CHECK_LOG_TAIL_CHARS = 12000
 STATUS_VALUES = {"draft", "open", "changes_requested", "approved", "committed", "closed", "archived"}
 DECISION_VALUES = {"none", "commented", "changes_requested", "approved"}
@@ -56,6 +56,10 @@ def normalize_record(raw: dict[str, Any]) -> dict[str, Any]:
     record["workspace_id"] = record.get("workspace_id") or None
     record["created_at"] = str(record.get("created_at") or utc_now())
     record["updated_at"] = str(record.get("updated_at") or record["created_at"])
+    revision = record.get("revision")
+    record["revision"] = revision if isinstance(revision, int) and revision > 0 else 1
+    receipts = record.get("mutation_receipts")
+    record["mutation_receipts"] = receipts if isinstance(receipts, dict) else {}
     record["initial_snapshot"] = (
         record.get("initial_snapshot") if isinstance(record.get("initial_snapshot"), dict) else {}
     )

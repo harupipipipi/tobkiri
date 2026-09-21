@@ -18,6 +18,13 @@ test("Search Home validates every destination immediately before navigation", ()
   assert.doesNotMatch(appSource, /window\.location\.assign\(rawDestination\)/);
 });
 
+test("explicit unsafe URL input is blocked before resolver, answer, or Google search", () => {
+  assert.match(appSource, /evaluateExplicitDestinationInput\(query\)/);
+  assert.match(appSource, /explicitDestination\?\.verdict === "block"/);
+  assert.match(appSource, /setInput\(""\)/);
+  assert.match(appSource, /input_policy_blocked: true/);
+});
+
 test("route shortcuts are not installed globally and sensitive route data is not wildcard-posted", () => {
   assert.doesNotMatch(appSource, /routeHotkeyActionFromKeyboardEvent/);
   assert.doesNotMatch(appSource, /routeNavigationForHotkey/);
@@ -47,4 +54,14 @@ test("blocked destinations retain a safe copy-details action", () => {
   assert.match(reviewSource, /ブロック詳細をコピー/);
   assert.match(appSource, /Search Home blocked destination:/);
   assert.doesNotMatch(appSource, /blocked destination:.*destination\.input/);
+});
+
+test("AI answers are committed to explicit accessible memory-only result states", () => {
+  assert.match(appSource, /normalizeAnswerResponse\(payload\)/);
+  assert.match(appSource, /aria-labelledby="search-answer-title"/);
+  assert.match(appSource, /Answer text is kept in memory only/);
+  assert.match(appSource, /Open conversation \/ Continue in Rumi/);
+  assert.match(appSource, /Retry intentionally/);
+  assert.doesNotMatch(appSource, /localStorage.*answer|sessionStorage.*answer/i);
+  assert.equal(appSource.includes("dangerouslySet" + "InnerHTML"), false);
 });

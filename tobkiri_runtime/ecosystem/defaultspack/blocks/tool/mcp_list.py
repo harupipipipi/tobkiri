@@ -14,8 +14,7 @@ def run(input_data, context):
     """defaults.tool.mcp_list - return connected MCP servers and tool details."""
     mcp_client = McpClient()
     mcp_registry = McpRegistry()
-    registry = ToolRegistry()
-    registry_servers = registry.list_mcp_servers()
+    registry_servers = ToolRegistry().list_mcp_servers()
     persistent_servers = {server["server_id"]: server for server in mcp_registry.list_servers()}
     servers = mcp_client.list_servers()
     requested_server = str(
@@ -29,7 +28,9 @@ def run(input_data, context):
     for srv in servers:
         server_name = srv.get("name", "")
         persistent = mcp_registry.get_server(server_name) or {}
-        registered_config = registry_servers.get(server_name, {}) or persistent.get("config", {})
+        registered_config = McpRegistry.public_config(
+            registry_servers.get(server_name, {}) or persistent.get("config", {})
+        )
         server_id = str(registered_config.get("server_id", "") or server_name)
         seen_server_ids.add(server_id)
         if requested_server and requested_server not in {server_name, server_id}:
@@ -58,6 +59,7 @@ def run(input_data, context):
                 "status": srv.get("status", "unknown"),
                 "tools": srv.get("tools", []),
                 "tool_details": tool_details,
+                "inspect": mcp_registry.inspect_server(server_name),
                 "registered_config": registered_config,
                 "permissions": persistent.get("permissions", {}),
                 "connected": srv.get("status") == "connected",
@@ -79,7 +81,8 @@ def run(input_data, context):
                 "connected": False,
                 "tools": server.get("tools", []),
                 "tool_details": [],
-                "registered_config": server.get("config", {}),
+                "registered_config": McpRegistry.public_config(server.get("config", {})),
+                "inspect": mcp_registry.inspect_server(server_id),
                 "permissions": server.get("permissions", {}),
             }
         )

@@ -8,14 +8,23 @@ from _common import error, ok  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from domain.tool.mcp_client import McpClient  # noqa: E402
+from domain.tool.mcp_approval import (  # noqa: E402
+    build_mcp_snapshot,
+    create_mcp_approval_request,
+    obsolete_mcp_approvals,
+    verify_mcp_approval,
+)
 from domain.tool.mcp_registry import McpRegistry  # noqa: E402
 from domain.tool.registry import ToolRegistry  # noqa: E402
+from domain.tool_policy.internal_context import (  # noqa: E402
+    tool_server_approval_context_is_internal,
+)
 from blocks.tool._safety import (  # noqa: E402
-    approved_or_request,
     record_tool_attempt,
     record_tool_execution,
     record_tool_failure,
 )
+from domain.safety.audit import record_approval, record_denial  # noqa: E402
 
 
 OPERATION = "tool.mcp_connect"
@@ -23,49 +32,66 @@ RISK = "high"
 
 
 def _mcp_config_path():
-    return (
-        Path(__file__).resolve().parents[2]
-        / "user_data"
-        / "shared"
-        / "tools"
-        / "mcp.json"
-    )
+    return Path(__file__).resolve().parents[2] / "user_data" / "shared" / "tools" / "mcp.json"
 
 
 def _load_saved_mcp_config(server_identifier):
-    registry_server = McpRegistry().get_server(server_identifier)
+    config_path = _mcp_config_path()
+    if config_path.is_file():
+        try:
+            raw = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            raw = None
+        modern = raw.get("mcpServers", {}) if isinstance(raw, dict) else {}
+        if isinstance(modern, dict):
+            candidate = modern.get(server_identifier)
+            if isinstance(candidate, dict):
+                return dict(candidate)
+        servers = raw.get("servers", []) if isinstance(raw, dict) else raw
+        if isinstance(servers, dict):
+            servers = list(servers.values())
+        if isinstance(servers, list):
+            for server in servers:
+                if not isinstance(server, dict):
+                    continue
+                candidates = {
+                    str(server.get("server_id", "") or "").strip(),
+                    str(server.get("name", "") or "").strip(),
+                }
+                if server_identifier in candidates:
+                    return dict(server)
+    registry = McpRegistry()
+    get_server_config = getattr(registry, "get_server_config", None)
+    registry_config = get_server_config(server_identifier) if callable(get_server_config) else None
+    if registry_config:
+        return registry_config
+    registry_server = registry.get_server(server_identifier)
     if registry_server:
         return dict(registry_server.get("config") or {})
-    config_path = _mcp_config_path()
-    if not config_path.is_file():
-        return None
-    try:
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-    if isinstance(raw, dict):
-        servers = raw.get("servers", [])
-    elif isinstance(raw, list):
-        servers = raw
-    else:
-        return None
-
-    if isinstance(servers, dict):
-        servers = list(servers.values())
-    if not isinstance(servers, list):
-        return None
-
-    for server in servers:
-        if not isinstance(server, dict):
-            continue
-        candidates = {
-            str(server.get("server_id", "") or "").strip(),
-            str(server.get("name", "") or "").strip(),
-        }
-        if server_identifier in candidates:
-            return dict(server)
     return None
+
+
+def _resolve_config(input_data, requested_server):
+    config = input_data.get("config")
+    if config is not None:
+        return dict(config), "inline"
+    if not requested_server:
+        return None, "missing"
+    registry_server = McpRegistry().get_server(requested_server)
+    if registry_server:
+        return dict(registry_server.get("config") or {}), "registry"
+    saved = _load_saved_mcp_config(requested_server)
+    return (saved, "shared_mcp_json") if saved is not None else (None, "missing")
+
+
+def _approval_token(input_data):
+    token = str(input_data.get("approval_token") or "").strip()
+    if token:
+        return token
+    headers = input_data.get("_headers")
+    if isinstance(headers, dict):
+        return str(headers.get("X-Rumi-Approval") or headers.get("x-rumi-approval") or "").strip()
+    return ""
 
 
 def _resolve_server_name(input_data, config):
@@ -100,13 +126,9 @@ def _tool_registry_id(server_name, tool_name, config):
 def run(input_data, context):
     """defaults.tool.mcp_connect - connect to an MCP server."""
     requested_server = str(
-        input_data.get("server_id")
-        or input_data.get("server_name")
-        or ""
+        input_data.get("server_id") or input_data.get("server_name") or ""
     ).strip()
-    config = input_data.get("config")
-    if config is None and requested_server:
-        config = _load_saved_mcp_config(requested_server)
+    config, server_source = _resolve_config(input_data, requested_server)
 
     server_name = _resolve_server_name(input_data, config)
     if not server_name:
@@ -117,36 +139,103 @@ def run(input_data, context):
             "MISSING_PARAM",
         )
 
-    transport = config.get("transport", "stdio")
-    if transport not in ("stdio", "sse"):
-        return error("config.transport must be 'stdio' or 'sse'", "INVALID_PARAM")
-    if transport == "stdio" and not config.get("command"):
-        return error("config.command is required for stdio transport", "MISSING_PARAM")
-    if transport == "sse" and not config.get("url"):
-        return error("config.url is required for sse transport", "MISSING_PARAM")
+    try:
+        snapshot = build_mcp_snapshot(
+            server_name,
+            config,
+            server_source=server_source,
+            input_data=dict(input_data or {}),
+            context=context,
+        )
+    except (OSError, ValueError) as exc:
+        return error(str(exc), "INVALID_PARAM")
 
-    approval_input = dict(input_data or {})
-    approval_input["server_id"] = server_name
-    approval_input["server_name"] = server_name
-    approval_input["config"] = config
+    effective_config = snapshot["effective_config"]
+    transport = effective_config["transport"]
+    approval_input = dict(snapshot["binding_args"])
 
     record_tool_attempt(OPERATION, RISK, approval_input)
-    approval = approved_or_request(approval_input, context, OPERATION, RISK)
-    if approval is not None:
-        return approval
+    if not tool_server_approval_context_is_internal(context):
+        token = _approval_token(input_data)
+        if not token:
+            obsolete_mcp_approvals(
+                server_name,
+                keep_scope_digest=snapshot["scope_digest"],
+            )
+            request = create_mcp_approval_request(snapshot)
+            record_approval(
+                OPERATION,
+                request["approval_request_id"],
+                "requested",
+                risk_level=RISK,
+            )
+            return ok(request)
+        verification = verify_mcp_approval(token, snapshot)
+        if not verification.valid:
+            record_denial(
+                OPERATION,
+                RISK,
+                verification.code or "APPROVAL_INVALID",
+                approval_input,
+                request_id=verification.request_id,
+            )
+            result = error(
+                verification.message or "approval token is invalid",
+                verification.code or "APPROVAL_INVALID",
+                details={
+                    "recoverable": True,
+                    "action": "request_new_approval",
+                    "server_id": server_name,
+                },
+            )
+            result["_http_status"] = 403
+            return result
+        record_approval(
+            OPERATION,
+            verification.request_id,
+            "token_accepted",
+        )
 
     mcp_registry = McpRegistry()
-    mcp_registry.add_server({"server_id": server_name, "name": server_name, "config": config})
+    mcp_registry.add_server(
+        {
+            "server_id": server_name,
+            "name": server_name,
+            "config": effective_config,
+        }
+    )
 
     mcp_client = McpClient()
+    registry = ToolRegistry()
+    unregister = getattr(registry, "unregister_mcp_server", None)
+    if callable(unregister):
+        unregister(server_name)
     try:
-        tools_added = mcp_client.connect(server_name, config)
-    except Exception as exc:
-        record_tool_failure(OPERATION, RISK, approval_input, str(exc), server_name=server_name)
-        return error("MCP connect failed: {}".format(exc), "MCP_CONNECT_ERROR")
+        tools_added = mcp_client.connect(server_name, effective_config)
+    except Exception:
+        safe_failure = "MCP server failed to start or initialize"
+        record_tool_failure(
+            OPERATION,
+            RISK,
+            approval_input,
+            safe_failure,
+            server_name=server_name,
+        )
+        if hasattr(mcp_registry, "mark_connection_failed"):
+            mcp_registry.mark_connection_failed(server_name, reason=safe_failure)
+        return error(
+            safe_failure,
+            "MCP_CONNECT_ERROR",
+            details={
+                "recoverable": True,
+                "action": "retry_connection",
+                "requires_new_approval": True,
+                "server_id": server_name,
+            },
+        )
 
     registry = ToolRegistry()
-    registry.register_mcp_server(server_name, config)
+    registry.register_mcp_server(server_name, effective_config)
 
     server_tools = mcp_client.get_server_tools(server_name)
     registered_tools = []
@@ -156,9 +245,9 @@ def run(input_data, context):
         tool_name = tool.get("name", "")
         if not tool_name:
             continue
-        public_name = _public_tool_name(tool_name, config)
-        tool_id = _tool_registry_id(server_name, tool_name, config)
-        server_id = str(config.get("server_id", "") or server_name)
+        public_name = _public_tool_name(tool_name, effective_config)
+        tool_id = _tool_registry_id(server_name, tool_name, effective_config)
+        server_id = str(effective_config.get("server_id", "") or server_name)
         description = str(tool.get("description", "") or "")
         registered_tools.append(tool_id)
         registry.register(
@@ -193,11 +282,14 @@ def run(input_data, context):
             }
         )
 
-    record_tool_execution(OPERATION, RISK, approval_input, server_name=server_name, tools_added=tools_added)
+    record_tool_execution(
+        OPERATION, RISK, approval_input, server_name=server_name, tools_added=tools_added
+    )
     mcp_registry.mark_connected(server_name, tools=registered_tools, approved=True)
+    inspect = mcp_registry.inspect_server(server_name)
     return ok(
         {
-            "server_id": str(config.get("server_id", "") or server_name),
+            "server_id": str(effective_config.get("server_id", "") or server_name),
             "server_name": server_name,
             "status": "connected",
             "tools_added": tools_added,
@@ -206,7 +298,9 @@ def run(input_data, context):
             "server": {
                 "name": server_name,
                 "transport": transport,
-                "config": registry.list_mcp_servers().get(server_name, {}),
+                "config": dict(snapshot["review"]["config"]),
+                "config_digest": snapshot["config_digest"],
+                "inspect": inspect,
             },
         }
     )

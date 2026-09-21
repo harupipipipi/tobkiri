@@ -182,6 +182,8 @@ function mergeTemplateComposerInputs(items: TemplateComposerInput[]): TemplateCo
     help: firstString(items, (item) => item.help),
     accepted_modalities: mergeStringLists(items, (item) => item.accepted_modalities),
     feature_flags: mergeFeatureFlags(items),
+    fields: items.flatMap((item) => Array.isArray(item.fields) ? item.fields : []),
+    field_layout: firstString(items, (item) => item.field_layout) as TemplateComposerInput["field_layout"],
     modes: mergeModes(items),
     enabled: true,
     component: firstString(items, (item) => item.component),

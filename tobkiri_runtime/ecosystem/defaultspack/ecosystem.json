@@ -1137,6 +1137,129 @@
       "pass_body": true
     },
     {
+      "method": "GET",
+      "path": "/api/chat/channels",
+      "function_id": "chat_channel_list",
+      "auth_mode": "panel_or_bearer",
+      "principal": "authenticated",
+      "csrf_origin_required": false,
+      "rate_limit": "default_per_path",
+      "audit_category": "chat.channel.read",
+      "legacy_until": null,
+      "pass_query": true,
+      "response_mode": "result"
+    },
+    {
+      "method": "POST",
+      "path": "/api/chat/channels",
+      "function_id": "chat_channel_create",
+      "auth_mode": "panel_or_bearer",
+      "principal": "authenticated",
+      "csrf_origin_required": true,
+      "rate_limit": "default_per_path",
+      "audit_category": "chat.channel.write",
+      "legacy_until": null,
+      "pass_body": true,
+      "response_mode": "result"
+    },
+    {
+      "method": "GET",
+      "path_pattern": "/api/chat/channels/{id}",
+      "function_id": "chat_channel_get",
+      "auth_mode": "panel_or_bearer",
+      "principal": "authenticated",
+      "csrf_origin_required": false,
+      "rate_limit": "default_per_path",
+      "audit_category": "chat.channel.read",
+      "legacy_until": null,
+      "pass_query": true,
+      "path_param_map": {
+        "id": "id"
+      },
+      "response_mode": "result"
+    },
+    {
+      "method": "POST",
+      "path_pattern": "/api/chat/channels/{id}/join",
+      "function_id": "chat_channel_join",
+      "auth_mode": "panel_or_bearer",
+      "principal": "authenticated",
+      "csrf_origin_required": true,
+      "rate_limit": "default_per_path",
+      "audit_category": "chat.channel.write",
+      "legacy_until": null,
+      "pass_body": true,
+      "path_param_map": {
+        "id": "id"
+      },
+      "response_mode": "result"
+    },
+    {
+      "method": "POST",
+      "path_pattern": "/api/chat/channels/{id}/leave",
+      "function_id": "chat_channel_leave",
+      "auth_mode": "panel_or_bearer",
+      "principal": "authenticated",
+      "csrf_origin_required": true,
+      "rate_limit": "default_per_path",
+      "audit_category": "chat.channel.write",
+      "legacy_until": null,
+      "pass_body": true,
+      "path_param_map": {
+        "id": "id"
+      },
+      "response_mode": "result"
+    },
+    {
+      "method": "POST",
+      "path_pattern": "/api/chat/channels/{id}/messages",
+      "function_id": "chat_channel_send_message",
+      "auth_mode": "panel_or_bearer",
+      "principal": "authenticated",
+      "csrf_origin_required": true,
+      "rate_limit": "default_per_path",
+      "audit_category": "chat.channel.message",
+      "legacy_until": null,
+      "pass_body": true,
+      "path_param_map": {
+        "id": "id"
+      },
+      "response_mode": "result"
+    },
+    {
+      "method": "GET",
+      "path_pattern": "/api/chat/channels/{id}/messages",
+      "function_id": "chat_channel_get_messages",
+      "auth_mode": "panel_or_bearer",
+      "principal": "authenticated",
+      "csrf_origin_required": false,
+      "rate_limit": "default_per_path",
+      "audit_category": "chat.channel.read",
+      "legacy_until": null,
+      "pass_query": true,
+      "path_param_map": {
+        "id": "id"
+      },
+      "response_mode": "result"
+    },
+    {
+      "method": "POST",
+      "path_pattern": "/api/chat/channels/{id}/messages/{msg_id}/reply",
+      "function_id": "chat_channel_reply",
+      "auth_mode": "panel_or_bearer",
+      "principal": "authenticated",
+      "csrf_origin_required": true,
+      "rate_limit": "default_per_path",
+      "audit_category": "chat.channel.message",
+      "legacy_until": null,
+      "pass_body": true,
+      "path_param_map": {
+        "id": "id",
+        "msg_id": "msg_id"
+      },
+      "response_mode": "result"
+    },
+    {
       "method": "POST",
       "path": "/api/remote/tasks",
       "function_id": "remote_task_create",

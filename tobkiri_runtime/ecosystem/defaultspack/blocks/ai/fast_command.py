@@ -63,7 +63,8 @@ def run(input_data: Any, context: dict[str, Any]) -> dict[str, Any]:
             model_settings.set_preferred_model(str(selection["selected_model"]))
         summary["direct_selection"] = selection
     summary["message"] = (
-        "Enabled Fast mode. Gateways use native speed routing; direct providers "
-        "use successful measured tokens/second samples."
+        "Enabled Fast mode. OpenRouter uses throughput routing and Vercel AI "
+        "Gateway uses TPS routing; direct providers use successful measured "
+        "tokens/second samples."
     )
     return ok(summary)

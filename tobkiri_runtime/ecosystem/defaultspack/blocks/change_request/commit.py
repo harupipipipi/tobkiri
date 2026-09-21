@@ -4,7 +4,8 @@ import os
 
 from blocks._common import error, ok
 from blocks.coding._approval import approval_invalid_response, approval_required, is_server_approved
-from blocks.change_request._helpers import invalid_input_response, not_found_response, service, service_error_response
+from blocks.change_request._helpers import invalid_input_response, mutation_conflict_response, not_found_response, service, service_error_response
+from domain.change_request.store import ChangeRequestIdempotencyConflict, ChangeRequestRevisionConflict
 from domain.safety.audit import record_attempt, record_execution, record_failure
 
 
@@ -42,6 +43,9 @@ def run(input_data, context=None):
         return ok(result)
     except KeyError:
         return not_found_response()
+    except (ChangeRequestRevisionConflict, ChangeRequestIdempotencyConflict) as exc:
+        record_failure(operation, "high", str(exc), {"id": cr_id})
+        return mutation_conflict_response(exc)
     except ValueError as exc:
         return invalid_input_response(exc)
     except Exception as exc:

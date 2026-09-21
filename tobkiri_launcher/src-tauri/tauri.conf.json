@@ -4,8 +4,8 @@
   "version": "1.0.0-beta.2",
   "identifier": "dev.tobkiri.launcher",
   "build": {
-    "beforeBuildCommand": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build",
-    "beforeDevCommand": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build",
+    "beforeBuildCommand": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build && cd ../.. && python tobkiri_launcher/scripts/prepare_viewer_runtime.py --mode release",
+    "beforeDevCommand": "cd ../frontend && node scripts/preflight-viewer-build.mjs && npm run build && cd ../.. && python tobkiri_launcher/scripts/prepare_viewer_runtime.py --mode dev",
     "frontendDist": "./splash"
   },
   "app": {
@@ -33,7 +33,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [],
     "resources": {
       "./gen/app": "app"
     },

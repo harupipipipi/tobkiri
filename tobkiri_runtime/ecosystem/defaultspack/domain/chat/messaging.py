@@ -8,11 +8,11 @@ Each channel's messages are stored in a separate JSON file.
 import copy
 import json
 import os
-import re
 import threading
 import time
 import uuid
 
+from domain.mention import extract_mention_values
 
 def _gen_id():
     return str(uuid.uuid4())
@@ -21,8 +21,6 @@ def _gen_id():
 def _now_ms():
     return int(time.time() * 1000)
 
-
-_MENTION_PATTERN = re.compile(r"@(\w+)")
 
 _PERSIST_DIR = os.path.join(
     os.path.dirname(__file__), "..", "..", ".data", "channel_messages"
@@ -83,22 +81,19 @@ class MessagingService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def parse_mentions(text):
+    def parse_mentions(text, known_values=None):
         """Extract @mentions from message text.
 
         Returns a list of mentioned names. '@all' is returned as 'all'.
         """
-        if not text:
-            return []
-        matches = _MENTION_PATTERN.findall(text)
-        return list(dict.fromkeys(matches))
+        return list(dict.fromkeys(extract_mention_values(text, known_values)))
 
     # ------------------------------------------------------------------
     # Send message
     # ------------------------------------------------------------------
 
     def send_message(self, channel_id, sender_id, sender_name, content,
-                     thread_id=None, metadata=None):
+                     thread_id=None, metadata=None, mention_values=None):
         """Post a message to a channel.
 
         Args:
@@ -112,7 +107,7 @@ class MessagingService:
         Returns:
             (message_dict, mentions_list)
         """
-        mentions = self.parse_mentions(content)
+        mentions = self.parse_mentions(content, mention_values)
         msg_id = _gen_id()
         now = _now_ms()
 

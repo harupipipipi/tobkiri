@@ -40,8 +40,8 @@ export function ProfileGraphPalette({
   });
 
   return (
-    <section className="rounded-2xl border border-border bg-bg-card p-4">
-      <div className="mb-4 grid grid-cols-2 gap-2">
+    <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-bg-card p-3">
+      <div className="mb-3 grid grid-cols-2 gap-1.5">
         {(Object.keys(PROFILE_GRAPH_CATEGORY_LABELS) as ProfileGraphCategory[]).map((category) => (
           <Button
             key={category}
@@ -71,14 +71,14 @@ export function ProfileGraphPalette({
         <Badge variant="outline">{selectedValues.length} selected</Badge>
       </div>
 
-      <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {items.length ? items.map((item) => {
           const isSelected = selectedValues.includes(item.id);
           return (
             <div
               key={item.id}
               className={cn(
-                'rounded-xl border p-3 transition-colors',
+                'rounded-lg border p-2.5 transition-colors',
                 isSelected ? 'border-accent bg-accent/10' : 'border-border hover:bg-bg-hover',
               )}
             >

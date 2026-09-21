@@ -1,25 +1,36 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Database, FileCode2, FolderOpen, RefreshCw, ShieldCheck } from 'lucide-react';
-import { Button } from '@/src/components/ui/Button';
-import { Badge } from '@/src/components/ui/Badge';
-import type { ApiProfileWorkspaceDetail, StartupProfilesResponseData } from '@/src/lib/apiTypes';
-import { fetchActiveProfileWorkspace, fetchProfileWorkspace } from '@/src/lib/profileWorkspaceApi';
-import { useAppStore } from '@/src/store';
-import { FlowViewer } from './FlowViewer';
-import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
+import { Database, FileCode2, Files, FolderOpen, RefreshCw, ShieldCheck } from 'lucide-react';
 
-function JsonBlock({ value }: { value: unknown }) {
+import {Badge} from '@/src/components/ui/Badge';
+import {Button} from '@/src/components/ui/Button';
+import {InlineLoadError} from '@/src/components/ui/InlineLoadError';
+import type {ApiProfileWorkspaceDetail, StartupProfilesResponseData} from '@/src/lib/apiTypes';
+import {fetchActiveProfileWorkspace, fetchProfileWorkspace} from '@/src/lib/profileWorkspaceApi';
+import {cn} from '@/src/lib/utils';
+import {useAppStore} from '@/src/store';
+import {FlowViewer} from './FlowViewer';
+
+type WorkspaceTab = 'overview' | 'configuration' | 'resources' | 'flow';
+
+const TABS: Array<{id: WorkspaceTab; label: string; icon: typeof FolderOpen}> = [
+  {id: 'overview', label: 'Overview', icon: FolderOpen},
+  {id: 'configuration', label: 'Configuration', icon: Database},
+  {id: 'resources', label: 'Resources', icon: Files},
+  {id: 'flow', label: 'Flow YAML', icon: FileCode2},
+];
+
+function JsonBlock({value}: {value: unknown}) {
   return (
-    <pre className="max-h-56 overflow-auto bg-bg-hover p-3 text-xs text-text-main">
+    <pre className="h-full min-h-0 overflow-auto rounded-lg border border-border bg-bg-main p-3 font-mono text-xs leading-5 text-text-main">
       {JSON.stringify(value, null, 2)}
     </pre>
   );
 }
 
-function PathRow({ label, value }: { label: string; value?: string }) {
+function PathRow({label, value}: {label: string; value?: string}) {
   return (
-    <div className="grid gap-1 border-b border-border py-2 sm:grid-cols-[180px_minmax(0,1fr)]">
-      <div className="text-xs font-medium uppercase text-text-muted">{label}</div>
+    <div className="grid min-w-0 gap-1 border-b border-border/70 py-2.5 last:border-b-0 sm:grid-cols-[150px_minmax(0,1fr)]">
+      <div className="text-[11px] font-medium uppercase tracking-[0.12em] text-text-muted">{label}</div>
       <div className="min-w-0 break-all font-mono text-xs text-text-main">{value || '--'}</div>
     </div>
   );
@@ -34,6 +45,7 @@ export function ProfileWorkspace() {
   const [startupProfiles, setStartupProfiles] = useState<StartupProfilesResponseData | null>(null);
   const [workspace, setWorkspace] = useState<ApiProfileWorkspaceDetail | null>(null);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,8 +73,7 @@ export function ProfileWorkspace() {
   };
 
   useEffect(() => {
-    if (!runtimeReady) return;
-    void loadWorkspace();
+    if (runtimeReady) void loadWorkspace();
   }, [runtimeReady]);
 
   const profiles = startupProfiles?.profiles ?? [];
@@ -72,32 +83,55 @@ export function ProfileWorkspace() {
   }, [workspace]);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-bg-main">
-      <div className="border-b border-border px-6 py-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-bg-main">
+      <header className="shrink-0 border-b border-border bg-bg-card px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-text-main">Profile Workspace</h1>
-            <div className="mt-1 text-sm text-text-muted">{workspace?.profile.name ?? 'No active profile'}</div>
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold text-text-main">Profile Files</h1>
+            <div className="truncate text-xs text-text-muted">
+              Inspect generated files and runtime configuration for {workspace?.profile.name ?? 'the active profile'}.
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <select
-              className="h-9 rounded-md border border-border bg-bg-main px-3 text-sm text-text-main"
+              className="rumi-select h-9 min-w-48 rounded-md border border-border px-3 pr-9 text-sm"
               value={selectedProfileId}
               onChange={(event) => void loadWorkspace(event.target.value)}
+              aria-label="Profile"
             >
               {profiles.map((profile) => (
                 <option key={profile.profile_id} value={profile.profile_id}>{profile.name}</option>
               ))}
             </select>
-            <Button variant="secondary" size="sm" onClick={() => void loadWorkspace(selectedProfileId)}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
+            <Button variant="secondary" size="sm" onClick={() => void loadWorkspace(selectedProfileId)} loading={loading}>
+              <RefreshCw className="h-4 w-4" /> Refresh
             </Button>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <nav className="flex shrink-0 gap-1 border-b border-border bg-bg-card px-5" aria-label="Profile file sections">
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'flex items-center gap-2 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors',
+                activeTab === tab.id
+                  ? 'border-accent text-text-main'
+                  : 'border-transparent text-text-muted hover:text-text-main',
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" /> {tab.label}
+            </button>
+          );
+        })}
+      </nav>
+
+      <main className="min-h-0 flex-1 overflow-hidden p-5">
         {!runtimeReady ? (
           <InlineLoadError
             title={runtimeStatus === 'error' ? 'Runtime failed to start' : 'Runtime is not ready'}
@@ -105,7 +139,7 @@ export function ProfileWorkspace() {
             onRetry={() => void refreshRuntimeHealth()}
           />
         ) : null}
-        {loading && <div className="text-sm text-text-muted">Loading workspace...</div>}
+        {loading && !workspace ? <div className="text-sm text-text-muted">Loading profile files...</div> : null}
         {error && runtimeReady ? (
           <InlineLoadError
             title="Profile workspace could not be loaded"
@@ -115,84 +149,46 @@ export function ProfileWorkspace() {
             stale={Boolean(workspace)}
           />
         ) : null}
-        {workspace && (
-          <div className="space-y-6">
-            <section className="border border-border bg-bg-main p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <FolderOpen className="h-4 w-4 text-accent" />
-                <h2 className="text-sm font-semibold text-text-main">Workspace Paths</h2>
-                <Badge variant="success">{workspace.profile.profile_id}</Badge>
-              </div>
-              <PathRow label="profile_workspace_path" value={workspace.profile_workspace.root} />
-              <PathRow label="profile_file" value={workspace.profile_workspace.profile_file} />
-              <PathRow label="database_path" value={workspace.profile_workspace.database_path} />
-              <PathRow label="user_data_dir" value={workspace.profile_workspace.user_data_dir} />
-              <PathRow label="startup_dir" value={workspace.profile_workspace.startup_dir} />
-              <PathRow label="flows_dir" value={workspace.profile_workspace.flows_dir} />
-              <PathRow label="prompts_dir" value={workspace.profile_workspace.prompts_dir} />
-              <PathRow label="permissions_dir" value={workspace.profile_workspace.permissions_dir} />
+        {workspace && activeTab === 'overview' ? (
+          <div className="grid h-full min-h-0 gap-4 overflow-auto xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+            <section className="rounded-xl border border-border bg-bg-card p-4">
+              <div className="mb-2 flex items-center gap-2"><FolderOpen className="h-4 w-4 text-accent" /><h2 className="text-sm font-semibold text-text-main">Workspace paths</h2><Badge variant="outline">{workspace.profile.profile_id}</Badge></div>
+              <PathRow label="Workspace" value={workspace.profile_workspace.root} />
+              <PathRow label="Profile file" value={workspace.profile_workspace.profile_file} />
+              <PathRow label="Database" value={workspace.profile_workspace.database_path} />
+              <PathRow label="User data" value={workspace.profile_workspace.user_data_dir} />
+              <PathRow label="Startup" value={workspace.profile_workspace.startup_dir} />
+              <PathRow label="Flows" value={workspace.profile_workspace.flows_dir} />
+              <PathRow label="Prompts" value={workspace.profile_workspace.prompts_dir} />
+              <PathRow label="Permissions" value={workspace.profile_workspace.permissions_dir} />
             </section>
-
-            <div className="grid gap-6 xl:grid-cols-2">
-              <section className="border border-border bg-bg-main p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <Database className="h-4 w-4 text-accent" />
-                  <h2 className="text-sm font-semibold text-text-main">Startup Config</h2>
-                </div>
-                <JsonBlock value={workspace.startup_config} />
-              </section>
-
-              <section className="border border-border bg-bg-main p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-accent" />
-                  <h2 className="text-sm font-semibold text-text-main">Permissions Files</h2>
-                </div>
-                <div className="space-y-2">
-                  {Object.entries(workspace.permissions).map(([name, status]) => (
-                    <div key={name} className="flex items-center justify-between gap-3 border border-border p-2">
-                      <div className="min-w-0">
-                        <div className="font-mono text-xs text-text-main">{name}</div>
-                        <div className="truncate text-xs text-text-muted">{status.path}</div>
-                      </div>
-                      <Badge variant={status.exists ? 'success' : 'warning'}>{status.exists ? 'present' : 'missing'}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <div className="grid gap-6 xl:grid-cols-2">
-              <section className="border border-border bg-bg-main p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <FileCode2 className="h-4 w-4 text-accent" />
-                  <h2 className="text-sm font-semibold text-text-main">Profile Flows</h2>
-                </div>
-                <JsonBlock value={workspace.flows} />
-              </section>
-              <section className="border border-border bg-bg-main p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <FileCode2 className="h-4 w-4 text-accent" />
-                  <h2 className="text-sm font-semibold text-text-main">Profile Rule Prompts</h2>
-                </div>
-                <JsonBlock value={workspace.prompts} />
-              </section>
-            </div>
-
-            <section className="border border-border bg-bg-main p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-text-main">Resource Snapshot Manifest</h2>
-                <Badge variant={manifestItems.length ? 'success' : 'warning'}>{manifestItems.length} items</Badge>
+            <section className="min-h-0 overflow-auto rounded-xl border border-border bg-bg-card p-4">
+              <div className="mb-3 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-accent" /><h2 className="text-sm font-semibold text-text-main">Permission files</h2></div>
+              <div className="divide-y divide-border rounded-lg border border-border">
+                {Object.entries(workspace.permissions).map(([name, status]) => (
+                  <div key={name} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                    <div className="min-w-0"><div className="truncate font-mono text-xs text-text-main">{name}</div><div className="truncate text-[11px] text-text-muted">{status.path}</div></div>
+                    <Badge variant={status.exists ? 'success' : 'warning'}>{status.exists ? 'present' : 'missing'}</Badge>
+                  </div>
+                ))}
               </div>
-              <JsonBlock value={workspace.resource_snapshot_manifest} />
             </section>
-
-            <FlowViewer
-              yamlContent={workspace.flow_yaml.yaml_content}
-              sourcePath={workspace.flow_yaml.path}
-            />
           </div>
-        )}
-      </div>
+        ) : null}
+        {workspace && activeTab === 'configuration' ? (
+          <div className="grid h-full min-h-0 gap-4 xl:grid-cols-2">
+            <section className="flex min-h-0 flex-col gap-3"><div className="flex items-center gap-2"><Database className="h-4 w-4 text-accent" /><h2 className="text-sm font-semibold text-text-main">Startup configuration</h2></div><div className="min-h-0 flex-1"><JsonBlock value={workspace.startup_config} /></div></section>
+            <section className="flex min-h-0 flex-col gap-3"><div className="flex items-center justify-between"><h2 className="text-sm font-semibold text-text-main">Resource snapshot</h2><Badge variant={manifestItems.length ? 'success' : 'warning'}>{manifestItems.length} items</Badge></div><div className="min-h-0 flex-1"><JsonBlock value={workspace.resource_snapshot_manifest} /></div></section>
+          </div>
+        ) : null}
+        {workspace && activeTab === 'resources' ? (
+          <div className="grid h-full min-h-0 gap-4 xl:grid-cols-2">
+            <section className="flex min-h-0 flex-col gap-3"><h2 className="text-sm font-semibold text-text-main">Profile flows</h2><div className="min-h-0 flex-1"><JsonBlock value={workspace.flows} /></div></section>
+            <section className="flex min-h-0 flex-col gap-3"><h2 className="text-sm font-semibold text-text-main">Rule prompts</h2><div className="min-h-0 flex-1"><JsonBlock value={workspace.prompts} /></div></section>
+          </div>
+        ) : null}
+        {workspace && activeTab === 'flow' ? <div className="h-full min-h-0 overflow-auto"><FlowViewer yamlContent={workspace.flow_yaml.yaml_content} sourcePath={workspace.flow_yaml.path} /></div> : null}
+      </main>
     </div>
   );
 }

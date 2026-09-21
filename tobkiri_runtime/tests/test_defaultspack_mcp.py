@@ -11,6 +11,7 @@ from ecosystem.defaultspack.blocks.tool import mcp_connect as mcp_connect_block
 from ecosystem.defaultspack.blocks.tool import mcp_list as mcp_list_block
 from ecosystem.defaultspack.domain.tool.mcp_client import McpClient
 from ecosystem.defaultspack.domain.tool.registry import ToolRegistry
+from domain.tool_policy.internal_context import mark_tool_server_approval_context
 
 
 @pytest.fixture(autouse=True)
@@ -233,7 +234,10 @@ def test_mcp_connect_accepts_server_id_and_saved_config(monkeypatch, tmp_path):
     monkeypatch.setattr(mcp_connect_block, "McpClient", lambda: fake_client)
     monkeypatch.setattr(mcp_connect_block, "ToolRegistry", lambda: fake_registry)
 
-    result = mcp_connect_block.run({"server_id": "filesystem"}, {"_tool_server_approved": True})
+    result = mcp_connect_block.run(
+        {"server_id": "filesystem"},
+        mark_tool_server_approval_context({}),
+    )
 
     assert result["status"] == "ok"
     assert fake_client.connected[0][0] == "filesystem"
@@ -320,7 +324,7 @@ def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatc
                 "args": [str(server_path)],
             },
         },
-        {"_tool_server_approved": True},
+        mark_tool_server_approval_context({}),
     )
 
     assert connect_result["status"] == "ok"
@@ -329,7 +333,9 @@ def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatc
 
     requested_payload = {"label": "invoice-" + tmp_path.name[-6:], "numbers": [7, 11, 13]}
     expected_sum = sum(requested_payload["numbers"])
-    expected_digest = hashlib.sha256(json.dumps(requested_payload, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+    expected_digest = hashlib.sha256(
+        json.dumps(requested_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:12]
 
     class EvidenceCheckingClient:
         def __init__(self):
@@ -365,14 +371,19 @@ def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatc
             assert evidence["sum"] == expected_sum
             yield {
                 "type": "content_delta",
-                "delta": {"type": "text", "text": f"{evidence['label']} total={evidence['sum']} digest={evidence['digest']}"},
+                "delta": {
+                    "type": "text",
+                    "text": f"{evidence['label']} total={evidence['sum']} digest={evidence['digest']}",
+                },
             }
             yield {"type": "stream_end", "finish_reason": "stop"}
 
         def complete(self, *_args, **_kwargs):
             raise AssertionError("streaming tool path should be used")
 
-    monkeypatch.setattr(ChatRunEngine, "_provider_supports_stream_tool_calls", staticmethod(lambda _model: True))
+    monkeypatch.setattr(
+        ChatRunEngine, "_provider_supports_stream_tool_calls", staticmethod(lambda _model: True)
+    )
 
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
@@ -380,7 +391,10 @@ def test_chat_run_executes_prefixless_mcp_tool_with_tool_log_evidence(monkeypatc
         ChatRunEngine(client=EvidenceCheckingClient()).stream(
             {
                 "conversation_id": conversation["id"],
-                "message": {"role": "user", "content": "Calculate the invoice total with the MCP digest tool."},
+                "message": {
+                    "role": "user",
+                    "content": "Calculate the invoice total with the MCP digest tool.",
+                },
                 "tools": [tool_id],
             },
             {},
@@ -460,11 +474,17 @@ def test_mcp_tool_is_unverified_when_selected_model_cannot_call_tools(monkeypatc
                 "explanation": self.explanation,
             }
 
-    monkeypatch.setattr(run_request_module, "route_model_request", lambda _request: NoToolRoutingDecision())
+    monkeypatch.setattr(
+        run_request_module, "route_model_request", lambda _request: NoToolRoutingDecision()
+    )
     monkeypatch.setattr(
         run_request_module,
         "get_model_capabilities",
-        lambda _model: {"profile_id": "local/no-tools", "supports_tool_calling": False, "supports_thinking": False},
+        lambda _model: {
+            "profile_id": "local/no-tools",
+            "supports_tool_calling": False,
+            "supports_thinking": False,
+        },
     )
 
     class TextOnlyClient:
@@ -472,7 +492,9 @@ def test_mcp_tool_is_unverified_when_selected_model_cannot_call_tools(monkeypatc
             del params
             assert tools == []
             return {
-                "content": [{"type": "text", "text": "I used a tool-like answer without tool calls."}],
+                "content": [
+                    {"type": "text", "text": "I used a tool-like answer without tool calls."}
+                ],
                 "finish_reason": "stop",
             }
 
@@ -495,14 +517,19 @@ def test_mcp_tool_is_unverified_when_selected_model_cannot_call_tools(monkeypatc
 
     final_message = [event["data"]["message"] for event in events if event["type"] == "done"][-1]
     assert final_message["tool_logs"] == []
-    assert not [event for event in final_message["events"] if event.get("type", "").startswith("tool_call_")]
+    assert not [
+        event for event in final_message["events"] if event.get("type", "").startswith("tool_call_")
+    ]
     metadata = final_message["metadata"]
     assert metadata["requested_tools"] == [tool_id]
     assert metadata["attached_tools"] == []
     assert metadata["attached_provider_tools"] == []
     assert metadata["executed_tools"] == []
     assert metadata["tool_calling_unverified"] is True
-    assert metadata["tool_calling_unavailable_reason"] == "selected_model_does_not_support_tool_calling"
+    assert (
+        metadata["tool_calling_unavailable_reason"]
+        == "selected_model_does_not_support_tool_calling"
+    )
     assert "selected_model_does_not_support_tool_calling" in metadata["model_routing"]["warnings"]
     ChatStore._instance = None
 
