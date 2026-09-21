@@ -264,6 +264,11 @@ class OpenRouterProvider(OpenAICompatibleProvider):
             invocation_models.extend(self._normalize_remote_models(cache.get("models")))
         if not invocation_models:
             invocation_models.extend(self._remote_discovered_models())
+        # An injected catalog (tests, dev manifests, from_manifest) is itself
+        # a last-known-good inventory; production keeps KNOWN_MODELS empty so
+        # this fallback never bypasses live account discovery there.
+        if not invocation_models:
+            invocation_models.extend(self.KNOWN_MODELS)
         for item in invocation_models:
             if not isinstance(item, dict):
                 continue
