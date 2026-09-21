@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from core_runtime.host_broker.computer_contract import (
     ComputerHost,
     ComputerHostActionResult,
@@ -21,6 +23,8 @@ from ecosystem.rumi_default_tools_pack.domain.computer.models import (
 from ecosystem.rumi_default_tools_pack.domain.computer.registry import DriverRegistry
 from ecosystem.rumi_default_tools_pack.domain.computer.service import ComputerSeatService
 from ecosystem.rumi_default_tools_pack.domain.computer.tool_service import ComputerToolService
+
+pytestmark = pytest.mark.contract
 
 
 class FakeComputerHost:

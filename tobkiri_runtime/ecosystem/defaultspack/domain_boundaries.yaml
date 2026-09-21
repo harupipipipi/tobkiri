@@ -224,6 +224,8 @@ domains:
   media:
     may_import: []
     path: domain/media
+    public_imports:
+    - domain/safety/audit
   memory:
     may_import:
     - domain/memory2
