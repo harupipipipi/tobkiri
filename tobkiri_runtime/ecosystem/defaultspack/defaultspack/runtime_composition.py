@@ -110,14 +110,16 @@ def _canonical_result_projection(value: object, depth: int = 0) -> object:
 def _model_search(
     filters: Mapping[str, object],
     profiles: list[Mapping[str, object]],
+    runtime_settings: Mapping[str, object],
 ) -> Mapping[str, object]:
     """Resolve the Defaultspack-owned model search at invocation time.
 
     The Host-verified Provider supplies only schema-validated filter fields,
     the captured Profile identity, and the registry snapshot it read through
-    its declared nested contract edge.  The settings read binds an explicit
-    owner port to the app-owned settings document, then reuses the same
-    domain projection the legacy ``blocks.ai.search_models`` handler used.
+    its declared nested contract edge.  The settings Pack supplies a bounded,
+    non-secret runtime-settings projection through the Host port, which this
+    composition root combines with the same domain projection the legacy
+    ``blocks.ai.search_models`` handler used.
     The domain modules keep their legacy ``domain.*`` import layout, so the
     pack root must already be importable exactly as ``desktop_app`` arranges
     at application start.
@@ -129,22 +131,15 @@ def _model_search(
     if pack_root not in sys.path:
         sys.path.insert(0, pack_root)
 
-    from domain.ai_client.model_runtime_settings import (
-        ModelRuntimeSettingsService,
-    )
     from domain.ai_client.model_search import (
         get_profile_catalog,
         search_models,
     )
-    from domain.frontend_settings_store import (
-        defaultspack_frontend_settings_path,
-    )
-    from ecosystem.tobkiri_ui_settings_pack.runtime.store import (
-        FrontendSettingsStore,
-    )
-
-    owner = FrontendSettingsStore(defaultspack_frontend_settings_path())
-    settings = ModelRuntimeSettingsService(settings_owner=owner).get_settings()
+    settings = {
+        str(key): value
+        for key, value in runtime_settings.items()
+        if isinstance(key, str)
+    }
     catalog = get_profile_catalog(
         settings=settings,
         registry_profiles=[
@@ -279,7 +274,11 @@ class DefaultspackDispatchDelegates:
     chat_continuation_resume: Callable[..., Mapping[str, object]]
     authority_approval_window_open: Callable[[str], Mapping[str, object]]
     model_search: Callable[
-        [Mapping[str, object], list[Mapping[str, object]]],
+        [
+            Mapping[str, object],
+            list[Mapping[str, object]],
+            Mapping[str, object],
+        ],
         Mapping[str, object],
     ]
 

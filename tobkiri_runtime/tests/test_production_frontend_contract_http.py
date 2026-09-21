@@ -2725,13 +2725,14 @@ def test_model_search_controller_fails_closed_on_invalid_composition() -> None:
     from tobkiri_host.ports import ModelSearchCommand
 
     controller = ModelSearchController(
-        search_models=lambda _filters, _profiles: {"unexpected": True}
+        search_models=lambda _filters, _profiles, _settings: {"unexpected": True}
     )
     command = ModelSearchCommand(
         context=None,  # type: ignore[arg-type]
         profile_id="defaults",
         filters={},
         profiles=(),
+        runtime_settings={},
     )
     with pytest.raises(PermissionError, match="model search is unavailable"):
         controller.search_models(command)

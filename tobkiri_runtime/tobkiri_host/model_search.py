@@ -14,18 +14,24 @@ from .ports import ModelSearchCommand
 class ModelSearchController:
     """Forward one authenticated search request to its composition callback.
 
-    The controller holds no catalog, profile, or settings state: the verified
-    Provider supplies only the captured Profile identity and validated filter
-    fields, and the composition callback owns settings-owner binding and
-    catalog assembly.  Its bounded result echoes only the projected models
-    and applied-filter metadata the operation schema admits.
+    The controller holds no catalog or owner capability: the verified
+    Provider supplies the captured Profile identity, validated filter fields,
+    registry snapshot, and a non-secret runtime-settings projection.  The
+    composition callback owns catalog assembly.  Its bounded result echoes
+    only the projected models and applied-filter metadata the operation schema
+    admits.
     """
 
     def __init__(
         self,
         *,
         search_models: Callable[
-            [Mapping[str, Any], list[Mapping[str, Any]]], Mapping[str, Any]
+            [
+                Mapping[str, Any],
+                list[Mapping[str, Any]],
+                Mapping[str, Any],
+            ],
+            Mapping[str, Any],
         ],
     ) -> None:
         self._search = search_models
@@ -36,6 +42,7 @@ class ModelSearchController:
         result = self._search(
             dict(command.filters),
             [dict(profile) for profile in command.profiles],
+            dict(command.runtime_settings),
         )
         if (
             not isinstance(result, Mapping)

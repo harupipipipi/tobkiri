@@ -327,7 +327,11 @@ class RuntimeCaptureInputs:
     ) = None
     model_search: (
         Callable[
-            [Mapping[str, object], list[Mapping[str, object]]],
+            [
+                Mapping[str, object],
+                list[Mapping[str, object]],
+                Mapping[str, object],
+            ],
             Mapping[str, object],
         ]
         | None

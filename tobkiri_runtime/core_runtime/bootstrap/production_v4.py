@@ -1325,7 +1325,11 @@ def capture_production_dispatch(
     ) = None,
     model_search: (
         Callable[
-            [Mapping[str, Any], list[Mapping[str, Any]]],
+            [
+                Mapping[str, Any],
+                list[Mapping[str, Any]],
+                Mapping[str, Any],
+            ],
             Mapping[str, Any],
         ]
         | None

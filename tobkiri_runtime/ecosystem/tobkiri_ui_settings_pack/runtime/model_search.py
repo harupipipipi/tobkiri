@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Mapping
 
 from core_runtime.host_provider_backend_v4 import (
@@ -10,6 +11,7 @@ from core_runtime.host_provider_backend_v4 import (
     HostProviderContributionV4,
     HostProviderInvocationContextV4,
 )
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.ports import ModelSearchCommand
 
@@ -36,6 +38,15 @@ _FILTER_KEYS = frozenset(
         "local_only",
         "min_knowledge_level",
         "max_results",
+    }
+)
+
+_RUNTIME_SETTING_KEYS = frozenset(
+    {
+        "api_bound_profiles",
+        "composite_models",
+        "model_packs",
+        "model_notes",
     }
 )
 
@@ -116,6 +127,21 @@ class ModelSearchHostFactoryV4:
                 not isinstance(profile, Mapping) for profile in profiles
             ):
                 raise PermissionError("model profile snapshot is invalid")
+            settings_path = (
+                context.user_data_root
+                / "defaultspack"
+                / "shared"
+                / "frontend_settings.json"
+            )
+            settings_snapshot = FrontendSettingsStore(settings_path).read_snapshot()
+            raw_models = settings_snapshot.get("models", {})
+            if not isinstance(raw_models, Mapping):
+                raise PermissionError("model settings snapshot is invalid")
+            runtime_settings = {
+                key: deepcopy(raw_models[key])
+                for key in _RUNTIME_SETTING_KEYS
+                if key in raw_models
+            }
             return port.search_models(
                 ModelSearchCommand(
                     context=envelope.context,
@@ -126,6 +152,7 @@ class ModelSearchHostFactoryV4:
                         if key != "profile_id"
                     },
                     profiles=tuple(profiles),
+                    runtime_settings=runtime_settings,
                 )
             )
 
