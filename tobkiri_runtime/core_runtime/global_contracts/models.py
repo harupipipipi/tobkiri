@@ -155,9 +155,23 @@ class ContractResult(Generic[T]):
     value: T | None = None
     diagnostics: tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    contract_id: str = ""
+    version: str = ""
+    provider_instance_id: str = ""
 
     @property
     def ok(self) -> bool:
         """Return whether this result contains a successful value."""
         return self.status is ContractStatus.OK
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the envelope for schema-checked wire payloads."""
+        return {
+            "status": self.status.value,
+            "contract_id": self.contract_id,
+            "version": self.version,
+            "provider_instance_id": self.provider_instance_id,
+            "diagnostics": list(self.diagnostics),
+            "value": self.value,
+        }
 
