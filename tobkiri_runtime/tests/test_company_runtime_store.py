@@ -10,6 +10,23 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
+def test_company_runtime_defaults_use_launcher_user_data(tmp_path, monkeypatch):
+    from domain.company.runtime_store import default_runtime_db_path
+    from domain.company.store import CompanyStore
+
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DB_PATH", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_COMPANY_RUNTIME_DIR", raising=False)
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_COMPANY_STORE_PATH", raising=False)
+    monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
+    CompanyStore._instance = None
+
+    expected_dir = tmp_path / "defaultspack" / "shared" / "companies"
+    assert default_runtime_db_path() == expected_dir / "company_runtime.db"
+    assert CompanyStore().storage_file == expected_dir / "companies.json"
+
+    CompanyStore._instance = None
+
+
 def test_company_runtime_store_persists_slack_runtime_tables(tmp_path):
     from domain.company.runtime_store import CompanyRuntimeStore
 

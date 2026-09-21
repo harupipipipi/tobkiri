@@ -1,0 +1,145 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:dc90820e680d1b6b5c15def59a7e55cab0b4e1d786a21c15d99694c67044e259",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:11909f9bd8fb202506c6972183dab8f7587ba29f9776a196e20609f9d7530580",
+      "kind": "executable",
+      "path": "runtime/adapter.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.company.work.v1",
+      "operations": [
+        "rumi_company_agent_adapter_pack.company-agent-work"
+      ],
+      "revision_digest": "sha256:71dbd112535d44d19a42b1fb50bffc6c1ab80fde72fdaf058c16b1f6d6109051"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:71dbd112535d44d19a42b1fb50bffc6c1ab80fde72fdaf058c16b1f6d6109051",
+      "id": "rumi_company_agent_adapter_pack.company-work.agent",
+      "implementation_digest": "sha256:11909f9bd8fb202506c6972183dab8f7587ba29f9776a196e20609f9d7530580",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_company_agent_adapter_pack.company-agent-work"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:1b69db1b7e477545f9e039be58b9b2fa3206cc39214bacb35d4fbf60044cc988",
+    "contract_catalog_digest": "sha256:ecb87bd7e34373d359b96fd2db1d449e54342b18d4f8064a5303fa78bf02d478",
+    "source_identity": "sha256:f113046b92b6d3a9c08935b802c3c28446d711960875c6a477fedf5898090fb3"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.company.work.v1",
+      "rumi:ecosystem/rumi_company_agent_adapter_pack",
+      "rumi_company_agent_adapter_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.company.work.v1",
+      "effect_ceiling": [
+        "capability:company.work"
+      ],
+      "operation_id": "rumi_company_agent_adapter_pack.company-agent-work",
+      "owner": "rumi_company_agent_adapter_pack",
+      "provider_id": "rumi_company_agent_adapter_pack.company-work.agent",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:1b69db1b7e477545f9e039be58b9b2fa3206cc39214bacb35d4fbf60044cc988",
+    "display_name": "Rumi Company Agent Adapter",
+    "id": "rumi_company_agent_adapter_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:f113046b92b6d3a9c08935b802c3c28446d711960875c6a477fedf5898090fb3",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:f113046b92b6d3a9c08935b802c3c28446d711960875c6a477fedf5898090fb3",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_company_agent_adapter_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.company.work.v1",
+      "operations": [
+        "rumi_company_agent_adapter_pack.company-agent-work"
+      ],
+      "owner": "rumi_company_agent_adapter_pack",
+      "provider_id": "rumi_company_agent_adapter_pack.company-work.agent"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [
+      "company.work",
+      "conversation.manage",
+      "conversation.read",
+      "job.dispatch",
+      "message.manage"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.conversation.manage.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.job.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.message.manage.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+      "rumi_job_action_broker_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

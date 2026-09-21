@@ -1,0 +1,39 @@
+{
+  "pack_id": "rumi_subagent_placement_pack",
+  "display_name": "Tobkiri Subagent Placement Pack",
+  "description": "Typed Subagent Placement and effective-plan compiler.",
+  "target_pack_id": "rumi_subagent_placement_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "critical",
+  "supports_all_ok": false,
+  "depends_on": [],
+  "required_permissions": [
+    "subagent.catalog.read",
+    "subagent.placement.read",
+    "subagent.placement.compile",
+    "subagent.topology.compile",
+    "subagent.placement.patch",
+    "subagent.runtime.assign"
+  ],
+  "conflicts_with": [],
+  "compatibility": {
+    "python": ">=3.10",
+    "platforms": ["macos", "linux", "windows"]
+  },
+  "marketplace": {
+    "id": "rumi.subagent_placement",
+    "registry": "bundled",
+    "publisher": "rumi-ai",
+    "status": "verified",
+    "category": "agent",
+    "channel": "experimental"
+  },
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": [
+    "CapabilityPlan remains the execution authority.",
+    "Compiler stages cannot widen authority or budgets.",
+    "Unknown required Placement features fail closed.",
+    "Existing runs remain pinned when a Placement Map revision changes."
+  ]
+}

@@ -3,6 +3,22 @@
 
 ## Canonical implementation
 
+The captured full-UI conversation CRUD routes use the conversation
+owner Pack through Authority/Broker. Creation requires a stable client UUID and
+the list's `store_revision`; a stale write is rejected, not retried with a fresh
+identity. The source Profile includes the required conversation-manage edge;
+existing activations must review that addition before using it. This does not
+yet complete full-UI message sending, streaming or stopping. Record updates and
+deletion require the displayed record's revision; stale writes fail unchanged.
+See [Chat API](docs/chat.md) for the canonical/legacy distinction.
+
+The isolated saved-turn computation in `runtime/saved_conversation.py` now
+produces four bounded v2 intents: read, append user, generate, append assistant.
+It preserves stable IDs and owner revisions and reports uncertain writes without
+retrying them. It is not registered or wired into the guest runner or ChatApp;
+do not expose its resume-state ABI to HTTP callers. See
+[saved-turn integration requirements](../../docs/saved-turn-bridge-v2.md).
+
 For Tobkiri, the canonical defaultspack implementation is
 `tobkiri_runtime/ecosystem/defaultspack/`.
 
@@ -83,7 +99,7 @@ defaults 単体で既存の AI サービス（ChatGPT / Claude / Cursor / Devin�
 | HTTP エンドポイントを見たい | `docs/chat.md`, `transport/http.py` |
 | viewer 経由の起動フローを知りたい | `../../docs/tobkiri_launcher_start.md` |
 
-`webapp/` は `rumi DP` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
+`webapp/` は `Tobkiri` の standalone frontend source です。`defaultspack` の `/api/chat/...`、`/api/ui/...`、`/api/health` に接続します。`npm run build` の出力先は `ui/` で、HTTP サーバーはその build 済み asset を `/` と `/static/...` で配信します。
 
 ## AI Agent Service Defaults
 

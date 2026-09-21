@@ -1,10 +1,12 @@
 {
   "function_id": "browser_computer",
-  "description": "Run approved browser/computer actions.",
+  "description": "Project browser/computer actions through selected Wave 8 contracts.",
   "risk": "high",
   "requires": ["browser.control", "computer.control"],
   "caller_requires": ["user.approved.high_risk"],
   "calling_convention": "subprocess",
   "host_execution": false,
+  "authority_owner": "core_runtime.authority",
+  "client_approved_trusted": false,
   "input_schema": {"type": "object"}
 }

@@ -108,3 +108,35 @@ class DriverRegistry:
     def all_drivers(self) -> dict[str, "ComputerDriver"]:
         """Return all registered drivers."""
         return dict(self._drivers)
+
+    def safe_ax_candidate_diagnostics(self, available_driver_names: set[str] | None = None) -> dict[str, object]:
+        """Describe the fixed macOS AX type candidate without target/content data."""
+        name = "mac_accessibility"
+        driver = self._drivers.get(name)
+        registered = driver is not None
+        available = bool(registered and (available_driver_names is None or name in available_driver_names))
+        background_type_capable = False
+        capability_readable = False
+        if driver is not None:
+            try:
+                background_type_capable = bool(driver.capabilities().can_background_type)
+                capability_readable = True
+            except Exception:
+                capability_readable = False
+        if not registered:
+            result_code = "AX_DRIVER_NOT_REGISTERED"
+        elif not available:
+            result_code = "AX_DRIVER_UNAVAILABLE"
+        elif not capability_readable:
+            result_code = "AX_CAPABILITY_UNAVAILABLE"
+        elif not background_type_capable:
+            result_code = "AX_BACKGROUND_TYPE_UNSUPPORTED"
+        else:
+            result_code = "AX_DRIVER_ELIGIBLE"
+        return {
+            "driver_registered": registered,
+            "driver_available": available,
+            "background_type_capable": background_type_capable,
+            "attempted": False,
+            "result_code": result_code,
+        }

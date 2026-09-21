@@ -1,9 +1,9 @@
 {
   "pack_id": "rumi_mcp_gateway_pack",
   "display_name": "Rumi MCP Gateway Pack",
-  "description": "Optional declarative catalog and gateway profile for unsupported MCP server discovery, namespace routing, prompt/resource templates, registry metadata, and safety policy.",
+  "description": "Namespace-isolated MCP call adapter plus gateway catalog and safety policy.",
   "target_pack_id": "rumi_mcp_gateway_pack",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "compatibility": {
     "target_pack_version": ">=1.0.0",
     "python": ">=3.10",
@@ -28,8 +28,9 @@
     "verified": true
   },
   "recommended": false,
-  "risk_level": "medium",
+  "risk_level": "critical",
   "supports_all_ok": false,
+  "required_permissions": ["mcp.tool.call", "mcp.invoke"],
   "conflicts_with": [],
   "overlap_policy": {
     "defaultspack_tool_mcp": "do_not_override",
@@ -42,7 +43,7 @@
       "Unknown MCP servers must remain behind explicit namespace and user approval."
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Gateway metadata for unsupported MCP servers must remain opt-in and approval gated."
   },
@@ -53,6 +54,7 @@
   ],
   "security_notes": [
     "No secrets, credentials, provider endpoints, or ready-to-run connector commands are embedded.",
-    "Unsupported MCP servers are denied by default until explicitly reviewed, namespaced, and approved."
+    "Unsupported MCP servers are denied by default until explicitly reviewed, namespaced, and approved.",
+    "Tool calls require the selected MCP executor consumer and an explicit namespace."
   ]
 }

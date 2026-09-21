@@ -9,12 +9,15 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+import pytest
 
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
 
 from domain.external.adapters import line as line_adapter_module  # noqa: E402
 from domain.external.adapters.line import LineResponseAdapter  # noqa: E402
@@ -31,6 +34,16 @@ from domain.webhook.endpoint_store import WebhookEndpointStore  # noqa: E402
 
 
 SECRET = "line-secret"
+
+
+def _run_with_owner(block, fixture_root: Path, payload, context):
+    """Bind this fixture's settings outside webhook input and runtime metadata."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return block.run(
+        payload, context,
+        settings_owner=FrontendSettingsStore(fixture_root / "frontend_settings.json"),
+    )
 
 
 def _signed_line_payload(payload: dict[str, Any], *, raw_body: bytes | None = None) -> dict[str, Any]:
@@ -58,7 +71,20 @@ def _install_line_endpoint(
     monkeypatch.setenv("RUMI_DEFAULTSPACK_EXTERNAL_SOURCES_PATH", str(tmp_path / "external_sources.json"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_SECRETS_DIR", str(tmp_path / "secrets"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(tmp_path / "frontend_settings.json"))
-    monkeypatch.setenv("LINE_CHANNEL_SECRET", SECRET)
+    from domain.external.token_store import set_external_token
+
+    assert set_external_token(
+        "line",
+        SECRET,
+        token_id="channel-secret",
+        kind="channel_secret",
+    )["success"]
+    assert set_external_token(
+        "line",
+        "line-access-token",
+        token_id="channel-access",
+        kind="channel_access_token",
+    )["success"]
     store = WebhookEndpointStore(endpoint_path)
     store.upsert(
         {
@@ -122,7 +148,7 @@ def test_line_route_uses_endpoint_enabled_flag(monkeypatch, tmp_path):
     _install_line_endpoint(monkeypatch, tmp_path, enabled=False)
     payload = {"destination": "Udest", "events": []}
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "error"
     assert result["_http_status"] == 403
@@ -142,7 +168,8 @@ def test_line_route_sends_webhook_acknowledgement_when_reply_token_and_access_to
     calls: list[dict[str, Any]] = []
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["context"] = context
         return {
             "status": "ok",
@@ -170,7 +197,7 @@ def test_line_route_sends_webhook_acknowledgement_when_reply_token_and_access_to
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert calls == [
@@ -211,7 +238,8 @@ def test_line_computer_use_fake_receive_acknowledges_and_preserves_japanese_prom
     calls: list[dict[str, Any]] = []
     captured: dict[str, Any] = {}
 
-    def fake_send_run(request, context):
+    def fake_send_run(request, context, *, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["request"] = request
         captured["context"] = context
         return {
@@ -243,7 +271,7 @@ def test_line_computer_use_fake_receive_acknowledges_and_preserves_japanese_prom
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     sent_message = calls[0]["body"]["messages"][0]["text"]
@@ -264,6 +292,7 @@ def test_line_computer_use_fake_receive_acknowledges_and_preserves_japanese_prom
 def test_line_runtime_prompt_is_hidden_from_stored_user_message(monkeypatch, tmp_path):
     from domain.chat.run_request import prepare_chat_run  # noqa: E402
     from domain.chat.store import ChatStore  # noqa: E402
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(tmp_path / "chat" / "conversations.json"))
     store = ChatStore()
@@ -295,6 +324,7 @@ def test_line_runtime_prompt_is_hidden_from_stored_user_message(monkeypatch, tmp
             "tools": ["computer_use", "browser_computer"],
         },
         {"external_chat_history_mode": "current_turn"},
+        settings_owner=FrontendSettingsStore(tmp_path / "frontend_settings.json"),
     )
 
     assert prepared.user_message["raw_text"] == source_text
@@ -401,13 +431,14 @@ def test_line_computer_use_natural_message_invokes_line_biz_send_tools(monkeypat
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {"call_handler": call_handler})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {"call_handler": call_handler})
 
     event_result = result["data"]["events"][0]
     conversation = ChatStore().get_conversation(event_result["conversation_id"])
     user_message = next(message for message in conversation["messages"] if message["role"] == "user")
+    assert event_result["status"] == "ok", event_result
+    assert ai_messages, event_result
     first_model_prompt = json.dumps(ai_messages[0], ensure_ascii=False)
-    assert event_result["status"] == "ok"
     assert line_calls[0]["body"]["messages"][0]["text"] == "\u5c4a\u3044\u305f\u3088\uff01"
     assert user_message["raw_text"] == source_text
     assert "Use computer_use" not in user_message["raw_text"]
@@ -458,7 +489,8 @@ def test_line_computer_use_fake_webhook_runs_three_browser_tasks_and_acknowledge
     captured_lock = threading.Lock()
     completed = threading.Event()
 
-    def fake_send_run(request, context):
+    def fake_send_run(request, context, *, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         with captured_lock:
             captured_invocations.append((request, context))
             if len(captured_invocations) >= 3:
@@ -499,7 +531,7 @@ def test_line_computer_use_fake_webhook_runs_three_browser_tasks_and_acknowledge
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     assert [event["status"] for event in result["data"]["events"]] == ["accepted", "accepted", "accepted"]
@@ -539,7 +571,8 @@ def test_line_route_does_not_acknowledge_normal_line_reply_mode(monkeypatch, tmp
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     calls: list[dict[str, Any]] = []
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         return {
             "status": "ok",
             "assistant_text": "normal reply",
@@ -566,7 +599,7 @@ def test_line_route_does_not_acknowledge_normal_line_reply_mode(monkeypatch, tmp
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["acknowledgement"]["sent"] is False
@@ -587,7 +620,8 @@ def test_line_route_preserves_top_level_destination_and_endpoint_policy(monkeypa
     _remember_line_group(monkeypatch, tmp_path)
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision=None, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision=None, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["event"] = event
         captured["input_profile_id"] = input_profile_id
         captured["audience_policy"] = audience_policy
@@ -618,7 +652,7 @@ def test_line_route_preserves_top_level_destination_and_endpoint_policy(monkeypa
     }
     raw_body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
-    result = line_block.run(_signed_line_payload(payload, raw_body=raw_body), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload, raw_body=raw_body), {})
 
     assert result["status"] == "ok"
     assert captured["event"].workspace.id == "Udestination"
@@ -653,7 +687,8 @@ def test_line_route_applies_endpoint_response_context(monkeypatch, tmp_path):
     captured: dict[str, Any] = {}
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["input_profile_id"] = input_profile_id
         captured["audience_decision"] = audience_decision
         captured["context"] = context
@@ -684,7 +719,7 @@ def test_line_route_applies_endpoint_response_context(monkeypatch, tmp_path):
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     assert captured["input_profile_id"] == "line.default"
@@ -712,7 +747,8 @@ def test_line_route_builds_line_biz_prompt_from_chat_url(monkeypatch, tmp_path):
     captured: dict[str, Any] = {}
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["context"] = context
         captured["audience_decision"] = audience_decision
         captured["mentioned"] = mentioned
@@ -742,7 +778,7 @@ def test_line_route_builds_line_biz_prompt_from_chat_url(monkeypatch, tmp_path):
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     assert chat_url in captured["context"]["external_prompt_prefix"]
@@ -826,7 +862,8 @@ def test_line_computer_use_background_processing_is_opt_in(monkeypatch, tmp_path
     finished = threading.Event()
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         started.set()
         release.wait(timeout=5)
         captured["input_profile_id"] = input_profile_id
@@ -860,7 +897,7 @@ def test_line_computer_use_background_processing_is_opt_in(monkeypatch, tmp_path
     }
 
     start = time.monotonic()
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
     elapsed = time.monotonic() - start
 
     event_result = result["data"]["events"][0]
@@ -890,7 +927,8 @@ def test_line_background_processing_flag_does_not_affect_normal_line_mode(monkey
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["called"] = True
         return {
             "status": "ok",
@@ -914,7 +952,7 @@ def test_line_background_processing_flag_does_not_affect_normal_line_mode(monkey
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert captured["called"] is True
     assert result["data"]["events"][0]["status"] == "ok"
@@ -947,7 +985,7 @@ def test_line_computer_use_group_message_ignores_unaddressed_text(monkeypatch, t
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["status"] == "ignored"
@@ -982,7 +1020,7 @@ def test_line_default_group_message_ignores_unaddressed_text(monkeypatch, tmp_pa
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["status"] == "ignored"
@@ -1015,7 +1053,7 @@ def test_line_default_group_message_ignores_plain_rumi_when_trigger_not_configur
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["status"] == "ignored"
@@ -1032,7 +1070,8 @@ def test_line_default_group_message_dispatches_for_hash_trigger(monkeypatch, tmp
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["event"] = event
         captured["mentioned"] = mentioned
         captured["context"] = context
@@ -1059,7 +1098,7 @@ def test_line_default_group_message_dispatches_for_hash_trigger(monkeypatch, tmp
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["data"]["events"][0]["status"] == "ok"
     assert captured["mentioned"] is True
@@ -1086,7 +1125,8 @@ def test_line_default_group_message_dispatches_for_multiword_trigger_case_insens
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["mentioned"] = mentioned
         captured["event"] = event
         return {
@@ -1111,7 +1151,7 @@ def test_line_default_group_message_dispatches_for_multiword_trigger_case_insens
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["data"]["events"][0]["status"] == "ok"
     assert captured["mentioned"] is True
@@ -1146,7 +1186,7 @@ def test_line_group_message_ignores_recent_rumi_context_without_trigger(monkeypa
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     event_result = result["data"]["events"][0]
     assert event_result["status"] == "ignored"
@@ -1161,7 +1201,8 @@ def test_line_direct_user_message_still_dispatches_without_mention(monkeypatch, 
     monkeypatch.setattr(line_block.AudiencePolicyRegistry, "resolve", lambda self, policy_id, event=None: {"default": "allow"})
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["called"] = True
         captured["mentioned"] = mentioned
         captured["event"] = event
@@ -1187,7 +1228,7 @@ def test_line_direct_user_message_still_dispatches_without_mention(monkeypatch, 
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["data"]["events"][0]["status"] == "ok"
     assert captured["called"] is True
@@ -1209,7 +1250,8 @@ def test_line_computer_use_group_message_dispatches_when_saved_group_mentions_bo
     _remember_line_group(monkeypatch, tmp_path)
     captured: dict[str, Any] = {}
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         captured["event"] = event
         captured["audience_policy"] = audience_policy
         captured["audience_decision"] = audience_decision
@@ -1255,7 +1297,7 @@ def test_line_computer_use_group_message_dispatches_when_saved_group_mentions_bo
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["data"]["events"][0]["status"] == "ok"
     assert captured["mentioned"] is True
@@ -1314,7 +1356,7 @@ def test_line_computer_use_group_mention_from_unknown_source_is_denied(monkeypat
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     denied = result["data"]["events"][0]
     assert denied["status"] == "denied"
@@ -1339,7 +1381,7 @@ def test_line_route_empty_events_ack_ok_without_dispatch(monkeypatch, tmp_path):
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("dispatch should not run")),
     )
 
-    result = line_block.run(_signed_line_payload({"destination": "Udest", "events": []}), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload({"destination": "Udest", "events": []}), {})
 
     assert result["status"] == "ok"
     assert result["data"]["events"] == []
@@ -1366,7 +1408,7 @@ def test_line_route_processes_signed_raw_payload_only(monkeypatch, tmp_path):
     }
     signed_raw = json.dumps({"destination": "Udestination", "events": []}, separators=(",", ":")).encode("utf-8")
 
-    result = line_block.run(_signed_line_payload(parsed_payload, raw_body=signed_raw), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(parsed_payload, raw_body=signed_raw), {})
 
     assert result["status"] == "ok"
     assert result["data"]["events"] == []
@@ -1400,7 +1442,7 @@ def test_line_route_unknown_verified_source_is_saved_disabled_and_denied(monkeyp
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     denied = result["data"]["events"][0]
@@ -1427,7 +1469,8 @@ def test_line_route_frontend_push_to_saved_origin_reaches_adapter(monkeypatch, t
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(settings_path))
     calls: list[dict[str, Any]] = []
 
-    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False):
+    def fake_dispatch(event, *, input_profile_id, audience_policy, audience_decision, context, send_response, mentioned=False, settings_owner=None):
+        assert settings_owner.path == tmp_path / "frontend_settings.json"
         assert audience_decision.allowed is True
         assert context["send_mode"] == "push_to_saved_origin"
         return {
@@ -1456,7 +1499,7 @@ def test_line_route_frontend_push_to_saved_origin_reaches_adapter(monkeypatch, t
         ],
     }
 
-    result = line_block.run(_signed_line_payload(payload), {})
+    result = _run_with_owner(line_block, tmp_path, _signed_line_payload(payload), {})
 
     assert result["status"] == "ok"
     assert result["data"]["events"][0]["reply"]["sent"] is True

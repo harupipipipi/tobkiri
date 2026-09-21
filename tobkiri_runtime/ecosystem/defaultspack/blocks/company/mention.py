@@ -1,6 +1,5 @@
 from blocks._common import ok, error
-from domain.company.mention import CompanyMentionService
-from domain.company.service import CompanyService
+from domain.company.contract_facade import CompanyContractFacade, CompanyFacadeError
 
 from ._helpers import company_id_from, invalid, missing_company, require_dict
 
@@ -16,14 +15,17 @@ def run(input_data, context):
     if not content:
         return invalid("content is required")
     try:
+        facade = CompanyContractFacade(input_data, context)
         if action == "resolve":
-            result = CompanyMentionService().resolve(company_id, content)
+            result = facade.run("resolve_mentions")
             if result is None:
                 return missing_company(company_id)
             return ok(result)
-        result = CompanyService().mention(company_id, input_data)
+        result = facade.run("mention")
         if result is None:
             return missing_company(company_id)
         return ok(result)
+    except CompanyFacadeError as exc:
+        return error(str(exc), exc.code)
     except Exception as exc:
         return error("company mention failed: " + str(exc), "COMPANY_MENTION_ERROR")
