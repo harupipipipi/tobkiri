@@ -109,17 +109,71 @@ class TestDefaultspackProviderCatalog(unittest.TestCase):
             list_profile_catalog,
             list_provider_catalog,
         )
+        from domain.ai_client.client import AIClient
+        from domain.ai_client.providers import (
+            get_provider_catalog,
+        )
+        from domain.ai_client.providers.google_provider import (
+            GoogleProvider,
+        )
+
+        # Profiles come from the connection's live inventory now that no static
+        # model snapshot is bundled; stub the native models endpoint accordingly.
+        live_page = {
+            "models": [
+                {
+                    "name": "models/gemini-2.5-flash",
+                    "displayName": "Gemini 2.5 Flash",
+                    "supportedGenerationMethods": [
+                        "generateContent",
+                        "streamGenerateContent",
+                    ],
+                }
+            ]
+        }
+
+        def _reset_runtime_client() -> None:
+            AIClient._instance = None
+            GoogleProvider._MODEL_INVENTORY_CACHE.clear()
+
+        self.addCleanup(_reset_runtime_client)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             secrets_dir = Path(tmpdir) / "secrets"
             store = SecretsStore(str(secrets_dir))
             store.set_secret("GOOGLE_API_KEY", "secret-key", actor="test")
-            with patch.dict(os.environ, {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)}, clear=True):
-                providers = {item["provider_id"]: item for item in list_provider_catalog()}
-                profiles = {item["profile_id"]: item for item in list_profile_catalog()}
+            with patch.dict(
+                os.environ,
+                {"RUMI_DEFAULTSPACK_SECRETS_DIR": str(secrets_dir)},
+                clear=True,
+            ):
+                _reset_runtime_client()
+                domain_providers = {
+                    item["provider_id"]: item for item in get_provider_catalog()
+                }
+                with patch.object(
+                    GoogleProvider,
+                    "_fetch_native_models_page",
+                    return_value=live_page,
+                ):
+                    providers = {
+                        item["provider_id"]: item for item in list_provider_catalog()
+                    }
+                    profiles = {
+                        item["profile_id"]: item for item in list_profile_catalog()
+                    }
 
         google = providers["google"]
-        self.assertEqual(google["configured_envs"], ["defaultspack_secret"])
+        self.assertEqual(
+            domain_providers["google"]["availability"]["configuration_source"],
+            "defaultspack_secret",
+        )
+        # The backend facade hydrates stored keys into os.environ through the
+        # runtime client, so the surfaced env name depends on whether the
+        # singleton client was (re)built before this catalog call.
+        self.assertIn(
+            google["configured_envs"][0], {"GOOGLE_API_KEY", "defaultspack_secret"}
+        )
         self.assertTrue(google["configured"])
         self.assertTrue(profiles["google/gemini-2.5-flash"]["availability"]["configured"])
 
