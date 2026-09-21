@@ -35,8 +35,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/__init__.py",
       "type": "regular-file",
-      "size": 45,
-      "sha256": "a42fb884c06d0c91173549a112bf8fd2c6311def89ca6219e42ecede908840f3",
+      "size": 46,
+      "sha256": "6b1d280508b73bc0a6a04cdcdcede9b28b30ebaf0b6462b0a203466373850c10",
       "executable": false
     },
     {
@@ -56,8 +56,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/cli.py",
       "type": "regular-file",
-      "size": 832,
-      "sha256": "b7185f6e50796eaaf21803fc3ce77d9085a2aa058860c5f8be35ac482ce1d3d3",
+      "size": 861,
+      "sha256": "36bc09ccfaa22d2b3bec48bca5317c39c60500f45ebc39881167d9888616eff8",
       "executable": false
     },
     {
@@ -308,295 +308,295 @@
     {
       "path": "ecosystem/defaultspack/tools/artifact_export/manifest.json",
       "type": "regular-file",
-      "size": 1384,
-      "sha256": "857bd3c51ce39378d4bfe16abbf4cabaed31339199c861cfe52a0a297900348f",
+      "size": 1438,
+      "sha256": "8ceb447b89fefa7a64c9388ee1222ad6316db805fe9bc28169c3bb1c1d1ff337",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/artifact_file_delete/manifest.json",
       "type": "regular-file",
-      "size": 1306,
-      "sha256": "ecb43e92268971bd540a46bcc2f1f5180e53dced7490fcbd2ee3d1712c51ac70",
+      "size": 1356,
+      "sha256": "c54fc3113525d8efc8bb18d303aed38db503767697b7a78527db737bf877dc86",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/artifact_file_list/manifest.json",
       "type": "regular-file",
-      "size": 1358,
-      "sha256": "dd62382bc82f95d2edc5235f1dc152a1ccf1e9994d3621999085437755a6d3a9",
+      "size": 1412,
+      "sha256": "36f504303a41331956c0bf80c42b60b1f8ab4202d81bac90040de264ebef5364",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/artifact_file_patch/manifest.json",
       "type": "regular-file",
-      "size": 1506,
-      "sha256": "250122f96b6805d51863fde10f2cffafc40d98faecffdf72d9e9dffa513bdf59",
+      "size": 1564,
+      "sha256": "1d469f80a565a9876b2966d2735d2fa102fc47c003a02a411a61c775914028b8",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/artifact_file_read/manifest.json",
       "type": "regular-file",
-      "size": 1170,
-      "sha256": "2ae379bf7ae987b793b79222192252b48956c2ff08c85056177db2baf50a110e",
+      "size": 1217,
+      "sha256": "36c4db8ba2bbbef7b3f6a18ce6c9b267601e4ff0d7ca9f25eedf22566af62ee4",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/artifact_file_write/manifest.json",
       "type": "regular-file",
-      "size": 1431,
-      "sha256": "b57fb2e3882a07574c1663aa869b6145d5e54eaaf933da03cfe844b64d61ad96",
+      "size": 1485,
+      "sha256": "7479d9d28a54112d31932b97033604401dfab9fe6408d0c83ef8a19438433dc7",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/artifact_preview/manifest.json",
       "type": "regular-file",
-      "size": 1214,
-      "sha256": "abb476014c85b37553d0a15189f93aea579831f545c44c7b6c6ca5656c484f1c",
+      "size": 1261,
+      "sha256": "9f34fe01006a24c4f507fc0b26ca2bcd67adb821941c1717b586e7f636ac91a0",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/artifact_zip/manifest.json",
       "type": "regular-file",
-      "size": 1225,
-      "sha256": "60059ecb5fc3cd66f73cbc36716e1e9c16d06ebdf6b02a1273ecb2a1af03eaaf",
+      "size": 1273,
+      "sha256": "771bf37d96f782f249e60207d9085fa337a7644f4ba893be93a897123ac9978c",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/audio_transcribe/manifest.json",
       "type": "regular-file",
-      "size": 1148,
-      "sha256": "9ef3e19e8c30dcd038a942d7095c82f63769611e9b956cb0251cbea7c2040ec7",
+      "size": 1193,
+      "sha256": "55c010d7373c80b3f0050fbc54dcb33d44083d7e3796ec3f9bcc4d89e8f31cd5",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/audio_transcribe_local/manifest.json",
       "type": "regular-file",
-      "size": 1184,
-      "sha256": "f5ae159e58c886bfd4b71a75f4e897c52550bd55f13bf8cc0174ea4f518e7696",
+      "size": 1229,
+      "sha256": "f087d10d33fc27c10d741f04bdddb901e94f64695af85ed320e520d939f129fa",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/browser_download_collect/manifest.json",
       "type": "regular-file",
-      "size": 1361,
-      "sha256": "a78ece887cef2bf945972333b5641bb07a3991645261f6e808c72404ee05f6e2",
+      "size": 1412,
+      "sha256": "7d6914e684ad28189658e7029e57d9e66810047843cce48e50e45ae8e0e25927",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/browser_extract_table/manifest.json",
       "type": "regular-file",
-      "size": 1236,
-      "sha256": "353ca7439ccaa42f704a0b3218f4ef0a55f9762f859c8714600f763a8bb63718",
+      "size": 1284,
+      "sha256": "ec5edc6d72efa9dc24d2f34ce1a9fe4e6c3e1ec58d17b46fa11a90835da2bc1c",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/browser_save_page/manifest.json",
       "type": "regular-file",
-      "size": 1270,
-      "sha256": "c9eac8b6f4dd81830ece8447a8d917fa58cd7137241f513987e7180da97817cc",
+      "size": 1320,
+      "sha256": "2ba484750057c1a65013b5d4f5cae706b8461f511f03a95f861f4a34bcc5c238",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/browser_upload_file/manifest.json",
       "type": "regular-file",
-      "size": 1217,
-      "sha256": "c0e3194557c0bc093965411104f11c8d365e734882de6308142da6e569489204",
+      "size": 1264,
+      "sha256": "5d9fd557ac3eab4c38823b84f18385aa22fba3967a6ade6aff4e6f4be43ff16d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/calendar_create/manifest.json",
       "type": "regular-file",
-      "size": 1292,
-      "sha256": "159b665b36e5da95d8cf73ca6b8423c6e10dad3b9f1631ceeb0232bb29d2c6e5",
+      "size": 1345,
+      "sha256": "d80e47421e289815da0cad061066871434ec5ccf76cf694ea4c43392379bacdb",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/chart_create/manifest.json",
       "type": "regular-file",
-      "size": 1243,
-      "sha256": "d293cd2511b356b9986f2d1ea181a40f3dbdef4f2c38251d6c263f67cbe49f4c",
+      "size": 1294,
+      "sha256": "51d153e7dfdf0c9e63bcb5933e3a061c839cc56067bef231fc2ef337fc48fd4a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_access_grant/manifest.json",
       "type": "regular-file",
-      "size": 1609,
-      "sha256": "14bf8ef957d7df523dbb7f4d4870eafd997eb7f345177632b96f13e651c83c9b",
+      "size": 1660,
+      "sha256": "291645cf76e49d31a6edf030ee71cc50fb5520c82f4041cae927ce5923944a94",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_access_request/manifest.json",
       "type": "regular-file",
-      "size": 1465,
-      "sha256": "349e1ce836ed330ecc79342cec9095f88cdfc81b0e3611168401521528686907",
+      "size": 1512,
+      "sha256": "db808101de7985410ae2dbb38e7aabcc79530905bec52adbd0caed7f8e01d8a5",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_control_acquire/manifest.json",
       "type": "regular-file",
-      "size": 1431,
-      "sha256": "a6c302474745b2bb37265bd218732ee57cd322ba5dcf2f13447d00fb10043471",
+      "size": 1477,
+      "sha256": "3525c6e81fcf442c6cefec41887411ebe5051bc5c79b0501e7dfbf5f34de6712",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_control_release/manifest.json",
       "type": "regular-file",
-      "size": 1492,
-      "sha256": "a74e45fe373a1f4ac0be2fafc88e105d8dc9f9cd979a7feb730f5de960af2301",
+      "size": 1539,
+      "sha256": "94673401a482e6cd7760df19ffda95b7576b9eafce89bd11cb776f6143d5a1a8",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_control_renew/manifest.json",
       "type": "regular-file",
-      "size": 1482,
-      "sha256": "464597aeaa1cbf471b808a5810d18faf6582c6e538faf7f0c1dd557189a0791a",
+      "size": 1529,
+      "sha256": "7c7d986ce57effd4644b137726fa961f21355218b23429733a29830709876a81",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_create/manifest.json",
       "type": "regular-file",
-      "size": 3706,
-      "sha256": "8b4f135c150ebe7c46de8205b757e0c76bc4f17e804a62e2c540476368b9a076",
+      "size": 3806,
+      "sha256": "2fafe053fd23d504c78208a4cb48b3467692ca8dd2f106b7b32bc3074c1c6174",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_frame/manifest.json",
       "type": "regular-file",
-      "size": 1461,
-      "sha256": "ee78e05f215a858f09b00468b0908f3115133ac5489e74d04dffee5de1e70bfd",
+      "size": 1508,
+      "sha256": "2338afac24ba612ddcf2e76a2d857c67ad916672d1d6cf05726c05230b57cd4a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_input/manifest.json",
       "type": "regular-file",
-      "size": 2250,
-      "sha256": "fe52b8b9fe6335bdaa6b5f29a5162a34a735ee09f4bce2ce2344335190823b34",
+      "size": 2309,
+      "sha256": "b54d050175840190fc34738db237cc8c5a40514c7aac9b2c3b2f53d0001e79c7",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_list/manifest.json",
       "type": "regular-file",
-      "size": 1138,
-      "sha256": "d09e9967fb36a862595961c8a8f3cabd7b6e9f1e49cb90a1961cd1c986c3c793",
+      "size": 1178,
+      "sha256": "fec5d0e6fc802766125bc34cec87bbfcb999d1f8b4c24601f47e9eebb4a00256",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/desktop_rules_update/manifest.json",
       "type": "regular-file",
-      "size": 1841,
-      "sha256": "5354be425fa1f56b6b7d406742b18c6d201f8e359c82fc3f2fe1b07b21e9c6f8",
+      "size": 1897,
+      "sha256": "b2f6124e64efde14597fb0b1baa3cc6682b4206d76671cabf9d19d37ea170282",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/discord_send/manifest.json",
       "type": "regular-file",
-      "size": 1186,
-      "sha256": "d6bbf71c4d4e974a1c8eb2eb0030ac5fb4455ceec24079432b24dadccdf68cfd",
+      "size": 1236,
+      "sha256": "cf277e0a1e9852f76843999235796796942a6347bde2a3be0cf8e408173f924b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/doc_create/manifest.json",
       "type": "regular-file",
-      "size": 1347,
-      "sha256": "0857ef9e1b892728dfee04fde01b1f7a4eeb8740bc4c80e98a73cf656d258d0c",
+      "size": 1401,
+      "sha256": "792242735005767a8322804daff8576e3db43955b2c3282e6734575bfb9eba64",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/doc_export/manifest.json",
       "type": "regular-file",
-      "size": 1287,
-      "sha256": "7536ea42d3152a08727a2048b2782e47db7d225839be0135ad0c81d069f6177a",
+      "size": 1340,
+      "sha256": "f77c1549de25e8cad20fc41c214af5e31650a61329595b840c69f045d0639cea",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/doc_to_pdf/manifest.json",
       "type": "regular-file",
-      "size": 1193,
-      "sha256": "8cf8adea65b8ec688e05c084a6b7161abf1b1d40a42cd15a8f98a888b0eee7ee",
+      "size": 1243,
+      "sha256": "706a47baded0ec0eabd99e78cf7a3db586e9cf2878a0182c5831714aa3e30d86",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/doc_update/manifest.json",
       "type": "regular-file",
-      "size": 1330,
-      "sha256": "0adf29db977b9d1894948f16b8d2eaf2f54184fd121d79baad75878e9c45e1a3",
+      "size": 1386,
+      "sha256": "1fbfec66de7f6f9a524735eb0c1c12c451c65ba2852d189bfe412471907a8838",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/drive_create/manifest.json",
       "type": "regular-file",
-      "size": 1204,
-      "sha256": "0dd24b72b6dace7c9f299e7a0a028f11f6f488a4f2c82ea55c60425849a952c7",
+      "size": 1254,
+      "sha256": "659dc10a4236708eb041834d038f74960a8c06281a79510b10f9453ee055239b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/drive_export/manifest.json",
       "type": "regular-file",
-      "size": 1191,
-      "sha256": "e15a533667298d0103f78b3eaa4e3fe87cd536a649f25670b4e820cb887c52b1",
+      "size": 1241,
+      "sha256": "c7af86ff0f90a189221d33295996412e19044839565c17726f0339a2d2665ce6",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/external_send/manifest.json",
       "type": "regular-file",
-      "size": 2045,
-      "sha256": "b744ba6aa6c689548044af0199de519302b506044013b9d4b9f6e5248f0ca24e",
+      "size": 2122,
+      "sha256": "c248063bda8651b7c61c2018b6163d16f6e50cafcc66f75387c76a3280ffec53",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/github_issue_create/manifest.json",
       "type": "regular-file",
-      "size": 1370,
-      "sha256": "13fb0e4fdcb024abeca4ab4dcc222e148d6f6ee97a67598dd9c3d3983df5ddac",
+      "size": 1423,
+      "sha256": "95486e4e19977f1675fc2ef0ef8dc4a1d6d1409c601de3939ca1185dd70564e9",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/github_issue_list/manifest.json",
       "type": "regular-file",
-      "size": 1982,
-      "sha256": "4d091127dc4686ecdde0c63101b100a962e7a37e09aed3ffac65078d944945a2",
+      "size": 2063,
+      "sha256": "c8b438f93d7a3cee525e65ccf23d7369a4cb09fc97ed691604a776f3ad3b747c",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/github_issue_update/manifest.json",
       "type": "regular-file",
-      "size": 2546,
-      "sha256": "b77f49f70b8019e4ef7a31317c141ac71b4a255894da1cfaaf8cbe3bf0b04c7f",
+      "size": 2649,
+      "sha256": "da7ac0c9e9cef5150ce5a108efe09b47c44ba6c1129fd02b4e70d11854ba5f66",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/github_pr_create/manifest.json",
       "type": "regular-file",
-      "size": 1440,
-      "sha256": "acbd598c9c354964daf67c256d4ee62431ad53db382efec15763bc1476222c50",
+      "size": 1496,
+      "sha256": "bbbb1d4c2f896ae9b60d340d028309b2ebaf74b89c2c70ac62c5d7eafb435a0d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/github_search/manifest.json",
       "type": "regular-file",
-      "size": 1383,
-      "sha256": "4b20e11f0558dad62d6c1bb3984cdfabaa15907dcc57c28ac523d1acbb258cea",
+      "size": 1439,
+      "sha256": "b7814aad9024892bdabb55d5d8decbf3386759ce935e5616745cef0f5abd5289",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/gmail_draft/manifest.json",
       "type": "regular-file",
-      "size": 1272,
-      "sha256": "82710d702fdb2b694abc2dc1f635bc27209373e964ba6b15710950a8c7875651",
+      "size": 1327,
+      "sha256": "a233252042531b06db7395d96a36145707c60eb73b958bb3ebb3ede6cf8c254a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/gmail_search/manifest.json",
       "type": "regular-file",
-      "size": 1153,
-      "sha256": "ebafadb37b0bed32190570902599bbd1bbff1fd67606e61a3b51b25a7312053c",
+      "size": 1200,
+      "sha256": "ebbc8a904c3554ead67f8d50ab7df663bbddf98da072ebf5403b9e63eced17a8",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/html_preview/manifest.json",
       "type": "regular-file",
-      "size": 1373,
-      "sha256": "145862a82bce5bc8b2a4e5fbe0e1f10a33ced10fa2dff4eb7133c585072c0e36",
+      "size": 1426,
+      "sha256": "3743ff7a01131ef2b5df8e8241fc8c50dbc1a5474860f7e083d8a8a900fa9ff1",
       "executable": false
     },
     {
@@ -609,92 +609,92 @@
     {
       "path": "ecosystem/defaultspack/tools/image_convert/manifest.json",
       "type": "regular-file",
-      "size": 1250,
-      "sha256": "a9270c5b2694f81a8c40c31fd522b9973e1dce0ac4adae4417eb5cadde415fe0",
+      "size": 1301,
+      "sha256": "4dd91024f2d4d86d9ac56633fe7784e9aac4dbcc80df7a41f0ef8f96cf3bbc69",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/image_generate_local_or_provider/manifest.json",
       "type": "regular-file",
-      "size": 1437,
-      "sha256": "9aa6e032a376d92e40edc5c0af01a245378ea4794ecd1238feca97b2f15f68a7",
+      "size": 1491,
+      "sha256": "51d6fbdad7a5d08435a2bddeb1d8984cf8bb024e220e819785028d804184530a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/image_render/manifest.json",
       "type": "regular-file",
-      "size": 1411,
-      "sha256": "9c5a0f04b316ab236e4c2eca9152da87a2c1cafbb12a5499978293fc5730d33c",
+      "size": 1465,
+      "sha256": "48360aa83aeaba33a9dad19f5411e343e22f314009965975bcde0fea4eeedf89",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/image_resize/manifest.json",
       "type": "regular-file",
-      "size": 1317,
-      "sha256": "3c9b0cea637cab5732013d252a72e3bebb5427331c40f57c0bb5692292b1f1df",
+      "size": 1374,
+      "sha256": "64fb51c120e8e4f259dfaa8d4db78577a1fd24546a38595edade0734fd13c62e",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/jira_issue_sync/manifest.json",
       "type": "regular-file",
-      "size": 2316,
-      "sha256": "62d7ea6f57aa8e0a15c5120663f9584b31895c858966cc88a1478a93408d5418",
+      "size": 2417,
+      "sha256": "565e114b16460de989acf8b277347298f6aeff3adfc3d57f9a9c4372ddd5b381",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/job_artifacts/manifest.json",
       "type": "regular-file",
-      "size": 1127,
-      "sha256": "b90b5e7e8bdedf2a1d84abff8c86920944ee3fc6f78b739b26c0e3ae89e84407",
+      "size": 1174,
+      "sha256": "81bbf8fb54714608fe064ce8a20bffc6e5d92dcc24e91b87ae2761d9095fdc01",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/job_cancel/manifest.json",
       "type": "regular-file",
-      "size": 1075,
-      "sha256": "7df7de369ff7ef2db2ed6ba5518905d37dc17c50ddbce8d3529077ed147c56c0",
+      "size": 1122,
+      "sha256": "c216950d4c0e6783b42f06e320713582697e3917509669038bbbc51109d7b35b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/job_create/manifest.json",
       "type": "regular-file",
-      "size": 1415,
-      "sha256": "6ddf1347b47f1361e4d66f600d3ae6c7d8b9cd61cca505f4ae821c5bc239d567",
+      "size": 1472,
+      "sha256": "9f7a5c79ace641820f8aff0287eab0fa1b79c8ec51c2269d7ed43635dc722ec8",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/job_history/manifest.json",
       "type": "regular-file",
-      "size": 1087,
-      "sha256": "f47d9989f25edad7c4c5fc7a70a5ddf0a7d049f96ef518d17f29a049d91951c9",
+      "size": 1134,
+      "sha256": "01bacb3b2c38bae3f2f34f6f437d6c967bbe2f2d657dec3a945f9e698acdebcd",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/job_resume/manifest.json",
       "type": "regular-file",
-      "size": 1075,
-      "sha256": "6f42339b4005a6216da7cf1a9a386e0bd18691132ce4d60f261e400d5f3a4392",
+      "size": 1122,
+      "sha256": "c689941c85029969c7a5d820e21c4cec6ffe788ba4284e09f261bd90aad01e42",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/job_status/manifest.json",
       "type": "regular-file",
-      "size": 1072,
-      "sha256": "691fc0a17fb09bb7cf8d7a32a31ba9ebb77df22fcc59b47f885a004eb7a0bbd0",
+      "size": 1117,
+      "sha256": "039901a178ecfb82cc99dfa6cc2deb1f60510a8a3eb46c15fb13a59cb715dc25",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/line_push/manifest.json",
       "type": "regular-file",
-      "size": 1161,
-      "sha256": "2cc7c0bafbbd23255641f661923f0c507502665e6500b5840c787b89702c545e",
+      "size": 1211,
+      "sha256": "de033ba254234d5b0e4afe5c8d30c821c717ccd5888812b2fb4b7ee3850bda70",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/linear_issue_sync/manifest.json",
       "type": "regular-file",
-      "size": 2332,
-      "sha256": "783bab82ea2c76d14c7051a953446b55239d118644f66f9b53096bde26f253f2",
+      "size": 2433,
+      "sha256": "c14f7e00167a56e618c4849fee690fdeeeba3b5119725517d936c854b043b44a",
       "executable": false
     },
     {
@@ -756,372 +756,372 @@
     {
       "path": "ecosystem/defaultspack/tools/node_exec/manifest.json",
       "type": "regular-file",
-      "size": 1572,
-      "sha256": "b3d3f4351b00a0a5fd2f29a334206546b9132cbe332ebe86f7468c5331c28ebc",
+      "size": 1627,
+      "sha256": "af8bf1f65e8fa3ccf73ed219aab0ddbd3cad6f652c98e33c2adb14f6652d73be",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/ocr_extract/manifest.json",
       "type": "regular-file",
-      "size": 1215,
-      "sha256": "ad8ada4efd788d9465f4039ee261b2bf84b7c08374bcd42bb7f5f5d18deda4d0",
+      "size": 1262,
+      "sha256": "26054544959b51cbd9b217f58d161113df8e6b619236b81052d8e151b4072f31",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/package_install_plan/manifest.json",
       "type": "regular-file",
-      "size": 1276,
-      "sha256": "6abb602f93637c762713de1b71ecaebe31eeb67c459da759acfa5cbb81f26b66",
+      "size": 1322,
+      "sha256": "110a23dfbf146e2f5e68771856b7c83ad907c139fe9a42d43efd0999f8eecd82",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/pdf_export/manifest.json",
       "type": "regular-file",
-      "size": 1155,
-      "sha256": "2ef870cd4a062c3a9e612ec13da14509e24e6ae85af2608e748b08b3cd8ee570",
+      "size": 1205,
+      "sha256": "e9e72141f08da84b2e94aa04c6f8b479e813b18c76fefc6c85c295fc14ade093",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/pdf_extract/manifest.json",
       "type": "regular-file",
-      "size": 1155,
-      "sha256": "cdefeb2b4b0e11e9f8f6deca2d9813e9517f47b8cd8c7c3f64ac9a4789874aac",
+      "size": 1202,
+      "sha256": "244ccab5303f7828075c85fa036b9787c0af2843f38257aa5a49dd7b2c5cb905",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/pdf_extract_tables/manifest.json",
       "type": "regular-file",
-      "size": 1235,
-      "sha256": "af6f3c37b24b7033fa963b416f6a107a04b623abc6ffbe7c3243a1003a81cc13",
+      "size": 1282,
+      "sha256": "439ab1755e92f0abdeb6d66fcb78ba9a7f2e67caeb773c7cab538c2f0cd3f95e",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/pdf_preview/manifest.json",
       "type": "regular-file",
-      "size": 1171,
-      "sha256": "bf79b85a5ab4d6b4352831e8b39318f47f5688a34e96d956780e8b9bc3f7e038",
+      "size": 1218,
+      "sha256": "90586d3fef462d41b10a00257fcc911614b67870f9d3ee9023cc977b543536ea",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/project_scaffold/manifest.json",
       "type": "regular-file",
-      "size": 1318,
-      "sha256": "9b3b341e31e0d8f88071e2d8d535e5b984d2dec73e20f9bb82f79e98046f9901",
+      "size": 1369,
+      "sha256": "2006749537f8966e1707e284fc2967941bfe67d723785cafd1fc6a0aeaa76c61",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/python_exec/manifest.json",
       "type": "regular-file",
-      "size": 1579,
-      "sha256": "9edde2db4dcd713aa5314c58679f7b4e03f063dce89e16ad7ff799e0df31525e",
+      "size": 1634,
+      "sha256": "0f91721720d3821a5274cfee35f74f3cd903611436e73035d15e69194d7f3ed4",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/research_report_export/manifest.json",
       "type": "regular-file",
-      "size": 1350,
-      "sha256": "2cb232170261ee13388995e07bdc0e8ef7bf7944d9e3393215d44e905842d6f4",
+      "size": 1404,
+      "sha256": "1a9cba1ae467303e586896bf17cca2e5947d77d6801bac1b84e457c988ba3dff",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sandbox_exec/manifest.json",
       "type": "regular-file",
-      "size": 2118,
-      "sha256": "5e7cb9e8c3ab28465ce748dff3e99fb80401380cd930754bcb1962019f5c84a3",
+      "size": 2188,
+      "sha256": "b48998f899b05100db99e39c5ca2a7dc84c736f8985866c1c4ca7dc92900d44d",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sandbox_files_apply_patch/manifest.json",
       "type": "regular-file",
-      "size": 1524,
-      "sha256": "803d0a46957ff80bc7e1862389dfa9b87c6679c9fc98cd6cb542aecbe2470f2f",
+      "size": 1574,
+      "sha256": "73a5fa0cfbd3e3d3d8d5ca4142399d9a09124b8e92cf55999b188fc4106e7b2a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sandbox_files_read/manifest.json",
       "type": "regular-file",
-      "size": 1416,
-      "sha256": "b1fd3bfe874eb3c6f0b575034c2732f4ce0b6822cdde2bc7797ee7a8550d0cdb",
+      "size": 1460,
+      "sha256": "1ac801162637434dcd6bcc127e421b0876900b6076d50663eb366e41d7235c8e",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sandbox_port_expose/manifest.json",
       "type": "regular-file",
-      "size": 1281,
-      "sha256": "c623d0744e89e3edf4be3dfae055d91a773cd59140be08ed82d8fd37b13ef048",
+      "size": 1322,
+      "sha256": "1d1e75398a09799432e9da3787833bff965720fd6e4fc40d11c60350658b8c53",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sheet_analyze/manifest.json",
       "type": "regular-file",
-      "size": 1256,
-      "sha256": "dd1fff081a7c7f096d2abace3432ef2378aab6e9eec62c914b6bddc8077266df",
+      "size": 1303,
+      "sha256": "68c8fb401d57190b4ba6d38eb771e655abcc166a1de855f6b15825b060646654",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sheet_create/manifest.json",
       "type": "regular-file",
-      "size": 1482,
-      "sha256": "b85f022e055ef542bea962ef5b10e01f34a362d34ef314eb87939225b61ae2ee",
+      "size": 1542,
+      "sha256": "a24b186df1dae919ec31e7abd7a33e03a7060990731780701ad8894925e7b2e9",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sheet_export/manifest.json",
       "type": "regular-file",
-      "size": 1217,
-      "sha256": "e9bc8384c891ab6fa775228e19c7f7bd07858e8b2c7be71c6f29deaea87569ba",
+      "size": 1270,
+      "sha256": "623b0a66c97cb2fa86e58b72ec773a6f106eb8e4f7851ddf4c004d09c730ff5c",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sheet_read/manifest.json",
       "type": "regular-file",
-      "size": 1209,
-      "sha256": "85806ee62be6f990813d35f5867c9331ca6db7df82b569106a296abe5e83dd7b",
+      "size": 1259,
+      "sha256": "92f63824f14815f4f220cfca8c735904eb137d19e842bfdb5519378b3b7d675f",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/sheet_update/manifest.json",
       "type": "regular-file",
-      "size": 1409,
-      "sha256": "133bfae7c54e89e8237c86d1701c47ae6f8404433f758076c2c1d590ea1eed75",
+      "size": 1466,
+      "sha256": "78949353f2f9c5fa35c5b197994b83cea9a593f8b64a57c4dde83213a8b6e1f3",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/slack_send/manifest.json",
       "type": "regular-file",
-      "size": 1167,
-      "sha256": "cd09b7f0fd1b3a193ce296bc8ecb2e4b195a24d4af2ae25b0d2a3f5f6f148d31",
+      "size": 1217,
+      "sha256": "206e768065cedfb069726de7f75299963179298b1a5c36dc8dc3f21a59a06817",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/slides_create/manifest.json",
       "type": "regular-file",
-      "size": 1657,
-      "sha256": "107fff4bf6bcd7e9a05341bb5fec773f165989cc34b226379e10589ca7e61890",
+      "size": 1722,
+      "sha256": "ce8524a44479b637d4e9d0cbb2c63e768a147d8528af39088adf5b09d749a16a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/slides_export/manifest.json",
       "type": "regular-file",
-      "size": 1225,
-      "sha256": "ef1e8c78609602d74c77608b145d3a6f9225a8a6c66223b3ab6027b0481d4bc4",
+      "size": 1278,
+      "sha256": "71c77dac66b2196e5a491af05daded296b4a4593bed754abd3a85d3d47feb6f1",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/slides_from_markdown/manifest.json",
       "type": "regular-file",
-      "size": 1350,
-      "sha256": "a66f67c981f747faa71343e8845e1aa56fb9a21b3e694d6998c36283ce7f7f2e",
+      "size": 1401,
+      "sha256": "38a26ca2e29bf6f4410ecb6a8827e58f788e8fe31e4b24cc61857b5196c0eac5",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/slides_update/manifest.json",
       "type": "regular-file",
-      "size": 1683,
-      "sha256": "08760fe6152b00b002b1d0c28f0ff17818e1eff3a0d1f4a10a565fb1b003b1bd",
+      "size": 1748,
+      "sha256": "8f72b83bfbbcdea4e231e16f6cb82c59b2b25a517d90105ba671c1f96eb3c93b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/source_extract/manifest.json",
       "type": "regular-file",
-      "size": 1356,
-      "sha256": "c1a3d951a7d132bfde3a4ad7f69e9dc06b4f14a2869a9164a317e2d2e1ff9cbe",
+      "size": 1407,
+      "sha256": "787e5cebc59d86a6f302f2d9c0e6c349b2e356bf13a74231299a7aed16f024d6",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/source_rank/manifest.json",
       "type": "regular-file",
-      "size": 1597,
-      "sha256": "2132368e36e351cf994f6d921567ca820657ae0e32a071a05e851a33c3e710fc",
+      "size": 1662,
+      "sha256": "9d47659398ec7b4d1159f50aa3443f09cb13375caf3f93aab821f9f228745026",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/static_site_export/manifest.json",
       "type": "regular-file",
-      "size": 1217,
-      "sha256": "d889c07fd06c6052ea3a1e04127f7bada7836decb232c5953d2c0b34946d1144",
+      "size": 1267,
+      "sha256": "ba63641d4e3f75a5473a0ba166b73746fd42ca9f5f0e3d3a86960684d16b3cc7",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_names/manifest.json",
       "type": "regular-file",
-      "size": 1304,
-      "sha256": "6bfd31cfd1b5d56ea107a538fcfc642b6910d4eec4bb5bac81af230614830f90",
+      "size": 1353,
+      "sha256": "e1af14d1498d6f7a04a21c2c2ee522bf59332bfeaec39544a8b53a0f32a492e4",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_search/manifest.json",
       "type": "regular-file",
-      "size": 2389,
-      "sha256": "b29acd14a290b37933d34e39f80c43ac16dfaf771fba00a789b90a0b4a4dec20",
+      "size": 2480,
+      "sha256": "77114b44fa645f6f27b22dfa84ad4eef21ec97f83401f406e9892edf6f813119",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_task_board/manifest.json",
       "type": "regular-file",
-      "size": 5470,
-      "sha256": "79427ba0cc2f5ea776a6f97445b2387033d6f9d4ffb6b606afdc22ebda6fac89",
+      "size": 5707,
+      "sha256": "6e9d4463b324195f7594f554addb4ef433e8b04cab376c0d7926b6097dab1e6f",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_task_board_agent_session/manifest.json",
       "type": "regular-file",
-      "size": 3696,
-      "sha256": "25361ace0070f54669e6332814f1b5f63bc15de5f2c6c08399c360934c9ce14d",
+      "size": 3851,
+      "sha256": "0bf0e2e783f85e122f8bba0d049ddb30c7c31ea382d6a3274f9e59625651546b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_build_recursive/manifest.json",
       "type": "regular-file",
-      "size": 1751,
-      "sha256": "56ac4bb2053997f8bb49c6f8f9d950640c05af6782bf1a2369f388def74f3a22",
+      "size": 1798,
+      "sha256": "7cf8d42ad081577fd65ec6a006779b21c40aecc982cf2e74f0f722b4b3aa0dad",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_commit_plan/manifest.json",
       "type": "regular-file",
-      "size": 2014,
-      "sha256": "48e3d22ad8f83b7b4a70a24bebba906fe479b8b429002084d99ecb7cd59848d7",
+      "size": 2085,
+      "sha256": "8a773e58459dc4a3ccf633af756c25dfce7b9ca0b2176c640882c71d16cf9084",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_compile_plan/manifest.json",
       "type": "regular-file",
-      "size": 1987,
-      "sha256": "86eca5b318611a5f0bf80bd49192810592b57eb6701d6af1f1e32785a9bd511a",
+      "size": 2057,
+      "sha256": "5c91de98580f53352f683793060537ae10c4a228748286b7be5aef851259aa8c",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_compose_page/manifest.json",
       "type": "regular-file",
-      "size": 755,
-      "sha256": "499ac42f6285f3e8faca687d80ad2ee0fd0bad3039fa4505fd56f89b2ee2eaa5",
+      "size": 772,
+      "sha256": "23cf19ced06f62f4b8d0fd5f3e15d8701d7cab40f6eb196a61da2087d119efdf",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_generate_candidates/manifest.json",
       "type": "regular-file",
-      "size": 782,
-      "sha256": "dd4551c053303aae48aef5ccb0c6152689b233174f91947e2853f9ecd0e3d0f8",
+      "size": 799,
+      "sha256": "4affbd0246614766fd8b56da5146b7b7b9b1d2002cf2de12e678fed1111da966",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_generate_foundation/manifest.json",
       "type": "regular-file",
-      "size": 771,
-      "sha256": "f2d199aa9e0005ca135f845f76676c639dda59b6f53053a85c22a2089277fa5b",
+      "size": 788,
+      "sha256": "1e495cb08fe9c8c5bc00063d3df55343565ed89d6f01336ef5a59cb7b4f7632f",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_inspect_compression/manifest.json",
       "type": "regular-file",
-      "size": 782,
-      "sha256": "585f7daba94cf8d1ce6ed72f8689d6b2ec3d12be2d66536d9cb1d9febf913d90",
+      "size": 799,
+      "sha256": "e3976e03e8f258fafb9d5f48be27f054477ce2b737059a1cb4dba5a30129cad3",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_render_matrix/manifest.json",
       "type": "regular-file",
-      "size": 752,
-      "sha256": "05e3600dbcd9158bac780a4696e5ef434c309b5341f751855e2aca00b1810a47",
+      "size": 769,
+      "sha256": "b111733fb10cecb8a02cbc7414cad3eba07dd09377282d92219f1c15431ad174",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_select_candidates/manifest.json",
       "type": "regular-file",
-      "size": 771,
-      "sha256": "955fd354b396563fed1b1abe5859cf426831a3065ad612bd7b60528514826053",
+      "size": 788,
+      "sha256": "c600582bcc72c709332845416a7d055ed07cce472d98f752e71012d667fdce0a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tool_ui_verify_recursive_build/manifest.json",
       "type": "regular-file",
-      "size": 779,
-      "sha256": "958fe0be1b44a61f4e70dad420977f83bf9812a44f979a6273cc982fd0184ff2",
+      "size": 796,
+      "sha256": "523bd2810bf683b15c6987c2a69aae4fe102ba62e9198ae2b5b505666b4dc124",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tts_generate/manifest.json",
       "type": "regular-file",
-      "size": 1203,
-      "sha256": "439ce53127ca10a95fa64e126faeefc751be5f38c224719f620335011dc5983b",
+      "size": 1251,
+      "sha256": "aaecf29233cc156f07f217fe4345f191e8eea6a3bf3a1bdafeb442f04e6e0ef0",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/tts_generate_local/manifest.json",
       "type": "regular-file",
-      "size": 1227,
-      "sha256": "f03103076d6a699ced0ba1905567b02503aad16293e540e6833ba5dab843a979",
+      "size": 1275,
+      "sha256": "0c3d1f37f889ff8b9ac5869b4c134045e4c2025633b5c51f4a0511e4c7ec71e3",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/webapp_build/manifest.json",
       "type": "regular-file",
-      "size": 1265,
-      "sha256": "5a096e9b0e4f24d30cbe7544d862886d118023026c2e4187f3b14cf4f2314589",
+      "size": 1316,
+      "sha256": "e2e8fbaac7e3166e130fdeb91c8ecf7cc97d85c97f1ab37f65adf039cd9acb43",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/webapp_export_static/manifest.json",
       "type": "regular-file",
-      "size": 1272,
-      "sha256": "a08cc56ca71bc212ebccd21f25a9640bd12576fe877aac3a3925dbacc5c98145",
+      "size": 1322,
+      "sha256": "6546571c66f3c2b8a901281ceecb501011c5a44da57d4b9836982a06bdd8a66a",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/webapp_lint/manifest.json",
       "type": "regular-file",
-      "size": 1179,
-      "sha256": "82b1b73c85d2f2ff925ee17ed885ead1971e910a6a05b847f0582d523ca0329f",
+      "size": 1226,
+      "sha256": "664ac13dad9ecd903a7a448a497fe16de8986f8add363cd5e8134ed8bc839edf",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/webapp_preview/manifest.json",
       "type": "regular-file",
-      "size": 1152,
-      "sha256": "be36c3d8118b4f5afd90d143ffbb6a22c8082a03a13d87ef4c466d6f15d9ee63",
+      "size": 1199,
+      "sha256": "2f82a96f1d938922425216f32f677bcf7f41eda84637f3b412ad46135ea6f2f9",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/wide_research/manifest.json",
       "type": "regular-file",
-      "size": 1860,
-      "sha256": "7a66d93b0fe1bf7bb4c79a0f78c64d8e21aac48b5214e04561d18b195c9a7f0f",
+      "size": 1934,
+      "sha256": "654d51c114ba95466289bf50e48230eb00d18a5fbac441f63be471bb1b58082e",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/workflow_cancel/manifest.json",
       "type": "regular-file",
-      "size": 1125,
-      "sha256": "536a760efd88f0e6d64d5453d1ae08ed4c2eedf0d3711e7446b15a289d5be957",
+      "size": 1172,
+      "sha256": "5e5921860ea83dbf9c159c80f10385bd67835ebab1ff8ad6b72373b0ca968d85",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/workflow_define/manifest.json",
       "type": "regular-file",
-      "size": 1628,
-      "sha256": "53d04be10116abf8beef3da8d2a782f57acb8b0c7d496f481c85ac803a9d9e09",
+      "size": 1695,
+      "sha256": "e2d070c85120f2ee4bbcd5ca5e7f7b5f04f477432409e1cc43bdb5934678f9cc",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/workflow_retry/manifest.json",
       "type": "regular-file",
-      "size": 1191,
-      "sha256": "ed9d29a4fdff2e3b78e371dcf7a91254edd7be53fc866a2601b455ad5d47b340",
+      "size": 1241,
+      "sha256": "287ba5f3d48167c0e686f28e477047c85ce030bd92877947372e14840c0f2976",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/workflow_run/manifest.json",
       "type": "regular-file",
-      "size": 1605,
-      "sha256": "e45139d87ec0cf1c994f093a0c8870f506108f74b915abd7a33cab53cc199781",
+      "size": 1670,
+      "sha256": "7cd13f9b90f135f777633b4418c612ca491cac2e5dc1f38cad1d9e541a31dd7b",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/tools/workflow_status/manifest.json",
       "type": "regular-file",
-      "size": 1117,
-      "sha256": "29c29d561afc578369c44158904e9dda619b7414cf86cfeefb4b785f71159fa5",
+      "size": 1164,
+      "sha256": "94f86b35fd064192b3eb3d2814f49758fcbd677aa1f26ef000508251da89d85d",
       "executable": false
     },
     {
@@ -3304,8 +3304,8 @@
     {
       "path": "scripts/migrate_settings_control_center.py",
       "type": "regular-file",
-      "size": 2644,
-      "sha256": "6339f75212122aeb01c59d60711ce458192583fbcaf50f882d9eff52f6745317",
+      "size": 2725,
+      "sha256": "6427945c72865305270ba32c8cb2235a3bc627621c28cd18f692f1d58aa8a3ea",
       "executable": false
     },
     {
@@ -3332,8 +3332,8 @@
     {
       "path": "scripts/quality/check_defaultspack_http_fallbacks.py",
       "type": "regular-file",
-      "size": 1293,
-      "sha256": "f9ccbe7233a14a52d702140732e6bb6798d26f269bd9d27bf01886dd04b56845",
+      "size": 1342,
+      "sha256": "c6042a734e61a8caec116229fc2cfdf99210b911b7e482c357ef7ebbda6ea0b7",
       "executable": false
     },
     {
@@ -3409,8 +3409,8 @@
     {
       "path": "scripts/quality/render_defaultspack_compat_alias_docs.py",
       "type": "regular-file",
-      "size": 700,
-      "sha256": "488e95db8d2e7ac3443713c9318c9201f9bb4498d5ed1b5163fadafef4136c69",
+      "size": 725,
+      "sha256": "1f6526a19f0755530234ad8003e6efb6f495621d4876659cc59e14c1674795ec",
       "executable": false
     },
     {
@@ -3437,8 +3437,8 @@
     {
       "path": "scripts/quality/scan_defaultspack_boundaries.py",
       "type": "regular-file",
-      "size": 14124,
-      "sha256": "e72974323527339267a0909e2c13be71bde428e52f73e8c9f595a59329165d2f",
+      "size": 14478,
+      "sha256": "9bba009ac5eff277762ca1aeb81d5942ab52ed486bf7c60aadc0194fc4c41199",
       "executable": false
     },
     {
@@ -3458,15 +3458,15 @@
     {
       "path": "scripts/quality/verify_recursive_ui_dogfood_build.py",
       "type": "regular-file",
-      "size": 11909,
-      "sha256": "2b231feffdc6914e58cd2a6f3bfb46a6adf9f0bcb99ab42dc093528a2a8e913f",
+      "size": 12241,
+      "sha256": "be61bd61485a2228b77fb76bc29ebf468b8a4cbf853baf40c10e3a4bebac63dc",
       "executable": false
     },
     {
       "path": "scripts/quality_pack/run_claude_quality_pack.sh",
       "type": "regular-file",
-      "size": 1027,
-      "sha256": "777ea904aef97aff0baf9d5f98e4eba21d8b9381d9ff741fa8b199d5cb5bbbdc",
+      "size": 1068,
+      "sha256": "39195bd3bd52a9538e28a8753e6f466be5c087c2b4e17e00b206637462ca1cda",
       "executable": false
     },
     {
@@ -3479,8 +3479,8 @@
     {
       "path": "scripts/setup_local_whisper.py",
       "type": "regular-file",
-      "size": 4296,
-      "sha256": "c869d816de183154184b7b3d09cfd48c043abb5cefd6534f294d6b6b60ad41dc",
+      "size": 4421,
+      "sha256": "1645df05acbb66ea350bd62843e013da33dab500cc6be166f0c1630cfca0983c",
       "executable": false
     },
     {
@@ -3493,8 +3493,8 @@
     {
       "path": "scripts/validate_settings_manifests.py",
       "type": "regular-file",
-      "size": 3501,
-      "sha256": "e03dcb036d2b99b5c8142e4f7cddefcc692340e577627e38422c09e501c85b3f",
+      "size": 3598,
+      "sha256": "07b1efecb65f06fcd4971a5e1808fe17c765846b0fa6cc2889bcc23379ee4eb8",
       "executable": false
     },
     {
