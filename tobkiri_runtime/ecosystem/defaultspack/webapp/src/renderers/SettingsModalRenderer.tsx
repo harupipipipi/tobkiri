@@ -5,6 +5,8 @@ import { AlertTriangle, Check, ChevronDown, Copy, Loader2, MoreVertical, Pencil,
 import { cn } from "../lib/cn";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
+import { AppsSettingsPanel } from "../components/AppsSettingsPanel";
+import { CredentialTransferModal } from "../components/CredentialTransferModal";
 import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
 import { MobilePairingApproval } from "../components/MobilePairingApproval";
 import { normalizeLocale, t } from "../lib/i18n";
@@ -2123,6 +2125,12 @@ function SettingsField({
   const [apiSaveState, setApiSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [apiSaveError, setApiSaveError] = useState("");
   const [apiAvailability, setApiAvailability] = useState<ModelAvailabilityAfterKeySave | null>(null);
+  const [credentialTransfer, setCredentialTransfer] = useState<{
+    providerId: string;
+    providerLabel?: string;
+    apiId?: string;
+    refreshOnClose?: boolean;
+  } | null>(null);
   const [tokenProvider, setTokenProvider] = useState("line");
   const [tokenName, setTokenName] = useState("main");
   const [tokenKind, setTokenKind] = useState("channel_access_token");
@@ -2406,6 +2414,14 @@ function SettingsField({
             candidate_models: [],
             reason: "Saved, but the backend did not confirm model availability. Choose a model route before using this key.",
           });
+          const savedProviderId = apiProvider;
+          const savedApiId = apiName;
+          setCredentialTransfer({
+            providerId: savedProviderId,
+            providerLabel: selectedProviderOption?.label,
+            apiId: savedApiId,
+            refreshOnClose: true,
+          });
           setApiSecret("");
           setApiBaseUrl("");
           setApiAllowedModels("");
@@ -2413,9 +2429,6 @@ function SettingsField({
           setApiQuotaLabel("");
           setApiNotes("");
           setApiSaveState("saved");
-          onChange(sectionId, field.id, {
-            action: "oauth_refresh",
-          });
         } catch (saveError) {
           setApiSaveState("idle");
           setApiSaveError(saveError instanceof Error ? saveError.message : "API key save failed.");
@@ -3151,6 +3164,22 @@ function SettingsField({
         {control}
       </div>
       {field.help && <p className="text-[11px] text-zinc-500">{field.help}</p>}
+      {credentialTransfer && (
+        <CredentialTransferModal
+          providerId={credentialTransfer.providerId}
+          providerLabel={credentialTransfer.providerLabel}
+          apiId={credentialTransfer.apiId}
+          onClose={() => {
+            const shouldRefresh = credentialTransfer.refreshOnClose;
+            setCredentialTransfer(null);
+            if (shouldRefresh) {
+              onChange(sectionId, field.id, {
+                action: "oauth_refresh",
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

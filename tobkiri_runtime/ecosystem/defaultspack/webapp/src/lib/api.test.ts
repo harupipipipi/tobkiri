@@ -2597,6 +2597,53 @@ test("company and p2p helpers target frontend workspace routes", async () => {
   });
 });
 
+test("mobile pairing review and approve helpers use admin review contract", async () => {
+  const seen: Array<{ input: string; method: string; body?: unknown }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    seen.push({
+      input: String(input),
+      method: init?.method ?? "GET",
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    const data = String(input).endsWith("/review")
+      ? {
+          pairing: { pairing_id: "pair-1", status: "claimed", expires_at: 123 },
+          claim: {
+            device_label: "Haru iPhone",
+            requested_scopes: ["chat.read"],
+            allowed_scopes: ["chat.read"],
+          },
+          claim_hash: "sha256:abc",
+        }
+      : { ok: true, token_delivery: "mobile_encrypted_pickup" };
+    return new Response(JSON.stringify({ status: "ok", data }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await api.getMobilePairingReview("pair-1");
+    await api.approveMobilePairing("pair-1", {
+      claim_hash: "sha256:abc",
+      scopes: ["chat.read"],
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(seen, [
+    {
+      input: "/api/mobile/v1/pairings/pair-1/review",
+      method: "GET",
+      body: undefined,
+    },
+    {
+      input: "/api/mobile/v1/pairings/pair-1/approve",
+      method: "POST",
+      body: { claim_hash: "sha256:abc", scopes: ["chat.read"] },
+    },
+  ]);
+});
+
 test("coding workspace and compact helpers serialize request bodies", async () => {
   const seen: Array<{ input: string; method: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;

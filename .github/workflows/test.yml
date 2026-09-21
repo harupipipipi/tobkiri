@@ -261,11 +261,23 @@ jobs:
           pip install -e .
 
       - name: Run Ruff/mypy non-regression guard
+        env:
+          PUSH_BASE_REF: ${{ github.event.before }}
         run: |
-          BASE_REF="${GITHUB_BASE_REF:-master}"
-          git fetch origin "$BASE_REF" --depth=1
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            git fetch origin "$GITHUB_BASE_REF" --depth=1
+            BASE_REF="origin/${GITHUB_BASE_REF}"
+          elif [ -n "${PUSH_BASE_REF:-}" ] && [ "$PUSH_BASE_REF" != "$ZERO_SHA" ]; then
+            BASE_REF="$PUSH_BASE_REF"
+            git cat-file -e "${BASE_REF}^{commit}" 2>/dev/null || \
+              git fetch origin "$BASE_REF" --depth=1
+          else
+            git fetch origin master --depth=1
+            BASE_REF="origin/master"
+          fi
           python .github/scripts/quality_gate_nonregression.py \
-            --base-ref "origin/${BASE_REF}" \
+            --base-ref "$BASE_REF" \
             --package-dir tobkiri_runtime \
             --ruff-target core_runtime \
             --ruff-target backend_core \

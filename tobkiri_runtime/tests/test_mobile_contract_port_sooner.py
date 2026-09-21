@@ -77,9 +77,12 @@ def test_mobile_contract_port_registers_minimal_pairing_and_chat_routes():
     assert "/api/mobile/v1/conversations" in patterns
     assert "/api/mobile/v1/conversations/{id}/messages" in patterns
 
-    assert "/api/mobile/v1/capabilities" not in patterns
-    assert "/api/mobile/v1/tools" not in patterns
-    assert "/api/mobile/v1/cloud/tools/invoke" not in patterns
+    assert "/api/mobile/v1/capabilities" in patterns
+    assert "/api/mobile/v1/tools" in patterns
+    assert "/api/mobile/v1/tools/invoke" in patterns
+    assert "/api/mobile/v1/cloud/tools/invoke" in patterns
+    assert "/api/mobile/v1/commands/execute" in patterns
+    assert "/api/mobile/v1/events" in patterns
     assert not any(pattern.startswith("/api/mobile/v1/credential-transfers") for pattern in patterns)
 
     registry_patterns = {

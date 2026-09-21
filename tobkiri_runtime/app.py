@@ -36,29 +36,34 @@ def L(key, **kwargs):
 
 def _check_permissive_production_guard():
     """
-    VULN-C01: 明示的な許可がない限り --permissive フラグの使用を拒否する。
+    VULN-C01: 明示的な許可がない限り permissive モードの使用を拒否する。
     ホワイトリスト方式: RUMI_ALLOW_PERMISSIVE=true または
     RUMI_ENVIRONMENT=development|dev の場合のみ許可。
     追加条件: user_data/permissive.lock ファイルの存在も必須。
     """
     import os
     # --- 環境変数チェック ---
-    env_ok = False
-    if os.environ.get("RUMI_ALLOW_PERMISSIVE", "").lower() == "true":
-        env_ok = True
-    else:
-        env_val = os.environ.get("RUMI_ENVIRONMENT", "").lower()
-        if env_val in ("development", "dev"):
-            env_ok = True
+    env_val = os.environ.get("RUMI_ENVIRONMENT", "").lower()
+    if env_val in ("production", "prod"):
+        print(
+            "FATAL: permissive mode is not allowed in production.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    env_ok = (
+        os.environ.get("RUMI_ALLOW_PERMISSIVE", "").lower() == "true"
+        or env_val in ("development", "dev")
+    )
 
     if not env_ok:
         print(
-            "FATAL: --permissive flag requires explicit opt-in.",
+            "FATAL: permissive mode requires explicit opt-in.",
             file=sys.stderr,
         )
         print(
             "Set RUMI_ALLOW_PERMISSIVE=true or "
-            "RUMI_ENVIRONMENT=development to use --permissive.",
+            "RUMI_ENVIRONMENT=development to use permissive mode.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -72,7 +77,7 @@ def _check_permissive_production_guard():
 
     if not lockfile.is_file():
         print(
-            "FATAL: --permissive requires lockfile: "
+            "FATAL: permissive mode requires lockfile: "
             f"{lockfile}",
             file=sys.stderr,
         )
@@ -178,9 +183,15 @@ def main():
         _run_hmac_migration()
         return
 
-    # セキュリティモード設定 — デフォルトは strict（secure）
-    if args.permissive:
-        # VULN-C01: production 環境では --permissive を拒否
+    # セキュリティモード設定 — デフォルトは strict（secure）。
+    # CLI と環境変数のどちらで要求されても、permissive 化は同じ
+    # 明示的 opt-in / lockfile ガードを必ず通す。
+    requested_permissive = (
+        args.permissive
+        or os.environ.get("RUMI_SECURITY_MODE", "").lower() == "permissive"
+    )
+    if requested_permissive:
+        # VULN-C01: production 環境および lockfile なしの permissive 化を拒否
         _check_permissive_production_guard()
 
         os.environ["RUMI_SECURITY_MODE"] = "permissive"
@@ -191,8 +202,8 @@ def main():
         print("=" * 60)
         _start_permissive_warning_loop()
     else:
-        # 明示的に strict を設定（外部環境変数による意図しない permissive 化を防止）
-        os.environ.setdefault("RUMI_SECURITY_MODE", "strict")
+        # 未対応の外部値も含め、通常起動は strict に固定する。
+        os.environ["RUMI_SECURITY_MODE"] = "strict"
 
     # --- host_execution ガード (W19-A) ---
     try:

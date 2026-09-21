@@ -20,4 +20,3 @@ def run(input_data: dict[str, Any], context: dict[str, Any] | None = None) -> di
             input_data.get("content"),
         ),
     )
-

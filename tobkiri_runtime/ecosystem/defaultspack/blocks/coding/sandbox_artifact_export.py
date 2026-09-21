@@ -11,4 +11,3 @@ def run(input_data: dict[str, Any], context: dict[str, Any] | None = None) -> di
         context,
         lambda manager, workspace: manager.export_artifacts(workspace, input_data.get("paths")),
     )
-

@@ -14,8 +14,8 @@ Get Tobkiri running in 5 minutes:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/harupipipipi/rumiai.git
-cd rumiai
+git clone https://github.com/harupipipipi/tobkiri.git
+cd tobkiri
 
 # 2. Set up Python environment
 python3 -m venv .venv
@@ -57,7 +57,7 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 ## Repository Layout
 
 - `tobkiri_runtime/`: kernel/runtime/API/backend source tree
-- `rumi_ai/`: version-stable Python entrypoint package
+- `rumi_ai/`: compatibility Python entrypoint package
 - `pack-shell/`: desktop pack launcher
 - `tobkiri_launcher/`: desktop shell and control panel frontend source
 - `tobkiri_mobile/`: Flutter iOS/Android app for trusted-LAN defaultspack access
@@ -68,7 +68,7 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 18+
+- Node.js 20.19.x または 22.12+（Node 22 推奨）
 - npm
 - uv (`tobkiri_launcher` を触る場合)
 - Rust / Cargo (`tobkiri_launcher` を触る場合)
@@ -80,8 +80,11 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 Windows PowerShell:
 
 ```powershell
-git clone https://github.com/harupipipipi/rumiai.git
-cd rumiai
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/harupipipipi/tobkiri.git
+cd tobkiri
 
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -91,7 +94,7 @@ python -m pip install -r tobkiri_runtime\requirements-dev.txt
 python -m pip install -e .\tobkiri_runtime
 
 cd tobkiri_launcher\frontend
-npm install
+npm ci
 npm run tauri -- info
 cd ..\..
 ```
@@ -101,8 +104,8 @@ If `py` is not available, use `python -m venv .venv` instead. If PowerShell bloc
 macOS / Linux:
 
 ```bash
-git clone https://github.com/harupipipipi/rumiai.git
-cd rumiai
+git clone https://github.com/harupipipipi/tobkiri.git
+cd tobkiri
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -112,7 +115,7 @@ python -m pip install -r tobkiri_runtime/requirements-dev.txt
 python -m pip install -e ./tobkiri_runtime
 
 cd tobkiri_launcher/frontend
-npm install
+npm ci
 npm run tauri -- info
 cd ../..
 ```
@@ -210,7 +213,7 @@ python -m rumi_ai migrate-hmac
 
 ## Components
 
-- `rumi_ai`: stable CLI and module entrypoint
+- `rumi_ai`: compatibility CLI and module entrypoint
 - `tobkiri_runtime`: kernel, runtime, API, backend, and docs
 - `pack-shell`: launches desktop packs and brokers token/bootstrap flow
 - `tobkiri_launcher`: viewer-side application shell and canonical panel frontend source
@@ -225,53 +228,51 @@ python -m rumi_ai migrate-hmac
 
 **Problem**: `python -m rumi_ai --health` shows disk probe as DEGRADED or DOWN.
 
-**Solution**: This is usually a disk space issue, not a code problem.
+**Solution**: This is usually a disk space issue, not a code problem. Identify the
+largest workspace or build artifacts first; recreating a virtual environment can
+consume additional disk space.
 ```bash
 # Check disk space
 df -h
 
-# Clean up unnecessary files
-rm -rf .venv
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r tobkiri_runtime/requirements.txt
+# Inspect large local artifacts before removing anything
+du -sh .venv node_modules tobkiri_launcher/frontend/node_modules 2>/dev/null
 ```
 
 #### 2. Port 8765 already in use
 
 **Problem**: `python -m rumi_ai` fails with "Address already in use".
 
-**Solution**: Kill the process using port 8765.
+**Solution**: Identify the listener first. Stop only the matching old Tobkiri/Rumi
+process gracefully; do not use a forced kill for routine port cleanup.
 ```bash
 # Find process using port 8765
-lsof -i :8765
+lsof -nP -iTCP:8765 -sTCP:LISTEN
 
-# Kill the process
-kill -9 <PID>
+# After confirming the PID belongs to the old runtime
+kill -TERM <PID>
 ```
 
 #### 3. Viewer shows 401 error
 
 **Problem**: Opening the panel shows 401 Unauthorized.
 
-**Solution**: Check API token configuration.
+**Solution**: First check that an old kernel has not claimed port 8765 and that the
+viewer bootstrap secret belongs to the same runtime. Do not set an arbitrary API
+token to work around a bootstrap failure.
 ```bash
-# Check if API token is set
-echo $RUMI_API_TOKEN
-
-# Set API token if needed
-export RUMI_API_TOKEN="your-token-here"
+lsof -nP -iTCP:8765 -sTCP:LISTEN
+pgrep -fl 'tobkiri|rumi_ai|python.*-m app'
 ```
 
 #### 4. Frontend build fails
 
 **Problem**: `npm run build` fails in tobkiri_launcher/frontend.
 
-**Solution**: Clear node_modules and reinstall.
+**Solution**: Keep `package-lock.json` and install its pinned dependency graph.
 ```bash
 cd tobkiri_launcher/frontend
-rm -rf node_modules package-lock.json
-npm install
+npm ci
 npm run build
 ```
 
@@ -290,7 +291,7 @@ pip install -e ./tobkiri_runtime
 If you encounter issues not covered here:
 
 1. Check the [documentation](./tobkiri_runtime/docs/README.md)
-2. Search existing [GitHub Issues](https://github.com/harupipipipi/rumiai/issues)
+2. Search existing [GitHub Issues](https://github.com/harupipipipi/tobkiri/issues)
 3. Create a new issue with:
    - Steps to reproduce
    - Expected behavior
@@ -315,7 +316,7 @@ We welcome contributions! Please follow these guidelines:
 ### Code Style
 
 - Python: Follow PEP 8, use type hints
-- JavaScript/TypeScript: Use ESLint configuration
+- JavaScript/TypeScript: Run the repository's `npm run lint` checks
 - Rust: Follow rustfmt defaults
 
 ### Testing

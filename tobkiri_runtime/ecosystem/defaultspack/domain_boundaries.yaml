@@ -222,7 +222,8 @@ domains:
     - domain/chat
     path: domain/kanban
   media:
-    may_import: []
+    may_import:
+    - domain/safety
     path: domain/media
   memory:
     may_import:

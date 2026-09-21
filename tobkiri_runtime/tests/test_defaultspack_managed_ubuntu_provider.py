@@ -1171,11 +1171,15 @@ def test_managed_ubuntu_seeds_trusted_workspace_overlay(monkeypatch, tmp_path) -
     assert _workspace_seed_member(payload, "package.json") == package_path.read_bytes()
 
 
-def test_default_sandbox_api_registers_cross_platform_runtime_providers() -> None:
+def test_default_sandbox_api_registers_cross_platform_runtime_providers(monkeypatch) -> None:
     from ecosystem.defaultspack.blocks.sandbox import api
 
+    monkeypatch.delenv("RUMI_CLOUDFLARE_SANDBOX_BRIDGE_URL", raising=False)
+    monkeypatch.delenv("RUMI_CLOUDFLARE_SANDBOX_API_KEY", raising=False)
     service = api._SandboxApiService()
     provider_ids = set(service.provider_registry.provider_ids())
+    cloudflare_status = service.provider_registry.doctor("cloudflare_sandbox_bridge")
 
-    assert {"linux_native", "mac_lima", "windows_wsl", "docker"} <= provider_ids
+    assert {"linux_native", "mac_lima", "windows_wsl", "docker", "cloudflare_sandbox_bridge"} <= provider_ids
+    assert cloudflare_status.ready is False
     api._reset_service_for_tests(None)

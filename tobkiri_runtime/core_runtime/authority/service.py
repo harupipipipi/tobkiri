@@ -115,10 +115,8 @@ class AuthorityService:
                 "error": "Mobile deny challenges cannot be persistent",
                 "status_code": 403,
             }
-        if not self._mobile_actor_has_route_grant(
-            actor_principal,
-            "authority.request.approve" if decision == "approve" else "authority.request.deny",
-        ):
+        permission_id = "authority.request.approve" if decision == "approve" else "authority.request.deny"
+        if not self._mobile_actor_has_route_grant(actor_principal, permission_id):
             return {"success": False, "error": "Mobile approver grant is not valid", "status_code": 403}
 
         profile_id = self._actor_profile_id(actor_principal)
@@ -942,13 +940,14 @@ class AuthorityService:
         if self._request_store.request_expired(request):
             self._request_store.set_request_status(request.request_id, "expired")
             return {"success": False, "error": "Authority request expired", "status_code": 409}
-        if self._actor_mobile_approver(actor_principal) and persist:
+        mobile_approver = self._actor_mobile_approver(actor_principal)
+        if mobile_approver and persist:
             return {
                 "success": False,
                 "error": "Mobile approver tokens may not create persistent denies",
                 "status_code": 403,
             }
-        if self._actor_mobile_approver(actor_principal):
+        if mobile_approver:
             if not self._mobile_actor_has_route_grant(actor_principal, "authority.request.deny"):
                 return {"success": False, "error": "Mobile approver grant is not valid", "status_code": 403}
             attestation_result = verify_mobile_approval_attestation(
@@ -1093,6 +1092,8 @@ class AuthorityService:
         profile_id: str | None = None,
         actor_principal: Any = None,
     ) -> bool:
+        if actor_principal is not None and cls._actor_core_role(actor_principal):
+            return True
         expected_profile = str(profile_id or "").strip() or cls._actor_profile_id(actor_principal)
         if not expected_profile:
             return True
@@ -1100,6 +1101,12 @@ class AuthorityService:
         if not target_profile:
             target_profile = parse_principal_parts(request.principal_id).get("profile", "")
         return bool(target_profile and target_profile == expected_profile)
+
+    @staticmethod
+    def _actor_core_role(actor_principal: Any) -> bool:
+        if isinstance(actor_principal, dict):
+            return bool(actor_principal.get("core_role"))
+        return bool(getattr(actor_principal, "core_role", False))
 
     @staticmethod
     def _actor_profile_id(actor_principal: Any) -> str:
@@ -1131,9 +1138,21 @@ class AuthorityService:
             return str(actor_principal.get("role") or "").strip() == "mobile_approver"
         return str(getattr(actor_principal, "role", "") or "").strip() == "mobile_approver"
 
+    @staticmethod
+    def _actor_scopes(actor_principal: Any) -> set[str]:
+        if isinstance(actor_principal, dict):
+            values = actor_principal.get("scopes") or ()
+        else:
+            values = getattr(actor_principal, "scopes", ()) or ()
+        if not isinstance(values, (list, tuple, set)):
+            return set()
+        return {str(value).strip() for value in values if str(value).strip()}
+
     def _mobile_actor_has_route_grant(self, actor_principal: Any, permission_id: str) -> bool:
+        if permission_id in self._actor_scopes(actor_principal):
+            return True
         manager = self._capability_grant_manager
-        if manager is None or not callable(getattr(manager, "check_authority", None)):
+        if manager is None:
             return False
         profile_id = self._actor_profile_id(actor_principal)
         if not profile_id:
@@ -1149,7 +1168,12 @@ class AuthorityService:
         configs: list[dict[str, Any]] = []
         for principal_id in principals:
             try:
-                check = manager.check_authority(principal_id, permission_id)
+                if callable(getattr(manager, "check_authority", None)):
+                    check = manager.check_authority(principal_id, permission_id)
+                elif callable(getattr(manager, "check", None)):
+                    check = manager.check(principal_id, permission_id)
+                else:
+                    return False
             except Exception:
                 return False
             if not getattr(check, "allowed", False):
@@ -1192,7 +1216,7 @@ class AuthorityService:
             return {"grants": {}, "count": 0}
         principal_id = str(principal_id or "").strip()
         actor_profile_id = self._actor_profile_id(actor_principal)
-        if actor_principal is not None and not bool(getattr(actor_principal, "core_role", False)):
+        if actor_principal is not None and not self._actor_core_role(actor_principal):
             profile_prefix = f"profile:{actor_profile_id}"
             if not actor_profile_id:
                 return {"success": False, "error": "Forbidden", "status_code": 403}
@@ -1245,7 +1269,7 @@ class AuthorityService:
         return {"success": True, "principal_id": principal_id, "permission_id": permission_id, "revoked": revoked}
 
     def events(self, limit: int = 200, *, actor_principal: Any = None) -> dict[str, Any]:
-        if actor_principal is not None and not bool(getattr(actor_principal, "core_role", False)):
+        if actor_principal is not None and not self._actor_core_role(actor_principal):
             return {"success": False, "error": "Forbidden", "status_code": 403}
         return {"_sse": True, "events": self._request_store.list_events(limit)}
 
@@ -1550,6 +1574,9 @@ class AuthorityService:
         model_id = str(resource.get("model_id") or resource.get("model_ref") or "")
         function_id = str(resource.get("function_id") or "")
         pack_id = str(resource.get("pack_id") or "")
+        target_pack_id = str(resource.get("target_pack_id") or "")
+        pack_request_id = str(resource.get("pack_request_id") or "")
+        pack_request_mode = str(resource.get("mode") or "")
         app_name = str(resource.get("app_display_name") or "")
         provider_display_name = str(resource.get("provider_display_name") or provider_id or "")
         model_display_name = str(resource.get("model_display_name") or model_id or "")
@@ -1572,6 +1599,7 @@ class AuthorityService:
             "model.invoke": "Model/API",
             "api_key.use": "API key",
             "network.egress": "Network access",
+            "pack.approve": "Pack approval",
         }.get(request.permission_id, host_definition.label if host_definition is not None else request.permission_id)
         access_summary = ""
         host_execution_summary: dict[str, Any] = {}
@@ -1598,6 +1626,14 @@ class AuthorityService:
                     stream_label=stream_label,
                     summary=host_execution_summary,
                 )
+        if request.permission_id == "pack.approve" and resource.get("kind") == "defaultspack.pack_request":
+            target_label = target_pack_id or pack_id or "pack"
+            title = f"{target_label} のpack requestを承認しますか？"
+            summary = (
+                f"{target_label} への {pack_request_mode or 'pack'} request"
+                f"{f' ({pack_request_id})' if pack_request_id else ''} を確認します。"
+            )
+            access_summary = pack_request_mode or "pack request"
         if has_rich_provider_metadata and request.permission_id in {"model.invoke", "api_key.use", "network.egress"}:
             app_label = app_name or "defaultspack"
             provider_label = provider_display_name or provider_id or "provider"
@@ -1624,6 +1660,9 @@ class AuthorityService:
             "model_id": model_id or None,
             "function_id": function_id or None,
             "pack_id": pack_id or None,
+            "target_pack_id": target_pack_id or None,
+            "pack_request_id": pack_request_id or None,
+            "pack_request_mode": pack_request_mode or None,
             "app_display_name": app_name or None,
             "provider_display_name": provider_display_name or None,
             "model_display_name": model_display_name or None,

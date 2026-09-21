@@ -16,6 +16,7 @@ class AuthorityHandlersMixin:
 
     def _authority_requests(self, status: str = "all") -> dict:
         try:
+            self._sync_defaultspack_pack_authority_requests()
             return _authority_service().list_requests(
                 status,
                 actor_principal=getattr(self, "_authenticated_principal", None),
@@ -80,7 +81,7 @@ class AuthorityHandlersMixin:
         try:
             config = body.get("config") if isinstance(body.get("config"), dict) else None
             related_permissions = body.get("related_permissions")
-            return _authority_service().approve_request(
+            result = _authority_service().approve_request(
                 request_id,
                 scope=str(body.get("scope") or "once"),
                 config=config,
@@ -90,6 +91,8 @@ class AuthorityHandlersMixin:
                 actor_principal=getattr(self, "_authenticated_principal", None),
                 attestation=body.get("attestation") if isinstance(body.get("attestation"), dict) else None,
             )
+            self._apply_defaultspack_pack_authority_decision(request_id, result, decision="approve", body=body)
+            return result
         except Exception as exc:
             _log_internal_error("authority_approve", exc)
             return {"success": False, "error": _SAFE_ERROR_MSG}
@@ -109,7 +112,7 @@ class AuthorityHandlersMixin:
 
     def _authority_deny(self, request_id: str, body: dict) -> dict:
         try:
-            return _authority_service().deny_request(
+            result = _authority_service().deny_request(
                 request_id,
                 reason=str(body.get("reason") or ""),
                 persist=bool(body.get("persist") or body.get("remember")),
@@ -117,6 +120,8 @@ class AuthorityHandlersMixin:
                 actor_principal=getattr(self, "_authenticated_principal", None),
                 attestation=body.get("attestation") if isinstance(body.get("attestation"), dict) else None,
             )
+            self._apply_defaultspack_pack_authority_decision(request_id, result, decision="deny", body=body)
+            return result
         except Exception as exc:
             _log_internal_error("authority_deny", exc)
             return {"success": False, "error": _SAFE_ERROR_MSG}
@@ -141,3 +146,49 @@ class AuthorityHandlersMixin:
         except Exception as exc:
             _log_internal_error("authority_events", exc)
             return {"error": _SAFE_ERROR_MSG}
+
+    @staticmethod
+    def _sync_defaultspack_pack_authority_requests() -> None:
+        try:
+            from ecosystem.defaultspack.backend.pack_extension.authority_bridge import (
+                sync_pending_pack_requests_to_authority,
+            )
+
+            sync_pending_pack_requests_to_authority()
+        except Exception:
+            return
+
+    def _apply_defaultspack_pack_authority_decision(
+        self,
+        request_id: str,
+        result: dict,
+        *,
+        decision: str,
+        body: dict,
+    ) -> None:
+        if not isinstance(result, dict) or not result.get("success"):
+            return
+        try:
+            from ecosystem.defaultspack.backend.pack_extension.authority_bridge import (
+                apply_pack_decision_for_authority_request,
+            )
+
+            bridge = apply_pack_decision_for_authority_request(
+                request_id,
+                decision=decision,
+                reviewer=self._authority_reviewer_label(),
+                notes=str(body.get("decision_notes") or body.get("notes") or body.get("reason") or ""),
+            )
+            if not bridge.get("skipped"):
+                result["pack_request_result"] = bridge
+        except Exception as exc:
+            result["pack_request_result"] = {"success": False, "error": str(exc)}
+
+    def _authority_reviewer_label(self) -> str:
+        principal = getattr(self, "_authenticated_principal", None)
+        if isinstance(principal, dict):
+            role = str(principal.get("role") or "").strip()
+            device_id = str(principal.get("device_id") or "").strip()
+            if role or device_id:
+                return ":".join(value for value in (role, device_id) if value)
+        return "authority"

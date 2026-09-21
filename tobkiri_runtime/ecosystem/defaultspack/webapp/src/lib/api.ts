@@ -1096,7 +1096,7 @@ export type P2PPeer = {
 export type P2PPairing = {
   pairing_id: string;
   code: string;
-  status: "pending" | "accepted" | "rejected" | "expired" | string;
+  status: "pending" | "claimed" | "approved" | "rejected" | "expired" | string;
   expires_at: number;
   created_at: number;
   peer_id?: string;
@@ -1105,7 +1105,14 @@ export type P2PPairing = {
   capabilities?: string[];
   allowed_company_ids?: string[];
   accepted_at?: number;
+  approved_at?: number;
   rejected_at?: number;
+  claimed_device_id?: string;
+  claimed_device_label?: string;
+  confirmation_code?: string;
+  requested_scopes?: string[];
+  base_urls?: string[];
+  pickup_secret?: string;
   reason?: string;
 };
 
@@ -1117,6 +1124,7 @@ export type MobileDevice = {
   scopes?: string[];
   status?: string;
   encryption_key_configured?: boolean;
+  last_seen_at?: number;
 };
 
 export type MobileDevicesResponse = { devices: MobileDevice[]; count?: number };
@@ -4690,4 +4698,12 @@ export const api = {
       { cache: "no-store" },
     );
   },
+
+  revokeMobileDevice(deviceId: string) {
+    return request<{ ok: boolean; device_id: string }>(
+      `/api/mobile/v1/devices/${encodeURIComponent(deviceId)}`,
+      { method: "DELETE" },
+    );
+  },
+
 };

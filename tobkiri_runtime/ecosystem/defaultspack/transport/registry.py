@@ -513,6 +513,8 @@ def require_legacy_route_allowlisted(spec: HttpRouteSpec) -> None:
         return
     if _legacy_route_matches_mobile_contract(spec, legacy_block_module):
         return
+    if _legacy_route_matches_mobile_contract(spec, legacy_block_module):
+        return
     raise ValueError(
         f"legacy HTTP route is not allowlisted: {key[0]} {key[1]} -> {legacy_block_module}"
     )

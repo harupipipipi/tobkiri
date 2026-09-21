@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { CredentialTransferModal } from "../../../components/CredentialTransferModal";
 import { cn } from "../../../lib/cn";
+import { allowCleartextMobileQr } from "../../../lib/mobileCleartextQr";
 import { buildApiKeySavePayload, collectApiProviderOptions } from "../../../features/apiKeys/apiKeySetup";
 import { settingsApiResources } from "../../../features/settings/resources/settingsApiResources";
 import { availabilityCopy, type ModelAvailabilityAfterKeySave } from "../../../features/settings/resources/useModelAvailability";
@@ -39,6 +40,7 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
   const [credentialTransfer, setCredentialTransfer] = useState<{ providerId: string; providerLabel?: string; apiId: string } | null>(null);
   const selectedProviderOption = providerOptions.find((option) => option.provider_id === providerId);
   const selectedKind = selectedProviderKind(providerId, providerOptions);
+  const credentialTransferEnabled = allowCleartextMobileQr();
   const feedback = saveState === "saved" ? availabilityCopy(availability) : null;
 
   const resetFeedback = () => {
@@ -66,6 +68,11 @@ export function BuiltinApiKeySetupRenderer({ sectionId, field, value, sectionVal
     setAvailability(null);
     try {
       const result = await settingsApiResources.saveProviderApiKey(payload.provider_id, payload.value, payload.options);
+      const savedProviderId = payload.provider_id;
+      const savedProviderLabel = selectedProviderOption?.label;
+      const savedApiId = payload.options.apiId;
+      const savedBaseUrl = baseUrl.trim();
+      const savedDefaultModel = defaultModel.trim();
       setAvailability(result.model_availability ?? {
         status: "route_required",
         provider_id: payload.provider_id,

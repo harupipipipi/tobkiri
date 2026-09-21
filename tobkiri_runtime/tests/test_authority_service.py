@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import base64
 import sys
 import threading
 import time
@@ -23,6 +24,8 @@ def _service(tmp_path, monkeypatch):
     monkeypatch.setenv("RUMI_AUTHORITY_MODE", "enforce")
     monkeypatch.setenv("RUMI_PANEL_BOOTSTRAP_SECRET", "panel-bootstrap-test-secret-" + ("p" * 32))
     from core_runtime.authority.request_store import AuthorityRequestStore
+    from core_runtime.authority.approval_challenge_store import ApprovalChallengeStore
+    from core_runtime.authority.device_key_registry import DeviceKeyRegistry
     from core_runtime.authority.service import AuthorityService
     from core_runtime.capability_grant_manager import CapabilityGrantManager
 
@@ -31,13 +34,28 @@ def _service(tmp_path, monkeypatch):
         secret_key="capability-test-key-" + ("y" * 32),
     )
     store = AuthorityRequestStore(tmp_path / "authority", hmac_key_manager=_HmacKey())
-    return AuthorityService(capability_grant_manager=grants, request_store=store), grants, store
+    return AuthorityService(
+        capability_grant_manager=grants,
+        request_store=store,
+        approval_challenge_store=ApprovalChallengeStore(
+            tmp_path / "approval_challenges",
+            hmac_key_manager=_HmacKey(),
+        ),
+        device_key_registry=DeviceKeyRegistry(
+            tmp_path / "device_keys",
+            secret_key="device-key-test-key-" + ("z" * 32),
+        ),
+    ), grants, store
 
 
 def _ui_operator(request_id: str):
     from core_runtime.authority.ui_operator import sign_ui_operator
 
     return sign_ui_operator(request_id, nonce="nonce-" + request_id)
+
+
+def _b64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
 
 
 def _grant_profile_chain(grants, principal_id: str, permission_id: str, config: dict | None = None) -> None:
@@ -435,6 +453,99 @@ def test_authority_non_consuming_check_does_not_spend_one_shot_token(tmp_path, m
     assert consumed.allowed is True
     assert after_consumed.allowed is False
     assert after_consumed.approval_required is True
+
+
+def test_mobile_approver_requires_signed_challenge_for_once_approval(tmp_path, monkeypatch):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    service, _, _ = _service(tmp_path, monkeypatch)
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    service.register_device_key(
+        profile_id="work",
+        device_id="mobile-1",
+        public_key=public_key,
+    )
+    decision = service.check(
+        principal_id="profile:work",
+        permission_id="model.invoke",
+        resource={"kind": "model", "provider_id": "openai", "api_id": "work", "model_id": "gpt-5.4"},
+        profile_id="work",
+    )
+    actor = {
+        "role": "mobile_approver",
+        "profile_id": "work",
+        "device_id": "mobile-1",
+        "token_id": "approver-token-hash",
+        "scopes": [
+            "authority.request.list",
+            "authority.request.read",
+            "authority.request.approve",
+            "authority.request.deny",
+        ],
+        "core_role": False,
+    }
+
+    pending = service.list_requests("pending", actor_principal=actor)
+    assert [item["request_id"] for item in pending["pending"]] == [decision.request_id]
+    assert service.approve_request(
+        decision.request_id,
+        scope="once",
+        actor_principal=actor,
+    )["success"] is False
+    assert service.approve_request(
+        decision.request_id,
+        scope="profile",
+        actor_principal=actor,
+        attestation={},
+    )["status_code"] == 403
+
+    challenge = service.create_approval_challenge(
+        decision.request_id,
+        actor_principal=actor,
+    )
+    signature = private_key.sign(bytes.fromhex(challenge["payload_hash"]))
+    approval = service.approve_request(
+        decision.request_id,
+        scope="once",
+        actor_principal=actor,
+        attestation={
+            "challenge_id": challenge["challenge"]["challenge_id"],
+            "payload_hash": challenge["payload_hash"],
+            "signature": _b64url(signature),
+        },
+    )
+
+    assert approval["success"] is True
+    assert approval["scope"] == "once"
+    assert approval["token"]
+
+
+def test_mobile_approver_cannot_see_other_profile_requests(tmp_path, monkeypatch):
+    service, _, _ = _service(tmp_path, monkeypatch)
+    decision = service.check(
+        principal_id="profile:work",
+        permission_id="model.invoke",
+        resource={"kind": "model", "provider_id": "openai", "api_id": "work", "model_id": "gpt-5.4"},
+        profile_id="work",
+    )
+    actor = {
+        "role": "mobile_approver",
+        "profile_id": "private",
+        "device_id": "mobile-1",
+        "token_id": "approver-token-hash",
+        "scopes": ["authority.request.list", "authority.request.read"],
+        "core_role": False,
+    }
+
+    assert service.list_requests("pending", actor_principal=actor)["pending"] == []
+    result = service.get_request(decision.request_id, actor_principal=actor)
+    assert result["success"] is False
+    assert result["status_code"] == 404
 
 
 def test_authority_batch_consume_one_shots_is_atomic(tmp_path, monkeypatch):
@@ -1883,6 +1994,32 @@ def test_authority_signed_deny_and_request_views(tmp_path, monkeypatch):
     assert denied["success"] is True
     assert denied["denied"] is True
     assert store.get_request(decision.request_id).status == "denied"
+
+
+def test_authority_pack_request_display_metadata(tmp_path, monkeypatch):
+    service, _, _ = _service(tmp_path, monkeypatch)
+    decision = service.check(
+        principal_id="profile:default__surface:defaultspack__node:pack-review",
+        permission_id="pack.approve",
+        resource={
+            "kind": "defaultspack.pack_request",
+            "pack_id": "defaultspack",
+            "target_pack_id": "samplepack",
+            "pack_request_id": "pack_req_1",
+            "mode": "forced_patch",
+        },
+        profile_id="default",
+        node_id="pack-review",
+    )
+
+    listed = service.list_requests("pending")
+    metadata = listed["pending"][0]["display_metadata"]
+
+    assert listed["pending"][0]["request_id"] == decision.request_id
+    assert metadata["permission_label"] == "Pack approval"
+    assert metadata["target_pack_id"] == "samplepack"
+    assert metadata["pack_request_id"] == "pack_req_1"
+    assert "samplepack" in metadata["title"]
 
 
 def test_authority_mobile_approver_is_profile_scoped(tmp_path, monkeypatch):

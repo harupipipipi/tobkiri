@@ -59,6 +59,16 @@ class TestCheckPermissiveProductionGuard:
             _app._check_permissive_production_guard()
         assert exc_info.value.code == 1
 
+    def test_production_rejects_even_an_explicit_allow_flag(self, monkeypatch, tmp_path):
+        """production では allow flag と lockfile があっても permissive にできない。"""
+        (tmp_path / "permissive.lock").touch()
+        monkeypatch.setenv("RUMI_ENVIRONMENT", "production")
+        monkeypatch.setenv("RUMI_ALLOW_PERMISSIVE", "true")
+        monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
+        with pytest.raises(SystemExit) as exc_info:
+            _app._check_permissive_production_guard()
+        assert exc_info.value.code == 1
+
     def test_development_does_not_exit(self, monkeypatch, tmp_path):
         """テスト4: RUMI_ENVIRONMENT=development → exit しない"""
         monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
@@ -88,7 +98,7 @@ class TestCheckPermissiveProductionGuard:
             _app._check_permissive_production_guard()
         captured = capsys.readouterr()
         assert "FATAL" in captured.err
-        assert "--permissive" in captured.err
+        assert "permissive" in captured.err
 
 
 # =========================================================================
@@ -147,4 +157,35 @@ class TestMainPermissiveFlow:
             pass
         except Exception:
             pass
+        assert os.environ.get("RUMI_SECURITY_MODE") == "permissive"
+
+    def test_environment_permissive_requires_the_same_guard(self, monkeypatch):
+        """環境変数だけでは lockfile / explicit opt-in を迂回できない。"""
+        monkeypatch.setenv("RUMI_SECURITY_MODE", "permissive")
+        monkeypatch.delenv("RUMI_ALLOW_PERMISSIVE", raising=False)
+        monkeypatch.delenv("RUMI_ENVIRONMENT", raising=False)
+        monkeypatch.setattr(sys, "argv", ["app.py", "--headless"])
+        with pytest.raises(SystemExit) as exc_info:
+            _app.main()
+        assert exc_info.value.code == 1
+
+    def test_environment_permissive_reaches_startup_boundary(self, monkeypatch, tmp_path):
+        """環境変数経由もガード通過後、既知の startup 境界まで到達する。"""
+        class ExpectedStartupBoundary(BaseException):
+            pass
+
+        pack_validator = types.ModuleType("core_runtime.pack_validator")
+
+        def stop_at_startup_boundary():
+            raise ExpectedStartupBoundary("startup preflight reached")
+
+        pack_validator.validate_host_execution = stop_at_startup_boundary
+        monkeypatch.setitem(sys.modules, "core_runtime.pack_validator", pack_validator)
+        (tmp_path / "permissive.lock").touch()
+        monkeypatch.setenv("RUMI_SECURITY_MODE", "permissive")
+        monkeypatch.setenv("RUMI_ENVIRONMENT", "development")
+        monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
+        monkeypatch.setattr(sys, "argv", ["app.py", "--headless"])
+        with pytest.raises(ExpectedStartupBoundary, match="startup preflight reached"):
+            _app.main()
         assert os.environ.get("RUMI_SECURITY_MODE") == "permissive"

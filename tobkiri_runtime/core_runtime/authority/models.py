@@ -24,6 +24,7 @@ AUTHORITY_PERMISSION_IDS = frozenset(
         "file.write",
         "pack.read",
         "pack.manage",
+        "pack.approve",
         "provider.read",
         "provider.manage",
         "authority.request.read",

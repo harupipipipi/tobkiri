@@ -14,4 +14,3 @@ def run(input_data: dict[str, Any], context: dict[str, Any] | None = None) -> di
             max_chars=input_data.get("max_chars") or input_data.get("max_output_chars"),
         ),
     )
-

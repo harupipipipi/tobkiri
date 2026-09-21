@@ -177,6 +177,11 @@ def check_routes(errors: list[str]) -> None:
 
 def check_frontend_route_parity(errors: list[str]) -> None:
     backend = {_normalize_route(str(spec.pattern or "")) for spec in _route_specs()}
+    # Feature-gated mobile routes are omitted from the active registry until
+    # enabled, but their frontend clients are still valid static declarations.
+    from ecosystem.defaultspack.domain.mobile.contract import MOBILE_ROUTE_CONTRACTS
+
+    backend.update(_normalize_route(route.pattern) for route in MOBILE_ROUTE_CONTRACTS)
     optional_prefixes = ("/api/agent/company/",)
     for endpoint in sorted(_extract_api_endpoints()):
         if endpoint in backend:

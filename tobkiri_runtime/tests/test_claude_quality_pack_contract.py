@@ -67,9 +67,9 @@ def test_ci_workflows_keep_required_quality_gates():
         test_workflow,
         [
             "root-python-tests",
-            "rumi-ai-contract-checks",
-            "rumi-ai-static-checks",
-            "rumi-ai-package-pytest",
+            "tobkiri-contract-checks",
+            "tobkiri-static-checks",
+            "tobkiri-package-pytest",
             "rust-test",
             "pytest tests/ -v",
             "pytest -m contract -v",

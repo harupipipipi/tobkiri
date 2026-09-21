@@ -273,6 +273,46 @@ class TestPackAPIHandlerPreAuthSecurity(unittest.TestCase):
             handler._is_pre_auth_route("POST", "/api/integrations/p2p/events")
         )
 
+    def test_mobile_pairing_token_delivery_routes_are_preauth(self):
+        handler = object.__new__(self.Handler)
+
+        self.assertTrue(
+            handler._is_pre_auth_route(
+                "POST",
+                "/api/mobile/v1/pairings/pair-1/claim",
+            )
+        )
+        self.assertTrue(
+            handler._is_pre_auth_route(
+                "GET",
+                "/api/mobile/v1/pairings/pair-1/status",
+            )
+        )
+        self.assertTrue(
+            handler._is_pre_auth_route(
+                "POST",
+                "/api/mobile/v1/pairings/pair-1/token/pickup",
+            )
+        )
+        self.assertTrue(
+            handler._is_pre_auth_route(
+                "POST",
+                "/api/mobile/v1/pairings/pair-1/token/ack",
+            )
+        )
+        self.assertFalse(
+            handler._is_pre_auth_route(
+                "GET",
+                "/api/mobile/v1/pairings/pair-1/token/pickup",
+            )
+        )
+        self.assertFalse(
+            handler._is_pre_auth_route(
+                "POST",
+                "/api/mobile/v1/pairings/pair-1/review",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

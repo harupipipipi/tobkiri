@@ -2370,8 +2370,11 @@ def test_defaultspack_runtime_service_registers_cross_platform_providers(tmp_pat
     from ecosystem.defaultspack.blocks.sandbox import api
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_SANDBOX_STATE_DIR", str(tmp_path))
+    monkeypatch.delenv("RUMI_CLOUDFLARE_SANDBOX_BRIDGE_URL", raising=False)
+    monkeypatch.delenv("RUMI_CLOUDFLARE_SANDBOX_API_KEY", raising=False)
     service = api._SandboxApiService()
     provider_ids = set(service.provider_registry.provider_ids())
+    cloudflare_status = service.provider_registry.doctor("cloudflare_sandbox_bridge")
     mac_isolation = api._provider_isolation("mac_lima", True)
     windows_isolation = api._provider_isolation("windows_wsl", True)
     linux_isolation = api._provider_isolation("linux_native", True)

@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 38766",
     "build": "vite build && node -e \"require('node:fs').rmSync('../ui/index.html', { force: true })\" && node scripts/check-shell-bundle-sync.mjs",
@@ -27,9 +30,11 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@mediapipe/tasks-vision": "^0.10.35",
     "@tauri-apps/api": "^2.10.1",
+    "@types/qrcode": "^1.5.6",
     "clsx": "^2.1.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
