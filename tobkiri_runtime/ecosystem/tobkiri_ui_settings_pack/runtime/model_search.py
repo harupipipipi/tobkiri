@@ -47,6 +47,7 @@ _RUNTIME_SETTING_KEYS = frozenset(
         "composite_models",
         "model_packs",
         "model_notes",
+        "preferred_model",
     }
 )
 
