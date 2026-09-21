@@ -1,11 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-<<<<<<< HEAD
-    "digest": "f22ac16bd4f80d15e552cfb59f3ed5946b1d06019139a35e87c93e6d649dbff3",
-=======
-    "digest": "bb386f36a9101d6357dd9783cc4d8586be25acdb0a1af817a22a893a933152da",
->>>>>>> 435dfa4ee022c41c865b0dec3293c2fabeddbaac
+    "digest": "d7a80e4b4e2700c5504fc520fed2d0a8944dad383589a1a7a81f2fe1e1147b9e",
     "entries": [
       {
         "path": "index.html",
@@ -19,13 +15,8 @@
       },
       {
         "path": "package.json",
-<<<<<<< HEAD
-        "size": 5676,
-        "sha256": "161cc48a3068a8af94574cdc0b52ad509ba87683ce35109080a438aedd426cb4"
-=======
-        "size": 5711,
-        "sha256": "1b695975cc8bd5eadd0024fefc711cbe2066ba0af1466f531f4bc6a00de878bc"
->>>>>>> 435dfa4ee022c41c865b0dec3293c2fabeddbaac
+        "size": 5970,
+        "sha256": "935eecb82cad418665887114ebf5e776a2ee732778b6cdbe97c298c0807a3106"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -704,13 +695,8 @@
       },
       {
         "path": "src/components/desktops/DesktopMonitorWorkspace.tsx",
-<<<<<<< HEAD
-        "size": 25044,
-        "sha256": "7c56a7f53d54df1b38de827e0c8e151acf9f7ca7fab5accfa289d04162aee32d"
-=======
-        "size": 21599,
-        "sha256": "cd9844892e9ba89e13e8c612bf14971f066c55b3750164768934e93e01909c2d"
->>>>>>> 435dfa4ee022c41c865b0dec3293c2fabeddbaac
+        "size": 25212,
+        "sha256": "84e8706cdeb49d14bbf75e7abf8e3b99d9dee9eae51f8e76b5cebd0d3b365fdd"
       },
       {
         "path": "src/components/desktops/DesktopProviderNotice.tsx",
@@ -719,13 +705,8 @@
       },
       {
         "path": "src/components/desktops/DesktopTile.tsx",
-<<<<<<< HEAD
-        "size": 15613,
-        "sha256": "a03f351607b0703ad3d094fdcd436032f580a448026652c345f0a9016ff3de2c"
-=======
-        "size": 15619,
-        "sha256": "eac18201212c1108a62cc986881e4b3e2a524bbe881ec3d050dbcea49c00b94d"
->>>>>>> 435dfa4ee022c41c865b0dec3293c2fabeddbaac
+        "size": 15703,
+        "sha256": "5c10714840515853ea2846ca1d98ff60c23c37b1b819c0f5b59894515c03249d"
       },
       {
         "path": "src/components/desktops/DesktopToolbar.tsx",
@@ -1970,11 +1951,7 @@
     ]
   },
   "bundle": {
-<<<<<<< HEAD
-    "digest": "11c4af896d053ad8864d1ae6723a13d99280fbd4363bb0dc656bc96c7dfcca3a",
-=======
-    "digest": "4decd363fa8379a939f3cf96fb9a7f2912a02bd0963268479091456f66d8b286",
->>>>>>> 435dfa4ee022c41c865b0dec3293c2fabeddbaac
+    "digest": "a547e0065802914a2ad64f7bb72127a76ce9a26bee6ea9728d477cc3c0a3d71d",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1988,13 +1965,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-<<<<<<< HEAD
-        "size": 2213799,
-        "sha256": "8dd2e66ca32123ef3aa0cf09b9e8a2bda8d9c3a267c8bd5d9617e83e8560163d"
-=======
-        "size": 2239075,
-        "sha256": "5808c76f47411c41fc9238bac144d30b2ed02fe8293c3e3f6f47525d4cc14bad"
->>>>>>> 435dfa4ee022c41c865b0dec3293c2fabeddbaac
+        "size": 2244862,
+        "sha256": "dd33f3cc396546d0acd002e80d99a42cdb3dad094f7ef3640ce688d248b724e0"
       },
       {
         "path": "shell-rolldown-runtime.js",
