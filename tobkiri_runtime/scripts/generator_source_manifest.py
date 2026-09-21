@@ -816,17 +816,26 @@ def write_source_manifest(root: Path = _ROOT) -> None:
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=root, prefix=f".{path.name}.", delete=False
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            dir=root,
+            prefix=f".{path.name}.",
+            delete=False,
         ) as output:
             temporary = Path(output.name)
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
+        if path.exists():
+            # Windows cannot replace a read-only target.
+            path.chmod(0o666)
         temporary.chmod(0o444)
         os.replace(temporary, path)
         temporary = None
     finally:
         if temporary is not None and temporary.exists():
+            temporary.chmod(0o666)
             temporary.unlink()
 
 

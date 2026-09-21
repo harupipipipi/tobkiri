@@ -89,7 +89,7 @@ def write_inventory(root: Path, output: Path | None = None) -> Path:
     payload = generate_inventory(root)
     text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8")
+    target.write_text(text, encoding="utf-8", newline="")
     return target
 
 
