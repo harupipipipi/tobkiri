@@ -4777,7 +4777,17 @@ function ChatApp() {
         handleModeChange("coding");
         const resolution = resolveFileSearchCommand(args);
         setInput(resolution.input);
-        if (resolution.feedback) setError(resolution.feedback);
+        if (resolution.feedback) {
+          setTransientAlert({
+            id: "files-command-guidance",
+            message: resolution.feedback,
+            tone: "info",
+          });
+        } else {
+          setTransientAlert((current) => (
+            current?.id === "files-command-guidance" ? null : current
+          ));
+        }
         return resolution.shouldClearInput;
       }
       case "open_history":
