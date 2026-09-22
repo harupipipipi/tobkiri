@@ -96,3 +96,24 @@ src/
 - `basepack` を flow メタデータとして保持
 
 `rumi_graph` はランタイム互換を壊さないための editor 向けメタデータです。既存ランタイムが読める `steps` も同時に出力しつつ、viewer ではポート/接続情報を復元できます。
+
+### Profile configuration and personal settings
+
+Home’s **Edit Packs** opens the selected execution Profile at
+`/panel/profile?profile_id=<id>#profile-packs`. **Rename** only changes its display
+name. Add and Duplicate open the new Profile’s Pack selection. The personal name
+and avatar form is separate at `/panel/account` (**Your profile**).
+
+Pack choices come from the Host’s verified artifact catalog, independently of
+which Profile is running. **Save Pack selection** appends a definition revision;
+it does not activate a Profile or grant permission. Review, approval, and
+activation follow using the saved definition. Dependencies remain included when
+another selected Pack requires them. Unsaved choices survive in-app navigation;
+a changed source revision requires discarding the stale draft before another save.
+
+The composition editor requires the matching Host endpoints:
+`GET /api/v4/profiles/catalog` and the `composition` payload on
+`POST /api/v4/profiles/update`. An older backend cannot save compositions; the
+editor reports the unavailable catalog instead of presenting a working selector.
+The registry also publishes `active_profile_definition_revision` so newly saved
+changes are not mistaken for the configuration that is currently running.

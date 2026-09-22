@@ -55,7 +55,7 @@ for (const rejected of [false, true]) test(`Pack selection ${rejected ? 'retains
     return response(current);
   };
   const container = dom.window.document.querySelector<HTMLElement>('#root')!;
-  const root = createRoot(container);
+  let root = createRoot(container);
   try {
     await act(async () => {root.render(<ProfilePackEditor entry={entry} locked={false} onEditingChange={(value) => {editing = value;}} onSaved={async () => {saved++;}} />);});
     const choices = container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
@@ -74,6 +74,15 @@ for (const rejected of [false, true]) test(`Pack selection ${rejected ? 'retains
       assert.ok(container.textContent?.includes('Profile revision is stale'));
       assert.equal(choices[1]?.checked, true);
       assert.equal(save.disabled, true);
+      await act(async () => root.unmount());
+      current = {...current, profiles: current.profiles.map((profile) => ({...profile, profile_revision: digest('f')}))};
+      root = createRoot(container);
+      await act(async () => {root.render(<ProfilePackEditor entry={entry} locked={false} onEditingChange={(value) => {editing = value;}} onSaved={async () => {saved++;}} />);});
+      assert.equal(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]?.checked, true);
+      assert.match(container.textContent ?? '', /changed while you were editing/);
+      assert.equal(posts.length, 1);
+      const discard = [...container.querySelectorAll('button')].find((button) => button.textContent?.startsWith('Discard changes'))!;
+      await act(async () => discard.click());
     } else assert.match(container.textContent ?? '', /Pack selection saved/);
   } finally {
     await act(async () => root.unmount());

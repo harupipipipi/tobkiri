@@ -8,6 +8,9 @@ import type {NamedProfileRecord, NamedProfileRegistry} from '@/src/lib/profileRe
 import {profilePackDependencies, type ProfileCompositionCatalog} from '@/src/lib/profileComposition';
 import type {RuntimeProfileCatalogEntry} from '@/src/lib/runtimeSurface';
 
+// Retain unsaved choices across in-app navigation. A draft never grants authority
+// and is saved only against the exact definition from which it was edited.
+const drafts = new Map<string, {revision: string; packIds: string[]}>();
 const keyFor = (ids: string[]) => ids.slice().sort().join(',');
 function selectedIds(record: NamedProfileRecord): string[] {
   if (!Array.isArray(record.profile.packs)) throw new Error('This Profile has no editable Pack definition.');
@@ -57,10 +60,12 @@ export function ProfilePackEditor({entry, locked, onEditingChange, onSaved}: {
       const ids = selectedIds(next);
       setRegistry(nextRegistry);
       setCatalog(nextCatalog);
+      const draft = drafts.get(entry.profile_id);
+      const draftStale = Boolean(draft && draft.revision !== next.profile_revision);
       setBaseline(ids);
-      setSelected(ids);
-      setError(null);
-      setStale(false);
+      setSelected(draft?.packIds ?? ids);
+      setError(draftStale ? 'This Profile changed while you were editing. Discard the draft to reload its saved configuration.' : null);
+      setStale(draftStale);
       return true;
     } catch (error) {
       if (!signal.aborted) {
@@ -99,6 +104,7 @@ export function ProfilePackEditor({entry, locked, onEditingChange, onSaved}: {
       if (result.action !== 'update' || result.changed_profile?.profile_id !== record.profile_id) {
         throw new Error('The save response did not match this Profile. Reload its saved definition before continuing.');
       }
+      drafts.delete(record.profile_id);
       setRegistry(result);
       setBaseline(selectedIds(result.changed_profile));
       setSelected(selectedIds(result.changed_profile));
@@ -136,7 +142,14 @@ export function ProfilePackEditor({entry, locked, onEditingChange, onSaved}: {
             return (
               <label key={pack.pack_id} className="flex cursor-pointer items-start gap-3 py-3">
                 <input type="checkbox" className="mt-1 size-4 accent-accent" checked={included} disabled={saving || locked || stale || !targetCurrent}
-                  onChange={() => {setNotice(''); setSelected((current) => included ? current.filter((id) => id !== pack.pack_id) : [...current, pack.pack_id]);}} />
+                  onChange={() => {
+                    if (!record) return;
+                    setNotice('');
+                    const next = included ? selected.filter((id) => id !== pack.pack_id) : [...selected, pack.pack_id];
+                    if (keyFor(next) === keyFor(baseline)) drafts.delete(entry.profile_id);
+                    else drafts.set(entry.profile_id, {revision: record.profile_revision, packIds: next});
+                    setSelected(next);
+                  }} />
                 <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-text-main">{pack.display_name}</span><span className="block break-all text-xs text-text-muted">{pack.pack_id} · {pack.version}</span></span>
                 {dependency ? <span className="text-xs text-text-muted">Included as a dependency</span> : null}
               </label>
@@ -147,8 +160,8 @@ export function ProfilePackEditor({entry, locked, onEditingChange, onSaved}: {
       )}
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
         <Button type="button" onClick={() => void save()} disabled={!dirty || !selected.length || saving || locked || stale || !targetCurrent}>{saving ? 'Saving…' : 'Save Pack selection'}</Button>
-        {dirty ? <Button variant="ghost" disabled={saving} onClick={() => {setSelected(baseline); setNotice('');}}>Discard changes{stale ? ' and reload' : ''}</Button> : null}
-        {dirty ? <span role="status" className="text-sm text-text-muted">Unsaved changes</span> : null}
+        {dirty ? <Button variant="ghost" disabled={saving} onClick={() => {drafts.delete(entry.profile_id); setSelected(baseline); setNotice('');}}>Discard changes{stale ? ' and reload' : ''}</Button> : null}
+        {dirty ? <span role="status" className="text-sm text-text-muted">{selected.length ? 'Unsaved changes' : 'Select at least one Pack.'}</span> : null}
         {notice ? <p role="status" className="text-sm text-text-muted">{notice}</p> : null}
         {record && !targetCurrent ? <p role="status" className="text-sm text-text-muted">Waiting for the latest Profile definition…</p> : null}
       </div>
