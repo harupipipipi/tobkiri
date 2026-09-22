@@ -69,12 +69,13 @@ test("deriveAmbientUiState keeps first-run setup visible even when browser OS pe
   assert.equal(deriveAmbientUiState(firstRunWithDeniedBrowserPermission, "off"), "setupNeeded");
 });
 
-test("deriveAmbientUiState distinguishes off, monitoring, recording, and sending", () => {
+test("deriveAmbientUiState distinguishes off, monitoring, recording, reviewing, and sending", () => {
   const ready = status({ rumi: allRumi, os: allOs });
   const cases: Array<[AmbientRuntimeStatus, string]> = [
     ["off", "readyOff"],
     ["monitoring", "monitoring"],
     ["recording", "recording"],
+    ["reviewing", "reviewing"],
     ["transcribing", "transcribing"],
     ["sending", "sending"],
   ];
@@ -104,6 +105,7 @@ test("permission buckets keep denied and blocked distinct from missing setup", (
 test("ambient copy uses concrete recording and send state labels", () => {
   assert.deepEqual(Object.values(ambientOperationLabels), [
     "録音中",
+    "確認中",
     "文字起こし中",
     "送信中",
     "承認待ち",
@@ -113,6 +115,8 @@ test("ambient copy uses concrete recording and send state labels", () => {
   ]);
   assert.match(ambientCopyJa.gestureShort, /OKマーク/);
   assert.match(ambientCopyJa.states.monitoring.body, /指を開くと送信前確認/);
+  assert.match(ambientCopyJa.states.recording.headline, /送信前の確認/);
+  assert.match(ambientCopyJa.states.reviewing.body, /まだ端末の外へ送信していません/);
   assert.match(ambientCopyJa.states.transcribing.headline, /録音音声を文字/);
   assert.doesNotMatch(JSON.stringify(ambientCopyJa), /指をくっつけ/);
 });

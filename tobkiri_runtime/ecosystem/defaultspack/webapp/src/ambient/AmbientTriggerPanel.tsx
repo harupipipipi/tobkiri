@@ -311,10 +311,11 @@ export function AmbientTriggerPanel({
     if (cameraUnavailable || pinchDetectorStatus === "unavailable") return "blocked";
     if (pinchDetectorStatus === "transcribing") return "transcribing";
     if (pinchDetectorStatus === "sending") return "sending";
+    if (pinchDetectorStatus === "reviewing" || pendingAudioReview) return "reviewing";
     if (pinchRecording || pinchDetectorStatus === "recording") return "recording";
     if (monitorEnabled) return "monitoring";
     return "off";
-  }, [cameraUnavailable, monitorEnabled, pinchDetectorStatus, pinchRecording]);
+  }, [cameraUnavailable, monitorEnabled, pendingAudioReview, pinchDetectorStatus, pinchRecording]);
   const uiState = useMemo(() => deriveAmbientUiState(status, runtimeStatus), [runtimeStatus, status]);
   const stateCopy = ambientCopyJa.states[uiState];
   const manualFallbackIsOsPermission = uiState === "denied" || uiState === "blocked" || uiState === "osPermissionNeeded";
@@ -786,8 +787,8 @@ export function AmbientTriggerPanel({
     setRecordingStartedAt(null);
     const transcript = await settlePinchSpeechRecognition();
     setPinchTranscriptPreview("");
-    setPinchDetectorStatus("transcribing");
-    setMessage(`${ambientOperationLabels.transcribing}: 送信前の確認画面を準備しています。`);
+    setPinchDetectorStatus("reviewing");
+    setMessage(`${ambientOperationLabels.reviewing}: 送信前の確認画面を準備しています。`);
     try {
       const recording = await recorder.stop();
       if (recording.size <= 0) {
@@ -1765,6 +1766,7 @@ export function AmbientTriggerPanel({
         await startMonitoring();
         return;
       case "monitoring":
+      case "reviewing":
         await stopMonitoring();
         return;
       case "recording":

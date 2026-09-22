@@ -22,6 +22,7 @@ export type AmbientRuntimeStatus =
   | "off"
   | "monitoring"
   | "recording"
+  | "reviewing"
   | "transcribing"
   | "sending"
   | "paused"
@@ -35,6 +36,7 @@ export type AmbientUiState =
   | "readyOff"
   | "monitoring"
   | "recording"
+  | "reviewing"
   | "transcribing"
   | "sending"
   | "paused"
@@ -44,6 +46,7 @@ export type AmbientUiState =
 
 export const ambientOperationLabels = {
   recording: "録音中",
+  reviewing: "確認中",
   transcribing: "文字起こし中",
   sending: "送信中",
   approvalPending: "承認待ち",
@@ -120,10 +123,17 @@ export const ambientCopyJa = {
     },
     recording: {
       badge: "録音中",
-      headline: "録音中。OKマークを崩すと送ります。",
+      headline: "録音中。OKマークを崩すと送信前の確認を開きます。",
       body: "録音データは保存しません",
       primary: "キャンセル",
       tone: "red",
+    },
+    reviewing: {
+      badge: "送信前確認",
+      headline: "録音の内容を確認しています",
+      body: "録音・文字起こしはまだ端末の外へ送信していません",
+      primary: "停止する",
+      tone: "emerald",
     },
     transcribing: {
       badge: "文字起こし中",
@@ -213,6 +223,13 @@ export const ambientStateVisuals = {
     primaryButtonClass: "bg-red-400 text-zinc-950 hover:bg-red-300",
     badgeClass: "border-red-400/35 bg-red-500/10 text-red-100",
   },
+  reviewing: {
+    glyphIcon: "hand",
+    glyphClass: "border-emerald-400/35 bg-emerald-400/10 text-emerald-100",
+    primaryIcon: "square",
+    primaryButtonClass: "border border-zinc-800 bg-zinc-900 text-zinc-100 hover:border-zinc-700 hover:bg-zinc-800",
+    badgeClass: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
+  },
   transcribing: {
     glyphIcon: "loader",
     glyphClass: "border-violet-400/35 bg-violet-400/10 text-violet-100",
@@ -286,6 +303,7 @@ export function deriveAmbientUiState(
   if (runtimeStatus === "transcribing") return "transcribing";
   if (runtimeStatus === "sending") return "sending";
   if (runtimeStatus === "recording") return "recording";
+  if (runtimeStatus === "reviewing") return "reviewing";
   if (runtimeStatus === "monitoring") return "monitoring";
   if (runtimeStatus === "paused") return "paused";
 

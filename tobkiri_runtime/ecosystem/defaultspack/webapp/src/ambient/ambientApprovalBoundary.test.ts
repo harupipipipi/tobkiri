@@ -225,8 +225,15 @@ test("real OK-mark recording requires local review before dispatch", () => {
   const reviewSource = readSource("ambient", "ambientAudioReview.ts");
   const reviewCardSource = readSource("ambient", "AmbientAudioReviewCard.tsx");
 
-  assert.match(panelSource, /setPinchDetectorStatus\("transcribing"\)/);
-  assert.match(panelSource, /ambientOperationLabels\.transcribing/);
+  assert.match(panelSource, /setPinchDetectorStatus\("reviewing"\)/);
+  assert.match(panelSource, /ambientOperationLabels\.reviewing/);
+  const statusStart = panelSource.indexOf("const runtimeStatus");
+  const statusEnd = panelSource.indexOf("const uiState", statusStart);
+  const statusSource = panelSource.slice(statusStart, statusEnd);
+  assert.ok(
+    statusSource.indexOf('pinchDetectorStatus === "sending"')
+      < statusSource.indexOf('pinchDetectorStatus === "reviewing" || pendingAudioReview'),
+  );
   const finishStart = panelSource.indexOf("const finishPinchRecording");
   const finishEnd = panelSource.indexOf("const discardAudioReview", finishStart);
   const finishSource = panelSource.slice(finishStart, finishEnd);

@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "89449c652e33a3eb46278ed244ab0c20a5d995cac2dbb89f1057247df776af6b",
+    "digest": "bc0ce5b9ee91bb087db892b7ef1d7df26576f57335542a34ee1377c2cc8bb43d",
     "entries": [
       {
         "path": "index.html",
@@ -190,8 +190,8 @@
       },
       {
         "path": "src/ambient/AmbientPermissionSections.tsx",
-        "size": 2847,
-        "sha256": "335641d96158b2489c6e5b0ed4419cd0143bda237da2383d359f809655f719c7"
+        "size": 2903,
+        "sha256": "194fd558c1ecd5388f354c158742d0b3a5072179d7e407e58fc51780a6e29125"
       },
       {
         "path": "src/ambient/AmbientRoutingSettings.tsx",
@@ -200,8 +200,8 @@
       },
       {
         "path": "src/ambient/AmbientTriggerPanel.tsx",
-        "size": 113633,
-        "sha256": "6169ed9ae6da9d09c04f1b3a003fc89b353db9d3aae8d0fa19f866e623fc3b29"
+        "size": 113758,
+        "sha256": "921db4e3f442b4cca7f7709cc976a45487458c310df3d37155dce5116c118f61"
       },
       {
         "path": "src/ambient/AmbientTriggerStatusIcon.tsx",
@@ -220,8 +220,8 @@
       },
       {
         "path": "src/ambient/ambientApprovalBoundary.test.ts",
-        "size": 21275,
-        "sha256": "800e4e25b072deda860b8d9e8be7394eae32286615cafb3e944b666de480ac66"
+        "size": 21643,
+        "sha256": "cf8e54560681207e16ec9cf0781650ae9af283711db7d79e107f114292e0eda2"
       },
       {
         "path": "src/ambient/ambientAudioReview.test.ts",
@@ -290,13 +290,13 @@
       },
       {
         "path": "src/ambient/ambientUiState.test.ts",
-        "size": 6204,
-        "sha256": "e0765913c890ccabae25422e9cc8b9d35199121168193d47b04d6e06a12c9170"
+        "size": 6445,
+        "sha256": "a5db77fed97c4c1e710588a795b61a6bf734cd1c9cbfecabbfde012c9de61189"
       },
       {
         "path": "src/ambient/ambientUiState.ts",
-        "size": 14322,
-        "sha256": "34d5157ef4fa6f4722920c0a5dae65ac5493c1c66eff30eda17d30f6d1091a85"
+        "size": 15053,
+        "sha256": "f022a7cab27a6657f0e7309abb01f4490b43649d0517d14a3d8097c146bdccdc"
       },
       {
         "path": "src/ambient/finalAnswerBridge.reference.test.ts",
@@ -1866,7 +1866,7 @@
     ]
   },
   "bundle": {
-    "digest": "fc81dff8d0dd2bd998882067e1579ad6c1e8a57ac6559ee810a2f0524ab15336",
+    "digest": "aedfb15a75ebab8784f70333b3a877d014b9d94f06af5411f83a17841696e82b",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1880,8 +1880,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2218614,
-        "sha256": "d9b94b0abaae852f367167abc056eb790eab4ed80964c840271dab96c0742a02"
+        "size": 2219270,
+        "sha256": "2c083a9ba29375e45f29b19db5ed804389882eb4c8bd8cf5df3524a7baf5fbaf"
       },
       {
         "path": "shell-rolldown-runtime.js",
