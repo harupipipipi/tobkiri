@@ -93,7 +93,12 @@ def test_warm_read_still_checks_the_artifact_path(bundle: Path, replacement: str
     saved = bundle / "saved.json"
     path.rename(saved)
     if replacement == "symlink":
-        path.symlink_to(saved)
+        try:
+            path.symlink_to(saved)
+        except OSError as exc:
+            if getattr(exc, "winerror", None) == 1314:
+                pytest.skip("Windows symlink creation requires Developer Mode or elevation")
+            raise
     with pytest.raises((BundleIntegrityError, FileNotFoundError)):
         BundledCatalog.load(bundle)
 
