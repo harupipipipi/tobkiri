@@ -14,8 +14,6 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 SAFE_APP_SERVER_ARGS = [
     "-c",
-    'approval_policy="untrusted"',
-    "-c",
     'sandbox_mode="read-only"',
 ]
 

@@ -19,8 +19,6 @@ _APP_SERVER_SHARED_SECRET_KEY = "RUMICODEX_APP_SERVER_SHARED_SECRET"
 _APP_SERVER_SECRET_MATERIAL_TYPE = "app_server_secret"
 _APP_SERVER_SAFE_CONFIG_ARGS = [
     "-c",
-    'approval_policy="untrusted"',
-    "-c",
     'sandbox_mode="read-only"',
 ]
 _DEFAULT_CONNECTION_ID = "default"
