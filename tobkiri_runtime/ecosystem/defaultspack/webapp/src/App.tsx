@@ -106,6 +106,7 @@ import {
   beginHighRiskAttempt,
   highRiskCommandRef,
   highRiskPrepareArguments,
+  highRiskResumeDisposition,
   releaseHighRiskAttempt,
 } from "./lib/highRiskCommand";
 import { fileToAttachment } from "./lib/attachments";
@@ -3178,7 +3179,10 @@ export function ChatApp() {
           return;
         }
         if (approval.state === "approved" && invocation.state === "approved") {
-          if (!beginHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId)) return;
+          if (!beginHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId)) {
+            schedulePoll();
+            return;
+          }
           let resumed: Awaited<ReturnType<typeof api.resumeHighRiskCommand>>;
           try {
             resumed = await api.resumeHighRiskCommand(pending.invocationId);
@@ -3194,8 +3198,16 @@ export function ChatApp() {
             releaseHighRiskAttempt(highRiskResumeStartedRef.current, pending.invocationId);
             throw new Error("高リスク操作の再開状態が一致しません。");
           }
+          const resumeDisposition = highRiskResumeDisposition(resumed.state);
+          if (resumeDisposition === "pending") {
+            // Resume is one-shot. Keep the pending receipt and observe the
+            // durable worker to a terminal state instead of resubmitting it
+            // or reporting an in-flight operation as failed.
+            schedulePoll();
+            return;
+          }
           clearPending();
-          if (resumed.state === "succeeded") {
+          if (resumeDisposition === "succeeded") {
             transientAlertSequenceRef.current += 1;
             setTransientAlert({
               id: `high-risk-succeeded-${transientAlertSequenceRef.current}`,

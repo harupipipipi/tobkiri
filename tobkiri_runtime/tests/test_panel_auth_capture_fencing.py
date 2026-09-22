@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
 
 import pytest
@@ -739,5 +740,108 @@ def test_http_exchange_passes_the_presenter_request_id() -> None:
         assert foreign is not None
         assert foreign["session_id"] != owner_session["session_id"]
         assert foreign["request_scope"] == ""
+    finally:
+        server.stop()
+
+
+def test_approval_navigation_retargets_reused_scoped_webview(
+    tmp_path: Path,
+) -> None:
+    """A code-bearing B navigation replaces a valid A-scoped webview session."""
+
+    web_root = tmp_path / "approval-ui"
+    web_root.mkdir()
+    (web_root / "shell.html").write_text(
+        "approval application", encoding="utf-8"
+    )
+    binding = _binding(activation_id="activation:presenter", security_epoch=7)
+    current = [binding]
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    owner = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]), binding
+    )
+    assert owner is not None
+    owner_session = manager.verify_session(str(owner["session_id"]), binding)
+    assert owner_session is not None
+    owner_journal = str(owner_session["session_id"])
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=manager,
+        dispatch_session=_CapturedDispatch(binding, current),
+        web_mounts=(
+            {
+                "path_prefix": "/approval",
+                "web_root": web_root,
+                "spa_fallback": True,
+                "index_file": "shell.html",
+                "auth_required": True,
+                "auth_bootstrap": True,
+            },
+        ),
+    )
+    server.start()
+    try:
+        origin = f"http://127.0.0.1:{server.port}"
+
+        def dedicated_code(request_id: str) -> str:
+            manager.record_approval_presenter_grant(
+                request_id, owner_journal, binding
+            )
+            status, bootstrap, _ = _request(
+                server,
+                "POST",
+                "/api/panel/auth/bootstrap",
+                body={"request_id": request_id},
+                headers={
+                    "X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"
+                },
+            )
+            assert status == 200, bootstrap
+            return str(bootstrap["data"]["code"])
+
+        def exchange(code: str, request_id: str, cookie: str = "") -> str:
+            headers = {"Origin": origin}
+            if cookie:
+                headers["Cookie"] = cookie
+            status, response, response_headers = _request(
+                server,
+                "POST",
+                "/api/panel/auth/exchange",
+                body={"code": code, "request_id": request_id},
+                headers=headers,
+            )
+            assert status == 200, response
+            return next(
+                value
+                for key, value in response_headers
+                if key.lower() == "set-cookie"
+            ).split(";", 1)[0]
+
+        cookie_a = exchange(dedicated_code("req-a"), "req-a")
+        code_b = dedicated_code("req-b")
+
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", server.port, timeout=5
+        )
+        connection.request(
+            "GET",
+            f"/approval?request_id=req-b&code={code_b}",
+            headers={"Cookie": cookie_a},
+        )
+        response = connection.getresponse()
+        document = response.read().decode("utf-8")
+        connection.close()
+        assert response.status == 200
+        assert "/api/panel/auth/exchange" in document
+        assert 'location.replace("/approval?request_id=req-b")' in document
+        assert code_b not in document
+
+        cookie_b = exchange(code_b, "req-b", cookie_a)
+        session_b = manager.verify_session(cookie_b.split("=", 1)[1], binding)
+        assert session_b is not None
+        assert session_b["session_id"] == owner_journal
+        assert session_b["request_scope"] == "req-b"
+        assert session_b["request_scope"] != "req-a"
+        assert manager._presenter_grants == {}
     finally:
         server.stop()

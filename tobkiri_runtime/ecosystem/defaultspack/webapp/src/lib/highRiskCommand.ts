@@ -96,6 +96,15 @@ export function releaseHighRiskAttempt(inFlight: Set<string>, invocationId: stri
   inFlight.delete(invocationId);
 }
 
+/** Interpret a one-shot resume response without treating live work as failed. */
+export function highRiskResumeDisposition(
+  state: string,
+): "pending" | "succeeded" | "failed" {
+  if (state === "claimed" || state === "dispatched") return "pending";
+  if (state === "succeeded") return "succeeded";
+  return "failed";
+}
+
 function restorePaths(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => String(item));
   if (typeof value !== "string") return [];

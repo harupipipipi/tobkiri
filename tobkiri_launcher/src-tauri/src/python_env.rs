@@ -240,7 +240,6 @@ pub fn ensure_python_env_with_progress<F>(config: &AppConfig, progress: F) -> Re
 where
     F: Fn(&str),
 {
-    #[cfg(not(windows))]
     if config.is_dev_workspace() {
         let venv_python = config.venv_python();
         if !venv_python.is_file() {

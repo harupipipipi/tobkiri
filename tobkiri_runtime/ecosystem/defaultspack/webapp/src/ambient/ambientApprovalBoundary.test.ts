@@ -330,7 +330,10 @@ test("Viewer authenticates every dedicated Defaultspack window and rejects unsaf
   // fragment-based helper (a `rumi_local_auth` fragment never reaches the
   // server on the initial navigation).
   assert.match(viewerSource, /authority_approval_bootstrap_window_url\(config, &request_id\)/);
-  assert.match(viewerSource, /request_panel_bootstrap_code_with_retry\(active_defaultspack_http_port\(\)/);
+  assert.match(
+    viewerSource,
+    /request_panel_presenter_code_with_retry\(\s*active_defaultspack_http_port\(\),\s*&bootstrap_secret,\s*request_id,/
+  );
   assert.match(viewerSource, /dock_registration::add_defaultspack_bootstrap_code\(url, &code\)/);
   assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, ambient_trigger_url/);
   assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, finger_recording_url/);
