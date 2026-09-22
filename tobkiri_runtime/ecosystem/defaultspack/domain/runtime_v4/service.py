@@ -169,6 +169,32 @@ _ACTIVATION_READ_GATES_LOCK = threading.Lock()
 _ACTIVATION_READ_GATES: dict[Path, threading.Lock] = {}
 
 
+@dataclass(frozen=True)
+class _PendingRepublish:
+    """One committed pending activation awaiting its unlocked artifact check."""
+
+    pending: Mapping[str, Any]
+    envelope_name: str
+    reservation_id: str
+    activation_id: str
+    fencing_token: int
+    profile: Mapping[str, Any]
+
+
+class _PendingRepublishRequired(BaseException):
+    """Unwind an activation lock hold for one unlocked artifact verification.
+
+    Every cheap fencing check already passed when this is raised; only the
+    packaged-tree hash remains.  The public entry point that owns the lock
+    catches it, verifies outside the lock, then republishes under a fresh hold
+    after proving the pending journal did not move.
+    """
+
+    def __init__(self, republish: _PendingRepublish) -> None:
+        super().__init__("committed pending activation needs unlocked verification")
+        self.republish = republish
+
+
 def _application_launch_identity(
     manifest: Mapping[str, Any],
 ) -> tuple[str, str, str]:
@@ -1220,15 +1246,40 @@ class ActivationStore:
         self._validate_record_graph(profile, lock, plan)
         if profile["profile_id"] != self.profile_id:
             raise ProfileResolutionDenied("activation Profile identity does not match store")
-        with self._activation_lock():
-            return self._activate_locked(
-                resolved=ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan),
-                activation_id=activation_id,
-                created_at=created_at,
-                expected_predecessor_profile_revision=(expected_predecessor_profile_revision),
-                expected_predecessor_plan_digest=expected_predecessor_plan_digest,
-                expected_predecessor_activation_id=expected_predecessor_activation_id,
-            )
+        validated = ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan)
+        expected_predecessor = (
+            expected_predecessor_profile_revision,
+            expected_predecessor_plan_digest,
+            expected_predecessor_activation_id,
+        )
+        while True:
+            try:
+                # Hashing a packaged artifact tree can take seconds, so the
+                # candidate and the pinned predecessor verify before the
+                # bounded cross-process lock rather than inside it.  The
+                # commit below still fails closed: reservation fencing, the
+                # journaled writes, and the pointer publish all follow these
+                # exact verifications.
+                self._verify_selected_artifact(profile)
+                if any(value is not None for value in expected_predecessor) and (
+                    self._state.exists("active.json")
+                ):
+                    self.load_active_snapshot()
+                with self._activation_lock():
+                    return self._activate_locked(
+                        resolved=validated,
+                        activation_id=activation_id,
+                        created_at=created_at,
+                        expected_predecessor_profile_revision=(
+                            expected_predecessor_profile_revision
+                        ),
+                        expected_predecessor_plan_digest=expected_predecessor_plan_digest,
+                        expected_predecessor_activation_id=(
+                            expected_predecessor_activation_id
+                        ),
+                    )
+            except _PendingRepublishRequired as pending:
+                self._republish_pending(pending.republish)
 
     def _activate_locked(
         self,
@@ -1240,7 +1291,12 @@ class ActivationStore:
         expected_predecessor_plan_digest: str | None,
         expected_predecessor_activation_id: str | None,
     ) -> Mapping[str, Any]:
-        """Run one activation while holding the profile's process lock."""
+        """Run one activation while holding the profile's process lock.
+
+        The caller must already have verified the resolved Profile's selected
+        artifact bytes in this process; nothing in this body hashes the
+        packaged tree while the bounded cross-process lock is held.
+        """
         profile = resolved.profile
         lock = resolved.lock
         plan = resolved.plan
@@ -1254,7 +1310,7 @@ class ActivationStore:
         if any(value is not None for value in expected_predecessor) and self._state.exists(
             "active.json"
         ):
-            active = self._load_active_snapshot_locked()
+            active = self._load_active_snapshot_locked(verify_selected_artifact=False)
             if active.activation["activation_id"] == activation_id:
                 if active.resolved != resolved:
                     raise ProfileResolutionDenied(
@@ -1273,7 +1329,6 @@ class ActivationStore:
             )
             if actual_predecessor != expected_predecessor:
                 raise ProfileResolutionDenied("activation predecessor is stale")
-        self._verify_selected_artifact(profile)
         reservation_id, fencing_token = self._authority.reserve_activation(
             activation_id=activation_id,
             profile_id=self.profile_id,
@@ -1385,7 +1440,6 @@ class ActivationStore:
                 ),
             )
             self._fault("before_authority_commit")
-            self._verify_selected_artifact(profile)
             self._authority.transition_activation(
                 reservation_id,
                 expected_state=state,
@@ -1400,7 +1454,6 @@ class ActivationStore:
                 profile=profile,
                 fencing_token=fencing_token,
             )
-            self._verify_selected_artifact(profile)
             self._write_state(
                 "active.json",
                 self._active_pointer(activation_id, envelope_path, envelope_digest),
@@ -1428,8 +1481,13 @@ class ActivationStore:
     def recover(self) -> None:
         """Recover a crash to the complete old or complete committed activation."""
 
-        with self._activation_lock():
-            self._recover_locked()
+        while True:
+            try:
+                with self._activation_lock():
+                    self._recover_locked()
+                return
+            except _PendingRepublishRequired as pending:
+                self._republish_pending(pending.republish)
 
     def _recover_locked(self) -> None:
         """Recover state while the profile's process lock is held."""
@@ -1479,7 +1537,6 @@ class ActivationStore:
         envelope_name = str(pending["envelope_path"])
         if Path(envelope_name).name != envelope_name:
             raise ProfileResolutionDenied("pending activation envelope path is invalid")
-        envelope_path = self.state_root / "activations" / envelope_name
         state = str(reservation["state"])
         if state == "active":
             envelope = self._read_state(
@@ -1502,17 +1559,19 @@ class ActivationStore:
             )
             if not isinstance(envelope.get("profile"), Mapping):
                 raise ProfileResolutionDenied("committed activation profile is invalid")
-            self._verify_selected_artifact(envelope["profile"])
-            self._write_state(
-                "active.json",
-                self._active_pointer(
-                    str(pending["activation_id"]),
-                    envelope_path,
-                    str(pending["envelope_digest"]),
-                ),
+            # The packaged-tree hash runs outside this bounded lock: unwind so
+            # the caller verifies these exact bytes unlocked, then republishes
+            # under a fresh hold after proving the journal did not move.
+            raise _PendingRepublishRequired(
+                _PendingRepublish(
+                    pending=pending,
+                    envelope_name=envelope_name,
+                    reservation_id=reservation_id,
+                    activation_id=str(pending["activation_id"]),
+                    fencing_token=int(pending["fencing_token"]),
+                    profile=envelope["profile"],
+                )
             )
-            self._unlink_state("pending.json", missing_ok=True)
-            return
         if state in {"prepared", "ready_without_authority", "committing"}:
             self._authority.transition_activation(
                 reservation_id,
@@ -1523,6 +1582,51 @@ class ActivationStore:
             raise ProfileResolutionDenied("pending activation has an invalid authority state")
         self._unlink_state("pending.json", missing_ok=True)
         self._unlink_state(Path("activations") / envelope_name, missing_ok=True)
+
+    def _republish_pending(self, republish: _PendingRepublish) -> None:
+        """Verify a committed pending artifact unlocked, then publish it fenced.
+
+        The packaged-tree hash runs without the cross-process lock so readers
+        keep their bounded wait.  The pointer write happens only when the exact
+        pending journal and its pinned envelope are still current and the
+        Authority reservation still fences this activation, so recovered bytes
+        can never overwrite a newer commit or a moved journal.
+        """
+
+        self._verify_selected_artifact(republish.profile)
+        with self._activation_lock():
+            if not self._state.exists("pending.json"):
+                return
+            pending = self._read_state("pending.json", "pending activation journal")
+            if canonical_digest(pending) != canonical_digest(republish.pending):
+                return
+            envelope = self._read_state(
+                Path("activations") / republish.envelope_name,
+                "committed activation envelope",
+            )
+            if (
+                not isinstance(envelope, dict)
+                or canonical_digest(envelope) != pending["envelope_digest"]
+                or not isinstance(envelope.get("activation"), dict)
+                or envelope["activation"].get("state") != "active"
+            ):
+                raise ProfileResolutionDenied("committed activation envelope changed")
+            self._revalidate_publish_reservation(
+                reservation_id=republish.reservation_id,
+                activation_id=republish.activation_id,
+                plan=envelope["plan"],
+                profile=envelope["profile"],
+                fencing_token=republish.fencing_token,
+            )
+            self._write_state(
+                "active.json",
+                self._active_pointer(
+                    republish.activation_id,
+                    self.state_root / "activations" / republish.envelope_name,
+                    str(pending["envelope_digest"]),
+                ),
+            )
+            self._unlink_state("pending.json", missing_ok=True)
 
     def _revalidate_publish_reservation(
         self,
@@ -1714,41 +1818,47 @@ class ActivationStore:
         # deliberately outside the activation publication lock.  Keeping that
         # expensive read under the cross-process lock lets concurrent health
         # and setup reads exhaust their bounded lock wait during a cold start.
-        with self._activation_read_gate():
-            with self._activation_lock():
-                active = self._load_active_snapshot_locked(
-                    verify_selected_artifact=False
-                )
-        try:
-            self._verify_selected_artifact_coalesced(active)
-        except ProfileReconfirmationRequired as error:
-            # Preserve the verified predecessor identity used by the explicit
-            # reconfirmation ceremony even though hashing runs outside the lock.
-            plan = active.resolved.plan
-            error.verified_profile_definition_digest = str(
-                plan["profile_definition_digest"]
-            )
-            error.verified_profile = deepcopy(active.resolved.profile)
-            error.verified_activation_identity = (
-                str(plan["profile_revision"]),
-                str(active.activation["activation_id"]),
-                str(plan["plan_digest"]),
-                str(active.resolved.lock["lock_digest"]),
-            )
-            raise
-        # Re-read the authenticated record graph after verifying its selected
-        # bytes.  A concurrent activation must never turn a valid check of the
-        # predecessor into authority for its successor.
-        with self._activation_read_gate():
-            with self._activation_lock():
-                current = self._load_active_snapshot_locked(
-                    verify_selected_artifact=False
-                )
-        if current != active:
-            raise ProfileResolutionDenied(
-                "active Profile changed during artifact verification"
-            )
-        return active
+        while True:
+            try:
+                with self._activation_read_gate():
+                    with self._activation_lock():
+                        active = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
+                try:
+                    self._verify_selected_artifact_coalesced(active)
+                except ProfileReconfirmationRequired as error:
+                    # Preserve the verified predecessor identity used by the
+                    # explicit reconfirmation ceremony even though hashing
+                    # runs outside the lock.
+                    plan = active.resolved.plan
+                    error.verified_profile_definition_digest = str(
+                        plan["profile_definition_digest"]
+                    )
+                    error.verified_profile = deepcopy(active.resolved.profile)
+                    error.verified_activation_identity = (
+                        str(plan["profile_revision"]),
+                        str(active.activation["activation_id"]),
+                        str(plan["plan_digest"]),
+                        str(active.resolved.lock["lock_digest"]),
+                    )
+                    raise
+                # Re-read the authenticated record graph after verifying its
+                # selected bytes.  A concurrent activation must never turn a
+                # valid check of the predecessor into authority for its
+                # successor.
+                with self._activation_read_gate():
+                    with self._activation_lock():
+                        current = self._load_active_snapshot_locked(
+                            verify_selected_artifact=False
+                        )
+                if current != active:
+                    raise ProfileResolutionDenied(
+                        "active Profile changed during artifact verification"
+                    )
+                return active
+            except _PendingRepublishRequired as pending:
+                self._republish_pending(pending.republish)
 
     def _activation_read_gate(self) -> threading.Lock:
         """Queue same-process readers before their bounded process-lock wait."""
@@ -1854,21 +1964,43 @@ class ActivationStore:
         self._validate_record_graph(profile, lock, plan)
         if profile["profile_id"] != self.profile_id:
             raise ProfileResolutionDenied("activation Profile identity does not match store")
-        with self._activation_lock():
+        validated = ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan)
+        while True:
             try:
-                self._load_active_snapshot_locked()
-            except ProfileReconfirmationRequired:
-                pass
-            else:
-                raise ProfileResolutionDenied("activation confirmation was replayed")
-            return self._activate_locked(
-                ResolvedDefaultProfile(profile=profile, lock=lock, plan=plan),
-                activation_id=activation_id,
-                created_at=created_at,
-                expected_predecessor_profile_revision=None,
-                expected_predecessor_plan_digest=None,
-                expected_predecessor_activation_id=None,
-            )
+                # The predecessor's reconfirmation proof and the successor's
+                # artifact check both hash outside the bounded process lock;
+                # the fenced commit still re-reads the predecessor it proves.
+                with self._activation_lock():
+                    predecessor = self._load_active_snapshot_locked(
+                        verify_selected_artifact=False
+                    )
+                try:
+                    self._verify_selected_artifact_coalesced(predecessor)
+                except ProfileReconfirmationRequired:
+                    pass
+                else:
+                    raise ProfileResolutionDenied(
+                        "activation confirmation was replayed"
+                    )
+                self._verify_selected_artifact(profile)
+                with self._activation_lock():
+                    current = self._load_active_snapshot_locked(
+                        verify_selected_artifact=False
+                    )
+                    if current != predecessor:
+                        raise ProfileResolutionDenied(
+                            "active Profile changed during artifact verification"
+                        )
+                    return self._activate_locked(
+                        validated,
+                        activation_id=activation_id,
+                        created_at=created_at,
+                        expected_predecessor_profile_revision=None,
+                        expected_predecessor_plan_digest=None,
+                        expected_predecessor_activation_id=None,
+                    )
+            except _PendingRepublishRequired as pending:
+                self._republish_pending(pending.republish)
 
     def _load_active_snapshot_locked(
         self, *, verify_selected_artifact: bool = True
