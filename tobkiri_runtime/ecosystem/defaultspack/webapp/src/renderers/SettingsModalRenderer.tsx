@@ -4250,7 +4250,7 @@ export function SettingsModalRenderer({
           </button>
         </div>
         {manifest.renderer.kind === "html" ? (
-          <div className="mt-3 h-44 overflow-hidden rounded-lg">
+          <div className="mt-3 h-44 overflow-y-auto rounded-lg">
             <PlacementHtmlRenderer
               manifest={manifest}
               onDisable={() => updatePinnedPlacements((current) => current.filter(

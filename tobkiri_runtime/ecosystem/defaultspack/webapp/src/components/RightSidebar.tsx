@@ -1508,7 +1508,7 @@ export function RightSidebar({
             </button>
           </div>
           {manifest.renderer.kind === "html" && (
-            <div className="mt-3 h-48 overflow-hidden">
+            <div className="mt-3 h-48 overflow-y-auto">
               <PlacementHtmlRenderer
                 manifest={manifest}
                 onDisable={() => {
