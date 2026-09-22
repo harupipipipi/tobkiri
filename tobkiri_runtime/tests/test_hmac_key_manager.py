@@ -288,6 +288,51 @@ class TestGenerateOrLoadSigningKey:
         with pytest.raises(SigningKeyError, match=expected_message):
             hmac_key_manager_module._run_windows_signing_key_acl(key_path, harden=harden)
 
+    def test_windows_acl_strips_safe_extended_drive_prefix_for_powershell(
+        self, monkeypatch
+    ):
+        """Launcher extended paths must reach PowerShell without its rejected prefix."""
+        calls: list[tuple[list[str], dict[str, object]]] = []
+
+        def _run(argv: list[str], **kwargs: object) -> None:
+            calls.append((argv, kwargs))
+
+        key_path = Path(r"\\?\D:\tobkiri\runs\123\.desktop_api_token.tmp")
+        monkeypatch.setattr(hmac_key_manager_module.subprocess, "run", _run)
+
+        hmac_key_manager_module._secure_windows_signing_key(key_path)
+
+        assert len(calls) == 1
+        target_env = hmac_key_manager_module._WINDOWS_SIGNING_KEY_ACL_TARGET_ENV
+        payload = calls[0][1]["env"][target_env]
+        assert isinstance(payload, str)
+        assert base64.b64decode(payload, validate=True).decode("utf-8") == (
+            r"D:\tobkiri\runs\123\.desktop_api_token.tmp"
+        )
+
+    @pytest.mark.parametrize(
+        "target",
+        (
+            r"\\?\UNC\server\share\signing.key",
+            r"\\?\GLOBALROOT\Device\HarddiskVolume1\signing.key",
+            r"\\?\D:\safe\..\other\signing.key",
+            r"\\?\D:\safe.\signing.key",
+            r"\\?\D:\safe\NUL.txt",
+        ),
+    )
+    def test_windows_acl_rejects_unsafe_extended_path_spellings(
+        self, monkeypatch, target
+    ):
+        """Prefix removal must fail closed when Win32 could resolve another target."""
+        monkeypatch.setattr(
+            hmac_key_manager_module.subprocess,
+            "run",
+            lambda *_args, **_kwargs: pytest.fail("PowerShell must not run"),
+        )
+
+        with pytest.raises(SigningKeyError, match="could not be secured"):
+            hmac_key_manager_module._secure_windows_signing_key(Path(target))
+
     @pytest.mark.parametrize(
         "filename",
         (

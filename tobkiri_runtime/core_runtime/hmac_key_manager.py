@@ -175,9 +175,64 @@ _WINDOWS_SIGNING_KEY_ACL_TARGET_ENV = "TOBKIRI_SIGNING_KEY_ACL_TARGET_B64"
 _WINDOWS_SIGNING_KEY_ACL_TIMEOUT_SECONDS = 60
 
 
+def _windows_acl_transport_path(key_path: Path) -> str:
+    """Return a PowerShell-compatible spelling of one local Windows file path.
+
+    Windows PowerShell's ``FileInfo.SetAccessControl`` rejects the extended DOS
+    spelling (``\\\\?\\C:\\...``) used by the launcher for long-path-safe run
+    roots.  Removing that prefix is safe only when Win32 normalization cannot
+    retarget the path, so reject device, UNC, relative, and normalization-prone
+    extended paths instead of silently weakening the ACL operation.
+    """
+    value = str(key_path)
+    extended_prefix = "\\\\?\\"
+    if not value.startswith(extended_prefix):
+        return value
+
+    transport_path = value[len(extended_prefix) :]
+    if (
+        len(transport_path) < 4
+        or not transport_path[0].isalpha()
+        or transport_path[1:3] != ":\\"
+    ):
+        raise ValueError("unsupported extended Windows ACL target")
+
+    reserved_names = {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{index}" for index in range(1, 10)),
+        *(f"LPT{index}" for index in range(1, 10)),
+    }
+    for component in transport_path[3:].split("\\"):
+        stem = component.split(".", 1)[0].upper()
+        if (
+            not component
+            or component in {".", ".."}
+            or component.endswith((" ", "."))
+            or stem in reserved_names
+            or any(
+                character in '<>:"/|?*' or ord(character) < 32
+                for character in component
+            )
+        ):
+            raise ValueError("unsafe extended Windows ACL target")
+    return transport_path
+
+
 def _run_windows_signing_key_acl(key_path: Path, *, harden: bool) -> None:
     """Harden or validate one Windows signing-key ACL without exposing its path."""
-    encoded_path = base64.b64encode(str(key_path).encode("utf-8")).decode("ascii")
+    message = (
+        "signing-key Windows ACL could not be secured"
+        if harden
+        else "signing-key Windows ACL is unsafe"
+    )
+    try:
+        transport_path = _windows_acl_transport_path(key_path)
+    except ValueError as error:
+        raise SigningKeyError(message) from error
+    encoded_path = base64.b64encode(transport_path.encode("utf-8")).decode("ascii")
     script = (
         _WINDOWS_SIGNING_KEY_ACL_HARDEN
         if harden
@@ -214,11 +269,6 @@ def _run_windows_signing_key_acl(key_path: Path, *, harden: bool) -> None:
             env=environment,
         )
     except (OSError, subprocess.SubprocessError) as error:
-        message = (
-            "signing-key Windows ACL could not be secured"
-            if harden
-            else "signing-key Windows ACL is unsafe"
-        )
         raise SigningKeyError(message) from error
 
 
