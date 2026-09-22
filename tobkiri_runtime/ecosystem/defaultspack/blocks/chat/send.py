@@ -1,4 +1,3 @@
-import sys
 
 from tobkiri_protocol.settings_state import SettingsOwnerPort
 import os
@@ -7,7 +6,6 @@ import json
 import re
 import time
 from pathlib import Path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import ok, error, gen_id, timestamp
 
 from domain.ai_client.gateway import AIClient, LLMGateway

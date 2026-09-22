@@ -22,10 +22,7 @@
 過去のリクエストを2つの異なる設定で再実行し、結果を比較する。
 """
 
-import sys
-import os
 import time
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from blocks._common import ok, error, gen_id
 
 from domain.dev.inspector import Inspector

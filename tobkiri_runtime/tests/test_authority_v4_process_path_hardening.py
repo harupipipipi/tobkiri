@@ -655,3 +655,75 @@ def test_authority_rejects_broad_sidecar_permissions_before_query(
     monkeypatch.setattr(AuthorityStore, "_pin_opened_database_files", broaden_wal)
     with pytest.raises(AuthorityStoreError, match="permissions"):
         AuthorityStore(path)
+
+
+def test_lifecycle_guard_thread_lock_wait_fails_closed_bounded(
+    tmp_path: Path,
+) -> None:
+    """A held lifecycle guard cannot park another operation forever.
+
+    The reported production wedge parked request threads on this acquisition
+    until their dispatch deadline expired; the wait is now bounded and fails
+    closed with a typed store error instead.
+    """
+
+    store = AuthorityStore(
+        tmp_path / "authority.sqlite3",
+        guard_acquire_timeout_seconds=0.3,
+    )
+    outcome: dict[str, Any] = {}
+    try:
+        with store._connection():
+            def read() -> None:
+                try:
+                    outcome["epoch"] = store.security_epoch
+                except AuthorityStoreError as exc:
+                    outcome["error"] = str(exc)
+
+            worker = threading.Thread(target=read, daemon=True)
+            worker.start()
+            worker.join(timeout=10.0)
+            assert not worker.is_alive(), "store read parked on held guard"
+            assert "epoch" not in outcome
+            assert "deadline" in str(outcome.get("error", ""))
+            assert store.security_epoch >= 1
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX flock lifecycle guard")
+def test_lifecycle_guard_flock_wait_fails_closed_bounded(
+    tmp_path: Path,
+) -> None:
+    """A cross-process flock holder cannot park a store operation forever."""
+
+    import fcntl
+
+    store = AuthorityStore(
+        tmp_path / "authority.sqlite3",
+        guard_acquire_timeout_seconds=0.3,
+    )
+    holder = os.open(store._guard_path, os.O_RDWR)
+    outcome: dict[str, Any] = {}
+    try:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+
+        def read() -> None:
+            try:
+                outcome["epoch"] = store.security_epoch
+            except AuthorityStoreError as exc:
+                outcome["error"] = str(exc)
+
+        worker = threading.Thread(target=read, daemon=True)
+        worker.start()
+        worker.join(timeout=10.0)
+        assert not worker.is_alive(), "store read parked on held flock"
+        assert "epoch" not in outcome
+        assert "deadline" in str(outcome.get("error", ""))
+    finally:
+        try:
+            fcntl.flock(holder, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(holder)
+        store.close()

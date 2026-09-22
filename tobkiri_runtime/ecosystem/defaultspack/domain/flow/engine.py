@@ -1,12 +1,10 @@
 """FlowEngine — フロー実行エンジン（最小動作版）"""
 
-import sys
 import os
 import copy
 import importlib.util
 import re
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from blocks._common import error, ok
 
 from .context import FlowContext

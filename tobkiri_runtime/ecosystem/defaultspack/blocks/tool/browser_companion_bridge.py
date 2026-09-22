@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from core_runtime.di_container import get_container

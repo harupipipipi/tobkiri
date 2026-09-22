@@ -1,14 +1,10 @@
 import json
 import hashlib
-import os
 import ssl
-import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from ..base_provider import BaseProvider
 from ..api_key_store import read_provider_api_key

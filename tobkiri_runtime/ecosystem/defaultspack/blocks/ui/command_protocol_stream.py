@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import json
-import os
-import sys
 import time
 from collections.abc import Iterator
 from typing import Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error
 from domain.frontend.command_protocol import CommandProtocolRegistry
