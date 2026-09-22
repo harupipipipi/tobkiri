@@ -66,6 +66,24 @@ logger = logging.getLogger(__name__)
 THREAD_JOIN_TIMEOUT_SECONDS = 3
 MAX_CONCURRENT_REQUESTS = 32
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+# Startup capture assertions can collide with a writer's packaged-artifact
+# hash or a crash-recovery republish.  Each attempt keeps its bounded lock
+# wait, so transient holds are retried inside a budget sized past the
+# worst-case writer hold instead of exiting the surface before it serves.
+_ASSERT_CURRENT_RETRY_BUDGET_SECONDS = 45.0
+_ASSERT_CURRENT_RETRY_DELAY_SECONDS = 0.05
+_ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS = 0.5
+
+
+def _is_activation_lock_timeout(error: BaseException) -> bool:
+    """Classify a bounded cross-process activation-lock wait when resolvable."""
+
+    try:
+        from .profile_runtime_port import require_profile_runtime
+
+        return bool(require_profile_runtime().is_activation_lock_timeout(error))
+    except Exception:
+        return False
 
 
 class HTTPRuntimeErrorCode(str, Enum):
@@ -2721,7 +2739,7 @@ class PackAPIServer:
             return
         if session is None:
             raise RuntimeError("frontend contracts require a captured v4 session")
-        session.assert_current()
+        self._assert_session_current(session)
         requirements = exact_requirements()
         if not isinstance(requirements, tuple) or len(set(requirements)) != len(
             requirements
@@ -2736,6 +2754,31 @@ class PackAPIServer:
                 raise RuntimeError("startup operation requirement is invalid")
         for contract_id, operation_id in requirements:
             session.assert_operation_ready(contract_id, operation_id)
+
+    def _assert_session_current(self, session: DispatchSession) -> None:
+        """Assert capture freshness through a transient activation-lock hold.
+
+        An activation commit or recovery republish can overlap startup
+        validation.  The per-attempt lock wait stays bounded, so a transient
+        ``ActivationLockTimeout`` is retried inside a budget sized past the
+        worst-case writer hold rather than exiting the surface before it can
+        serve.
+        """
+
+        deadline = time.monotonic() + _ASSERT_CURRENT_RETRY_BUDGET_SECONDS
+        delay = _ASSERT_CURRENT_RETRY_DELAY_SECONDS
+        while True:
+            try:
+                session.assert_current()
+                return
+            except Exception as error:
+                if not _is_activation_lock_timeout(error):
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(delay, remaining))
+                delay = min(delay * 2.0, _ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS)
 
     def _validate_contract_capture(
         self,
@@ -2758,7 +2801,7 @@ class PackAPIServer:
                 return None
             expected_session_identity: DispatchSession | None = None
             if session is not None:
-                session.assert_current()
+                self._assert_session_current(session)
                 if getattr(session, "session_kind", None) != "host_profile_control":
                     expected_session_identity = session
             try:
@@ -2770,7 +2813,7 @@ class PackAPIServer:
                 raise RuntimeError("Host contract snapshot is invalid") from error
         if session is None:
             raise RuntimeError("frontend contracts require a captured v4 session")
-        session.assert_current()
+        self._assert_session_current(session)
         host_profile_control = getattr(session, "session_kind", None) == "host_profile_control"
         expected_identity: DispatchSession | None = None if host_profile_control else session
         try:
