@@ -320,6 +320,8 @@ def _new_board(arguments: Mapping[str, Any], now_ms: int) -> dict[str, Any]:
                 "id": f"{board_id}.column.{index}",
                 "title": label,
                 "position": index,
+                "done": str(label).strip().casefold()
+                in {"done", "complete", "completed", "closed"},
             },
             now_ms,
         )
@@ -659,4 +661,3 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-

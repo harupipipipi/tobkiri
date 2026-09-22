@@ -1,17 +1,71 @@
 {
-  "pack_id":"rumi_scheduler_surface_pack",
-  "pack_identity":"rumi:ecosystem/rumi_scheduler_surface_pack",
-  "display_name":"Rumi Scheduler Surface Pack",
-  "version":"1.0.0",
-  "description":"Removable scheduler content and isolated read-only UI projection.",
-  "dependencies":{"rumi_schedule_store_pack":">=1.0.0,<2.0.0","rumi_scheduler_runtime_pack":">=1.0.0,<2.0.0"},
-  "connectivity":{"requires":["rumi.resource.schedule.v1","rumi.resource.scheduler.v1"],"provides":["rumi.ui.route.module.v1"]},
-  "required_secrets":[],
-  "required_capabilities":["schedule.read","scheduler.observe"],
-  "required_network":{"allowed_domains":[],"allowed_ports":[]},
-  "host_execution":false,
-  "resources":[{"id":"frontend/contributions/scheduler.json","kind":"ui.contribution","content_hash":"sha256:8b3c7da7b495e15ba781ff7f881d1ffc7de2d4390802e484896158031a63d0dd"}],
-  "provenance":{"content_hash":"sha256:9d9ed1c0168c4efabe82662303cc6478069770fa87a6d636b8bbf2ddf5f9b967","build_identity":"rumi-scheduler-surface-pack:1.0.0","trust_class":"local","signature":null},
-  "metadata":{"authoritative_owner":false,"executable_code":true,"isolated_ui":true,"owner_surfaces":["scheduler_route","scheduler_content"],"integrity":{"artifact_manifest":"artifact-manifest.json"}}
+  "connectivity": {
+    "provides": [],
+    "requires": [
+      "rumi.resource.schedule.v1",
+      "rumi.resource.scheduler.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_schedule_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_scheduler_runtime_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Removable scheduler content and isolated read-only UI projection.",
+  "display_name": "Rumi Scheduler Surface",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:d031a039709781de572d918cffc91a5f5dc02257df203488c1267037a9ce3f26",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:ee6e60e85610b5db61d21b9e4cf09487e433c3eb0fbbea36341741caf20eca6a"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:ee6e60e85610b5db61d21b9e4cf09487e433c3eb0fbbea36341741caf20eca6a"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "isolated_ui": true,
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "scheduler_route",
+      "scheduler_content"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_scheduler_surface_pack",
+  "pack_identity": "rumi:ecosystem/rumi_scheduler_surface_pack",
+  "provenance": {
+    "build_identity": "rumi_scheduler_surface_pack:1.0.0",
+    "content_hash": "sha256:975cebe34cd8169f3003d27382ac670277166d2d22e9128d2057c574758a9f58",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "schedule.read",
+    "scheduler.observe"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "frontend/contributions/scheduler.json"
+  ],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
 }
-

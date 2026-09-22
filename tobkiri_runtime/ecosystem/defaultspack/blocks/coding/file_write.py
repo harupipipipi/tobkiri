@@ -2,6 +2,7 @@
 
 from blocks._common import ok, error
 from blocks.coding._approval import approval_required
+from blocks.coding._workspace import canonical_mutation_guard
 from domain.coding.contract_adapter import (
     FILE_MUTATE,
     authorize_legacy_coding_operation,
@@ -32,7 +33,6 @@ def run(input_data, context=None):
     operation = "file.write"
     record_attempt(operation, "medium", {"path": path})
     try:
-        selected_workspace_id = workspace_id(input_data)
         arguments = {
             "path": str(path),
             "content": str(content),
@@ -47,15 +47,27 @@ def run(input_data, context=None):
             arguments=arguments,
             input_data=input_data,
             context=context,
-            selected_workspace_id=selected_workspace_id,
+            # Approval is evaluated before workspace resolution so every
+            # entrypoint has the same denial contract. A successful execution
+            # still requires the canonical workspace_id below.
+            selected_workspace_id=str(input_data.get("workspace_id") or ""),
+            mutation_guard=canonical_mutation_guard,
         )
         if not authorization.get("authorized"):
             if authorization.get("reason") == "approval_required":
                 return ok(approval_required(operation, "medium", args=input_data, path=path))
-            return error(
+            denied = error(
                 str(authorization.get("message") or authorization.get("reason")),
                 code=str(authorization.get("code") or "APPROVAL_INVALID"),
+                details=authorization.get("details"),
             )
+            denied["_http_status"] = (
+                409
+                if authorization.get("code") == "ADAPTIVE_LEASE_HELD"
+                else 403
+            )
+            return denied
+        workspace_id(input_data)
         data = invoke_coding_contract(
             FILE_MUTATE,
             "write",

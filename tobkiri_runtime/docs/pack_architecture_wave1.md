@@ -29,20 +29,27 @@ The gate detects:
 
 ## Shrink-only debt policy
 
-`scripts/quality/pack_architecture_baseline.json` contains exact edge
-identities. Globs and wildcard patterns are rejected. Every exception requires
-an owner, reason, introduced date, removal Wave, sunset date, exact path, exact
-line, source, target, and violation category.
+`scripts/quality/pack_architecture_baseline.json` contains exact semantic edge
+identities. Globs and wildcard patterns are rejected. Each identity includes a
+stable AST fingerprint for Python or a normalized source fingerprint for the
+other supported languages, so line relocation does not silently grow debt.
+Every exception requires an owner, reason, introduced date, fix-by Wave, sunset
+date, exact path, diagnostic line, fingerprint, source, target, and violation
+category. Expired and resolved exceptions fail the gate; they must be removed
+rather than left as dormant waivers.
 
 When reviewing a baseline change, pass the previously approved file as
 `--reference-baseline`. The candidate may delete entries only. New identities
-and metadata mutation fail closed. A removal followed by reintroduction has a
-new exact identity and is rejected.
+and metadata mutation fail closed (diagnostic line relocation is allowed). A
+removal followed by reintroduction has a new exact identity and is rejected.
 
-The first PR that introduces this gate runs against its reviewed candidate
-baseline without a reference. Once that baseline exists on the target branch,
-CI supplies the target branch version as `--reference-baseline` and enforces
-shrink-only changes.
+CI reads the protected target-branch version as `--reference-baseline` once it
+exists. During the one-time bootstrap, the reviewed candidate baseline must
+exactly match the candidate scan, including schema, expiry, and stale-exception
+checks. CI emits a warning that protected-base shrink-only enforcement starts
+after that baseline lands on the target branch. Repository branch protection and
+CODEOWNER enforcement remain required external controls for the baseline
+authority.
 
 No suppression is inferred from a package, directory, filename pattern, or
 comment in source code.

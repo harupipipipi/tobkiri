@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { TobkiriLoader } from './TobkiriLoader';
+import { TobkiriLoader, TobkiriLoadingMark } from './TobkiriLoader';
 import { useAppStore } from '@/src/store';
 
 test('panel loader covers the viewer surface while leaving the sidebar visible', () => {
@@ -27,4 +27,19 @@ test('screen loader covers setup screens that do not have a sidebar', () => {
 
   assert.match(markup, /data-loading-scope="screen"/);
   assert.match(markup, /fixed inset-0/);
+});
+
+test('inline loading uses a standard spinner without the brand artwork', () => {
+  const markup = renderToStaticMarkup(
+    <TobkiriLoader scope="inline" label="Loading selection" />,
+  );
+  const mark = renderToStaticMarkup(<TobkiriLoadingMark />);
+
+  assert.match(markup, /data-loading-scope="inline"/);
+  assert.match(markup, /data-loading-indicator="spinner"/);
+  assert.match(markup, /Loading selection/);
+  assert.doesNotMatch(markup, /<img/);
+  assert.doesNotMatch(markup, /tobkiri-startup-blade-cut/);
+  assert.match(mark, /data-loading-indicator="spinner"/);
+  assert.doesNotMatch(mark, /<img/);
 });

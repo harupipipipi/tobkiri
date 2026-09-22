@@ -125,7 +125,10 @@ class WorkspaceStore:
         normalized_root = normalize_workspace_root(root_path)
         for record in self.list():
             try:
-                candidate = normalize_workspace_root(record.get("root_path"))
+                candidate_root = record.get("root_path")
+                if not isinstance(candidate_root, (str, os.PathLike)):
+                    continue
+                candidate = normalize_workspace_root(candidate_root)
             except ValueError:
                 continue
             if candidate == normalized_root:
@@ -289,7 +292,7 @@ class WorkspaceStore:
                     continue
                 root_path = str(raw.get("root_path") or "")
                 label = raw.get("label") or (default_label_for_root(root_path) if root_path else workspace_id)
-                record = {
+                record: dict[str, Any] = {
                     "workspace_id": workspace_id,
                     "label": str(label),
                     "root_path": root_path,

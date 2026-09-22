@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import tempfile
@@ -138,9 +139,13 @@ class AgentStateStore:
                 "status": "queued",
                 "step": 0,
                 "cancel_requested": False,
+                "effect_committing": False,
+                "effect_executor_token_hash": "",
                 "guidance": [],
                 "handoff": None,
                 "result_reference": None,
+                "terminal_projection": None,
+                "reconciliation_required": False,
                 "error": "",
                 "events": [],
                 "created_at_ms": now_ms,
@@ -169,12 +174,65 @@ class AgentStateStore:
             details = dict(arguments["details"])
             if target == "completed":
                 run["result_reference"] = details.get("result_reference")
+                run["terminal_projection"] = details.get("terminal_projection")
+                run["reconciliation_required"] = bool(
+                    run["terminal_projection"]
+                )
             if target == "failed":
                 run["error"] = str(details.get("error") or "")[:1000]
             _event(run, f"agent.run.{target}", details)
+        elif name == "run.reconcile":
+            if run["status"] not in _TERMINAL:
+                raise AgentStateConflict("only terminal runs can be reconciled")
+            if not run.get("reconciliation_required"):
+                return {"run": _copy(run), "already_reconciled": True}
+            run["reconciliation_required"] = False
+            _event(
+                run,
+                "agent.run.terminal_reconciled",
+                {"projection_receipt": str(arguments["projection_receipt"])},
+            )
+        elif name == "run.effect.begin":
+            if run["status"] != "running" or run.get("cancel_requested"):
+                raise AgentStateConflict("agent effect cannot begin")
+            if run.get("effect_committing"):
+                raise AgentStateConflict("agent effect is already committing")
+            run["effect_committing"] = True
+            token_hash = hashlib.sha256(
+                str(arguments["executor_token"]).encode("utf-8")
+            ).hexdigest()
+            run["effect_executor_token_hash"] = token_hash
+            _event(
+                run,
+                "agent.run.effect_committing",
+                {"effect_receipt": str(arguments["effect_receipt"])},
+            )
+        elif name == "run.effect.end":
+            if not run.get("effect_committing") or (
+                run.get("effect_executor_token_hash")
+                != hashlib.sha256(
+                    str(arguments["executor_token"]).encode("utf-8")
+                ).hexdigest()
+            ):
+                raise AgentStateConflict("agent effect executor token is invalid")
+            run["effect_committing"] = False
+            run["effect_executor_token_hash"] = ""
+            _event(
+                run,
+                "agent.run.effect_committed",
+                {"effect_receipt": str(arguments["effect_receipt"])},
+            )
         elif name == "run.cancel":
             if run["status"] in _TERMINAL:
                 return {"run": _copy(run), "already_terminal": True}
+            if run.get("effect_committing"):
+                run["cancel_requested"] = True
+                _event(run, "agent.run.cancel_requested", {"reason": arguments["reason"]})
+                return {
+                    "run": _copy(run),
+                    "too_late": True,
+                    "effect_committing": True,
+                }
             run["cancel_requested"] = True
             run["status"] = "cancelled"
             _event(run, "agent.run.cancelled", {"reason": arguments["reason"]})
@@ -266,6 +324,9 @@ def _arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
         "profile.delete",
         "run.begin",
         "run.transition",
+        "run.effect.begin",
+        "run.effect.end",
+        "run.reconcile",
         "run.cancel",
         "run.steer",
         "run.handoff",
@@ -297,6 +358,16 @@ def _arguments(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
             arguments["status"] = str(payload.get("status") or "")
             arguments["step"] = max(0, int(payload.get("step") or 0))
             arguments["details"] = dict(_mapping(payload.get("details")))
+        elif name in {"run.effect.begin", "run.effect.end"}:
+            token = str(payload.get("executor_token") or "")
+            if not token:
+                raise ValueError("effect executor token is required")
+            arguments["executor_token"] = token
+            arguments["effect_receipt"] = str(payload.get("effect_receipt") or "")
+        elif name == "run.reconcile":
+            arguments["projection_receipt"] = str(
+                payload.get("projection_receipt") or ""
+            )
         elif name == "run.cancel":
             arguments["reason"] = str(payload.get("reason") or "")[:1000]
         elif name == "run.steer":
@@ -422,4 +493,3 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-

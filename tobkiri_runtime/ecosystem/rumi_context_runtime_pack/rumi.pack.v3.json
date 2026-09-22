@@ -1,12 +1,175 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.context_runtime","version":"1.0.0","kind":"service","display_name":"Rumi Context Runtime","description":"Deterministic non-authoritative context materialization."},
-  "contracts":{"provides":[{"id":"rumi.service.context.v1","version":"1.0.0","provider_instance_id":"context-runtime.materialize","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["context.materialize"]}],"requires":[{"id":"rumi.resource.conversation.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.resource.memory.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.resource.knowledge.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
-  "entrypoints":[{"id":"context-materialize","contract_id":"rumi.service.context.v1","loader":"python","module":"ecosystem.rumi_context_runtime_pack.runtime.materializer","symbol":"create_context_operation","artifact_hash":"sha256:0f4c8fa9e0d00f326675257548e279ddfbeb88bed69f0f4e81710cdbdcf0076b"}],
-  "resources":[],"storage":[],
-  "permissions":[{"capability":"context.materialize","access":"read","approval_required":false}],
-  "provenance":{"content_hash":"sha256:0f4c8fa9e0d00f326675257548e279ddfbeb88bed69f0f4e81710cdbdcf0076b","build_identity":"rumi-context-runtime-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.context"],"compatibility_aliases":[],"compatibility_projection":"none","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Remove the stateless projection; no owner data exists."},
-  "extensions":{"rumi.context_runtime.boundary":{"authoritative":false,"persistent_storage":false,"source_contracts_only":true,"first_found_fallback":false}}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.context.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "context-runtime.materialize",
+        "required_capabilities": [
+          "context.materialize"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.conversation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.memory.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.knowledge.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:0f5cf7acdb2419c0f921b100506eee87acd21681a4f7ae88814a999a97deea33",
+      "contract_id": "rumi.service.context.v1",
+      "id": "context-materialize",
+      "loader": "python",
+      "module": "ecosystem.rumi_context_runtime_pack.runtime.materializer",
+      "symbol": "create_context_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.context_runtime.boundary": {
+      "authoritative": false,
+      "first_found_fallback": false,
+      "persistent_storage": false,
+      "source_contracts_only": true
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+        "rumi_knowledge_store_pack": ">=1.0.0,<2.0.0",
+        "rumi_memory_store_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.context.v1"
+          ],
+          "requires": [
+            "rumi.resource.conversation.v1",
+            "rumi.resource.knowledge.v1",
+            "rumi.resource.memory.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+          "rumi_knowledge_store_pack": ">=1.0.0,<2.0.0",
+          "rumi_memory_store_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Deterministic non-authoritative context materialization.",
+        "display_name": "Rumi Context Runtime",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:1d0a4329cd25c818085e0522880ab3859cd7a2b0045c585b9459e1fb98ed0b8a",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:470ee2c8685b1368030f3f798490596758e931181d65d1dfc3ca9f4b74d04b45"
+          },
+          "owner_surfaces": [],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "first_found_fallback": false,
+            "persistent_storage": false
+          }
+        },
+        "pack_id": "rumi_context_runtime_pack",
+        "pack_identity": "rumi:ecosystem/rumi_context_runtime_pack",
+        "provenance": {
+          "build_identity": "rumi_context_runtime_pack:1.0.0",
+          "content_hash": "sha256:0f5cf7acdb2419c0f921b100506eee87acd21681a4f7ae88814a999a97deea33",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "context.materialize"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_context_runtime_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_context_runtime_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:470ee2c8685b1368030f3f798490596758e931181d65d1dfc3ca9f4b74d04b45"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "from": [
+      "defaultspack.domain.context"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the stateless projection; no owner data exists.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Deterministic non-authoritative context materialization.",
+    "display_name": "Rumi Context Runtime",
+    "id": "rumi.context_runtime",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "context.materialize"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_context_runtime_pack:1.0.0",
+    "content_hash": "sha256:0f5cf7acdb2419c0f921b100506eee87acd21681a4f7ae88814a999a97deea33",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }
-

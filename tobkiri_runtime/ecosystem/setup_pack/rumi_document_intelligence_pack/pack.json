@@ -21,7 +21,7 @@
     "sensitive_document_review": "handoff_to_rumi_security_review_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Document intelligence is an optional review overlay; defaultspack remains the runtime, grant, and tool-routing owner.",
     "promotion_blockers": [

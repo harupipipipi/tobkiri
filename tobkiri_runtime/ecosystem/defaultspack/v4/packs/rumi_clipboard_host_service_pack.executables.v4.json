@@ -1,0 +1,88 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "pack_id": "rumi_clipboard_host_service_pack",
+  "source_identity": "sha256:322d4e2903bf2222629e9c16480793a2b614a527babb4324ab8cd1099ecbb127",
+  "variants": [
+    {
+      "variant_id": "rumi_clipboard_host_service_pack.clipboard.read.python",
+      "function_id": "rumi_clipboard_host_service_pack.clipboard.read",
+      "implementation_path": "runtime/service.py",
+      "implementation_digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.resource.clipboard.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:1c12dec4c4a39b4fc2da2d00ea258b9b26d4665e1e1f3cabf1293eb72bfdd6a4",
+          "operation_id": "rumi_clipboard_host_service_pack.clipboard-read",
+          "input_schema": {
+            "additionalProperties": false,
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_clipboard_host_service_pack.clipboard.write.python",
+      "function_id": "rumi_clipboard_host_service_pack.clipboard.write",
+      "implementation_path": "runtime/service.py",
+      "implementation_digest": "sha256:010e09ffd1a31174f05dedf806c86179f229497b6e73acc33fb4b1b3ce2bc510",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.clipboard.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:7b17d2bc36986ebb287cbdb016b581185aa0438cc42c87b5bce9c7dd126cb7c0",
+          "operation_id": "rumi_clipboard_host_service_pack.clipboard-write",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "text": {
+                "maxLength": 1048576,
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    }
+  ],
+  "materialization_catalog_digest": "sha256:7b7fbbfa2956bf02ac1cd28b8e3e0d1dc02c235febddf807959ddf93c937fa10",
+  "catalog_digest": "sha256:905b73934e2507fb1858fdef0e36f5786f9b6b7e7dbff4653fd31afa261e4646"
+}

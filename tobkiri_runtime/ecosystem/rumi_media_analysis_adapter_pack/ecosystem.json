@@ -1,17 +1,68 @@
 {
+  "connectivity": {
+    "provides": [
+      "rumi.service.media.analysis.v1"
+    ],
+    "requires": [
+      "rumi.service.ai.audio.transcribe.v1",
+      "rumi.service.ai.image.v1",
+      "rumi.service.media.inspect.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_ai_modality_pack": ">=1.0.0,<2.0.0",
+    "rumi_media_inspect_service_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Workspace media reference adapter for replaceable vision and transcription services.",
+  "display_name": "Rumi Media Analysis Adapter",
+  "host_execution": false,
+  "metadata": {
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:8745410a540d71f4afc8a189e7daf802673d3a3efa1fb67ca2d7a532e3751616",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:2383a868e187b31697d5d6e3cc282dd8a76669d7351b53f2fadafaa99f227317"
+    },
+    "capture_authority": false,
+    "file_access": "global_contract_only",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:2383a868e187b31697d5d6e3cc282dd8a76669d7351b53f2fadafaa99f227317"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "provider_execution": false,
+    "read_only_projection": true,
+    "tool_or_ui_registry_imports": false
+  },
   "pack_id": "rumi_media_analysis_adapter_pack",
   "pack_identity": "rumi:ecosystem/rumi_media_analysis_adapter_pack",
-  "display_name": "Rumi Media Analysis Adapter Pack",
-  "version": "1.0.0",
-  "description": "Contract-only workspace media adapter for vision and transcription.",
-  "dependencies": {"rumi_media_inspect_service_pack": ">=1.0.0,<2.0.0", "rumi_ai_modality_pack": ">=1.0.0,<2.0.0"},
-  "connectivity": {"requires": ["rumi.service.media.inspect.v1", "rumi.service.ai.image.v1", "rumi.service.ai.audio.transcribe.v1"], "provides": ["rumi.service.media.analysis.v1"]},
+  "provenance": {
+    "build_identity": "rumi_media_analysis_adapter_pack:1.0.0",
+    "content_hash": "sha256:70ca9c2696d710018be89a1f8fa406e1185698ec623fbd7860e0bb70fdcd0897",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.audio.transcribe",
+    "ai.image",
+    "media.analysis",
+    "media.inspect"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
   "required_secrets": [],
-  "required_capabilities": ["media.analysis", "media.inspect", "ai.image", "ai.audio.transcribe"],
-  "required_network": {"allowed_domains": [], "allowed_ports": []},
-  "host_execution": false,
   "resources": [],
-  "provenance": {"content_hash": "sha256:ac3a90d1b02a8eae7e995d405ab51b6474a3bd8a72f536530b046c08d42508c2", "build_identity": "rumi-media-analysis-adapter-pack:1.0.0", "trust_class": "local", "signature": null},
-  "metadata": {"capture_authority": false, "provider_execution": false, "file_access": "global_contract_only", "tool_or_ui_registry_imports": false}
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
 }
-

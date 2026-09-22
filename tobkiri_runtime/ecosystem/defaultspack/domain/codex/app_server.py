@@ -64,9 +64,13 @@ def _config_path(pack_root: Path | None = None) -> Path:
 
 
 def _secrets_dir(pack_root: Path | None = None) -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
-    if override:
-        return Path(override)
+    if pack_root is None:
+        configured_override = os.getenv("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
+        if configured_override:
+            return Path(configured_override).expanduser()
+        configured_user_data = os.getenv("RUMI_USER_DATA", "").strip()
+        if configured_user_data:
+            return Path(configured_user_data).expanduser() / "secrets"
     return (pack_root or _pack_root()) / "user_data" / "secrets"
 
 
@@ -378,19 +382,21 @@ def _app_server_credential_ref(*, pack_root: Path | None = None) -> dict[str, st
 
 
 def _codex_app_server_auth(config: dict[str, Any], *, pack_root: Path | None = None) -> dict[str, str]:
+    from core_runtime.host_contract import host_contract_value
+
     imported = _read_connection_app_server_auth(pack_root=pack_root)
     if imported.get("value"):
         return imported
-    for kind, _env_key, file_env_key, config_file_key, _secret_key in _APP_SERVER_AUTH_ENV:
-        file_path = str(config.get(config_file_key) or os.environ.get(file_env_key, "")).strip()
+    for kind, _env_key, _file_env_key, config_file_key, _secret_key in _APP_SERVER_AUTH_ENV:
+        file_path = str(config.get(config_file_key) or "").strip()
         if file_path:
             value = _read_secret_file(file_path)
             if value:
                 return {"kind": kind, "source": "file", "file_path": file_path, "value": value}
-    for kind, env_key, _file_env_key, _config_file_key, _secret_key in _APP_SERVER_AUTH_ENV:
-        value = os.environ.get(env_key, "").strip()
+    for kind, _env_key, _file_env_key, _config_file_key, _secret_key in _APP_SERVER_AUTH_ENV:
+        value = host_contract_value(f"codex_{kind}", provider_id="codex")
         if value:
-            return {"kind": kind, "source": "environment", "file_path": "", "value": value}
+            return {"kind": kind, "source": "host_contract", "file_path": "", "value": value}
     for kind, _env_key, _file_env_key, _config_file_key, secret_key in _APP_SERVER_AUTH_ENV:
         value, key = _read_stored_secret((secret_key,), pack_root=pack_root)
         if value:
@@ -1007,15 +1013,20 @@ def _safe_codex_message(message: dict[str, Any]) -> dict[str, Any]:
 
 
 def _redact_known_secrets(text: str) -> str:
+    from core_runtime.host_contract import host_contract_value
+
+    values: set[str] = set()
     for key in (
         "RUMI_CODEX_ACCESS_TOKEN",
         "CODEX_ACCESS_TOKEN",
         "RUMI_CODEX_APP_SERVER_WS_TOKEN",
         "RUMI_CODEX_APP_SERVER_SHARED_SECRET",
     ):
-        value = os.environ.get(key, "").strip()
+        value = host_contract_value(key)
         if value:
-            text = text.replace(value, "[redacted]")
+            values.add(value)
+    for value in sorted(values, key=len, reverse=True):
+        text = text.replace(value, "[redacted]")
     return text
 
 

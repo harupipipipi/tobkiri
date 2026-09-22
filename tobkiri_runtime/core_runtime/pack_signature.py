@@ -13,7 +13,7 @@ import os
 import re
 import stat
 import unicodedata
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -101,7 +101,7 @@ def build_signed_manifest(
             }
         ),
         "build_provenance": build_provenance or {},
-        "created_at": created_at or datetime.now(UTC).isoformat(),
+        "created_at": created_at or datetime.now(timezone.utc).isoformat(),
         "authority_granted": False,
     }
 
@@ -148,10 +148,9 @@ def verify_signed_pack(
     """Verify signature, publisher, revocation, and the complete file set."""
 
     unsigned = _unsigned_manifest(manifest)
-    signature = (
-        manifest.get("signature")
-        if isinstance(manifest.get("signature"), dict)
-        else {}
+    raw_signature = manifest.get("signature")
+    signature: dict[str, Any] = (
+        raw_signature if isinstance(raw_signature, dict) else {}
     )
     if signature.get("algorithm") != "Ed25519":
         raise PackSignatureError("unsupported or missing signature algorithm")
@@ -341,7 +340,7 @@ def _validate_unsigned_manifest(manifest: dict[str, Any]) -> None:
         raise PackSignatureError("created_at must be an ISO timestamp") from exc
     if created_at.tzinfo is None:
         raise PackSignatureError("created_at must include a timezone")
-    if created_at > datetime.now(UTC) + timedelta(minutes=5):
+    if created_at > datetime.now(timezone.utc) + timedelta(minutes=5):
         raise PackSignatureError("created_at may not be in the future")
     if manifest.get("authority_granted") is not False:
         raise PackSignatureError("signed Pack manifests may not grant authority")

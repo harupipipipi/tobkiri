@@ -93,6 +93,14 @@ class ModelRegistry:
             self._assert_revision(state, expected_revision)
             profile_id = normalized["model_profile_id"]
             current = state["profiles"].get(profile_id)
+            if isinstance(current, Mapping) and all(
+                current.get(key) == value for key, value in normalized.items()
+            ):
+                return {
+                    "action": "saved",
+                    "profile": dict(current),
+                    "store_revision": state["revision"],
+                }
             now = _now()
             normalized["created_at"] = str(
                 (current or {}).get("created_at") or now
@@ -373,4 +381,3 @@ def _atomic_json(path: Path, value: Any) -> None:
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-

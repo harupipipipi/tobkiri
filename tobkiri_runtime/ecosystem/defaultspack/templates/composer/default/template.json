@@ -238,6 +238,20 @@
       }
     },
     {
+      "id": "manual_runtime_mode_selection",
+      "kind": "settings_field",
+      "slot": "general",
+      "order": 56.5,
+      "section_id": "general",
+      "field_id": "manual_runtime_mode_selection",
+      "type": "toggle",
+      "label": "Manual Runtime Mode Selection",
+      "default": false,
+      "help": "Advanced: show the composer runtime-mode control. When disabled, chats use the autonomous agent mode.",
+      "advanced": true,
+      "control_center_section": "advanced"
+    },
+    {
       "id": "tools_settings_section",
       "kind": "settings_section",
       "order": 57,

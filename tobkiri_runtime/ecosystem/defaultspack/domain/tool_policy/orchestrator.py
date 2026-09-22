@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from blocks._common import error
 from domain.agent_runtime.tool_ledger import ToolLedger
 from domain.agent_runtime.run_store import AgentRunStore
@@ -31,10 +33,16 @@ def _is_cancelled(context: dict[str, Any] | None) -> bool:
 class ToolOrchestrator:
     """Approval, policy, sandbox, ledger, and execution gateway for tools."""
 
-    def __init__(self, registry: ToolRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry | None = None,
+        *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self.registry = registry or ToolRegistry()
         self.ledger = ToolLedger()
         self.store = AgentRunStore()
+        self._settings_owner = settings_owner
 
     def run(self, tool_name: str, arguments: dict[str, Any] | None, context: dict[str, Any] | None) -> dict[str, Any]:
         profile_policy_trusted = profile_policy_context_is_trusted(context)
@@ -80,13 +88,20 @@ class ToolOrchestrator:
             {"run_id": run_id, "tool_call_id": tool_call_id, "tool_name": tool_name, "arguments": arguments or {}},
         )
 
-        from blocks.tool.invoke import run as invoke_tool
-
         invoke_context = seal_tool_context(context, decision.to_dict())
         invoke_context["sandbox_mode"] = decision.sandbox_mode
         if _is_cancelled(invoke_context):
             return error("Tool execution cancelled", "CANCELLED")
-        result = invoke_tool({"tool_name": tool_name, "arguments": arguments or {}}, invoke_context)
+        # The legacy block route is an approval-persisted Capability API
+        # adapter and intentionally rejects direct calls.  Agent execution
+        # already carries the detached v4 CapabilityPlan, so invoke the last
+        # non-core Tool boundary directly and retain the orchestrator envelope.
+        from domain.tool.executor import ToolExecutor
+
+        executor = ToolExecutor(settings_owner=self._settings_owner)
+        executor._registry = self.registry
+        executed = executor.execute(tool_name, arguments or {}, invoke_context)
+        result = _tool_result_envelope(executed)
 
         if run_id:
             is_error = result.get("status") != "ok" or bool((result.get("data") or {}).get("is_error"))
@@ -110,3 +125,26 @@ class ToolOrchestrator:
         if not run_id or not tool_call_id or not approval_id:
             return False
         return self.store.is_approval_granted(str(run_id), str(tool_call_id), str(approval_id))
+
+
+def _tool_result_envelope(result: Any) -> dict[str, Any]:
+    """Normalize the executor result to the agent-facing status/data shape."""
+
+    if isinstance(result, dict) and result.get("status") in {
+        "ok",
+        "error",
+        "waiting_approval",
+    }:
+        return result
+    data = result if isinstance(result, dict) else {
+        "result": str(result),
+        "is_error": True,
+        "widget": None,
+    }
+    status = "error" if bool(data.get("is_error")) else "ok"
+    envelope: dict[str, Any] = {"status": status, "data": data}
+    if status == "error":
+        envelope["error"] = str(data.get("result") or "Tool execution failed")
+        if data.get("error_type"):
+            envelope["error_type"] = data["error_type"]
+    return envelope

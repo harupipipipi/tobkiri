@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
+
+from core_runtime.host_provider_backend_v4 import (
+    CapturedHostProviderV4,
+    HostProviderCaptureContextV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+)
 
 
 def create_tokenize_operation(client: Any):
@@ -35,7 +42,12 @@ def create_cost_operation(client: Any):
     del client
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        if name not in {"calculate", "normalize"}:
+        if name not in {
+            "calculate",
+            "normalize",
+            "rumi_ai_usage_pack.ai-usage-cost.generate",
+            "rumi_ai_usage_pack.ai-usage-cost.stream",
+        }:
             raise ValueError(f"unknown usage cost operation: {name}")
         usage = payload.get("usage")
         pricing = payload.get("pricing")
@@ -85,3 +97,89 @@ def _number(value: Any) -> float | None:
         return None
     return result if math.isfinite(result) and result >= 0 else None
 
+
+_PACK_ID = "rumi_ai_usage_pack"
+_USAGE_OPERATIONS: dict[
+    str,
+    tuple[str, Callable[[Any], Callable[[str, Mapping[str, Any]], dict[str, Any]]]],
+] = {
+    "rumi_ai_usage_pack.ai-usage.cost": ("calculate", create_cost_operation),
+    "rumi_ai_usage_pack.ai-usage.tokenize": ("estimate", create_tokenize_operation),
+}
+
+
+class AIUsageHostFactoryV4:
+    """Capture exact usage/tokenization Host Provider contributions."""
+
+    def __init__(self, function_id: str) -> None:
+        if function_id not in _USAGE_OPERATIONS:
+            raise ValueError("AI usage function is not registered")
+        self.function_id = function_id
+
+    def capture(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> CapturedHostProviderV4:
+        """Bind only the exact resolved usage Function identity."""
+
+        if not context.provider_bindings or any(
+            binding.function.function_id != self.function_id
+            for binding in context.provider_bindings
+        ):
+            raise PermissionError("AI usage bindings are incomplete")
+        operation_name, operation_factory = _USAGE_OPERATIONS[self.function_id]
+
+        def invoke(
+            _operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset(),
+                consumer_pack_id=_PACK_ID,
+            )
+            return operation_factory(client)(operation_name, payload)
+
+        return CapturedHostProviderV4(
+            tuple(_contributions(context, invoke)),
+            lambda: None,
+        )
+
+
+def _contributions(
+    context: HostProviderCaptureContextV4,
+    invoke: Callable[
+        [str, Mapping[str, Any], HostProviderInvocationContextV4], Mapping[str, Any]
+    ],
+) -> list[HostProviderContributionV4]:
+    """Construct immutable exact-principal usage contributions."""
+
+    contributions: list[HostProviderContributionV4] = []
+    for binding in context.provider_bindings:
+        key = (
+            binding.operation.contract_id,
+            binding.operation.operation_id,
+            binding.principal_ref.value,
+        )
+        domain_id = context.domain_ids.get(key)
+        if domain_id is None:
+            raise PermissionError("AI usage domain binding is unavailable")
+        contributions.append(
+            HostProviderContributionV4(
+                contract_id=binding.operation.contract_id,
+                contract_version=binding.operation.contract_version,
+                operation_id=binding.operation.operation_id,
+                principal_id=binding.principal_ref.value,
+                artifact_digest=binding.artifact.digest,
+                implementation_digest=binding.function.implementation_digest,
+                domain_id=domain_id,
+                invoke=invoke,
+            )
+        )
+    return contributions
+
+
+HOST_PROVIDER_FACTORY = {
+    function_id: AIUsageHostFactoryV4(function_id)
+    for function_id in _USAGE_OPERATIONS
+}

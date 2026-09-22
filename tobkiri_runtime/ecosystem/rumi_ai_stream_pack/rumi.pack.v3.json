@@ -1,19 +1,151 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {"id": "rumi.ai_stream", "version": "1.0.0", "kind": "service", "display_name": "Rumi AI Stream", "description": "Replaceable typed stream validation and normalization."},
   "contracts": {
     "provides": [
-      {"id": "rumi.service.ai.stream.normalize.v1", "version": "1.0.0", "provider_instance_id": "ai-stream.normalize", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_ai_stream_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.stream.normalize"]}
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.stream.normalize.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ai_stream_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "ai-stream.normalize",
+        "required_capabilities": [
+          "ai.stream.normalize"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
     ],
     "requires": []
   },
   "entrypoints": [
-    {"id": "ai-stream-normalize", "contract_id": "rumi.service.ai.stream.normalize.v1", "loader": "python", "module": "ecosystem.rumi_ai_stream_pack.runtime.normalizer", "symbol": "create_stream_normalize_operation", "artifact_hash": "sha256:f46e5681c2974a9e7e9c37a2479a701742b5a6cada61defc507fe4766180d333"}
+    {
+      "artifact_hash": "sha256:ffedc4dc81336ac5e708d7b954af08d83a2c5f0533360e82968699fb096b8a54",
+      "contract_id": "rumi.service.ai.stream.normalize.v1",
+      "id": "ai-stream-normalize",
+      "loader": "python",
+      "module": "ecosystem.rumi_ai_stream_pack.runtime.normalizer",
+      "symbol": "create_stream_normalize_operation"
+    }
   ],
+  "extensions": {
+    "rumi.ai_stream.boundary": {
+      "provider_execution": false,
+      "provider_pack_id_branches": false,
+      "stream_transport": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.ai.stream.normalize.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Replaceable typed stream validation and normalization.",
+        "display_name": "Rumi AI Stream",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:3ca59b33d68fb652c31ca6c2521b7d16274aab144bd0a7675a6dcbda72a3cda1",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:b07d05d87207e0f894ab63b6c75edf74097d47bcc08a40589f2c973003af061d"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "stream_event_schema",
+            "stream_normalization"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "network": false,
+            "provider_branches": false,
+            "terminal_event_required": true
+          }
+        },
+        "pack_id": "rumi_ai_stream_pack",
+        "pack_identity": "rumi:ecosystem/rumi_ai_stream_pack",
+        "provenance": {
+          "build_identity": "rumi_ai_stream_pack:1.0.0",
+          "content_hash": "sha256:a1661c0a769c3f4ab0d9d82b861af5cb01a6492f405c9c22a81ce6e1a900805b",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.stream.normalize"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_ai_stream_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_ai_stream_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:b07d05d87207e0f894ab63b6c75edf74097d47bcc08a40589f2c973003af061d"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "from": [
+      "rumi_ai_gateway_pack.runtime.gateway._normalize_stream"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior stream normalizer in the resolved profile.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Replaceable typed stream validation and normalization.",
+    "display_name": "Rumi AI Stream",
+    "id": "rumi.ai_stream",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.stream.normalize"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_ai_stream_pack:1.0.0",
+    "content_hash": "sha256:a1661c0a769c3f4ab0d9d82b861af5cb01a6492f405c9c22a81ce6e1a900805b",
+    "signature": null,
+    "trust_class": "local"
+  },
   "resources": [],
-  "storage": [],
-  "permissions": [{"capability": "ai.stream.normalize", "access": "execute", "approval_required": false}],
-  "provenance": {"content_hash": "sha256:bc5733265ef1124aca07b062d73a5a47a8169dcfc92bf1f9602f5bf1f4c4f98d", "build_identity": "rumi-ai-stream-pack:1.0.0", "trust_class": "local", "signature": null},
-  "migration": {"from": ["rumi_ai_gateway_pack.runtime.gateway._normalize_stream"], "compatibility_aliases": [], "compatibility_projection": "none", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Select the pinned prior stream normalizer in the resolved profile."},
-  "extensions": {"rumi.ai_stream.boundary": {"provider_execution": false, "stream_transport": false, "provider_pack_id_branches": false}}
+  "storage": []
 }

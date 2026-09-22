@@ -8,6 +8,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.conformance_support.host_contract import host_contract
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 SAFE_APP_SERVER_ARGS = [
@@ -27,6 +29,22 @@ def _text(value: object) -> str:
 
 def _fresh_token() -> str:
     return f"codex-{secrets.token_urlsafe(24)}"
+
+
+def _save_app_server_secret(pack_root: Path, value: str) -> dict[str, object]:
+    """Persist app-server auth as its own opaque connection credential."""
+    from domain.connections.store import import_connection_bundle
+
+    return import_connection_bundle(
+        {
+            "schema": "rumi.connection.credential_bundle.v1",
+            "provider_id": "codex",
+            "connection_id": "default",
+            "material_type": "app_server_secret",
+            "credentials": {"ws_token": value},
+        },
+        pack_root=pack_root,
+    )
 
 
 def test_codex_token_status_and_route_responses_redact_raw_token():
@@ -121,7 +139,8 @@ def test_codex_app_server_remote_endpoint_requires_app_server_auth_not_codex_tok
             )
             save_codex_access_token(token, pack_root=pack_root)
             status_with_only_codex_token = codex_app_server_status(pack_root=pack_root)
-        with patch.dict(os.environ, {**env, "RUMI_CODEX_APP_SERVER_WS_TOKEN": app_secret}, clear=False):
+        with patch.dict(os.environ, env, clear=False):
+            imported = _save_app_server_secret(pack_root, app_secret)
             saved_with_app_auth = save_codex_app_server_config(
                 {
                     "enabled": True,
@@ -139,10 +158,11 @@ def test_codex_app_server_remote_endpoint_requires_app_server_auth_not_codex_tok
     assert saved_without_app_auth["app_server"]["connection_status"] == "blocked_auth_required"
     assert status_with_only_codex_token["connection_status"] == "blocked_auth_required"
     assert status_with_only_codex_token["auth_configured"] is False
+    assert imported["success"] is True
     assert saved_with_app_auth["success"] is True
     assert status["auth_required"] is True
     assert status["auth_configured"] is True
-    assert status["auth_source"] == "environment"
+    assert status["auth_source"] == "secret_store"
     assert status["auth_kind"] == "ws_token"
     assert token not in _text(saved_with_app_auth)
     assert token not in _text(status)
@@ -178,6 +198,7 @@ def test_codex_app_server_rejects_transport_url_mismatch_even_with_app_server_au
             "automation_endpoint_enabled": True,
         }
         with patch.dict(os.environ, env, clear=False):
+            imported = _save_app_server_secret(pack_root, app_secret)
             saved = save_codex_app_server_config(config, pack_root=pack_root)
             status = codex_app_server_status(pack_root=pack_root)
             probe = codex_app_server_probe(pack_root=pack_root)
@@ -194,6 +215,7 @@ def test_codex_app_server_rejects_transport_url_mismatch_even_with_app_server_au
             remote_status = codex_app_server_status(pack_root=pack_root)
 
     assert build_codex_app_server_command(config) == []
+    assert imported["success"] is True
     assert saved["success"] is True
     assert saved["app_server"]["connection_status"] == "transport_url_mismatch"
     assert status["configured"] is False
@@ -310,11 +332,13 @@ def test_codex_app_server_probe_never_uses_codex_access_token_for_app_server_aut
             )
             blocked = codex_app_server_probe(pack_root=pack_root)
 
-        with patch.dict(os.environ, {**env, "RUMI_CODEX_APP_SERVER_WS_TOKEN": app_secret}, clear=False):
+        with patch.dict(os.environ, env, clear=False):
+            imported = _save_app_server_secret(pack_root, app_secret)
             with patch("urllib.request.urlopen", fake_urlopen):
                 probed = codex_app_server_probe(pack_root=pack_root)
 
     assert blocked["probe"]["status"] == "blocked_auth_required"
+    assert imported["success"] is True
     assert probed["probe"]["status"] == "ok"
     assert captured_headers["Authorization"] == f"Bearer {app_secret}"
     assert codex_token not in _text(captured_headers)
@@ -372,6 +396,7 @@ def test_codex_app_server_transport_command_uses_file_paths_not_raw_tokens(tmp_p
 
 
 def test_codex_app_server_stdio_smoke_runs_thread_turn_and_streams_events(monkeypatch):
+    from core_runtime.host_contract import bind_host_contract
     from domain.codex import app_server
 
     token = _fresh_token()
@@ -442,7 +467,12 @@ def test_codex_app_server_stdio_smoke_runs_thread_turn_and_streams_events(monkey
             created["killed"] = True
 
     monkeypatch.setattr(app_server.subprocess, "Popen", FakeProcess)
-    with patch.dict(os.environ, {"RUMI_CODEX_ACCESS_TOKEN": token}, clear=False):
+    with bind_host_contract(
+        host_contract(
+            profile_id="default",
+            values={"RUMI_CODEX_ACCESS_TOKEN": token},
+        )
+    ):
         result = app_server.codex_app_server_stdio_smoke(
             prompt="Hello. Return exactly: rumi-codex-smoke-ok",
             cwd=str(ROOT),

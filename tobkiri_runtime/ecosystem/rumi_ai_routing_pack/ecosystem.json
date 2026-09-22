@@ -1,16 +1,69 @@
 {
+  "connectivity": {
+    "provides": [
+      "rumi.service.ai.route.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Replaceable deterministic AI capability and policy router.",
+  "display_name": "Rumi AI Routing",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:c5b52e64224aafa9ca9425d53787bd7789d3f37d2b2a8acfbcfb025b8c552cfa",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:70166fa400a17403e6641c67e59e16492189b58cfe5a2bb1d527e36acef9363b"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:70166fa400a17403e6641c67e59e16492189b58cfe5a2bb1d527e36acef9363b"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "capability_matching",
+      "route_policy",
+      "route_ordering"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "network": false,
+      "provider_pack_id_branches": false,
+      "unknown_cost_preserved": true,
+      "unknown_health_preserved": true
+    }
+  },
   "pack_id": "rumi_ai_routing_pack",
   "pack_identity": "rumi:ecosystem/rumi_ai_routing_pack",
-  "display_name": "Rumi AI Routing Pack",
-  "version": "1.0.0",
-  "description": "Deterministic capability, health, cost, and policy routing over explicit descriptors.",
-  "dependencies": {},
-  "connectivity": {"requires": [], "provides": ["rumi.service.ai.route.v1"]},
+  "provenance": {
+    "build_identity": "rumi_ai_routing_pack:1.0.0",
+    "content_hash": "sha256:ff98fe3636ece6146dbd5db3ff9696d476a2f46c6b888132f3149070b848b100",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.route"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
   "required_secrets": [],
-  "required_capabilities": ["ai.route"],
-  "required_network": {"allowed_domains": [], "allowed_ports": []},
-  "host_execution": true,
   "resources": [],
-  "provenance": {"content_hash": "sha256:2e57cc82bcbee3362563d95613dc80e717bda3600edc035b13ed911e0225fc43", "build_identity": "rumi-ai-routing-pack:1.0.0", "trust_class": "local", "signature": null},
-  "metadata": {"authoritative_owner": true, "owner_surfaces": ["capability_matching", "route_policy", "route_ordering"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"network": false, "provider_pack_id_branches": false, "unknown_health_preserved": true, "unknown_cost_preserved": true}}
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
 }

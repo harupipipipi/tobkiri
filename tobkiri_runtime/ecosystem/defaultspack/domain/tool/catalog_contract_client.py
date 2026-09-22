@@ -11,6 +11,8 @@ from core_runtime.global_contract_dispatch import (
 )
 from core_runtime.resolved_profile_scope import active_resolved_profile
 
+from .definition_projection import project_tool_definition as _legacy_shape
+
 DEFINITION_CONTRACT = "rumi.resource.tool.definition.v1"
 
 
@@ -22,7 +24,7 @@ class ContractToolCatalog:
         try:
             snapshot = _invoke("list", {})
         except GlobalContractUnavailable:
-            return _legacy().list_tools(filter_dict)
+            return []
         definitions = (
             snapshot.get("definitions") if isinstance(snapshot, Mapping) else []
         )
@@ -45,7 +47,7 @@ class ContractToolCatalog:
         try:
             value = _invoke("resolve", {"tool_id": tool_name})
         except GlobalContractUnavailable:
-            return _legacy().get(tool_name)
+            return None
         definition = value.get("definition") if isinstance(value, Mapping) else None
         return _legacy_shape(definition) if isinstance(definition, Mapping) else None
 
@@ -56,7 +58,7 @@ class ContractToolCatalog:
 
 
 def _invoke(operation: str, payload: Mapping[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     plan = active_resolved_profile()
     if registry is None or plan is None:
         raise GlobalContractUnavailable("global tool registry is unavailable")
@@ -66,38 +68,3 @@ def _invoke(operation: str, payload: Mapping[str, Any]) -> Any:
         operation,
         {"profile_id": plan.profile_id, **dict(payload)},
     )
-
-
-def _legacy_shape(value: Mapping[str, Any]) -> dict[str, Any]:
-    tool_id = str(value.get("tool_id") or "")
-    input_schema = dict(value.get("input_schema") or {})
-    aliases = list(value.get("aliases") or [])
-    widget = dict(value.get("widget") or {})
-    return {
-        "tool_id": tool_id,
-        "name": tool_id,
-        "display_name": str(value.get("display_name") or tool_id),
-        "summary": str(value.get("description") or ""),
-        "description": str(value.get("description") or ""),
-        "schema": {"parameters": input_schema},
-        "execution": dict(value.get("execution") or {}),
-        "risk": str(value.get("risk") or "unknown"),
-        "tags": list(value.get("policy_tags") or []),
-        "ui": widget,
-        "widget": widget,
-        "aliases": aliases,
-        "requires_approval": str(value.get("risk") or "") in {"high", "critical"},
-        "capability_grants": [str(value.get("authority") or "")],
-        "metadata": {
-            "source": "global_contract",
-            "aliases": aliases,
-            "definition_hash": value.get("definition_hash"),
-            "source_adapter_id": value.get("source_adapter_id"),
-        },
-    }
-
-
-def _legacy():
-    from domain.tool.registry import ToolRegistry
-
-    return ToolRegistry()

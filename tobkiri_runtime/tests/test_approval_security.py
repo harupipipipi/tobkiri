@@ -60,8 +60,8 @@ def test_verified_pack_trust_is_derived_from_host_verification(
     )
     monkeypatch.setattr(
         manager,
-        "_is_trusted_builtin_pack",
-        lambda pack_id: pack_id == "defaultspack",
+        "_is_system_pack",
+        lambda pack_id: pack_id == "system_ui",
     )
     monkeypatch.setattr(
         manager,
@@ -72,13 +72,13 @@ def test_verified_pack_trust_is_derived_from_host_verification(
     assert manager.get_verified_pack_trust(
         [
             "core_control_panel",
-            "defaultspack",
+            "system_ui",
             "approved_pack",
             "unapproved_pack",
         ]
     ) == {
         "core_control_panel": "system",
-        "defaultspack": "system",
+        "system_ui": "system",
         "approved_pack": "verified",
     }
 

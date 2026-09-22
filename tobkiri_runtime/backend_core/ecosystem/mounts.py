@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 # モジュール基準ベースディレクトリ
+_BASE_DIR: Optional[Path]
 try:
     from core_runtime.paths import BASE_DIR as _BASE_DIR
 except ImportError:
@@ -56,8 +57,8 @@ class MountManager:
     
     def __init__(
         self,
-        config_path: str = None,
-        base_dir: str = None
+        config_path: Optional[str] = None,
+        base_dir: Optional[str] = None
     ):
         """
         Args:
@@ -294,7 +295,10 @@ def get_mount_path(mount_point: str, ensure_exists: bool = True) -> Path:
     return get_mount_manager().get_path(mount_point, ensure_exists)
 
 
-def initialize_mounts(config_path: str = None, base_dir: str = None):
+def initialize_mounts(
+    config_path: Optional[str] = None,
+    base_dir: Optional[str] = None,
+) -> None:
     """
     マウントシステムを初期化
     

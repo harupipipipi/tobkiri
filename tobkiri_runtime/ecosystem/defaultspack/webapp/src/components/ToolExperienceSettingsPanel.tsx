@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ModelSearchItem, SidebarItem, ToolCatalogResponse, ToolCatalogService, ToolCatalogTool, ToolSelectionMode, ToolSelectionStrategy } from "../lib/api";
 import { toolResources } from "../features/tools/resources/toolResources";
 import { cn } from "../lib/cn";
+import { ErrorNotice } from "./ErrorNotice";
 import { ToolSettingsPanel } from "./ToolSettingsPanel";
 import { ModalFoundation } from "./ModalFoundation";
 
@@ -341,6 +342,7 @@ export function ToolExperienceSettingsPanel({
   const [previewText, setPreviewText] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [warningStrategy, setWarningStrategy] = useState<ToolSelectionStrategy | null>(null);
 
   const toolSettings = settingsValues.tools ?? {};
@@ -428,6 +430,7 @@ export function ToolExperienceSettingsPanel({
   const runPreview = async () => {
     setPreviewLoading(true);
     setPreviewResult(null);
+    setPreviewError(null);
     try {
       const result = await toolResources.previewToolSelection({
         user_text: previewText || "この依頼に必要な機能を選んで",
@@ -437,7 +440,7 @@ export function ToolExperienceSettingsPanel({
       const recommendations = result.decision.recommendations.slice(0, 5).map((item) => item.reason ? `${item.tool_id}: ${item.reason}` : item.tool_id).join("\n");
       setPreviewResult(`選ばれた機能: ${selected}${recommendations ? `\n\n理由:\n${recommendations}` : ""}`);
     } catch (error) {
-      setPreviewResult(error instanceof Error ? error.message : "選定を試せませんでした");
+      setPreviewError(error instanceof Error ? error.message : "選定を試せませんでした");
     } finally {
       setPreviewLoading(false);
     }
@@ -682,7 +685,16 @@ export function ToolExperienceSettingsPanel({
           </button>
           <span className="text-xs text-zinc-500">現在の設定でプレビューします</span>
         </div>
-        {previewResult && <pre className="max-h-60 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs leading-5 text-zinc-300 whitespace-pre-wrap">{previewResult}</pre>}
+        {previewError ? (
+          <ErrorNotice
+            className="text-xs leading-5"
+            copyLabel="ツール選定プレビューエラーをコピー"
+            message={previewError}
+            title="選定を試せませんでした"
+          />
+        ) : previewResult ? (
+          <pre className="max-h-60 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs leading-5 text-zinc-300 whitespace-pre-wrap">{previewResult}</pre>
+        ) : null}
       </section>
       <details className="rounded-lg border border-zinc-800 bg-zinc-950/35">
         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-zinc-100">個別ツールの管理</summary>

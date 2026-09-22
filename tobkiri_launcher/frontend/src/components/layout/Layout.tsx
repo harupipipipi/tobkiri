@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
-import { Outlet, Navigate, useLocation } from 'react-router';
+import { Outlet, useLocation } from 'react-router';
+import type {ReactNode} from 'react';
+import {AlertCircle, AlertTriangle} from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { ViewerVersionLabel } from './ViewerVersionLabel';
@@ -7,50 +8,38 @@ import { useAppStore } from '@/src/store';
 import { describeRuntimeBanner } from '@/src/lib/runtimeHealth';
 import { panelRoutes } from '@/src/lib/routes';
 import { RouteBoundary } from './RouteBoundary';
+import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 
-export function Layout() {
+export function shouldShowRuntimeErrorCopy(
+  banner: Pick<ReturnType<typeof describeRuntimeBanner>, 'tone' | 'detail'>,
+): boolean {
+  return banner.tone === 'danger' && Boolean(banner.detail.trim());
+}
+
+export function runtimeBannerIconKind(
+  tone: ReturnType<typeof describeRuntimeBanner>['tone'],
+  runtimeStatus: string,
+): 'error' | 'warning' | 'progress' {
+  if (tone === 'danger') return 'error';
+  if (runtimeStatus === 'profile_reconfirmation_required') return 'warning';
+  return 'progress';
+}
+
+/** Page content can place recovery beside its own heading instead of above the scroll area. */
+export interface LayoutOutletContext {
+  verificationBanner?: ReactNode;
+}
+
+export function Layout({verificationBanner}: {verificationBanner?: ReactNode}) {
   const location = useLocation();
-  const homeCommittedAt = useRef<number | null>(null);
-  const isSetupDone = useAppStore(state => state.isSetupDone);
+  const isHome = location.pathname.replace(/\/$/, '') === panelRoutes.home.replace(/\/$/, '');
+  // Runtime-only routes render their own blocking recovery gate.
+  const showLayoutVerification = location.pathname === panelRoutes.profile || location.pathname === panelRoutes.settings;
   const runtimeReady = useAppStore(state => state.runtimeReady);
   const runtimeStatus = useAppStore(state => state.runtimeStatus);
   const runtimeError = useAppStore(state => state.runtimeError);
   const runtimeDisconnected = useAppStore(state => state.runtimeDisconnected);
   const lastRuntimeHealthyAt = useAppStore(state => state.lastRuntimeHealthyAt);
-
-  useEffect(() => {
-    if (location.pathname !== panelRoutes.home) return;
-    if (homeCommittedAt.current === null) {
-      homeCommittedAt.current = performance.now();
-      performance.mark('tobkiri:home-commit');
-      try {
-        performance.measure('tobkiri:entry-to-home', 'tobkiri:app-entry', 'tobkiri:home-commit');
-      } catch {
-        // Layout can be mounted independently in component tests.
-      }
-    }
-    if (!runtimeReady && runtimeStatus !== 'panel_ready') return;
-
-    let cancelled = false;
-    let cancelWarmup = () => undefined;
-    void import('@/src/lib/advancedWarmup')
-      .then(({ scheduleAdvancedWarmup }) => {
-        if (cancelled || homeCommittedAt.current === null) return;
-        cancelWarmup = scheduleAdvancedWarmup(homeCommittedAt.current);
-      })
-      .catch((error) => {
-        console.warn('[advanced-warmup] coordinator could not be loaded', error);
-      });
-
-    return () => {
-      cancelled = true;
-      cancelWarmup();
-    };
-  }, [location.pathname, runtimeReady, runtimeStatus]);
-
-  if (!isSetupDone) {
-    return <Navigate to={panelRoutes.setup} replace />;
-  }
 
   const runtimeBanner = describeRuntimeBanner({
     runtimeReady,
@@ -59,31 +48,48 @@ export function Layout() {
     runtimeDisconnected,
     lastRuntimeHealthyAt,
   });
+  const canCopyRuntimeError = shouldShowRuntimeErrorCopy(runtimeBanner);
+  const runtimeIconKind = runtimeBannerIconKind(runtimeBanner.tone, runtimeStatus);
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-main text-text-main">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 flex flex-col relative overflow-hidden">
-          {!runtimeReady && (
+        <main id="panel-main" tabIndex={-1} className="flex-1 flex flex-col relative overflow-hidden">
+          {showLayoutVerification && verificationBanner}
+          {!runtimeReady && !verificationBanner && (
             <div
               role="alert"
               className={`flex items-center gap-3 border-b px-6 py-3 text-sm ${
                 runtimeBanner.tone === 'danger'
-                  ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300'
-                  : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-300'
+                  ? 'border-destructive/35 bg-destructive/8 text-destructive'
+                  : 'border-warning/35 bg-warning/8 text-warning'
               }`}
             >
-              <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${runtimeBanner.tone === 'danger' ? 'bg-red-500' : 'bg-amber-500 animate-pulse'}`} />
-              <div className="min-w-0">
+              <span aria-hidden="true" className="flex h-4 w-4 shrink-0 items-center justify-center">
+                {runtimeIconKind === 'error' ? (
+                  <AlertCircle className="h-4 w-4" data-runtime-banner-icon="error" />
+                ) : runtimeIconKind === 'warning' ? (
+                  <AlertTriangle className="h-4 w-4" data-runtime-banner-icon="warning" />
+                ) : (
+                  <span className="h-2 w-2 rounded-full bg-current" data-runtime-banner-icon="progress" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
                 <p className="font-medium">{runtimeBanner.title}</p>
                 <p className="text-xs opacity-80">{runtimeBanner.detail}</p>
               </div>
+              {canCopyRuntimeError ? (
+                <CopyErrorButton
+                  label="Copy runtime status error"
+                  text={`${runtimeBanner.title}\n${runtimeBanner.detail}`}
+                />
+              ) : null}
             </div>
           )}
           <RouteBoundary>
-            <Outlet />
+            <Outlet context={{verificationBanner: isHome ? verificationBanner : null} satisfies LayoutOutletContext} />
           </RouteBoundary>
           {location.pathname === panelRoutes.home && <ViewerVersionLabel />}
         </main>
