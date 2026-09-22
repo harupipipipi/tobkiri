@@ -158,6 +158,37 @@ void main() {
       },
     );
 
+    test('interrupted API save resumes the complete new revision', () async {
+      final storage = _MemorySettingsStore(
+        values: {
+          SecureSettingsStore.baseUrlKey: 'https://old.example.test',
+          SecureSettingsStore.tokenKey: 'old-token',
+          SecureSettingsStore.autoRefreshKey: 'false',
+        },
+        writeFailures: {SecureSettingsStore.tokenKey},
+      );
+      final store = SecureSettingsStore(storage: storage);
+      const replacement = RumiRemoteSettings(
+        baseUrl: 'https://new.example.test',
+        token: 'new-token',
+        autoRefresh: true,
+      );
+
+      await expectLater(store.saveApi(replacement), throwsStateError);
+      expect(storage.values[SecureSettingsStore.apiSavePendingKey], isNotNull);
+
+      final interrupted = await store.loadAll();
+      expect(interrupted.apiSettings, isNull);
+      expect(interrupted.failures.single.code, 'save-incomplete');
+
+      storage.writeFailures.clear();
+      final resumed = await store.loadAll();
+      expect(resumed.apiSettings?.baseUrl, replacement.baseUrl);
+      expect(resumed.apiSettings?.token, replacement.token);
+      expect(resumed.apiSettings?.autoRefresh, isTrue);
+      expect(storage.values[SecureSettingsStore.apiSavePendingKey], isNull);
+    });
+
     test(
       'reset clears editable settings but preserves pairing and identity',
       () async {
@@ -238,13 +269,16 @@ class _MemorySettingsStore implements SettingsKeyValueStore {
     Map<String, String>? values,
     Set<String>? readFailures,
     Set<String>? deleteFailures,
+    Set<String>? writeFailures,
   })  : values = {...?values},
         readFailures = {...?readFailures},
-        deleteFailures = {...?deleteFailures};
+        deleteFailures = {...?deleteFailures},
+        writeFailures = {...?writeFailures};
 
   final Map<String, String> values;
   final Set<String> readFailures;
   final Set<String> deleteFailures;
+  final Set<String> writeFailures;
 
   @override
   Future<void> delete(String key) async {
@@ -260,6 +294,7 @@ class _MemorySettingsStore implements SettingsKeyValueStore {
 
   @override
   Future<void> write(String key, String value) async {
+    if (writeFailures.contains(key)) throw StateError('write unavailable');
     values[key] = value;
   }
 }

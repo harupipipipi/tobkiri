@@ -153,6 +153,7 @@ class SecureSettingsStore implements SettingsRepository {
   static const autoRefreshKey = 'rumi_remote.auto_refresh';
   static const schemaVersionKey = 'rumi_remote.settings_schema.v1';
   static const resetPendingKey = 'rumi_remote.settings_reset_pending.v1';
+  static const apiSavePendingKey = 'rumi_remote.settings_save_pending.v1';
   static const notificationKey = 'rumi_remote.notifications.v1';
   static const pairedDeviceKey = 'rumi.mobile.authority_connection.v1';
   static const deviceIdentityKey = 'rumi.mobile.credential_identity.v1';
@@ -210,6 +211,16 @@ class SecureSettingsStore implements SettingsRepository {
   }
 
   Future<RumiRemoteSettings> _loadApi() async {
+    final pendingSave = await _storage.read(apiSavePendingKey);
+    if ((pendingSave?.trim() ?? '').isNotEmpty) {
+      final pendingSettings = _decodePendingApiSave(pendingSave!);
+      try {
+        await _writeApiSettings(pendingSettings);
+        await _storage.delete(apiSavePendingKey);
+      } catch (_) {
+        throw const _SettingsStoreException('save-incomplete');
+      }
+    }
     final values = await Future.wait([
       _storage.read(resetPendingKey),
       _storage.read(schemaVersionKey),
@@ -319,12 +330,23 @@ class SecureSettingsStore implements SettingsRepository {
 
   @override
   Future<void> saveApi(RumiRemoteSettings settings) async {
-    await Future.wait([
-      _storage.write(schemaVersionKey, '1'),
-      _storage.write(baseUrlKey, settings.baseUrl.trim()),
-      _storage.write(tokenKey, settings.token.trim()),
-      _storage.write(autoRefreshKey, settings.autoRefresh.toString()),
-    ]);
+    await _storage.write(
+      apiSavePendingKey,
+      jsonEncode(<String, Object>{
+        'base_url': settings.baseUrl.trim(),
+        'token': settings.token.trim(),
+        'auto_refresh': settings.autoRefresh,
+      }),
+    );
+    await _writeApiSettings(settings);
+    await _storage.delete(apiSavePendingKey);
+  }
+
+  Future<void> _writeApiSettings(RumiRemoteSettings settings) async {
+    await _storage.write(schemaVersionKey, '1');
+    await _storage.write(baseUrlKey, settings.baseUrl.trim());
+    await _storage.write(tokenKey, settings.token.trim());
+    await _storage.write(autoRefreshKey, settings.autoRefresh.toString());
   }
 
   @override
@@ -340,6 +362,7 @@ class SecureSettingsStore implements SettingsRepository {
     await _storage.write(resetPendingKey, '1');
     for (final key in [
       schemaVersionKey,
+      apiSavePendingKey,
       baseUrlKey,
       tokenKey,
       autoRefreshKey,
@@ -349,6 +372,21 @@ class SecureSettingsStore implements SettingsRepository {
     }
     await _storage.delete(resetPendingKey);
   }
+}
+
+RumiRemoteSettings _decodePendingApiSave(String raw) {
+  final decoded = _decodeMap(raw, 'corrupt-migration');
+  final baseUrl = decoded['base_url'];
+  final token = decoded['token'];
+  final autoRefresh = decoded['auto_refresh'];
+  if (baseUrl is! String || token is! String || autoRefresh is! bool) {
+    throw const _SettingsStoreException('corrupt-migration');
+  }
+  return RumiRemoteSettings(
+    baseUrl: baseUrl,
+    token: token,
+    autoRefresh: autoRefresh,
+  );
 }
 
 List<int>? _decodeBase64Url(String value) {
