@@ -772,6 +772,27 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
     }
 
+    if (
+      path === routeKey("api/ambient/status")
+      || path === routeKey("api/ambient/permissions/check")
+    ) {
+      return fulfill(route, {
+        ambient_monitor: { enabled: false },
+        services: {
+          voice_wake_monitor: { enabled: false, status: "paused" },
+          gesture_wake_monitor: { enabled: false, status: "paused" },
+        },
+        permissions: {
+          rumi: {
+            "host.microphone.capture": { granted: false, status: "pending" },
+            "host.camera.capture": { granted: false, status: "pending" },
+            "ambient.trigger.dispatch": { granted: false, status: "pending" },
+          },
+          os: {},
+        },
+      });
+    }
+
     if (path === routeKey("api/ui/catalog")) {
       return fulfill(route, {
         dynamic_host: dynamicHostCatalog(),
@@ -2984,4 +3005,13 @@ test("checkpoint create selects the new snapshot and approved restore settles su
   await approvals.getByRole("button", { name: /許可|Approve/ }).click();
   await expect(checkpoints).toContainText("Restored checkpoint-2");
   await expect(checkpoints).not.toContainText("Approval required");
+});
+
+test("copied ambient approval return hint waits for authoritative status", async ({ page }) => {
+  await installDefaultspackApiMocks(page);
+  await page.goto("/finger-recording?authority_approved=1");
+
+  await expect(page).toHaveURL(/\/finger-recording$/, { timeout: 15_000 });
+  await expect(page.getByText("使えるようになりました。次にMacのマイク/カメラを確認します。")).toHaveCount(0);
+  await expect(page.getByText("許可はまだ確認できません。承認ウィンドウの状態を確認してください。")).toBeVisible();
 });

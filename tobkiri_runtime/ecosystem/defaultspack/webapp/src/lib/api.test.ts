@@ -2989,8 +2989,8 @@ test("local auth URL helper carries Viewer token into child windows", () => {
 
   try {
     assert.equal(
-      defaultspackUrlWithLocalAuth("/finger-recording?authority_approved=1"),
-      "/finger-recording?authority_approved=1#rumi_local_auth=local-token-1",
+      defaultspackUrlWithLocalAuth("/finger-recording?chat=c1"),
+      "/finger-recording?chat=c1#rumi_local_auth=local-token-1",
     );
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);

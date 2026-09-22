@@ -62,12 +62,22 @@ test("ambient mini authority browser fallback is debug-only and opens credential
   assert.match(source, /browserAuthorityApprovalPath\(resolvedApproval\.requestId, ambientAuthorityApprovalReturnPath\(\)\)/);
   assert.match(source, /browserAuthorityApprovalPath\(miniAuthorityApproval\.requestId, ambientAuthorityApprovalReturnPath\(\)\)/);
   assert.match(source, /function ambientAuthorityApprovalReturnPath\(\)/);
-  assert.match(source, /url\.searchParams\.set\("authority_approved", "1"\)/);
+  assert.doesNotMatch(source, /url\.searchParams\.set\("authority_approved", "1"\)/);
+  assert.match(source, /url\.searchParams\.delete\("authority_approved"\)/);
   assert.match(source, /window\.open\(profileScreenUrlFromLocation\(approvalUrl\)/);
   assert.doesNotMatch(source, /browserApprovalToken|browser_approval_token/);
   assert.doesNotMatch(source, /window\.open\(["'`]\/approval\?request_id/);
   assert.doesNotMatch(helperSource, /params\.set\("browser_approval_token"/);
   assert.match(helperSource, /params\.set\("return_to", safeReturnTo\)/);
+});
+
+test("copied ambient approval return parameters are cleanup hints only", () => {
+  const source = readSource("ambient", "AmbientTriggerPanel.tsx");
+
+  assert.doesNotMatch(source, /params\.get\("authority_approved"\) !== "1"/);
+  assert.doesNotMatch(source, /setRumiApprovalOpen\(false\)[\s\S]{0,180}params\.delete\("authority_approved"\)/);
+  assert.doesNotMatch(source, /setMessage\("使えるようになりました。次にMacのマイク\/カメラを確認します。"\)[\s\S]{0,180}params\.delete\("authority_approved"\)/);
+  assert.match(source, /function verifyRumiPermissionStatus\(\): void \{[\s\S]*loadStatus\(\{ probeOs: true \}\)[\s\S]*hasAllRumiPermissions\(latest\)[\s\S]*setRumiApprovalOpen\(false\)/);
 });
 
 test("authority approval route does not render ambient gesture overlay", () => {
@@ -127,8 +137,8 @@ test("ambient authority settlement subscribers cannot replay stored settlements"
   assert.doesNotMatch(eventSource, /AUTHORITY_APPROVAL_STORAGE_MAX_AGE_MS/);
   assert.match(eventSource, /window\.localStorage\.removeItem\(LEGACY_AUTHORITY_APPROVAL_STORAGE_KEY\)/);
   assert.match(eventSource, /readStoredAuthorityApprovalSettlement[\s\S]*clearStoredAuthorityApprovalSettlement\(\);[\s\S]*return null/);
-  assert.match(source, /subscribeAuthorityApprovalSettlements\(\(event\) => \{[\s\S]*miniAuthorityApproval[\s\S]*\}, \{ replayStored: true, replayStoredRequestId: miniAuthorityApproval\.requestId \}\)/);
-  assert.match(source, /subscribeAuthorityApprovalSettlements\(\(event\) => \{[\s\S]*AMBIENT_AUTHORITY_REQUEST_ID[\s\S]*\}, \{ replayStored: true, replayStoredRequestId: AMBIENT_AUTHORITY_REQUEST_ID \}\)/);
+  assert.match(source, /expected:\s*\{[\s\S]*requestId: miniAuthorityApproval\.requestId,[\s\S]*principalId: miniAuthorityApproval\.principalId,[\s\S]*permissionId: miniAuthorityApproval\.permissionId,[\s\S]*resource: miniAuthorityApproval\.resource/);
+  assert.match(source, /expected: \{ requestId: AMBIENT_AUTHORITY_REQUEST_ID \}/);
 });
 
 test.skip("legacy generic authority approval stale post failure refetches and settles before error", () => {
@@ -330,7 +340,7 @@ test("Viewer authenticates every dedicated Defaultspack window and rejects unsaf
   // fragment-based helper (a `rumi_local_auth` fragment never reaches the
   // server on the initial navigation).
   assert.match(viewerSource, /authority_approval_bootstrap_window_url\(config, &request_id\)/);
-  assert.match(viewerSource, /request_panel_bootstrap_code_with_retry\(active_defaultspack_http_port\(\)/);
+  assert.match(viewerSource, /request_panel_presenter_code_with_retry\(\s*active_defaultspack_http_port\(\),/);
   assert.match(viewerSource, /dock_registration::add_defaultspack_bootstrap_code\(url, &code\)/);
   assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, ambient_trigger_url/);
   assert.match(viewerSource, /authenticated_defaultspack_window_url\(config, finger_recording_url/);

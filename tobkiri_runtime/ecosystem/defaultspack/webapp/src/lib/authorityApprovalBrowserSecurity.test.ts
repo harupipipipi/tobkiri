@@ -8,7 +8,7 @@ const ORIGIN = "https://rumi.invalid";
 const FAKE_CODE = "fake-one-time-code-never-a-secret";
 
 test("approval paths contain request routing only and omit unsafe return targets", () => {
-  assert.equal(browserAuthorityApprovalPath("fake-request", "/ambient-debug?authority_approved=1"), "/approval?request_id=fake-request&return_to=%2Fambient-debug%3Fauthority_approved%3D1");
+  assert.equal(browserAuthorityApprovalPath("fake-request", "/ambient-debug?chat=c1"), "/approval?request_id=fake-request&return_to=%2Fambient-debug%3Fchat%3Dc1");
   assert.equal(browserAuthorityApprovalPath("fake-request", "https://external.invalid/collect"), "/approval?request_id=fake-request");
   assert.doesNotMatch(browserAuthorityApprovalPath("fake-request"), /token|code|nonce/i);
 });

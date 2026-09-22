@@ -21,6 +21,15 @@ export type AuthorityApprovalHint = {
 type SubscribeAuthorityApprovalSettlementOptions = {
   replayStored?: boolean;
   replayStoredRequestId?: string;
+  expected?: AuthorityApprovalVerificationBinding;
+};
+
+export type AuthorityApprovalVerificationBinding = {
+  requestId: string;
+  principalId?: string | null;
+  permissionId?: string | null;
+  conversationId?: string | null;
+  resource?: Record<string, unknown> | null;
 };
 
 type AuthorityRequestFetcher = (requestId: string) => Promise<AuthorityRequest>;
@@ -28,6 +37,17 @@ type AuthorityRequestFetcher = (requestId: string) => Promise<AuthorityRequest>;
 function cleanString(value: unknown): string | null {
   const text = String(value ?? "").trim();
   return text || null;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 function createNonce(): string {
@@ -81,8 +101,10 @@ export async function verifyAuthorityApprovalHint(
   hint: AuthorityApprovalHint,
   fetchRequest: AuthorityRequestFetcher = (requestId) => api.getAuthorityRequest(requestId),
   now = Date.now(),
+  expected?: AuthorityApprovalVerificationBinding,
 ): Promise<AuthorityApprovalSettlement | null> {
   if (hint.emittedAt > now + 5_000 || now - hint.emittedAt > AUTHORITY_APPROVAL_HINT_MAX_AGE_MS) return null;
+  if (expected && expected.requestId !== hint.requestId) return null;
   let request: AuthorityRequest;
   try {
     request = await fetchRequest(hint.requestId);
@@ -91,8 +113,30 @@ export async function verifyAuthorityApprovalHint(
   }
   if (String(request.request_id || "") !== hint.requestId) return null;
   if (request.status !== "approved" && request.status !== "denied") return null;
+  if (request.expires_at != null) {
+    const expiresAt = Date.parse(String(request.expires_at));
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) return null;
+  }
   const authoritativeConversationId = cleanString(request.conversation_id);
   if (hint.conversationId && authoritativeConversationId !== hint.conversationId) return null;
+  if (expected) {
+    if (
+      expected.principalId !== undefined
+      && cleanString(request.principal_id) !== cleanString(expected.principalId)
+    ) return null;
+    if (
+      expected.permissionId !== undefined
+      && cleanString(request.permission_id) !== cleanString(expected.permissionId)
+    ) return null;
+    if (
+      expected.conversationId !== undefined
+      && authoritativeConversationId !== cleanString(expected.conversationId)
+    ) return null;
+    if (
+      expected.resource !== undefined
+      && stableJson(request.resource ?? {}) !== stableJson(expected.resource ?? {})
+    ) return null;
+  }
   return {
     requestId: request.request_id,
     status: request.status,
@@ -134,7 +178,7 @@ export function readStoredAuthorityApprovalSettlement(
 
 export function subscribeAuthorityApprovalSettlements(
   handler: (event: AuthorityApprovalSettlement) => void,
-  _options?: SubscribeAuthorityApprovalSettlementOptions,
+  options?: SubscribeAuthorityApprovalSettlementOptions,
 ): () => void {
   let active = true;
   let channel: BroadcastChannel | null = null;
@@ -148,7 +192,7 @@ export function subscribeAuthorityApprovalSettlements(
     seenNonces.add(hint.nonce);
     if (inFlightRequestIds.has(hint.requestId)) return;
     inFlightRequestIds.add(hint.requestId);
-    void verifyAuthorityApprovalHint(hint)
+    void verifyAuthorityApprovalHint(hint, undefined, Date.now(), options?.expected)
       .then((settlement) => {
         if (!active || !settlement) return;
         settledRequestIds.add(settlement.requestId);

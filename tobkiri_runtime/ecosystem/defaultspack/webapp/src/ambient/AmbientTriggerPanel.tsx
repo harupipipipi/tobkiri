@@ -582,8 +582,26 @@ export function AmbientTriggerPanel({
       setMessage("AIが続きを作成しています。");
       void loadMiniConversation({ conversationId: targetConversationId, quiet: true });
       void waitForMiniAuthorityContinuation(miniAuthorityApproval, targetConversationId);
-    }, { replayStored: true, replayStoredRequestId: miniAuthorityApproval.requestId });
-  }, [loadMiniConversation, miniAuthorityApproval?.requestId, miniConversation?.id, miniConversationId]);
+    }, {
+      replayStored: true,
+      replayStoredRequestId: miniAuthorityApproval.requestId,
+      expected: {
+        requestId: miniAuthorityApproval.requestId,
+        principalId: miniAuthorityApproval.principalId,
+        permissionId: miniAuthorityApproval.permissionId,
+        resource: miniAuthorityApproval.resource,
+        ...(miniAuthorityApprovalConversationId
+          ? { conversationId: miniAuthorityApprovalConversationId }
+          : {}),
+      },
+    });
+  }, [
+    loadMiniConversation,
+    miniAuthorityApproval,
+    miniAuthorityApprovalConversationId,
+    miniConversation?.id,
+    miniConversationId,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -620,22 +638,42 @@ export function AmbientTriggerPanel({
 
   useEffect(() => subscribeAuthorityApprovalSettlements((event) => {
     if (event.requestId !== AMBIENT_AUTHORITY_REQUEST_ID) return;
-    setRumiApprovalOpen(false);
-    setMessage(event.status === "approved" ? "使えるようになりました。次にMacのマイク/カメラを確認します。" : "許可しませんでした。必要になったらもう一度許可できます。");
-    void refresh({ probeOs: true });
-  }, { replayStored: true, replayStoredRequestId: AMBIENT_AUTHORITY_REQUEST_ID }), []);
+    if (event.status === "denied") {
+      setMessage("許可しませんでした。必要になったらもう一度許可できます。");
+      return;
+    }
+    verifyRumiPermissionStatus();
+  }, {
+    replayStored: true,
+    replayStoredRequestId: AMBIENT_AUTHORITY_REQUEST_ID,
+    expected: { requestId: AMBIENT_AUTHORITY_REQUEST_ID },
+  }), []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("authority_approved") !== "1") return;
-    setRumiApprovalOpen(false);
-    setMessage("使えるようになりました。次にMacのマイク/カメラを確認します。");
+    if (!params.has("authority_approved")) return;
     params.delete("authority_approved");
     const nextSearch = params.toString();
     const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
-    void refresh({ probeOs: true });
+    verifyRumiPermissionStatus();
   }, []);
+
+  function verifyRumiPermissionStatus(): void {
+    setMessage("Tobkiriの許可状態を確認しています。");
+    void loadStatus({ probeOs: true })
+      .then((latest) => {
+        if (hasAllRumiPermissions(latest)) {
+          setRumiApprovalOpen(false);
+          setMessage("使えるようになりました。次にMacのマイク/カメラを確認します。");
+          return;
+        }
+        setMessage("許可はまだ確認できません。承認ウィンドウの状態を確認してください。");
+      })
+      .catch((error) => {
+        setMessage(error instanceof Error ? error.message : "Tobkiriの許可状態を確認できませんでした。");
+      });
+  }
 
   useEffect(() => {
     if (!rumiApprovalPending) return;
@@ -1021,15 +1059,21 @@ export function AmbientTriggerPanel({
     selectedCameraId,
   ]);
 
-  async function refresh(options?: { probeOs?: boolean }) {
-    const next = await ambientTriggerClient.status();
+  async function loadStatus(options?: { probeOs?: boolean }): Promise<AmbientStatus> {
+    let next = await ambientTriggerClient.status();
     setStatus(next);
     if (options?.probeOs) {
       const statuses = await probeOsPermissions();
       if (Object.keys(statuses).length > 0) {
-        setStatus(await ambientTriggerClient.checkOsPermissions(statuses));
+        next = await ambientTriggerClient.checkOsPermissions(statuses);
+        setStatus(next);
       }
     }
+    return next;
+  }
+
+  async function refresh(options?: { probeOs?: boolean }): Promise<void> {
+    await loadStatus(options);
   }
 
   async function refreshDevices() {
@@ -2537,10 +2581,10 @@ function hasNativeAuthorityApprovalWindow(): boolean {
 function ambientAuthorityApprovalReturnPath(): string {
   try {
     const url = new URL(window.location.href);
-    url.searchParams.set("authority_approved", "1");
+    url.searchParams.delete("authority_approved");
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
-    return "/ambient-debug?authority_approved=1";
+    return "/ambient-debug";
   }
 }
 

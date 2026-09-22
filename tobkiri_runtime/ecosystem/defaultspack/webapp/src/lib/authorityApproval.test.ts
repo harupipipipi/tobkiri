@@ -425,8 +425,8 @@ test("authority related permissions helper can identify provider-scoped network 
 });
 
 test("authority approval browser helper builds credential-free same-origin paths", () => {
-  assert.equal(browserAuthorityApprovalPath("auth 1", "/ambient-debug?authority_approved=1"), "/approval?request_id=auth+1&return_to=%2Fambient-debug%3Fauthority_approved%3D1");
-  assert.equal(browserApprovalTokenizedPath("/finger-recording?authority_approved=1"), "/finger-recording?authority_approved=1");
+  assert.equal(browserAuthorityApprovalPath("auth 1", "/ambient-debug?chat=c1"), "/approval?request_id=auth+1&return_to=%2Fambient-debug%3Fchat%3Dc1");
+  assert.equal(browserApprovalTokenizedPath("/finger-recording?chat=c1"), "/finger-recording?chat=c1");
   assert.equal(browserApprovalTokenizedPath("https://external.invalid/fake"), null);
   assert.equal(browserApprovalTokenizedPath("/finger-recording?browser_approval_token=fake"), null);
 });
