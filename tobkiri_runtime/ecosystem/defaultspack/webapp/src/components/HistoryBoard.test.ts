@@ -10,6 +10,7 @@ import {
   buildHistoryCalendarSummary,
   HistoryBoard,
   loadCustomGroups,
+  toggleHistoryGroupCollapsed,
   type ChatItem,
   type CustomGroupInfo,
 } from "./HistoryBoard";
@@ -40,6 +41,26 @@ test("buildGroupsFromChats places LINE conversations into a dedicated group", ()
   assert.deepEqual(groups[0]?.chats.map((chat) => chat.id), ["line-1"]);
   assert.equal(groups[1]?.title, "Today");
   assert.deepEqual(groups[1]?.chats.map((chat) => chat.id), ["chat-1"]);
+});
+
+test("toggleHistoryGroupCollapsed preserves nested groups while updating the selected group", () => {
+  const groups = [{
+    id: "parent",
+    title: "Parent",
+    chats: [],
+    isCollapsed: false,
+    subGroups: [{
+      id: "child",
+      title: "Child",
+      chats: [],
+      isCollapsed: false,
+      subGroups: [],
+    }],
+  }];
+
+  const toggled = toggleHistoryGroupCollapsed(groups, "child");
+  assert.equal(toggled[0]?.isCollapsed, false);
+  assert.equal(toggled[0]?.subGroups[0]?.isCollapsed, true);
 });
 
 test("buildGroupsFromChats groups metadata chats in compact workspace buckets", () => {

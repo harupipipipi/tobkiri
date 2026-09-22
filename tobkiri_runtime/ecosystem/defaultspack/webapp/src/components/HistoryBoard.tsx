@@ -612,6 +612,12 @@ function mapGroups(groups: ChatGroup[], fn: (g: ChatGroup) => ChatGroup): ChatGr
   });
 }
 
+export function toggleHistoryGroupCollapsed(groups: ChatGroup[], id: string): ChatGroup[] {
+  return mapGroups(groups, group => (
+    group.id === id ? { ...group, isCollapsed: !group.isCollapsed } : group
+  ));
+}
+
 function filterGroupsToChats(groups: ChatGroup[], visibleChatIds: Set<string>): ChatGroup[] {
   return groups.flatMap((group) => {
     const chats = group.chats.filter((chat) => visibleChatIds.has(chat.id));
@@ -1916,7 +1922,8 @@ export function HistoryBoard({
   };
 
   const handleToggleCollapse = (id: string) => {
-    setGroups(prev => mapGroups(prev, g => g.id === id ? { ...g, isCollapsed: !g.isCollapsed } : g));
+    // Drag handlers read groupsRef, so collapse changes must update that snapshot too.
+    replaceGroups(toggleHistoryGroupCollapsed(groupsRef.current, id));
   };
 
   const handleGroupHeaderClick = (group: ChatGroup) => {
@@ -1933,7 +1940,7 @@ export function HistoryBoard({
   };
 
   const handleRenameChat = (chatId: string, newTitle: string) => {
-    setGroups(prev => mapGroups(prev, g => ({
+    replaceGroups(mapGroups(groupsRef.current, g => ({
       ...g,
       chats: g.chats.map(c => c.id === chatId ? { ...c, title: newTitle } : c),
     })));
