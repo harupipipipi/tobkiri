@@ -473,6 +473,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '停止を試す');
+    await tester.pump();
     await tester.tap(find.ancestor(
       of: find.byIcon(Icons.arrow_upward_rounded),
       matching: find.bySubtype<IconButton>(),
@@ -482,9 +483,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.text('タスク更新'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('タスク更新を停止'));
+    await tester.tap(find.byIcon(Icons.stop_rounded));
     await tester
         .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
     await tester.pump();

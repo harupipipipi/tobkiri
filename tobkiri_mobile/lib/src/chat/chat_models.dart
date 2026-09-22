@@ -96,7 +96,9 @@ class ChatMessage {
     this.pending = false,
     this.error = false,
     List<ToolActivitySnapshot>? toolActivities,
-  }) : toolActivities = toolActivities ?? <ToolActivitySnapshot>[];
+  }) : toolActivities = List<ToolActivitySnapshot>.from(
+          toolActivities ?? const <ToolActivitySnapshot>[],
+        );
 
   final String id;
   final ChatRole role;
