@@ -921,10 +921,12 @@ def test_foreign_or_replayed_resume_cannot_settle_an_owned_live_dispatch() -> No
         pending, _prepared = _prepare(controller, fixture.broker)
         approvals.approve(pending.approval_request_id)
 
+        original_invoke = fixture.backend.invoke
+
         def invoke(envelope: Any) -> Any:
             provider_entered.set()
             provider_release.wait(timeout=5.0)
-            return fixture.backend.outcome
+            return original_invoke(envelope)
 
         fixture.backend.invoke = invoke
         first = controller.resume_for_presentation(
