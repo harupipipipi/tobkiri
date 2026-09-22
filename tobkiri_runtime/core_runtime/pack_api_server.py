@@ -66,6 +66,37 @@ logger = logging.getLogger(__name__)
 THREAD_JOIN_TIMEOUT_SECONDS = 3
 MAX_CONCURRENT_REQUESTS = 32
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+# Startup capture assertions can collide with a writer's packaged-artifact
+# hash or a crash-recovery republish.  Each attempt keeps its bounded lock
+# wait, so transient holds are retried inside a budget sized past the
+# worst-case writer hold instead of exiting the surface before it serves.
+_ASSERT_CURRENT_RETRY_BUDGET_SECONDS = 45.0
+_ASSERT_CURRENT_RETRY_DELAY_SECONDS = 0.05
+_ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS = 0.5
+
+# A presenter-scoped session minted by the approval window's dedicated code
+# exchange may only present the one interactive approval request it was
+# issued for.  Contract dispatch performs the exact request-id check; this
+# fixed allowlist fences the session away from every other operation.
+_PRESENTER_SCOPED_CONTRACT_ID = "tobkiri.service.interactive-approval.v1"
+_PRESENTER_SCOPED_OPERATIONS = frozenset(
+    {
+        "interactive_approval.get",
+        "interactive_approval.approve",
+        "interactive_approval.deny",
+    }
+)
+
+
+def _is_activation_lock_timeout(error: BaseException) -> bool:
+    """Classify a bounded cross-process activation-lock wait when resolvable."""
+
+    try:
+        from .profile_runtime_port import require_profile_runtime
+
+        return bool(require_profile_runtime().is_activation_lock_timeout(error))
+    except Exception:
+        return False
 
 
 class HTTPRuntimeErrorCode(str, Enum):
@@ -912,7 +943,31 @@ class PackAPIHandler(
                 session_id,
                 session_ttl_seconds=self._panel_session_ttl_seconds(panel_session),
             )
+        request_scope = (
+            panel_session.get("request_scope") if panel_session else None
+        )
+        if (
+            isinstance(request_scope, str)
+            and request_scope
+            and not self._presenter_scope_request_allowed(method, path)
+        ):
+            return False
         return True
+
+    def _presenter_scope_request_allowed(self, method: str, path: str) -> bool:
+        """Confine a presenter-scoped session to its approval surface.
+
+        Static mounts stay readable so the dedicated approval window can
+        render its own shell.  Contract requests pass through here and are
+        pinned to the exact approval operation and request id at dispatch;
+        every other authenticated route denies.
+        """
+
+        if is_contract_route_path(path):
+            return True
+        return (
+            method.upper() == "GET" and self._match_web_mount(path) is not None
+        )
 
     @staticmethod
     def _redact_log_value(value: object) -> str:
@@ -1088,6 +1143,8 @@ class PackAPIHandler(
         raw_session_id = panel_session.get("session_id") if panel_session else None
         session_id: str | None = raw_session_id if isinstance(raw_session_id, str) else None
         session_ttl_seconds = self._panel_session_ttl_seconds(panel_session)
+        raw_scope = panel_session.get("request_scope") if panel_session else None
+        request_scope = raw_scope if isinstance(raw_scope, str) else ""
         request_id = self.headers.get("X-Tobkiri-Request-ID", "").strip().lower()
         replay_guard = self._contract_replay_guard
         if (
@@ -1170,6 +1227,26 @@ class PackAPIHandler(
                     error="Contract payload contains unknown fields",
                 ),
                 400,
+            )
+            return True
+        if request_scope and (
+            target.contract_id != _PRESENTER_SCOPED_CONTRACT_ID
+            or target.operation_id not in _PRESENTER_SCOPED_OPERATIONS
+            or payload.get("request_id") != request_scope
+        ):
+            # A presenter-scoped session may present only the one interactive
+            # approval request its grant was issued for; every other
+            # operation and every other request id denies.
+            self._send_response(
+                APIResponse(
+                    False,
+                    data={
+                        "state": "contract_dispatch_denied",
+                        "code": "session_request_scope",
+                    },
+                    error="Panel session is scoped to one approval request",
+                ),
+                403,
             )
             return True
         try:
@@ -1949,7 +2026,16 @@ class PackAPIHandler(
             self._discard_request_body()
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
-        self._discard_request_body()
+        body = self._parse_object_body()
+        if body is None:
+            return
+        # The approval-window bootstrap names the request it is for so the
+        # issued code can be dedicated to that request's pending presenter
+        # grant.  The value only selects a live grant; it never creates one.
+        presenter_request = body.get("request_id")
+        presenter_request_id = (
+            presenter_request.strip() if isinstance(presenter_request, str) else ""
+        )
         binding = self._current_panel_auth_binding()
         if binding is None:
             # Only the authenticated Launcher may trigger this recovery. It
@@ -1968,7 +2054,15 @@ class PackAPIHandler(
                     )
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
-        self._send_response(APIResponse(True, data=manager.issue_login_code(binding)))
+        self._send_response(
+            APIResponse(
+                True,
+                data=manager.issue_login_code(
+                    binding,
+                    presenter_request_id=presenter_request_id,
+                ),
+            )
+        )
 
     def _handle_panel_exchange(self, body: Mapping[str, object]) -> None:
         manager = self._panel_auth_manager
@@ -1977,12 +2071,17 @@ class PackAPIHandler(
             return
         code_value = body.get("code")
         code = code_value.strip() if isinstance(code_value, str) else ""
+        request_id_value = body.get("request_id")
+        presenter_request_id = (
+            request_id_value.strip() if isinstance(request_id_value, str) else ""
+        )
         binding = self._current_panel_auth_binding()
         exchange = (
             manager.exchange_code(
                 code,
                 binding,
                 previous_session=self._parse_cookie_header().get("rumi_panel_session", ""),
+                presenter_request_id=presenter_request_id,
             )
             if manager is not None and binding is not None
             else None
@@ -2050,10 +2149,13 @@ class PackAPIHandler(
         document = f"""<!doctype html><meta charset=\"utf-8\"><title>Tobkiri</title>
 <script>
 document.addEventListener('DOMContentLoaded',()=>{{
-const code=new URL(location.href).searchParams.get('code');
+const params=new URL(location.href).searchParams;
+const code=params.get('code');
+const requestId=params.get('request_id');
 if(!code){{document.body.textContent='Tobkiri Launcher authentication required';}}
 else fetch('/api/panel/auth/exchange',{{method:'POST',credentials:'same-origin',
-headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
+headers:{{'Content-Type':'application/json'}},
+body:JSON.stringify(requestId?{{code,request_id:requestId}}:{{code}})}})
 .then(r=>{{if(!r.ok)throw new Error('authentication failed');return r.json()}})
 .then(v=>{{if(!v.data?.csrf_token||!v.data?.journal_scope)throw new Error('authentication failed');
 sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);
@@ -2713,7 +2815,7 @@ class PackAPIServer:
             return
         if session is None:
             raise RuntimeError("frontend contracts require a captured v4 session")
-        session.assert_current()
+        self._assert_session_current(session)
         requirements = exact_requirements()
         if not isinstance(requirements, tuple) or len(set(requirements)) != len(
             requirements
@@ -2728,6 +2830,31 @@ class PackAPIServer:
                 raise RuntimeError("startup operation requirement is invalid")
         for contract_id, operation_id in requirements:
             session.assert_operation_ready(contract_id, operation_id)
+
+    def _assert_session_current(self, session: DispatchSession) -> None:
+        """Assert capture freshness through a transient activation-lock hold.
+
+        An activation commit or recovery republish can overlap startup
+        validation.  The per-attempt lock wait stays bounded, so a transient
+        ``ActivationLockTimeout`` is retried inside a budget sized past the
+        worst-case writer hold rather than exiting the surface before it can
+        serve.
+        """
+
+        deadline = time.monotonic() + _ASSERT_CURRENT_RETRY_BUDGET_SECONDS
+        delay = _ASSERT_CURRENT_RETRY_DELAY_SECONDS
+        while True:
+            try:
+                session.assert_current()
+                return
+            except Exception as error:
+                if not _is_activation_lock_timeout(error):
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(delay, remaining))
+                delay = min(delay * 2.0, _ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS)
 
     def _validate_contract_capture(
         self,
@@ -2750,7 +2877,7 @@ class PackAPIServer:
                 return None
             expected_session_identity: DispatchSession | None = None
             if session is not None:
-                session.assert_current()
+                self._assert_session_current(session)
                 if getattr(session, "session_kind", None) != "host_profile_control":
                     expected_session_identity = session
             try:
@@ -2762,7 +2889,7 @@ class PackAPIServer:
                 raise RuntimeError("Host contract snapshot is invalid") from error
         if session is None:
             raise RuntimeError("frontend contracts require a captured v4 session")
-        session.assert_current()
+        self._assert_session_current(session)
         host_profile_control = getattr(session, "session_kind", None) == "host_profile_control"
         expected_identity: DispatchSession | None = None if host_profile_control else session
         try:

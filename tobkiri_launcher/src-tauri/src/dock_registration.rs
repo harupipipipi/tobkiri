@@ -1121,7 +1121,7 @@ pub(crate) fn spawn_defaultspack_local_server(
     })
 }
 
-#[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
+#[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
 fn apply_packvm_acceptance_environment(
     command: &mut crate::python_env::RoleCommand<'_>,
     config: &AppConfig,
@@ -1151,7 +1151,7 @@ fn apply_packvm_acceptance_environment(
     Ok(())
 }
 
-#[cfg(not(any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+#[cfg(not(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact))))]
 fn apply_packvm_acceptance_environment(
     command: &mut crate::python_env::RoleCommand<'_>,
     config: &AppConfig,

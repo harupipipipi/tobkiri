@@ -61,6 +61,10 @@ from tobkiri_host.models import (
     PackageKind,
     RequestContext,
 )
+from tobkiri_host.ports import (
+    AuthorityApprovalWindowOpenCommand,
+    InteractiveApprovalGetQuery,
+)
 from tobkiri_host.errors import BackendUnavailableError
 from tobkiri_host.interactive_effects import (
     LateBoundInteractiveEffectPort,
@@ -109,6 +113,11 @@ from ..pack_control_v4 import (
     RuntimeSurfaceFactory,
     capture_pack_control_session,
     capture_valid_pack_approval,
+)
+from ..panel_auth import (
+    PanelAuthBinding,
+    PanelAuthManager,
+    get_panel_auth_manager,
 )
 from ..external_pack_catalog_v4 import resolve_admitted_pack_roots
 from ..credential_transport import (
@@ -1323,6 +1332,7 @@ def capture_production_dispatch(
     authority_approval_window_open: (
         Callable[[str], Mapping[str, Any]] | None
     ) = None,
+    panel_auth_manager: PanelAuthManager | None = None,
     model_search: (
         Callable[
             [
@@ -1596,8 +1606,64 @@ def capture_production_dispatch(
     def unavailable_approval_window(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:
         raise PermissionError("authority approval window is unavailable")
 
+    def bind_approval_window_presentation(
+        command: AuthorityApprovalWindowOpenCommand,
+    ) -> None:
+        """Record the owner-scoped presenter grant for the Launcher window.
+
+        The dedicated approval window is a separate webview surface with its
+        own cookie store, so its one-time ``?code=`` exchange mints a fresh
+        panel session.  Recording the grant only after the interactive
+        approval port proves this caller already is the request's
+        presentation owner lets that exact exchange resolve to the journal
+        session the request is bound to.  A caller that does not own the
+        request records nothing: the window's session then stays foreign and
+        presentation validation remains fail-closed.
+        """
+
+        context = command.context
+        try:
+            authority_control.get_interactive_approval(
+                InteractiveApprovalGetQuery(
+                    context=context,
+                    request_id=command.request_id,
+                )
+            )
+        except AuthorityDenied:
+            return
+        owner_principal = str(context.caller_principal.value)
+        owner_session = str(context.caller_session_id)
+        session_suffix = (
+            f".{owner_principal.removeprefix('sha256:')[:24]}"
+            f".{activation_suffix}"
+        )
+        if (
+            command.presentation_owner_principal_id != owner_principal
+            or command.presentation_owner_session_id != owner_session
+            or not owner_session.endswith(session_suffix)
+            or len(owner_session) <= len(session_suffix)
+        ):
+            raise AuthorityDenied("authority approval window owner is invalid")
+        manager = (
+            panel_auth_manager
+            if panel_auth_manager is not None
+            else get_panel_auth_manager()
+        )
+        manager.record_approval_presenter_grant(
+            command.request_id,
+            owner_session[: -len(session_suffix)],
+            PanelAuthBinding(
+                profile_id=str(context.profile_id),
+                profile_revision=str(context.profile_revision),
+                activation_id=str(context.activation_id),
+                plan_digest=str(context.plan_digest),
+                security_epoch=int(context.security_epoch),
+            ),
+        )
+
     authority_approval_window = AuthorityApprovalWindowController(
         open_window=authority_approval_window_open or unavailable_approval_window,
+        bind_presentation_owner=bind_approval_window_presentation,
     )
 
     def unavailable_model_search(*_args: Any, **_kwargs: Any) -> Mapping[str, Any]:

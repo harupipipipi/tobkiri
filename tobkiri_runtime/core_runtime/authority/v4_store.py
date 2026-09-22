@@ -12,6 +12,7 @@ import functools
 import hashlib
 import hmac
 import json
+import math
 import os
 import secrets
 import sqlite3
@@ -79,6 +80,13 @@ _R = TypeVar("_R")
 _DATABASE_THREAD_LOCKS: dict[FileIdentity, threading.RLock] = {}
 _DATABASE_THREAD_LOCKS_GUARD = threading.Lock()
 _ACTIVE_DATABASE_GUARDS: set[int] = set()
+
+# Bound for acquiring the per-database thread lock and cross-process
+# lifecycle flock in ``_open_database_guard``.  Holders only run one short
+# SQLite transaction inside the guard, so a wait this long means the caller
+# is queued behind a stalled peer; failing closed beats parking a request
+# thread past its dispatch deadline.
+_GUARD_ACQUIRE_TIMEOUT_SECONDS = 15.0
 
 
 def _reset_database_thread_locks() -> None:
@@ -221,6 +229,9 @@ class AuthorityStore:
         clock: Injectable wall-clock function for deterministic tests.
         audit_fault: Optional fault-injection hook called before audit appends.
         connection_connector: Optional injectable SQLite connector for tests.
+        guard_acquire_timeout_seconds: Bound for acquiring the per-database
+            thread lock and cross-process lifecycle guard before a connection
+            attempt fails closed.
     """
 
     def __init__(
@@ -232,6 +243,7 @@ class AuthorityStore:
         audit_fault: Callable[[], None] | None = None,
         process_start_reader: Callable[[int], ProcessIdentityEvidence] | None = None,
         connection_connector: Callable[..., sqlite3.Connection] | None = None,
+        guard_acquire_timeout_seconds: float = _GUARD_ACQUIRE_TIMEOUT_SECONDS,
     ) -> None:
         self.path = canonical_platform_path(Path(path))
         self.key_path = canonical_platform_path(
@@ -253,6 +265,15 @@ class AuthorityStore:
         self._clock = clock
         self._audit_fault = audit_fault
         self._connection_connector = connection_connector
+        if (
+            type(guard_acquire_timeout_seconds) not in (int, float)
+            or not math.isfinite(guard_acquire_timeout_seconds)
+            or guard_acquire_timeout_seconds <= 0
+        ):
+            raise AuthorityStoreError(
+                "authority database guard timeout is invalid"
+            )
+        self._guard_acquire_timeout_seconds = float(guard_acquire_timeout_seconds)
         self._lock = threading.RLock()
         self._closed = False
         self._fork_fenced = False
@@ -634,8 +655,14 @@ class AuthorityStore:
             return _DATABASE_THREAD_LOCKS.setdefault(identity, threading.RLock())
 
     def _open_database_guard(self) -> tuple[int, bool, threading.RLock]:
-        """Lock the stable guard across one identity-pinned SQLite connection."""
+        """Lock the stable guard across one identity-pinned SQLite connection.
 
+        Both acquisition stages share one bounded deadline.  A stalled holder
+        must not park callers past their request deadlines, so contention
+        resolves to a typed failure instead of an unbounded wait.
+        """
+
+        deadline = time.monotonic() + self._guard_acquire_timeout_seconds
         descriptor: int | None = None
         guard_locked = False
         thread_lock: threading.RLock | None = None
@@ -651,24 +678,47 @@ class AuthorityStore:
                 if identity != self._guard_identity:
                     raise SecurePathError("lifecycle guard identity changed")
                 os.set_inheritable(descriptor, False)
-                thread_lock = self._database_thread_lock(identity)
-                already_owned = bool(getattr(thread_lock, "_is_owned")())
-                thread_lock.acquire()
+                candidate = self._database_thread_lock(identity)
+                already_owned = bool(getattr(candidate, "_is_owned")())
+                if already_owned:
+                    candidate.acquire()
+                elif not candidate.acquire(
+                    timeout=max(0.0, deadline - time.monotonic())
+                ):
+                    raise AuthorityStoreError(
+                        "authority database lifecycle lock deadline exceeded"
+                    )
+                thread_lock = candidate
                 if not already_owned:
                     _ACTIVE_DATABASE_GUARDS.add(descriptor)
-                    if os.name == "nt":
-                        import msvcrt
+                    while True:
+                        try:
+                            if os.name == "nt":
+                                import msvcrt
 
-                        os.lseek(descriptor, 0, os.SEEK_SET)
-                        getattr(msvcrt, "locking")(
-                            descriptor,
-                            getattr(msvcrt, "LK_LOCK"),
-                            1,
-                        )
-                    else:
-                        import fcntl
+                                os.lseek(descriptor, 0, os.SEEK_SET)
+                                getattr(msvcrt, "locking")(
+                                    descriptor,
+                                    getattr(msvcrt, "LK_NBLCK"),
+                                    1,
+                                )
+                            else:
+                                import fcntl
 
-                        fcntl.flock(descriptor, fcntl.LOCK_EX)
+                                fcntl.flock(
+                                    descriptor,
+                                    fcntl.LOCK_EX | fcntl.LOCK_NB,
+                                )
+                            break
+                        except OSError:
+                            if time.monotonic() >= deadline:
+                                raise AuthorityStoreError(
+                                    "authority database lifecycle lock "
+                                    "deadline exceeded"
+                                )
+                            time.sleep(
+                                min(0.01, max(0.0, deadline - time.monotonic()))
+                            )
                     guard_locked = True
                 parent.validate_open(
                     self._guard_path.name,
@@ -676,6 +726,13 @@ class AuthorityStore:
                     expected=identity,
                 )
             return descriptor, guard_locked, thread_lock
+        except AuthorityStoreError:
+            if descriptor is not None:
+                _ACTIVE_DATABASE_GUARDS.discard(descriptor)
+                os.close(descriptor)
+            if thread_lock is not None:
+                thread_lock.release()
+            raise
         except (OSError, SecurePathError) as exc:
             if descriptor is not None:
                 _ACTIVE_DATABASE_GUARDS.discard(descriptor)

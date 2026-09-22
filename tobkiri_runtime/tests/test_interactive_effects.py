@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import threading
+import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import replace
@@ -75,6 +77,7 @@ class _Approvals:
 
     def __init__(self) -> None:
         self.statuses: dict[str, str] = {}
+        self.expiry_overrides: dict[str, float] = {}
         self.commands: list[Any] = []
         self.attestations: list[Any] = []
         self.reject_attestation = False
@@ -97,6 +100,14 @@ class _Approvals:
     def approve(self, request_id: str) -> None:
         self.statuses[request_id] = "approved"
 
+    def deny(self, request_id: str) -> None:
+        self.statuses[request_id] = "denied"
+
+    def expire(self, request_id: str) -> None:
+        """Keep the request pending but move its expiry behind the clock."""
+
+        self.expiry_overrides[request_id] = 50.0
+
     def _status(self, request_id: str) -> InteractiveApprovalStatus:
         state = self.statuses.get(request_id)
         if state is None:
@@ -104,7 +115,7 @@ class _Approvals:
         return InteractiveApprovalStatus(
             request_id=request_id,
             state=state,
-            expires_at=1_000.0,
+            expires_at=self.expiry_overrides.get(request_id, 1_000.0),
             typed_confirmation_required=True,
             request_snapshot_digest="a" * 64,
             typed_confirmation_digest="b" * 64,
@@ -566,3 +577,333 @@ def test_claim_rechecks_attestation_and_recovery_never_retries_dispatched_work()
         and item.state is PendingEffectState.AMBIGUOUS
         for item in recovered
     )
+
+
+def _await_state(
+    controller: PendingEffectController,
+    effect_id: str,
+    wanted: PendingEffectState | frozenset[PendingEffectState] | set,
+    timeout: float = 5.0,
+) -> Any:
+    """Poll the durable state until it reaches ``wanted`` or the deadline."""
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = controller.status(effect_id)
+        if isinstance(wanted, PendingEffectState):
+            if status.state is wanted:
+                return status
+        elif status.state in wanted:
+            return status
+        time.sleep(0.01)
+    return controller.status(effect_id)
+
+
+def test_resume_returns_live_state_while_provider_still_runs() -> None:
+    """A slow Provider cannot pin the caller past the bounded resume wait.
+
+    The claim and durable dispatch marker stay synchronous, but Provider
+    completion settles on a detached worker.  The caller receives the live
+    CLAIMED/DISPATCHED state and the terminal outcome still lands durably.
+    """
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    provider_release = threading.Event()
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+
+        invocations = {"count": 0}
+
+        def invoke(envelope: Any) -> Any:
+            invocations["count"] += 1
+            provider_release.wait(timeout=30.0)
+            return fixture.backend.outcome
+
+        fixture.backend.invoke = invoke
+        result: dict[str, Any] = {}
+
+        def run() -> None:
+            result["status"] = controller.resume(
+                pending.effect_id,
+                fixture.broker,
+                wall_clock=lambda: 100.0,
+                monotonic_clock=lambda: 10.0,
+                dispatch_grace_seconds=0.2,
+            )
+
+        caller = threading.Thread(target=run, daemon=True)
+        caller.start()
+        caller.join(timeout=5.0)
+        assert not caller.is_alive(), "resume blocked on Provider completion"
+        assert result["status"].state in {
+            PendingEffectState.CLAIMED,
+            PendingEffectState.DISPATCHED,
+        }
+        provider_release.set()
+        settled = _await_state(
+            controller, pending.effect_id, PendingEffectState.SUCCEEDED
+        )
+    finally:
+        provider_release.set()
+        fixture.broker.close()
+
+    assert settled.state is PendingEffectState.SUCCEEDED
+    assert invocations["count"] == 1
+
+
+def test_resume_failure_after_grace_settles_ambiguous_asynchronously() -> None:
+    """A Provider error after the caller returned still lands as ambiguous."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    provider_gate = threading.Event()
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+
+        invocations = {"count": 0}
+
+        def invoke(envelope: Any) -> Any:
+            invocations["count"] += 1
+            provider_gate.wait(timeout=30.0)
+            raise OSError("provider transport broke")
+
+        fixture.backend.invoke = invoke
+        status = controller.resume(
+            pending.effect_id,
+            fixture.broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: 10.0,
+            dispatch_grace_seconds=0.2,
+        )
+        assert status.state in {
+            PendingEffectState.CLAIMED,
+            PendingEffectState.DISPATCHED,
+        }
+        provider_gate.set()
+        settled = _await_state(
+            controller, pending.effect_id, PendingEffectState.AMBIGUOUS
+        )
+    finally:
+        provider_gate.set()
+        fixture.broker.close()
+
+    assert settled.state is PendingEffectState.AMBIGUOUS
+    assert invocations["count"] == 1
+
+
+def test_resume_replay_never_dispatches_twice() -> None:
+    """Settled and in-flight resumes are idempotent reads, never re-executions."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    provider_release = threading.Event()
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+
+        invocations = {"count": 0}
+
+        def invoke(envelope: Any) -> Any:
+            invocations["count"] += 1
+            provider_release.wait(timeout=30.0)
+            return fixture.backend.outcome
+
+        fixture.backend.invoke = invoke
+        first = controller.resume(
+            pending.effect_id,
+            fixture.broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: 10.0,
+            dispatch_grace_seconds=0.2,
+        )
+        assert first.state in {
+            PendingEffectState.CLAIMED,
+            PendingEffectState.DISPATCHED,
+        }
+        duplicate = controller.resume_for_presentation(
+            effect_id=pending.effect_id,
+            presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session",
+            broker=fixture.broker,
+        )
+        assert duplicate.state in {
+            PendingEffectState.CLAIMED,
+            PendingEffectState.DISPATCHED,
+        }
+        with pytest.raises(PendingEffectError, match="unavailable"):
+            controller.resume(
+                pending.effect_id,
+                fixture.broker,
+                wall_clock=lambda: 100.0,
+                monotonic_clock=lambda: 10.0,
+                dispatch_grace_seconds=0.0,
+            )
+        provider_release.set()
+        settled = _await_state(
+            controller, pending.effect_id, PendingEffectState.SUCCEEDED
+        )
+        replayed = controller.resume_for_presentation(
+            effect_id=pending.effect_id,
+            presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session",
+            broker=fixture.broker,
+        )
+    finally:
+        provider_release.set()
+        fixture.broker.close()
+
+    assert settled.state is PendingEffectState.SUCCEEDED
+    assert replayed.state is PendingEffectState.SUCCEEDED
+    assert invocations["count"] == 1
+
+
+def test_denied_approval_cancels_resume_without_dispatch() -> None:
+    """Deny settles durably cancelled and never reaches the Provider."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.deny(pending.approval_request_id)
+        result = controller.resume_for_presentation(
+            effect_id=pending.effect_id,
+            presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session",
+            broker=fixture.broker,
+        )
+        status = controller.status_for_presentation(
+            effect_id=pending.effect_id,
+            presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session",
+        )
+    finally:
+        fixture.broker.close()
+
+    assert result.state is PendingEffectState.CANCELLED
+    assert status.state is PendingEffectState.CANCELLED
+    assert fixture.backend.invocations == 0
+
+
+def test_expired_approval_fails_closed_as_cancelled() -> None:
+    """A request pending past its expiry cannot be claimed or dispatched."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.expire(pending.approval_request_id)
+        result = controller.resume_for_presentation(
+            effect_id=pending.effect_id,
+            presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session",
+            broker=fixture.broker,
+        )
+    finally:
+        fixture.broker.close()
+
+    assert result.state is PendingEffectState.CANCELLED
+    assert fixture.backend.invocations == 0
+
+
+def test_resume_after_effect_expiry_fails_closed_before_dispatch() -> None:
+    """An expired claimed effect never reaches the Provider boundary."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+        status = controller.resume(
+            pending.effect_id,
+            fixture.broker,
+            wall_clock=lambda: 5_000.0,
+            monotonic_clock=lambda: 10.0,
+            dispatch_grace_seconds=0.2,
+        )
+    finally:
+        fixture.broker.close()
+
+    assert status.state is PendingEffectState.STALE
+    assert fixture.backend.invocations == 0
+
+
+def test_resume_gate_overrun_never_dispatches_and_settles_stale() -> None:
+    """A slow final Broker gate settles the claim stale, never ambiguous."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    clock = [10.0]
+    recheck = fixture.authority.recheck_effect_boundary
+
+    def slow_recheck(context_arg, target, lease) -> None:
+        clock[0] += 1.0
+        recheck(context_arg, target, lease)
+
+    fixture.authority.recheck_effect_boundary = slow_recheck
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+        status = controller.resume(
+            pending.effect_id,
+            fixture.broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: clock[0],
+            dispatch_grace_seconds=0.2,
+        )
+    finally:
+        fixture.broker.close()
+
+    assert status.state is PendingEffectState.STALE
+    assert fixture.backend.invocations == 0
+    assert "audit_dispatched" not in fixture.events
+
+
+def test_resume_marker_overrun_never_invokes_and_settles_ambiguous() -> None:
+    """A dispatch marker which overruns expiry stays honestly ambiguous."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    clock = [10.0]
+    mark_dispatched = fixture.audit.mark_dispatched
+
+    def slow_mark(reservation) -> None:
+        mark_dispatched(reservation)
+        clock[0] += 1.0
+
+    fixture.audit.mark_dispatched = slow_mark
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+        status = controller.resume(
+            pending.effect_id,
+            fixture.broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: clock[0],
+            dispatch_grace_seconds=0.2,
+        )
+    finally:
+        fixture.broker.close()
+
+    assert status.state is PendingEffectState.AMBIGUOUS
+    assert fixture.backend.invocations == 0
+    assert "audit_dispatched" in fixture.events
+    assert "provider_invoked" not in fixture.events

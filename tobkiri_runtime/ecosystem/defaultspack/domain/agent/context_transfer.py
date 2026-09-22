@@ -5,12 +5,9 @@ domain/agent/context_transfer.py — コンテキスト移行ロジック
 旧エージェントへの質問チャンネル（back-channel）も提供する。
 """
 
-import sys
-import os
 import copy
 import threading
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id, timestamp
 from blocks.chat._prompt_helpers import build_summarizer_system_prompt

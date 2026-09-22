@@ -1,10 +1,6 @@
-import os
-import sys
 from typing import Any
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _common import ok, error
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from blocks._common import ok, error
 
 from domain.frontend.registry import FrontendRegistry
 from domain.frontend_settings_store import (
