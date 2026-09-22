@@ -4,16 +4,25 @@ import test from "node:test";
 import { api } from "./api";
 import {
   CLIENT_DIAGNOSTIC_MAX_PAYLOAD_BYTES,
+  CLIENT_DIAGNOSTIC_PRIVACY_STORAGE_KEY,
   CLIENT_DIAGNOSTIC_SCHEMA_VERSION,
   diagnosticFingerprint,
   normalizeDiagnosticStack,
   prepareClientDiagnostic,
+  readClientDiagnosticPrivacyMode,
   redactDiagnosticText,
   reportClientDiagnostic,
   reportClientDiagnosticResult,
   sanitizeDiagnosticDetail,
+  writeClientDiagnosticPrivacyMode,
   type ClientDiagnosticPayloadV2,
 } from "./clientDiagnostics";
+
+class PreferenceStorage {
+  private values = new Map<string, string>();
+  getItem(key: string) { return this.values.get(key) ?? null; }
+  setItem(key: string, value: string) { this.values.set(key, value); }
+}
 
 const RAW_TOKEN = ["sk", "diagnostic", "supersecretvalue"].join("-");
 const RAW_EMAIL = ["private.user", "example.test"].join("@");
@@ -180,6 +189,49 @@ test("private, local-only, disabled, and reporting-disabled diagnostics stay on 
     assert.equal(prepareClientDiagnostic({ message: "test", privacyMode }), null);
   }
   assert.equal(prepareClientDiagnostic({ message: "test", reportingEnabled: false }), null);
+});
+
+test("diagnostic reporting preference defaults local-only and requires explicit standard opt-in", () => {
+  const storage = new PreferenceStorage();
+  assert.equal(readClientDiagnosticPrivacyMode(storage), "local_only");
+
+  assert.equal(writeClientDiagnosticPrivacyMode("standard", storage), "standard");
+  assert.equal(storage.getItem(CLIENT_DIAGNOSTIC_PRIVACY_STORAGE_KEY), "standard");
+  assert.equal(readClientDiagnosticPrivacyMode(storage), "standard");
+
+  assert.equal(writeClientDiagnosticPrivacyMode("disabled", storage), "disabled");
+  assert.equal(readClientDiagnosticPrivacyMode(storage), "disabled");
+  assert.equal(writeClientDiagnosticPrivacyMode("private", storage), "local_only");
+  assert.equal(readClientDiagnosticPrivacyMode(storage), "local_only");
+});
+
+test("diagnostic reporting preference fails local-only when storage is unavailable or corrupt", () => {
+  assert.equal(readClientDiagnosticPrivacyMode(null), "local_only");
+  assert.equal(readClientDiagnosticPrivacyMode({
+    getItem: () => "unexpected",
+    setItem: () => undefined,
+  }), "local_only");
+  assert.equal(readClientDiagnosticPrivacyMode({
+    getItem: () => { throw new Error("storage locked"); },
+    setItem: () => { throw new Error("storage locked"); },
+  }), "local_only");
+});
+
+test("browser preference is authoritative for every diagnostic caller", () => {
+  const storage = new PreferenceStorage();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage: storage },
+  });
+  try {
+    assert.equal(prepareClientDiagnostic({ message: "not opted in" }), null);
+    writeClientDiagnosticPrivacyMode("standard", storage);
+    assert.ok(prepareClientDiagnostic({ message: "opted in" }));
+    writeClientDiagnosticPrivacyMode("disabled", storage);
+    assert.equal(prepareClientDiagnostic({ message: "caller requested standard", privacyMode: "standard" }), null);
+  } finally {
+    delete (globalThis as { window?: unknown }).window;
+  }
 });
 
 test("reportClientDiagnostic retries after failure and sends only the sanitized schema", async () => {

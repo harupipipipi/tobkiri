@@ -110,6 +110,7 @@ type ApiMockOptions = {
   streamEvents?: (message: Record<string, unknown>) => Record<string, unknown>[];
   conversationMutator?: (conversation: ReturnType<typeof smokeConversation>) => void;
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
+  onClientDiagnostic?: (payload: Record<string, unknown>) => void;
   codingApprovalAfterTerminal?: boolean;
   codingApprovalAfterRestore?: boolean;
   structuredComposer?: boolean;
@@ -770,6 +771,12 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
     if (path === routeKey("api/health")) {
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
+    }
+
+    if (path === routeKey("api/ui/client-events") && method === "POST") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      options.onClientDiagnostic?.(payload);
+      return fulfill(route, { recorded: true, diagnostic_id: "diag-browser-qa" });
     }
 
     if (path === routeKey("api/ui/catalog")) {
@@ -1780,6 +1787,102 @@ test("settings modal contains focus, dismisses nested layers in order, and resto
   expect(narrowBounds!.y + narrowBounds!.height).toBeLessThanOrEqual(640);
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(dialog).toBeHidden();
+});
+
+test("client diagnostics stay local until explicit opt-in and persist the privacy choice", async ({ page }, testInfo) => {
+  const diagnosticRequests: Record<string, unknown>[] = [];
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await openDefaultspack(page, "/static/", {
+    onClientDiagnostic: (payload) => diagnosticRequests.push(payload),
+  });
+
+  const reportSyntheticDiagnostic = (suffix: string) => page.evaluate(async (value) => {
+    const loadDiagnostics = Function("return import('/src/lib/clientDiagnostics.ts')") as () => Promise<{
+      reportClientDiagnostic: (input: Record<string, unknown>) => Promise<boolean>;
+    }>;
+    const diagnostics = await loadDiagnostics();
+    return diagnostics.reportClientDiagnostic({
+      source: "browser.qa",
+      category: "window_error",
+      message: `private prompt sk-browser-secret-${value}`,
+      fingerprint: `browser-qa-${value}`,
+      detail: {
+        filename: `https://internal.example.test/src/App.tsx?access_token=${value}`,
+        line: 12,
+        column: 4,
+        prompt: `private prompt sk-browser-secret-${value}`,
+      },
+    });
+  }, suffix);
+
+  expect(await reportSyntheticDiagnostic("before-opt-in")).toBe(false);
+  await page.waitForTimeout(100);
+  expect(diagnosticRequests).toHaveLength(0);
+
+  await page.getByTitle("Settings").last().click();
+  await page.getByRole("button", { name: "Diagnostics" }).click();
+  await page.getByText("Developer diagnostics", { exact: true }).click();
+
+  const panel = page.getByTestId("client-diagnostic-privacy-panel");
+  await expect(panel).toBeVisible();
+  await expect(page.getByText("Pack or provider contributions for this section will appear here after registry validation.")).toHaveCount(0);
+  await expect(panel.getByRole("radio", { name: /Keep diagnostics local/ })).toBeChecked();
+  await expect(panel.getByText("Remote reporting: off")).toBeVisible();
+  const preview = panel.getByTestId("client-diagnostic-safe-preview");
+  await expect(preview).toContainText("rumi.client_diagnostic.v2");
+  await expect(preview).not.toContainText("private prompt");
+  await expect(preview).not.toContainText("access_token");
+
+  await panel.getByRole("radio", { name: /Share redacted diagnostics/ }).check();
+  await expect(panel.getByText("Remote reporting: enabled")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("tobkiri.client_diagnostics.privacy.v1"))).toBe("standard");
+
+  expect(await reportSyntheticDiagnostic("after-opt-in")).toBe(true);
+  await expect.poll(() => diagnosticRequests.length).toBe(1);
+  const transmitted = JSON.stringify(diagnosticRequests[0]);
+  expect(transmitted).not.toContain("private prompt");
+  expect(transmitted).not.toContain("sk-browser-secret");
+  expect(transmitted).not.toContain("access_token");
+  expect(diagnosticRequests[0]).toMatchObject({
+    schema_version: "rumi.client_diagnostic.v2",
+    category: "window_error",
+    message: "Unhandled window error",
+    privacy_mode: "standard",
+  });
+
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await panel.getByRole("button", { name: "Copy safe preview" }).click();
+  await expect(panel.getByText("Safe preview copied.")).toBeVisible();
+  const clipboardPreview = await page.evaluate(() => navigator.clipboard.readText());
+  expect(JSON.parse(clipboardPreview)).toMatchObject({
+    schema_version: "rumi.client_diagnostic.v2",
+    category: "diagnostic_preview",
+    message: "Redacted diagnostic preview",
+  });
+  expect(clipboardPreview).not.toContain("private prompt");
+  expect(clipboardPreview).not.toContain("access_token");
+
+  await panel.getByRole("radio", { name: /Disable diagnostics/ }).check();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("tobkiri.client_diagnostics.privacy.v1"))).toBe("disabled");
+  expect(await reportSyntheticDiagnostic("after-disable")).toBe(false);
+  await page.waitForTimeout(100);
+  expect(diagnosticRequests).toHaveLength(1);
+  await page.screenshot({ path: testInfo.outputPath("client-diagnostic-privacy-desktop.png"), fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 720 });
+  const bounds = await page.getByTestId("client-diagnostic-privacy-panel").boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await panel.getByRole("radio", { name: /Disable diagnostics/ }).scrollIntoViewIfNeeded();
+  await expect(panel.getByRole("radio", { name: /Disable diagnostics/ })).toBeVisible();
+  expect(consoleErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("client-diagnostic-privacy-mobile.png"), fullPage: true });
+  await page.getByRole("button", { name: "Close settings" }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("tobkiri.client_diagnostics.privacy.v1"))).toBe("disabled");
 });
 
 test("tool hub service selections can be scoped to the conversation and survive reload", async ({ page }) => {

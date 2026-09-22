@@ -2,6 +2,7 @@ import { api } from "./api";
 
 export const CLIENT_DIAGNOSTIC_SCHEMA_VERSION = "rumi.client_diagnostic.v2";
 export const CLIENT_DIAGNOSTIC_MAX_PAYLOAD_BYTES = 8 * 1024;
+export const CLIENT_DIAGNOSTIC_PRIVACY_STORAGE_KEY = "tobkiri.client_diagnostics.privacy.v1";
 
 export type ClientDiagnosticPrivacyMode = "standard" | "local_only" | "private" | "disabled";
 
@@ -51,6 +52,47 @@ const sentDiagnostics = new Map<string, number>();
 const recentDiagnosticAttempts: number[] = [];
 let listenersInstalled = false;
 let diagnosticSessionId = "";
+
+type DiagnosticPreferenceStorage = Pick<Storage, "getItem" | "setItem">;
+
+function browserPreferenceStorage(): DiagnosticPreferenceStorage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function isStoredPrivacyMode(
+  value: unknown,
+): value is Extract<ClientDiagnosticPrivacyMode, "standard" | "local_only" | "disabled"> {
+  return value === "standard" || value === "local_only" || value === "disabled";
+}
+
+export function readClientDiagnosticPrivacyMode(
+  storage: DiagnosticPreferenceStorage | null = browserPreferenceStorage(),
+): ClientDiagnosticPrivacyMode {
+  if (!storage) return "local_only";
+  try {
+    const value = storage.getItem(CLIENT_DIAGNOSTIC_PRIVACY_STORAGE_KEY);
+    return isStoredPrivacyMode(value) ? value : "local_only";
+  } catch {
+    return "local_only";
+  }
+}
+
+export function writeClientDiagnosticPrivacyMode(
+  mode: ClientDiagnosticPrivacyMode,
+  storage: DiagnosticPreferenceStorage | null = browserPreferenceStorage(),
+): ClientDiagnosticPrivacyMode {
+  const normalized = isStoredPrivacyMode(mode) ? mode : "local_only";
+  try {
+    storage?.setItem(CLIENT_DIAGNOSTIC_PRIVACY_STORAGE_KEY, normalized);
+  } catch {
+    return "local_only";
+  }
+  return storage ? normalized : "local_only";
+}
 
 const AUTOMATIC_DIAGNOSTIC_CATEGORIES = new Set([
   "window_error",
@@ -281,6 +323,10 @@ function boundPayload(payload: ClientDiagnosticPayloadV2): ClientDiagnosticPaylo
 
 function privacyAllowsRemoteReporting(input: ClientDiagnosticInput): boolean {
   if (input.reportingEnabled === false) return false;
+  const browserMode = browserPreferenceStorage()
+    ? readClientDiagnosticPrivacyMode()
+    : "standard";
+  if (browserMode !== "standard") return false;
   return (input.privacyMode ?? "standard") === "standard";
 }
 
@@ -304,8 +350,7 @@ export function diagnosticFingerprint(input: ClientDiagnosticInput): string {
   return opaqueId("diag", seed);
 }
 
-export function prepareClientDiagnostic(input: ClientDiagnosticInput): ClientDiagnosticPayloadV2 | null {
-  if (!privacyAllowsRemoteReporting(input)) return null;
+function buildClientDiagnosticPayload(input: ClientDiagnosticInput): ClientDiagnosticPayloadV2 {
   const source = normalizeSlug(input.source, "webapp", 80);
   const category = normalizeSlug(input.category, "frontend", 80);
   const payload: ClientDiagnosticPayloadV2 = {
@@ -322,6 +367,15 @@ export function prepareClientDiagnostic(input: ClientDiagnosticInput): ClientDia
     detail: sanitizeDiagnosticDetail(input.detail),
   };
   return boundPayload(payload);
+}
+
+export function prepareClientDiagnostic(input: ClientDiagnosticInput): ClientDiagnosticPayloadV2 | null {
+  if (!privacyAllowsRemoteReporting(input)) return null;
+  return buildClientDiagnosticPayload(input);
+}
+
+export function previewClientDiagnostic(input: ClientDiagnosticInput): ClientDiagnosticPayloadV2 {
+  return buildClientDiagnosticPayload({ ...input, privacyMode: "standard" });
 }
 
 function pruneDiagnosticState(now: number) {
