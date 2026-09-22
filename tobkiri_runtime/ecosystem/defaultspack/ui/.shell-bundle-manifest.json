@@ -1,11 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-<<<<<<< HEAD
-    "digest": "e6036f10aa753c8b0f35d4e8ad00bbd5c8aa85ff89ae1b1f2ecab58fa5314b76",
-=======
-    "digest": "bb386f36a9101d6357dd9783cc4d8586be25acdb0a1af817a22a893a933152da",
->>>>>>> origin/codex/pack-architecture-program-soon
+    "digest": "91436a47b5091450788d8222f6e4d203bd69a6b11a9361e0ad6ad20dfd2ab39a",
     "entries": [
       {
         "path": "index.html",
@@ -19,13 +15,8 @@
       },
       {
         "path": "package.json",
-<<<<<<< HEAD
-        "size": 5639,
-        "sha256": "12171f9f83c22fd32d76e50822b7920a8ec5152a48fef503cfe80c7033bc67ae"
-=======
-        "size": 5711,
-        "sha256": "1b695975cc8bd5eadd0024fefc711cbe2066ba0af1466f531f4bc6a00de878bc"
->>>>>>> origin/codex/pack-architecture-program-soon
+        "size": 5878,
+        "sha256": "ad2cd1af68fe327c6f28c0d24299b9efc84b54fdd75b4d491b1c2cc607a61d43"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -1764,13 +1755,8 @@
       },
       {
         "path": "src/renderers/SettingsModalRenderer.tsx",
-<<<<<<< HEAD
-        "size": 279090,
-        "sha256": "fe0e263f4d42fc0203836a11f861f3dff7f1ecb1fd95793a6d4c1298bdec92fb"
-=======
-        "size": 281825,
-        "sha256": "6881c223decbf6b57cf522ccf84796fa15725130f6e4e0af2cf8b28c11e8f330"
->>>>>>> origin/codex/pack-architecture-program-soon
+        "size": 282060,
+        "sha256": "1906a746bd3345d537f212cd4a43f4791ba8e11037405d5835cb9f39b14a3713"
       },
       {
         "path": "src/renderers/TitleBarRenderer.tsx",
@@ -1955,11 +1941,7 @@
     ]
   },
   "bundle": {
-<<<<<<< HEAD
-    "digest": "f9d9436e6dfb7146adc1da74d9641879fb44f76b6389d9b900c89a119110e1e1",
-=======
-    "digest": "4decd363fa8379a939f3cf96fb9a7f2912a02bd0963268479091456f66d8b286",
->>>>>>> origin/codex/pack-architecture-program-soon
+    "digest": "5c1a43ccf6cb41c4ffd5a0f02d0bc3ef91ac21c0839104140561255693470d46",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1973,13 +1955,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-<<<<<<< HEAD
-        "size": 2213211,
-        "sha256": "ad803a883702d0883df8541b870d8b591005c00aeb1d2de9e648468d534fb05f"
-=======
-        "size": 2239075,
-        "sha256": "5808c76f47411c41fc9238bac144d30b2ed02fe8293c3e3f6f47525d4cc14bad"
->>>>>>> origin/codex/pack-architecture-program-soon
+        "size": 2244222,
+        "sha256": "4d645ac5c2657d126e747c47db2c9503018d32f00322003b43cc24eeba4833a9"
       },
       {
         "path": "shell-rolldown-runtime.js",

@@ -1883,6 +1883,17 @@ test("client diagnostics stay local until explicit opt-in and persist the privac
   await page.screenshot({ path: testInfo.outputPath("client-diagnostic-privacy-mobile.png"), fullPage: true });
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect.poll(() => page.evaluate(() => localStorage.getItem("tobkiri.client_diagnostics.privacy.v1"))).toBe("disabled");
+
+  await page.reload();
+  expect(await reportSyntheticDiagnostic("after-restart")).toBe(false);
+  await page.waitForTimeout(100);
+  expect(diagnosticRequests).toHaveLength(1);
+  await page.getByTitle("Settings").last().click();
+  await page.getByRole("button", { name: "Diagnostics" }).click();
+  await page.getByText("Developer diagnostics", { exact: true }).click();
+  await expect(page.getByTestId("client-diagnostic-privacy-panel").getByRole("radio", {
+    name: /Disable diagnostics/,
+  })).toBeChecked();
 });
 
 test("tool hub service selections can be scoped to the conversation and survive reload", async ({ page }) => {
