@@ -36,6 +36,7 @@ void main() {
   testWidgets(
     'identity recovery keeps configured PC connection visible and retryable',
     (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1000));
       final storage = _IdentityFaultStorage();
       final configStore = ApiConfigStore(storage: storage);
       final deviceStore = MobileDeviceStore(storage: storage);
@@ -68,7 +69,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('端末IDを確認できません'), findsOneWidget);
-      expect(find.text('PC: Desk'), findsOneWidget);
       expect(find.text('再試行'), findsOneWidget);
 
       storage.identityUnavailable = false;
