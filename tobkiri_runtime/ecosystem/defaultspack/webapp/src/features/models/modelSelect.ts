@@ -26,6 +26,7 @@ export type ModelSelectOption = {
   capability_tags?: string[];
   recommended_roles?: string[];
   notes?: string;
+  availability?: Record<string, unknown>;
 };
 
 export type ModelSelectBadge =
@@ -94,6 +95,9 @@ export function modelFieldOptionToModelSelectOption(option: SettingsFieldOption)
     capability_tags: option.capability_tags,
     recommended_roles: option.recommended_roles,
     notes: option.notes,
+    availability: optionRecord.availability && typeof optionRecord.availability === "object"
+      ? optionRecord.availability as Record<string, unknown>
+      : undefined,
   };
 }
 
@@ -126,6 +130,7 @@ export function modelSearchItemToModelSelectOption(item: ModelSearchItem): Model
     capability_tags: item.capability_tags,
     recommended_roles: item.recommended_roles,
     notes: item.notes,
+    availability: item.availability,
   };
 }
 
@@ -303,6 +308,20 @@ export function modelSelectDisplay(option: ModelSelectOption): ModelSelectDispla
     requiresApiKey: modelOptionRequiresApiKey(option),
     apiKeyConfigured: modelOptionApiKeyConfigured(option),
   };
+}
+
+export function modelSelectOptionAvailability(option: ModelSelectOption): string {
+  const availability = option.availability ?? {};
+  const status = String(availability.status ?? "").trim().toLowerCase();
+  const reason = String(availability.reason ?? "").trim();
+  if (status === "unavailable" || availability.available === false) {
+    return `Unavailable.${reason ? ` ${reason}` : ""}`;
+  }
+  if (modelOptionRequiresApiKey(option) && !modelOptionApiKeyConfigured(option)) {
+    return "Not configured. API key required.";
+  }
+  if (modelOptionApiKeyConfigured(option)) return "Configured.";
+  return "Configuration status unknown.";
 }
 
 export function findSelectedModelOption(

@@ -15,6 +15,7 @@ import {
   filterModelOptionsByProvider,
   filterModelProviderOptions,
   modelOptionBadges,
+  modelSelectOptionAvailability,
   modelProviderOptions,
   modelSearchItemToModelSelectOption,
   parseModelProviderQuery,
@@ -157,6 +158,29 @@ test("model search items map API key and capability status into select options",
   assert.equal(option.requires_api_key, true);
   assert.equal(option.api_key_configured, false);
   assert.deepEqual(modelOptionBadges(option).map((badge) => badge.id), ["api-key-needed", "tools"]);
+});
+
+test("model availability keeps unconfigured and unavailable reasons for announcements", () => {
+  const unavailable = modelSearchItemToModelSelectOption({
+    profile_id: "vendor/unsupported",
+    display_name: "Unsupported",
+    provider_id: "vendor",
+    availability: { status: "unavailable", reason: "Unsupported on this host" },
+  });
+  assert.deepEqual(unavailable.availability, {
+    status: "unavailable",
+    reason: "Unsupported on this host",
+  });
+  assert.equal(
+    modelSelectOptionAvailability(unavailable),
+    "Unavailable. Unsupported on this host",
+  );
+  assert.equal(modelSelectOptionAvailability({
+    value: "vendor/setup",
+    label: "Needs setup",
+    requires_api_key: true,
+    api_key_configured: false,
+  }), "Not configured. API key required.");
 });
 
 test("findSelectedModelOption falls back to the raw value", () => {

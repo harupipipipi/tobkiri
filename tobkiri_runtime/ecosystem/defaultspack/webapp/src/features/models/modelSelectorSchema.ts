@@ -264,6 +264,7 @@ function selectableProfile(profile: ModelProfile): SelectableModel {
 }
 
 function selectableOption(option: ModelSelectOption): SelectableModel {
+  const availability = record(option.availability);
   return {
     providerIds: [option.provider_id, option.provider_display_name].map(normalized).filter(Boolean),
     modelIds: [option.value, option.qualified_model_id, option.model_id].map(normalized).filter(Boolean),
@@ -279,7 +280,7 @@ function selectableOption(option: ModelSelectOption): SelectableModel {
       option.quality_tier,
     ].map(normalized).filter(Boolean),
     configured: Boolean(option.local || option.configured || option.api_key_configured),
-    available: true,
+    available: availability.available !== false && availability.status !== "unavailable",
   };
 }
 

@@ -142,9 +142,11 @@ def test_generated_inventory_is_schema_valid_and_not_drifting() -> None:
 def test_generated_inventory_excludes_python_cache_artifacts() -> None:
     """Python bytecode must not make the tracked inventory nondeterministic."""
     included = _included_paths(REPOSITORY_ROOT)
+    relative = [path.relative_to(REPOSITORY_ROOT).as_posix() for path in included]
 
     assert all("__pycache__" not in path.parts for path in included)
     assert all(path.suffix != ".pyc" for path in included)
+    assert relative == sorted(relative)
 
 
 def _signed_distribution() -> dict[str, object]:

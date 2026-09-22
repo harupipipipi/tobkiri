@@ -156,7 +156,7 @@ def _included_paths(root: Path) -> list[Path]:
                 or path.suffix.lower() in {".profile.yaml", ".profile.yml"}
             )
         )
-    return sorted(candidates)
+    return sorted(candidates, key=lambda path: path.relative_to(root).as_posix())
 
 
 def _manifest_records(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -168,7 +168,8 @@ def _manifest_records(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, 
             list((root / "tobkiri_runtime" / "ecosystem").glob("*/ecosystem.json"))
             + list((root / "tobkiri_runtime" / "ecosystem").glob("*/rumi.pack.v3.json"))
             + list((root / "tobkiri_runtime" / "packs_v4").glob("**/*manifest*.json"))
-        )
+        ),
+        key=lambda path: path.relative_to(root).as_posix(),
     )
     for path in paths:
         if not path.is_file():

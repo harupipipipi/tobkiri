@@ -82,6 +82,26 @@ test("the same model exclusion applies to settings options", () => {
   );
 });
 
+test("settings options preserve availability for hide-unavailable policy", () => {
+  const schema = parseModelSelectorSchema({
+    filters: { hide_unavailable: true },
+  });
+  const options: ModelSelectOption[] = [
+    { value: "vendor/ready", label: "Ready", provider_id: "vendor" },
+    {
+      value: "vendor/unsupported",
+      label: "Unsupported",
+      provider_id: "vendor",
+      availability: { status: "unavailable" },
+    },
+  ];
+
+  assert.deepEqual(
+    filterModelOptionsBySelector(options, schema, "settings").map((item) => item.value),
+    ["vendor/ready"],
+  );
+});
+
 test("surface overrides preserve global layout and filters", () => {
   const schema = parseModelSelectorSchema({
     layout: {
