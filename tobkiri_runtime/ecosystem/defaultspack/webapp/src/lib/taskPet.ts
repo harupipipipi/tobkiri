@@ -8,7 +8,35 @@ export type TaskPetViewModel = {
 };
 
 export const TASK_PET_DETAIL_TEXT_LIMIT = 118;
+export const TASK_PET_ENABLED_STORAGE_KEY = "tobkiri.task-pet.enabled.v1";
 const TASK_TEXT_LIMIT = 92;
+
+type TaskPetPreferenceStorage = Pick<Storage, "getItem" | "setItem">;
+
+/** Return the enabled preference, defaulting safely when storage is absent. */
+export function loadTaskPetEnabled(
+  storage: TaskPetPreferenceStorage | null | undefined,
+): boolean {
+  try {
+    return storage?.getItem(TASK_PET_ENABLED_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+/** Persist a display preference without claiming success when storage fails. */
+export function saveTaskPetEnabled(
+  storage: TaskPetPreferenceStorage | null | undefined,
+  enabled: boolean,
+): boolean {
+  if (!storage) return false;
+  try {
+    storage.setItem(TASK_PET_ENABLED_STORAGE_KEY, String(enabled));
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function truncateTaskPetText(value: string | null | undefined, limit: number): string {
   const normalized = String(value ?? "").replace(/\s+/g, " ").trim();

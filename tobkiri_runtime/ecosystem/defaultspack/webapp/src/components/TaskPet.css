@@ -2,6 +2,19 @@
   --task-pet-accent: #7dd3fc;
 }
 
+.task-pet-restore {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  max-width: min(19rem, calc(100vw - 1.5rem));
+}
+
+.task-pet-restore [role="alert"] {
+  display: block;
+  margin-top: 0.5rem;
+  text-align: left;
+}
+
 .task-pet[data-state="completed"] {
   --task-pet-accent: #6ee7b7;
 }

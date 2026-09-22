@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, BellRing, CheckCircle2, LoaderCircle, TriangleAlert } from "lucide-react";
+import {
+  Bell,
+  BellRing,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  LoaderCircle,
+  TriangleAlert,
+} from "lucide-react";
 
 import { cn } from "../lib/cn";
 import {
   shouldSendDesktopNotification,
+  loadTaskPetEnabled,
+  saveTaskPetEnabled,
   taskPetViewModel,
   type TaskPetMood,
 } from "../lib/taskPet";
@@ -25,6 +35,15 @@ const TASK_PET_IMAGE_SRC = "/static/pet/tobkiri-pet.png";
 function notificationPermission(): NotificationPermission | "unsupported" {
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
   return window.Notification.permission;
+}
+
+function preferenceStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function sendCompletionNotification(
@@ -61,6 +80,8 @@ export function TaskPet({
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
     notificationPermission,
   );
+  const [isPetEnabled, setIsPetEnabled] = useState(() => loadTaskPetEnabled(preferenceStorage()));
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
   const wasRunningRef = useRef(isRunning);
 
   useEffect(() => {
@@ -88,6 +109,39 @@ export function TaskPet({
       setPermission(notificationPermission());
     }
   };
+
+  const setPetEnabled = (enabled: boolean) => {
+    if (!saveTaskPetEnabled(preferenceStorage(), enabled)) {
+      setPreferenceError("表示設定を保存できませんでした。ブラウザの保存領域を確認してください。");
+      return;
+    }
+    setPreferenceError(null);
+    setIsPetEnabled(enabled);
+  };
+
+  if (!isPetEnabled) {
+    return (
+      <LayerPortal layer="globalOverlay">
+        <aside
+          className={cn(
+            "task-pet-restore fixed right-3 sm:right-5",
+            raised ? "bottom-20" : "bottom-4",
+            hidden && "hidden",
+          )}
+        >
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950/94 px-3 py-2 text-xs font-semibold text-zinc-200 shadow-xl backdrop-blur-xl transition hover:border-sky-300 hover:text-white"
+            onClick={() => setPetEnabled(true)}
+          >
+            <Eye size={15} aria-hidden="true" />
+            Tobkiri ペットを表示
+          </button>
+          {preferenceError && <p role="alert">{preferenceError}</p>}
+        </aside>
+      </LayerPortal>
+    );
+  }
 
   return (
     <LayerPortal layer="globalOverlay">
@@ -139,6 +193,19 @@ export function TaskPet({
           {permission === "denied" && (
             <p className="mt-2 text-[10px] leading-4 text-zinc-600">
               ブラウザ設定で通知を許可すると、画面を離れていてもお知らせします。
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => setPetEnabled(false)}
+            className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 text-[11px] font-semibold text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-900 hover:text-white"
+          >
+            <EyeOff size={12} />
+            ペットを非表示
+          </button>
+          {preferenceError && (
+            <p className="mt-2 text-[10px] leading-4 text-amber-200" role="alert">
+              {preferenceError}
             </p>
           )}
         </section>
