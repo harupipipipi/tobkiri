@@ -439,6 +439,36 @@ test("stopDesktop confirms the destructive action after the UI confirmation flow
   assert.match(body.request_id, /^desktop-stop-/);
 });
 
+test("desktop lifecycle calls reuse a caller-provided operation id", async () => {
+  const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({
+      url: requestTarget(input),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    const deleted = String(input).includes("confirm_destructive");
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: deleted ? { deleted: true, seat_id: "seat-1", operation_id: "stable-delete" } : desktopResponse("running"),
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await sandboxesApi.startDesktop("seat-1", null, "stable-start");
+    await sandboxesApi.restartDesktop("seat-1", null, "stable-restart");
+    await sandboxesApi.stopDesktop("seat-1", null, "stable-stop");
+    await sandboxesApi.deleteDesktop("seat-1", null, "stable-delete");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(calls[0].body?.request_id, "stable-start");
+  assert.equal(calls[1].body?.request_id, "stable-restart");
+  assert.equal(calls[2].body?.request_id, "stable-stop");
+  assert.equal(new URLSearchParams(calls[3].url.split("?", 2)[1]).get("request_id"), "stable-delete");
+});
+
 test("startDesktop and restartDesktop forward the scoped session credential", async () => {
   const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
   const originalFetch = globalThis.fetch;

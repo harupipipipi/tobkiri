@@ -96,6 +96,10 @@ export type RuntimeOperation = {
   reboot_required?: boolean;
   error?: RuntimeDoctorIssue | string | null;
   provider_id?: string | null;
+  operation_kind?: string;
+  seat_id?: string;
+  action?: string;
+  result?: Record<string, unknown>;
   updated_at?: string;
   progress_events?: Array<{
     operation_id: string;
@@ -297,6 +301,7 @@ export type DesktopInstance = {
   last_error?: RuntimeDoctorIssue | string | null;
   created_at?: string;
   updated_at?: string;
+  operation_id?: string;
 };
 
 export type DesktopStarter = "empty" | "browser" | "browser_url" | "terminal";

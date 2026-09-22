@@ -46,6 +46,8 @@ export function DesktopControlSurface({
       {hasLease ? (
         <button
           type="button"
+          data-desktop-seat-id={desktop.seat_id}
+          data-desktop-action="return-to-ai"
           onClick={onReturnToAI}
           disabled={busy || isDestroyed}
           className={actionButtonClassName()}
@@ -57,6 +59,8 @@ export function DesktopControlSurface({
       ) : (
         <button
           type="button"
+          data-desktop-seat-id={desktop.seat_id}
+          data-desktop-action="take-over"
           onClick={onTakeOver}
           disabled={busy || !isRunning}
           className={actionButtonClassName()}
@@ -68,6 +72,8 @@ export function DesktopControlSurface({
       )}
       <button
         type="button"
+        data-desktop-seat-id={desktop.seat_id}
+        data-desktop-action="snapshot"
         onClick={onSnapshot}
         disabled={busy || !isRunning}
         className={actionButtonClassName()}
@@ -79,6 +85,8 @@ export function DesktopControlSurface({
       {isStopped && onStart ? (
         <button
           type="button"
+          data-desktop-seat-id={desktop.seat_id}
+          data-desktop-action="start"
           onClick={onStart}
           disabled={busy || isDestroyed}
           className={actionButtonClassName()}
@@ -90,6 +98,8 @@ export function DesktopControlSurface({
       ) : (
         <button
           type="button"
+          data-desktop-seat-id={desktop.seat_id}
+          data-desktop-action="restart"
           onClick={onRestart}
           disabled={busy || isDestroyed}
           className={actionButtonClassName()}
@@ -101,6 +111,8 @@ export function DesktopControlSurface({
       )}
       <button
         type="button"
+        data-desktop-seat-id={desktop.seat_id}
+        data-desktop-action="stop"
         onClick={onStop}
         disabled={busy || !isRunning}
         className={actionButtonClassName()}
@@ -111,8 +123,10 @@ export function DesktopControlSurface({
       </button>
       <button
         type="button"
+        data-desktop-seat-id={desktop.seat_id}
+        data-desktop-action="delete"
         onClick={onDelete}
-        disabled={busy}
+        disabled={busy || isDestroyed}
         className={actionButtonClassName("danger")}
         aria-label={`Delete ${desktop.name}`}
       >

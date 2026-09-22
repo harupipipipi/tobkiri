@@ -55,9 +55,21 @@ export function useDesktopInstances({
   const refreshInFlightRef = useRef(false);
   const desktopsRef = useRef<DesktopInstance[]>([]);
 
-  const refresh = useCallback(async (options: { silent?: boolean } = {}) => {
+  const refresh = useCallback(async (options: { silent?: boolean; throwOnError?: boolean } = {}) => {
     if (!enabled) return [];
-    if (refreshInFlightRef.current) return desktopsRef.current;
+    if (refreshInFlightRef.current) {
+      if (!options.throwOnError) return desktopsRef.current;
+      try {
+        const result = await client.listDesktops();
+        desktopsRef.current = result.desktops;
+        setDesktops(result.desktops);
+        setError(null);
+        return result.desktops;
+      } catch (desktopError) {
+        setError(desktopError instanceof Error ? desktopError.message : "Desktop lookup failed.");
+        throw desktopError;
+      }
+    }
     refreshInFlightRef.current = true;
     if (!options.silent) setLoading(true);
     try {
@@ -69,6 +81,7 @@ export function useDesktopInstances({
     } catch (desktopError) {
       setDesktops(desktopsRef.current);
       setError(desktopError instanceof Error ? desktopError.message : "Desktop lookup failed.");
+      if (options.throwOnError) throw desktopError;
       return desktopsRef.current;
     } finally {
       refreshInFlightRef.current = false;

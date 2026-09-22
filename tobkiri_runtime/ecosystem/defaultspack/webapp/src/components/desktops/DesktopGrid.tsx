@@ -14,6 +14,7 @@ type DesktopGridProps = {
   emptyReason?: "backend" | "filter";
   accessKeys?: Record<string, string>;
   controlBusy?: boolean;
+  actionBusySeatIds?: string[];
   onSelect: (seatId: string) => void;
   onTakeOver: (seatId: string) => void;
   onReturnToAI: () => void;
@@ -49,6 +50,7 @@ export function DesktopGrid({
   emptyReason = "backend",
   accessKeys = {},
   controlBusy = false,
+  actionBusySeatIds = [],
   onSelect,
   onTakeOver,
   onReturnToAI,
@@ -101,7 +103,7 @@ export function DesktopGrid({
           prominent={singleDesktop}
           hasLease={desktop.seat_id === leaseSeatId}
           accessKey={accessKeys[desktop.seat_id] || null}
-          controlBusy={controlBusy && desktop.seat_id === selectedSeatId}
+          controlBusy={(controlBusy && desktop.seat_id === selectedSeatId) || actionBusySeatIds.includes(desktop.seat_id)}
           onSelect={onSelect}
           onTakeOver={() => onTakeOver(desktop.seat_id)}
           onReturnToAI={onReturnToAI}

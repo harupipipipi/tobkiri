@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Trash2, X } from "lucide-react";
 
 import { sandboxesApi } from "../../features/sandboxes/api";
 import { diagnosticsText } from "../../features/sandboxes/runtimeStatus";
@@ -13,8 +12,22 @@ import { ErrorNotice } from "../ErrorNotice";
 import { DesktopCreateDialog } from "./DesktopCreateDialog";
 import { DesktopGrid } from "./DesktopGrid";
 import { DesktopInspector } from "./DesktopInspector";
+import { DesktopLifecycleConfirmation } from "./DesktopLifecycleConfirmation";
 import { DesktopProviderNotice } from "./DesktopProviderNotice";
 import { type DesktopDensity, type DesktopFilter, DesktopToolbar } from "./DesktopToolbar";
+import {
+  createDesktopLifecycleOperationId,
+  desktopActionIsAuthoritative,
+  desktopLifecycleRetryNeedsNewOperation,
+  desktopLifecycleSafeError,
+  desktopLifecycleSuccessMessage,
+  desktopOperationError,
+  lookupDesktopOperationOutcome,
+  reconcileDesktopLifecycle,
+  reserveDesktopLifecycleAttempt,
+  type DesktopLifecycleAction,
+  type DesktopLifecycleFeedback,
+} from "./desktopLifecycle";
 
 export function shouldShowDesktopList({
   runtimeReady,
@@ -65,6 +78,16 @@ export function clearLegacyDesktopCredentialsFromUrl(): boolean {
   return true;
 }
 
+export function restoreFocusAfterModalUnmount(
+  callback: () => void,
+  requestFrame: (callback: FrameRequestCallback) => number = window.requestAnimationFrame.bind(window),
+  setTimer: (callback: () => void, delay: number) => number = window.setTimeout.bind(window),
+) {
+  requestFrame(() => {
+    setTimer(callback, 0);
+  });
+}
+
 export function DesktopMonitorWorkspace() {
   const legacyCredentialWasRemoved = useRef(clearLegacyDesktopCredentialsFromUrl()).current;
   const runtime = useRuntimeDoctor({ autoRunDoctor: true });
@@ -90,6 +113,13 @@ export function DesktopMonitorWorkspace() {
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [stopTargetSeatId, setStopTargetSeatId] = useState<string | null>(null);
   const [deleteTargetSeatId, setDeleteTargetSeatId] = useState<string | null>(null);
+  const [lifecycleFeedback, setLifecycleFeedback] = useState<Record<string, DesktopLifecycleFeedback>>({});
+  const [lifecycleAnnouncement, setLifecycleAnnouncement] = useState("");
+  const lifecyclePendingRef = useRef(new Set<string>());
+  const confirmationReturnFocusRef = useRef<HTMLElement | null>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
+  const confirmationTargetsRef = useRef<Record<string, DesktopInstance>>({});
 
   const runningCount = useMemo(
     () => desktopInstances.desktops.filter((desktop) => desktop.status === "running").length,
@@ -106,8 +136,17 @@ export function DesktopMonitorWorkspace() {
   const visibleSelectedSeatId = selectedDesktop?.seat_id ?? null;
   const selectedAccessKey = visibleSelectedSeatId ? accessKeys[visibleSelectedSeatId] || "" : "";
   const control = useDesktopControlLease(visibleSelectedSeatId, sandboxesApi, selectedAccessKey);
-  const stopTarget = desktopInstances.desktops.find((desktop) => desktop.seat_id === stopTargetSeatId) ?? null;
-  const deleteTarget = desktopInstances.desktops.find((desktop) => desktop.seat_id === deleteTargetSeatId) ?? null;
+  const stopTarget = desktopInstances.desktops.find((desktop) => desktop.seat_id === stopTargetSeatId)
+    ?? (stopTargetSeatId ? confirmationTargetsRef.current[stopTargetSeatId] : null)
+    ?? null;
+  const deleteTarget = desktopInstances.desktops.find((desktop) => desktop.seat_id === deleteTargetSeatId)
+    ?? (deleteTargetSeatId ? confirmationTargetsRef.current[deleteTargetSeatId] : null)
+    ?? null;
+  const stopFeedback = stopTarget ? lifecycleFeedback[stopTarget.seat_id] : undefined;
+  const deleteFeedback = deleteTarget ? lifecycleFeedback[deleteTarget.seat_id] : undefined;
+  const actionBusySeatIds = Object.entries(lifecycleFeedback)
+    .filter(([, feedback]) => feedback.phase === "pending")
+    .map(([seatId]) => seatId);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -201,30 +240,172 @@ export function DesktopMonitorWorkspace() {
     }
   }, [desktopInstances]);
 
+  const closeConfirmation = useCallback((action: "stop" | "delete") => {
+    const targetSeatId = action === "stop" ? stopTargetSeatId : deleteTargetSeatId;
+    if (targetSeatId && lifecyclePendingRef.current.has(targetSeatId)) return;
+    if (action === "stop") setStopTargetSeatId(null);
+    if (action === "delete") setDeleteTargetSeatId(null);
+    restoreFocusAfterModalUnmount(() => {
+      const returnTarget = confirmationReturnFocusRef.current;
+      if (returnTarget?.isConnected && !(returnTarget instanceof HTMLButtonElement && returnTarget.disabled)) {
+        returnTarget.focus();
+      } else {
+        workspaceRef.current?.focus();
+      }
+    });
+  }, [deleteTargetSeatId, stopTargetSeatId]);
+
+  const restoreConfirmationFocus = useCallback((
+    seatId?: string,
+    completedAction?: "stop" | "delete",
+  ) => {
+    restoreFocusAfterModalUnmount(() => {
+      const controls = Array.from(
+        workspaceRef.current?.querySelectorAll<HTMLButtonElement>(
+          "button[data-desktop-seat-id]:not([disabled])",
+        ) ?? [],
+      );
+      if (completedAction === "stop" && seatId) {
+        const startControl = controls.find((controlButton) => (
+          controlButton.dataset.desktopSeatId === seatId
+          && controlButton.dataset.desktopAction === "start"
+        ));
+        if (startControl) {
+          startControl.focus();
+          return;
+        }
+      }
+      if (completedAction === "delete" && seatId) {
+        const adjacentControl = controls.find((controlButton) => (
+          controlButton.dataset.desktopSeatId !== seatId
+          && controlButton.dataset.desktopAction === "select"
+        ));
+        if (adjacentControl) {
+          adjacentControl.focus();
+          return;
+        }
+      }
+      const returnTarget = confirmationReturnFocusRef.current;
+      if (returnTarget?.isConnected && !(returnTarget instanceof HTMLButtonElement && returnTarget.disabled)) {
+        returnTarget.focus();
+      } else {
+        workspaceRef.current?.focus();
+      }
+    });
+  }, []);
+
+  const openConfirmation = useCallback((seatId: string, action: "stop" | "delete") => {
+    if (lifecyclePendingRef.current.has(seatId)) return;
+    confirmationReturnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const target = desktopInstances.desktops.find((desktop) => desktop.seat_id === seatId);
+    if (target) confirmationTargetsRef.current[seatId] = target;
+    setLifecycleFeedback((current) => {
+      if (current[seatId]?.action === action) return current;
+      const next = { ...current };
+      delete next[seatId];
+      return next;
+    });
+    if (action === "stop") setStopTargetSeatId(seatId);
+    if (action === "delete") setDeleteTargetSeatId(seatId);
+  }, [desktopInstances.desktops]);
+
   const runDesktopAction = useCallback(async (
     seatId: string,
-    action: "start" | "restart" | "stop" | "delete",
+    action: DesktopLifecycleAction,
   ) => {
+    const existing = lifecycleFeedback[seatId];
+    const operationId = reserveDesktopLifecycleAttempt(
+      lifecyclePendingRef.current,
+      seatId,
+      action,
+      existing,
+      createDesktopLifecycleOperationId,
+    );
+    if (!operationId) return;
+    let definitiveFailure = false;
+    let safeFailureMessage: string | null = null;
     setActionError(null);
+    setLifecycleAnnouncement("");
+    setLifecycleFeedback((current) => ({
+      ...current,
+      [seatId]: { action, operationId, phase: "pending" },
+    }));
     try {
       const accessKey = accessKeys[seatId] || undefined;
-      if (action === "start") await sandboxesApi.startDesktop(seatId, accessKey);
-      if (action === "restart") await sandboxesApi.restartDesktop(seatId, accessKey);
-      if (action === "stop") await sandboxesApi.stopDesktop(seatId, accessKey);
-      if (action === "delete") await sandboxesApi.deleteDesktop(seatId, accessKeys[seatId] || undefined);
-      if (action === "stop") setStopTargetSeatId(null);
+      try {
+        if (action === "start") await sandboxesApi.startDesktop(seatId, accessKey, operationId);
+        if (action === "restart") await sandboxesApi.restartDesktop(seatId, accessKey, operationId);
+        if (action === "stop") await sandboxesApi.stopDesktop(seatId, accessKey, operationId);
+        if (action === "delete") await sandboxesApi.deleteDesktop(seatId, accessKey, operationId);
+      } catch (requestError) {
+        const operation = await lookupDesktopOperationOutcome(operationId, sandboxesApi.getRuntimeOperation);
+        const operationError = operation ? desktopOperationError(operation) : null;
+        const desktops = await desktopInstances.refresh({ throwOnError: true });
+        if (!desktopActionIsAuthoritative(desktops, seatId, action)) {
+          if (operationError) {
+            definitiveFailure = true;
+            safeFailureMessage = operationError;
+          } else {
+            definitiveFailure = desktopLifecycleRetryNeedsNewOperation(requestError);
+            safeFailureMessage = desktopLifecycleSafeError(requestError, action);
+          }
+          throw requestError;
+        }
+      }
+      const desktops = await desktopInstances.refresh({ throwOnError: true });
+      const reconciliation = reconcileDesktopLifecycle(desktops, seatId, action);
+      if (!reconciliation.authoritative) {
+        safeFailureMessage = `Tobkiri received the desktop ${action} request, but the latest server state conflicts with that result.`;
+        throw new Error(`Desktop ${action} was not confirmed by the latest server state.`);
+      }
+      const targetName = confirmationTargetsRef.current[seatId]?.name
+        ?? desktops.find((desktop) => desktop.seat_id === seatId)?.name
+        ?? `Desktop ${seatId}`;
+      setLifecycleAnnouncement(desktopLifecycleSuccessMessage(targetName, action, reconciliation));
+      if (action === "stop") {
+        setStopTargetSeatId(null);
+        restoreConfirmationFocus(seatId, "stop");
+      }
       if (action === "delete" && seatId === visibleSelectedSeatId) {
         if (explicitSelectedSeatIdRef.current === seatId) {
           explicitSelectedSeatIdRef.current = null;
         }
         setSelectedSeatId(null);
-        setDeleteTargetSeatId(null);
       }
-      await desktopInstances.refresh();
+      if (action === "delete") {
+        setDeleteTargetSeatId(null);
+        restoreConfirmationFocus(seatId, "delete");
+      }
+      setLifecycleFeedback((current) => {
+        const next = { ...current };
+        delete next[seatId];
+        return next;
+      });
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : `Desktop ${action} failed.`);
+      const message = safeFailureMessage ?? desktopLifecycleSafeError(error, action);
+      if (action === "stop" || action === "delete") {
+        setLifecycleFeedback((current) => ({
+          ...current,
+          [seatId]: {
+            action,
+            operationId,
+            phase: "failed",
+            error: message,
+            retryWithNewOperation: definitiveFailure,
+          },
+        }));
+      } else {
+        setActionError(message);
+        setLifecycleFeedback((current) => {
+          const next = { ...current };
+          delete next[seatId];
+          return next;
+        });
+      }
+    } finally {
+      lifecyclePendingRef.current.delete(seatId);
     }
-  }, [accessKeys, desktopInstances, visibleSelectedSeatId]);
+  }, [accessKeys, desktopInstances, lifecycleFeedback, restoreConfirmationFocus, visibleSelectedSeatId]);
 
   const handleSelectDesktop = useCallback((seatId: string) => {
     explicitSelectedSeatIdRef.current = seatId;
@@ -305,7 +486,10 @@ export function DesktopMonitorWorkspace() {
   });
 
   return (
-    <section className="relative flex h-full min-h-0 flex-1 flex-col bg-[#09090b] text-zinc-300" aria-label="Desktops workspace">
+    <section ref={workspaceRef} tabIndex={-1} className="relative flex h-full min-h-0 flex-1 flex-col bg-[#09090b] text-zinc-300" aria-label="Desktops workspace">
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {lifecycleAnnouncement}
+      </div>
       <DesktopToolbar
         totalCount={desktopInstances.desktops.length}
         runningCount={runningCount}
@@ -345,14 +529,15 @@ export function DesktopMonitorWorkspace() {
                 emptyReason={desktopInstances.desktops.length > 0 ? "filter" : "backend"}
                 accessKeys={accessKeys}
                 controlBusy={control.busy}
+                actionBusySeatIds={actionBusySeatIds}
                 onSelect={handleSelectDesktop}
                 onTakeOver={handleTakeOver}
                 onReturnToAI={() => void control.release()}
                 onInput={handleDesktopInput}
                 onStart={(seatId) => void runDesktopAction(seatId, "start")}
                 onRestart={(seatId) => void runDesktopAction(seatId, "restart")}
-                onStop={setStopTargetSeatId}
-                onDelete={setDeleteTargetSeatId}
+                onStop={(seatId) => openConfirmation(seatId, "stop")}
+                onDelete={(seatId) => openConfirmation(seatId, "delete")}
               />
               <DesktopInspector
                 desktop={selectedDesktop}
@@ -383,94 +568,25 @@ export function DesktopMonitorWorkspace() {
       />
 
       {stopTarget && (
-        <div className="absolute inset-0 rumi-layer-modal flex items-center justify-center bg-black/60 p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="desktop-stop-title" className="w-[min(420px,100%)] rounded-lg border border-amber-500/25 bg-[#0b0b0d] shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-amber-500/20 px-4 py-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-amber-500/25 bg-amber-500/10 text-amber-100">
-                  <AlertTriangle size={15} />
-                </span>
-                <div className="min-w-0">
-                  <p id="desktop-stop-title" className="truncate text-sm font-semibold text-zinc-100">Stop Desktop</p>
-                  <p className="truncate text-xs text-zinc-500">{stopTarget.name}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setStopTargetSeatId(null)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                aria-label="Close stop confirmation"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <div className="px-4 py-4 text-sm leading-6 text-zinc-300">
-              This stops the desktop session and releases its cached frame and active control lease.
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-zinc-800/70 px-4 py-3">
-              <button
-                type="button"
-                onClick={() => setStopTargetSeatId(null)}
-                className="h-8 rounded-md border border-zinc-800 px-3 text-xs font-medium text-zinc-300 hover:bg-zinc-900"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void runDesktopAction(stopTarget.seat_id, "stop")}
-                className="h-8 rounded-md bg-amber-400 px-3 text-xs font-semibold text-zinc-950 hover:bg-amber-300"
-              >
-                Stop
-              </button>
-            </div>
-          </div>
-        </div>
+        <DesktopLifecycleConfirmation
+          action="stop"
+          target={stopTarget}
+          feedback={stopFeedback}
+          confirmButtonRef={confirmButtonRef}
+          onClose={() => closeConfirmation("stop")}
+          onConfirm={() => void runDesktopAction(stopTarget.seat_id, "stop")}
+        />
       )}
 
       {deleteTarget && (
-        <div className="absolute inset-0 rumi-layer-modal flex items-center justify-center bg-black/60 p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="desktop-delete-title" className="w-[min(420px,100%)] rounded-lg border border-red-500/25 bg-[#0b0b0d] shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-red-500/20 px-4 py-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-500/25 bg-red-500/10 text-red-200">
-                  <AlertTriangle size={15} />
-                </span>
-                <div className="min-w-0">
-                  <p id="desktop-delete-title" className="truncate text-sm font-semibold text-zinc-100">Delete Desktop</p>
-                  <p className="truncate text-xs text-zinc-500">{deleteTarget.name}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDeleteTargetSeatId(null)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-                aria-label="Close delete confirmation"
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <div className="px-4 py-4 text-sm leading-6 text-zinc-300">
-              This removes the desktop session and clears its cached frame and control lease.
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-zinc-800/70 px-4 py-3">
-              <button
-                type="button"
-                onClick={() => setDeleteTargetSeatId(null)}
-                className="h-8 rounded-md border border-zinc-800 px-3 text-xs font-medium text-zinc-300 hover:bg-zinc-900"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void runDesktopAction(deleteTarget.seat_id, "delete")}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-red-500 px-3 text-xs font-semibold text-white hover:bg-red-400"
-              >
-                <Trash2 size={13} />
-                <span>Delete</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <DesktopLifecycleConfirmation
+          action="delete"
+          target={deleteTarget}
+          feedback={deleteFeedback}
+          confirmButtonRef={confirmButtonRef}
+          onClose={() => closeConfirmation("delete")}
+          onConfirm={() => void runDesktopAction(deleteTarget.seat_id, "delete")}
+        />
       )}
     </section>
   );

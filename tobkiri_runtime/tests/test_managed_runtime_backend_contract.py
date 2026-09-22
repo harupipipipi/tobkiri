@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -1422,6 +1423,240 @@ def test_desktop_api_create_frame_lease_and_input_happy_path(monkeypatch, tmp_pa
     assert service.frame_cache.last_metadata("seat-1") is None
     assert service.lease_manager.active_lease("seat-1") is None
     assert agent.desktop_inputs[0].action == "click"
+
+
+def test_desktop_lifecycle_operations_are_idempotent_and_queryable(tmp_path) -> None:
+    from ecosystem.defaultspack.blocks.sandbox import api
+
+    agent = FakeGuestAgent()
+    registry = ProviderRegistry()
+    registry.register(
+        FakeRuntimeProvider(
+            provider_id="fake-runtime",
+            capabilities={
+                "sandbox.exec",
+                "sandbox.files",
+                "sandbox.resource_limits",
+                "sandbox.network_policy",
+                "sandbox.desktop",
+                "sandbox.desktop_input",
+                "sandbox.snapshot",
+            },
+            guest_agent=agent,
+            sandbox_id_factory=lambda: "seat-1",
+        )
+    )
+    store = RuntimeOperationStore(tmp_path / "runtime_operations.json")
+    service = SimpleNamespace(
+        provider_registry=registry,
+        manager=SandboxManager(state_dir=tmp_path, provider_registry=registry),
+        operation_store=store,
+        frame_cache=FrameCache(min_capture_interval_seconds=0),
+        lease_manager=ControlLeaseManager(),
+    )
+    api._reset_service_for_tests(service)
+    try:
+        api.run(
+            {
+                "_handler": "desktops_create",
+                "name": "Idempotent desktop",
+                "template_id": "desktop.ubuntu",
+                "provider_id": "fake-runtime",
+                "resolution": {"width": 800, "height": 600},
+            },
+            {"user_id": "owner-1"},
+        )
+        first = api.run(
+            {
+                "_handler": "desktop_stop",
+                "seat_id": "seat-1",
+                "request_id": "desktop-stop-stable",
+                "confirm_destructive": True,
+            },
+            {"user_id": "owner-1"},
+        )
+        replay = api.run(
+            {
+                "_handler": "desktop_stop",
+                "seat_id": "seat-1",
+                "request_id": "desktop-stop-stable",
+                "confirm_destructive": True,
+            },
+            {"user_id": "owner-1"},
+        )
+        queried = api.run(
+            {"_handler": "runtime_operation_get", "operation_id": "desktop-stop-stable"},
+            {"user_id": "owner-1"},
+        )
+        forbidden_query = api.run(
+            {"_handler": "runtime_operation_get", "operation_id": "desktop-stop-stable"},
+            {"user_id": "other-user"},
+        )
+        cancel = api.run(
+            {"_handler": "runtime_operation_cancel", "operation_id": "desktop-stop-stable"},
+            {"user_id": "owner-1"},
+        )
+        conflict = api.run(
+            {
+                "_handler": "desktop_start",
+                "seat_id": "seat-1",
+                "request_id": "desktop-stop-stable",
+            },
+            {"user_id": "owner-1"},
+        )
+        deleted = api.run(
+            {
+                "_handler": "desktop_delete",
+                "seat_id": "seat-1",
+                "request_id": "desktop-delete-stable",
+                "confirm_destructive": True,
+            },
+            {"user_id": "owner-1"},
+        )
+        delete_replay = api.run(
+            {
+                "_handler": "desktop_delete",
+                "seat_id": "seat-1",
+                "request_id": "desktop-delete-stable",
+                "confirm_destructive": True,
+            },
+            {"user_id": "owner-1"},
+        )
+        delete_replay_forbidden = api.run(
+            {
+                "_handler": "desktop_delete",
+                "seat_id": "seat-1",
+                "request_id": "desktop-delete-stable",
+                "confirm_destructive": True,
+            },
+            {"user_id": "other-user"},
+        )
+        owner_operations = api.run(
+            {"_handler": "runtime_operations"}, {"user_id": "owner-1"}
+        )
+        other_operations = api.run(
+            {"_handler": "runtime_operations"}, {"user_id": "other-user"}
+        )
+    finally:
+        api._reset_service_for_tests(None)
+
+    assert first["status"] == "ok", first
+    assert replay == first
+    assert queried["data"]["status"] == "completed"
+    assert queried["data"]["seat_id"] == "seat-1"
+    assert queried["data"]["action"] == "stop"
+    assert queried["data"]["result"] == first["data"]
+    assert "authority_principal_id" not in queried["data"]
+    assert forbidden_query["status"] == "error"
+    assert forbidden_query["error"]["code"] == "DESKTOP_OPERATION_STATUS_FORBIDDEN"
+    assert cancel["status"] == "error"
+    assert cancel["error"]["code"] == "DESKTOP_OPERATION_NOT_CANCELLABLE"
+    assert conflict["status"] == "error"
+    assert conflict["error"]["code"] == "DESKTOP_OPERATION_ID_CONFLICT"
+    assert deleted["status"] == "ok"
+    assert delete_replay == deleted
+    assert delete_replay_forbidden["status"] == "error"
+    assert delete_replay_forbidden["error"]["code"] == "DESKTOP_OPERATION_STATUS_FORBIDDEN"
+    assert {item["operation_id"] for item in owner_operations["data"]["operations"]} == {
+        "desktop-stop-stable",
+        "desktop-delete-stable",
+    }
+    assert other_operations["data"]["operations"] == []
+    assert RuntimeOperationStore(tmp_path / "runtime_operations.json").get("desktop-stop-stable")["status"] == "completed"
+
+
+def test_desktop_lifecycle_failure_replay_and_retry_use_distinct_operation_ids(tmp_path) -> None:
+    from ecosystem.defaultspack.blocks.sandbox import api
+
+    agent = FakeGuestAgent()
+    registry = ProviderRegistry()
+    registry.register(FakeRuntimeProvider(
+        provider_id="fake-runtime",
+        capabilities={
+            "sandbox.exec", "sandbox.files", "sandbox.resource_limits",
+            "sandbox.network_policy", "sandbox.desktop", "sandbox.desktop_input",
+            "sandbox.snapshot",
+        },
+        guest_agent=agent,
+        sandbox_id_factory=lambda: "seat-retry",
+    ))
+    service = SimpleNamespace(
+        provider_registry=registry,
+        manager=SandboxManager(state_dir=tmp_path, provider_registry=registry),
+        operation_store=RuntimeOperationStore(tmp_path / "runtime_operations.json"),
+        frame_cache=FrameCache(min_capture_interval_seconds=0),
+        lease_manager=ControlLeaseManager(),
+    )
+    api._reset_service_for_tests(service)
+    try:
+        api.run({
+            "_handler": "desktops_create",
+            "name": "Retry desktop",
+            "template_id": "desktop.ubuntu",
+            "provider_id": "fake-runtime",
+            "resolution": {"width": 800, "height": 600},
+        }, {"user_id": "owner-retry"})
+        original_stop = service.manager.stop
+        stop_calls = 0
+
+        def fail_once(seat_id: str, *, force: bool = False) -> dict[str, Any]:
+            nonlocal stop_calls
+            stop_calls += 1
+            if stop_calls == 1:
+                return {
+                    "ok": False,
+                    "code": "SANDBOX_PROVIDER_STOP_FAILED",
+                    "error": "provider path /private/secret must not be shown",
+                    "status_code": 503,
+                }
+            return original_stop(seat_id, force=force)
+
+        service.manager.stop = fail_once
+        request = {
+            "_handler": "desktop_stop",
+            "seat_id": "seat-retry",
+            "request_id": "stop-failed",
+            "confirm_destructive": True,
+        }
+        first = api.run(request, {"user_id": "owner-retry"})
+        replay = api.run(request, {"user_id": "owner-retry"})
+        retry = api.run({**request, "request_id": "stop-retry"}, {"user_id": "owner-retry"})
+    finally:
+        api._reset_service_for_tests(None)
+
+    assert first["status"] == "error"
+    assert replay == first
+    assert "/private/secret" not in first["error"]["message"]
+    assert retry["status"] == "ok"
+    assert stop_calls == 2
+
+
+def test_desktop_operation_store_coordinates_multiple_service_instances(tmp_path) -> None:
+    path = tmp_path / "runtime_operations.json"
+    first_store = RuntimeOperationStore(path)
+    second_store = RuntimeOperationStore(path)
+    operation = {
+        "operation_id": "stop-one",
+        "operation_kind": "desktop_lifecycle",
+        "seat_id": "seat-shared",
+        "action": "stop",
+        "status": "running",
+    }
+
+    reserved, state = first_store.reserve_desktop_operation(operation)
+    busy, busy_state = second_store.reserve_desktop_operation(
+        {**operation, "operation_id": "delete-two", "action": "delete"}
+    )
+    conflict, conflict_state = second_store.reserve_desktop_operation(
+        {**operation, "seat_id": "seat-other", "action": "restart"}
+    )
+
+    assert state == "reserved"
+    assert reserved["operation_id"] == "stop-one"
+    assert busy_state == "seat_busy"
+    assert busy["operation_id"] == "stop-one"
+    assert conflict_state == "id_conflict"
+    assert conflict["operation_id"] == "stop-one"
 
 
 def test_desktop_api_sees_desktop_created_by_external_tool_manager(tmp_path) -> None:

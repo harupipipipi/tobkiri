@@ -879,6 +879,33 @@ POST   /api/desktops/{seat_id}/control/release
 - bodies have size limits.
 - all errors return stable machine codes plus user-safe messages.
 
+### Desktop lifecycle confirmation contract
+
+Stop and delete confirmations are single-submit transactions, not optimistic
+buttons. The webapp creates one operation ID before dispatch, locks every
+conflicting lifecycle control for that seat synchronously, and keeps the modal
+focus trap active until the server outcome is known. Close, Cancel, Escape, and
+backdrop dismissal remain unavailable while the operation is pending because
+desktop lifecycle cancellation is not safe after submission.
+
+The server durably reserves `(operation_id, seat_id, action, principal)` before
+calling the runtime provider. Reservations are serialized across service
+processes. A repeated ID for the same authorized request returns the stored
+result; the same ID for another request fails closed. Desktop operation status
+and replay are visible only to the principal that created the operation, and
+generic runtime cancellation rejects desktop lifecycle operations.
+
+After any response or ambiguous transport failure, the webapp compares the
+requested action with a fresh authoritative desktop list. A stopped or
+externally deleted seat confirms Stop; a destroyed/deleted tombstone or absent
+seat confirms Delete. A terminal provider failure permits Retry with a new
+operation ID, while an ambiguous or completed-but-not-yet-visible outcome keeps
+the original ID so retry cannot duplicate work. Provider exception text is not
+shown in the dialog. Failures keep the affected desktop, action, safe reason,
+operation ID, Retry, and Cancel in the modal. Success is announced only after
+reconciliation, then focus moves to the replacement Start control, an adjacent
+desktop, or the Desktops workspace.
+
 ---
 
 ## 11. Human takeover and AI coordination
@@ -1281,6 +1308,11 @@ Port relevant Linux files by content, with current imports and tests. Do not car
 - typed text not audited,
 - lease replay/expiry/conflict,
 - idempotent action replay does not double click,
+- desktop double activation and key repeat reserve only one operation,
+- close, Cancel, Escape, and conflicting seat actions stay blocked while pending,
+- timeout before reservation and timeout after commit reconcile without duplicate work,
+- stale seat, external stop/delete, terminal retry, operation authorization, and
+  focus/announcement outcomes are covered,
 - rate limits.
 
 ### Provider mocks
@@ -1344,6 +1376,8 @@ Unit tests mock Lima subprocess and state. A release smoke lane on both Apple Si
 - responsive inspector/drawer,
 - object URL cleanup,
 - accessible status/action labels.
+- pending and failed lifecycle confirmation focus traps, announcements, and
+  deterministic return focus.
 
 ## 17.6 Playwright
 

@@ -4,7 +4,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { DesktopInstance } from "../../features/sandboxes/types";
-import { resolveVisibleSelectedDesktop, resolveVisibleSelectedSeatId, shouldShowDesktopList } from "./DesktopMonitorWorkspace";
+import {
+  resolveVisibleSelectedDesktop,
+  resolveVisibleSelectedSeatId,
+  restoreFocusAfterModalUnmount,
+  shouldShowDesktopList,
+} from "./DesktopMonitorWorkspace";
 import { DesktopGrid } from "./DesktopGrid";
 import { keyboardCaptureDecision } from "./DesktopTile";
 
@@ -68,6 +73,58 @@ test("multiple desktop grid keeps compact multi-column sizing", () => {
 
   assert.match(html, /min-\[900px\]:grid-cols-2/);
   assert.doesNotMatch(html, /min-h-\[calc\(100vh-180px\)\]/);
+});
+
+test("pending lifecycle operation disables every conflicting same-seat control", () => {
+  const seat = desktop("seat-locked");
+  const html = renderToStaticMarkup(
+    createElement(DesktopGrid, {
+      desktops: [seat],
+      selectedSeatId: seat.seat_id,
+      density: "comfortable",
+      leaseSeatId: null,
+      actionBusySeatIds: [seat.seat_id],
+      onSelect: noop,
+      onTakeOver: noop,
+      onReturnToAI: noop,
+      onInput: noop,
+      onStart: noop,
+      onRestart: noop,
+      onStop: noop,
+      onDelete: noop,
+    }),
+  );
+
+  for (const action of ["take-over", "snapshot", "restart", "stop", "delete"]) {
+    assert.match(
+      html,
+      new RegExp(`data-desktop-action="${action}" disabled=""`),
+    );
+  }
+});
+
+test("desktop focus restoration waits until after modal cleanup frame", () => {
+  const frames: FrameRequestCallback[] = [];
+  const timers: Array<() => void> = [];
+  let focused = false;
+
+  restoreFocusAfterModalUnmount(
+    () => { focused = true; },
+    (callback) => {
+      frames.push(callback);
+      return 1;
+    },
+    (callback) => {
+      timers.push(callback);
+      return 2;
+    },
+  );
+
+  assert.equal(focused, false);
+  frames[0](0);
+  assert.equal(focused, false);
+  timers[0]();
+  assert.equal(focused, true);
 });
 
 test("desktop grid distinguishes filter-empty from backend-empty", () => {

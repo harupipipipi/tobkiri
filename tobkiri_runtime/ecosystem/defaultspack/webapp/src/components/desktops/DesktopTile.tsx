@@ -302,6 +302,8 @@ export function DesktopTile({
     >
       <button
         type="button"
+        data-desktop-seat-id={desktop.seat_id}
+        data-desktop-action="select"
         onClick={() => onSelect(desktop.seat_id)}
         aria-current={selected ? "page" : undefined}
         className="flex min-h-12 items-center justify-between gap-2 border-b border-zinc-800/70 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500/70"

@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "bb386f36a9101d6357dd9783cc4d8586be25acdb0a1af817a22a893a933152da",
+    "digest": "d7a80e4b4e2700c5504fc520fed2d0a8944dad383589a1a7a81f2fe1e1147b9e",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5711,
-        "sha256": "1b695975cc8bd5eadd0024fefc711cbe2066ba0af1466f531f4bc6a00de878bc"
+        "size": 5970,
+        "sha256": "935eecb82cad418665887114ebf5e776a2ee732778b6cdbe97c298c0807a3106"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -650,8 +650,8 @@
       },
       {
         "path": "src/components/desktops/DesktopControlSurface.tsx",
-        "size": 3617,
-        "sha256": "6c0f14b508f14ce5a46e18e107b4a373860ae1f427f555d2982a056f006cd434"
+        "size": 4245,
+        "sha256": "9a16a9115634f0236bde1ce8f683b929b981fbdcc19d1adcec622b6cc62a533f"
       },
       {
         "path": "src/components/desktops/DesktopCreateDialog.test.tsx",
@@ -665,13 +665,13 @@
       },
       {
         "path": "src/components/desktops/DesktopGrid.test.tsx",
-        "size": 5920,
-        "sha256": "7e5417b08cf9bb70a1e54b6b53e987ffaa9c48f1ac1e02864845af9903c5ffd6"
+        "size": 7233,
+        "sha256": "984d342bca1e452d6cc9e8b020fb3e0c9da56e13911dfd5b00842cbb687ce621"
       },
       {
         "path": "src/components/desktops/DesktopGrid.tsx",
-        "size": 3836,
-        "sha256": "7737485f96706e945ab2526758e60dc8c0674198d81252dca87be02e8767aae4"
+        "size": 3943,
+        "sha256": "cc84f66acd9835f144a1cede56cfbf44178d93f835306ebd259611bec2aac0f3"
       },
       {
         "path": "src/components/desktops/DesktopInspector.test.tsx",
@@ -684,9 +684,19 @@
         "sha256": "28f689345938dd10c2ceb76af836eb53c4c41d0610279f822ce3832d2e3a9bf4"
       },
       {
+        "path": "src/components/desktops/DesktopLifecycleConfirmation.test.tsx",
+        "size": 2096,
+        "sha256": "12dd906e4b3229bffe11633f7b5568fbac7a7438cec999baa7f3cf9f4d966091"
+      },
+      {
+        "path": "src/components/desktops/DesktopLifecycleConfirmation.tsx",
+        "size": 5170,
+        "sha256": "63e0f9e9eda6912b0994e5919906f906ecdea7df11f20a5fc7ed2d80a35dfb15"
+      },
+      {
         "path": "src/components/desktops/DesktopMonitorWorkspace.tsx",
-        "size": 21599,
-        "sha256": "cd9844892e9ba89e13e8c612bf14971f066c55b3750164768934e93e01909c2d"
+        "size": 25212,
+        "sha256": "84e8706cdeb49d14bbf75e7abf8e3b99d9dee9eae51f8e76b5cebd0d3b365fdd"
       },
       {
         "path": "src/components/desktops/DesktopProviderNotice.tsx",
@@ -695,8 +705,8 @@
       },
       {
         "path": "src/components/desktops/DesktopTile.tsx",
-        "size": 15619,
-        "sha256": "eac18201212c1108a62cc986881e4b3e2a524bbe881ec3d050dbcea49c00b94d"
+        "size": 15703,
+        "sha256": "5c10714840515853ea2846ca1d98ff60c23c37b1b819c0f5b59894515c03249d"
       },
       {
         "path": "src/components/desktops/DesktopToolbar.tsx",
@@ -722,6 +732,16 @@
         "path": "src/components/desktops/desktopCoordinates.ts",
         "size": 1903,
         "sha256": "e34b6c3ee2383057de87706d01bbd071cb47da3dcaefafe177471abc2000294e"
+      },
+      {
+        "path": "src/components/desktops/desktopLifecycle.test.ts",
+        "size": 5018,
+        "sha256": "18a28057937b1abe5fdded0e5c76af44e0679a60b5a210d37e6994c745065f53"
+      },
+      {
+        "path": "src/components/desktops/desktopLifecycle.ts",
+        "size": 5969,
+        "sha256": "1a2bf8c6d72e7a8ee46e9ae2e268a65461073f7bd3250b0534a20fce9e2bcce8"
       },
       {
         "path": "src/components/history/ConversationPinStarMenu.tsx",
@@ -925,13 +945,13 @@
       },
       {
         "path": "src/features/sandboxes/api.test.ts",
-        "size": 20250,
-        "sha256": "6d4a02b295a51c9afca889b3ea6833bc03a59b36c917bd5e13d01f650908998e"
+        "size": 21634,
+        "sha256": "dd9723d6066851a8858e63fcb31c50caa31ad3f18e2dcef85b79c1ea3c62445d"
       },
       {
         "path": "src/features/sandboxes/api.ts",
-        "size": 16958,
-        "sha256": "49975ab7fcc762c35c031b8acb28e65a379eb597b4f22ec60a7270a9695ce5d1"
+        "size": 17500,
+        "sha256": "00a9534bccd03186ca7b8cace46da99d04177295e52ef82e430878647e2070db"
       },
       {
         "path": "src/features/sandboxes/runtimeStatus.test.ts",
@@ -945,8 +965,8 @@
       },
       {
         "path": "src/features/sandboxes/types.ts",
-        "size": 11531,
-        "sha256": "ae44aeec0d38d8cca0ab351eea316aad776621bfbca0b4889d4858ca3992d66c"
+        "size": 11658,
+        "sha256": "7188ea62fa44f281ba78004817afd2f44412a120d4b67e8f135320938cd02ca9"
       },
       {
         "path": "src/features/sandboxes/useDesktopControlLease.test.ts",
@@ -975,8 +995,8 @@
       },
       {
         "path": "src/features/sandboxes/useSandboxInstances.ts",
-        "size": 2973,
-        "sha256": "df42603543b4f48a46c5402e120047eeb889b71708490e00d8b3573767cc8b1f"
+        "size": 3461,
+        "sha256": "b5a321e106cf43772273a4686d1ed37f1f61636a75171d0502569d1284401c8e"
       },
       {
         "path": "src/features/sandboxes/useSandboxTemplates.ts",
@@ -1931,7 +1951,7 @@
     ]
   },
   "bundle": {
-    "digest": "4decd363fa8379a939f3cf96fb9a7f2912a02bd0963268479091456f66d8b286",
+    "digest": "a547e0065802914a2ad64f7bb72127a76ce9a26bee6ea9728d477cc3c0a3d71d",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1945,8 +1965,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239075,
-        "sha256": "5808c76f47411c41fc9238bac144d30b2ed02fe8293c3e3f6f47525d4cc14bad"
+        "size": 2244862,
+        "sha256": "dd33f3cc396546d0acd002e80d99a42cdb3dad094f7ef3640ce688d248b724e0"
       },
       {
         "path": "shell-rolldown-runtime.js",
