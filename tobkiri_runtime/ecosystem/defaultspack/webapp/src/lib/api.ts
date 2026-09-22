@@ -819,7 +819,7 @@ export type CodexAppServerModel = {
   display_name?: string;
   is_default?: boolean;
   default_reasoning_effort?: string;
-  supported_reasoning_efforts?: Array<string | { effort?: string; value?: string }>;
+  supported_reasoning_efforts?: Array<string | { reasoningEffort?: string; effort?: string; value?: string }>;
 };
 
 export type CodexAppServerRuntimeStatus = {

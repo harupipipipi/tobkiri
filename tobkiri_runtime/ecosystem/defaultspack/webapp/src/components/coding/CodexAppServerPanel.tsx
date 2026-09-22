@@ -8,7 +8,7 @@ import { ErrorNotice } from "../ErrorNotice";
 function effortsFor(status: CodexAppServerRuntimeStatus | null, modelId: string): string[] {
   const model = status?.models.find((item) => item.id === modelId);
   return (model?.supported_reasoning_efforts ?? []).map((item) => (
-    typeof item === "string" ? item : String(item.effort ?? item.value ?? "")
+    typeof item === "string" ? item : String(item.reasoningEffort ?? item.effort ?? item.value ?? "")
   )).filter(Boolean);
 }
 
