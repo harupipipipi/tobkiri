@@ -13,6 +13,17 @@ const SOURCE_FILES = [
   "vite.config.ts",
 ];
 const GENERATED_SHELL_ASSET = /^shell-.*\.(?:js|css)$/;
+const PORTABLE_SOURCE_TEXT_EXTENSIONS = new Set([
+  ".css",
+  ".html",
+  ".js",
+  ".json",
+  ".md",
+  ".mjs",
+  ".svg",
+  ".ts",
+  ".tsx",
+]);
 
 function sha256(payload) {
   return crypto.createHash("sha256").update(payload).digest("hex");
@@ -44,10 +55,18 @@ function relativeFiles(root, relativePaths) {
   return [...files].sort();
 }
 
-function snapshot(root, files) {
+function sourcePayload(filePath) {
+  const payload = fs.readFileSync(filePath);
+  if (!PORTABLE_SOURCE_TEXT_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
+    return payload;
+  }
+  return Buffer.from(payload.toString("utf8").replace(/\r\n/g, "\n"), "utf8");
+}
+
+function snapshot(root, files, readPayload = fs.readFileSync) {
   const entries = files
     .map((filePath) => {
-      const payload = fs.readFileSync(filePath);
+      const payload = readPayload(filePath);
       return {
         path: path.relative(root, filePath).split(path.sep).join("/"),
         size: payload.length,
@@ -67,9 +86,11 @@ function sourceSnapshot(webappRoot) {
   const recursiveFiles = SOURCE_DIRECTORIES.flatMap((directory) =>
     regularFiles(path.join(webappRoot, directory)),
   );
-  return snapshot(webappRoot, [
-    ...new Set([...recursiveFiles, ...relativeFiles(webappRoot, SOURCE_FILES)]),
-  ]);
+  return snapshot(
+    webappRoot,
+    [...new Set([...recursiveFiles, ...relativeFiles(webappRoot, SOURCE_FILES)])],
+    sourcePayload,
+  );
 }
 
 function bundleSnapshot(uiDir) {

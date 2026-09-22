@@ -80,3 +80,41 @@ def test_shell_manifest_rejects_source_and_bundle_drift(tmp_path: Path) -> None:
     bundle_drift = _run_node(verify_expression, webapp_root=webapp_root, ui_dir=ui_dir)
     assert bundle_drift.returncode != 0
     assert "source/bundle drift" in bundle_drift.stderr
+
+
+def test_shell_manifest_normalizes_source_newlines_but_not_bundle_bytes(
+    tmp_path: Path,
+) -> None:
+    webapp_root, ui_dir = _minimal_bundle(tmp_path)
+    module = json.dumps(str(MANIFEST_MODULE))
+    build_expression = (
+        f"import {{ buildShellBundleManifest }} from {module}; "
+        "console.log(JSON.stringify(buildShellBundleManifest("
+        "{webappRoot: process.argv[1], uiDir: process.argv[2]})));"
+    )
+
+    lf_result = _run_node(
+        build_expression, webapp_root=webapp_root, ui_dir=ui_dir
+    )
+    assert lf_result.returncode == 0, lf_result.stderr
+    lf_manifest = json.loads(lf_result.stdout)
+
+    (webapp_root / "src/main.tsx").write_bytes(
+        b"export const current = 'v1';\r\n"
+    )
+    crlf_result = _run_node(
+        build_expression, webapp_root=webapp_root, ui_dir=ui_dir
+    )
+    assert crlf_result.returncode == 0, crlf_result.stderr
+    crlf_manifest = json.loads(crlf_result.stdout)
+
+    assert crlf_manifest["source"] == lf_manifest["source"]
+
+    (ui_dir / "shell-app.js").write_bytes(b"shell-app.js\r\n")
+    changed_bundle_result = _run_node(
+        build_expression, webapp_root=webapp_root, ui_dir=ui_dir
+    )
+    assert changed_bundle_result.returncode == 0, changed_bundle_result.stderr
+    changed_bundle = json.loads(changed_bundle_result.stdout)
+
+    assert changed_bundle["bundle"] != lf_manifest["bundle"]
