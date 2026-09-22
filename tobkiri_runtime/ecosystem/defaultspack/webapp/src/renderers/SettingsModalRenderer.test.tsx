@@ -114,6 +114,7 @@ test("settings AI surface launches the normal chat with the Settings skill", () 
   assert.match(html, /AIと設定する/);
   assert.match(html, /Settings Modeを開く/);
   assert.match(html, /@Settings/);
+  assert.match(html, /aria-label="Adaptive Runtimeを開く"/);
   assert.doesNotMatch(html, /設定について相談する/);
   assert.doesNotMatch(html, /設定ホーム/);
 });

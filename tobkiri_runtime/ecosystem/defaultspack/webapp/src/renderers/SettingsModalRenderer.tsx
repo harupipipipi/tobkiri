@@ -3619,6 +3619,14 @@ export function SettingsModalRenderer({
     }
     onClose();
   }, [hasUnconfirmedSettingsChanges, onClose]);
+  const openAdaptiveRuntime = useCallback(() => {
+    if (hasUnconfirmedSettingsChanges) {
+      setPlacementMenuOpen(false);
+      setCloseConfirmationOpen(true);
+      return;
+    }
+    window.location.assign("/adaptive");
+  }, [hasUnconfirmedSettingsChanges]);
   const sidebarSettings = settingsValues.sidebar ?? {};
   const controlCenterSections = useMemo(
     () => buildControlCenterSections(settingsSections, locale),
@@ -4951,6 +4959,15 @@ export function SettingsModalRenderer({
                 </h2>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openAdaptiveRuntime}
+                  className="rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-3 py-2 text-xs font-medium text-cyan-100 transition-colors hover:border-cyan-300/50 hover:bg-cyan-400/15"
+                  aria-label={localizedCopy("Open Adaptive Runtime", "Adaptive Runtimeを開く")}
+                  title={localizedCopy("Open Adaptive Runtime", "Adaptive Runtimeを開く")}
+                >
+                  Adaptive Runtime
+                </button>
                 <button
                   type="button"
                   onClick={() => setSettingsDisplayMode((current) => current === "standard" ? "advanced" : current === "advanced" ? "developer" : "standard")}
