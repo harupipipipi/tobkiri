@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Callable, Mapping
 
 from core_runtime.di_container import get_container
@@ -241,6 +242,62 @@ def git_publish_snapshot(
         "expected_remote_url_hash": str(snapshot["expected_remote_url_hash"]),
         "expected_mount_revision": mount_revision,
     }
+
+
+def git_publish_snapshot(
+    selected_workspace_id: str,
+    *,
+    remote: str = "origin",
+    branch: str | None = None,
+) -> dict[str, Any]:
+    """Read the exact repository, branch, and remote used by a Git publish."""
+
+    remote_result = invoke_coding_contract(
+        GIT_READ,
+        "remote",
+        {"workspace_id": selected_workspace_id},
+    )
+    remote_url = _git_remote_url(str(remote_result.get("output") or ""), remote)
+    selected_branch = str(branch or "").strip()
+    if not selected_branch:
+        branch_result = invoke_coding_contract(
+            GIT_READ,
+            "branch",
+            {"workspace_id": selected_workspace_id},
+        )
+        selected_branch = _git_current_branch(
+            str(branch_result.get("output") or "")
+        )
+    if not selected_branch:
+        raise ValueError("branch is required")
+    return {
+        **git_snapshot(selected_workspace_id),
+        "remote": remote,
+        "branch": selected_branch,
+        "expected_remote_url_hash": hashlib.sha256(
+            remote_url.encode("utf-8")
+        ).hexdigest(),
+    }
+
+
+def _git_remote_url(output: str, remote: str) -> str:
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[0] == remote and "(push)" in line:
+            return fields[1]
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 2 and fields[0] == remote:
+            return fields[1]
+    raise ValueError("Git remote is unavailable")
+
+
+def _git_current_branch(output: str) -> str:
+    for line in output.splitlines():
+        marker, _, branch = line.partition("\t")
+        if marker.strip() == "*" and branch.strip():
+            return branch.strip()
+    return ""
 
 
 def authorize_legacy_coding_operation(

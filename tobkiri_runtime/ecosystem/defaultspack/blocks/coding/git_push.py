@@ -5,7 +5,6 @@ from blocks.coding._approval import approval_required
 from blocks.coding._workspace import canonical_mutation_guard
 from domain.coding.contract_adapter import (
     GIT_PUBLISH,
-    GIT_READ,
     authorize_legacy_coding_operation,
     git_publish_snapshot,
     invoke_coding_contract,

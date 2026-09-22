@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, cast
+from typing import Any, Callable, Mapping, cast
 
 from core_runtime.operating_profile import (
     AgentExecutionMode,
@@ -49,7 +49,7 @@ class _MissingAuthorityReviewConsumer:
 
 def enforce_finalization_review(
     action: FinalizationAction,
-    artifact: Mapping[str, Any],
+    artifact: Mapping[str, Any] | Callable[[], Mapping[str, Any]],
     context: dict[str, Any] | None,
     *,
     plan_store: OperatingProfilePlanStore | None = None,
@@ -106,7 +106,7 @@ def enforce_finalization_review(
         if isinstance(profile, OperatingProfile)
         else dict(profile)
     )
-    artifact_payload = dict(artifact)
+    artifact_payload = dict(artifact() if callable(artifact) else artifact)
     artifact_digest = stable_sha256(artifact_payload)
     artifact_revision = _artifact_revision(artifact_payload, artifact_digest)
     gate_context = ReviewGateContext(

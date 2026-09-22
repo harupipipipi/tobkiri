@@ -188,6 +188,67 @@ def test_runtime_reloads_activated_review_settings_after_restart(tmp_path):
     assert enforcement.decision.request.policy.reviewer_profile == "reviewer_agent"
 
 
+def test_runtime_does_not_resolve_artifact_without_an_active_profile():
+    resolved: list[bool] = []
+
+    enforcement = enforce_finalization_review(
+        FinalizationAction.COMMIT,
+        lambda: resolved.append(True) or {"expected_head": "unexpected"},
+        _context(AgentExecutionMode.MODE_AGENT),
+        plan_store=_PlanStore(None),
+    )
+
+    assert enforcement is None
+    assert resolved == []
+
+
+@pytest.mark.parametrize(
+    ("action", "snapshot_name"),
+    [
+        (FinalizationAction.COMMIT, "git_snapshot"),
+        (FinalizationAction.PUSH, "git_publish_snapshot"),
+    ],
+)
+def test_git_review_artifact_uses_server_snapshot_and_forwards_it_to_effect(
+    monkeypatch,
+    action,
+    snapshot_name,
+):
+    from domain.coding import contract_adapter
+    from domain.tool.executor import _bind_finalization_artifact
+
+    snapshot = {
+        "expected_head": "server-head",
+        "expected_tree": "server-tree",
+        "expected_status_hash": "server-status",
+        "expected_mount_revision": 9,
+    }
+    if action is FinalizationAction.PUSH:
+        snapshot.update(
+            {
+                "remote": "origin",
+                "branch": "main",
+                "expected_remote_url_hash": "server-remote",
+            }
+        )
+    monkeypatch.setattr(
+        contract_adapter,
+        snapshot_name,
+        lambda *_args, **_kwargs: dict(snapshot),
+    )
+    arguments = {
+        "workspace_id": "workspace-1",
+        "expected_head": "caller-spoof",
+    }
+
+    artifact = _bind_finalization_artifact(action, arguments)
+
+    assert artifact["expected_head"] == "server-head"
+    assert arguments["expected_head"] == "server-head"
+    if action is FinalizationAction.PUSH:
+        assert artifact["expected_remote_url_hash"] == "server-remote"
+
+
 def test_external_delivery_stops_before_provider_when_review_is_missing(
     monkeypatch,
 ):

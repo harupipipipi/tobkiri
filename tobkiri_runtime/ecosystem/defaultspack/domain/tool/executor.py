@@ -3585,13 +3585,39 @@ def _enforce_finalization_review(tool_def, request, context):
 
     return enforce_finalization_review(
         action,
-        {
+        lambda: {
             "tool_name": _tool_approval_tool_name(tool_def),
             "qualified_name": str((request or {}).get("qualified_name") or ""),
-            "arguments": arguments,
+            "arguments": _bind_finalization_artifact(action, arguments),
         },
         context,
     )
+
+
+def _bind_finalization_artifact(action, arguments):
+    """Bind Git reviews to a server-read snapshot and forward it to execution."""
+
+    from core_runtime.operating_profile import FinalizationAction
+
+    if action not in {FinalizationAction.COMMIT, FinalizationAction.PUSH}:
+        return dict(arguments)
+    selected_workspace_id = str(arguments.get("workspace_id") or "").strip()
+    if not selected_workspace_id:
+        raise ValueError("workspace_id is required for reviewed Git actions")
+    from domain.coding.contract_adapter import git_publish_snapshot, git_snapshot
+
+    if action is FinalizationAction.PUSH:
+        snapshot = git_publish_snapshot(
+            selected_workspace_id,
+            remote=str(arguments.get("remote") or "origin"),
+            branch=(
+                str(arguments.get("branch")) if arguments.get("branch") else None
+            ),
+        )
+    else:
+        snapshot = git_snapshot(selected_workspace_id)
+    arguments.update(snapshot)
+    return dict(arguments)
 
 
 def _finalization_action_for_tool(tool_def):
