@@ -1260,7 +1260,12 @@ class ActivationStore:
                 # commit below still fails closed: reservation fencing, the
                 # journaled writes, and the pointer publish all follow these
                 # exact verifications.
-                self._verify_selected_artifact(profile)
+                self._verify_selected_artifact(
+                    profile,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
                 if any(value is not None for value in expected_predecessor) and (
                     self._state.exists("active.json")
                 ):
@@ -1593,7 +1598,12 @@ class ActivationStore:
         can never overwrite a newer commit or a moved journal.
         """
 
-        self._verify_selected_artifact(republish.profile)
+        self._verify_selected_artifact(
+            republish.profile,
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
+        )
         with self._activation_lock():
             if not self._state.exists("pending.json"):
                 return
@@ -1982,7 +1992,12 @@ class ActivationStore:
                     raise ProfileResolutionDenied(
                         "activation confirmation was replayed"
                     )
-                self._verify_selected_artifact(profile)
+                self._verify_selected_artifact(
+                    profile,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
                 with self._activation_lock():
                     current = self._load_active_snapshot_locked(
                         verify_selected_artifact=False
