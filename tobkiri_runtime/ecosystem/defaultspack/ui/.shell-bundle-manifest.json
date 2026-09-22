@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "bb386f36a9101d6357dd9783cc4d8586be25acdb0a1af817a22a893a933152da",
+    "digest": "63de433e719cdd4cf8028c9a9075b6fd9f4c005fb436d01a16eff995c119de16",
     "entries": [
       {
         "path": "index.html",
@@ -215,8 +215,8 @@
       },
       {
         "path": "src/ambient/ambientApprovalBoundary.test.ts",
-        "size": 24406,
-        "sha256": "8b7c9ac6697981567abc079cd7d4bcd22acfc216f7490240e2079aa5f4fc7c21"
+        "size": 24567,
+        "sha256": "f289e2f9b1f1b1881cc551aa0c5e6aa9438e77716e237fe36aa1aef8dcccf2eb"
       },
       {
         "path": "src/ambient/ambientConversationCompletion.ts",
@@ -925,8 +925,8 @@
       },
       {
         "path": "src/features/sandboxes/api.test.ts",
-        "size": 20250,
-        "sha256": "6d4a02b295a51c9afca889b3ea6833bc03a59b36c917bd5e13d01f650908998e"
+        "size": 20364,
+        "sha256": "41c2fe04251bf79fb02e9895e9053114b22719724d937fcf9e66e41164e87d5a"
       },
       {
         "path": "src/features/sandboxes/api.ts",
@@ -1125,13 +1125,13 @@
       },
       {
         "path": "src/lib/api.test.ts",
-        "size": 148653,
-        "sha256": "839ec079453ad41fcbb4ca9f268e9d88186cb004738d58aa3e58e5cd37d1bdc4"
+        "size": 155057,
+        "sha256": "925e9063ee307f84048830bb45a1da6e1296525ac2f826ad211659529b452641"
       },
       {
         "path": "src/lib/api.ts",
-        "size": 202385,
-        "sha256": "fbfd0568db8734e3e9bedb658445f9e6097c8dae7b4188bcdc2dd8c3fbd406a0"
+        "size": 200205,
+        "sha256": "1b88fade20ef1be4c903d06294c5d350b3ebd37cbbcb328edb4977297f3b14a2"
       },
       {
         "path": "src/lib/appLoadFailures.test.ts",
@@ -1350,13 +1350,13 @@
       },
       {
         "path": "src/lib/crashRecovery.test.ts",
-        "size": 1843,
-        "sha256": "177b494d15794308d049389165ee80b4588f50073ebdb74cb9df5d615fe994ac"
+        "size": 1831,
+        "sha256": "adb94c8c62ec979e5b663b5cdf320997ca183c7434c9fca50a0d98d0ebb82c27"
       },
       {
         "path": "src/lib/crashRecovery.ts",
-        "size": 1870,
-        "sha256": "737b59fd7984b731fbd7f3bb40ce31253e8c9aac6ec526e4f2b833870edd50f6"
+        "size": 1913,
+        "sha256": "b3fc25ba93fff5470c1c98956e9cd38ff41049a644a9859602b61068242bcafd"
       },
       {
         "path": "src/lib/defaultspackCssPolicy.test.ts",
@@ -1365,8 +1365,8 @@
       },
       {
         "path": "src/lib/defaultspackLocalAuth.ts",
-        "size": 1628,
-        "sha256": "da05737e03a43fed7ac1faa21981652468c8e4ef1628bebac2525f7720d0dbcc"
+        "size": 11589,
+        "sha256": "fafa1403b07f98cfb7327acdbb8ee9f771d894d3b3fab0582b35c68a02b45947"
       },
       {
         "path": "src/lib/desktopApproval.ts",
@@ -1931,7 +1931,7 @@
     ]
   },
   "bundle": {
-    "digest": "4decd363fa8379a939f3cf96fb9a7f2912a02bd0963268479091456f66d8b286",
+    "digest": "5cd4a668a0c5e4b0074cafcf89e9057c965a9906d501a6527ac148fe925f2b2e",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1940,13 +1940,13 @@
       },
       {
         "path": "shell-app.js",
-        "size": 25493,
-        "sha256": "565a747557049cce76982c7082c52853bc505ca4de0d97196fe2a122e5d8cb60"
+        "size": 25524,
+        "sha256": "1a08f8b436c44557906d30a400db8ea71f8b55e5c08d294103f1258d2c6f4383"
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239075,
-        "sha256": "5808c76f47411c41fc9238bac144d30b2ed02fe8293c3e3f6f47525d4cc14bad"
+        "size": 2243265,
+        "sha256": "405c56d54c9a4274ffcf797808d07871478972a7bf8c5c5b65af1d98d53b516c"
       },
       {
         "path": "shell-rolldown-runtime.js",
