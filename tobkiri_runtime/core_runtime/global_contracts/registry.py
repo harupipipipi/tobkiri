@@ -239,7 +239,7 @@ def _order_chain(
 ) -> tuple[tuple[ProviderDescriptor, ...], str | None]:
     """Topologically order a chain or return an actionable conflict."""
     by_id = {provider.provider_instance_id: provider for provider in providers}
-    outgoing = {provider_id: set() for provider_id in by_id}
+    outgoing: dict[str, set[str]] = {provider_id: set() for provider_id in by_id}
     incoming = {provider_id: 0 for provider_id in by_id}
     for provider in providers:
         for target in provider.before:
@@ -268,4 +268,3 @@ def _order_chain(
         cycle = sorted(provider_id for provider_id, count in incoming.items() if count)
         return (), "chain dependency cycle: " + ", ".join(cycle)
     return tuple(result), None
-

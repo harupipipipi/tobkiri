@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 
+import { ErrorNotice } from "../../components/ErrorNotice";
 import { cn } from "../../lib/cn";
 import { normalizeLocale, type LocaleSetting } from "../../lib/i18n";
 import type { SettingChangeHandler, SettingsLoadState, SettingsSaveState } from "../types";
@@ -343,17 +344,23 @@ export function ProfileSettingsPanel({
   }
 
   if (loadState.status === "error" && workspace.profiles.length === 0) {
+    const loadError = loadState.message || copyText(
+      "Existing settings are preserved. Retry after the backend reconnects.",
+      "既存設定は保持されています。Backendの再接続後に再試行してください。",
+    );
     return (
-      <div className="border border-red-400/25 bg-red-400/[0.06] p-5" role="alert">
-        <div className="flex items-start gap-3">
-          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-300" aria-hidden="true" />
-          <div className="min-w-0">
-            <h4 className="text-sm font-medium text-red-100">{copyText("Profiles unavailable", "プロファイルを取得できません")}</h4>
-            <p className="mt-1 text-xs leading-5 text-red-100/70">{loadState.message || copyText("Existing settings are preserved. Retry after the backend reconnects.", "既存設定は保持されています。Backendの再接続後に再試行してください。")}</p>
-            {onRetryLoad ? <button type="button" onClick={onRetryLoad} className="mt-3 inline-flex items-center gap-1.5 border border-red-300/30 px-2.5 py-1.5 text-xs font-medium text-red-100 hover:bg-red-300/10"><RefreshCw size={12} aria-hidden="true" />{copyText("Retry", "再試行")}</button> : null}
-          </div>
-        </div>
-      </div>
+      <ErrorNotice
+        className="p-5 text-xs leading-5"
+        copyLabel={copyText("Copy profile load error", "プロファイル読み込みエラーをコピー")}
+        copyText={`${copyText("Profiles unavailable", "プロファイルを取得できません")}\n\n${loadError}`}
+        message={loadError}
+        messageClassName="mt-1 text-red-100/70"
+        title={copyText("Profiles unavailable", "プロファイルを取得できません")}
+        titleClassName="text-sm text-red-100"
+        trailing={onRetryLoad ? (
+          <button type="button" onClick={onRetryLoad} className="mt-3 inline-flex items-center gap-1.5 border border-red-300/30 px-2.5 py-1.5 text-xs font-medium text-red-100 hover:bg-red-300/10"><RefreshCw size={12} aria-hidden="true" />{copyText("Retry", "再試行")}</button>
+        ) : undefined}
+      />
     );
   }
 
@@ -402,31 +409,26 @@ export function ProfileSettingsPanel({
         </div>
       ) : null}
       {loadState.status === "error" && workspace.profiles.length > 0 ? (
-        <div className="flex items-start justify-between gap-3 border-l-2 border-amber-300 bg-amber-300/[0.05] px-3 py-2.5 text-xs leading-5 text-amber-100" role="alert">
-          <span>{copyText("Showing the last known profile data because the model registry refresh failed.", "モデルレジストリの再取得に失敗したため、直前に確認できたプロファイル情報を表示しています。")}</span>
-          {onRetryLoad ? <button type="button" onClick={onRetryLoad} className="shrink-0 border border-amber-200/25 px-2 py-1 font-medium hover:bg-amber-200/10">{copyText("Retry", "再試行")}</button> : null}
-        </div>
+        <ErrorNotice
+          className="rounded-none border-y-0 border-r-0 border-l-2 px-3 py-2.5 text-xs leading-5"
+          copyLabel={copyText("Copy profile refresh error", "プロファイル更新エラーをコピー")}
+          message={copyText("Showing the last known profile data because the model registry refresh failed.", "モデルレジストリの再取得に失敗したため、直前に確認できたプロファイル情報を表示しています。")}
+          severity="warning"
+          trailing={onRetryLoad ? <button type="button" onClick={onRetryLoad} className="shrink-0 border border-amber-200/25 px-2 py-1 font-medium hover:bg-amber-200/10">{copyText("Retry", "再試行")}</button> : undefined}
+        />
       ) : null}
       <ModelRoutingOverview workspace={workspace} locale={locale} onOpenSection={onOpenSection} />
 
-      {profileSavePending || profileSaveFailed ? (
-        <div
-          className={cn(
-            "flex items-start gap-2 border-l-2 px-3 py-2.5 text-xs leading-5",
-            profileSaveFailed
-              ? "border-red-400 bg-red-400/[0.06] text-red-100"
-              : "border-amber-300 bg-amber-300/[0.05] text-amber-100",
-          )}
-          role={profileSaveFailed ? "alert" : "status"}
-        >
-          {profileSaveFailed
-            ? <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-            : <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-          <span>
-            {profileSaveFailed
-              ? copyText("Profile changes remain local and unconfirmed. Use Retry save in the Settings header after resolving the connection or validation error.", "プロファイルの変更はこの画面に保持されていますが、Backendでは未確定です。接続または入力エラーを解消し、Settings上部の「保存を再試行」を使用してください。")
-              : copyText("Saving profile changes and validating the resulting route…", "プロファイル変更を保存し、変更後の経路を検証しています…")}
-          </span>
+      {profileSaveFailed ? (
+        <ErrorNotice
+          className="rounded-none border-y-0 border-r-0 border-l-2 px-3 py-2.5 text-xs leading-5"
+          copyLabel={copyText("Copy profile save error", "プロファイル保存エラーをコピー")}
+          message={copyText("Profile changes remain local and unconfirmed. Use Retry save in the Settings header after resolving the connection or validation error.", "プロファイルの変更はこの画面に保持されていますが、Backendでは未確定です。接続または入力エラーを解消し、Settings上部の「保存を再試行」を使用してください。")}
+        />
+      ) : profileSavePending ? (
+        <div className="flex items-start gap-2 border-l-2 border-amber-300 bg-amber-300/[0.05] px-3 py-2.5 text-xs leading-5 text-amber-100" role="status">
+          <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          <span>{copyText("Saving profile changes and validating the resulting route…", "プロファイル変更を保存し、変更後の経路を検証しています…")}</span>
         </div>
       ) : null}
 
@@ -692,7 +694,15 @@ export function ProfileSettingsPanel({
             </div>
           )}
 
-          {localMessage ? <p id={operationErrorId} className="mt-3 text-xs text-red-300" role="alert">{localMessage}</p> : null}
+          {localMessage ? (
+            <div className="mt-3" id={operationErrorId}>
+              <ErrorNotice
+                className="px-3 py-2 text-xs"
+                copyLabel={copyText("Copy profile operation error", "プロファイル操作エラーをコピー")}
+                message={localMessage}
+              />
+            </div>
+          ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={commitEditor} disabled={actionBusy} className={cn("rounded-md border px-3 py-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50", editMode === "delete" ? "border-red-300/35 bg-red-400/[0.1] text-red-100 hover:bg-red-400/[0.16]" : "border-indigo-300/35 bg-indigo-400/[0.1] text-indigo-100 hover:bg-indigo-400/[0.16]")}>
               {actionBusy ? copyText("Saving…", "保存中…") : editMode === "delete" ? copyText("Delete this profile", "このプロファイルを削除") : editMode === "duplicate" ? copyText("Create duplicate", "複製を作成") : editMode === "rename" ? copyText("Save new name", "新しい名前を保存") : copyText("Create profile", "プロファイルを作成")}

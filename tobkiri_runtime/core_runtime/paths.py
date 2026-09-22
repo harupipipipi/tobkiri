@@ -192,7 +192,7 @@ def discover_pack_locations(
 
         for pack_dir in candidates:
             eco_json, pack_subdir = find_ecosystem_json(pack_dir)
-            if eco_json is None:
+            if eco_json is None or pack_subdir is None:
                 continue
             pack_id = pack_dir.name  # canonical = ディレクトリ名
             if pack_id not in found:
@@ -220,7 +220,7 @@ def discover_pack_locations(
 
         for pack_dir in legacy_candidates:
             eco_json, pack_subdir = find_ecosystem_json(pack_dir)
-            if eco_json is None:
+            if eco_json is None or pack_subdir is None:
                 continue
             pack_id = pack_dir.name
             if pack_id not in found:

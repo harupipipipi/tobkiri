@@ -2,6 +2,7 @@
 
 from blocks._common import error, ok
 from blocks.coding._approval import approval_required
+from blocks.coding._workspace import canonical_mutation_guard
 from domain.coding.contract_adapter import (
     SHELL_EXECUTE,
     SHELL_INSPECT,
@@ -57,6 +58,7 @@ def run(input_data, context=None):
             input_data=input_data,
             context=context,
             selected_workspace_id=selected_workspace_id,
+            mutation_guard=canonical_mutation_guard,
             allow_without_approval=not bool(risk.get("approval_required")),
         )
         if not authorization.get("authorized"):

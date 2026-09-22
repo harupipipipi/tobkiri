@@ -49,10 +49,10 @@ class SharedDictSnapshot:
     
     DEFAULT_PATH = "user_data/settings/shared_dict/snapshot.json"
     
-    def __init__(self, snapshot_path: str = None):
+    def __init__(self, snapshot_path: str | None = None):
         self._path = Path(snapshot_path) if snapshot_path else Path(self.DEFAULT_PATH)
         self._lock = threading.RLock()
-        self._data: Dict[str, Any] = None
+        self._data: Dict[str, Any] = self._create_empty()
         self._load()
     
     def _now_ts(self) -> str:
@@ -119,8 +119,8 @@ class SharedDictSnapshot:
         namespace: str,
         token: str,
         value: str,
-        conditions: Dict[str, Any] = None,
-        provenance: Dict[str, Any] = None
+        conditions: Dict[str, Any] | None = None,
+        provenance: Dict[str, Any] | None = None
     ) -> bool:
         """
         ルールを追加
@@ -210,7 +210,7 @@ def get_shared_dict_snapshot() -> SharedDictSnapshot:
     return _global_snapshot
 
 
-def reset_shared_dict_snapshot(snapshot_path: str = None) -> SharedDictSnapshot:
+def reset_shared_dict_snapshot(snapshot_path: str | None = None) -> SharedDictSnapshot:
     """SharedDictSnapshotをリセット（テスト用）"""
     global _global_snapshot
     with _snapshot_lock:

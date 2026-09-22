@@ -1,29 +1,23 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {
-    "id": "rumi.tool_sandbox_executor",
-    "version": "1.0.0",
-    "kind": "adapter",
-    "display_name": "Rumi Tool Sandbox Executor",
-    "description": "Docker-calling-convention-only tool executor."
-  },
   "contracts": {
     "provides": [
       {
+        "cardinality": "many",
+        "failure": "fail_closed",
         "id": "rumi.service.tool.execute.v1",
-        "version": "1.0.0",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "sandbox-runtime",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
         "provider_instance_id": "tool-executor.sandbox",
+        "required_capabilities": [
+          "tool.execute"
+        ],
         "routing_keys": [
           "sandbox"
         ],
-        "cardinality": "many",
-        "security": "restricted",
-        "failure": "fail_closed",
-        "lifecycle": {
-          "introduced": "1.0.0",
-          "deprecated": false,
-          "data_owner": "sandbox-runtime"
-        },
         "schemas": {
           "input": {
             "type": "object"
@@ -32,55 +26,128 @@
             "type": "object"
           }
         },
-        "isolation": "in_process",
-        "required_capabilities": [
-          "tool.execute"
-        ]
+        "security": "restricted",
+        "version": "1.0.0"
       }
     ],
     "requires": []
   },
   "entrypoints": [
     {
-      "id": "tool-sandbox-execute",
+      "artifact_hash": "sha256:5f36220d03bdd6a8ef2381cc21e450309315e912f6e57fddf6f592bea3ae0350",
       "contract_id": "rumi.service.tool.execute.v1",
+      "id": "tool-sandbox-execute",
       "loader": "python",
       "module": "ecosystem.rumi_tool_sandbox_executor_pack.runtime.executor",
-      "symbol": "create_execute_operation",
-      "artifact_hash": "sha256:5f36220d03bdd6a8ef2381cc21e450309315e912f6e57fddf6f592bea3ae0350"
+      "symbol": "create_execute_operation"
     }
   ],
-  "resources": [],
-  "storage": [],
-  "permissions": [
-    {
-      "capability": "tool.execute",
-      "access": "execute",
-      "approval_required": false
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.tool.execute.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Docker-calling-convention-only tool executor.",
+        "display_name": "Rumi Tool Sandbox Executor",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:401dbc8f2cd19d20e3ced38e468139430755a3ae8e935d17237f7957e3c9784d",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:7f02e4619f61e4a8bc052cc94f6c494662c9203b5d93f713f82cf57035cdfc71"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "sandbox_tool_adapter"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "calling_convention": "python_docker",
+            "host_downgrade": false
+          }
+        },
+        "pack_id": "rumi_tool_sandbox_executor_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_sandbox_executor_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_sandbox_executor_pack:1.0.0",
+          "content_hash": "sha256:651498c5fadbda3e62dea1b80a5a3d540ae768fcd7e902ae80c14fc63bf39eee",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.execute"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_sandbox_executor_pack"
+    },
+    "rumi.tool_executor.boundary": {
+      "calling_convention": "python_docker",
+      "execution_kind": "sandbox",
+      "host_downgrade": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_sandbox_executor_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:7f02e4619f61e4a8bc052cc94f6c494662c9203b5d93f713f82cf57035cdfc71"
     }
-  ],
-  "provenance": {
-    "content_hash": "sha256:f4e41e2d97a331d56685bb102f2c9afea1828dda5d136038a22911571747a339",
-    "build_identity": "rumi-tool-sandbox-executor-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
   },
   "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
     "from": [
       "defaultspack.domain.tool.executor.python_docker",
       "rumi_sandbox_runtime_pack"
     ],
-    "compatibility_aliases": [],
-    "compatibility_projection": "none",
     "removal_wave": 10,
-    "sunset_at": "2027-12-31",
-    "rollback": "Remove this adapter; sandbox runtime services remain independently available."
+    "rollback": "Remove this adapter; sandbox runtime services remain independently available.",
+    "sunset_at": "2027-12-31"
   },
-  "extensions": {
-    "rumi.tool_executor.boundary": {
-      "execution_kind": "sandbox",
-      "calling_convention": "python_docker",
-      "host_downgrade": false
+  "pack": {
+    "description": "Docker-calling-convention-only tool executor.",
+    "display_name": "Rumi Tool Sandbox Executor",
+    "id": "rumi.tool_sandbox_executor",
+    "kind": "adapter",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.execute"
     }
-  }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_sandbox_executor_pack:1.0.0",
+    "content_hash": "sha256:651498c5fadbda3e62dea1b80a5a3d540ae768fcd7e902ae80c14fc63bf39eee",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }

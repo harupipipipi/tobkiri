@@ -1,9 +1,9 @@
 {
-  "version": "rumi.pack-artifacts.v1",
   "artifacts": [
     {
       "path": "runtime/guards.py",
       "sha256": "sha256:3c9f17067f3e7f313bee9e243ebb98586171baa2185ffed5f9b65c0ea6027194"
     }
-  ]
+  ],
+  "version": "rumi.pack-artifacts.v1"
 }

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from domain.ui_compiler import UIAgentResult, UIAgentTask
+from domain.tool.schema_adapter import list_or_empty, mapping_or_empty
 
 from .project_writer import list_relative_files, write_json, write_text
 
@@ -176,14 +177,14 @@ class FakeUIAgentBackend:
         write_json(output_dir / "report.json", {"status": "pass", "score": round(0.08 + variant_index * 0.03, 3)})
 
     def _write_component(self, task: UIAgentTask, output_dir: Path) -> None:
-        contract = task.metadata.get("contract") if isinstance(task.metadata.get("contract"), dict) else {}
+        contract = mapping_or_empty(task.metadata.get("contract"))
         node_id = str(contract.get("id") or task.node_id)
         candidate_id = task.candidate_id
         fail_mode = str(task.metadata.get("fakeFailMode") or "")
-        required_states = list(contract.get("requiredStates") if isinstance(contract.get("requiredStates"), list) else [])
-        allowed_primitives = list(contract.get("allowedPrimitives") if isinstance(contract.get("allowedPrimitives"), list) else [])
+        required_states = list_or_empty(contract.get("requiredStates"))
+        allowed_primitives = list_or_empty(contract.get("allowedPrimitives"))
         visible_budget = int(contract.get("visibleActionBudget") or 3)
-        slot_mappings = list(contract.get("slotMappings") if isinstance(contract.get("slotMappings"), list) else [])
+        slot_mappings = list_or_empty(contract.get("slotMappings"))
         action_count = visible_budget + 2 if fail_mode == "action-pressure" else max(1, min(visible_budget, 2))
         states = required_states if fail_mode != "missing-state" else required_states[:1]
         design_intent = {

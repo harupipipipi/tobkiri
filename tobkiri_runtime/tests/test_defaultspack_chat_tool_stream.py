@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+import pytest
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -9,6 +11,38 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures(
+    "defaultspack_conversation_owner", "defaultspack_v4_tool_dispatch"
+)
+
+
+@pytest.mark.parametrize("helper_name", ["_engine_events", "_fallback_send"])
+@pytest.mark.parametrize("bound", [False, True])
+def test_stream_helpers_forward_only_explicit_settings_owner(
+    tmp_path, monkeypatch, helper_name, bound,
+):
+    from blocks.chat import stream as stream_module
+
+    owner = FrontendSettingsStore(tmp_path / "settings.json") if bound else None
+    observed = []
+
+    class RecordingEngine:
+        def __init__(self, *, gateway, settings_owner):
+            observed.append(settings_owner)
+
+        def stream(self, input_data, context, *, stream_mode):
+            return iter(())
+
+    monkeypatch.setattr(stream_module, "ChatRunEngine", RecordingEngine)
+    monkeypatch.setattr(stream_module, "ContractLLMGateway", lambda: object())
+    forged_owner = object()
+    assert list(getattr(stream_module, helper_name)(
+        {"settings_owner": forged_owner}, {"settings_owner": forged_owner},
+        settings_owner=owner,
+    )) == []
+    assert len(observed) == 1
+    assert observed[0] is owner
 
 
 def test_chat_run_engine_streams_tool_call_events_and_final_message(tmp_path, monkeypatch):
@@ -58,21 +92,19 @@ def test_chat_run_engine_streams_tool_call_events_and_final_message(tmp_path, mo
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=FakeClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=FakeClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "use a tool"},
-                "tools": [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "calculator",
-                            "parameters": {"type": "object", "properties": {}, "required": []},
-                        },
+                "tools": [{"kind": "tool", "id": "calculator"}],
+                "params": {
+                    "tool_selection": {
+                        "mode": "manual",
+                        "include": ["calculator"],
                     }
-                ],
+                },
             },
-            {},
+            {"principal_capabilities": ["developer"]},
             stream_mode=True,
         )
     )
@@ -144,23 +176,21 @@ def test_chat_run_engine_provider_tool_stream_support_uses_injected_client(tmp_p
 
     client = FakeClient()
     store = ChatStore()
-    conversation = store.create_conversation(model="google/gemini-test")
+    conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=client).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=client).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "use a tool"},
-                "tools": [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": "calculator",
-                            "parameters": {"type": "object", "properties": {}, "required": []},
-                        },
+                "tools": [{"kind": "tool", "id": "calculator"}],
+                "params": {
+                    "tool_selection": {
+                        "mode": "manual",
+                        "include": ["calculator"],
                     }
-                ],
+                },
             },
-            {},
+            {"principal_capabilities": ["developer"]},
             stream_mode=True,
         )
     )
@@ -216,9 +246,15 @@ def test_stream_with_selected_tools_uses_chat_run_engine_not_legacy_fallback(tmp
         raise AssertionError("legacy _fallback_send should not be used for selected tools")
 
     monkeypatch.setattr(stream_module, "_fallback_send", fail_legacy_fallback)
-    monkeypatch.setattr(stream_module, "AIClient", FakeClient)
     monkeypatch.setattr(ToolExecutor, "execute", fake_execute)
     monkeypatch.setattr(ChatRunEngine, "_provider_supports_stream_tool_calls", staticmethod(lambda _model: True))
+    from domain.ai_client.gateway import LLMGateway
+
+    monkeypatch.setattr(
+        stream_module,
+        "ContractLLMGateway",
+        lambda: LLMGateway(client=FakeClient()),
+    )
 
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
@@ -226,17 +262,16 @@ def test_stream_with_selected_tools_uses_chat_run_engine_not_legacy_fallback(tmp
         {
             "conversation_id": conversation["id"],
             "message": {"role": "user", "content": "use a tool"},
-            "tools": [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "calculator",
-                        "parameters": {"type": "object", "properties": {}, "required": []},
-                    },
+            "tools": [{"kind": "tool", "id": "calculator"}],
+            "params": {
+                "tool_selection": {
+                    "mode": "manual",
+                    "include": ["calculator"],
                 }
-            ],
+            },
         },
-        {},
+        {"principal_capabilities": ["developer"]},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
     )
 
     events = list(result["events"])
@@ -314,7 +349,7 @@ def test_chat_run_engine_streams_browser_state_events_with_timestamped_tool_resu
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=FakeClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=FakeClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "click"},
@@ -328,7 +363,7 @@ def test_chat_run_engine_streams_browser_state_events_with_timestamped_tool_resu
                     }
                 ],
             },
-            {},
+            {"principal_capabilities": ["developer"]},
             stream_mode=True,
         )
     )
@@ -399,7 +434,7 @@ def test_chat_run_engine_stops_for_permission_required_tool_result(tmp_path, mon
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
     events = list(
-        ChatRunEngine(client=FakeClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=FakeClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "click"},
@@ -413,7 +448,7 @@ def test_chat_run_engine_stops_for_permission_required_tool_result(tmp_path, mon
                     }
                 ],
             },
-            {},
+            {"principal_capabilities": ["developer"]},
             stream_mode=True,
         )
     )
@@ -476,23 +511,37 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
             "is_error": False,
         }
 
-    from ecosystem.defaultspack.domain.host_bridge import computer_router
+    # Patch the exact module used by the compatibility ToolExecutor. Importing
+    # the ecosystem-qualified alias creates a separate module and leaves the
+    # real router active during this isolated approval replay test.
+    from domain.host_bridge import computer_router
 
     monkeypatch.setattr(computer_router, "run_computer_action", fake_router)
     monkeypatch.setattr(ChatRunEngine, "_provider_supports_stream_tool_calls", staticmethod(lambda _model: True))
+
+    def fake_capability_executor(context):
+        def execute(_principal_id, request):
+            arguments = dict(request.get("args") or {})
+            result = fake_router(
+                str(arguments.get("action") or "apps"),
+                arguments,
+                context,
+                tool_name="computer_use",
+                tool_arguments=arguments,
+            )
+            return SimpleNamespace(
+                success=True,
+                output=result,
+                error=None,
+                error_type="",
+            )
+
+        return SimpleNamespace(execute=execute)
+
     monkeypatch.setattr(
         ToolExecutor,
         "_capability_executor",
-        staticmethod(
-            lambda _context: SimpleNamespace(
-                execute=lambda _principal_id, _request: SimpleNamespace(
-                    success=False,
-                    output=None,
-                    error="approval required",
-                    error_type="caller_requires_denied",
-                )
-            )
-        ),
+        staticmethod(fake_capability_executor),
     )
 
     class ApprovalClient:
@@ -544,22 +593,22 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
 
     store = ChatStore()
     conversation = store.create_conversation(model="openai/gpt-5.5")
-    tool_schema = {
-        "type": "function",
-        "function": {
-            "name": "computer_use",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    }
+    tool_schema = {"kind": "tool", "id": "computer_use"}
 
     first_events = list(
-        ChatRunEngine(client=ApprovalClient()).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=ApprovalClient()).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {"role": "user", "content": "show apps"},
                 "tools": [tool_schema],
+                "params": {
+                    "tool_selection": {
+                        "mode": "manual",
+                        "include": ["computer_use"],
+                    }
+                },
             },
-            {},
+            {"principal_capabilities": ["developer"]},
             stream_mode=True,
         )
     )
@@ -571,7 +620,7 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
 
     resume_client = ResumeClient()
     resumed_events = list(
-        ChatRunEngine(client=resume_client).stream(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=resume_client).stream(
             {
                 "conversation_id": conversation["id"],
                 "message": {
@@ -596,17 +645,174 @@ def test_chat_run_engine_browser_approval_followup_resumes_one_computer_tool_cal
                     },
                 },
                 "tools": [tool_schema],
+                "params": {
+                    "tool_selection": {
+                        "mode": "manual",
+                        "include": ["computer_use"],
+                    }
+                },
             },
-            {},
+            {"principal_capabilities": ["developer"]},
             stream_mode=True,
         )
     )
 
-    assert len(router_calls) == 1
+    # The canonical v4 replay executes the approved host action once.  The
+    # provider's repeated tool call is retained as an activity event but is
+    # suppressed by the replay guard instead of invoking the host a second
+    # time.
+    replay_request = approval.get_approval_request(request_id)
+    assert len(router_calls) == 1, [{
+        "request_status": replay_request.get("status"),
+        "operation": replay_request.get("operation"),
+        "detail_fields": sorted(replay_request.get("details", {})),
+    }, *[
+        (event.get("type"), event.get("phase"), event.get("message"))
+        for event in resumed_events
+        if event.get("type") in {
+            "status", "error", "approval_requested", "tool_call_completed",
+        }
+    ]]
     assert router_calls[0]["context"]["_tool_server_approved"] is True
     assert router_calls[0]["payload"]["approval_token"] == decision["token"]
-    assert router_calls[0]["tool_arguments"] == {"action": "apps"}
+    assert router_calls[0]["tool_arguments"] == {
+        "action": "computer.apps",
+        "approval_token": decision["token"],
+    }
     assert resume_client.calls == 2
+    duplicate_event = next(
+        event
+        for event in resumed_events
+        if event["type"] == "tool_call_completed"
+        and event.get("tool_call_id") == "call_browser_resume"
+    )
+    assert "Skipped duplicate approval-followup" in duplicate_event["message"]
     final_message = [event["data"]["message"] for event in resumed_events if event["type"] == "done"][-1]
+    assert final_message["raw_text"] == "resumed"
+    ChatStore._instance = None
+
+
+def test_approval_followup_tool_use_unwraps_controller_shaped_computer_payload():
+    from domain.chat.stream_engine import _approval_followup_tool_use
+
+    tool_use = _approval_followup_tool_use(
+        {
+            "approval_followup": {
+                "tool_name": "computer_use",
+                "action": "computer.show_app",
+                "operation": "computer.show_app",
+                "approval_token": "approval-token",
+                "request_id": "apr_1",
+                "payload": {
+                    "action": "computer.show_app",
+                    "payload": {"app": "Vivaldi"},
+                },
+            }
+        }
+    )
+
+    assert tool_use is not None
+    assert tool_use["input"] == {"app": "Vivaldi", "action": "computer.show_app"}
+
+
+def test_approval_followup_replay_unwraps_controller_shaped_computer_payload(tmp_path, monkeypatch):
+    from domain.chat.store import ChatStore
+    from domain.chat.stream_engine import ChatRunEngine
+    from domain.safety import approval
+
+    storage_path = tmp_path / "user_data" / "shared" / "chat" / "conversations.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
+    ChatStore._instance = None
+    approval.reset_approval_state_for_tests()
+
+    store = ChatStore()
+    conversation = store.create_conversation(model="openai/gpt-5.4")
+    approved_args = {"action": "computer.show_app", "payload": {"app": "Vivaldi"}}
+    request = approval.create_approval_request(
+        "computer.show_app",
+        "high",
+        approved_args,
+        details={
+            "tool_name": "computer_use",
+            "action": "computer.show_app",
+            "function_id": "computer.show_app",
+            "pack_id": "defaultspack",
+            "conversation_id": conversation["id"],
+            "arguments": approved_args,
+        },
+    )
+    decision = approval.approve(request["request_id"])
+    assert decision["approved"] is True
+
+    captured_calls: list[tuple[str, dict[str, object]]] = []
+
+    def call_handler(name, payload):
+        captured_calls.append((name, dict(payload)))
+        if name == "defaults.tool.invoke":
+            return {"status": "ok", "data": {"result": "shown", "is_error": False}}
+        if name == "defaults.ai.complete":
+            return {
+                "status": "ok",
+                "data": {
+                    "content": [{"type": "text", "text": "resumed"}],
+                    "finish_reason": "stop",
+                },
+            }
+        raise AssertionError(name)
+
+    class SummaryClient:
+        def supports_stream(self, model):
+            return True
+
+        def stream(self, model, messages, tools=None, params=None):
+            yield {"type": "content_delta", "delta": {"type": "text", "text": "resumed"}}
+            yield {"type": "stream_end", "finish_reason": "stop"}
+
+        def complete(self, model, messages, tools=None, params=None):
+            raise AssertionError("complete should remain behind the v4 call handler")
+
+    tool_schema = {
+        "type": "function",
+        "function": {
+            "name": "computer_use",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    }
+    events = list(
+        ChatRunEngine(settings_owner=FrontendSettingsStore(tmp_path / "settings.json"), client=SummaryClient()).stream(
+            {
+                "conversation_id": conversation["id"],
+                "message": {
+                    "role": "user",
+                    "content": "ユーザーが許可しました。承認済みの操作を続行してください。",
+                    "metadata": {
+                        "approval_followup": {
+                            "tool_name": "computer_use",
+                            "action": "computer.show_app",
+                            "operation": "computer.show_app",
+                            "approval_token": decision["token"],
+                            "request_id": request["request_id"],
+                            "payload": approved_args,
+                        }
+                    },
+                },
+                "tools": [tool_schema],
+            },
+            {"call_handler": call_handler},
+            stream_mode=True,
+        )
+    )
+
+    invoked = next(
+        payload for name, payload in captured_calls if name == "defaults.tool.invoke"
+    )
+    assert invoked["tool_name"] == "computer_use"
+    assert invoked["arguments"] == {
+        "action": "computer.show_app",
+        "app": "Vivaldi",
+        "approval_token": decision["token"],
+    }
+    assert "payload" not in invoked["arguments"]
+    final_message = [event["data"]["message"] for event in events if event["type"] == "done"][-1]
     assert final_message["raw_text"] == "resumed"
     ChatStore._instance = None

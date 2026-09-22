@@ -1,5 +1,4 @@
-import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..")); from _common import ok, error, timestamp
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from blocks._common import ok, error, timestamp
 
 from backend.tool.permission_policy import get_tool_permission_policy_manager
 from domain.tool.registry import ToolRegistry

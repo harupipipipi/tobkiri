@@ -1,1 +1,65 @@
-{"pack_id": "rumi_tool_sandbox_executor_pack", "pack_identity": "rumi:ecosystem/rumi_tool_sandbox_executor_pack", "display_name": "Rumi Tool Sandbox Executor Pack", "version": "1.0.0", "description": "Sandbox-only tool executor adapter.", "dependencies": {}, "connectivity": {"requires": [], "provides": ["rumi.service.tool.execute.v1"]}, "required_secrets": [], "required_capabilities": ["tool.execute"], "required_network": {"allowed_domains": [], "allowed_ports": []}, "host_execution": true, "resources": [], "provenance": {"content_hash": "sha256:f4e41e2d97a331d56685bb102f2c9afea1828dda5d136038a22911571747a339", "build_identity": "rumi-tool-sandbox-executor-pack:1.0.0", "trust_class": "local", "signature": null}, "metadata": {"authoritative_owner": false, "owner_surfaces": ["sandbox_tool_adapter"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"host_downgrade": false, "calling_convention": "python_docker"}}}
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.execute.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Docker-calling-convention-only tool executor.",
+  "display_name": "Rumi Tool Sandbox Executor",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:401dbc8f2cd19d20e3ced38e468139430755a3ae8e935d17237f7957e3c9784d",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:7f02e4619f61e4a8bc052cc94f6c494662c9203b5d93f713f82cf57035cdfc71"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:7f02e4619f61e4a8bc052cc94f6c494662c9203b5d93f713f82cf57035cdfc71"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "sandbox_tool_adapter"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "calling_convention": "python_docker",
+      "host_downgrade": false
+    }
+  },
+  "pack_id": "rumi_tool_sandbox_executor_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_sandbox_executor_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_sandbox_executor_pack:1.0.0",
+    "content_hash": "sha256:651498c5fadbda3e62dea1b80a5a3d540ae768fcd7e902ae80c14fc63bf39eee",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.execute"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

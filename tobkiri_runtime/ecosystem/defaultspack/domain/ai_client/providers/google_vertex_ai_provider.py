@@ -16,21 +16,17 @@ from ..base_provider import BaseProvider
 class GoogleVertexAIProvider(BaseProvider):
     provider_id = "google-vertex-ai"
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None):
         connection = next(
             (dict(x) for x in provider_named_api_keys(self.provider_id) if x.get("configured")), {}
         )
-        self._token = str(
-            os.environ.get("VERTEX_AI_ACCESS_TOKEN")
-            or os.environ.get("GOOGLE_VERTEX_AI_ACCESS_TOKEN")
-            or ""
-        ).strip()
-        if not self._token and connection.get("api_id"):
+        self._token = str(api_key or "").strip()
+        if connection.get("api_id"):
             self._token = str(
                 read_provider_api_key(self.provider_id, str(connection["api_id"])) or ""
             ).strip()
         self._base_url = (
-            str(connection.get("base_url") or os.environ.get("VERTEX_AI_BASE_URL") or "")
+            str(connection.get("base_url") or "")
             .strip()
             .rstrip("/")
         )

@@ -14,6 +14,7 @@ import {
   type CustomGroupInfo,
 } from "./HistoryBoard";
 import { droppedWidgetFromHistoryChat, historyChatDragPayload, parseHistoryChatDrop } from "../lib/historyComposer";
+import { filterProjects, newProjectId, projectFromStorageItem, projectTaskContext } from "../features/projects/projectStorage";
 
 test("buildGroupsFromChats places LINE conversations into a dedicated group", () => {
   const chats: ChatItem[] = [
@@ -172,7 +173,7 @@ test("buildGroupsFromChats keeps reserved bucket ids unique when custom metadata
   assert.equal(new Set(railGroupIds).size, railGroupIds.length);
 });
 
-test("loadCustomGroups migrates legacy and snake_case workspace records", () => {
+test("Project state never exposes legacy localStorage before owner acknowledgement", () => {
   const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   const values = new Map<string, string>();
   values.set("rumi-history-custom-groups", JSON.stringify([
@@ -189,10 +190,14 @@ test("loadCustomGroups migrates legacy and snake_case workspace records", () => 
   });
 
   try {
-    assert.deepEqual(loadCustomGroups(), [
-      { id: "legacy", title: "Legacy", workspaceId: null, workspaceLabel: null, workspaceRoot: null, rumiDataPath: null },
-      { id: "snake", title: "Snake", workspaceId: "ws1", workspaceLabel: "Repo", workspaceRoot: "/repo", rumiDataPath: "/repo/.rumiDP" },
-    ]);
+    assert.deepEqual(loadCustomGroups(), []);
+    assert.deepEqual(projectFromStorageItem({
+      id: "snake", title: "Snake", workspace_id: "ws1", workspace_label: "Repo",
+      workspace_root: "/repo", rumi_data_path: "/repo/.rumiDP",
+    }), {
+      id: "snake", title: "Snake", workspaceId: "ws1", workspaceLabel: "Repo",
+      workspaceRoot: "/repo", rumiDataPath: "/repo/.rumiDP",
+    });
   } finally {
     if (previousDescriptor) {
       Object.defineProperty(globalThis, "localStorage", previousDescriptor);
@@ -200,6 +205,30 @@ test("loadCustomGroups migrates legacy and snake_case workspace records", () => 
       Reflect.deleteProperty(globalThis, "localStorage");
     }
   }
+});
+
+test("Project helpers preserve group ids while exposing project context", () => {
+  assert.equal(newProjectId(123), "group-123");
+  assert.deepEqual(projectTaskContext({
+    id: "group-main",
+    title: "Main",
+    workspaceId: "ws-main",
+    workspaceLabel: "Main repo",
+    workspaceRoot: "/repo/main",
+    rumiDataPath: "/repo/main/.rumiDP",
+  }), {
+    groupId: "group-main",
+    workspaceId: "ws-main",
+    workspaceLabel: "Main repo",
+    workspaceRoot: "/repo/main",
+    rumiDataPath: "/repo/main/.rumiDP",
+  });
+  const projects = [
+    { id: "group-main", title: "Main", workspaceRoot: "/repo/main" },
+    { id: "group-docs", title: "Writing", workspaceLabel: "Documentation" },
+  ];
+  assert.deepEqual(filterProjects(projects, "documentation").map((project) => project.id), ["group-docs"]);
+  assert.deepEqual(filterProjects(projects, "/repo").map((project) => project.id), ["group-main"]);
 });
 
 test("history calendar summary counts visible chat buckets and highlights", () => {
@@ -282,6 +311,21 @@ test("HistoryBoard places Desktops directly below Kanban in full layout", () => 
   assert.ok(kanbanIndex > calendarIndex);
   assert.ok(desktopsIndex > kanbanIndex);
   assert.match(html, /aria-current="page"/);
+});
+
+test("HistoryBoard replaces New Group with an accessible Projects creation header", () => {
+  const html = renderToStaticMarkup(createElement(HistoryBoard, {
+    activeChatId: null,
+    chatItems: [],
+    onChatSelect: () => undefined,
+    onNewTask: () => undefined,
+    onSettingsClick: () => undefined,
+  }));
+
+  assert.match(html, />Projects</);
+  assert.match(html, /aria-label="New Project"/);
+  assert.match(html, /class="[^"]*h-8 w-8[^"]*"[^>]*aria-label="New Project"/);
+  assert.doesNotMatch(html, /New Group/);
 });
 
 test("HistoryBoard places Desktops directly below Kanban in compact rail", () => {

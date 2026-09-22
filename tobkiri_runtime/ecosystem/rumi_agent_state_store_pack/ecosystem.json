@@ -1,2 +1,69 @@
-{"pack_id":"rumi_agent_state_store_pack","pack_identity":"rumi:ecosystem/rumi_agent_state_store_pack","display_name":"Rumi Agent State Store Pack","version":"1.0.0","description":"Authoritative agent profiles, runs, subagent links, cancellation, handoff, and audit state.","dependencies":{"rumi_host_authority_bridge_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.service.host.authorize.v1"],"provides":["rumi.resource.agent.state.v1","rumi.action.agent.state.v1"]},"required_secrets":[],"required_capabilities":["agent.state.read","agent.state.manage","host.authority.consume"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":false,"resources":[],"provenance":{"content_hash":"sha256:81931268c6cc0b6d994c5f6887419d1227f2c0aadf7a346379994b0baf3f5439","build_identity":"rumi-agent-state-store-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":true,"owner_surfaces":["agent_profiles","agent_runs","subagent_links","agent_guidance","agent_handoffs"]}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.agent.state.v1",
+      "rumi.resource.agent.state.v1"
+    ],
+    "requires": [
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Authoritative agent profile and run lifecycle state.",
+  "display_name": "Rumi Agent State Store",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:936014f87b2f6414c1f199625f46c58b6e04a194ca440127e96fec8b78b894e0",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:05e7ea0ceb4af650c08735e8d8103eedac3d5d46e2cf3c40915ffe466f9c4182"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:05e7ea0ceb4af650c08735e8d8103eedac3d5d46e2cf3c40915ffe466f9c4182"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "agent_profiles",
+      "agent_runs",
+      "subagent_links",
+      "agent_guidance",
+      "agent_handoffs"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_agent_state_store_pack",
+  "pack_identity": "rumi:ecosystem/rumi_agent_state_store_pack",
+  "provenance": {
+    "build_identity": "rumi_agent_state_store_pack:1.0.0",
+    "content_hash": "sha256:1dbcc2f6137687e4c7422d9a6393fec7a14110c8c87f62021297ab7301e02ce8",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "agent.state.manage",
+    "agent.state.read",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

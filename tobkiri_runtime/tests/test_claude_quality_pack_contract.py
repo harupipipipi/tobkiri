@@ -84,7 +84,7 @@ def test_ci_workflows_keep_required_quality_gates():
         [
             "tags:",
             '- "v*"',
-            "cargo tauri build --target",
+            "python -B scripts/run_tauri_build.py build --target",
         ],
         ".github/workflows/release.yml",
     )

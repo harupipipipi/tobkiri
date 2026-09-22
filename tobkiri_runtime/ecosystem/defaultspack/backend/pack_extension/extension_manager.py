@@ -411,7 +411,17 @@ class ExtensionManager:
             return {"error": str(exc), "status_code": 400}
         except RuntimeError as exc:
             return {"error": str(exc), "status_code": 409}
-        return request.to_dict()
+        result = request.to_dict()
+        try:
+            from .authority_bridge import ensure_authority_request_for_pack_request
+
+            authority = ensure_authority_request_for_pack_request(request)
+            if authority.get("request_id"):
+                result["authority_request_id"] = authority.get("request_id")
+            result["authority_request"] = authority
+        except Exception as exc:
+            result["authority_request"] = {"success": False, "error": str(exc)}
+        return result
 
     def list_pending(self) -> List[ExtensionRequest]:
         return [request for request in self._load_all() if request.status == "pending"]

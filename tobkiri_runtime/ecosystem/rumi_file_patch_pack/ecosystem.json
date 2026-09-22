@@ -1,2 +1,66 @@
-{"pack_id":"rumi_file_patch_pack","pack_identity":"rumi:ecosystem/rumi_file_patch_pack","display_name":"Rumi File Patch Pack","version":"1.0.0","description":"Previewable receipt-gated exact text patching.","dependencies":{"rumi_workspace_mount_pack":">=1.0.0,<2.0.0","rumi_host_authority_bridge_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.resource.workspace.v1","rumi.service.host.authorize.v1"],"provides":["rumi.service.file.patch.v1"]},"required_secrets":[],"required_capabilities":["file.patch","workspace.metadata.read","host.authority.consume"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":true,"resources":[],"provenance":{"content_hash":"sha256:9f0299403ddc59031a122213f31757578887ef0a746ec08a24c2a52dc135cde0","build_identity":"rumi-file-patch-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authority":"patch","preview":"read_only","apply_receipt_required":true,"tool_or_ui_registry_imports":false}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.file.patch.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Previewable receipt-gated exact text patching.",
+  "display_name": "Rumi File Patch",
+  "host_execution": true,
+  "metadata": {
+    "apply_receipt_required": true,
+    "authority": "patch",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:e2e0c140e32ea27e1d1fdd792dbd46ac332b512664c9bda402af42d4047aa820",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:68afe1096a6680584dd9de5024a0ffed6bd522ff900dc78694c42a4b26943c2f"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:68afe1096a6680584dd9de5024a0ffed6bd522ff900dc78694c42a4b26943c2f"
+    },
+    "manifest_authority": "v4-authoritative",
+    "preview": "read_only",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_file_patch_pack",
+  "pack_identity": "rumi:ecosystem/rumi_file_patch_pack",
+  "provenance": {
+    "build_identity": "rumi_file_patch_pack:1.0.0",
+    "content_hash": "sha256:c706fc33ef41284698a398f2f3742c0352f325eaf95acbd7448f0a4cfa68d416",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "file.patch",
+    "host.authority.consume",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

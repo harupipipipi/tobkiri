@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from os import PathLike
 from typing import Any
@@ -42,7 +41,7 @@ def run(input_data: dict[str, Any] | None, context: dict[str, Any] | None):
     conversation = store.get_conversation(conversation_id)
     if conversation is None:
         return error("Conversation not found", "NOT_FOUND")
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     plan = active_resolved_profile()
     if registry is None or plan is None:
         return error("Context runtime unavailable", "CONTEXT_UNAVAILABLE")
@@ -121,7 +120,40 @@ def _context_text(value: Any, export_format: str) -> str:
             for item in section.get("items") or []:
                 lines.append(str(item.get("content") if isinstance(item, dict) else item))
         return "\n".join(lines)
-    return "```json\n" + json.dumps(value, ensure_ascii=False, indent=2) + "\n```\n"
+    lines = ["# Conversation context", ""]
+    for section in value.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        kind = str(section.get("kind") or "context").strip().title()
+        items = section.get("items") or []
+        if kind.lower() == "conversation":
+            for item in items:
+                role = str(item.get("role") or "Context") if isinstance(item, dict) else "Context"
+                lines.extend([f"### {role.title()}", _item_text(item), ""])
+            continue
+        if not items:
+            continue
+        lines.extend([f"## {kind}", ""])
+        for item in items:
+            lines.extend([_item_text(item), ""])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _item_text(item: Any) -> str:
+    if not isinstance(item, dict):
+        return str(item)
+    content = item.get("content")
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                parts.append(str(block.get("text") or block.get("content") or block))
+            else:
+                parts.append(str(block))
+        return "\n".join(part for part in parts if part)
+    if content not in (None, ""):
+        return str(content)
+    return str(item.get("text") or item.get("value") or item)
 
 
 def materialized_audio_transcript_blocks(attachments: list[dict[str, Any]]) -> list[dict[str, Any]]:

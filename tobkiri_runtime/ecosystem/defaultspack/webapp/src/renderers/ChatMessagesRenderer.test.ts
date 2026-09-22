@@ -111,6 +111,37 @@ test("user messages restore human mention badges from semantic metadata", () => 
   assert.doesNotMatch(html, />@browser_computer</);
 });
 
+test("repository evidence widget renders trusted exact statistics", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      widget: {
+        type: "repository_evidence",
+        statistics: { files_selected: 7, files_excluded: 93 },
+        excluded_reason_counts: {
+          secret_like_path: 3,
+          utility_model_not_selected: 90,
+        },
+        excluded_sample: [{ path: "never-render.ts", reason: "sample" }],
+      },
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /data-testid="repository-evidence-widget"/);
+  assert.match(html, />93</);
+  assert.match(html, /utility_model_not_selected/);
+  assert.doesNotMatch(html, /never-render\.ts/);
+});
+
 test("markdown links render as destination-aware review controls", () => {
   const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null,
@@ -528,6 +559,13 @@ test("retried tool attempts render discard history beside the clean running atte
   assert.match(html, /README\.md/);
   assert.match(html, /1件失敗/);
   assert.match(html, /作業中/);
+  assert.match(html, /data-error-notice="tool-activity-failed"/);
+  assert.match(html, /data-error-icon="tool-activity-failed"/);
+  assert.match(html, /aria-label="ツール実行エラーをコピー"/);
+  assert.match(html, /data-copy-action=""/);
+  assert.match(html, /role="group"/);
+  const staticErrorTag = html.match(/<div[^>]*data-error-notice="tool-activity-failed"[^>]*>/)?.[0] ?? "";
+  assert.doesNotMatch(staticErrorTag, /aria-live|role="alert"/);
 });
 
 test("tool previews match retry generations while legacy events still use call ids", () => {
@@ -810,7 +848,33 @@ test("chat send error exposes retry and dismiss actions without truncating the m
   }));
 
   assert.match(html, /role="alert"/);
+  assert.match(html, /data-error-icon="chat"/);
+  assert.match(html, /aria-label="チャットエラーをコピー"/);
+  assert.match(html, /data-copy-icon=""/);
+  assert.match(html, /role="status" aria-live="polite"/);
   assert.match(html, />再試行</);
   assert.match(html, /aria-label="エラーを閉じる"/);
   assert.match(html, /Network connection failed/);
+});
+
+test("message copy keeps the double-square glyph while status is announced separately", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({ rawText: "Copy this response." })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /aria-label="コピー"/);
+  assert.match(html, /data-copy-action="message"/);
+  assert.match(html, /data-copy-icon="message"/);
+  assert.match(html, /aria-live="polite"/);
+  assert.doesNotMatch(html, /aria-label="コピー済み"|aria-label="コピー失敗"/);
 });

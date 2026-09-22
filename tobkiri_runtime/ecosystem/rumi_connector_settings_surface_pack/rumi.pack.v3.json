@@ -1,13 +1,145 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.connector_settings_surface","version":"1.0.0","kind":"content","display_name":"Rumi Connector Settings Surface","description":"Removable Connections route and secret-free settings contribution."},
-  "contracts":{"provides":[],"requires":[{"id":"rumi.resource.connector.gateway.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"isolate"}]},
-  "entrypoints":[],
-  "resources":[{"id":"frontend/contributions/connections-route.json","kind":"ui.contribution","content_hash":"sha256:04cdd7dbc294e9b212937e0394b9fe3bfd9cca52518ace28b3c47eb02810106e"},{"id":"frontend/contributions/connections-settings.json","kind":"ui.contribution","content_hash":"sha256:12fe728f2cf2c0a06a961bdbb5e8b3cfc1767ce17428e74755bf3a70482c1648"}],
-  "storage":[],
-  "permissions":[{"capability":"connector.gateway.read","access":"read","approval_required":false}],
-  "provenance":{"content_hash":"sha256:71e6676dfb05b5b2188d21833b920b4f84ccf55da27f7a37bf21b32ae8aaad25","build_identity":"rumi-connector-settings-surface-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.webapp.settings.connections","defaultspack.webapp.gateway"],"compatibility_aliases":[],"compatibility_projection":"finite_ui_projection","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Remove the surface; connector and credential owners remain independently available."},
-  "extensions":{"rumi.connector_settings.boundary":{"registry_owner":false,"credential_owner":false,"oauth_owner":false,"transport_owner":false,"mutations":false,"credential_handles_visible":false,"secret_values_visible":false,"profile_scoped":true,"isolated":true}}
+  "contracts": {
+    "provides": [],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.connector.gateway.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [],
+  "extensions": {
+    "rumi.connector_settings.boundary": {
+      "credential_handles_visible": false,
+      "credential_owner": false,
+      "isolated": true,
+      "mutations": false,
+      "oauth_owner": false,
+      "profile_scoped": true,
+      "registry_owner": false,
+      "secret_values_visible": false,
+      "transport_owner": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_connector_transport_gateway_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [],
+          "requires": [
+            "rumi.resource.connector.gateway.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_connector_transport_gateway_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Removable Connections route and secret-free settings contribution.",
+        "display_name": "Rumi Connector Settings Surface",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:3cb71d9e00e41d0e17c4bcba4fe3ea3cbae3ab41533bab20378424b7f30713e0",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:3f4e269d2fff172f009bd63a5ba019d8a09104eb00b762f56bfaaf573a634166"
+          },
+          "executable_code": true,
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "isolated_ui": true,
+          "owner_surfaces": [
+            "connections_route",
+            "connections_settings"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_connector_settings_surface_pack",
+        "pack_identity": "rumi:ecosystem/rumi_connector_settings_surface_pack",
+        "provenance": {
+          "build_identity": "rumi_connector_settings_surface_pack:1.0.0",
+          "content_hash": "sha256:4a77e61fd89da631289e967c1f72a41f424b6f547cd1f7f1ab23dc91f6f97743",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "connector.gateway.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [
+          "frontend/contributions/connections-route.json",
+          "frontend/contributions/connections-settings.json"
+        ],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_connector_settings_surface_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_connector_settings_surface_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:3f4e269d2fff172f009bd63a5ba019d8a09104eb00b762f56bfaaf573a634166"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.webapp.settings.connections",
+      "defaultspack.webapp.gateway"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the surface; connector and credential owners remain independently available.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Removable Connections route and secret-free settings contribution.",
+    "display_name": "Rumi Connector Settings Surface",
+    "id": "rumi.connector_settings_surface",
+    "kind": "content",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "connector.gateway.read"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_connector_settings_surface_pack:1.0.0",
+    "content_hash": "sha256:4a77e61fd89da631289e967c1f72a41f424b6f547cd1f7f1ab23dc91f6f97743",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [
+    {
+      "content_hash": "sha256:04cdd7dbc294e9b212937e0394b9fe3bfd9cca52518ace28b3c47eb02810106e",
+      "id": "frontend/contributions/connections-route.json",
+      "kind": "ui.contribution"
+    },
+    {
+      "content_hash": "sha256:12fe728f2cf2c0a06a961bdbb5e8b3cfc1767ce17428e74755bf3a70482c1648",
+      "id": "frontend/contributions/connections-settings.json",
+      "kind": "ui.contribution"
+    }
+  ],
+  "storage": []
 }
-

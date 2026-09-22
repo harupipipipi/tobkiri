@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyShellBundleManifest } from "./shell-bundle-manifest.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const uiDir = path.resolve(here, "../../ui");
@@ -40,3 +41,5 @@ if (JSON.stringify(actualShellAssets) !== JSON.stringify(expected)) {
     `shell bundle assets are out of sync. expected=${expected.join(",")} actual=${actualShellAssets.join(",")}`,
   );
 }
+
+verifyShellBundleManifest({ webappRoot: path.resolve(here, ".."), uiDir });

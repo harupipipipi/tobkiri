@@ -6,7 +6,8 @@ import hashlib
 import json
 import os
 import platform as host_platform
-import shutil
+import stat
+import threading
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -23,10 +24,8 @@ from .global_contracts.models import (
     ProviderDescriptor,
     SecurityClassification,
 )
-from .global_contracts.manifest import load_manifest
 from .global_contracts.registry import ContractRegistry
 from .paths import PackLocation, resolve_pack_locations
-from .pack_artifact_integrity import verify_declared_artifacts
 
 RESOLVED_PROFILE_VERSION = "rumi.resolved-profile.v1"
 LOCKFILE_VERSION = "rumi.profile-lock.v1"
@@ -44,6 +43,15 @@ PROJECTION_TYPES = (
     "policies",
     "scheduler",
 )
+
+_PACK_CONTENT_IGNORED_DIRECTORY_NAMES = frozenset({"__pycache__"})
+_PACK_CONTENT_IGNORED_SUFFIXES = frozenset({".pyc", ".pyo"})
+
+_PACK_CONTENT_HASH_CACHE_LOCK = threading.RLock()
+_PACK_CONTENT_HASH_CACHE: dict[
+    tuple[str, str],
+    tuple[tuple[tuple[str, int, int, int, int, int, int], ...], str],
+] = {}
 
 _COMPONENT_TYPE_TO_PROJECTION = {
     "frontend": "ui",
@@ -194,18 +202,6 @@ class LockfileValidation:
     diagnostics: tuple[ResolutionDiagnostic, ...] = ()
 
 
-@dataclass(frozen=True)
-class LegacyMigrationPlan:
-    """Dry-run description for one-way legacy selection migration."""
-
-    profile_id: str
-    before_pack_ids: tuple[str, ...]
-    imported_pack_ids: tuple[str, ...]
-    after_pack_ids: tuple[str, ...]
-    changed: bool
-    backup_path: str | None = None
-
-
 def resolve_profile(
     resolution_input: ResolutionInput,
     *,
@@ -279,7 +275,11 @@ def resolve_profile(
     )
     projections = _project_resources(effective, manifests)
     manifest_providers, manifest_requirements, manifest_diagnostics = (
-        _manifest_contract_metadata(effective, manifests)
+        _manifest_contract_metadata(
+            effective,
+            manifests,
+            verified_pack_trust=verified_pack_trust,
+        )
     )
     diagnostics.extend(manifest_diagnostics)
     requirement_map = {
@@ -545,144 +545,21 @@ def validate_lockfile(
     )
 
 
-def plan_legacy_selection_migration(
-    profile: Mapping[str, Any], selection: Mapping[str, Any]
-) -> LegacyMigrationPlan:
-    """Return a dry-run diff; legacy selection remains compatibility input."""
-    profile_id = str(profile.get("profile_id") or profile.get("id") or "").strip()
-    before = _unique(_string_items(profile.get("packs")))
-    imported = _legacy_selected_pack_ids(selection)
-    after = _unique((*before, *imported))
-    return LegacyMigrationPlan(
-        profile_id=profile_id,
-        before_pack_ids=before,
-        imported_pack_ids=imported,
-        after_pack_ids=after,
-        changed=before != after,
-    )
-
-
-def apply_legacy_selection_migration(
-    profile_path: Path,
-    selection_path: Path,
-    *,
-    backup_dir: Path,
-) -> LegacyMigrationPlan:
-    """Apply one-way migration with backup; never dual-write legacy state."""
-    profile = json.loads(profile_path.read_text(encoding="utf-8"))
-    selection = json.loads(selection_path.read_text(encoding="utf-8"))
-    plan = plan_legacy_selection_migration(profile, selection)
-    if not plan.changed:
-        return plan
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    backup_path = backup_dir / f"{profile_path.name}.{_sha256(profile_path)}.bak"
-    shutil.copy2(profile_path, backup_path)
-    migrated = dict(profile)
-    migrated["packs"] = list(plan.after_pack_ids)
-    migrated["legacy_setup_pack_selection_imported"] = True
-    temporary = profile_path.with_suffix(profile_path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(migrated, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    temporary.replace(profile_path)
-    return LegacyMigrationPlan(
-        profile_id=plan.profile_id,
-        before_pack_ids=plan.before_pack_ids,
-        imported_pack_ids=plan.imported_pack_ids,
-        after_pack_ids=plan.after_pack_ids,
-        changed=True,
-        backup_path=str(backup_path),
-    )
-
-
-def rollback_legacy_selection_migration(
-    profile_path: Path, backup_path: Path
-) -> None:
-    """Restore the exact pre-migration profile without touching legacy input."""
-    if not backup_path.is_file():
-        raise FileNotFoundError(f"migration backup is missing: {backup_path}")
-    temporary = profile_path.with_suffix(profile_path.suffix + ".rollback.tmp")
-    shutil.copy2(backup_path, temporary)
-    temporary.replace(profile_path)
-
-
 def _read_manifests(
     locations: Iterable[PackLocation],
 ) -> tuple[dict[str, dict[str, Any]], list[ResolutionDiagnostic]]:
-    manifests: dict[str, dict[str, Any]] = {}
-    diagnostics: list[ResolutionDiagnostic] = []
-    for location in locations:
-        try:
-            raw = location.ecosystem_json_path.read_bytes()
-            payload = json.loads(raw)
-        except (OSError, json.JSONDecodeError) as exc:
-            diagnostics.append(
-                _diagnostic(
-                    "invalid_manifest",
-                    "error",
-                    f"Manifest cannot be read: {type(exc).__name__}",
-                    location.pack_id,
-                )
-            )
-            continue
-        if not isinstance(payload, dict):
-            diagnostics.append(
-                _diagnostic(
-                    "invalid_manifest",
-                    "error",
-                    "Manifest root must be an object",
-                    location.pack_id,
-                )
-            )
-            continue
-        manifest = dict(payload)
-        manifest["_manifest_hash"] = "sha256:" + hashlib.sha256(raw).hexdigest()
-        provenance = manifest.get("provenance")
-        declared_content_hash = (
-            str(provenance.get("content_hash") or "").strip()
-            if isinstance(provenance, Mapping)
-            else ""
+    """Reject legacy projection loading from every runtime resolution path."""
+
+    locations = tuple(locations)
+    return {}, [
+        _diagnostic(
+            "offline_projection_not_authority",
+            "error",
+            "ecosystem.json and rumi.pack.v3.json are offline projections; use Pack v4",
+            location.pack_id,
         )
-        manifest["_content_hash"] = (
-            declared_content_hash
-            if declared_content_hash.startswith("sha256:")
-            and len(declared_content_hash) == 71
-            else _pack_content_hash(
-                location.pack_subdir,
-                manifest["_manifest_hash"],
-            )
-        )
-        integrity_ok, integrity_diagnostics = verify_declared_artifacts(
-            location.pack_subdir,
-            manifest,
-        )
-        if not integrity_ok:
-            diagnostics.append(
-                _diagnostic(
-                    "invalid_manifest",
-                    "error",
-                    "; ".join(integrity_diagnostics),
-                    location.pack_id,
-                )
-            )
-            continue
-        v3_path = location.pack_subdir / "rumi.pack.v3.json"
-        if v3_path.is_file():
-            loaded = load_manifest(v3_path)
-            if loaded.ok and isinstance(loaded.value, dict):
-                manifest["_v3_manifest"] = loaded.value
-            else:
-                diagnostics.append(
-                    _diagnostic(
-                        "invalid_manifest",
-                        "error",
-                        "; ".join(loaded.diagnostics),
-                        location.pack_id,
-                    )
-                )
-        manifests[location.pack_id] = manifest
-    return manifests, diagnostics
+        for location in locations
+    ]
 
 
 def _read_manifest_closure(
@@ -834,6 +711,7 @@ def _project_resources(
         manifest = manifests[pack_id]
         content_hash = str(manifest["_content_hash"])
         components = manifest.get("components")
+        entries: Iterable[tuple[Any, Any]]
         if isinstance(components, Mapping):
             entries = components.items()
         elif isinstance(components, list):
@@ -858,6 +736,7 @@ def _project_resources(
                 )
         for kind in PROJECTION_TYPES:
             values = manifest.get(kind)
+            resource_ids: Iterable[Any]
             if isinstance(values, Mapping):
                 resource_ids = values.keys()
             elif isinstance(values, list):
@@ -884,6 +763,8 @@ def _project_resources(
 def _manifest_contract_metadata(
     effective: tuple[str, ...],
     manifests: Mapping[str, Mapping[str, Any]],
+    *,
+    verified_pack_trust: Mapping[str, str],
 ) -> tuple[
     tuple[ProviderDescriptor, ...],
     tuple[ContractRequirement, ...],
@@ -935,8 +816,11 @@ def _manifest_contract_metadata(
                     ),
                     content_hash=str(provenance.get("content_hash") or ""),
                     build_identity=str(provenance.get("build_identity") or ""),
-                    trust_class=str(provenance.get("trust_class") or "untrusted"),
-                    isolation=str(item.get("isolation") or "process"),
+                    # Provider authority is Host-attested. Pack provenance is
+                    # descriptive input and cannot elevate dispatch trust.
+                    trust_class=verified_pack_trust.get(pack_id, "untrusted"),
+                    # Placement/Pack declarations are not runtime attestation.
+                    isolation="host_unattested",
                     required_capabilities=tuple(
                         str(value)
                         for value in item.get("required_capabilities", [])
@@ -1105,7 +989,40 @@ def _lock_identity(lockfile: ProfileLockfile) -> str:
 
 
 def _pack_content_hash(pack_root: Path, manifest_hash: str) -> str:
+    cache_key = (str(pack_root.absolute()), manifest_hash)
+    files, revision = _pack_projection_revision(pack_root)
+    with _PACK_CONTENT_HASH_CACHE_LOCK:
+        cached = _PACK_CONTENT_HASH_CACHE.get(cache_key)
+        if cached is not None and cached[0] == revision:
+            return cached[1]
+
     resources: list[tuple[str, str]] = [("ecosystem.json", manifest_hash)]
+    resources.extend(
+        (path.relative_to(pack_root).as_posix(), _sha256(path))
+        for path in files
+    )
+    content_hash = content_identity(resources)
+    _, verified_revision = _pack_projection_revision(pack_root)
+    if verified_revision != revision:
+        raise RuntimeError("pack projection changed during content hashing")
+    with _PACK_CONTENT_HASH_CACHE_LOCK:
+        _PACK_CONTENT_HASH_CACHE[cache_key] = (revision, content_hash)
+    return content_hash
+
+
+def _pack_projection_revision(
+    pack_root: Path,
+) -> tuple[
+    tuple[Path, ...],
+    tuple[tuple[str, int, int, int, int, int, int], ...],
+]:
+    """Return projected files and a change-sensitive cache revision.
+
+    Reusing an already computed digest is safe only while every projected
+    file keeps the same identity, size, mode, mtime, and ctime. Directory
+    additions and removals also change the ordered path set. The digest is
+    recomputed whenever any of those Host-observed properties changes.
+    """
     declared_directories = set(PROJECTION_TYPES)
     try:
         manifest = json.loads((pack_root / "ecosystem.json").read_text(encoding="utf-8"))
@@ -1117,15 +1034,95 @@ def _pack_content_hash(pack_root: Path, manifest_hash: str) -> str:
             if not isinstance(component, Mapping):
                 continue
             declared = str(component.get("path") or "").strip()
-            if declared and ".." not in Path(declared).parts:
+            declared_path = Path(declared)
+            if (
+                declared
+                and not declared_path.is_absolute()
+                and ".." not in declared_path.parts
+            ):
                 declared_directories.add(declared)
+    files: list[Path] = []
     for directory in sorted(declared_directories):
         root = pack_root / directory
-        if not root.is_dir():
-            continue
-        for path in sorted(item for item in root.rglob("*") if item.is_file()):
-            resources.append((path.relative_to(pack_root).as_posix(), _sha256(path)))
-    return content_identity(resources)
+        files.extend(_bounded_pack_files(root))
+    ordered_files = tuple(sorted(set(files), key=lambda path: path.as_posix()))
+    revision: list[tuple[str, int, int, int, int, int, int]] = []
+    for path in ordered_files:
+        file_stat = path.stat(follow_symlinks=False)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise RuntimeError("pack projection contains a non-regular file")
+        revision.append(
+            (
+                path.relative_to(pack_root).as_posix(),
+                file_stat.st_dev,
+                file_stat.st_ino,
+                file_stat.st_mode,
+                file_stat.st_size,
+                file_stat.st_mtime_ns,
+                file_stat.st_ctime_ns,
+            )
+        )
+    return ordered_files, tuple(revision)
+
+
+def _bounded_pack_files(
+    root: Path,
+    *,
+    max_depth: int = 8,
+    max_entries: int = 8192,
+) -> tuple[Path, ...]:
+    """List regular pack files with finite, symlink-safe traversal.
+
+    Projection roots are manifest-controlled and may point at unexpectedly
+    broad trees.  Resolution must therefore never use an unbounded recursive
+    glob.  Exceeding either budget fails closed instead of producing a partial
+    integrity identity.
+    """
+
+    if max_depth < 0 or max_entries < 1:
+        raise RuntimeError("pack content scan budget is invalid")
+    try:
+        if root.is_symlink() or not root.is_dir():
+            return ()
+    except OSError:
+        return ()
+
+    files: list[Path] = []
+    visited_entries = 0
+
+    def walk(directory: Path, depth: int) -> None:
+        nonlocal visited_entries
+        try:
+            with os.scandir(directory) as iterator:
+                entries = sorted(iterator, key=lambda item: item.name)
+        except OSError:
+            return
+        for entry in entries:
+            visited_entries += 1
+            if visited_entries > max_entries:
+                raise RuntimeError(
+                    f"pack content scan exceeded {max_entries} entries: {root}"
+                )
+            try:
+                if entry.is_symlink():
+                    continue
+                if entry.is_file(follow_symlinks=False):
+                    path = Path(entry.path)
+                    if path.suffix not in _PACK_CONTENT_IGNORED_SUFFIXES:
+                        files.append(path)
+                elif entry.is_dir(follow_symlinks=False):
+                    if entry.name in _PACK_CONTENT_IGNORED_DIRECTORY_NAMES:
+                        continue
+                    if depth >= max_depth:
+                        raise RuntimeError(
+                            f"pack content scan exceeded depth {max_depth}: {root}"
+                        )
+                    walk(Path(entry.path), depth + 1)
+            except OSError:
+                continue
+
+    walk(root, 0)
+    return tuple(files)
 
 
 def _with_diagnostics(

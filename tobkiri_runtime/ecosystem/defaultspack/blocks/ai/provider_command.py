@@ -43,7 +43,9 @@ def _clean(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
-def _switch_direct_provider(provider_id: str) -> dict[str, Any]:
+def _switch_direct_provider(
+    provider_id: str, *, settings_owner: Any = None
+) -> dict[str, Any]:
     try:
         from domain.ai_client.providers import (
             get_best_model_for_provider,
@@ -71,7 +73,9 @@ def _switch_direct_provider(provider_id: str) -> dict[str, Any]:
             details={"provider_id": provider_id},
         )
     profile_id = model_id if model_id.startswith(f"{provider_id}/") else f"{provider_id}/{model_id}"
-    selected = ModelRuntimeSettingsService().set_preferred_model(profile_id)
+    selected = ModelRuntimeSettingsService(
+        settings_owner=settings_owner
+    ).set_preferred_model(profile_id)
     return ok(
         {
             "message": f"Switched provider to {provider_id}. Model={profile_id}",
@@ -82,7 +86,12 @@ def _switch_direct_provider(provider_id: str) -> dict[str, Any]:
     )
 
 
-def run(input_data: Any, context: dict[str, Any]) -> dict[str, Any]:
+def run(
+    input_data: Any,
+    context: dict[str, Any],
+    *,
+    settings_owner: Any = None,
+) -> dict[str, Any]:
     del context
     data = input_data if isinstance(input_data, dict) else {}
     raw_target = _clean(data.get("target") or data.get("gateway") or data.get("provider"))
@@ -90,7 +99,11 @@ def run(input_data: Any, context: dict[str, Any]) -> dict[str, Any]:
     raw_mode = _clean(data.get("routing_mode") or data.get("mode"))
 
     if not raw_target:
-        summary = gateway_routing_summary()
+        summary = gateway_routing_summary(
+            ModelRuntimeSettingsService(
+                settings_owner=settings_owner
+            ).get_settings()
+        )
         summary["message"] = (
             "Gateway routing: "
             f"target={summary['target']}, "
@@ -100,7 +113,10 @@ def run(input_data: Any, context: dict[str, Any]) -> dict[str, Any]:
         return ok(summary)
 
     if raw_target not in _GATEWAY_TOKENS and not raw_upstream and not raw_mode:
-        return _switch_direct_provider(normalize_provider_slug(raw_target))
+        return _switch_direct_provider(
+            normalize_provider_slug(raw_target),
+            settings_owner=settings_owner,
+        )
 
     if not is_known_gateway_target(raw_target):
         return error(
@@ -130,7 +146,8 @@ def run(input_data: Any, context: dict[str, Any]) -> dict[str, Any]:
                 "vercel_provider_order": [],
                 "vercel_provider_only": [],
                 "gateway_provider_sort": "auto",
-            }
+            },
+            settings_owner=settings_owner,
         )
         summary = gateway_routing_summary(settings)
         summary["message"] = "Reset gateway provider routing to Auto."
@@ -177,7 +194,9 @@ def run(input_data: Any, context: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    settings = update_gateway_routing_settings(patch)
+    settings = update_gateway_routing_settings(
+        patch, settings_owner=settings_owner
+    )
     summary = gateway_routing_summary(settings)
     summary["message"] = (
         f"Updated gateway routing: target={target}, mode={mode}, provider={upstream or 'auto'}."

@@ -2,7 +2,7 @@ import type { FormEvent, MutableRefObject, ReactNode } from "react";
 
 import type { ChatActivityEvent, ChatContentBlock, CodingContextEntry, CodingGitStatus, CodingWorkspaceRecord, ComposerWidgetAction, ConversationSteerItem, ModelCommandCandidate, ModelProfile, PromptUsageSummary, SettingsSection, SidebarAction, SidebarItem, TemplateComposerInput, ToolLogEntry, ToolTarget, UICatalog } from "../lib/api";
 import type { DesktopSystemInfo } from "../lib/desktopSystemInfo";
-import type { ComposerCommandItem } from "../lib/api";
+import type { ComposerCommandItem, RuntimeHealth } from "../lib/api";
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "../components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "../components/ToolPreview";
 import type { LocaleSetting } from "../lib/i18n";
@@ -14,6 +14,7 @@ import type { ComposerMentionMetadata } from "../lib/composerWidgets";
 import type { ComposerEntityReference } from "../lib/composerReferences";
 import type { WidgetConversationContext } from "../lib/widgetContext";
 import type { ModelSelectorSchema } from "../features/models";
+import type { ProjectInfo } from "../features/projects/projectStorage";
 
 export type { ComposerCommandItem } from "../lib/api";
 
@@ -92,6 +93,14 @@ export type ComposerModelStatusIndicator = {
   action?: ComposerModelStatusIndicatorAction | null;
 };
 
+export type ComposerSteerStatus = {
+  kind: "success";
+  message: string;
+} | {
+  kind: "error";
+  message: string;
+};
+
 export type SettingChangeHandler = (sectionId: string, fieldId: string, value: unknown) => void;
 
 export type SettingsLoadState = {
@@ -159,6 +168,8 @@ export type ChatMessagesRendererProps = {
   pendingToolStartedAt?: Record<string, number>;
   messages: ChatUiMessage[];
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
+  messagesScrollRef?: MutableRefObject<HTMLDivElement | null>;
+  onMessagesScroll?: () => void;
   unknownBlockStrategy: string;
   showActivityInMessages: boolean;
   showWidgets: boolean;
@@ -193,10 +204,13 @@ export type ComposerRendererProps = {
   modelStatusIndicators?: ComposerModelStatusIndicator[];
   voiceInputEnabled?: boolean;
   voiceInputUseAi?: boolean;
+  manualRuntimeModeSelectionEnabled?: boolean;
   mode?: AppMode;
   codingContext?: CodingContext | null;
   codingWorkspaces?: CodingWorkspaceRecord[];
   selectedCodingWorkspaceId?: string | null;
+  projects?: ProjectInfo[];
+  selectedProjectId?: string | null;
   attachedFiles?: AttachedFile[];
   pendingMentionAttachmentPaths?: string[];
   droppedWidgets?: DroppedWidget[];
@@ -206,7 +220,7 @@ export type ComposerRendererProps = {
   toolSelectionTargets?: ToolSelectionChip[];
   toolSelectionReview?: PendingToolReview | null;
   keyboardButtonNavigation?: boolean;
-  steerStatus?: string | null;
+  steerStatus?: ComposerSteerStatus | null;
   steerBusy?: boolean;
   steerQueuedCount?: number;
   steerPreviewItems?: ConversationSteerItem[];
@@ -245,9 +259,12 @@ export type ComposerRendererProps = {
   onCodingDirectoryChange?: (directory: string) => void;
   onCodingWorkspaceSelect?: (workspaceId: string) => void;
   onCodingWorkspaceTrust?: (workspaceId: string) => void;
-  onCodingWorkspaceCreate?: () => void;
+  onCodingWorkspaceCreate?: (rootPath?: string) => Promise<CodingWorkspaceRecord | null | undefined> | void;
   onCodingWorkspacesRefresh?: () => void;
   onCodingContextRefresh?: () => void;
+  onProjectSelect?: (project: ProjectInfo | null) => void;
+  onProjectDirectorySelect?: () => Promise<string | null | undefined>;
+  onProjectStoragePrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
 };
 
 export type ToolPreviewPanelRendererProps = {
@@ -304,7 +321,7 @@ export type SettingsModalRendererProps = {
   isOpen: boolean;
   activeSectionId?: string | null;
   catalog: UICatalog | null;
-  health: { status: string; pack: string; ts: string } | null;
+  health: RuntimeHealth | null;
   previewsCount: number;
   settingsSections: SettingsSection[];
   settingsValues: Record<string, Record<string, unknown>>;

@@ -6,6 +6,12 @@ import { isHumanOperatorCanvasPreview, toolPreviewsFromMessages } from "./toolPr
 
 const PNG_DATA_URL = "data:image/png;base64,iVBORw0KGgo=";
 
+function contractTarget(url: string): string {
+  const marker = "/api/contracts/defaultspack/";
+  if (!url.includes(marker)) return url;
+  return decodeURIComponent(url.slice(url.indexOf(marker) + marker.length));
+}
+
 function assistantMessage(patch: Partial<ChatMessage>): ChatMessage {
   return {
     id: "m1",
@@ -131,7 +137,7 @@ test("tool previews prefer conversation workspace artifact paths", () => {
   assert.equal(previews[0]?.data.type, "image");
   if (previews[0]?.data.type === "image") {
     assert.equal(previews[0].data.path, "artifacts/charts/revenue.png");
-    assert.match(previews[0].data.url, /path=artifacts%2Fcharts%2Frevenue\.png/);
+    assert.match(contractTarget(previews[0].data.url), /path=artifacts%2Fcharts%2Frevenue\.png/);
   }
 });
 

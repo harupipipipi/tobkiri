@@ -1,26 +1,303 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.connector_transport_gateway","version":"1.0.0","kind":"service","display_name":"Rumi Connector Transport Gateway","description":"Contract-only connector ingress, egress, and redacted status facade."},
-  "contracts":{"provides":[
-    {"id":"rumi.transport.connector.gateway.v1","version":"1.0.0","provider_instance_id":"connector-gateway.transport","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.gateway.receive"]},
-    {"id":"rumi.resource.connector.gateway.v1","version":"1.0.0","provider_instance_id":"connector-gateway.resource","cardinality":"one","security":"sensitive","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.gateway.read"]},
-    {"id":"rumi.action.connector.gateway.v1","version":"1.0.0","provider_instance_id":"connector-gateway.action","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.gateway.control"]}
-  ],"requires":[
-    {"id":"rumi.resource.connector.registry.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.transport.connector.inbound.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.resource.connector.outbound.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"isolate"},
-    {"id":"rumi.action.connector.outbound.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
-  ]},
-  "entrypoints":[
-    {"id":"connector-gateway-transport","contract_id":"rumi.transport.connector.gateway.v1","loader":"python","module":"ecosystem.rumi_connector_transport_gateway_pack.runtime.gateway","symbol":"create_gateway_transport","artifact_hash":"sha256:4075e5fdbbc277dc38c41f373e360bab9afcf253b3e10a8c56be055fee8cad95"},
-    {"id":"connector-gateway-resource","contract_id":"rumi.resource.connector.gateway.v1","loader":"python","module":"ecosystem.rumi_connector_transport_gateway_pack.runtime.gateway","symbol":"create_gateway_resource","artifact_hash":"sha256:4075e5fdbbc277dc38c41f373e360bab9afcf253b3e10a8c56be055fee8cad95"},
-    {"id":"connector-gateway-action","contract_id":"rumi.action.connector.gateway.v1","loader":"python","module":"ecosystem.rumi_connector_transport_gateway_pack.runtime.gateway","symbol":"create_gateway_action","artifact_hash":"sha256:4075e5fdbbc277dc38c41f373e360bab9afcf253b3e10a8c56be055fee8cad95"}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.transport.connector.gateway.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector-gateway.transport",
+        "required_capabilities": [
+          "connector.gateway.receive"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "isolate",
+        "id": "rumi.resource.connector.gateway.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector-gateway.resource",
+        "required_capabilities": [
+          "connector.gateway.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.connector.gateway.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector-gateway.action",
+        "required_capabilities": [
+          "connector.gateway.control"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.connector.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.transport.connector.inbound.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.connector.outbound.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.connector.outbound.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+      "contract_id": "rumi.transport.connector.gateway.v1",
+      "id": "connector-gateway-transport",
+      "loader": "python",
+      "module": "ecosystem.rumi_connector_transport_gateway_pack.runtime.gateway",
+      "symbol": "create_gateway_transport"
+    },
+    {
+      "artifact_hash": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+      "contract_id": "rumi.resource.connector.gateway.v1",
+      "id": "connector-gateway-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_connector_transport_gateway_pack.runtime.gateway",
+      "symbol": "create_gateway_resource"
+    },
+    {
+      "artifact_hash": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+      "contract_id": "rumi.action.connector.gateway.v1",
+      "id": "connector-gateway-action",
+      "loader": "python",
+      "module": "ecosystem.rumi_connector_transport_gateway_pack.runtime.gateway",
+      "symbol": "create_gateway_action"
+    }
   ],
-  "resources":[],"storage":[],
-  "permissions":[{"capability":"connector.gateway.receive","access":"write","approval_required":false},{"capability":"connector.gateway.read","access":"read","approval_required":false},{"capability":"connector.gateway.control","access":"control","approval_required":true},{"capability":"connector.registry.read","access":"read","approval_required":false},{"capability":"connector.inbound.receive","access":"write","approval_required":false},{"capability":"connector.outbound.read","access":"read","approval_required":false},{"capability":"connector.outbound.control","access":"control","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:4075e5fdbbc277dc38c41f373e360bab9afcf253b3e10a8c56be055fee8cad95","build_identity":"rumi-connector-transport-gateway-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.gateway.server","defaultspack.domain.external.gateway"],"compatibility_aliases":[],"compatibility_projection":"finite_transport_facade","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Disable the facade and select one prior transport without replaying inbound or outbound records."},
-  "extensions":{"rumi.connector_gateway.boundary":{"registry_owner":false,"inbound_owner":false,"outbound_owner":false,"network_server":false,"vendor_imports":false,"credential_values":false,"ingress_approval":false,"egress_receipts":2,"client_approved_trusted":false}}
+  "extensions": {
+    "rumi.connector_gateway.boundary": {
+      "client_approved_trusted": false,
+      "credential_values": false,
+      "egress_receipts": 2,
+      "inbound_owner": false,
+      "ingress_approval": false,
+      "network_server": false,
+      "outbound_owner": false,
+      "registry_owner": false,
+      "vendor_imports": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_connector_inbound_broker_pack": ">=1.0.0,<2.0.0",
+        "rumi_connector_outbound_broker_pack": ">=1.0.0,<2.0.0",
+        "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.connector.gateway.v1",
+            "rumi.resource.connector.gateway.v1",
+            "rumi.transport.connector.gateway.v1"
+          ],
+          "requires": [
+            "rumi.action.connector.outbound.v1",
+            "rumi.resource.connector.outbound.v1",
+            "rumi.resource.connector.registry.v1",
+            "rumi.service.host.authorize.v1",
+            "rumi.transport.connector.inbound.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_connector_inbound_broker_pack": ">=1.0.0,<2.0.0",
+          "rumi_connector_outbound_broker_pack": ">=1.0.0,<2.0.0",
+          "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0",
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Contract-only connector ingress, egress, and redacted status facade.",
+        "display_name": "Rumi Connector Transport Gateway",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:3f5c9e8b96061c598d2a1e6d499ec475c8f77d0a740027ade29fae98245adbe2",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c"
+          },
+          "owner_surfaces": [
+            "connector_transport_facade"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_connector_transport_gateway_pack",
+        "pack_identity": "rumi:ecosystem/rumi_connector_transport_gateway_pack",
+        "provenance": {
+          "build_identity": "rumi_connector_transport_gateway_pack:1.0.0",
+          "content_hash": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "connector.gateway.control",
+          "connector.gateway.read",
+          "connector.gateway.receive",
+          "connector.inbound.receive",
+          "connector.outbound.control",
+          "connector.outbound.read",
+          "connector.registry.read",
+          "host.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_connector_transport_gateway_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_connector_transport_gateway_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.gateway.server",
+      "defaultspack.domain.external.gateway"
+    ],
+    "removal_wave": 10,
+    "rollback": "Disable the facade and select one prior transport without replaying inbound or outbound records.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Contract-only connector ingress, egress, and redacted status facade.",
+    "display_name": "Rumi Connector Transport Gateway",
+    "id": "rumi.connector_transport_gateway",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "connector.gateway.receive"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "connector.gateway.read"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "connector.gateway.control"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "connector.registry.read"
+    },
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "connector.inbound.receive"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "connector.outbound.read"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "connector.outbound.control"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_connector_transport_gateway_pack:1.0.0",
+    "content_hash": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }
-

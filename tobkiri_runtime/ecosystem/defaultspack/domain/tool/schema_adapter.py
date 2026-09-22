@@ -7,6 +7,9 @@ from urllib.parse import unquote
 
 from domain.capability.tool_scope import normalize_tool_scope
 from domain.tool.security import requires_approval_for_security
+from .normalizers import tool_name_from_definition as tool_name_from_definition
+from .normalizers import list_or_empty as list_or_empty
+from .normalizers import mapping_or_empty as mapping_or_empty
 
 
 _APPROVAL_REQUIRED_NAME_PARTS = ("write", "create", "update", "delete", "patch", "commit", "push")
@@ -36,17 +39,6 @@ class ToolSchemaError(ValueError):
     """Raised when a tool parameter schema cannot be safely adapted."""
 
 
-def tool_name_from_definition(tool: Any) -> str:
-    if isinstance(tool, str):
-        return tool
-    if not isinstance(tool, dict):
-        return ""
-    function_def = tool.get("function")
-    if isinstance(function_def, dict) and function_def.get("name"):
-        return str(function_def.get("name"))
-    return str(tool.get("tool_id") or tool.get("name") or "")
-
-
 def adapt_tool_definition(tool: Any) -> Any:
     """Normalize defaultspack tool records to provider function-tool shape."""
     if not isinstance(tool, dict):
@@ -62,6 +54,8 @@ def adapt_tool_definition(tool: Any) -> Any:
     if not name:
         return tool
     schema_value = tool.get("schema")
+    if not isinstance(schema_value, dict):
+        schema_value = tool.get("input_schema")
     schema: Dict[str, Any] = schema_value if isinstance(schema_value, dict) else {}
     schema_parameters = schema.get("parameters")
     parameters = schema_parameters if isinstance(schema_parameters, dict) else schema
@@ -469,7 +463,7 @@ def resolve_runtime_profile_context(context: Dict[str, Any]) -> Dict[str, Any]:
                 resolved["_runtime_profile_key"] = key
                 return resolved
     try:
-        from core_runtime.runtime_profile_resolver import resolve_runtime_profile_context as core_resolve
+        from core_runtime.runtime_profile_context import resolve_runtime_profile_context as core_resolve
 
         return core_resolve(resolved, interface_registry=registry)
     except Exception:

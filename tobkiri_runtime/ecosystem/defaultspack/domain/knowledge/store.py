@@ -127,7 +127,7 @@ class KnowledgeStore:
 
 
 def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     plan = active_resolved_profile()
     if registry is None or plan is None:
         raise RuntimeError("global knowledge owner is unavailable")

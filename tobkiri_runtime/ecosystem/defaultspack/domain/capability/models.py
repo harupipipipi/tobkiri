@@ -8,6 +8,11 @@ import json
 from typing import Any
 from uuid import uuid4
 
+from core_runtime.capability_plan import (
+    CAPABILITY_PLAN_SCHEMA_VERSION,
+    canonical_capability_plan_digest,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class CapabilityTarget:
@@ -53,6 +58,8 @@ class CapabilityPlan:
     selected_skills: list[str] = field(default_factory=list)
     loaded_skills: list[str] = field(default_factory=list)
     tool_schema_hashes: dict[str, str] = field(default_factory=dict)
+    tool_capability_grants: dict[str, list[str]] = field(default_factory=dict)
+    provider_selections: dict[str, list[str]] = field(default_factory=dict)
     skill_instruction_hashes: dict[str, str] = field(default_factory=dict)
     approval_effects: list[dict[str, str]] = field(default_factory=list)
     tool_schema_tokens: int = 0
@@ -81,8 +88,8 @@ class CapabilityPlan:
     def to_dict(self) -> dict[str, Any]:
         """Return the versioned JSON contract."""
 
-        return {
-            "schema_version": "tobkiri.capability-plan/v1",
+        result = {
+            "schema_version": CAPABILITY_PLAN_SCHEMA_VERSION,
             "plan_id": self.plan_id,
             "registry_revision": self.registry_revision,
             "policy_revision": self.policy_revision,
@@ -101,6 +108,12 @@ class CapabilityPlan:
                 "attached": list(self.attached_tools),
                 "excluded": list(self.excluded_tools),
                 "schema_hashes": dict(self.tool_schema_hashes),
+                "capability_grants": {
+                    key: list(value)
+                    for key, value in sorted(
+                        self.tool_capability_grants.items()
+                    )
+                },
             },
             "skills": {
                 "required": list(self.required_skills),
@@ -109,6 +122,20 @@ class CapabilityPlan:
                 "instruction_hashes": dict(self.skill_instruction_hashes),
             },
             "approval": {"effects": list(self.approval_effects)},
+            "effective_capabilities": sorted(
+                {
+                    capability
+                    for tool_id in self.attached_tools
+                    for capability in self.tool_capability_grants.get(
+                        tool_id,
+                        [],
+                    )
+                }
+            ),
+            "provider_selections": {
+                key: sorted(set(value))
+                for key, value in sorted(self.provider_selections.items())
+            },
             "budget": {
                 "tool_schema_tokens": self.tool_schema_tokens,
                 "skill_instruction_tokens": self.skill_instruction_tokens,
@@ -117,6 +144,8 @@ class CapabilityPlan:
             "diagnostics": list(self.diagnostics),
             "trace_id": self.trace_id,
         }
+        result["digest"] = canonical_capability_plan_digest(result)
+        return result
 
 
 def stable_revision(value: Any) -> str:
