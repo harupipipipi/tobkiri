@@ -315,7 +315,7 @@ export function Dashboard() {
 
   const launchProfile = async (entry: NamedProfileRecord) => {
     if (!registry || !isActiveExecutionProfile(registry, entry)) return;
-    const profileView = buildNamedProfileView(entry, {activeSnapshotReady: activeProfileReady});
+    const profileView = buildNamedProfileView(entry, {activeSnapshotReady: activeProfileReady, activeDefinitionRevision: registry.active_profile_definition_revision});
     if (
       !activeProfileReady
       || !launchReady
@@ -536,7 +536,7 @@ export function Dashboard() {
               <div className="grid min-w-0 items-start gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))'}} data-testid="profile-grid">
                 {visibleProfiles.map((entry) => {
                   const active = isActiveExecutionProfile(registry, entry);
-                  const profileView = buildNamedProfileView(entry, {activeSnapshotReady: active && activeProfileReady});
+                  const profileView = buildNamedProfileView(entry, {activeSnapshotReady: active && activeProfileReady, activeDefinitionRevision: registry.active_profile_definition_revision});
                   // Only the card whose own action is in flight reports busy.
                   // Any pending mutation still locks the catalog for every card
                   // through mutationsAvailable, so a create cannot race a rename.

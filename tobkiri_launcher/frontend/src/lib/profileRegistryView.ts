@@ -54,7 +54,7 @@ function profileError(
  */
 export function buildNamedProfileView(
   entry: NamedProfileRecord,
-  {activeSnapshotReady = false}: {activeSnapshotReady?: boolean} = {},
+  {activeSnapshotReady = false, activeDefinitionRevision}: {activeSnapshotReady?: boolean; activeDefinitionRevision?: string | null} = {},
 ): NamedProfileView {
   const profile = entry.profile;
   const displayName = namedProfileDisplayName(entry);
@@ -90,6 +90,10 @@ export function buildNamedProfileView(
   };
   // Registered source definitions remain unresolved after activation. The Host's
   // verified active snapshot, not that source lifecycle, determines launch readiness.
+  if (activeSnapshotReady && activeDefinitionRevision !== undefined && activeDefinitionRevision !== entry.profile_revision) {
+    return withDisplayName(profileError(basePackId, packIds,
+      'Saved changes need activation. The running Profile still uses its previous configuration.'));
+  }
   if (activeSnapshotReady && (state === 'needs_resolution' || state === 'resolved')) return ready;
   if (state !== 'resolved') {
     return withDisplayName(profileError(

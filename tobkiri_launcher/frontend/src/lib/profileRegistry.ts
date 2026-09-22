@@ -23,6 +23,8 @@ export interface NamedProfileRegistry {
   active_profile_id: string | null;
   /** Resolved/activated execution revision; it may differ from a definition revision. */
   active_profile_revision: string | null;
+  /** Source definition used by the running snapshot, separate from its resolved revision. */
+  active_profile_definition_revision?: string | null;
   profiles: NamedProfileRecord[];
   changed_profile?: NamedProfileRecord;
   action?: 'create' | 'update' | 'duplicate' | 'delete';
@@ -169,6 +171,13 @@ export function parseNamedProfileRegistry(value: unknown): NamedProfileRegistry 
   ];
   const actualKeys = Object.keys(record).sort();
   const baseKeys = allowedKeys.slice(0, 5).sort();
+  const hasActiveDefinition = Object.hasOwn(record, 'active_profile_definition_revision');
+  if (hasActiveDefinition) baseKeys.push('active_profile_definition_revision');
+  baseKeys.sort();
+  if (hasActiveDefinition && (record.active_profile_definition_revision !== null && !isDigest(record.active_profile_definition_revision)
+    || record.active_profile_id === null && record.active_profile_definition_revision !== null)) {
+    throw new ProfileRegistryContractError('Active Profile definition revision is invalid.');
+  }
   const mutationKeys = [...baseKeys, 'action', 'changed_profile'].sort();
   if (
     (actualKeys.length !== baseKeys.length && actualKeys.length !== mutationKeys.length)
@@ -230,6 +239,7 @@ export function parseNamedProfileRegistry(value: unknown): NamedProfileRegistry 
   const activeProfileRevision = record.active_profile_revision as string | null;
   return {
     profile_registry_api_version: PROFILE_REGISTRY_API_VERSION,
+    ...(hasActiveDefinition ? {active_profile_definition_revision: record.active_profile_definition_revision as string | null} : {}),
     generation,
     active_profile_id: activeProfileId,
     active_profile_revision: activeProfileRevision,

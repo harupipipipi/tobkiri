@@ -2168,10 +2168,17 @@ location.replace({target_literal})}})
         store = self._profile_registry_store()
         state = store.snapshot()
         repair_legacy_active_profile_pointer()
-        active = ActiveProfileStore(runtime_user_data_root()).load(verify_snapshot=True)
+        active_store = ActiveProfileStore(runtime_user_data_root())
+        active = active_store.load(verify_snapshot=True)
+        definition_revision = None
+        if active is not None:
+            snapshot = active_store.verify_activation_snapshot(active)
+            envelope = snapshot.get("envelope", snapshot)
+            definition_revision = envelope["plan"]["profile_definition_digest"]
         return {
             "profile_registry_api_version": "io.tobkiri.profile-registry.v4",
             "generation": int(state["generation"]),
+            "active_profile_definition_revision": definition_revision,
             "active_profile_id": active.profile_id if active is not None else None,
             "active_profile_revision": (active.profile_revision if active is not None else None),
             "profiles": store.list_profile_payloads(),

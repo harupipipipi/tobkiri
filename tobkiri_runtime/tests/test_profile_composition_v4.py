@@ -100,3 +100,71 @@ def test_composition_rejects_injected_authority_unknown_choices_and_stale_bindin
         build_profile_composition(
             catalog, source["profile_id"], canonical_digest(source), {**request, **change}
         )
+
+
+def test_saved_composition_resolves_reviews_and_activates_only_after_approval(
+    composition_context, monkeypatch: pytest.MonkeyPatch
+):
+    from core_runtime.active_profile_store_v4 import ActiveProfileStore
+    from core_runtime.profile_catalog_v4 import bundle_lock_digest, profile_catalog_digest
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        NO_ACTIVE_PLAN_DIGEST,
+        NO_ACTIVE_PROFILE_REVISION,
+        RuntimeProfileChangeService,
+        RuntimeSurfaceService,
+    )
+
+    user_data, catalog, source, request = composition_context
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
+    # Preserve the Base's required providers; remove an optional presentation.
+    request["pack_ids"].remove("rumi_conversation_store_pack")
+    successor = build_profile_composition(
+        catalog, source["profile_id"], canonical_digest(source), request
+    )
+    definitions = ProfileDefinitionStore(user_data)
+    definitions.update_profile(
+        source["profile_id"], successor,
+        expected_profile_revision=canonical_digest(source),
+        expected_store_generation=definitions.snapshot()["generation"],
+    )
+
+    def load_catalog():
+        return host_profile_catalog(
+            bundle_root=packaged_profile_bundle_root(), user_data_root=user_data
+        )
+
+    updated_catalog = load_catalog()
+    service = RuntimeProfileChangeService(
+        surface_service=RuntimeSurfaceService(catalog_loader=load_catalog),
+        bundle_root=packaged_profile_bundle_root(), user_data_root=user_data,
+    )
+    pointer = ActiveProfileStore(user_data)
+    resolved = service.resolve({
+        "profile_id": source["profile_id"],
+        "expected_profile_revision": NO_ACTIVE_PROFILE_REVISION,
+        "expected_plan_digest": NO_ACTIVE_PLAN_DIGEST,
+        "desired_pack_ids": request["pack_ids"],
+        "profile_definition_digest": canonical_digest(successor),
+        "profile_catalog_digest": profile_catalog_digest(updated_catalog),
+        "bundle_lock_digest": bundle_lock_digest(updated_catalog),
+    }, session_id="composition-review")
+    assert pointer.load(verify_snapshot=True) is None
+    reviewed = service.review({
+        "candidate_id": resolved["candidate_id"],
+        "candidate_digest": resolved["candidate_digest"],
+    }, session_id="composition-review")
+    assert pointer.load(verify_snapshot=True) is None
+    approved = service.approve({
+        "candidate_id": reviewed["candidate_id"],
+        "candidate_digest": reviewed["candidate_digest"],
+    }, session_id="composition-review")
+    assert pointer.load(verify_snapshot=True) is None
+    result = service.activate({
+        "approval_id": approved["approval_id"],
+        "approval_digest": approved["approval_digest"],
+    }, session_id="composition-review")
+    assert result["profile_id"] == source["profile_id"]
+    active = pointer.require(verify_snapshot=True)
+    snapshot = pointer.verify_activation_snapshot(active)
+    envelope = snapshot.get("envelope", snapshot)
+    assert envelope["plan"]["profile_definition_digest"] == canonical_digest(successor)
