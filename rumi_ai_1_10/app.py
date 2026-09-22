@@ -41,7 +41,7 @@ def _check_permissive_production_guard():
     """
     import os
     # --- 環境変数チェック ---
-    env_val = os.environ.get("RUMI_ENVIRONMENT", "").lower()
+    env_val = os.environ.get("RUMI_ENVIRONMENT", "").strip().lower()
     if env_val in ("production", "prod"):
         print(
             "FATAL: permissive mode is not allowed in production.",

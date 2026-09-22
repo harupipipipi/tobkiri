@@ -59,10 +59,15 @@ class TestCheckPermissiveProductionGuard:
             _app._check_permissive_production_guard()
         assert exc_info.value.code == 1
 
-    def test_production_rejects_even_an_explicit_allow_flag(self, monkeypatch, tmp_path):
+    @pytest.mark.parametrize(
+        "environment", ["production", " production ", "\tPROD\n"]
+    )
+    def test_production_rejects_even_an_explicit_allow_flag(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, environment: str
+    ) -> None:
         """production では allow flag と lockfile があっても permissive にできない。"""
         (tmp_path / "permissive.lock").touch()
-        monkeypatch.setenv("RUMI_ENVIRONMENT", "production")
+        monkeypatch.setenv("RUMI_ENVIRONMENT", environment)
         monkeypatch.setenv("RUMI_ALLOW_PERMISSIVE", "true")
         monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
         with pytest.raises(SystemExit) as exc_info:
