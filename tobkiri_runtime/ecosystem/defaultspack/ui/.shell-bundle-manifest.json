@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "75049408fcb41e68f007d032ef2291b825f30b7ce415ebbc132c0ee315fb3727",
+    "digest": "f54e44585b5335e4a5ed231f9b5ec1645fee96f2392c634687af725bfa90ca16",
     "entries": [
       {
         "path": "index.html",
@@ -455,13 +455,13 @@
       },
       {
         "path": "src/components/ToolPreview.test.ts",
-        "size": 9557,
-        "sha256": "0200f7ac1fe8e4078bd0d592acc44d1bd89d1a1e5e07e6de9a1bbeb2885d85b7"
+        "size": 10834,
+        "sha256": "5060d503014359c6a5bd88d7dc6d79a51ff24a871dc8530d327e2630892e64d7"
       },
       {
         "path": "src/components/ToolPreview.tsx",
-        "size": 46535,
-        "sha256": "97edded85db432eddf8a36a62d0987345450644d33beee63afe6a181333d2cc6"
+        "size": 42768,
+        "sha256": "bfbdcc840a1e8e175deee0514a76d717058bd682fabaac4a6c408c4658af7ee0"
       },
       {
         "path": "src/components/ToolSettingsPanel.tsx",
@@ -757,6 +757,11 @@
         "path": "src/components/prompts/promptSegmentView.ts",
         "size": 5341,
         "sha256": "08fd4ccdde53ef32d62d57494210cad82a08067135a278a4dd688ce28d0e7a9d"
+      },
+      {
+        "path": "src/components/toolPreviewImagePolicy.ts",
+        "size": 4001,
+        "sha256": "7fb1a1398b39684ed862fd351e4200432cdb91caeff44ae1408f015fa7a0e86e"
       },
       {
         "path": "src/features/apiKeys/apiKeySetup.test.ts",
@@ -1851,7 +1856,7 @@
     ]
   },
   "bundle": {
-    "digest": "8b5ee6391cc50e1e3a7e98991f4ad08b969929c61620ce62682eaafccebb3b23",
+    "digest": "117d9fc9b33e20463fdc370999afc69bd6af4bba1ec9812b3b7dc1913bca9356",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1865,8 +1870,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2210860,
-        "sha256": "8500a514e7e41d03abe8e010706a38fa700feb99b21bf4e3b31baccc8d2a573f"
+        "size": 2210864,
+        "sha256": "ebc376e8aa2654ef1189f8572fe6003165c771a580dd49308425ac6f576c9f37"
       },
       {
         "path": "shell-rolldown-runtime.js",
