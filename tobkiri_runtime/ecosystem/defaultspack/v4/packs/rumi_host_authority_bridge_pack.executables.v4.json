@@ -1,42 +1,429 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:a77f333e64de66f22dd318f96e38f7ef6a4886ec81bc2ceded731611bd3d1ac2",
   "pack_id": "rumi_host_authority_bridge_pack",
-  "source_identity": "sha256:9f041603183f52eac0b4f4e63abeb9c9a3ac40b8be18c067b95723d52793f168",
+  "source_identity": "sha256:e30a1f98ee57a3c037d96c143df98e1206d85f08e4ee3aa4a02cd8c3aa070909",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
-      "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
-      "implementation_digest": "sha256:d19bcba1e195378e41b21ee7543192a2922223afcbc73bce9999f52db86c4955",
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.approval-window.python",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.approval-window",
       "implementation_path": "runtime/bridge.py",
+      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.authority.approval-window.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:4ab51c6dedc45d6c2915bcd416d416b312db643c536504af820afd4f8c485873",
+          "operation_id": "authority_approval.open",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "request_id": {
+                "maxLength": 160,
+                "pattern": "^[A-Za-z0-9_-]{1,160}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "request_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.authorize.python",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.authorize",
+      "implementation_path": "runtime/bridge.py",
+      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.host.authorize.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
-          "input_schema": {
-            "type": "object"
-          },
+          "revision_digest": "sha256:36943db633d4f0681bde085b2264c4a8611487a7c86ce9dcd9120fa0a7883329",
           "operation_id": "rumi_host_authority_bridge_pack.host-authority",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "type": "object"
+              },
+              "authority": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "receipt": {
+                "type": "string"
+              },
+              "service_pack_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:fdfe79d6f728be5ebb51bb338a898d6d43592a4c907f3c2e972176895cf9d884",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
+      ]
+    },
+    {
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation.python",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+      "implementation_path": "runtime/bridge.py",
+      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "execution_kind": "host_extension",
       "platform": "any",
+      "architecture": "any",
       "runtime_abi": "python3.13",
-      "variant_id": "rumi_host_authority_bridge_pack.host-authority.authorize.python"
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:0513e5818e85697411c31221c7bef782cea89eca0aa8878aeb71402b1d6904d9",
+          "operation_id": "chat_approval.approve",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "conversation_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "resume_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "turn_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "ui_operator": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "request_id",
+              "conversation_id",
+              "turn_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.action.chat.approval-continuation.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:0513e5818e85697411c31221c7bef782cea89eca0aa8878aeb71402b1d6904d9",
+          "operation_id": "chat_approval.resume",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "conversation_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "resume_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "turn_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "ui_operator": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "request_id",
+              "conversation_id",
+              "turn_id"
+            ],
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval.python",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+      "implementation_path": "runtime/bridge.py",
+      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+          "operation_id": "interactive_approval.get",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "confirmation_text": {
+                "maxLength": 512,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "ui_operator": {
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+          "operation_id": "interactive_approval.list",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "confirmation_text": {
+                "maxLength": 512,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "ui_operator": {
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+          "operation_id": "interactive_approval.approve",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "confirmation_text": {
+                "maxLength": 512,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "ui_operator": {
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        },
+        {
+          "contract_id": "tobkiri.service.interactive-approval.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:97d719fe044cc98a6cc621936418d14768e84189bdf607375718110393756c4b",
+          "operation_id": "interactive_approval.deny",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "confirmation_text": {
+                "maxLength": 512,
+                "type": "string"
+              },
+              "request_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "ui_operator": {
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
+    },
+    {
+      "variant_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect.python",
+      "function_id": "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+      "implementation_path": "runtime/bridge.py",
+      "implementation_digest": "sha256:f6ed2a2c1aba8bd4e6e64ec8a0dbcfc69e25be3408b8a40938b30abea01e64b1",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
+      "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.interactive-effect.v1",
+          "contract_version": "1.0.0",
+          "revision_digest": "sha256:8fb31d66f39b67d0691798d46b3ddd3af00f15ab42cf67522703db2ed9dac10f",
+          "operation_id": "interactive_effect.manage",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "correlation_id": {
+                "maxLength": 36,
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              "effect_id": {
+                "maxLength": 255,
+                "type": "string"
+              },
+              "effect_kind": {
+                "enum": [
+                  "provider_configure",
+                  "shell_execute",
+                  "git_commit",
+                  "git_restore",
+                  "git_apply_patch",
+                  "git_push",
+                  "mcp_connect"
+                ]
+              },
+              "phase": {
+                "enum": [
+                  "prepare",
+                  "resume",
+                  "status",
+                  "cancel",
+                  "lookup"
+                ]
+              },
+              "request": {
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "output_schema": {
+            "type": "object"
+          },
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
+        }
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:905a867294f0d596e852bb38c3813922b6fc1d5ef2e1b86f4810a7b2a5773e48",
+  "catalog_digest": "sha256:daf5f78df15656843d485b7c4a8e4836cc29702cd13094953ab1697f68f1dba1"
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from blocks._common import gen_id
 from domain.ai_client.model_search import search_models
@@ -33,9 +34,11 @@ DEFAULT_CATALOG_AI_DIRECT_LIMIT = 80
 
 
 class ToolSelectionService:
-    def __init__(self, *, call_handler: Any = None, settings: dict[str, Any] | None = None) -> None:
+    def __init__(self, *, call_handler: Any = None, settings: dict[str, Any] | None = None,
+                 settings_owner: SettingsOwnerPort | None = None) -> None:
+        self._settings_owner = settings_owner
         self._call_handler = call_handler
-        self._settings = settings if isinstance(settings, dict) else read_frontend_settings()
+        self._settings = settings if isinstance(settings, dict) else read_frontend_settings(settings_owner=settings_owner)
         self._tool_settings = self._settings.get("tools") if isinstance(self._settings.get("tools"), dict) else {}
 
     def select(
@@ -418,7 +421,14 @@ class ToolSelectionService:
         if not bool(self._tool_settings.get("auto_discover_embedding_model", False)):
             return ""
         try:
-            result = search_models({"type": "embedding", "configured_only": True, "max_results": 1})
+            result = search_models(
+                {
+                    "type": "embedding",
+                    "configured_only": True,
+                    "max_results": 1,
+                },
+                settings=self._settings,
+            )
         except Exception:
             return ""
         models = result.get("models") if isinstance(result, dict) else []
@@ -448,6 +458,7 @@ class ToolSelectionService:
                 selected_model_capabilities=context.get("selected_model_capabilities") if isinstance(context.get("selected_model_capabilities"), dict) else None,
                 settings=self._settings,
                 prefilter=prefilter,
+                settings_owner=self._settings_owner,
             )
         except Exception as exc:
             return fallback_ids[:limit], "semantic_fallback", [{"stage": "utility_model", "reason": str(exc)}], [

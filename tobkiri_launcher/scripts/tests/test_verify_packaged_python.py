@@ -39,6 +39,8 @@ def _tauri_copied_resource(tmp_path: Path) -> tuple[Path, str]:
     for path in (resource, *resource.rglob("*")):
         if path.is_dir():
             path.chmod(0o755)
+        elif path.is_file():
+            path.chmod(stat.S_IMODE(path.stat().st_mode) | stat.S_IWUSR)
     digest = BUILDER._sha256_file(resource / BUILDER.MANIFEST_FILENAME)
     return resource, digest
 
@@ -86,6 +88,18 @@ def test_directory_mode_evidence_is_manifest_inventoried(tmp_path: Path) -> None
     )
     assert entry["sha256"] == BUILDER._sha256_file(evidence)
     assert entry["executable"] is False
+
+
+def test_host_seal_rejects_non_transport_file_mode(tmp_path: Path) -> None:
+    resource, digest = _tauri_copied_resource(tmp_path)
+    manifest = json.loads(
+        (resource / BUILDER.MANIFEST_FILENAME).read_text(encoding="utf-8")
+    )
+    candidate = resource / manifest["files"][0]["path"]
+    candidate.chmod(stat.S_IMODE(candidate.stat().st_mode) | stat.S_IWGRP)
+
+    with pytest.raises(RuntimeError, match="file mode changed"):
+        VERIFY._preseal_tauri_directories(resource, TARGET, digest, BUILDER)
 
 
 def test_post_sign_verifier_preserves_bundle_tree_identity(tmp_path: Path) -> None:

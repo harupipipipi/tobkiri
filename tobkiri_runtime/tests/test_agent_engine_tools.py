@@ -27,7 +27,7 @@ def _isolate_agent_model_routing(monkeypatch):
     )
     monkeypatch.setattr(
         "domain.agent.engine.get_model_capabilities",
-        lambda model: {
+        lambda model, **kwargs: {
             "profile_id": model,
             "supports_tool_calling": True,
             "supports_vision": True,
@@ -197,7 +197,7 @@ def test_agent_delegate_with_image_requires_vision_model_or_bridge(monkeypatch) 
             warnings=[],
         )
 
-    def fake_caps(model):
+    def fake_caps(model, **kwargs):
         return {
             "supports_vision": model == "demo/vision",
             "supports_image_input": model == "demo/vision",
@@ -250,7 +250,7 @@ def test_agent_delegate_tools_imply_tool_calling_route(monkeypatch) -> None:
             warnings=[],
         )
 
-    def fake_caps(model):
+    def fake_caps(model, **kwargs):
         return {
             "supports_tool_calling": model == "demo/tools",
             "supports_vision": False,
@@ -303,7 +303,7 @@ def test_agent_delegate_attachments_reach_agent_context(monkeypatch) -> None:
         return _text_response()
 
     monkeypatch.setattr("domain.agent.engine.route_model_request", fake_route)
-    monkeypatch.setattr("domain.agent.engine.get_model_capabilities", lambda model: {"supports_tool_calling": True})
+    monkeypatch.setattr("domain.agent.engine.get_model_capabilities", lambda model, **kwargs: {"supports_tool_calling": True})
     engine._ai_complete = fake_ai
 
     result = engine.execute(

@@ -30,22 +30,22 @@ class _ResolvedCatalog:
     """Project the immutable operation catalog captured by the Host."""
 
     def __init__(self, context: HostProviderCaptureContextV4) -> None:
-        operations: list[dict[str, Any]] = []
+        operations: dict[str, dict[str, Any]] = {}
         self.schemas: dict[str, Mapping[str, Any]] = {}
         for binding in context.catalog_bindings:
             input_digest = canonical_digest(binding.operation.input_schema)
             self.schemas[input_digest] = binding.operation.input_schema
-            operations.append(
-                {
-                    "contract_id": binding.operation.contract_id,
-                    "contract_revision_digest": binding.operation.revision_digest,
-                    "operation_id": binding.operation.operation_id,
-                    "function_principal_id": binding.principal_ref.value,
-                    "provider_id": binding.function.function_id,
-                    "input_schema_digest": input_digest,
-                    "effect_ceiling": [binding.operation.effect_class.value],
-                }
-            )
+            operation = {
+                "contract_id": binding.operation.contract_id,
+                "contract_revision_digest": binding.operation.revision_digest,
+                "operation_id": binding.operation.operation_id,
+                "function_principal_id": binding.principal_ref.value,
+                "provider_id": binding.function.function_id,
+                "input_schema_digest": input_digest,
+                "effect_ceiling": [binding.operation.effect_class.value],
+            }
+            # Caller edges can share an identical target operation projection.
+            operations[canonical_digest(operation)] = operation
         body = {
             "security_epoch": context.security_epoch,
             "activation": {
@@ -53,7 +53,7 @@ class _ResolvedCatalog:
                 "activation_digest": canonical_digest(context.activation),
             },
             "operations": sorted(
-                operations,
+                operations.values(),
                 key=lambda item: (
                     item["contract_id"],
                     item["operation_id"],

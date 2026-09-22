@@ -98,10 +98,10 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert setup["risk_level"] == "medium"
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.overlap_policy["mcp_server_registration"] == "handoff_to_rumi_mcp_gateway_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "API Toolsmith" in candidate.defaultspack_promotion["reason"]
-    assert "no_executable_runtime_tools" in candidate.defaultspack_promotion["promotion_blockers"]
-    assert "webhook_signature_policy_secret_free_review" in candidate.defaultspack_promotion["promotion_evidence_required"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "API Toolsmith" in candidate.base_pack_promotion["reason"]
+    assert "no_executable_runtime_tools" in candidate.base_pack_promotion["promotion_blockers"]
+    assert "webhook_signature_policy_secret_free_review" in candidate.base_pack_promotion["promotion_evidence_required"]
     assert candidate.marketplace["id"].startswith("rumi.")
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"

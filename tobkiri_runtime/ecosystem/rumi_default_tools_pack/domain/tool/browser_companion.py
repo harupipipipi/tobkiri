@@ -9,6 +9,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tobkiri_protocol.secure_persistence import SecureDirectory
+
+from .legacy_approval_lock import legacy_approval_lock
+
 from .browser_companion_bridge import (
     BrowserCompanionBridgeStore,
     candidate_base_urls,
@@ -514,14 +518,15 @@ class BrowserCompanionController:
         }
 
     def _issue_approval(self, remote_action: str, approval_payload: dict[str, Any]) -> str:
-        approvals = self._read_approvals()
-        token = secrets.token_urlsafe(24)
-        approvals[token] = {
-            "action": remote_action,
-            "payload": approval_payload,
-            "expires_at": time.time() + 300,
-        }
-        self._write_approvals(approvals)
+        with legacy_approval_lock(self._approval_path):
+            approvals = self._read_approvals()
+            token = secrets.token_urlsafe(24)
+            approvals[token] = {
+                "action": remote_action,
+                "payload": approval_payload,
+                "expires_at": time.time() + 300,
+            }
+            self._write_approvals(approvals)
         return token
 
     def _consume_approval(
@@ -533,9 +538,10 @@ class BrowserCompanionController:
         token = str((payload or {}).get("approval_token") or "").strip()
         if not token:
             return False
-        approvals = self._read_approvals()
-        record = approvals.pop(token, None)
-        self._write_approvals(approvals)
+        with legacy_approval_lock(self._approval_path):
+            approvals = self._read_approvals()
+            record = approvals.pop(token, None)
+            self._write_approvals(approvals)
         if not isinstance(record, dict):
             return False
         if record.get("action") != remote_action:
@@ -554,10 +560,10 @@ class BrowserCompanionController:
         return value if isinstance(value, dict) else {}
 
     def _write_approvals(self, approvals: dict[str, Any]) -> None:
-        self._approval_path.parent.mkdir(parents=True, exist_ok=True)
-        self._approval_path.write_text(
-            json.dumps(approvals, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
+        directory = SecureDirectory(self._approval_path.parent)
+        directory.write_bytes_atomic(
+            self._approval_path.name,
+            json.dumps(approvals, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8"),
         )
 
     @staticmethod

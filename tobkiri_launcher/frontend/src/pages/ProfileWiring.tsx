@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import {Cable, Link2} from 'lucide-react';
 import {Link} from 'react-router';
 
@@ -5,15 +6,30 @@ import {AdvancedSurfaceFrame, EmptySurfacePanel} from '@/src/components/advanced
 import {RuntimeEvidenceCard} from '@/src/components/advanced/RuntimeEvidenceCard';
 import {Badge} from '@/src/components/ui/Badge';
 import {Card, CardContent, CardHeader, CardTitle} from '@/src/components/ui/Card';
+import {Input} from '@/src/components/ui/Input';
 import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
 import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
-import {extractExactPlanBindings} from '@/src/lib/runtimeSurface';
+import {extractExactPlanBindings, type RuntimePlanBinding} from '@/src/lib/runtimeSurface';
 import {panelRoutes} from '@/src/lib/routes';
+
+export function filterPlanBindings(bindings: readonly RuntimePlanBinding[], query: string): RuntimePlanBinding[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) return [...bindings];
+  return bindings.filter((binding) => [
+    binding.binding_id,
+    binding.source_principal_id,
+    binding.target_contract_id,
+    binding.operation_id,
+    binding.edge_digest,
+  ].some((value) => value?.toLocaleLowerCase().includes(normalized)));
+}
 
 export function ProfileWiring() {
   const surface = useRuntimeSurface<unknown>('profile');
   const descriptor = LAUNCHER_ADVANCED_VIEWS.profileWiring;
   const bindings = surface.data ? extractExactPlanBindings(surface.data.data) : null;
+  const [query, setQuery] = useState('');
+  const visibleBindings = bindings ? filterPlanBindings(bindings, query) : [];
 
   return (
     <AdvancedSurfaceFrame
@@ -25,7 +41,10 @@ export function ProfileWiring() {
       {surface.status === 'ready' && bindings && bindings.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Cable className="h-4 w-4" aria-hidden="true" />Exact Plan bindings</CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2"><Cable className="h-4 w-4" aria-hidden="true" />Profile connections</CardTitle>
+              <Badge variant="outline">{bindings.length} bindings</Badge>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-3">
             <Link
@@ -34,7 +53,8 @@ export function ProfileWiring() {
             >
               Change Profile closure in the v4 ceremony
             </Link>
-            {bindings.map((binding) => (
+            <Input label="Find a connection" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Principal, Contract, operation, or binding ID" />
+            {visibleBindings.map((binding) => (
               <div key={binding.binding_id} className="grid gap-2 rounded-lg border border-border bg-bg-main p-4 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] sm:items-center">
                 <div className="min-w-0">
                   <Badge variant="outline">{binding.binding_id}</Badge>
@@ -44,6 +64,7 @@ export function ProfileWiring() {
                 <div className="min-w-0 text-xs text-text-muted"><span className="font-medium text-text-main">Contract / operation</span><span className="ml-2 break-all font-mono">{binding.target_contract_id} / {binding.operation_id}</span></div>
               </div>
             ))}
+            {visibleBindings.length === 0 ? <p className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">No connections match “{query.trim()}”.</p> : null}
           </CardContent>
         </Card>
       ) : (

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Generic, Literal, NotRequired, TypedDict, TypeVar
+from typing import Generic, Literal, TypedDict, TypeVar
+
+from typing_extensions import NotRequired
 
 ContractStatus = Literal[
     'ok',

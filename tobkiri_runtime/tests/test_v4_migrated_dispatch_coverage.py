@@ -41,6 +41,8 @@ def test_v4_dispatch_session_uses_captured_context_and_scope() -> None:
         providers={},
         profile_id="profile:captured",
         plan_digest="sha256:" + "1" * 64,
+        profile_revision="sha256:" + "2" * 64,
+        activation_id="activation:migrated-first",
     )
     payload = {
         "message": "hello",
@@ -80,6 +82,8 @@ def test_v4_dispatch_session_leaves_omitted_version_to_captured_broker() -> None
         providers={},
         profile_id="profile:captured",
         plan_digest="sha256:" + "1" * 64,
+        profile_revision="sha256:" + "2" * 64,
+        activation_id="activation:migrated-second",
     )
 
     session.invoke("tobkiri.service.example.v1", "read", {})

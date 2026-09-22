@@ -6,6 +6,7 @@ import json
 import multiprocessing
 import os
 import shutil
+import threading
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +21,7 @@ from ecosystem.defaultspack.domain.runtime_v4 import (
     BundleIntegrityError,
     BundledCatalog,
     ProfileResolutionDenied,
+    project_runtime_launch_selector,
     resolve_default_profile,
 )
 from tobkiri_protocol.canonical import canonical_digest
@@ -67,7 +69,9 @@ def _catalog() -> BundledCatalog:
 
 
 def _approved(catalog: BundledCatalog) -> set[str]:
-    return {str(manifest["pack"]["artifact_digest"]) for manifest in catalog.packs.values()}
+    return {
+        str(manifest["pack"]["artifact_digest"]) for manifest in catalog.packs.values()
+    }
 
 
 def _edge_key(edge: dict[str, object]) -> str:
@@ -88,7 +92,8 @@ def _resolve(catalog: BundledCatalog | None = None):
     for edge in selected_catalog.profiles["defaults"]["requested_edges"]:
         authority_bindings.setdefault(
             _edge_key(edge),
-            "authority-ref:test." + canonical_digest(_edge_key(edge)).removeprefix("sha256:"),
+            "authority-ref:test."
+            + canonical_digest(_edge_key(edge)).removeprefix("sha256:"),
         )
     return resolve_default_profile(
         selected_catalog,
@@ -98,6 +103,27 @@ def _resolve(catalog: BundledCatalog | None = None):
         authority_bindings=authority_bindings,
         security_epoch=7,
     )
+
+
+def test_projected_pack_requires_exact_materialization_catalog_pin() -> None:
+    """A source-bound projection cannot fall back to its derivative digest."""
+
+    catalog = _catalog()
+    pack_id = "rumi_file_inspect_pack"
+    executable = copy.deepcopy(catalog.executable_catalogs[pack_id])
+    executable.pop("materialization_catalog_digest")
+    executable["catalog_digest"] = canonical_digest(
+        {key: value for key, value in executable.items() if key != "catalog_digest"}
+    )
+    executables = dict(catalog.executable_catalogs)
+    executables[pack_id] = executable
+    altered = replace(catalog, executable_catalogs=executables)
+
+    with pytest.raises(
+        ProfileResolutionDenied,
+        match="materialization executable catalog digest",
+    ):
+        _resolve(altered)
 
 
 def _authority(path: Path) -> AuthorityStore:
@@ -186,11 +212,23 @@ def _cas_activation_process(
         authority.close()
 
 
+def test_bundle_catalog_is_shared_with_generator_without_pack_implementation() -> None:
+    """Compatibility imports retain the exact neutral verifier and error types."""
+    from tobkiri_protocol import bundle_catalog
+    from ecosystem.defaultspack.domain import runtime_v4
+    from scripts import generate_defaultspack_v4_bundle
+
+    assert runtime_v4.BundledCatalog is bundle_catalog.BundledCatalog
+    assert generate_defaultspack_v4_bundle.BundledCatalog is bundle_catalog.BundledCatalog
+    assert runtime_v4.BundleIntegrityError is bundle_catalog.BundleIntegrityError
+    assert runtime_v4.DefaultProfileV4Error is bundle_catalog.DefaultProfileV4Error
+
+
 def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     catalog = _catalog()
     resolved = _resolve(catalog)
 
-    assert set(catalog.packs) == {
+    assert {
         "defaults-basepack",
         "defaultspack",
         "rumi_ai_gateway_pack",
@@ -199,38 +237,76 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_ai_stream_pack",
         "rumi_ai_tool_bridge_pack",
         "rumi_ai_usage_pack",
+        "rumi_browser_host_service_pack",
+        "rumi_clipboard_host_service_pack",
+        "rumi_command_protocol_pack",
         "rumi_file_inspect_pack",
+        "rumi_git_publish_pack",
+        "rumi_git_read_pack",
+        "rumi_git_write_pack",
+        "rumi_default_tools_pack",
+        "rumi_desktop_host_service_pack",
         "rumi_host_authority_bridge_pack",
         "rumi_model_catalog_pack",
         "rumi_model_registry_pack",
+        "rumi_prompt_studio_pack",
         "rumi_provider_adapters_pack",
         "rumi_provider_registry_pack",
+        "rumi_shell_execute_pack",
+        "rumi_shell_policy_pack",
+        "rumi_tool_broker_pack",
+        "rumi_tool_local_executor_pack",
+        "rumi_tool_registry_pack",
+        "rumi_tool_result_pack",
+        "rumi_tool_validation_pack",
         "rumi_workspace_mount_pack",
         "runtime.tauri.application.default",
         "dev.tauri.toolchain.default",
         "shell.cli.default",
         "shell.tauri.default",
         "tobkiri_host_pack_control",
-    }
+    } <= set(catalog.packs)
     assert resolved.profile["profile_api_version"] == "io.tobkiri.profile.v5"
     assert resolved.profile["state"] == "resolved"
     assert resolved.profile["shell"]["provider_id"] == "shell.tauri.default"
-    assert "shell.cli.default" not in {item["identity"] for item in resolved.lock["effective_set"]}
+    assert "shell.cli.default" not in {
+        item["identity"] for item in resolved.lock["effective_set"]
+    }
     assert resolved.profile["profile_authority_snapshot_digest"] == SNAPSHOT_DIGEST
     assert {item["pack_id"] for item in resolved.profile["packs"]} == {
         "defaultspack",
+        "rumi_turn_runtime_pack",
+        "rumi_conversation_store_pack",
+        "rumi_credential_broker_pack",
+        "tobkiri_ui_settings_pack",
         "rumi_ai_gateway_pack",
         "rumi_ai_pipeline_pack",
         "rumi_ai_routing_pack",
         "rumi_ai_stream_pack",
         "rumi_ai_tool_bridge_pack",
         "rumi_ai_usage_pack",
+        "rumi_browser_host_service_pack",
+        "rumi_clipboard_host_service_pack",
+        "rumi_command_protocol_pack",
+        "rumi_default_tools_pack",
+        "rumi_desktop_host_service_pack",
         "rumi_file_inspect_pack",
+        "rumi_git_publish_pack",
+        "rumi_git_read_pack",
+        "rumi_git_write_pack",
         "rumi_host_authority_bridge_pack",
         "rumi_model_catalog_pack",
         "rumi_model_registry_pack",
+        "rumi_prompt_studio_pack",
         "rumi_provider_adapters_pack",
         "rumi_provider_registry_pack",
+        "rumi_shell_execute_pack",
+        "rumi_shell_policy_pack",
+        "rumi_tool_broker_pack",
+        "rumi_tool_local_executor_pack",
+        "rumi_tool_registry_pack",
+        "rumi_tool_result_pack",
+        "rumi_tool_validation_pack",
         "rumi_workspace_mount_pack",
         "runtime.tauri.application.default",
         "tobkiri_host_pack_control",
@@ -240,7 +316,48 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
     assert "dev.tauri.toolchain.default" not in {
         item["identity"] for item in resolved.lock["effective_set"]
     }
-    assert [item["function_principal"]["function_id"] for item in resolved.plan["bindings"]] == [
+    assert [
+        item["function_principal"]["function_id"] for item in resolved.plan["bindings"]
+    ] == [
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_tool_registry_pack.tool-registry.definition",
+        "rumi_model_registry_pack.model-registry.manage",
+        "rumi_provider_registry_pack.provider-registry.resource",
+        "rumi_provider_registry_pack.provider-registry.resource",
+        "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "rumi_provider_registry_pack.provider-configure.prepare",
+        "rumi_provider_registry_pack.provider-configure.execute",
+        "rumi_credential_broker_pack.credential-broker.manage",
+        "rumi_turn_runtime_pack.turn-runtime.stop",
+        "rumi_turn_runtime_pack.turn-runtime.reconcile",
+        "rumi_conversation_store_pack.conversation-store.resource",
+        "rumi_ai_routing_pack.ai-routing.default",
+        "rumi_turn_runtime_pack.turn-runtime.saved",
+        "rumi_turn_runtime_pack.turn-runtime.resource",
+        "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+        "rumi_conversation_store_pack.conversation-store.resource",
+        "defaultspack.conversation.saved",
+        "rumi_conversation_store_pack.conversation-store.resource",
+        "rumi_conversation_store_pack.conversation-store.message-manage",
+        "rumi_ai_gateway_pack.ai-gateway.generate",
+        "rumi_ai_gateway_pack.ai-gateway.preflight",
+        "rumi_ai_pipeline_pack.ai-pipeline.prepare",
+        "rumi_provider_registry_pack.provider-registry.health",
+        "rumi_provider_registry_pack.provider-registry.resource",
+        "rumi_model_catalog_pack.model-catalog.bundled",
+        "rumi_model_registry_pack.model-registry.profile",
+        "defaultspack.application-presentation",
+        "defaultspack.application-presentation",
+        "defaultspack.application-presentation",
+        "rumi_command_protocol_pack.catalog.read",
+        "rumi_model_registry_pack.model-registry.profile",
+        "tobkiri.ui.catalog.read",
+        "tobkiri.ui.settings.read",
+        "tobkiri.ui.preferences.write",
+        "rumi_model_registry_pack.model-registry.profile",
+        "rumi_conversation_store_pack.conversation-store.resource",
+        "rumi_conversation_store_pack.conversation-store.manage",
+        "rumi_model_registry_pack.model-registry.profile",
         "defaultspack.conversation",
         "rumi_ai_gateway_pack.ai-gateway.generate",
         "rumi_ai_gateway_pack.ai-gateway.stream",
@@ -248,6 +365,8 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_ai_pipeline_pack.ai-pipeline.prepare",
         "rumi_provider_registry_pack.provider-registry.health",
         "rumi_provider_registry_pack.provider-registry.health",
+        "rumi_provider_registry_pack.provider-registry.resource",
+        "rumi_provider_registry_pack.provider-registry.resource",
         "rumi_model_catalog_pack.model-catalog.bundled",
         "rumi_model_catalog_pack.model-catalog.bundled",
         "rumi_model_registry_pack.model-registry.profile",
@@ -289,8 +408,108 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "tobkiri.host.pack-control",
         "tobkiri.host.pack-control",
         "rumi_file_inspect_pack.file-inspect.service",
+        "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+        "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+        "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+        "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+        "rumi_command_protocol_pack.high-risk-command.service",
+        "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
+        "rumi_shell_execute_pack.shell-prepare.service",
+        "rumi_shell_execute_pack.shell-execute.service",
+        "rumi_git_write_pack.git-commit-prepare.service",
+        "rumi_git_write_pack.git-commit.service",
+        "rumi_git_write_pack.git-restore-prepare.service",
+        "rumi_git_write_pack.git-restore.service",
+        "rumi_git_write_pack.git-apply-patch-prepare.service",
+        "rumi_git_write_pack.git-apply-patch.service",
+        "rumi_git_publish_pack.git-push-prepare.service",
+        "rumi_git_publish_pack.git-publish.service",
+        "rumi_shell_policy_pack.shell-policy.inspect",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_shell_policy_pack.shell-policy.inspect",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_workspace_mount_pack.workspace-mount.resource",
+        "rumi_tool_registry_pack.tool-registry.definition",
+        "rumi_tool_registry_pack.tool-registry.definition",
+        "rumi_tool_registry_pack.tool-registry.definition",
+        "rumi_tool_broker_pack.tool-broker.invoke",
+        "rumi_tool_validation_pack.tool-validation.arguments",
+        "rumi_tool_result_pack.tool-result.normalize",
+        "rumi_tool_local_executor_pack.tool-executor.local",
+        "rumi_default_tools_pack.calculator",
+        "rumi_prompt_studio_pack.prompt-studio.resource",
+        "rumi_prompt_studio_pack.prompt-studio.resource",
     ]
     assert resolved.lock["plan_digest"] == resolved.plan["plan_digest"]
+
+
+def test_interactive_only_edge_is_compiled_into_hardened_defaults() -> None:
+    """Interactive effects are explicit and remain signed plan bindings."""
+
+    catalog = _catalog()
+    baseline = _resolve(catalog)
+    assert any(
+        edge.get("authority_mode") == "interactive_only"
+        for edge in baseline.profile["requested_edges"]
+    )
+    assert any(
+        binding.get("authority_mode") == "interactive_only"
+        for binding in baseline.plan["bindings"]
+    )
+
+    source = copy.deepcopy(catalog.profiles["defaults"])
+    selected = source["requested_edges"][0]
+    selected["authority_mode"] = "interactive_only"
+    altered = replace(
+        catalog,
+        profiles={**catalog.profiles, "defaults": source},
+    )
+
+    resolved = _resolve(altered)
+    edge = next(
+        item
+        for item in resolved.profile["requested_edges"]
+        if _edge_key(item) == _edge_key(selected)
+    )
+    binding = next(
+        item
+        for item in resolved.plan["bindings"]
+        if (
+            item["caller_function_id"],
+            item["contract_id"],
+            item["operation_id"],
+        )
+        == (
+            selected["caller_function_id"],
+            selected["contract_id"],
+            selected["operation_id"],
+        )
+    )
+    assert edge["authority_mode"] == "interactive_only"
+    assert binding["authority_mode"] == "interactive_only"
+    assert resolved.plan["requested_edges_digest"] == canonical_digest(
+        resolved.profile["requested_edges"]
+    )
+
+
+def test_profile_compiler_rejects_unknown_requested_edge_authority_mode() -> None:
+    catalog = _catalog()
+    source = copy.deepcopy(catalog.profiles["defaults"])
+    source["requested_edges"][0]["authority_mode"] = "ambient"
+    altered = replace(
+        catalog,
+        profiles={**catalog.profiles, "defaults": source},
+    )
+
+    with pytest.raises(ProfileResolutionDenied, match="authority mode"):
+        _resolve(altered)
 
 
 def test_lock_plan_and_activation_bind_the_complete_canonical_definition(
@@ -299,7 +518,8 @@ def test_lock_plan_and_activation_bind_the_complete_canonical_definition(
     catalog = _catalog()
     resolved = _resolve(catalog)
     expected_bundle_digest = (
-        "sha256:" + hashlib.sha256((catalog.root / "bundle.lock.json").read_bytes()).hexdigest()
+        "sha256:"
+        + hashlib.sha256((catalog.root / "bundle.lock.json").read_bytes()).hexdigest()
     )
     application = catalog.packs["runtime.tauri.application.default"]
 
@@ -310,9 +530,23 @@ def test_lock_plan_and_activation_bind_the_complete_canonical_definition(
     assert resolved.lock["application"] == {
         "pack_id": "runtime.tauri.application.default",
         "artifact_digest": application["pack"]["artifact_digest"],
-        "executable_artifact_digest": resolved.profile["shell"]["executable_artifact_digest"],
+        "executable_artifact_digest": resolved.profile["shell"][
+            "executable_artifact_digest"
+        ],
         "definition_digest": canonical_digest(application),
     }
+    selected_variant = catalog.shells["shell.tauri.default"]["launch"]["variants"][0]
+    assert resolved.plan["launch_contribution"] == {
+        "provider_id": "runtime.tauri.application.default",
+        "contract_id": "runtime.tauri.application.v1",
+        "operation_id": "launch",
+        "platform": selected_variant["platform"],
+        "architecture": selected_variant["architecture"],
+        "artifact_digest": selected_variant["artifact_digest"],
+        "relative_path": selected_variant["relative_path"],
+        "entrypoint": selected_variant["entrypoint"],
+    }
+    assert "launch_contribution" not in resolved.lock
     for field in (
         "profile_definition_digest",
         "catalog_revision",
@@ -325,12 +559,21 @@ def test_lock_plan_and_activation_bind_the_complete_canonical_definition(
         "provenance_digest",
     ):
         assert resolved.plan[field] == resolved.lock[field]
-    assert resolved.plan["closure_digest"] == canonical_digest(resolved.plan["effective_set"])
+    assert resolved.plan["closure_digest"] == canonical_digest(
+        {
+            "effective_set": resolved.plan["effective_set"],
+            "content_projections": resolved.plan["content_projections"],
+        }
+    )
     assert resolved.plan["requested_edges_digest"] == canonical_digest(
         resolved.profile["requested_edges"]
     )
-    assert resolved.plan["provenance_digest"] == canonical_digest(resolved.profile["provenance"])
-    edge_by_key = {_edge_key(edge): edge for edge in resolved.profile["requested_edges"]}
+    assert resolved.plan["provenance_digest"] == canonical_digest(
+        resolved.profile["provenance"]
+    )
+    edge_by_key = {
+        _edge_key(edge): edge for edge in resolved.profile["requested_edges"]
+    }
     assert len(resolved.plan["bindings"]) == len(edge_by_key)
     for binding in resolved.plan["bindings"]:
         key = "|".join(
@@ -363,17 +606,89 @@ def test_lock_plan_and_activation_bind_the_complete_canonical_definition(
     assert activation["bundle_digest"] == expected_bundle_digest
     assert activation["lock_digest"] == resolved.lock["lock_digest"]
     assert activation["closure_digest"] == resolved.plan["closure_digest"]
+    selector = project_runtime_launch_selector(store.load_active_snapshot())
+    assert selector == {
+        "selector_api_version": "io.tobkiri.runtime-launch-selector.v1",
+        "profile_id": resolved.plan["profile_id"],
+        "profile_revision": resolved.plan["profile_revision"],
+        "activation_id": activation["activation_id"],
+        "plan_digest": resolved.plan["plan_digest"],
+        "launch_contribution": resolved.plan["launch_contribution"],
+    }
+
+
+def test_application_launch_contribution_must_be_unique() -> None:
+    catalog = _catalog()
+    application = copy.deepcopy(catalog.packs["runtime.tauri.application.default"])
+    application["functions"].append(copy.deepcopy(application["functions"][0]))
+    ambiguous = replace(
+        catalog,
+        packs={**catalog.packs, "runtime.tauri.application.default": application},
+    )
+
+    with pytest.raises(
+        ProfileResolutionDenied, match="launch contribution is ambiguous"
+    ):
+        _resolve(ambiguous)
+
+
+def test_runtime_launch_selector_rejects_stale_active_identity(tmp_path: Path) -> None:
+    resolved = _resolve()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    store = ActivationStore(
+        tmp_path / "state", workspace, profile_id="defaults", authority=authority
+    )
+    store.activate(
+        resolved,
+        activation_id="activation:selector-stale",
+        created_at="2026-08-10T00:00:00Z",
+    )
+    active = store.load_active_snapshot()
+    stale_activation = {
+        **active.activation,
+        "plan_digest": "sha256:" + "0" * 64,
+    }
+
+    with pytest.raises(ProfileResolutionDenied, match="activation is stale"):
+        project_runtime_launch_selector(replace(active, activation=stale_activation))
+
+    missing_plan = dict(active.resolved.plan)
+    missing_plan.pop("launch_contribution")
+    missing_plan["plan_digest"] = canonical_digest(
+        {key: value for key, value in missing_plan.items() if key != "plan_digest"}
+    )
+    missing_lock = {**active.resolved.lock, "plan_digest": missing_plan["plan_digest"]}
+    missing_lock["lock_digest"] = canonical_digest(
+        {key: value for key, value in missing_lock.items() if key != "lock_digest"}
+    )
+    missing = replace(
+        active,
+        resolved=replace(active.resolved, plan=missing_plan, lock=missing_lock),
+        activation={
+            **active.activation,
+            "plan_digest": missing_plan["plan_digest"],
+            "lock_digest": missing_lock["lock_digest"],
+        },
+    )
+    with pytest.raises(ProfileResolutionDenied, match="contribution is unavailable"):
+        project_runtime_launch_selector(missing)
 
 
 @pytest.mark.parametrize(
     ("mutation", "message"),
     (
         (
-            lambda profile: profile["base"].update(artifact_digest="sha256:" + "0" * 64),
+            lambda profile: profile["base"].update(
+                artifact_digest="sha256:" + "0" * 64
+            ),
             "Base artifact pin",
         ),
         (
-            lambda profile: profile["base"].update(definition_revision="sha256:" + "0" * 64),
+            lambda profile: profile["base"].update(
+                definition_revision="sha256:" + "0" * 64
+            ),
             "Base definition pin",
         ),
         (
@@ -385,11 +700,15 @@ def test_lock_plan_and_activation_bind_the_complete_canonical_definition(
             "Shell Contract binding",
         ),
         (
-            lambda profile: profile["packs"][0].update(artifact_digest="sha256:" + "0" * 64),
+            lambda profile: profile["packs"][0].update(
+                artifact_digest="sha256:" + "0" * 64
+            ),
             "Pack artifact pin",
         ),
         (
-            lambda profile: profile.update(profile_authority_snapshot_digest="sha256:" + "0" * 64),
+            lambda profile: profile.update(
+                profile_authority_snapshot_digest="sha256:" + "0" * 64
+            ),
             "must not contain resolved Authority state",
         ),
     ),
@@ -483,7 +802,8 @@ def test_unreferenced_caller_cannot_piggyback_on_shared_provider_operation() -> 
     shared_edge = next(
         edge
         for edge in profile["requested_edges"]
-        if edge["operation_id"] == "rumi_model_catalog_pack.bundled-model-catalog.generate"
+        if edge["operation_id"]
+        == "rumi_model_catalog_pack.bundled-model-catalog.generate"
     )
     unreferenced_edge = {
         **shared_edge,
@@ -497,9 +817,12 @@ def test_unreferenced_caller_cannot_piggyback_on_shared_provider_operation() -> 
     for edge in catalog.profiles["defaults"]["requested_edges"]:
         authority_bindings.setdefault(
             _edge_key(edge),
-            "authority-ref:test." + canonical_digest(_edge_key(edge)).removeprefix("sha256:"),
+            "authority-ref:test."
+            + canonical_digest(_edge_key(edge)).removeprefix("sha256:"),
         )
-    authority_bindings[_edge_key(unreferenced_edge)] = "authority-ref:test.unreferenced-caller"
+    authority_bindings[_edge_key(unreferenced_edge)] = (
+        "authority-ref:test.unreferenced-caller"
+    )
 
     with pytest.raises(
         ProfileResolutionDenied,
@@ -523,12 +846,7 @@ def test_duplicate_pack_and_legacy_route_authorities_are_absent() -> None:
 
     defaultspack_root = ROOT / "ecosystem" / "defaultspack"
     defaults_root = ROOT / "ecosystem" / "defaults"
-    assert {path.name for path in defaults_root.iterdir()} == {
-        "artifact-index.v4.json",
-        "contracts.v4.json",
-        "executables.v4.json",
-        "pack.v4.json",
-    }
+    assert not defaults_root.exists()
     assert not (defaultspack_root / "ecosystem.json").exists()
     assert not (defaultspack_root / "permissions.json").exists()
     assert not (defaultspack_root / "routes.json").exists()
@@ -545,7 +863,9 @@ def test_duplicate_pack_and_legacy_route_authorities_are_absent() -> None:
     assert compatibility_alias_allowed("defaults.chat.send") is False
 
 
-def test_bundle_rejects_manifest_hash_drift_and_unlisted_artifacts(tmp_path: Path) -> None:
+def test_bundle_rejects_manifest_hash_drift_and_unlisted_artifacts(
+    tmp_path: Path,
+) -> None:
     copied = tmp_path / "v4"
     shutil.copytree(BUNDLE_ROOT, copied)
     manifest = copied / "packs" / "defaultspack.pack.v4.json"
@@ -556,7 +876,9 @@ def test_bundle_rejects_manifest_hash_drift_and_unlisted_artifacts(tmp_path: Pat
     catalog = _catalog()
     approved = _approved(catalog)
     approved.remove(catalog.packs["rumi_file_inspect_pack"]["pack"]["artifact_digest"])
-    with pytest.raises(ProfileResolutionDenied, match="not approved: rumi_file_inspect_pack"):
+    with pytest.raises(
+        ProfileResolutionDenied, match="not approved: rumi_file_inspect_pack"
+    ):
         resolve_default_profile(
             catalog,
             "defaults",
@@ -579,7 +901,9 @@ def test_bundle_rejects_self_consistent_lock_with_stale_definition_revision(
     lock_path = copied / "bundle.lock.json"
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
     entry = next(
-        item for item in lock["entries"] if item["path"] == "defaults-basepack.base.v1.json"
+        item
+        for item in lock["entries"]
+        if item["path"] == "defaults-basepack.base.v1.json"
     )
     entry["digest"] = "sha256:" + hashlib.sha256(base_path.read_bytes()).hexdigest()
     lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
@@ -604,8 +928,14 @@ def test_bundle_rejects_symlinked_locked_artifact(tmp_path: Path) -> None:
 def test_foundational_conversation_provider_is_exactly_one() -> None:
     catalog = _catalog()
     missing_manifest = copy.deepcopy(catalog.packs["defaultspack"])
-    missing_manifest["functions"] = []
-    missing_manifest["contracts"] = []
+    missing_manifest["functions"] = [
+        item for item in missing_manifest["functions"]
+        if item["id"] != "defaultspack.conversation"
+    ]
+    missing_manifest["contracts"] = [
+        item for item in missing_manifest["contracts"]
+        if item["contract_id"] != "conversation.turn.v1"
+    ]
     missing = replace(
         catalog,
         packs={**catalog.packs, "defaultspack": missing_manifest},
@@ -639,10 +969,14 @@ def test_requested_pack_dependency_and_authority_references_are_mandatory() -> N
         item for item in profile["packs"] if item["pack_id"] != "rumi_file_inspect_pack"
     ]
     missing_dependency = replace(catalog, profiles={"defaults": profile})
-    with pytest.raises(ProfileResolutionDenied, match="must resolve exactly once; found 0"):
+    with pytest.raises(
+        ProfileResolutionDenied, match="must resolve exactly once; found 0"
+    ):
         _resolve(missing_dependency)
 
-    with pytest.raises(ProfileResolutionDenied, match="Authority Kernel reference is missing"):
+    with pytest.raises(
+        ProfileResolutionDenied, match="Authority Kernel reference is missing"
+    ):
         resolve_default_profile(
             catalog,
             "defaults",
@@ -669,7 +1003,9 @@ def test_activation_restart_is_atomic_and_stale_records_deny(tmp_path: Path) -> 
     assert activation["state"] == "active"
     assert store.load_active().plan == resolved.plan
 
-    pointer = json.loads((tmp_path / "state" / "active.json").read_text(encoding="utf-8"))
+    pointer = json.loads(
+        (tmp_path / "state" / "active.json").read_text(encoding="utf-8")
+    )
     envelope_path = tmp_path / "state" / "activations" / pointer["envelope_path"]
     envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
     envelope["lock"]["security_epoch"] = 6
@@ -705,7 +1041,10 @@ def test_new_activation_atomically_retires_the_previous_authority(
     active = authority.active_activation_reservation(second["activation_id"])
     assert active is not None
     assert active["state"] == "active"
-    assert store.load_active_snapshot().activation["activation_id"] == second["activation_id"]
+    assert (
+        store.load_active_snapshot().activation["activation_id"]
+        == second["activation_id"]
+    )
 
 
 def test_independent_process_activations_never_publish_retired_pointer(
@@ -786,7 +1125,9 @@ def test_independent_process_activations_never_publish_retired_pointer(
         and event["event_state"] == "prepared"
         and event["payload"]["activation_id"] == second_id
     ]
-    assert second_reservations[0]["fencing_token"] > first_reservations[0]["fencing_token"]
+    assert (
+        second_reservations[0]["fencing_token"] > first_reservations[0]["fencing_token"]
+    )
     assert active["security_epoch"] == restarted_authority.security_epoch
 
     stale_envelope = state_root / "activations" / f"{first_id[11:]}.json"
@@ -797,7 +1138,9 @@ def test_independent_process_activations_never_publish_retired_pointer(
         envelope_digest=canonical_digest(stale_payload),
     )
     (state_root / "active.json").write_text(json.dumps(first_pointer), encoding="utf-8")
-    with pytest.raises(ProfileResolutionDenied, match="authority, fence, or SecurityEpoch"):
+    with pytest.raises(
+        ProfileResolutionDenied, match="authority, fence, or SecurityEpoch"
+    ):
         restarted.load_active_snapshot()
     restarted_authority.close()
 
@@ -910,7 +1253,10 @@ def test_workspace_traversal_symlink_escape_and_cross_workspace_restart_deny(
     store = ActivationStore(
         tmp_path / "state", workspace, profile_id="defaults", authority=authority
     )
-    assert store.resolve_workspace_path("notes/item.txt") == workspace / "notes" / "item.txt"
+    assert (
+        store.resolve_workspace_path("notes/item.txt")
+        == workspace / "notes" / "item.txt"
+    )
     with pytest.raises(ProfileResolutionDenied, match="traversal-free"):
         store.resolve_workspace_path("../other/secret.txt")
     with pytest.raises(ProfileResolutionDenied, match="traversal-free"):
@@ -1128,6 +1474,191 @@ def test_activation_lock_deadline_then_recovery(tmp_path: Path) -> None:
     store.recover()
 
 
+def test_slow_artifact_verification_does_not_hold_activation_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Concurrent cold reads may wait for bytes without blocking record capture."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+    first = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        lock_timeout_seconds=0.03,
+    )
+    first.activate(
+        _resolve(),
+        activation_id="activation:defaults-slow-verification",
+        created_at="2026-08-10T00:00:00Z",
+    )
+    second = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        lock_timeout_seconds=0.03,
+    )
+    verification_started = threading.Event()
+    release_verification = threading.Event()
+    results: list[str] = []
+    errors: list[BaseException] = []
+
+    def slow_verification(*_args: object, **_kwargs: object) -> None:
+        verification_started.set()
+        if not release_verification.wait(timeout=5):
+            raise RuntimeError("verification release timed out")
+
+    monkeypatch.setattr(first, "_verify_selected_artifact", slow_verification)
+
+    def load(store: ActivationStore) -> None:
+        try:
+            results.append(store.load_active_snapshot().activation["activation_id"])
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    first_worker = threading.Thread(target=load, args=(first,))
+    first_worker.start()
+    assert verification_started.wait(timeout=2)
+    second_worker = threading.Thread(target=load, args=(second,))
+    second_worker.start()
+    try:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            with runtime_service._ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+                flights = tuple(runtime_service._ARTIFACT_VERIFICATION_FLIGHTS.values())
+                if len(flights) == 1 and flights[0].waiters == 1:
+                    break
+            time.sleep(0.001)
+        else:
+            raise AssertionError("concurrent artifact verifier did not join flight")
+        with second._activation_lock():
+            pass
+    finally:
+        release_verification.set()
+        first_worker.join(timeout=5)
+        second_worker.join(timeout=5)
+        authority.close()
+    assert not first_worker.is_alive()
+    assert not second_worker.is_alive()
+    assert errors == []
+    assert results == [
+        "activation:defaults-slow-verification",
+        "activation:defaults-slow-verification",
+    ]
+
+
+def test_artifact_verification_is_fenced_by_activation_reread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A verified predecessor cannot be returned after a concurrent activation."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+    reader = ActivationStore(
+        state, workspace, profile_id="defaults", authority=authority
+    )
+    writer = ActivationStore(
+        state, workspace, profile_id="defaults", authority=authority
+    )
+    reader.activate(
+        _resolve(),
+        activation_id="activation:defaults-before-verification",
+        created_at="2026-08-10T00:00:00Z",
+    )
+
+    def replace_activation(*_args: object, **_kwargs: object) -> None:
+        writer.activate(
+            _resolve(),
+            activation_id="activation:defaults-during-verification",
+            created_at="2026-08-10T00:01:00Z",
+        )
+
+    monkeypatch.setattr(reader, "_verify_selected_artifact", replace_activation)
+    with pytest.raises(
+        ProfileResolutionDenied,
+        match="changed during artifact verification",
+    ):
+        reader.load_active_snapshot()
+    assert writer.load_active_snapshot().activation["activation_id"] == (
+        "activation:defaults-during-verification"
+    )
+    authority.close()
+
+
+def test_concurrent_artifact_verification_error_is_not_shared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A waiter retries verification and receives its own outcome after an error."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+    leader = ActivationStore(state, workspace, profile_id="defaults", authority=authority)
+    waiter = ActivationStore(state, workspace, profile_id="defaults", authority=authority)
+    leader.activate(
+        _resolve(),
+        activation_id="activation:defaults-verification-retry",
+        created_at="2026-08-10T00:00:00Z",
+    )
+    verification_started = threading.Event()
+    release_verification = threading.Event()
+    waiter_verifications: list[bool] = []
+    results: list[str] = []
+    errors: list[BaseException] = []
+
+    def fail_verification(*_args: object, **_kwargs: object) -> None:
+        verification_started.set()
+        assert release_verification.wait(timeout=5)
+        raise ProfileResolutionDenied("transient verifier failure")
+
+    def pass_verification(*_args: object, **_kwargs: object) -> None:
+        waiter_verifications.append(True)
+
+    def load(store: ActivationStore) -> None:
+        try:
+            results.append(store.load_active_snapshot().activation["activation_id"])
+        except BaseException as error:
+            errors.append(error)
+
+    monkeypatch.setattr(leader, "_verify_selected_artifact", fail_verification)
+    monkeypatch.setattr(waiter, "_verify_selected_artifact", pass_verification)
+    leader_worker = threading.Thread(target=load, args=(leader,))
+    waiter_worker = threading.Thread(target=load, args=(waiter,))
+    leader_worker.start()
+    assert verification_started.wait(timeout=2)
+    waiter_worker.start()
+    try:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            with runtime_service._ARTIFACT_VERIFICATION_FLIGHTS_LOCK:
+                flights = tuple(runtime_service._ARTIFACT_VERIFICATION_FLIGHTS.values())
+                if len(flights) == 1 and flights[0].waiters == 1:
+                    break
+            time.sleep(0.001)
+        else:
+            raise AssertionError("concurrent artifact verifier did not join flight")
+    finally:
+        release_verification.set()
+        leader_worker.join(timeout=5)
+        waiter_worker.join(timeout=5)
+        authority.close()
+
+    assert not leader_worker.is_alive()
+    assert not waiter_worker.is_alive()
+    assert len(errors) == 1
+    assert "transient verifier failure" in str(errors[0])
+    assert results == ["activation:defaults-verification-retry"]
+    assert waiter_verifications == [True]
+    assert runtime_service._ARTIFACT_VERIFICATION_FLIGHTS == {}
+
+
 def test_windows_activation_lock_adapter_uses_nonblocking_retry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1215,12 +1746,12 @@ def test_activation_persistence_failure_keeps_old_pointer_and_aborts_reservation
         for event in authority.audit_events()
         if event["event_type"] == "activation"
         and event["event_state"] == "prepared"
-        and event["payload"]["activation_id"]
-        == "activation:defaults-failed-pointer"
+        and event["payload"]["activation_id"] == "activation:defaults-failed-pointer"
     )
     reservation = authority.activation_reservation(str(failed["reservation_id"]))
     assert reservation is not None
     assert reservation["state"] == "aborted"
-    assert authority.active_activation_reservation(
-        "activation:defaults-failed-pointer"
-    ) is None
+    assert (
+        authority.active_activation_reservation("activation:defaults-failed-pointer")
+        is None
+    )

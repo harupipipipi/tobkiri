@@ -24,6 +24,28 @@ def _manifest(path: str) -> dict:
     return json.loads((PACK_ROOT / path).read_text(encoding="utf-8"))
 
 
+def test_selector_settings_owner_is_call_scoped(tmp_path, monkeypatch):
+    """A reused selector passes exactly the current trusted owner to model calls."""
+    from domain.chat import tool_selection_orchestrator as selection
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    owners = [FrontendSettingsStore(tmp_path / f"{name}.json") for name in ("a", "b")]
+    captured = []
+
+    def call(payload, context, *, call_handler, settings_owner):
+        captured.append(settings_owner)
+        assert "settings_owner" not in payload
+        assert "settings_owner" not in context
+        return {"output": {"selected_tools": [{"tool_id": "read"}]}}
+
+    monkeypatch.setattr(selection, "call_model", call)
+    selector = selection.ToolSelectionOrchestrator()
+    for owner in [*owners, None]:
+        selector.select("read", [_tool("read")], prefilter=False, settings_owner=owner)
+    assert captured == [*owners, None]
+    assert list(tmp_path.iterdir()) == []
+
+
 def _tool(tool_id: str, *, effect: str = "read") -> dict:
     return {
         "tool_id": tool_id,
@@ -152,7 +174,8 @@ def test_explicit_skill_does_not_remove_safety_skill() -> None:
     ]
 
 
-def test_capability_orchestrator_compiles_activity_tools_skills_and_approval() -> None:
+def test_capability_orchestrator_compiles_activity_tools_skills_and_approval(tmp_path) -> None:
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
     activities = [
         validate_manifest(
             _manifest("extensions/activities/computer/manifest.json"),
@@ -186,6 +209,7 @@ def test_capability_orchestrator_compiles_activity_tools_skills_and_approval() -
         user_text="お願い@computer で画面を操作して",
         tools=tools,
         settings={"tools": {"selector_model": "stub/default"}},
+        settings_owner=FrontendSettingsStore(tmp_path / "settings.json"),
         dry_run=True,
     )
 

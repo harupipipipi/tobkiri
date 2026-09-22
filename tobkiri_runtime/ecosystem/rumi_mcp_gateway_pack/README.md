@@ -1,5 +1,18 @@
 # Rumi MCP Gateway Pack
 
+The canonical executable is a sandbox adapter for
+`tobkiri.service.mcp.tool.call.v1` / `rumi_mcp_gateway_pack.mcp-tool-call`.
+Its input is exactly `connection_id`, `tool`, and `arguments`. It requests only
+`tobkiri.service.mcp.connection.v1` / `mcp.connection.call` through the authenticated
+PackVM continuation channel. The Host owns approved connection settings, the
+process, selected workspace, and originating Profile/session checks. Legacy
+server registrations and caller-supplied approval fields do not authorize calls.
+The Host MCP executor forwards the same finite input to the selected Gateway.
+
+Ordinary Defaults activation/UI migration, full MCP process containment, and
+native/external-provider acceptance remain incomplete. The declarative catalogs
+below describe configuration assets; they are not connection authority.
+
 `rumi_mcp_gateway_pack` is an optional ecosystem pack for broad MCP coverage when a server is not directly supported by a first-party Rumi pack yet. It is a catalog and gateway profile: it documents discovery, namespace routing, registry metadata, prompt/resource templates, and safety policy for unsupported MCP servers.
 
 ## What It Provides

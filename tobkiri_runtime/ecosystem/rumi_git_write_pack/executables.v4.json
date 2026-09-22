@@ -1,16 +1,16 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:0312e3cd0fb03b6fc581c2d36be967cedb9f291c025152e57c44273506d0f4d9",
+  "catalog_digest": "sha256:240d7e3dbcb33a233999802a105d1c445e7bc0c70ada344267b4a658a5bc0e68",
   "pack_id": "rumi_git_write_pack",
-  "source_identity": "sha256:ced19cf1404dcd5fa84dd96ccf5c735593ff5c57b9a9ba61af5323dce68bc614",
+  "source_identity": "sha256:97a07a6af47f59aded999a29f3dbb7c2139b3c363ce221e00cf813c7b119a29b",
   "variants": [
     {
       "architecture": "any",
       "backend": "tobkiri.python-host-v4",
       "execution_domain_profile": "host.extension.default.v1",
       "execution_kind": "host_extension",
-      "function_id": "rumi_git_write_pack.git-write.service",
-      "implementation_digest": "sha256:bd659fafb83b1510377471701cc37e615677a840ce6af89e11c51cd6bc61108e",
+      "function_id": "rumi_git_write_pack.git-apply-patch-prepare.service",
+      "implementation_digest": "sha256:1e9cd471a016de23e98c3b89c5245900381b5d0162f01e0c0166d1df0115d2da",
       "implementation_path": "runtime/write.py",
       "materialization_mode": "on_demand",
       "operations": [
@@ -23,20 +23,370 @@
           },
           "idempotency": "none",
           "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "patch": {
+                "type": "string"
+              },
+              "paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "plan": {
+                "type": "object"
+              },
+              "plan_digest": {
+                "type": "string"
+              },
+              "profile_id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "workspace_id": {
+                "type": "string"
+              }
+            },
             "type": "object"
           },
-          "operation_id": "rumi_git_write_pack.git-write",
+          "operation_id": "rumi_git_write_pack.git-apply-patch-prepare",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:dd8a0c32e7bfcb09977b040457bc9284a935c7a5334d3507e05dc5b275d3b6d9",
+          "revision_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }
       ],
       "platform": "any",
       "runtime_abi": "python3.13",
-      "variant_id": "rumi_git_write_pack.git-write.service.python"
+      "variant_id": "rumi_git_write_pack.git-apply-patch-prepare.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_git_write_pack.git-apply-patch.service",
+      "implementation_digest": "sha256:1e9cd471a016de23e98c3b89c5245900381b5d0162f01e0c0166d1df0115d2da",
+      "implementation_path": "runtime/write.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "patch": {
+                "type": "string"
+              },
+              "paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "plan": {
+                "type": "object"
+              },
+              "plan_digest": {
+                "type": "string"
+              },
+              "profile_id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "workspace_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "operation_id": "rumi_git_write_pack.git-apply-patch",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_git_write_pack.git-apply-patch.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_git_write_pack.git-commit-prepare.service",
+      "implementation_digest": "sha256:1e9cd471a016de23e98c3b89c5245900381b5d0162f01e0c0166d1df0115d2da",
+      "implementation_path": "runtime/write.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "patch": {
+                "type": "string"
+              },
+              "paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "plan": {
+                "type": "object"
+              },
+              "plan_digest": {
+                "type": "string"
+              },
+              "profile_id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "workspace_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "operation_id": "rumi_git_write_pack.git-commit-prepare",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_git_write_pack.git-commit-prepare.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_git_write_pack.git-commit.service",
+      "implementation_digest": "sha256:1e9cd471a016de23e98c3b89c5245900381b5d0162f01e0c0166d1df0115d2da",
+      "implementation_path": "runtime/write.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "patch": {
+                "type": "string"
+              },
+              "paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "plan": {
+                "type": "object"
+              },
+              "plan_digest": {
+                "type": "string"
+              },
+              "profile_id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "workspace_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "operation_id": "rumi_git_write_pack.git-commit",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_git_write_pack.git-commit.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_git_write_pack.git-restore-prepare.service",
+      "implementation_digest": "sha256:1e9cd471a016de23e98c3b89c5245900381b5d0162f01e0c0166d1df0115d2da",
+      "implementation_path": "runtime/write.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "patch": {
+                "type": "string"
+              },
+              "paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "plan": {
+                "type": "object"
+              },
+              "plan_digest": {
+                "type": "string"
+              },
+              "profile_id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "workspace_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "operation_id": "rumi_git_write_pack.git-restore-prepare",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_git_write_pack.git-restore-prepare.service.python"
+    },
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_git_write_pack.git-restore.service",
+      "implementation_digest": "sha256:1e9cd471a016de23e98c3b89c5245900381b5d0162f01e0c0166d1df0115d2da",
+      "implementation_path": "runtime/write.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.git.write.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "patch": {
+                "type": "string"
+              },
+              "paths": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "plan": {
+                "type": "object"
+              },
+              "plan_digest": {
+                "type": "string"
+              },
+              "profile_id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "workspace_id": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "operation_id": "rumi_git_write_pack.git-restore",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:a8a0e31c7e18dbade7a12fe314bcc86b2060e6b8d80caf88f5ba97e7d42941c7",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_git_write_pack.git-restore.service.python"
     }
   ]
 }

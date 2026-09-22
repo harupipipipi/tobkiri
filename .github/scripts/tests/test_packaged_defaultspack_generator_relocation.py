@@ -33,6 +33,15 @@ def _load_packaging_helpers() -> ModuleType:
 _PACKAGING_HELPERS = _load_packaging_helpers()
 _SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _SOURCE_TREE = "89abcdef0123456789abcdef0123456789abcdef"
+_BLOCK_CORE_RUNTIME_IMPORTS = """
+import builtins
+_original_import = builtins.__import__
+def _blocked_import(name, *args, **kwargs):
+    if name == "core_runtime" or name.startswith("core_runtime."):
+        raise ModuleNotFoundError("blocked unsealed core_runtime import")
+    return _original_import(name, *args, **kwargs)
+builtins.__import__ = _blocked_import
+"""
 
 
 def _clean_environment(source: dict[str, str] | None = None) -> dict[str, str]:
@@ -112,13 +121,30 @@ def test_relocated_source_checkout_preserves_all_locked_catalog_sidecars(
         for entry in lock["entries"]
         if entry["kind"] == "executable_catalog"
     }
-    assert len(expected) == 63
+    assert len(expected) == 141
     source_root = checkout / "tobkiri_runtime"
     assert (source_root / "ecosystem/defaultspack/executables.v4.json").is_file()
     for relative, digest in expected.items():
         candidate = source_root / "ecosystem/defaultspack/v4" / relative
         assert candidate.is_file()
         assert f"sha256:{hashlib.sha256(candidate.read_bytes()).hexdigest()}" == digest
+
+
+def test_relocated_generator_does_not_require_unsealed_core_runtime_imports(
+    tmp_path: Path,
+) -> None:
+    """Packaged generation succeeds without expanding its trusted source closure."""
+    checkout, bundle, artifact = _fixture(tmp_path / "minimal-closure")
+    source_root = checkout / "tobkiri_runtime"
+    assert not (source_root / "core_runtime").exists()
+    result = _generator_process(
+        checkout,
+        bundle,
+        artifact,
+        source_contract=_source_contract(checkout),
+        block_core_runtime_imports=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def _source_contract(checkout: Path) -> dict[str, str]:
@@ -138,6 +164,7 @@ def _generator_process(
     environment: dict[str, str] | None = None,
     cwd: Path | None = None,
     source_contract: dict[str, str] | None = None,
+    block_core_runtime_imports: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run the official generator from the relocated runtime package root."""
     source_root = checkout / "tobkiri_runtime"
@@ -166,13 +193,16 @@ def _generator_process(
                 source_contract["source_provenance_file"],
             ]
         )
+    command = _PACKAGING_HELPERS.isolated_python_module_command(
+        sys.executable,
+        "scripts.generate_packaged_defaultspack_v4_bundle",
+        source_root,
+        arguments,
+    )
+    if block_core_runtime_imports:
+        command[4] = _BLOCK_CORE_RUNTIME_IMPORTS + str(command[4])
     return subprocess.run(
-        _PACKAGING_HELPERS.isolated_python_module_command(
-            sys.executable,
-            "scripts.generate_packaged_defaultspack_v4_bundle",
-            source_root,
-            arguments,
-        ),
+        command,
         cwd=source_root if cwd is None else cwd,
         env=_clean_environment() if environment is None else _clean_environment(environment),
         capture_output=True,

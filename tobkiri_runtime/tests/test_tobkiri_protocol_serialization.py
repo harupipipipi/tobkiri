@@ -7,13 +7,14 @@ import pytest
 
 from tobkiri_protocol.canonical import canonical_digest, canonical_json, strict_loads
 from tobkiri_protocol.errors import CanonicalizationError, SchemaValidationError
-from tobkiri_protocol.migration import (
+from tobkiri_protocol import (
     load_and_migrate_legacy_profile,
     migrate_legacy_profile,
+    validate_document,
 )
 from tobkiri_protocol.scanners import scan_v4_scope
 from tobkiri_protocol.serialization import load_json_document
-from tobkiri_protocol.validation import load_schema, validate_document
+from tobkiri_protocol.validation import load_schema
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,6 +74,26 @@ def test_deep_json_is_rejected() -> None:
     value = "[" * 65 + "0" + "]" * 65
     with pytest.raises(CanonicalizationError, match="depth"):
         strict_loads(value)
+
+
+@pytest.mark.parametrize("escaped", ["\\ud800", "\\udfff"])
+@pytest.mark.parametrize("template", ['"%s"', '{"nested":["%s"]}', '{"%s":0}'])
+def test_escaped_unpaired_surrogates_are_rejected_in_keys_and_values(
+    escaped: str, template: str,
+) -> None:
+    encoded = (template % escaped).encode("ascii")
+    with pytest.raises(CanonicalizationError, match="invalid Unicode"):
+        strict_loads(encoded)
+    # The same rule applies to directly supplied Python strings, not only
+    # text decoded at the JSON boundary.
+    with pytest.raises(CanonicalizationError, match="invalid Unicode"):
+        canonical_json(json.loads(encoded))
+
+
+def test_valid_surrogate_pairs_decode_to_unicode_scalars() -> None:
+    value = strict_loads(b'{"\\ud83d\\ude80":["\\ud83d\\ude80"]}')
+    assert value == {"🚀": ["🚀"]}
+    assert strict_loads(canonical_json(value)) == value
 
 
 def test_request_payload_cannot_smuggle_authority_fields() -> None:

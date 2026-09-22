@@ -50,6 +50,8 @@ export const BUILTIN_EXTERNAL_PROVIDER_IDS: string[] = [
 
 export type ApiProviderKind = "llm" | "custom";
 export type ApiProviderScope = "all" | "llm" | "non_llm";
+export type ApiProviderProtocol = "openai-compatible" | "anthropic";
+export type ApiKeySaveResource = "provider" | "external_token";
 
 export type ApiProviderOption = {
   provider_id: string;
@@ -74,6 +76,7 @@ export type ApiKeySetupDraft = {
   name: string;
   value: string;
   kind?: ApiProviderKind;
+  protocol?: ApiProviderProtocol;
   base_url?: string;
   allowed_models?: string | string[];
   default_model?: string;
@@ -86,6 +89,7 @@ export type ApiKeySaveOptions = {
   apiId: string;
   name: string;
   kind: ApiProviderKind;
+  protocol?: ApiProviderProtocol;
   baseUrl?: string;
   allowedModels?: string[];
   defaultModel?: string;
@@ -239,6 +243,20 @@ export function filterRegisteredApiRowsByScope(
   });
 }
 
+/** Return whether a custom LLM must declare its executable adapter protocol. */
+export function requiresExplicitApiProviderProtocol(
+  providerId: string,
+  kind: ApiProviderKind,
+): boolean {
+  return kind === "llm"
+    && !BUILTIN_API_PROVIDER_IDS.includes(providerId.trim().toLowerCase());
+}
+
+/** Keep non-LLM credentials out of the typed AI provider registry. */
+export function apiKeySaveResource(kind: ApiProviderKind): ApiKeySaveResource {
+  return kind === "custom" ? "external_token" : "provider";
+}
+
 export function normalizeCustomProviderId(value: string): string {
   return value.trim().toLowerCase().replace(/[^a-z0-9_.-]+/g, "_").replace(/^[-_.]+|[-_.]+$/g, "");
 }
@@ -276,6 +294,7 @@ export function buildApiKeySavePayload(draft: ApiKeySetupDraft, fallbackKind: Ap
       apiId: name,
       name,
       kind: draft.kind ?? fallbackKind,
+      protocol: draft.protocol,
       baseUrl: draft.base_url?.trim() || undefined,
       allowedModels: allowedModels.length ? allowedModels : undefined,
       defaultModel: draft.default_model?.trim() || undefined,

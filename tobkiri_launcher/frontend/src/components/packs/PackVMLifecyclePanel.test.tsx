@@ -45,6 +45,7 @@ const plan = {
   image_digest: digest('a'),
   image_size_bytes: 703_594_496,
   image_download_required: true,
+  host_free_space_required_bytes: 6 * 1024 ** 3,
   config_digest: digest('b'),
   guest_runner_digest: digest('c'),
   host_build_digest: digest('d'),
@@ -206,13 +207,23 @@ test('PackVM GUI completes prepare, consent, provision, doctor, and hides host p
   });
   assert.ok(surface);
   await renderPanel(surface.root);
+  assert.ok(
+    surface.container.querySelector('[data-packvm-error-icon="readiness-warning"]'),
+  );
+  assert.equal(
+    surface.container.querySelector('[data-packvm-error-icon="readiness-warning"]')
+      ?.classList.contains('lucide-triangle-alert'),
+    true,
+  );
 
   await act(async () => buttonWithText(surface.container, 'Prepare plan').click());
   await settle();
   assert.match(surface.container.textContent ?? '', /Pinned plan/);
   assert.match(surface.container.textContent ?? '', /Configuration digest/);
   assert.match(surface.container.textContent ?? '', /Guest runner digest/);
-  assert.match(surface.container.textContent ?? '', /Required disk space/);
+  assert.match(surface.container.textContent ?? '', /Required host free space/);
+  assert.match(surface.container.textContent ?? '', /6.0 GiB/);
+  assert.match(surface.container.textContent ?? '', /Pinned image download/);
   assert.doesNotMatch(surface.container.textContent ?? '', /Users\/haru|limactl/);
 
   const checkbox = surface.container.querySelector<HTMLInputElement>('input[type="checkbox"]');
@@ -240,6 +251,94 @@ test('PackVM GUI completes prepare, consent, provision, doctor, and hides host p
   assert.equal(bodies[2].consent_id, consent.consent_id);
   assert.match(String(bodies[2].operation_id), /^[0-9a-f-]{36}$/i);
 });
+
+for (const validAck of [true, false]) {
+  test(`PackVM registration consent verifies the old registration acknowledgment: ${validAck}`, {concurrency: false}, async () => {
+    configureStore();
+    const registration = {
+      previous_attestation_digest: digest('1'),
+      previous_config_digest: digest('2'),
+      previous_guest_runner_digest: digest('3'),
+      previous_host_build_digest: digest('4'),
+      asset_manifest_digest: digest('5'),
+    };
+    const {routes, bodies} = installFetch(async (route) => {
+      if (route === '/api/v4/packvm/prepare') {
+        return jsonResponse({...plan, image_download_required: false, registration_update: registration});
+      }
+      if (route === '/api/v4/packvm/consent') {
+        return jsonResponse({...consent, previous_attestation_digest: validAck ? digest('1') : null});
+      }
+      throw new Error(`unexpected route ${route}`);
+    });
+    assert.ok(surface);
+    await renderPanel(surface.root);
+    await act(async () => buttonWithText(surface.container, 'Prepare plan').click());
+    assert.match(surface.container.textContent ?? '', /existing image, VM disks, firmware, domain files, and user data will be preserved/);
+    assert.match(surface.container.textContent ?? '', /Previous registration/);
+    assert.equal(routes.length, 1);
+    const checkbox = surface.container.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    assert.ok(checkbox);
+    await act(async () => checkbox.click());
+    await act(async () => buttonWithText(surface.container, 'Record explicit consent').click());
+    assert.equal(bodies[1].previous_attestation_digest, digest('1'));
+    assert.equal(routes.length, 2);
+    if (validAck) {
+      assert.equal(buttonWithText(surface.container, 'Update registration').disabled, false);
+    } else {
+      assert.match(surface.container.textContent ?? '', /different pinned plan/);
+      assert.doesNotMatch(surface.container.textContent ?? '', /Plan consent recorded/);
+    }
+  });
+}
+
+for (const ack of [null, digest('7'), digest('6')]) {
+  test(`PackVM storage change needs separate consent and an exact returned acknowledgment: ${ack}`, {concurrency: false}, async () => {
+    configureStore();
+    const registration = {
+      previous_attestation_digest: digest('1'), previous_config_digest: digest('2'),
+      previous_guest_runner_digest: digest('3'), previous_host_build_digest: digest('4'),
+      asset_manifest_digest: digest('5'),
+    };
+    const rebind = {
+      digest: digest('6'), previous_attestation_digest: digest('1'),
+      state_root: '/private/existing-vm', instance_root: '/private/existing-vm/instances/tobkiri-packvm-v4',
+      previous_device: 16777233, current_device: 16777234,
+      state_root_inode: 1234, instance_root_inode: 5678,
+    };
+    const {routes, bodies} = installFetch(async (route) => {
+      if (route === '/api/v4/packvm/prepare') {
+        return jsonResponse({...plan, image_download_required: false, registration_update: registration, storage_rebind: rebind});
+      }
+      if (route === '/api/v4/packvm/consent') {
+        return jsonResponse({...consent, previous_attestation_digest: digest('1'), storage_rebind_digest: ack});
+      }
+      throw new Error(`unexpected route ${route}`);
+    });
+    assert.ok(surface);
+    await renderPanel(surface.root);
+    await act(async () => buttonWithText(surface.container, 'Prepare plan').click());
+    assert.match(surface.container.textContent ?? '', /no volume UUID/);
+    assert.match(surface.container.textContent ?? '', /16777233/);
+    assert.match(surface.container.textContent ?? '', /16777234/);
+    const checkboxes = surface.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    assert.equal(checkboxes.length, 2);
+    await act(async () => checkboxes[0].click());
+    assert.equal(buttonWithText(surface.container, 'Record explicit consent').disabled, true);
+    assert.equal(routes.length, 1);
+    await act(async () => checkboxes[1].click());
+    await act(async () => buttonWithText(surface.container, 'Record explicit consent').click());
+    assert.equal(bodies[1].storage_rebind_digest, rebind.digest);
+    assert.equal(bodies[1].previous_attestation_digest, registration.previous_attestation_digest);
+    assert.equal(routes.length, 2);
+    if (ack === rebind.digest) {
+      assert.equal(buttonWithText(surface.container, 'Update registration').disabled, false);
+    } else {
+      assert.match(surface.container.textContent ?? '', /different pinned plan/);
+      assert.doesNotMatch(surface.container.textContent ?? '', /Plan consent recorded/);
+    }
+  });
+}
 
 test('PackVM GUI displays an unavailable plan reason and keeps provisioning disabled', {concurrency: false}, async () => {
   configureStore();
@@ -349,6 +448,12 @@ test('PackVM GUI clears a timeout and keeps the ceremony retryable', {concurrenc
 
 test('PackVM GUI displays typed failure diagnostics from authoritative progress', {concurrency: false}, async () => {
   configureStore();
+  let copied = '';
+  assert.ok(surface);
+  Object.defineProperty(surface.dom.window.navigator, 'clipboard', {
+    configurable: true,
+    value: {writeText: async (text: string) => { copied = text; }},
+  });
   writeSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation', operationId);
   installFetch(async (route) => {
     assert.equal(route, `/api/v4/packvm/progress?operation_id=${operationId}`);
@@ -363,7 +468,6 @@ test('PackVM GUI displays typed failure diagnostics from authoritative progress'
       },
     }));
   });
-  assert.ok(surface);
   await renderPanel(surface.root);
   await settle();
   assert.match(surface.container.textContent ?? '', /PackVMReconciliationRequired/);
@@ -371,6 +475,21 @@ test('PackVM GUI displays typed failure diagnostics from authoritative progress'
   assert.match(surface.container.textContent ?? '', /doctor/);
   assert.match(surface.container.textContent ?? '', /catalog\/profile digest mismatch/);
   assert.ok(surface.container.querySelector('[aria-label="Typed PackVM failure diagnostic"]'));
+  const copy = surface.container.querySelector<HTMLButtonElement>(
+    'button[aria-label="Copy typed PackVM failure diagnostic"]',
+  );
+  assert.ok(copy);
+  await act(async () => {
+    copy.click();
+    await Promise.resolve();
+  });
+  assert.equal(copied, [
+    'Failure type: PackVMReconciliationRequired',
+    'Diagnostic code: packvm_lima_process_failed',
+    'Stage: doctor',
+    'Process result: exit (23)',
+    'Host diagnostic: catalog/profile digest mismatch',
+  ].join('\n'));
 });
 
 test('PackVM GUI coalesces rapid doctor refresh clicks', {concurrency: false}, async () => {
@@ -482,6 +601,13 @@ test('PackVM GUI stops and cleans only the authenticated instance', {concurrency
   assert.match(String(bodies[1]?.operation_id), /^[0-9a-f-]{36}$/i);
   assert.doesNotMatch(surface.container.textContent ?? '', /Confirm PackVM cleanup/);
   assert.match(surface.container.textContent ?? '', /PackVM instance was cleaned up/);
+  assert.match(surface.container.textContent ?? '', /Cleanup: Cleaned up/);
+  assert.doesNotMatch(surface.container.textContent ?? '', /Cleanup: Provisioned/);
+  assert.equal(buttonWithText(surface.container, 'Prepare a new plan').disabled, false);
+  assert.equal(
+    readSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation'),
+    null,
+  );
 });
 
 test('PackVM GUI presents diagnostic severity, owner, and contribution evidence', {concurrency: false}, async () => {
@@ -491,6 +617,7 @@ test('PackVM GUI presents diagnostic severity, owner, and contribution evidence'
       version: 'rumi.ui.contribution.v1',
       profile_id: 'profile-a',
       profile_revision: digest('1'),
+      activation_id: 'activation:profile-a',
       plan_hash: digest('2'),
       contributions: [],
       diagnostics: [{
@@ -555,4 +682,25 @@ test('PackVM GUI clears a tampered durable operation id after server validation 
   await settle();
   assert.equal(readSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation'), null);
   assert.match(surface.container.textContent ?? '', /could not be resumed|packvm_operation_unknown/i);
+});
+
+test('PackVM GUI retires a saved operation rejected by the current authenticated session', {concurrency: false}, async () => {
+  configureStore();
+  writeSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation', operationId);
+  installFetch(async (route) => {
+    assert.equal(route, `/api/v4/packvm/progress?operation_id=${operationId}`);
+    return new Response(JSON.stringify({
+      success: false,
+      data: {code: 'INVALID_REQUEST'},
+      error: 'The request is invalid',
+    }), {status: 400, headers: {'Content-Type': 'application/json'}});
+  });
+  assert.ok(surface);
+  await renderPanel(surface.root);
+  await settle();
+  assert.equal(
+    readSafeStorageValue(getBrowserStorage('local'), 'tobkiri-launcher-packvm-operation'),
+    null,
+  );
+  assert.match(surface.container.textContent ?? '', /The request is invalid/);
 });

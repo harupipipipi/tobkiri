@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+from functools import partial
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -14,10 +16,18 @@ import urllib.request
 import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 
 if TYPE_CHECKING:
+    from core_runtime.credential_transport import CredentialMaterialStoreFactory
     from core_runtime.panel_auth import PanelAuthManager
+    from tobkiri_host.backends import ExecutionBackend
+
+from tobkiri_host.credential_store import host_credential_store_factory
+
+logger = logging.getLogger(__name__)
+
+_PACKVM_RECOVERY_ACTION = "Open Tobkiri Launcher > Packs to prepare PackVM."
 
 _DIAGNOSTIC_ENV_KEYS = (
     "DEFAULTS_HTTP_HOST",
@@ -70,6 +80,10 @@ def _configure_persistent_user_state() -> None:
     )
     if not configured_settings:
         os.environ["RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH"] = str(settings_path)
+    # Freeze the established command databases independently of the settings
+    # owner. No directory creation, database opening or migration happens here.
+    if not os.environ.get("RUMI_DEFAULTSPACK_COMMAND_STATE_DIR", "").strip():
+        os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"] = str(settings_path.parent)
 
 
 def _ensure_import_path() -> None:
@@ -253,45 +267,227 @@ def _surface_url(url: str) -> str:
     return url.partition("#")[0]
 
 
-def _restore_active_profile_contracts(packvm_lifecycle: Any):
-    """Capture and verify the exact persisted Defaults activation and UI map."""
+def _active_application_manifest(
+    catalog: Any,
+    active: Any,
+) -> Mapping[str, Any]:
+    """Return the application artifact bound to the active resolved plan."""
+
+    from tobkiri_protocol.canonical import canonical_digest
+
+    resolved = getattr(active, "resolved", None)
+    plan = getattr(resolved, "plan", None)
+    lock = getattr(resolved, "lock", None)
+    if not isinstance(plan, Mapping) or not isinstance(lock, Mapping):
+        raise RuntimeError("active Profile resolution is incomplete")
+    application_binding = plan.get("application")
+    if not isinstance(application_binding, Mapping):
+        raise RuntimeError("active Profile has no resolved Application binding")
+    if lock.get("application") != application_binding:
+        raise RuntimeError("active Profile Application binding is stale")
+    application_id = application_binding.get("pack_id")
+    artifact_digest = application_binding.get("artifact_digest")
+    executable_digest = application_binding.get("executable_artifact_digest")
+    definition_digest = application_binding.get("definition_digest")
+    if not all(
+        isinstance(value, str) and value
+        for value in (
+            application_id,
+            artifact_digest,
+            executable_digest,
+            definition_digest,
+        )
+    ):
+        raise RuntimeError("active Profile Application binding is invalid")
+
+    packs = getattr(catalog, "packs", None)
+    if not isinstance(packs, Mapping):
+        raise RuntimeError("active Profile Application inventory is unavailable")
+    application = packs.get(application_id)
+    if not isinstance(application, Mapping):
+        raise RuntimeError("active Profile Application artifact is unavailable")
+    pack = application.get("pack")
+    if (
+        not isinstance(pack, Mapping)
+        or pack.get("id") != application_id
+        or pack.get("kind") != "application"
+    ):
+        raise RuntimeError("active Profile Application artifact is not an application")
+    if pack.get("artifact_digest") != artifact_digest:
+        raise RuntimeError("active Profile Application artifact digest is stale")
+    if canonical_digest(application) != definition_digest:
+        raise RuntimeError("active Profile Application definition is stale")
+
+    effective_set = plan.get("effective_set")
+    effective_application = (
+        [
+            item
+            for item in effective_set
+            if isinstance(item, Mapping)
+            and item.get("identity") == application_id
+            and item.get("role") == "pack"
+        ]
+        if isinstance(effective_set, list)
+        else []
+    )
+    if (
+        len(effective_application) != 1
+        or effective_application[0].get("artifact_digest") != artifact_digest
+    ):
+        raise RuntimeError("active Profile Application is outside the resolved closure")
+
+    artifacts = application.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise RuntimeError("active Profile Application artifact inventory is invalid")
+    executable_artifacts = [
+        item
+        for item in artifacts
+        if isinstance(item, Mapping)
+        and item.get("kind") == "executable"
+        and item.get("entrypoint_digest") == executable_digest
+    ]
+    if len(executable_artifacts) != 1:
+        raise RuntimeError("active Profile Application executable is not verified")
+    return application
+
+
+def _active_profile_contract_context(active: Any) -> dict[str, str]:
+    """Return the exact Profile and activation identity for frontend routes."""
+
+    from tobkiri_protocol.canonical import canonical_digest
+
+    resolved = getattr(active, "resolved", None)
+    profile = getattr(resolved, "profile", None)
+    lock = getattr(resolved, "lock", None)
+    plan = getattr(resolved, "plan", None)
+    activation = getattr(active, "activation", None)
+    if not all(
+        isinstance(value, Mapping)
+        for value in (profile, lock, plan, activation)
+    ):
+        raise RuntimeError("active Profile identity is incomplete")
+
+    profile_id = profile.get("profile_id")
+    profile_revision = plan.get("profile_revision")
+    activation_id = activation.get("activation_id")
+    plan_digest = plan.get("plan_digest")
+    lock_digest = lock.get("lock_digest")
+    if not all(
+        isinstance(value, str) and value.strip()
+        for value in (
+            profile_id,
+            profile_revision,
+            activation_id,
+            plan_digest,
+            lock_digest,
+        )
+    ):
+        raise RuntimeError("active Profile identity is invalid")
+    if (
+        activation.get("state") != "active"
+        or canonical_digest(profile) != profile_revision
+        or plan.get("profile_id") != profile_id
+        or lock.get("profile_id") != profile_id
+        or lock.get("profile_revision") != profile_revision
+        or lock.get("plan_digest") != plan_digest
+        or activation.get("profile_id") != profile_id
+        or activation.get("profile_revision") != profile_revision
+        or activation.get("plan_digest") != plan_digest
+        or activation.get("lock_digest") != lock_digest
+    ):
+        raise RuntimeError("active Profile identity is stale")
+    if canonical_digest(
+        {key: value for key, value in plan.items() if key != "plan_digest"}
+    ) != plan_digest:
+        raise RuntimeError("active ResolvedPlan digest is stale")
+    if canonical_digest(
+        {key: value for key, value in lock.items() if key != "lock_digest"}
+    ) != lock_digest:
+        raise RuntimeError("active ProfileLock digest is stale")
+    return {
+        "profile_id": profile_id,
+        "profile_revision": profile_revision,
+        "activation_id": activation_id,
+        "plan_digest": plan_digest,
+    }
+
+
+def _restore_active_profile_contracts(
+    packvm_lifecycle: Any,
+    *,
+    credential_store_factory: CredentialMaterialStoreFactory = (
+        host_credential_store_factory
+    ),
+    packvm_backend_factory: Callable[[], ExecutionBackend | None] | None = None,
+):
+    """Capture the active Profile and verify its Application contract map."""
 
     from core_runtime.authority.v4 import AuthorityStore
     from core_runtime.bootstrap.production_v4 import capture_production_dispatch
     from core_runtime.bootstrap.profile_capture import (
         _bundle_root,
-        active_default_profile_exists,
-        capture_default_profile,
+        capture_active_profile,
         runtime_user_data_root,
     )
     from core_runtime.di_container import get_container
-    from core_runtime.frontend_contract_routes import (
+    from ecosystem.defaultspack.defaultspack.frontend_contract_loader import (
         load_frontend_contract_bindings,
+        resolve_frontend_contract_map_path,
+    )
+    from ecosystem.defaultspack.defaultspack.http_contract_composition import (
+        defaultspack_capability_binding,
+        defaultspack_capability_snapshot_mapping,
+    )
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_activation_snapshot_loader,
+        defaultspack_dispatch_delegates,
+        defaultspack_packvm_backend_factory,
+    )
+    from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+        install_defaultspack_profile_runtime,
+    )
+    from ecosystem.defaultspack.domain.runtime_surface_v4 import (
+        create_runtime_surface_services,
     )
     from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
     from tobkiri_host.runtime import install_dispatch_session
 
-    if not active_default_profile_exists():
-        raise RuntimeError("Defaults v4 activation is not committed")
+    install_defaultspack_profile_runtime()
     bundle_root = _bundle_root()
     ecosystem_root = _pack_root().parent
-    active = capture_default_profile()
+    active = capture_active_profile()
     catalog = BundledCatalog.load(bundle_root)
-    application = catalog.packs.get("runtime.tauri.application.default")
-    if application is None:
-        raise RuntimeError("Defaults application Pack is not selected")
+    application = _active_application_manifest(catalog, active)
+    context = _active_profile_contract_context(active)
+    map_path = resolve_frontend_contract_map_path(application, _pack_root())
     bindings = load_frontend_contract_bindings(
-        Path(__file__).with_name("frontend_contract_map.v4.json"),
+        map_path,
         application,
+        artifact_root=_pack_root(),
+        **context,
     )
+    delegates = defaultspack_dispatch_delegates()
     session = capture_production_dispatch(
         active,
         bundle_root=bundle_root,
         ecosystem_root=ecosystem_root,
         authority_store=AuthorityStore(runtime_user_data_root() / "authority" / "v4.sqlite3"),
-        packvm_provisioner=packvm_lifecycle,
+        packvm_provisioner=(
+            packvm_backend_factory
+            or defaultspack_packvm_backend_factory(packvm_lifecycle)
+        ),
         packvm_readiness_reader=packvm_lifecycle.readiness_snapshot,
-        frontend_contract_bindings=bindings,
+        http_contract_bindings=bindings,
+        activation_snapshot_loader=defaultspack_activation_snapshot_loader,
+        runtime_surface_factory=create_runtime_surface_services,
+        capability_binding_snapshot_factory=defaultspack_capability_snapshot_mapping,
+        capability_binding_selector=defaultspack_capability_binding,
+        credential_store_factory=credential_store_factory,
+        acceptance_receipts=delegates.acceptance_receipts,
+        chat_continuation_approve=delegates.chat_continuation_approve,
+        chat_continuation_resume=delegates.chat_continuation_resume,
+        authority_approval_window_open=delegates.authority_approval_window_open,
+        model_search=delegates.model_search,
     )
     install_dispatch_session(get_container(), session)
     _write_launch_event(
@@ -409,15 +605,37 @@ def _port_from_url(url: str) -> str:
         return ""
 
 
-def _wait_until_ready(url: str, timeout: float = 10.0) -> bool:
+def _wait_until_ready(url: str, timeout: float = 30.0) -> bool:
     deadline = time.time() + timeout
     health_url = url.split("/chat", 1)[0].rstrip("/") + "/health"
     while time.time() < deadline:
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            return False
         try:
-            with urllib.request.urlopen(health_url, timeout=1.0) as response:
-                return 200 <= response.status < 300
-        except (OSError, urllib.error.URLError):
-            time.sleep(0.2)
+            # Durable Profile verification can be slow on a cold start.  Let
+            # one verification finish instead of abandoning it and starting
+            # more handler threads against the same activation lock.
+            with urllib.request.urlopen(health_url, timeout=remaining) as response:
+                if not 200 <= response.status < 300:
+                    return False
+                payload = json.load(response)
+                data = payload.get("data") if isinstance(payload, Mapping) else None
+                if not isinstance(data, Mapping):
+                    return False
+                if (
+                    data.get("runtime_ready") is True
+                    and data.get("runtime_status") == "runtime_ready"
+                ):
+                    return True
+                if data.get("runtime_status") in {
+                    "error",
+                    "profile_reconfirmation_required",
+                }:
+                    return False
+        except (OSError, urllib.error.URLError, ValueError):
+            if time.time() < deadline:
+                time.sleep(0.2)
     return False
 
 
@@ -425,7 +643,13 @@ def _wait_until_chat_ready(url: str, timeout: float = 10.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(url, timeout=1.0) as response:
+            # The first authenticated application render can spend several
+            # seconds verifying the active Profile on a cold start.  A
+            # one-second per-request timeout closes the client socket while
+            # the single HTTP server is still producing a valid page, then
+            # queues another doomed probe behind it.  Give the request the
+            # same bounded budget as the readiness check itself.
+            with urllib.request.urlopen(url, timeout=timeout) as response:
                 body = response.read(2048).decode("utf-8", "ignore")
                 if 200 <= response.status < 300 and ("<title>" in body or 'id="root"' in body):
                     return True
@@ -435,15 +659,53 @@ def _wait_until_chat_ready(url: str, timeout: float = 10.0) -> bool:
     return False
 
 
-def _require_host_panel_auth_manager() -> PanelAuthManager:
+def _capture_launch_host_contract(
+    dispatch_session: object | None,
+) -> Mapping[str, Any] | None:
+    """Capture the Launcher contract before any child-facing server starts."""
+
+    from core_runtime.host_contract import (
+        HostContractError,
+        capture_host_contract_from_file,
+    )
+
+    try:
+        return capture_host_contract_from_file(expected_identity=dispatch_session)
+    except HostContractError as error:
+        if dispatch_session is None:
+            # Reconfirmation/browsing mode has no execution identity to bind.
+            # Let the panel-auth boundary report the missing secret while the
+            # unauthenticated health surface remains available to diagnostics.
+            return None
+        raise RuntimeError(
+            "Launcher-owned Host contract does not match the active execution"
+        ) from error
+
+
+def _require_host_panel_auth_manager(
+    host_contract: Mapping[str, Any] | None = None,
+) -> PanelAuthManager:
     """Return the singleton bound to the exact Launcher-owned Host contract."""
-    from core_runtime.host_contract import host_contract_value
+    from core_runtime.host_contract import bind_host_contract, host_contract_value
     from core_runtime.panel_auth import get_panel_auth_manager
 
-    bootstrap_secret = host_contract_value("panel_bootstrap_secret")
+    if host_contract is None:
+        bootstrap_secret = host_contract_value("panel_bootstrap_secret")
+    else:
+        bootstrap_secret = host_contract_value(
+            "panel_bootstrap_secret",
+            contract=host_contract,
+        )
     if not bootstrap_secret:
         raise RuntimeError("Launcher-owned panel bootstrap secret is required")
-    manager = get_panel_auth_manager()
+    if host_contract is None:
+        manager = get_panel_auth_manager()
+    else:
+        # get_panel_auth_manager() also consults the Host contract when it
+        # lazily creates the singleton.  Keep that lookup on this immutable
+        # launch snapshot instead of reopening the shared contract file.
+        with bind_host_contract(host_contract):
+            manager = get_panel_auth_manager()
     if not manager.validate_bootstrap_secret(bootstrap_secret):
         raise RuntimeError("Panel auth manager is not bound to the active Host contract")
     return manager
@@ -469,17 +731,47 @@ def main(argv: list[str] | None = None) -> int:
         AppLifecycleManager,
         mark_panel_ready,
         mark_profile_reconfirmation_required,
+        mark_runtime_failed,
+        mark_runtime_ready,
     )
     from ecosystem.defaultspack.domain.runtime_v4 import (
         ProfileReconfirmationRequired,
     )
     from core_runtime.packvm_lifecycle_v4 import PackVMLifecycleV4
+    from core_runtime.di_container import get_container
+    from ecosystem.defaultspack.backend.sandbox.isolation import (
+        ManagedSandboxSupervisor,
+    )
+    from ecosystem.defaultspack.backend.sandbox.isolation.macos_vz_provisioner import (
+        default_packvm_provisioner,
+    )
+    from ecosystem.defaultspack.defaultspack.http_contract_composition import (
+        defaultspack_capability_snapshot,
+    )
+    from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
+        DefaultspackHTTPPresentation,
+    )
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_runtime_capture_inputs,
+    )
 
-    packvm_lifecycle = PackVMLifecycleV4()
-    lifecycle = AppLifecycleManager(packvm_lifecycle=packvm_lifecycle)
+    packvm_lifecycle = PackVMLifecycleV4(default_packvm_provisioner())
+    get_container().register("managed_sandbox_supervisor", ManagedSandboxSupervisor)
+    runtime_capture_factory = partial(
+        defaultspack_runtime_capture_inputs,
+        packvm_provisioner=packvm_lifecycle,
+        credential_store_factory=host_credential_store_factory,
+    )
+    lifecycle = AppLifecycleManager(
+        packvm_lifecycle=packvm_lifecycle,
+        runtime_capture_factory=runtime_capture_factory,
+    )
     reconfirmation_error: str | None = None
     try:
-        dispatch_session, contract_bindings = _restore_active_profile_contracts(packvm_lifecycle)
+        dispatch_session, contract_bindings = _restore_active_profile_contracts(
+            packvm_lifecycle,
+            credential_store_factory=host_credential_store_factory,
+        )
     except ProfileReconfirmationRequired as error:
         dispatch_session, contract_bindings = None, ()
         reconfirmation_error = str(error)
@@ -489,33 +781,20 @@ def main(argv: list[str] | None = None) -> int:
             port=port,
             url=url,
         )
+    host_contract = _capture_launch_host_contract(dispatch_session)
     try:
         from domain.integrations.secrets import load_integration_secrets_into_env
 
         load_integration_secrets_into_env()
     except Exception as exc:
         _write_launch_event("secrets_load_skipped", error=repr(exc), port=port, url=url)
-    from core_runtime.api.web_mounts import WebMountEntry
     from core_runtime.pack_api_server import PackAPIServer
-
-    ui_root = _pack_root() / "ui"
-    web_mounts: tuple[WebMountEntry, ...] = (
-        {
-            "path_prefix": "/chat",
-            "web_root": ui_root,
-            "spa_fallback": True,
-            "index_file": "shell.html",
-            "auth_required": True,
-        },
-        {
-            "path_prefix": "/static",
-            "web_root": ui_root,
-            "spa_fallback": False,
-            "index_file": "shell.html",
-            "auth_required": True,
-        },
+    from ecosystem.defaultspack.defaultspack.surface_contributions import (
+        defaultspack_web_mounts,
     )
-    auth = _require_host_panel_auth_manager()
+
+    web_mounts = defaultspack_web_mounts(_pack_root())
+    auth = _require_host_panel_auth_manager(host_contract)
     server = PackAPIServer(
         host="127.0.0.1",
         port=int(port),
@@ -523,8 +802,12 @@ def main(argv: list[str] | None = None) -> int:
         dispatch_session=dispatch_session,
         app_lifecycle_manager=lifecycle,
         contract_bindings=contract_bindings,
+        runtime_capture_factory=runtime_capture_factory,
+        capability_snapshot_factory=defaultspack_capability_snapshot,
+        application_presentation=DefaultspackHTTPPresentation(),
         web_mounts=web_mounts,
         packvm_lifecycle=packvm_lifecycle,
+        host_contract=host_contract,
     )
     _write_launch_event("server_start_attempt", port=port, url=url)
     try:
@@ -541,13 +824,40 @@ def main(argv: list[str] | None = None) -> int:
         )
         raise
     _write_launch_event("server_started", port=port, url=url)
+    chat_launch_blocked = False
     if reconfirmation_error is None:
         mark_panel_ready()
+        try:
+            server.assert_runtime_startup_ready()
+        except Exception:
+            # A readiness check is a backend selection only.  It never starts
+            # PackVM, requests approval, or mints authority.  Do not launch
+            # the chat page against a known-missing backend; return a bounded
+            # failure so the Launcher can enter its explicit repair flow.
+            mark_runtime_failed("required runtime backend is unavailable")
+            _write_launch_event(
+                "runtime_unavailable",
+                code="API_FAILURE",
+                recovery_action=_PACKVM_RECOVERY_ACTION,
+                port=port,
+                url=url,
+            )
+            logger.warning(
+                "runtime startup dependency is unavailable: API_FAILURE. %s",
+                _PACKVM_RECOVERY_ACTION,
+            )
+            chat_launch_blocked = True
+        else:
+            mark_runtime_ready()
     else:
         mark_profile_reconfirmation_required(reconfirmation_error)
 
-    health_ready = _wait_until_ready(url)
-    chat_ready = _wait_until_chat_ready(url)
+    if chat_launch_blocked:
+        health_ready = False
+        chat_ready = False
+    else:
+        health_ready = _wait_until_ready(url)
+        chat_ready = health_ready and _wait_until_chat_ready(url)
     _write_launch_event(
         "readiness_complete",
         chat_ready=chat_ready,
@@ -555,10 +865,30 @@ def main(argv: list[str] | None = None) -> int:
         port=port,
         url=url,
     )
+    if not chat_ready:
+        _write_launch_event(
+            "chat_launch_blocked",
+            code="API_FAILURE",
+            recovery_action=_PACKVM_RECOVERY_ACTION,
+            port=port,
+            url=url,
+        )
+        if not chat_launch_blocked:
+            server.stop()
+            return 1
 
     from defaultspack.native_webview import open_desktop_surface
 
-    login_code = str(auth.issue_login_code()["code"])
+    try:
+        login_code = str(server.issue_panel_login_code()["code"])
+    except RuntimeError:
+        server.stop()
+        _write_launch_event(
+            "panel_auth_capture_unavailable",
+            port=port,
+            url=url,
+        )
+        raise
     launch_url = f"{url}?{urllib.parse.urlencode({'code': login_code})}"
     surface_result = open_desktop_surface(launch_url, title="Tobkiri")
     _write_launch_event(

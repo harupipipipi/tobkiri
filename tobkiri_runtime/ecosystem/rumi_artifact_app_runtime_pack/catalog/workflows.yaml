@@ -34,7 +34,7 @@ workflows:
     handoffs:
     - defaultspack
     - rumi_default_tools_pack
-    - rumi_reference_ui_pack
+    - rumi_frontend_design_pack
     execution: declarative_only
   - id: sandbox_render_contract
     purpose: Produce renderer sandbox policy without running code.
@@ -51,7 +51,7 @@ workflows:
     handoffs:
     - defaultspack
     - rumi_default_tools_pack
-    - rumi_reference_ui_pack
+    - rumi_frontend_design_pack
     execution: declarative_only
   - id: state_snapshot_versioning
     purpose: Create state snapshots and version records for rollback.
@@ -68,7 +68,7 @@ workflows:
     handoffs:
     - defaultspack
     - rumi_default_tools_pack
-    - rumi_reference_ui_pack
+    - rumi_frontend_design_pack
     execution: declarative_only
   - id: tool_mcp_approval_gate
     purpose: Block first MCP/API/tool call until approval receipt exists.
@@ -85,7 +85,7 @@ workflows:
     handoffs:
     - defaultspack
     - rumi_default_tools_pack
-    - rumi_reference_ui_pack
+    - rumi_frontend_design_pack
     execution: declarative_only
   - id: error_boundary_review
     purpose: Capture runtime error class and safe fallback owner.
@@ -102,7 +102,7 @@ workflows:
     handoffs:
     - defaultspack
     - rumi_default_tools_pack
-    - rumi_reference_ui_pack
+    - rumi_frontend_design_pack
     execution: declarative_only
   - id: export_package_build
     purpose: Build reviewed export manifest with workspace handoff.
@@ -119,5 +119,5 @@ workflows:
     handoffs:
     - defaultspack
     - rumi_default_tools_pack
-    - rumi_reference_ui_pack
+    - rumi_frontend_design_pack
     execution: declarative_only

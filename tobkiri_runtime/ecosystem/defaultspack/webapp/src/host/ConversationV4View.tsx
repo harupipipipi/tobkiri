@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 
+import { ErrorNotice } from "../components/ErrorNotice";
 import type {
   FrontendCapabilityClient,
   VerifiedFrontendContribution,
@@ -17,13 +18,12 @@ const CONVERSATION_V4_CONTRACT = "conversation.turn.v1";
 const CONVERSATION_V4_CONTRIBUTION = "defaults.conversation.complete";
 const CONVERSATION_V4_BUILD_IDENTITY = "defaultspack.conversation";
 
-/** Return whether a verified contribution selects the host-owned v4 chat. */
+/** Recognize the explicit lightweight Conversation contribution. */
 export function isConversationV4Contribution(
   item: VerifiedFrontendContribution,
 ): boolean {
   return item.kind === "route"
     && item.mode === "declarative"
-    && item.route === "/chat"
     && item.contribution_id === CONVERSATION_V4_CONTRIBUTION
     && item.owner_pack_id === "defaultspack"
     && item.build_identity === CONVERSATION_V4_BUILD_IDENTITY
@@ -71,6 +71,28 @@ export function conversationV4AssistantText(result: unknown): string | null {
   return null;
 }
 
+/** Extract a bounded error already projected by the Pack v4 result ABI. */
+export function conversationV4ResultError(
+  result: unknown,
+): { code?: string; message: string } | null {
+  const resultRecord = asRecord(result);
+  if (!resultRecord) return null;
+
+  for (const candidate of [resultRecord, asRecord(resultRecord.data)]) {
+    const projected = asRecord(candidate?.error);
+    if (!projected || typeof projected.message !== "string" || !projected.message.trim()) {
+      continue;
+    }
+    return {
+      ...(typeof projected.code === "string" && projected.code.trim()
+        ? { code: projected.code }
+        : {}),
+      message: projected.message,
+    };
+  }
+  return null;
+}
+
 /** Render the minimal, host-owned complete-only Pack v4 conversation surface. */
 export function ConversationV4View({
   item,
@@ -105,6 +127,12 @@ export function ConversationV4View({
         planHash: item.resolved_plan_hash,
         catalogHash,
       });
+      const projectedError = conversationV4ResultError(result);
+      if (projectedError) {
+        throw Object.assign(new Error(projectedError.message), {
+          code: projectedError.code,
+        });
+      }
       const content = conversationV4AssistantText(result);
       if (!content) {
         throw new Error("The conversation completed without an assistant message.");
@@ -220,9 +248,13 @@ export function ConversationV4View({
             </p>
           ) : null}
           {error ? (
-            <div className="mt-3 flex flex-wrap items-center gap-3" role="alert">
-              <p className="text-sm text-red-200">{error}</p>
-              {retryMessages ? (
+            <ErrorNotice
+              className="mt-3 text-sm"
+              copyLabel="Copy conversation error"
+              copyText={error}
+              errorIcon="conversation-v4"
+              message={error}
+              trailing={retryMessages ? (
                 <button
                   className="rounded-lg border border-red-300/40 px-3 py-1.5 text-sm font-semibold text-red-100 hover:bg-red-400/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
                   onClick={() => void complete(retryMessages)}
@@ -230,8 +262,8 @@ export function ConversationV4View({
                 >
                   Try again
                 </button>
-              ) : null}
-            </div>
+              ) : undefined}
+            />
           ) : null}
           <div className="mt-4 flex justify-end">
             <button
@@ -269,16 +301,22 @@ export function ConversationV4Unavailable({
         <h1 className="mt-2 text-xl font-semibold" id="conversation-v4-unavailable-title">
           Tobkiri Conversation is unavailable
         </h1>
-        <p className="mt-3 text-sm leading-6 text-zinc-300" role="status">
-          {reason}
-        </p>
-        <button
-          className="mt-5 rounded-xl border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
-          onClick={onRetry}
-          type="button"
-        >
-          Retry
-        </button>
+        <ErrorNotice
+          className="mt-3 text-sm leading-6"
+          copyLabel="Copy unavailable conversation error"
+          copyText={reason}
+          errorIcon="conversation-v4-unavailable"
+          message={reason}
+          trailing={(
+            <button
+              className="rounded-xl border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
+              onClick={onRetry}
+              type="button"
+            >
+              Retry
+            </button>
+          )}
+        />
       </section>
     </main>
   );

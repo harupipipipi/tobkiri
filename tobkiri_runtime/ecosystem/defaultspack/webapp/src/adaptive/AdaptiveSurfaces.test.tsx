@@ -208,7 +208,9 @@ test("ResourceBanner renders API errors without demo fallback copy", () => {
 
   assert.match(html, /Adaptive API error/);
   assert.match(html, /signed plan metadata is missing settings revision/);
-  assert.match(html, /title="backend rejected compile because signed plan metadata is missing settings revision and pack digest"/);
+  assert.match(html, /data-error-icon="adaptive-api"/);
+  assert.match(html, /data-copy-icon=""/);
+  assert.match(html, /aria-label="Copy adaptive API error"/);
   assert.doesNotMatch(html, /Demo adaptive state/);
   assert.doesNotMatch(html, /Local placeholder adaptive state/);
 });

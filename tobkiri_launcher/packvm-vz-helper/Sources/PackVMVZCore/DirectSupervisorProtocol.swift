@@ -6,6 +6,7 @@ import Foundation
 /// becoming a signing oracle for a Pack child.
 public let directSupervisorRequestKind = "tobkiri.macos-vz.supervisor.request.v1"
 public let directSupervisorResponseKind = "tobkiri.macos-vz.supervisor.response.v1"
+public let directSupervisorFailureKind = "tobkiri.macos-vz.supervisor.failure.v1"
 public let directSupervisorProtocol = "io.tobkiri.macos-vz-supervisor.v1"
 
 public struct DirectSupervisorRequest {
@@ -137,6 +138,24 @@ public enum DirectSupervisorAuthenticator {
         ]
         response["agent_mac"] = try CanonicalJSON.hmacHex(key: key, object: response)
         return response
+    }
+
+    /// Return a helper-authenticated operational failure after the request
+    /// envelope has been parsed and bound. Invalid envelopes remain unsigned:
+    /// without a parsed request there is no safe identity to echo or MAC.
+    public static func makeFailure(
+        request: DirectSupervisorRequest,
+        error: HelperError,
+        key: Data
+    ) throws -> [String: Any] {
+        try makeResponse(
+            request: request,
+            payload: [
+                "kind": directSupervisorFailureKind,
+                "code": error.code,
+            ],
+            key: key
+        )
     }
 
     public static func verifyResponse(_ value: [String: Any], key: Data) throws -> Bool {

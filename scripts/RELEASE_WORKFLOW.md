@@ -8,8 +8,8 @@ The release workflow has two explicit modes:
   Gatekeeper assessment; `.app` bundles are archived for `notarytool` and the
   ticket is stapled back onto the app bundle;
   Windows requires Authenticode signing and verification with an HTTPS
-  timestamp service. Linux has no platform certificate requirement, but it
-  remains part of the verified inventory.
+  timestamp service when a Windows packaging job is enabled. Linux has no
+  platform certificate requirement.
 - `local-dev` is an explicit debug-only path in `build-and-sign.sh`. Its
   unsigned or ad-hoc output is written under the debug build target and is not
   sealed, inventoried, attested, or eligible for upload.
@@ -20,11 +20,24 @@ availability without printing secret values.
 
 Each matrix target writes one immutable `release-target.json` containing the
 actual checked-out source SHA, target triple, platform, architecture, and
-SHA-256/byte-size records. The `gather` job requires all four target manifests,
-rejects missing, duplicate, replaced, or unexpected assets, and writes one
-sorted `release-inventory.json`. GitHub artifact provenance attests that single
-inventory subject exactly once. Only after the inventory is verified and
-attested does the workflow create the reviewable draft release.
+SHA-256/byte-size records. The `gather` job receives the exact enabled target
+set from the workflow's `TOBKIRI_REQUIRED_RELEASE_TARGETS` JSON array and
+rejects missing, duplicate, replaced, or unexpected assets before writing one
+sorted `release-inventory.json`. The gather create and verify commands expand
+that same array into repeated `--required-target` arguments, and the array
+must be non-empty and duplicate-free. GitHub artifact provenance attests that
+single inventory subject exactly once. Only after the inventory is verified
+and attested does the workflow create the reviewable draft release.
+
+The current tag workflow packages `aarch64-apple-darwin`. Adding Windows,
+Linux, or macOS x86_64 requires adding the real packaging/signing matrix job and
+the same target to `TOBKIRI_REQUIRED_RELEASE_TARGETS` in one change. The
+release inventory library retains and tests the complete four-target default
+contract for compatibility; it does not claim an artifact was built when no
+matrix job produced it. The current one-target publication is intentional:
+the repository's sealed release packaging guard does not yet support the
+other targets, so expanding the matrix without those real packaging jobs
+would make the tag workflow fail rather than produce valid releases.
 
 Required production credentials are supplied through GitHub Actions secrets and
 are never hard-coded:

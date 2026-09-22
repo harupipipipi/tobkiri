@@ -104,9 +104,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:82b678e022f3b3df5f6f19ec5f7f3c74866ed7b5185b47ee3e73e889fdc2a29f",
+            "artifact_digest": "sha256:40f9e3fbfdc6c3fa14add5a27a85df03451808e07eaed50e59be6b608fe3951e",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:3a4b03628fe3282c4a122d3b5e50d5c723d3d1818ab9d8f86673247741fad6ef"
+            "source_identity": "sha256:18e1d6aed69d192c9baa13b1d9281616741be83ce17a6cc0c386a9f431fcd33d"
           },
           "owner_surfaces": [],
           "projection_owner": "scripts/migrate_manifest_authority.py"
@@ -146,7 +146,7 @@
       "owner": "rumi_connector_turn_adapter_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:3a4b03628fe3282c4a122d3b5e50d5c723d3d1818ab9d8f86673247741fad6ef"
+      "source_identity": "sha256:18e1d6aed69d192c9baa13b1d9281616741be83ce17a6cc0c386a9f431fcd33d"
     }
   },
   "migration": {

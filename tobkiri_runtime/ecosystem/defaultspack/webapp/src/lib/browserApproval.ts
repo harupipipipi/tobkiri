@@ -9,6 +9,7 @@ export type BrowserApproval = {
   summary?: string;
   toolCallId?: string;
   toolName: string;
+  argsHash?: string;
 };
 
 export type RuntimeApproval = {
@@ -20,6 +21,7 @@ export type RuntimeApproval = {
   summary?: string;
   toolCallId?: string;
   toolName: string;
+  argsHash?: string;
 };
 
 export type StaleRuntimeApproval = {
@@ -122,6 +124,7 @@ function approvalFromCandidate(
     approval.summary = candidate.message;
   }
   if (typeof candidate.tool_call_id === "string") approval.toolCallId = candidate.tool_call_id;
+  if (typeof candidate.args_hash === "string") approval.argsHash = candidate.args_hash;
   return approval;
 }
 
@@ -188,7 +191,7 @@ function runtimeApprovalFromCandidate(
       : fallbackPayload
         ? fallbackPayload
       : {};
-  return {
+  const approval: RuntimeApproval = {
     action: String(candidate.action ?? candidate.operation ?? toolName),
     operation: String(candidate.operation ?? candidate.action ?? toolName),
     payload,
@@ -202,6 +205,8 @@ function runtimeApprovalFromCandidate(
     toolCallId: typeof candidate.tool_call_id === "string" ? candidate.tool_call_id : fallbackToolCallId,
     toolName,
   };
+  if (typeof candidate.args_hash === "string") approval.argsHash = candidate.args_hash;
+  return approval;
 }
 
 function staleRuntimeApprovalFromCandidate(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .profile_workspace import validate_profile_id
+from .profile_workspace import ProfileWorkspaceManager, validate_profile_id
 
 
 def _default_user_data_root() -> Path:
@@ -17,12 +17,12 @@ def active_profile_id(user_data_root: Path | None = None) -> str | None:
     """Return the active verified Profile identity, never an ambient override."""
 
     try:
-        from .bootstrap.profile_capture import capture_default_profile
+        from .active_profile_store_v4 import ActiveProfileStore
 
-        captured = capture_default_profile(base_dir=user_data_root)
+        root = Path(user_data_root) if user_data_root is not None else _default_user_data_root()
+        profile_id = ActiveProfileStore(root).require(verify_snapshot=True).profile_id
     except Exception:
         return None
-    profile_id = str(captured.resolved.profile["profile_id"])
     return validate_profile_id(profile_id)
 
 
@@ -33,16 +33,17 @@ def profile_workspace_dir(
     """Return the sole workspace root bound to a Profile v4 activation."""
 
     root = Path(user_data_root) if user_data_root is not None else _default_user_data_root()
-    return root / "workspaces" / validate_profile_id(profile_id)
+    return ProfileWorkspaceManager(root).root_for_profile(profile_id)
 
 
 def profile_user_data_dir(
     profile_id: str,
     user_data_root: Path | None = None,
 ) -> Path:
-    """Compatibility name for the v4 Profile workspace root."""
+    """Return the Profile-owned state directory below its v4 workspace."""
 
-    return profile_workspace_dir(profile_id, user_data_root)
+    root = Path(user_data_root) if user_data_root is not None else _default_user_data_root()
+    return ProfileWorkspaceManager(root).profile_user_data_dir(profile_id)
 
 
 def profile_database_path(
@@ -51,7 +52,8 @@ def profile_database_path(
 ) -> Path:
     """Return the Profile-owned state database below its v4 workspace."""
 
-    return profile_workspace_dir(profile_id, user_data_root) / "state" / "rumi.sqlite"
+    root = Path(user_data_root) if user_data_root is not None else _default_user_data_root()
+    return ProfileWorkspaceManager(root).profile_database_path(profile_id)
 
 
 def _required_profile_id(profile_id: str | None, root: Path) -> str:
@@ -62,10 +64,10 @@ def _required_profile_id(profile_id: str | None, root: Path) -> str:
 
 
 def resolve_runtime_user_data_dir(*, profile_id: str | None = None) -> Path:
-    """Resolve runtime state to one verified v4 Profile workspace."""
+    """Resolve runtime state to one verified v4 Profile state directory."""
 
     root = _default_user_data_root()
-    return profile_workspace_dir(_required_profile_id(profile_id, root), root)
+    return profile_user_data_dir(_required_profile_id(profile_id, root), root)
 
 
 def resolve_runtime_database_path(*, profile_id: str | None = None) -> Path:

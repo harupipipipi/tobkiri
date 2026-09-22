@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass
+import json
+import math
+import os
+from pathlib import Path
 import secrets
 from threading import RLock
 import time
@@ -22,15 +26,12 @@ class ResourceAmount:
     start_slots: int = 1
 
     def __post_init__(self) -> None:
-        if (
-            min(
-                self.memory_bytes,
-                self.disk_bytes,
-                self.process_slots,
-                self.start_slots,
-            )
-            < 0
-        ):
+        amounts = (
+            self.memory_bytes, self.disk_bytes, self.process_slots, self.start_slots
+        )
+        if any(type(value) is not int for value in amounts):
+            raise ValueError("resource amounts must be integers")
+        if min(amounts) < 0:
             raise ValueError("resource amounts cannot be negative")
 
     def __add__(self, other: ResourceAmount) -> ResourceAmount:
@@ -70,20 +71,29 @@ class AdmissionEstimate:
     backend_overhead_bytes: int
     concurrency: int = 1
     disk_bytes: int = 0
+    declared_upper_bound_bytes: int | None = None
 
     def charge(self) -> ResourceAmount:
         """Calculate the admission charge without trusting a low declaration."""
-        if self.concurrency <= 0:
+        if type(self.concurrency) is not int or self.concurrency <= 0:
             raise AdmissionError("admitted concurrency must be positive")
-        base = max(
+        estimates = (
             self.measured_p95_bytes,
             self.declared_minimum_bytes,
             self.runtime_floor_bytes,
             self.profile_reservation_bytes,
             self.backend_overhead_bytes,
         )
-        if base < 0 or self.disk_bytes < 0:
+        amounts: tuple[int, ...] = (*estimates, self.disk_bytes)
+        if self.declared_upper_bound_bytes is not None:
+            amounts = (*amounts, self.declared_upper_bound_bytes)
+        if any(type(value) is not int for value in amounts):
+            raise AdmissionError("admission estimates must be integers")
+        if min(amounts) < 0:
             raise AdmissionError("admission estimates cannot be negative")
+        base = max(estimates)
+        if self.declared_upper_bound_bytes is not None:
+            base = max(base, self.declared_upper_bound_bytes)
         return ResourceAmount(
             memory_bytes=base * self.concurrency,
             disk_bytes=self.disk_bytes,
@@ -166,6 +176,252 @@ class ResourceLedger:
         """Return an immutable current-use snapshot."""
         with self._lock:
             return self._runtime_used
+
+
+def _strict_nonnegative_int(value: object) -> int:
+    """Parse a persisted resource axis without coercing untrusted values."""
+
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("persisted resource values must be non-negative integers")
+    return value
+
+
+class DurableResourceLedger(ResourceLedger):
+    """Persist short-lived reservations across a Host restart.
+
+    The persisted record is deliberately a reservation ledger, not a caller
+    supplied quota. Every row is tied to the captured Profile/activation
+    identity. Time passing is not proof that its worker has exited: only the
+    owning supervisor's explicit release can make that capacity reusable.
+    Invalid or unreadable state fails closed so a damaged ledger cannot turn
+    admission into an unbounded path.
+    """
+
+    _SCHEMA = "io.tobkiri.admission-ledger.v1"
+
+    def __init__(
+        self,
+        *,
+        runtime_limit: ResourceAmount,
+        host_free_guard: ResourceAmount,
+        profile_limits: Mapping[str, ResourceAmount],
+        state_path: Path,
+        identity: Mapping[str, str],
+        lease_ttl_seconds: float = 120.0,
+        confirmed_supervisor_release: Callable[
+            [Mapping[str, str], tuple[ResourceReservation, ...]], tuple[str, ...]
+        ]
+        | None = None,
+    ) -> None:
+        if (
+            type(lease_ttl_seconds) not in (int, float)
+            or not math.isfinite(lease_ttl_seconds)
+            or lease_ttl_seconds <= 0
+        ):
+            raise ValueError("admission reservation TTL must be positive")
+        super().__init__(
+            runtime_limit=runtime_limit,
+            host_free_guard=host_free_guard,
+            profile_limits=profile_limits,
+        )
+        self._state_path = state_path
+        self._identity = {str(key): str(value) for key, value in identity.items()}
+        self._lease_ttl_seconds = lease_ttl_seconds
+        self._confirmed_supervisor_release = confirmed_supervisor_release
+        self._expires_at: dict[str, float] = {}
+        self._load_state()
+
+    def reserve(
+        self,
+        profile_id: str,
+        amount: ResourceAmount,
+    ) -> ResourceReservation:
+        """Reserve and durably journal resources before queue acceptance."""
+        with self._lock:
+            reservation = super().reserve(profile_id, amount)
+            # Keep the v1 timestamp for persisted-format compatibility and
+            # diagnostics; it must not authorize automatic reclamation.
+            self._expires_at[reservation.reservation_id] = (
+                time.time() + self._lease_ttl_seconds
+            )
+            try:
+                self._persist_locked()
+            except Exception as exc:
+                super().release(reservation.reservation_id)
+                self._expires_at.pop(reservation.reservation_id, None)
+                raise AdmissionError("admission reservation could not be journaled") from exc
+            return reservation
+
+    def release(self, reservation_id: str) -> None:
+        """Release a reservation and persist the resulting ledger state."""
+        with self._lock:
+            super().release(reservation_id)
+            self._expires_at.pop(reservation_id, None)
+            try:
+                self._persist_locked()
+            except Exception as exc:
+                raise AdmissionError("admission ledger could not be updated") from exc
+
+    def _load_state(self) -> None:
+        if not self._state_path.exists():
+            return
+        try:
+            raw = json.loads(self._state_path.read_text(encoding="utf-8"))
+            if not isinstance(raw, Mapping):
+                raise ValueError("ledger root is not an object")
+            if raw.get("schema") != self._SCHEMA:
+                raise ValueError("ledger schema is not supported")
+            rows = raw.get("reservations")
+            if not isinstance(rows, list):
+                raise ValueError("ledger reservations are not an array")
+            saved_identity = {
+                str(key): str(value)
+                for key, value in dict(raw.get("identity") or {}).items()
+            }
+            loaded: list[tuple[ResourceReservation, float]] = []
+            for row in rows:
+                if not isinstance(row, Mapping):
+                    raise ValueError("ledger reservation is not an object")
+                reservation_id = str(row.get("reservation_id") or "")
+                profile_id = str(row.get("profile_id") or "")
+                expires_at = row.get("expires_at")
+                if (
+                    not reservation_id
+                    or not profile_id
+                    or isinstance(expires_at, bool)
+                    or not isinstance(expires_at, (int, float))
+                    or not math.isfinite(float(expires_at))
+                ):
+                    raise ValueError("ledger reservation identity or timestamp is invalid")
+                amount_value = row.get("amount")
+                if not isinstance(amount_value, Mapping):
+                    raise ValueError("ledger reservation amount is not an object")
+                amount = ResourceAmount(
+                    memory_bytes=_strict_nonnegative_int(
+                        amount_value["memory_bytes"]
+                    ),
+                    disk_bytes=_strict_nonnegative_int(
+                        amount_value.get("disk_bytes", 0)
+                    ),
+                    process_slots=_strict_nonnegative_int(
+                        amount_value.get("process_slots", 1)
+                    ),
+                    start_slots=_strict_nonnegative_int(
+                        amount_value.get("start_slots", 1)
+                    ),
+                )
+                if any(item.reservation_id == reservation_id for item, _ in loaded):
+                    raise ValueError("ledger contains duplicate reservation IDs")
+                if profile_id not in self._profile_limits:
+                    raise ValueError("ledger reservation targets an unknown Profile")
+                reservation = ResourceReservation(
+                    reservation_id=reservation_id,
+                    profile_id=profile_id,
+                    amount=amount,
+                )
+                loaded.append((reservation, float(expires_at)))
+            if saved_identity != self._identity:
+                confirmed = self._confirmed_supervisor_release
+                reservations = tuple(item for item, _ in loaded)
+                if not reservations:
+                    return
+                released = (
+                    () if confirmed is None else confirmed(saved_identity, reservations)
+                )
+                if not isinstance(released, tuple) or any(
+                    not isinstance(item, str) or not item for item in released
+                ):
+                    raise ValueError("confirmed supervisor release result is invalid")
+                released_ids = set(released)
+                known_ids = {item.reservation_id for item in reservations}
+                if len(released_ids) != len(released) or not released_ids <= known_ids:
+                    raise ValueError("confirmed supervisor release identity is invalid")
+                if not released_ids:
+                    raise AdmissionError(
+                        "outstanding admission reservations require confirmed supervisor release"
+                    )
+                remaining = [
+                    item for item in loaded if item[0].reservation_id not in released_ids
+                ]
+                for reservation, expires_at in remaining:
+                    self._reservations[reservation.reservation_id] = reservation
+                    self._expires_at[reservation.reservation_id] = expires_at
+                    self._runtime_used = self._runtime_used + reservation.amount
+                    self._profile_used[reservation.profile_id] = (
+                        self._profile_used[reservation.profile_id] + reservation.amount
+                    )
+                # Persist only the individually proven releases. A partial
+                # recovery retains the predecessor identity and remains
+                # fail-closed on this startup.
+                self._persist_locked(
+                    identity=saved_identity if remaining else self._identity,
+                )
+                if remaining:
+                    raise AdmissionError(
+                        "outstanding admission reservations require confirmed supervisor release"
+                    )
+                return
+            for reservation, expires_at in loaded:
+                self._reservations[reservation.reservation_id] = reservation
+                self._expires_at[reservation.reservation_id] = expires_at
+                self._runtime_used = self._runtime_used + reservation.amount
+                self._profile_used[reservation.profile_id] = (
+                    self._profile_used[reservation.profile_id] + reservation.amount
+                )
+            if not self._runtime_used.fits(self._runtime_limit - self._guard):
+                raise ValueError("ledger exceeds the Host runtime ceiling")
+            for profile_id, used in self._profile_used.items():
+                if not used.fits(self._profile_limits[profile_id]):
+                    raise ValueError("ledger exceeds the Profile resource ceiling")
+        except (
+            OSError,
+            OverflowError,
+            ValueError,
+            TypeError,
+            KeyError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise AdmissionError("durable admission ledger is invalid") from exc
+
+    def _persist_locked(
+        self, *, identity: Mapping[str, str] | None = None,
+    ) -> None:
+        rows = [
+            {
+                "reservation_id": reservation.reservation_id,
+                "profile_id": reservation.profile_id,
+                "amount": {
+                    "memory_bytes": reservation.amount.memory_bytes,
+                    "disk_bytes": reservation.amount.disk_bytes,
+                    "process_slots": reservation.amount.process_slots,
+                    "start_slots": reservation.amount.start_slots,
+                },
+                "expires_at": self._expires_at[reservation.reservation_id],
+            }
+            for reservation in sorted(
+                self._reservations.values(),
+                key=lambda item: item.reservation_id,
+            )
+        ]
+        payload = {
+            "schema": self._SCHEMA,
+            "identity": dict(self._identity if identity is None else identity),
+            "reservations": rows,
+        }
+        self._state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temporary = self._state_path.with_name(
+            f".{self._state_path.name}.{secrets.token_hex(8)}.tmp"
+        )
+        try:
+            temporary.write_text(
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self._state_path)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
 
 
 @dataclass(frozen=True)
@@ -251,6 +507,44 @@ class FairAdmissionQueue:
             queue.append(item.item_id)
             self._increment(scope, 1)
             return item
+
+    def admit(
+        self,
+        scope: QueueScope,
+        amount: ResourceAmount,
+        *,
+        wait_timeout_seconds: float,
+    ) -> ResourceReservation:
+        """Reserve one request without exposing a racy intermediate queue pop.
+
+        Production admission has already bounded the Broker deadline when it
+        calls this method.  Keeping enqueue and pop under the same queue lock
+        preserves the existing fairness implementation for callers that use
+        the queue directly while making the accepted reservation atomic for a
+        request that immediately enters execution.
+        """
+
+        with self._lock:
+            item = self.enqueue(
+                scope,
+                amount,
+                wait_timeout_seconds=wait_timeout_seconds,
+            )
+            queue = self._by_binding[item.scope.binding_id]
+            queue.remove(item.item_id)
+            if not queue:
+                self._by_binding.pop(item.scope.binding_id, None)
+                self._binding_round_robin = deque(
+                    binding
+                    for binding in self._binding_round_robin
+                    if binding != item.scope.binding_id
+                )
+            self._items.pop(item.item_id, None)
+            self._increment(item.scope, -1)
+            if self._clock() >= item.deadline:
+                self._ledger.release(item.reservation.reservation_id)
+                raise TimeoutError("admission deadline expired")
+            return item.reservation
 
     def pop(self) -> QueueItem | None:
         """Pop fairly across bindings, releasing expired reservations."""

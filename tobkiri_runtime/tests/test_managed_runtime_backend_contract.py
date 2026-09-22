@@ -1027,11 +1027,13 @@ def test_desktop_list_prioritizes_running_desktops() -> None:
         assert desktop["id"] == desktop["sandbox_id"]
 
 
-def test_desktops_list_skips_malformed_manager_instances() -> None:
+def test_desktops_list_skips_malformed_manager_instances(monkeypatch, tmp_path) -> None:
     from ecosystem.defaultspack.blocks.sandbox import api
 
     api._reset_service_for_tests(None)
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_SANDBOX_STATE_DIR", str(tmp_path))
     service = api._SandboxApiService(start_lifecycle_sweeper=False)
+    assert service.manager.state_dir == tmp_path
     service.manager._instances.clear()
     service.manager._instances["bad"] = None
     api._reset_service_for_tests(service)

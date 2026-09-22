@@ -21,13 +21,14 @@ from core_runtime.control_reconciliation_v4 import (
     ControlReconciliationStore,
     ControlReconciliationUnavailableError,
 )
-from core_runtime.frontend_contract_routes import (
-    FrontendContractBinding,
-    FrontendContractTarget,
+from core_runtime.global_contracts.http_contract_dispatch import (
+    HTTPContractBinding as FrontendContractBinding,
+    HTTPContractTarget as FrontendContractTarget,
 )
 from core_runtime.pack_api_server import PackAPIServer
 from core_runtime.panel_auth import PanelAuthManager
 from tobkiri_protocol.canonical import canonical_digest
+from tests.conformance_support.host_contract import host_contract_for_session
 
 
 def _hold_posix_lock(path_value: str, ready: object, release: object) -> None:
@@ -58,7 +59,10 @@ def _begin(store: ControlReconciliationStore, index: int) -> str:
 
 class _Dispatch:
     profile_id = "defaults"
+    profile_revision = "sha256:" + "b" * 64
+    activation_id = "activation:control-core"
     plan_digest = "sha256:" + "a" * 64
+    security_epoch = 1
 
     def __init__(self) -> None:
         self.calls = 0
@@ -75,6 +79,8 @@ class _Dispatch:
                 "provider_id": "test.provider",
                 "operation_id": "test.write",
                 "profile_id": self.profile_id,
+                "profile_revision": self.profile_revision,
+                "activation_id": self.activation_id,
                 "plan_digest": self.plan_digest,
             },
         )
@@ -106,6 +112,8 @@ def _binding() -> FrontendContractBinding:
                 allowed_payload_keys=frozenset({"value"}),
             ),
         ),
+        application_id="test.application",
+        route_namespace="defaultspack",
     )
 
 
@@ -230,6 +238,7 @@ def test_32_pack_api_requests_return_503_and_server_restarts_after_lock_release(
         panel_auth_manager=auth,
         dispatch_session=dispatch,
         contract_bindings=(_binding(),),
+        host_contract=host_contract_for_session(dispatch),
     )
     server._operation_journal._open_retry_seconds = 0.1  # noqa: SLF001
     server._operation_journal.prepare_for_operation()

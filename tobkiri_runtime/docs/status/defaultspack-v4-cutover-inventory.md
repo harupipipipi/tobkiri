@@ -5,13 +5,17 @@ Inventory baseline: repository commit
 
 This document records the pre-cutover difference between the normative Protocol
 v4/Authority Kernel model and the bundled defaults implementation, together with
-the completed cutover result. It is not a compatibility promise.
+the current Phase 0 result. It is not a compatibility promise.
 
-## Cutover result
+## Phase 0 result
 
-The production cutover is complete. The tracked complete-v4 scanner currently
-classifies all 143 bundled production Packs as `v4-authoritative`, requires four
-canonical v4 artifacts per Pack, and reports zero findings for artifact
+The artifact and Authority-path foundation is implemented, but semantic Pack
+migration is not complete. The tracked complete-v4 scanner currently inventories
+140 bundled production Packs and requires four canonical v4 artifacts per Pack.
+It classifies 41 Packs as `semantically-reviewed` and 99 as `generated-draft`;
+the semantic migration evidence is therefore `RED`. During Phase 0, CI blocks
+evidence freshness drift while reporting this semantic status without treating
+it as a completed cutover. The scanner reports zero findings for artifact
 contracts, Authority/ResolvedPlan scope, reachable legacy lookup/fallback,
 double authority, Launcher safety, and offline projection identity. The exact
 counts and source commit are generated in:

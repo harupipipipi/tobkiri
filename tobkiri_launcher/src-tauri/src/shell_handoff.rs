@@ -4,7 +4,9 @@
 //! The Launcher writes it to a short-lived owner-only file below its own app
 //! data root and passes only that file path to the verified Shell process. The
 //! Shell atomically claims, validates, reads, and removes the file before
-//! navigating its WebView.
+//! navigating its WebView. Binding admission is reported separately through a
+//! nonce-bound, owner-only atomic receipt; it does not report page readiness,
+//! and file disappearance is never admission.
 
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
@@ -18,20 +20,28 @@ use serde::{Deserialize, Serialize};
 use tauri::Url;
 
 use crate::config::AppConfig;
+use crate::host_contract::ExecutionProfileIdentity;
 
+/// Bundle identifier used only to select the presentation-only Shell runtime.
 pub(crate) const SHELL_BUNDLE_IDENTIFIER: &str = "io.tobkiri.shell.tauri";
-pub(crate) const SHELL_PROVIDER_ID: &str = "shell.tauri.default";
 pub(crate) const HANDOFF_ARGUMENT: &str = "--tobkiri-shell-handoff";
-const LAUNCHER_BUNDLE_IDENTIFIER: &str = "dev.tobkiri.launcher";
+const LAUNCHER_BUNDLE_IDENTIFIER: &str = "dev.rumiai.app";
 const CI_E2E_LAUNCHER_BUNDLE_IDENTIFIER: &str = "dev.tobkiri.launcher.ci-e2e";
 const MACOS_ARTIFACT_POLICY: &str = env!("TOBKIRI_MACOS_ARTIFACT_POLICY");
-const HANDOFF_SCHEMA: &str = "io.tobkiri.shell-handoff.v1";
+// v3 and v4 existed only in preceding commits on this unmerged branch: no tag,
+// signed catalog, or release artifact contained them. v5 is therefore a hard
+// internal transition, not a shipped compatibility cut. It binds the Shell to
+// both the Launcher PID and its kernel-reported start time.
+const HANDOFF_SCHEMA: &str = "io.tobkiri.shell-handoff.v5";
+const RECEIPT_SCHEMA: &str = "io.tobkiri.shell-handoff-ack.v1";
 const LOCAL_AUTH_PROTOCOL: &str = "io.tobkiri.local-auth.v1";
 const LOCAL_AUTH_AUDIENCE: &str = "runtime-profile";
 const HANDOFF_DIRECTORY: &str = "shell_handoff";
 const HANDOFF_TTL_SECONDS: u64 = 60;
 const HANDOFF_MAX_LIFETIME_SECONDS: u64 = 120;
 const HANDOFF_MAX_BYTES: u64 = 16 * 1024;
+const RECEIPT_MAX_BYTES: u64 = 1024;
+const STALE_CLEANUP_MAX_ENTRIES: usize = 256;
 #[cfg(any(windows, test))]
 const WINDOWS_FILE_ALL_ACCESS: u32 = 0x001f_01ff;
 
@@ -42,55 +52,140 @@ struct ShellHandoffPayload {
     protocol: String,
     audience: String,
     profile_id: String,
-    profile_digest: String,
+    profile_revision: String,
+    activation_id: String,
+    plan_digest: String,
     catalog_revision: String,
     provider_id: String,
     artifact_id: String,
+    artifact_digest: String,
+    entrypoint_digest: String,
+    launcher_pid: u32,
+    launcher_start_tvsec: u64,
+    launcher_start_tvusec: u64,
     runtime_url: String,
     created_at: u64,
     expires_at: u64,
     nonce: String,
+    receipt_nonce: String,
 }
 
 pub(crate) struct ValidatedShellHandoff {
+    pub launcher_process: LauncherProcessIdentity,
     pub runtime_url: Url,
     pub runtime_port: u16,
+    pub identity: ExecutionProfileIdentity,
+    pub catalog_revision: String,
+    pub artifact: ShellArtifactIdentity,
+    pub receipt: ShellHandoffReceiptIdentity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LauncherProcessIdentity {
+    pub pid: u32,
+    pub start_tvsec: u64,
+    pub start_tvusec: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ShellHandoffTicket {
+    pub path: PathBuf,
+    pub receipt: ShellHandoffReceiptIdentity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ShellHandoffReceiptIdentity {
+    pub(crate) root: PathBuf,
+    pub(crate) handoff_nonce: String,
+    pub(crate) receipt_nonce: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShellHandoffReceiptStatus {
+    /// The verified Shell process irreversibly admitted the exact Profile,
+    /// Activation, Plan, catalog, artifact, and runtime binding. This does not
+    /// assert that bootstrap, session setup, or page loading is complete.
+    BindingAdmitted,
+    RotationRequired,
+}
+
+impl ShellHandoffReceiptStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::BindingAdmitted => "binding_admitted",
+            Self::RotationRequired => "rotation_required",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ShellHandoffReceiptPayload {
+    schema: String,
+    handoff_nonce: String,
+    receipt_nonce: String,
+    status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ShellArtifactIdentity {
+    pub provider_id: String,
+    pub artifact_id: String,
+    pub artifact_digest: String,
+    pub entrypoint_digest: String,
+}
+
+impl ShellArtifactIdentity {
+    pub(crate) fn matches(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 pub(crate) struct ShellHandoffBinding<'a> {
-    pub profile_id: &'a str,
-    pub profile_digest: &'a str,
+    pub identity: &'a ExecutionProfileIdentity,
     pub catalog_revision: &'a str,
     pub provider_id: &'a str,
     pub artifact_id: &'a str,
+    pub artifact_digest: &'a str,
+    pub entrypoint_digest: &'a str,
 }
 
 pub(crate) fn create_shell_handoff(
     config: &AppConfig,
     binding: ShellHandoffBinding<'_>,
     runtime_url: &str,
-) -> Result<PathBuf> {
-    let root = launcher_handoff_root(config);
+) -> Result<ShellHandoffTicket> {
+    let root = launcher_handoff_root(config)?;
     prepare_private_root(&root)?;
     cleanup_stale_handoffs(&root);
 
     let now = epoch_seconds()?;
     let nonce = random_component(40);
+    let receipt_nonce = random_component(40);
+    let launcher_process = current_launcher_process_identity()?;
     let payload = ShellHandoffPayload {
         schema: HANDOFF_SCHEMA.to_string(),
         protocol: LOCAL_AUTH_PROTOCOL.to_string(),
         audience: LOCAL_AUTH_AUDIENCE.to_string(),
-        profile_id: binding.profile_id.to_string(),
-        profile_digest: binding.profile_digest.to_string(),
+        profile_id: binding.identity.profile_id.clone(),
+        profile_revision: binding.identity.profile_revision.clone(),
+        activation_id: binding.identity.activation_id.clone(),
+        plan_digest: binding.identity.plan_digest.clone(),
         catalog_revision: binding.catalog_revision.to_string(),
         provider_id: binding.provider_id.to_string(),
         artifact_id: binding.artifact_id.to_string(),
+        artifact_digest: binding.artifact_digest.to_string(),
+        entrypoint_digest: binding.entrypoint_digest.to_string(),
+        launcher_pid: launcher_process.pid,
+        launcher_start_tvsec: launcher_process.start_tvsec,
+        launcher_start_tvusec: launcher_process.start_tvusec,
         runtime_url: runtime_url.to_string(),
         created_at: now,
         expires_at: now.saturating_add(HANDOFF_TTL_SECONDS),
         nonce: nonce.clone(),
+        receipt_nonce: receipt_nonce.clone(),
     };
-    validate_payload(&payload, now)?;
+    validate_payload(&payload, now, &root)?;
 
     let body = serde_json::to_vec(&payload).context("failed to encode Shell handoff")?;
     if body.len() as u64 > HANDOFF_MAX_BYTES {
@@ -122,11 +217,19 @@ pub(crate) fn create_shell_handoff(
         let _ = fs::remove_file(&path);
         return Err(error);
     }
-    Ok(path)
+    Ok(ShellHandoffTicket {
+        path,
+        receipt: ShellHandoffReceiptIdentity {
+            root,
+            handoff_nonce: nonce,
+            receipt_nonce,
+        },
+    })
 }
 
-pub(crate) fn discard_shell_handoff(path: &Path) {
-    let _ = fs::remove_file(path);
+pub(crate) fn discard_shell_handoff(ticket: &ShellHandoffTicket) {
+    let _ = fs::remove_file(&ticket.path);
+    let _ = fs::remove_file(receipt_path(&ticket.receipt));
 }
 
 pub(crate) fn consume_shell_handoff(path: &Path) -> Result<ValidatedShellHandoff> {
@@ -146,7 +249,8 @@ fn consume_shell_handoff_from_root(
 
     let result = (|| {
         validate_claimed_file(&claimed, expected_root)?;
-        let file = File::open(&claimed).context("failed to open claimed Shell handoff")?;
+        let file = open_private_file_no_follow(&claimed)
+            .context("failed to open claimed Shell handoff")?;
         let mut body = Vec::new();
         file.take(HANDOFF_MAX_BYTES + 1)
             .read_to_end(&mut body)
@@ -159,7 +263,115 @@ fn consume_shell_handoff_from_root(
         if payload.nonce != handoff_nonce {
             bail!("Shell handoff filename nonce does not match its authenticated payload");
         }
-        validate_payload(&payload, epoch_seconds()?)
+        validate_payload(&payload, epoch_seconds()?, expected_root)
+    })();
+    let _ = fs::remove_file(&claimed);
+    result
+}
+
+pub(crate) fn write_shell_handoff_receipt(
+    identity: &ShellHandoffReceiptIdentity,
+    status: ShellHandoffReceiptStatus,
+) -> Result<()> {
+    validate_private_root(&identity.root)?;
+    validate_nonce(&identity.handoff_nonce, "handoff receipt handoff nonce")?;
+    validate_nonce(&identity.receipt_nonce, "handoff receipt nonce")?;
+    let payload = ShellHandoffReceiptPayload {
+        schema: RECEIPT_SCHEMA.to_string(),
+        handoff_nonce: identity.handoff_nonce.clone(),
+        receipt_nonce: identity.receipt_nonce.clone(),
+        status: status.as_str().to_string(),
+    };
+    let body = serde_json::to_vec(&payload).context("failed to encode Shell handoff receipt")?;
+    if body.len() as u64 > RECEIPT_MAX_BYTES {
+        bail!("Shell handoff receipt exceeds the bounded payload size");
+    }
+
+    let temporary = identity.root.join(format!(
+        ".receipt-{}-{}.tmp",
+        identity.receipt_nonce,
+        random_component(40)
+    ));
+    let final_path = receipt_path(identity);
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&temporary)
+        .context("failed to create Shell handoff receipt")?;
+    let mut published = false;
+    let result = (|| -> Result<()> {
+        restrict_private_file(&temporary)?;
+        file.write_all(&body)
+            .context("failed to write Shell handoff receipt")?;
+        file.sync_all()
+            .context("failed to flush Shell handoff receipt")?;
+        validate_private_file(&temporary)?;
+        // A hard link publishes the complete receipt atomically and refuses to
+        // replace a pre-existing receipt, which makes replay fail closed.
+        fs::hard_link(&temporary, &final_path)
+            .context("failed to publish Shell handoff receipt atomically")?;
+        published = true;
+        validate_private_file(&final_path)
+    })();
+    drop(file);
+    let _ = fs::remove_file(&temporary);
+    if result.is_err() && published {
+        let _ = fs::remove_file(&final_path);
+    }
+    result
+}
+
+pub(crate) fn consume_shell_handoff_receipt(
+    ticket: &ShellHandoffTicket,
+) -> Result<ShellHandoffReceiptStatus> {
+    consume_shell_handoff_receipt_from_root(ticket, &ticket.receipt.root)
+}
+
+pub(crate) fn try_consume_shell_handoff_receipt(
+    ticket: &ShellHandoffTicket,
+) -> Result<Option<ShellHandoffReceiptStatus>> {
+    let path = receipt_path(&ticket.receipt);
+    match fs::symlink_metadata(&path) {
+        Ok(_) => consume_shell_handoff_receipt(ticket).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error).context("failed to inspect Shell handoff receipt"),
+    }
+}
+
+fn consume_shell_handoff_receipt_from_root(
+    ticket: &ShellHandoffTicket,
+    expected_root: &Path,
+) -> Result<ShellHandoffReceiptStatus> {
+    validate_private_root(expected_root)?;
+    if ticket.receipt.root != expected_root {
+        bail!("Shell handoff receipt root does not match its ticket");
+    }
+    let receipt = receipt_path(&ticket.receipt);
+    let receipt_nonce = validate_receipt_path(&receipt, expected_root)?;
+    if receipt_nonce != ticket.receipt.receipt_nonce {
+        bail!("Shell handoff receipt filename nonce does not match its ticket");
+    }
+    let claimed = expected_root.join(format!(".consume-receipt-{}.json", random_component(40)));
+    fs::rename(&receipt, &claimed).context("failed to claim Shell handoff receipt")?;
+    let result = (|| {
+        validate_claimed_file(&claimed, expected_root)?;
+        let file = open_private_file_no_follow(&claimed)
+            .context("failed to open claimed Shell handoff receipt")?;
+        let mut body = Vec::new();
+        file.take(RECEIPT_MAX_BYTES + 1)
+            .read_to_end(&mut body)
+            .context("failed to read Shell handoff receipt")?;
+        if body.len() as u64 > RECEIPT_MAX_BYTES {
+            bail!("Shell handoff receipt exceeds the bounded payload size");
+        }
+        let payload: ShellHandoffReceiptPayload =
+            serde_json::from_slice(&body).context("Shell handoff receipt is malformed")?;
+        validate_receipt_payload(&payload, &ticket.receipt)
     })();
     let _ = fs::remove_file(&claimed);
     result
@@ -196,18 +408,53 @@ pub(crate) fn handoff_path_from_strings(args: &[String]) -> Result<PathBuf> {
     handoff_path_from_os_args(args.iter().map(OsString::from))
 }
 
-fn launcher_handoff_root(config: &AppConfig) -> PathBuf {
-    config.user_data_dir.join(HANDOFF_DIRECTORY)
+fn launcher_handoff_root(config: &AppConfig) -> Result<PathBuf> {
+    #[cfg(debug_assertions)]
+    if MACOS_ARTIFACT_POLICY == "production-v1" && config.dev_workspace_root.is_some() {
+        return development_launcher_handoff_root();
+    }
+    Ok(config.user_data_dir.join(HANDOFF_DIRECTORY))
+}
+
+#[cfg(debug_assertions)]
+fn development_launcher_handoff_root() -> Result<PathBuf> {
+    // LaunchServices deliberately does not preserve the Launcher's TMPDIR.
+    // Both independently launched app processes can, however, resolve the
+    // same per-user cache directory without inherited environment state.
+    let cache_dir = dirs::cache_dir().context("platform cache directory is unavailable")?;
+    Ok(cache_dir
+        .join(LAUNCHER_BUNDLE_IDENTIFIER)
+        .join("development")
+        .join(HANDOFF_DIRECTORY))
 }
 
 fn expected_launcher_handoff_root() -> Result<PathBuf> {
+    // App-bundled debug Launchers deliberately keep rebuild-specific writable
+    // state out of Application Support.  The development Shell is launched by
+    // LaunchServices, so it cannot inherit the Launcher's environment; derive
+    // the same bounded root that AppConfig uses instead.  File ownership,
+    // permissions, path containment, nonce, lifetime, and payload identity are
+    // still verified below. Packaged production remains bound to its
+    // Application Support container. The non-publishable CI policy may use its
+    // separately validated 0700 test root when the Launcher forwarded it.
+    #[cfg(debug_assertions)]
+    if MACOS_ARTIFACT_POLICY == "production-v1" {
+        return development_launcher_handoff_root();
+    }
     let data_dir = dirs::data_dir().context("platform data directory is unavailable")?;
     let launcher_bundle_identifier =
         launcher_bundle_identifier_for_artifact_policy(MACOS_ARTIFACT_POLICY)?;
-    Ok(data_dir
+    let default_root = data_dir
         .join(launcher_bundle_identifier)
         .join("user_data")
-        .join(HANDOFF_DIRECTORY))
+        .join(HANDOFF_DIRECTORY);
+    if MACOS_ARTIFACT_POLICY == "ci-e2e-v1" {
+        return crate::ci_e2e_app_data::resolve_ci_e2e_shell_handoff_root_from_env(
+            MACOS_ARTIFACT_POLICY,
+            &default_root,
+        );
+    }
+    Ok(default_root)
 }
 
 fn launcher_bundle_identifier_for_artifact_policy(policy: &str) -> Result<&'static str> {
@@ -259,6 +506,41 @@ fn validate_handoff_path(path: &Path, expected_root: &Path) -> Result<String> {
     Ok(nonce.to_string())
 }
 
+fn receipt_path(identity: &ShellHandoffReceiptIdentity) -> PathBuf {
+    identity
+        .root
+        .join(format!("receipt-{}.json", identity.receipt_nonce))
+}
+
+fn validate_receipt_path(path: &Path, expected_root: &Path) -> Result<String> {
+    if !is_clean_absolute_path(path) {
+        bail!("Shell handoff receipt path is not a clean absolute path");
+    }
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .context("Shell handoff receipt filename is invalid")?;
+    let nonce = name
+        .strip_prefix("receipt-")
+        .and_then(|value| value.strip_suffix(".json"))
+        .context("Shell handoff receipt filename is invalid")?;
+    validate_nonce(nonce, "handoff receipt filename nonce")?;
+    let parent = path
+        .parent()
+        .context("Shell handoff receipt path has no parent")?;
+    let expected = expected_root
+        .canonicalize()
+        .context("Launcher Shell handoff root is unavailable")?;
+    let actual = parent
+        .canonicalize()
+        .context("Shell handoff receipt parent is unavailable")?;
+    if actual != expected {
+        bail!("Shell handoff receipt is outside the Launcher-owned handoff root");
+    }
+    validate_private_file(path)?;
+    Ok(nonce.to_string())
+}
+
 fn validate_claimed_file(path: &Path, expected_root: &Path) -> Result<()> {
     let metadata = fs::symlink_metadata(path).context("claimed Shell handoff is missing")?;
     if metadata.file_type().is_symlink() || windows_reparse_point(&metadata) || !metadata.is_file()
@@ -279,27 +561,43 @@ fn validate_claimed_file(path: &Path, expected_root: &Path) -> Result<()> {
     validate_private_file(path)
 }
 
-fn validate_payload(payload: &ShellHandoffPayload, now: u64) -> Result<ValidatedShellHandoff> {
+fn validate_payload(
+    payload: &ShellHandoffPayload,
+    now: u64,
+    root: &Path,
+) -> Result<ValidatedShellHandoff> {
     if payload.schema != HANDOFF_SCHEMA
         || payload.protocol != LOCAL_AUTH_PROTOCOL
         || payload.audience != LOCAL_AUTH_AUDIENCE
-        || payload.provider_id != SHELL_PROVIDER_ID
     {
         bail!("Shell handoff identity is invalid");
     }
-    validate_identifier(&payload.profile_id, "profile")?;
-    validate_sha256(&payload.profile_digest, "profile digest")?;
+    let identity = ExecutionProfileIdentity::new(
+        payload.profile_id.clone(),
+        payload.profile_revision.clone(),
+        payload.activation_id.clone(),
+        payload.plan_digest.clone(),
+    )
+    .context("Shell handoff execution Profile identity is invalid")?;
     validate_sha256(&payload.catalog_revision, "catalog revision")?;
-    if payload.artifact_id != expected_shell_artifact_id()? {
+    if !valid_artifact_identifier(&payload.provider_id)
+        || !valid_artifact_identifier(&payload.artifact_id)
+    {
         bail!("Shell handoff artifact identity is invalid");
     }
-    if payload.nonce.len() != 40
-        || !payload
-            .nonce
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric())
-    {
-        bail!("Shell handoff nonce is invalid");
+    validate_sha256(&payload.artifact_digest, "artifact digest")?;
+    validate_sha256(&payload.entrypoint_digest, "entrypoint digest")?;
+    if payload.launcher_pid == 0 {
+        bail!("Shell handoff Launcher process identity is invalid");
+    }
+    #[cfg(target_os = "macos")]
+    if payload.launcher_start_tvsec == 0 {
+        bail!("Shell handoff Launcher start time is invalid");
+    }
+    validate_nonce(&payload.nonce, "handoff nonce")?;
+    validate_nonce(&payload.receipt_nonce, "handoff receipt nonce")?;
+    if payload.nonce == payload.receipt_nonce {
+        bail!("Shell handoff and receipt nonces must be independent");
     }
     if payload.expires_at < payload.created_at
         || payload.expires_at.saturating_sub(payload.created_at) > HANDOFF_MAX_LIFETIME_SECONDS
@@ -316,10 +614,15 @@ fn validate_payload(payload: &ShellHandoffPayload, now: u64) -> Result<Validated
         || runtime_url.host_str() != Some("127.0.0.1")
         || runtime_url.username() != ""
         || runtime_url.password().is_some()
-        || runtime_url.path() != "/chat"
         || runtime_url.fragment().is_some()
     {
         bail!("Shell runtime URL is outside the authenticated loopback contract");
+    }
+    let route_profile_id = crate::health_check::profile_id_from_screen_route(runtime_url.path())
+        .context("Shell runtime URL has an unsafe Application route")?
+        .context("Shell runtime URL is missing its Profile identity")?;
+    if route_profile_id != identity.profile_id {
+        bail!("Shell runtime URL does not match its captured Profile identity");
     }
     let runtime_port = runtime_url
         .port()
@@ -341,21 +644,116 @@ fn validate_payload(payload: &ShellHandoffPayload, now: u64) -> Result<Validated
         bail!("Shell runtime URL has an invalid one-time panel code");
     }
     Ok(ValidatedShellHandoff {
+        launcher_process: LauncherProcessIdentity {
+            pid: payload.launcher_pid,
+            start_tvsec: payload.launcher_start_tvsec,
+            start_tvusec: payload.launcher_start_tvusec,
+        },
         runtime_url,
         runtime_port,
+        identity,
+        catalog_revision: payload.catalog_revision.clone(),
+        artifact: ShellArtifactIdentity {
+            provider_id: payload.provider_id.clone(),
+            artifact_id: payload.artifact_id.clone(),
+            artifact_digest: payload.artifact_digest.clone(),
+            entrypoint_digest: payload.entrypoint_digest.clone(),
+        },
+        receipt: ShellHandoffReceiptIdentity {
+            root: root.to_path_buf(),
+            handoff_nonce: payload.nonce.clone(),
+            receipt_nonce: payload.receipt_nonce.clone(),
+        },
     })
 }
 
-fn validate_identifier(value: &str, label: &str) -> Result<()> {
-    if value.is_empty()
-        || value.len() > 128
-        || !value.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
-        })
-    {
-        bail!("Shell handoff {label} identity is invalid");
+#[cfg(target_os = "macos")]
+pub(crate) fn process_identity(pid: u32) -> Result<LauncherProcessIdentity> {
+    if pid == 0 || pid > i32::MAX as u32 {
+        bail!("Launcher process ID is invalid");
+    }
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let expected = std::mem::size_of::<libc::proc_bsdinfo>();
+    let received = unsafe {
+        libc::proc_pidinfo(
+            pid as i32,
+            libc::PROC_PIDTBSDINFO,
+            0,
+            &mut info as *mut libc::proc_bsdinfo as *mut libc::c_void,
+            expected as i32,
+        )
+    };
+    if received != expected as i32 || info.pbi_pid != pid || info.pbi_start_tvsec == 0 {
+        bail!("Launcher process identity is unavailable");
+    }
+    Ok(LauncherProcessIdentity {
+        pid,
+        start_tvsec: info.pbi_start_tvsec,
+        start_tvusec: info.pbi_start_tvusec,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn current_launcher_process_identity() -> Result<LauncherProcessIdentity> {
+    process_identity(std::process::id())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_launcher_process_identity() -> Result<LauncherProcessIdentity> {
+    Ok(LauncherProcessIdentity {
+        pid: std::process::id(),
+        start_tvsec: 0,
+        start_tvusec: 0,
+    })
+}
+
+fn validate_nonce(value: &str, label: &str) -> Result<()> {
+    if value.len() != 40 || !value.bytes().all(|byte| byte.is_ascii_alphanumeric()) {
+        bail!("Shell {label} is invalid");
     }
     Ok(())
+}
+
+fn validate_receipt_payload(
+    payload: &ShellHandoffReceiptPayload,
+    expected: &ShellHandoffReceiptIdentity,
+) -> Result<ShellHandoffReceiptStatus> {
+    if payload.schema != RECEIPT_SCHEMA
+        || payload.handoff_nonce != expected.handoff_nonce
+        || payload.receipt_nonce != expected.receipt_nonce
+    {
+        bail!("Shell handoff receipt identity is invalid");
+    }
+    match payload.status.as_str() {
+        "binding_admitted" => Ok(ShellHandoffReceiptStatus::BindingAdmitted),
+        "rotation_required" => Ok(ShellHandoffReceiptStatus::RotationRequired),
+        _ => bail!("Shell handoff receipt status is invalid"),
+    }
+}
+
+fn open_private_file_no_follow(path: &Path) -> Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    options.open(path).map_err(Into::into)
+}
+
+fn valid_artifact_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 255
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
 }
 
 fn validate_sha256(value: &str, label: &str) -> Result<()> {
@@ -370,16 +768,6 @@ fn validate_sha256(value: &str, label: &str) -> Result<()> {
         bail!("Shell handoff {label} is invalid");
     }
     Ok(())
-}
-
-fn expected_shell_artifact_id() -> Result<&'static str> {
-    match (std::env::consts::OS, std::env::consts::ARCH) {
-        ("macos", "aarch64") => Ok("shell.tauri.default.macos-arm64"),
-        ("macos", "x86_64") => Ok("shell.tauri.default.macos-x86_64"),
-        ("windows", "x86_64") => Ok("shell.tauri.default.windows-x86_64"),
-        ("linux", "x86_64") => Ok("shell.tauri.default.linux-x86_64"),
-        _ => bail!("Tobkiri Shell has no production artifact for this host"),
-    }
 }
 
 #[cfg(any(windows, test))]
@@ -780,8 +1168,8 @@ fn validate_private_root(root: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        if metadata.mode() & 0o077 != 0 {
-            bail!("Shell handoff root permissions are too broad");
+        if metadata.mode() & 0o077 != 0 || metadata.uid() != unsafe { libc::geteuid() } {
+            bail!("Shell handoff root ownership or permissions are invalid");
         }
     }
     #[cfg(windows)]
@@ -820,7 +1208,10 @@ fn validate_private_file(path: &Path) -> Result<()> {
         use std::os::unix::fs::MetadataExt;
         let parent_metadata =
             fs::symlink_metadata(path.parent().context("Shell handoff file has no parent")?)?;
-        if file_metadata.mode() & 0o077 != 0 || file_metadata.uid() != parent_metadata.uid() {
+        if file_metadata.mode() & 0o077 != 0
+            || file_metadata.uid() != parent_metadata.uid()
+            || file_metadata.uid() != unsafe { libc::geteuid() }
+        {
             bail!("Shell handoff ownership or permissions are invalid");
         }
     }
@@ -836,14 +1227,17 @@ fn cleanup_stale_handoffs(root: &Path) {
     let Ok(entries) = fs::read_dir(root) else {
         return;
     };
-    for entry in entries.flatten() {
+    for entry in entries.flatten().take(STALE_CLEANUP_MAX_ENTRIES) {
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
             continue;
         };
-        if !(name.starts_with("handoff-") || name.starts_with(".consume-"))
-            || !name.ends_with(".json")
-        {
+        let managed = (name.starts_with("handoff-")
+            || name.starts_with("receipt-")
+            || name.starts_with(".consume-")
+            || name.starts_with(".receipt-"))
+            && (name.ends_with(".json") || name.ends_with(".tmp"));
+        if !managed {
             continue;
         }
         let Ok(metadata) = fs::symlink_metadata(&path) else {
@@ -889,6 +1283,20 @@ mod tests {
             "tobkiri-shell-handoff-{name}-{}-{unique}",
             std::process::id()
         ))
+    }
+
+    fn test_config(root: &Path) -> AppConfig {
+        AppConfig {
+            app_dir: root.to_path_buf(),
+            rumi_home: root.to_path_buf(),
+            python_dir: root.join("python"),
+            uv_path: root.join("uv"),
+            venv_dir: root.join("venv"),
+            user_data_dir: root.join("user_data"),
+            log_dir: root.join("logs"),
+            kernel_port: 8765,
+            dev_workspace_root: None,
+        }
     }
 
     #[test]
@@ -978,42 +1386,127 @@ mod tests {
     }
 
     #[test]
+    fn handoff_ticket_binds_independent_handoff_and_receipt_nonces() {
+        let root = temp_root("ticket-nonces");
+        let config = test_config(&root);
+        let identity = ExecutionProfileIdentity::new(
+            "profile-a",
+            format!("sha256:{}", "a".repeat(64)),
+            "activation:profile-a-2026",
+            format!("sha256:{}", "b".repeat(64)),
+        )
+        .unwrap();
+        let ticket = create_shell_handoff(
+            &config,
+            ShellHandoffBinding {
+                identity: &identity,
+                catalog_revision: &format!("sha256:{}", "c".repeat(64)),
+                provider_id: "fixture.shell",
+                artifact_id: "fixture.shell.macos-arm64",
+                artifact_digest: &format!("sha256:{}", "d".repeat(64)),
+                entrypoint_digest: &format!("sha256:{}", "e".repeat(64)),
+            },
+            &format!(
+                "http://127.0.0.1:8766/p/profile-a/chat?code={}",
+                "f".repeat(64)
+            ),
+        )
+        .unwrap();
+        let payload: ShellHandoffPayload =
+            serde_json::from_slice(&fs::read(&ticket.path).unwrap()).unwrap();
+        assert_eq!(payload.nonce, ticket.receipt.handoff_nonce);
+        assert_eq!(payload.receipt_nonce, ticket.receipt.receipt_nonce);
+        assert_ne!(payload.nonce, payload.receipt_nonce);
+        discard_shell_handoff(&ticket);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn payload_rejects_wrong_identity_expiry_and_non_loopback_url() {
         let now = epoch_seconds().unwrap();
+        let launcher_process = current_launcher_process_identity().unwrap();
         let base = ShellHandoffPayload {
             schema: HANDOFF_SCHEMA.into(),
             protocol: LOCAL_AUTH_PROTOCOL.into(),
             audience: LOCAL_AUTH_AUDIENCE.into(),
-            profile_id: "defaults".into(),
-            profile_digest: format!("sha256:{}", "a".repeat(64)),
+            profile_id: "profile-a".into(),
+            profile_revision: format!("sha256:{}", "a".repeat(64)),
+            activation_id: "activation:profile-a-2026".into(),
+            plan_digest: format!("sha256:{}", "c".repeat(64)),
             catalog_revision: format!("sha256:{}", "b".repeat(64)),
-            provider_id: SHELL_PROVIDER_ID.into(),
-            artifact_id: expected_shell_artifact_id().unwrap().into(),
-            runtime_url: format!("http://127.0.0.1:8766/chat?code={}", "c".repeat(64)),
+            provider_id: "fixture.shell".into(),
+            artifact_id: "fixture.shell.macos-arm64".into(),
+            artifact_digest: format!("sha256:{}", "d".repeat(64)),
+            entrypoint_digest: format!("sha256:{}", "e".repeat(64)),
+            launcher_pid: launcher_process.pid,
+            launcher_start_tvsec: launcher_process.start_tvsec,
+            launcher_start_tvusec: launcher_process.start_tvusec,
+            runtime_url: format!(
+                "http://127.0.0.1:8766/p/profile-a/chat?code={}",
+                "c".repeat(64)
+            ),
             created_at: now,
             expires_at: now + 60,
             nonce: "A".repeat(40),
+            receipt_nonce: "B".repeat(40),
         };
-        assert!(validate_payload(&base, now).is_ok());
+        let root = std::env::temp_dir();
+        assert!(validate_payload(&base, now, &root).is_ok());
+        let mut missing_launcher = serde_json::to_value(&base).unwrap();
+        missing_launcher["launcher_pid"] = serde_json::Value::from(0);
+        assert!(validate_payload(
+            &serde_json::from_value(missing_launcher).unwrap(),
+            now,
+            &root
+        )
+        .is_err());
+        let mut mismatched_route_profile = serde_json::to_value(&base).unwrap();
+        mismatched_route_profile["runtime_url"] = serde_json::Value::String(format!(
+            "http://127.0.0.1:8766/p/profile-b/chat?code={}",
+            "c".repeat(64)
+        ));
+        assert!(validate_payload(
+            &serde_json::from_value(mismatched_route_profile).unwrap(),
+            now,
+            &root,
+        )
+        .is_err());
+        let mut wrong_schema = serde_json::to_value(&base).unwrap();
+        wrong_schema["schema"] = serde_json::Value::String("wrong".into());
+        assert!(
+            validate_payload(&serde_json::from_value(wrong_schema).unwrap(), now, &root).is_err()
+        );
+        let mut reused_nonce = serde_json::to_value(&base).unwrap();
+        reused_nonce["receipt_nonce"] = serde_json::Value::String("A".repeat(40));
+        assert!(
+            validate_payload(&serde_json::from_value(reused_nonce).unwrap(), now, &root).is_err()
+        );
         let mut wrong_provider = serde_json::to_value(&base).unwrap();
-        wrong_provider["provider_id"] = serde_json::Value::String("wrong.shell".into());
-        assert!(validate_payload(&serde_json::from_value(wrong_provider).unwrap(), now).is_err());
+        wrong_provider["provider_id"] = serde_json::Value::String("../wrong.shell".into());
+        assert!(
+            validate_payload(&serde_json::from_value(wrong_provider).unwrap(), now, &root).is_err()
+        );
         let mut external = serde_json::to_value(&base).unwrap();
-        external["runtime_url"] =
-            serde_json::Value::String(format!("https://example.com/chat?code={}", "c".repeat(64)));
-        assert!(validate_payload(&serde_json::from_value(external).unwrap(), now).is_err());
+        external["runtime_url"] = serde_json::Value::String(format!(
+            "https://example.com/workspace?code={}",
+            "c".repeat(64)
+        ));
+        assert!(validate_payload(&serde_json::from_value(external).unwrap(), now, &root).is_err());
         for invalid_url in [
-            "http://127.0.0.1:8766/chat#rumi_local_auth=legacy-token".to_string(),
-            "http://127.0.0.1:8766/chat?code=short".to_string(),
-            format!("http://127.0.0.1:8766/chat?code={}&extra=1", "c".repeat(64)),
+            "http://127.0.0.1:8766/#rumi_local_auth=legacy-token".to_string(),
+            "http://127.0.0.1:8766/?code=short".to_string(),
+            format!("http://127.0.0.1:8766/chat?code={}", "c".repeat(64)),
+            format!("http://127.0.0.1:8766/?code={}&extra=1", "c".repeat(64)),
         ] {
             let mut invalid = serde_json::to_value(&base).unwrap();
             invalid["runtime_url"] = serde_json::Value::String(invalid_url);
-            assert!(validate_payload(&serde_json::from_value(invalid).unwrap(), now).is_err());
+            assert!(
+                validate_payload(&serde_json::from_value(invalid).unwrap(), now, &root).is_err()
+            );
         }
         let mut expired = serde_json::to_value(&base).unwrap();
         expired["expires_at"] = serde_json::Value::from(now.saturating_sub(1));
-        assert!(validate_payload(&serde_json::from_value(expired).unwrap(), now).is_err());
+        assert!(validate_payload(&serde_json::from_value(expired).unwrap(), now, &root).is_err());
     }
 
     #[cfg(unix)]
@@ -1049,19 +1542,31 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         prepare_private_root(&root).unwrap();
         let now = epoch_seconds().unwrap();
+        let launcher_process = current_launcher_process_identity().unwrap();
         let mut payload = ShellHandoffPayload {
             schema: HANDOFF_SCHEMA.into(),
             protocol: LOCAL_AUTH_PROTOCOL.into(),
             audience: LOCAL_AUTH_AUDIENCE.into(),
-            profile_id: "defaults".into(),
-            profile_digest: format!("sha256:{}", "a".repeat(64)),
+            profile_id: "profile-a".into(),
+            profile_revision: format!("sha256:{}", "a".repeat(64)),
+            activation_id: "activation:profile-a-2026".into(),
+            plan_digest: format!("sha256:{}", "c".repeat(64)),
             catalog_revision: format!("sha256:{}", "b".repeat(64)),
-            provider_id: SHELL_PROVIDER_ID.into(),
-            artifact_id: expected_shell_artifact_id().unwrap().into(),
-            runtime_url: format!("http://127.0.0.1:8766/chat?code={}", "c".repeat(64)),
+            provider_id: "fixture.shell".into(),
+            artifact_id: "fixture.shell.macos-arm64".into(),
+            artifact_digest: format!("sha256:{}", "d".repeat(64)),
+            entrypoint_digest: format!("sha256:{}", "e".repeat(64)),
+            launcher_pid: launcher_process.pid,
+            launcher_start_tvsec: launcher_process.start_tvsec,
+            launcher_start_tvusec: launcher_process.start_tvusec,
+            runtime_url: format!(
+                "http://127.0.0.1:8766/p/profile-a/chat?code={}",
+                "c".repeat(64)
+            ),
             created_at: now,
             expires_at: now + HANDOFF_TTL_SECONDS,
             nonce: "C".repeat(40),
+            receipt_nonce: "R".repeat(40),
         };
         let path = root.join("handoff-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC.json");
         fs::write(&path, serde_json::to_vec(&payload).unwrap()).unwrap();
@@ -1074,6 +1579,20 @@ mod tests {
 
         let consumed = consume_shell_handoff_from_root(&path, &root).unwrap();
         assert_eq!(consumed.runtime_port, 8766);
+        assert_eq!(consumed.identity.profile_id, "profile-a");
+        assert_eq!(
+            consumed.identity.profile_revision,
+            format!("sha256:{}", "a".repeat(64))
+        );
+        assert_eq!(consumed.identity.activation_id, "activation:profile-a-2026");
+        assert_eq!(
+            consumed.identity.plan_digest,
+            format!("sha256:{}", "c".repeat(64))
+        );
+        assert_eq!(
+            consumed.catalog_revision,
+            format!("sha256:{}", "b".repeat(64))
+        );
         assert!(!path.exists());
         assert!(consume_shell_handoff_from_root(&path, &root).is_err());
 
@@ -1092,6 +1611,137 @@ mod tests {
             .unwrap()
             .filter_map(Result::ok)
             .all(|entry| !entry.file_name().to_string_lossy().starts_with(".consume-")));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn receipt_ticket(root: &Path) -> ShellHandoffTicket {
+        ShellHandoffTicket {
+            path: root.join(format!("handoff-{}.json", "H".repeat(40))),
+            receipt: ShellHandoffReceiptIdentity {
+                root: root.to_path_buf(),
+                handoff_nonce: "H".repeat(40),
+                receipt_nonce: "R".repeat(40),
+            },
+        }
+    }
+
+    fn write_receipt_fixture(ticket: &ShellHandoffTicket, payload: serde_json::Value) {
+        let path = receipt_path(&ticket.receipt);
+        fs::write(&path, serde_json::to_vec(&payload).unwrap()).unwrap();
+        restrict_private_file(&path).unwrap();
+    }
+
+    #[test]
+    fn receipt_roundtrip_is_bounded_and_one_shot_for_both_statuses() {
+        for status in [
+            ShellHandoffReceiptStatus::BindingAdmitted,
+            ShellHandoffReceiptStatus::RotationRequired,
+        ] {
+            let root = temp_root(status.as_str());
+            prepare_private_root(&root).unwrap();
+            let ticket = receipt_ticket(&root);
+            write_shell_handoff_receipt(&ticket.receipt, status).unwrap();
+            let body = fs::read(receipt_path(&ticket.receipt)).unwrap();
+            let receipt: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            let keys = receipt
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(
+                keys,
+                ["handoff_nonce", "receipt_nonce", "schema", "status"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect()
+            );
+            assert_eq!(
+                consume_shell_handoff_receipt_from_root(&ticket, &root).unwrap(),
+                status
+            );
+            assert!(consume_shell_handoff_receipt_from_root(&ticket, &root).is_err());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn receipt_rejects_schema_nonce_status_and_unknown_fields() {
+        let cases = [
+            serde_json::json!({
+                "schema": "wrong",
+                "handoff_nonce": "H".repeat(40),
+                "receipt_nonce": "R".repeat(40),
+                "status": "binding_admitted",
+            }),
+            serde_json::json!({
+                "schema": RECEIPT_SCHEMA,
+                "handoff_nonce": "X".repeat(40),
+                "receipt_nonce": "R".repeat(40),
+                "status": "binding_admitted",
+            }),
+            serde_json::json!({
+                "schema": RECEIPT_SCHEMA,
+                "handoff_nonce": "H".repeat(40),
+                "receipt_nonce": "X".repeat(40),
+                "status": "binding_admitted",
+            }),
+            serde_json::json!({
+                "schema": RECEIPT_SCHEMA,
+                "handoff_nonce": "H".repeat(40),
+                "receipt_nonce": "R".repeat(40),
+                "status": "failed",
+            }),
+            serde_json::json!({
+                "schema": RECEIPT_SCHEMA,
+                "handoff_nonce": "H".repeat(40),
+                "receipt_nonce": "R".repeat(40),
+                "status": "accepted",
+            }),
+            serde_json::json!({
+                "schema": RECEIPT_SCHEMA,
+                "handoff_nonce": "H".repeat(40),
+                "receipt_nonce": "R".repeat(40),
+                "status": "binding_admitted",
+                "error": "must not be present",
+            }),
+        ];
+        for (index, payload) in cases.into_iter().enumerate() {
+            let root = temp_root(&format!("invalid-receipt-{index}"));
+            prepare_private_root(&root).unwrap();
+            let ticket = receipt_ticket(&root);
+            write_receipt_fixture(&ticket, payload);
+            assert!(consume_shell_handoff_receipt_from_root(&ticket, &root).is_err());
+            assert!(!receipt_path(&ticket.receipt).exists());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn receipt_rejects_symlink_and_broad_permissions() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let root = temp_root("receipt-permissions");
+        prepare_private_root(&root).unwrap();
+        let ticket = receipt_ticket(&root);
+        let payload = serde_json::json!({
+            "schema": RECEIPT_SCHEMA,
+            "handoff_nonce": "H".repeat(40),
+            "receipt_nonce": "R".repeat(40),
+            "status": "binding_admitted",
+        });
+        write_receipt_fixture(&ticket, payload.clone());
+        let path = receipt_path(&ticket.receipt);
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(consume_shell_handoff_receipt_from_root(&ticket, &root).is_err());
+        fs::remove_file(&path).unwrap();
+
+        let outside = root.join("outside-receipt.json");
+        fs::write(&outside, serde_json::to_vec(&payload).unwrap()).unwrap();
+        symlink(&outside, &path).unwrap();
+        assert!(consume_shell_handoff_receipt_from_root(&ticket, &root).is_err());
+        fs::remove_file(path).unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -14,6 +14,8 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+from tests.conformance_support.host_contract import host_contract
+
 
 def _assert_v4_local_guard_boundary() -> None:
     """Bind local mutations to the v4 host authority contract."""
@@ -210,6 +212,7 @@ def test_browser_companion_session_get_is_local_guarded():
 def test_non_loopback_websocket_upgrade_requires_local_auth(monkeypatch):
     from transport.http import _websocket_auth_error
     from core_runtime.host_contract import bind_host_contract
+    from tests.conformance_support.host_contract import host_contract
 
     headers = {"Upgrade": "websocket", "Connection": "Upgrade"}
 
@@ -221,11 +224,10 @@ def test_non_loopback_websocket_upgrade_requires_local_auth(monkeypatch):
     )
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "local-ws-token"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-ws-token"},
+        )
     ):
         assert _websocket_auth_error(headers, ("203.0.113.10", 54321)) == (
             401,
@@ -290,11 +292,10 @@ def test_legacy_browser_qa_token_cannot_submit_pre_auth_event(monkeypatch):
     monkeypatch.setenv("RUMI_AUTHORITY_BROWSER_TEST_TOKEN", "browser-secret")
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "local-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
     ):
         request_handler.headers = {
             "Origin": "http://localhost:8766",
@@ -357,11 +358,10 @@ def test_legacy_browser_qa_token_cannot_mint_authority_ui_operator(monkeypatch):
     monkeypatch.setenv("RUMI_AUTHORITY_BROWSER_TEST_TOKEN", "browser-secret")
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "local-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
     ):
         request_handler.headers = {
             "Origin": "http://127.0.0.1:8766",
@@ -598,11 +598,10 @@ def test_ambient_monitor_start_requires_local_auth_and_rejects_unbound_v4_route(
     monkeypatch.setenv("RUMI_AUTHORITY_BROWSER_TEST_TOKEN", "browser-secret")
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "local-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
     ):
         request_handler.headers = {
             "Origin": "http://localhost:8766",
@@ -667,11 +666,10 @@ def test_runtime_and_desktop_mutations_require_local_ui_auth_and_reject_unbound_
     }
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "local-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
     ):
         for method, path in (
             ("POST", "/api/runtime/ensure"),
@@ -724,11 +722,10 @@ def test_provider_key_save_requires_local_auth_and_rejects_unbound_v4_route():
     request_handler.server_ref = SimpleNamespace(_routes=[])
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "local-secret"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "local-secret"},
+        )
     ):
         request_handler.headers = {
             "Origin": "http://localhost:8766",

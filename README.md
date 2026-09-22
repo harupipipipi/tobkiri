@@ -47,6 +47,7 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 | コードを読まずに仕組みを理解したい | [`tobkiri_runtime/docs/concepts/system-mechanism.md`](./tobkiri_runtime/docs/concepts/system-mechanism.md) | 起動・Flow・承認・Grant の流れを文章で追えます |
 | まず動作確認したい（チュートリアル） | [`tobkiri_runtime/docs/tutorials/runtime-quickstart.md`](./tobkiri_runtime/docs/tutorials/runtime-quickstart.md) | `--health` から `/panel/` まで最短手順です |
 | `tobkiri_launcher` を起動したい / viewer の詰まり方を見たい | [`tobkiri_runtime/docs/tobkiri_launcher_start.md`](./tobkiri_runtime/docs/tobkiri_launcher_start.md) | 起動手順、`401`, 黒画面, `defaultspack` との関係をまとめています |
+| macOS版の配布方式と制約を知りたい | [`tobkiri_runtime/docs/macos-unsigned-distribution.md`](./tobkiri_runtime/docs/macos-unsigned-distribution.md) | unsigned/ad-hoc配布、Gatekeeper、quarantine、TCCの前提を説明します |
 | viewer 側を直したい | [`tobkiri_launcher/src-tauri/src/config.rs`](./tobkiri_launcher/src-tauri/src/config.rs) と [`tobkiri_launcher/src-tauri/src/kernel_manager.rs`](./tobkiri_launcher/src-tauri/src/kernel_manager.rs) | viewer は Tauri shell、kernel 起動は Rust 側が担当です |
 | pack / defaultspack を触りたい | [`tobkiri_runtime/ecosystem/defaultspack/README.md`](./tobkiri_runtime/ecosystem/defaultspack/README.md) | chat, ai_client, tool などの pack 側実装です |
 | defaultspack の frontend 拡張方法を知りたい | [`tobkiri_runtime/ecosystem/defaultspack/docs/frontend_extensions.md`](./tobkiri_runtime/ecosystem/defaultspack/docs/frontend_extensions.md) | 右バー追加、設定追加、chat renderer 拡張、preview feed 追加の入り口です |
@@ -204,7 +205,9 @@ cd tobkiri_launcher/frontend
 npm run tauri -- dev
 ```
 
-開発用 viewer は repo 内の `tobkiri_runtime/` を自動検出して kernel を起動します。
+開発用 Tobkiri Launcher は repo 内の `tobkiri_runtime/` を自動検出して kernel を起動します。
+開発用 Defaults バンドルを準備する前に、ソース変更をコミットして作業ツリーをクリーンにしてください。ビルド元のコミットと実際のソースが一致しない場合、準備処理は停止します。
+Tauri の起動前処理は Python 3 を使います。macOS/Linux では `python3` を優先し、Windows では Python Launcher (`py -3`) を優先するため、`python` という別名を作る必要はありません。
 Viewer build は起動前に空き容量を確認します。`Rumi Viewer build preflight failed: not enough free disk space.` が出た場合はディスク容量を空けてから再実行してください。検証済みの環境で閾値だけを調整したい場合は `RUMI_VIEWER_MIN_FREE_MB=<MB>` を指定できます。
 `Open Defaultspack` は開発起動では repo 同梱の `defaultspack` を優先して開きます。
 起動時の詰まり方を含めたガイドは [`tobkiri_runtime/docs/tobkiri_launcher_start.md`](./tobkiri_runtime/docs/tobkiri_launcher_start.md) を参照してください。

@@ -3,21 +3,26 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
 
 import { TobkiriLoadingScreen } from "../components/TobkiriLoadingScreen";
 import { defaultspackApiFetch, defaultspackContractRoute } from "../lib/api";
-import { ConversationV4Unavailable } from "./ConversationV4View";
+import { ErrorNotice } from "../components/ErrorNotice";
+import { AuthorityApprovalWindow } from "../components/AuthorityApprovalWindow";
 import {
   DynamicFrontendHost,
   contributionsForRoute,
 } from "./DynamicFrontendHost";
 import type {
-  CapabilityInvocation,
-  FrontendCapabilityClient,
+  CapturedCapabilityInvocation,
+  FrontendCapabilityInvoker,
   FrontendCatalog,
 } from "./frontendContracts";
+import {
+  applicationPathname,
+  parseProfileScreenPath,
+  profileScreenPath,
+} from "../lib/profileRoute";
 
 type ApiEnvelope<T> = {
   success: boolean;
@@ -52,8 +57,7 @@ export async function fetchDynamicCatalog(): Promise<FrontendCatalog> {
 }
 
 export async function invokeCapability(
-  profileId: string,
-  request: CapabilityInvocation,
+  request: CapturedCapabilityInvocation,
 ): Promise<unknown> {
   const response = await defaultspackApiFetch(defaultspackContractRoute("api/ui/capability/invoke"), {
     method: "POST",
@@ -61,7 +65,9 @@ export async function invokeCapability(
     body: JSON.stringify({
       request_id: crypto.randomUUID(),
       expires_at: Date.now() / 1000 + 30,
-      profile_id: profileId,
+      profile_id: request.profileId,
+      profile_revision: request.profileRevision,
+      activation_id: request.activationId,
       plan_hash: request.planHash,
       catalog_hash: request.catalogHash,
       contribution_id: request.contributionId,
@@ -92,15 +98,83 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+export type ProfileScreenResolution =
+  | { kind: "route"; route: string }
+  | { kind: "redirect"; destination: string }
+  | { kind: "reject"; reason: string };
+
+/** Resolve identity-bearing screen navigation against one captured Host catalog. */
+export function resolveProfileScreenRequest(
+  pathname: string,
+  catalog: FrontendCatalog,
+): ProfileScreenResolution {
+  const requested = parseProfileScreenPath(pathname);
+  if (!requested) {
+    return {
+      kind: "reject",
+      reason: "The screen URL does not contain a valid Runtime Profile identity.",
+    };
+  }
+  if (requested.profileId !== catalog.profile_id) {
+    return {
+      kind: "reject",
+      reason: "The screen URL does not match the active captured Profile.",
+    };
+  }
+  if (requested.applicationRoute === null) {
+    const selectedEntries = contributionsForRoute(
+      catalog,
+      catalog.selected_entry_route,
+      catalog.plan_hash,
+    );
+    if (selectedEntries.length !== 1) {
+      return {
+        kind: "reject",
+        reason: "The active Profile's selected Application entry is unavailable.",
+      };
+    }
+    try {
+      return {
+        kind: "redirect",
+        destination: profileScreenPath(
+          catalog.profile_id,
+          catalog.selected_entry_route,
+        ),
+      };
+    } catch {
+      return {
+        kind: "reject",
+        reason: "The active Profile's selected Application entry is unavailable.",
+      };
+    }
+  }
+  const hasRoute = contributionsForRoute(
+    catalog,
+    requested.applicationRoute,
+    catalog.plan_hash,
+  ).length > 0;
+  return hasRoute
+    ? { kind: "route", route: requested.applicationRoute }
+    : {
+      kind: "reject",
+      reason: "This screen is not available in the active Profile. Check the selected Application in Tobkiri Launcher, then retry.",
+    };
+}
+
 export function HostBootstrap({
-  route,
-  fallback,
+  pathname,
 }: {
-  route: string;
-  fallback: ReactNode;
+  pathname: string;
 }) {
   const [catalog, setCatalog] = useState<FrontendCatalog | null>(null);
   const [failed, setFailed] = useState(false);
+  const requested = useMemo(() => parseProfileScreenPath(pathname), [pathname]);
+  // Host-scoped mounts such as `/approval` intentionally omit the Runtime
+  // Profile prefix; they render their sealed Application screen directly.
+  const hostRoute = useMemo(
+    () => (requested === null ? applicationPathname(pathname) : null),
+    [pathname, requested],
+  );
 
   const refreshCatalog = useCallback(async (): Promise<FrontendCatalog> => {
     const value = await fetchDynamicCatalog();
@@ -110,6 +184,7 @@ export function HostBootstrap({
   }, []);
 
   useEffect(() => {
+    if (hostRoute !== null) return undefined;
     let active = true;
     void refreshCatalog().catch(
       () => {
@@ -119,13 +194,14 @@ export function HostBootstrap({
     return () => {
       active = false;
     };
-  }, [refreshCatalog]);
+  }, [refreshCatalog, hostRoute]);
 
-  const capabilities = useMemo<FrontendCapabilityClient | null>(() => {
-    if (!catalog) return null;
-    const invoke = async (request: CapabilityInvocation): Promise<unknown> => {
+  const capabilities = useMemo<FrontendCapabilityInvoker>(() => {
+    const invoke = async (
+      request: CapturedCapabilityInvocation,
+    ): Promise<unknown> => {
       try {
-        return await invokeCapability(catalog.profile_id, request);
+        return await invokeCapability(request);
       } catch (error) {
         if (
           error instanceof FrontendCapabilityError
@@ -140,37 +216,48 @@ export function HostBootstrap({
       invokeAction: invoke,
       readDataSource: invoke,
     };
-  }, [catalog, refreshCatalog]);
+  }, [refreshCatalog]);
 
   const retry = () => {
     void refreshCatalog().catch(() => undefined);
   };
+  if (!requested) {
+    if (hostRoute === "/approval") {
+      return <AuthorityApprovalWindow />;
+    }
+    return (
+      <HostBootstrapFallback
+        onRetry={retry}
+        reason="The screen URL does not contain a valid Runtime Profile identity."
+        route={pathname}
+      />
+    );
+  }
   if (failed) {
     return (
       <HostBootstrapFallback
-        fallback={fallback}
         onRetry={retry}
-        reason="The active Pack v4 conversation could not be loaded."
-        route={route}
+        reason="The selected Application could not be loaded."
+        route={pathname}
       />
     );
   }
-  if (!catalog || !capabilities) return <TobkiriLoadingScreen />;
-  const hasRoute = contributionsForRoute(
-    catalog,
-    route,
-    catalog.plan_hash,
-  ).length > 0;
-  if (!hasRoute) {
+  if (!catalog) return <TobkiriLoadingScreen />;
+  const resolution = resolveProfileScreenRequest(pathname, catalog);
+  if (resolution.kind === "reject") {
     return (
       <HostBootstrapFallback
-        fallback={fallback}
         onRetry={retry}
-        reason="The active profile does not provide a Pack v4 conversation."
-        route={route}
+        reason={resolution.reason}
+        route={pathname}
       />
     );
   }
+  if (resolution.kind === "redirect") {
+    window.location.replace(`${resolution.destination}${window.location.search}${window.location.hash}`);
+    return <TobkiriLoadingScreen />;
+  }
+  const route = resolution.route;
   return (
     <DynamicFrontendHost
       catalog={catalog}
@@ -181,20 +268,22 @@ export function HostBootstrap({
   );
 }
 
-/** Keep legacy compatibility outside the Pack v4 conversation entry point. */
+/** A missing, stale or quarantined route never selects another Application. */
 export function HostBootstrapFallback({
   route,
   reason,
   onRetry,
-  fallback,
 }: {
   route: string;
   reason: string;
   onRetry: () => void;
-  fallback: ReactNode;
 }) {
-  if (route === "/chat" || route === "/chat/") {
-    return <ConversationV4Unavailable reason={reason} onRetry={onRetry} />;
-  }
-  return <>{fallback}</>;
+  return (
+    <main data-frontend-unavailable={route} className="min-h-screen bg-[#09090b] p-8 text-zinc-100">
+      <h1>This screen is unavailable</h1>
+      <ErrorNotice copyLabel="Copy screen availability error" copyText={reason}
+        errorIcon="frontend-availability" message={reason} />
+      <button type="button" onClick={onRetry}>Retry</button>
+    </main>
+  );
 }

@@ -32,7 +32,7 @@
             "linux-immutable-package-v1"
           ]
         },
-        "package_id": { "const": "dev.tobkiri.launcher" },
+        "package_id": { "const": "dev.rumiai.app" },
         "release_digest": { "$ref": "#/$defs/digest" }
       }
     },

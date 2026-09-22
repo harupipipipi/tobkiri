@@ -44,6 +44,13 @@ def _configure_temp_runtime(tmp_path, monkeypatch) -> None:
     _reset_team_workspace_singletons()
 
 
+def _settings_owner(tmp_path: Path):
+    """Return an isolated explicit settings owner for Agent dispatch tests."""
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    return FrontendSettingsStore(tmp_path / "settings" / "frontend_settings.json")
+
+
 def _create_workspace(*, settings: dict[str, Any] | None = None) -> tuple[Any, Any, dict[str, Any]]:
     from domain.company.contract_facade import CompanyContractFacade
     from domain.company.runtime_store import CompanyRuntimeStore
@@ -783,7 +790,11 @@ def test_sender_id_project_manager_spoof_cannot_bypass_pm_gate_for_message_dm_or
 
     from domain.subagent_team.service import SubagentTeamService
 
-    service = SubagentTeamService(company_store=store, runtime_store=runtime_store)
+    service = SubagentTeamService(
+        company_store=store,
+        runtime_store=runtime_store,
+        settings_owner=_settings_owner(tmp_path),
+    )
     before_dms = service.list_dms(company["id"]) or []
 
     message = service.send_message(
@@ -832,7 +843,11 @@ def test_trusted_context_actor_not_client_sender_controls_message_and_goal_autho
 
     from domain.subagent_team.service import SubagentTeamService
 
-    service = SubagentTeamService(company_store=store, runtime_store=runtime_store)
+    service = SubagentTeamService(
+        company_store=store,
+        runtime_store=runtime_store,
+        settings_owner=_settings_owner(tmp_path),
+    )
     message = service.send_message(
         company["id"],
         {
@@ -918,7 +933,11 @@ def test_creator_safe_actions_record_channel_check_and_guard_main_lifecycle(tmp_
     from blocks.subagent_team import creator as creator_block
     from domain.subagent_team.service import SubagentTeamService
 
-    service = SubagentTeamService(company_store=store, runtime_store=runtime_store)
+    service = SubagentTeamService(
+        company_store=store,
+        runtime_store=runtime_store,
+        settings_owner=_settings_owner(tmp_path),
+    )
     created = service.creator_request(
         company["id"],
         {"action": "create_team", "team_size": 2, "channel_name": "Safe Actions"},

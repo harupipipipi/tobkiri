@@ -5,8 +5,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   ConversationV4View,
+  ConversationV4Unavailable,
   conversationV4AssistantText,
   conversationV4CapabilityPayload,
+  conversationV4ResultError,
   isConversationV4Contribution,
   type ConversationV4Message,
 } from "./ConversationV4View";
@@ -24,7 +26,9 @@ const contribution: VerifiedFrontendContribution = {
   owner_pack_id: "defaultspack",
   owner_pack_hash: `sha256:${"1".repeat(64)}`,
   build_identity: "defaultspack.conversation",
+  resolved_profile_id: "defaults",
   resolved_profile_revision: "profile-1",
+  resolved_activation_id: "activation:defaults-1",
   resolved_plan_hash: "plan-1",
   descriptor_hash: `sha256:${"2".repeat(64)}`,
   route: "/chat",
@@ -66,9 +70,25 @@ test("ConversationV4View accepts the projected non-streaming completion", () => 
   assert.equal(conversationV4AssistantText({ content: [] }), null);
 });
 
-test("ConversationV4View is selected only by the exact defaultspack chat contribution", () => {
+test("ConversationV4View preserves a projected provider failure", () => {
+  assert.deepEqual(
+    conversationV4ResultError({
+      error: {
+        code: "PROVIDER_UNAVAILABLE",
+        message: "The verified AI capability is unavailable.",
+      },
+    }),
+    {
+      code: "PROVIDER_UNAVAILABLE",
+      message: "The verified AI capability is unavailable.",
+    },
+  );
+  assert.equal(conversationV4ResultError({ content: [] }), null);
+});
+
+test("ConversationV4View is selected only by the explicit lightweight Defaultspack contribution", () => {
   assert.equal(isConversationV4Contribution(contribution), true);
-  assert.equal(isConversationV4Contribution({ ...contribution, route: "/packs" }), false);
+  assert.equal(isConversationV4Contribution({ ...contribution, route: "/workbench" }), true);
   assert.equal(isConversationV4Contribution({ ...contribution, contribution_id: "other" }), false);
   assert.equal(isConversationV4Contribution({ ...contribution, owner_pack_id: "other" }), false);
   assert.equal(isConversationV4Contribution({ ...contribution, build_identity: "other" }), false);
@@ -91,4 +111,15 @@ test("ConversationV4View provides an accessible transcript and composer without 
   assert.match(markup, /<textarea/);
   assert.match(markup, />Send</);
   assert.doesNotMatch(source, /api\/chat|defaultspackApiFetch|\bfetch\s*\(/);
+});
+
+test("ConversationV4Unavailable keeps a distinct error icon and fixed copy glyph", () => {
+  const markup = renderToStaticMarkup(
+    <ConversationV4Unavailable reason="Resolved profile is unavailable." onRetry={() => undefined} />,
+  );
+
+  assert.match(markup, /data-error-icon="conversation-v4-unavailable"/);
+  assert.match(markup, /data-copy-icon=""/);
+  assert.match(markup, /aria-label="Copy unavailable conversation error"/);
+  assert.match(markup, />Retry</);
 });

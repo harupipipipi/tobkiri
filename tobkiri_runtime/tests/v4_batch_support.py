@@ -176,6 +176,8 @@ def assert_route_cutover(
         providers={},
         profile_id="profile:captured",
         plan_digest="sha256:" + "7" * 64,
+        profile_revision="sha256:" + "8" * 64,
+        activation_id="activation:batch-test",
     )
     payload = {
         "approved": True,

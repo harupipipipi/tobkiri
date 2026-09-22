@@ -15,6 +15,7 @@ from domain.safety.browser_approval_exchange import (  # noqa: E402
     BrowserApprovalExchangeStore,
 )
 from core_runtime.host_contract import bind_host_contract  # noqa: E402
+from tests.conformance_support.host_contract import host_contract  # noqa: E402
 
 
 def _audience(**changes: str) -> BrowserApprovalAudience:
@@ -134,11 +135,10 @@ def test_exchange_transport_rejects_fake_bearer_and_other_loopback_port() -> Non
     }
 
     with bind_host_contract(
-        {
-            "schema_version": "tobkiri.host-contract.v1",
-            "profile_id": "profile:test",
-            "values": {"desktop_api_token": "fake-configured-local-token"},
-        }
+        host_contract(
+            profile_id="profile:test",
+            values={"desktop_api_token": "fake-configured-local-token"},
+        )
     ):
         assert _browser_exchange_transport_error(base) is None
         fake_bearer = {**base, "Authorization": "Bearer fake-attacker-token"}

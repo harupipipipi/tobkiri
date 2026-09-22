@@ -65,6 +65,7 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
             capture_default_profile,
             prepare_default_profile_confirmation,
         )
+        from tests.conformance_support.host_contract import host_contract
 
         with patch.dict(
             os.environ,
@@ -74,22 +75,24 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
             },
             clear=False,
         ):
-            capture_default_profile(
+            active = capture_default_profile(
                 confirmation=prepare_default_profile_confirmation()
             )
         user_data.chmod(0o700)
         contract_path = user_data / "host_contract.json"
         contract_path.write_text(
             json.dumps(
-                {
-                    "schema_version": "tobkiri.host-contract.v1",
-                    "profile_id": "defaults",
-                    "values": {
+                host_contract(
+                    profile_id=str(active.resolved.profile["profile_id"]),
+                    profile_revision=str(active.resolved.plan["profile_revision"]),
+                    activation_id=str(active.activation["activation_id"]),
+                    plan_digest=str(active.resolved.plan["plan_digest"]),
+                    values={
                         "panel_bootstrap_secret": (
                             TestDefaultspackDesktopSurface._PANEL_BOOTSTRAP_SECRET
                         )
                     },
-                }
+                )
             ),
             encoding="utf-8",
         )
@@ -255,6 +258,36 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                 ),
             )
 
+    def test_command_state_binding_survives_settings_location_change(self):
+        from defaultspack import desktop_app
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original = root / "original" / "settings.json"
+            replacement = root / "replacement" / "settings.json"
+            with patch.dict(os.environ, {
+                "RUMI_USER_DATA": str(root / "user-data"),
+                "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH": str(original),
+            }, clear=True):
+                desktop_app._configure_persistent_user_state()
+                self.assertEqual(
+                    os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"],
+                    str(original.parent),
+                )
+                os.environ["RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH"] = str(replacement)
+                desktop_app._configure_persistent_user_state()
+                self.assertEqual(
+                    os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"],
+                    str(original.parent),
+                )
+                os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"] = str(root / "explicit")
+                desktop_app._configure_persistent_user_state()
+                self.assertEqual(
+                    os.environ["RUMI_DEFAULTSPACK_COMMAND_STATE_DIR"],
+                    str(root / "explicit"),
+                )
+            self.assertEqual(list(root.iterdir()), [])
+
     def test_surface_can_be_disabled_for_smoke_tests(self):
         from defaultspack.native_webview import open_desktop_surface
 
@@ -299,6 +332,12 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
             def stop(self):
                 self.stopped = True
 
+            def issue_panel_login_code(self):
+                return {"code": "test-panel-login-code"}
+
+            def assert_runtime_startup_ready(self):
+                return None
+
         fake_server = FakeServer()
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -327,7 +366,101 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
         self.assertTrue(fake_server.started)
         self.assertTrue(fake_server.stopped)
 
-    def test_valid_stale_profile_starts_ui_ready_reconfirmation_surface(self):
+    def test_desktop_app_opens_recovery_panel_when_packvm_startup_is_unavailable(self):
+        """A missing PackVM keeps the authenticated recovery panel available."""
+
+        from core_runtime.app_lifecycle_manager import (
+            get_runtime_readiness,
+            reset_runtime_readiness,
+        )
+        from defaultspack import desktop_app
+        from tobkiri_host.errors import BackendUnavailableError
+
+        events: list[tuple[str, dict[str, object]]] = []
+
+        class FakeServer:
+            def __init__(self, *_args, **_kwargs):
+                self.started = False
+                self.stopped = False
+
+            def start(self):
+                self.started = True
+
+            def stop(self):
+                self.stopped = True
+
+            def assert_runtime_startup_ready(self):
+                raise BackendUnavailableError("stale helper identity")
+
+            def issue_panel_login_code(self):
+                return {"code": "test-panel-login-code"}
+
+        fake_server = FakeServer()
+        with tempfile.TemporaryDirectory() as tmp:
+            user_data = Path(tmp) / "user_data"
+            reset_runtime_readiness()
+            env = {
+                "RUMI_DEFAULTSPACK_OPEN_BROWSER": "1",
+                "RUMI_DEFAULTSPACK_SURFACE": "webview",
+                "TOBKIRI_USER_DATA": str(user_data),
+                "RUMI_USER_DATA": str(user_data),
+            }
+            with patch.dict(os.environ, env, clear=True):
+                with patch.object(
+                    desktop_app,
+                    "_restore_active_profile_contracts",
+                    return_value=(object(), ()),
+                ):
+                    with patch.object(
+                        desktop_app,
+                        "_capture_launch_host_contract",
+                        return_value={},
+                    ):
+                        with patch.object(
+                            desktop_app,
+                            "_require_host_panel_auth_manager",
+                            return_value=object(),
+                        ):
+                            with patch(
+                                "core_runtime.pack_api_server.PackAPIServer",
+                                return_value=fake_server,
+                            ):
+                                with patch.object(
+                                    desktop_app,
+                                    "_write_launch_event",
+                                    side_effect=lambda event, **fields: events.append((event, fields)),
+                                ):
+                                    with patch.object(
+                                        desktop_app,
+                                        "_wait_until_ready",
+                                        side_effect=AssertionError(
+                                            "chat readiness must not be polled"
+                                        ),
+                                    ):
+                                        with patch(
+                                            "defaultspack.native_webview.open_desktop_surface",
+                                            return_value="webview",
+                                        ) as open_surface:
+                                            self.assertEqual(desktop_app.main(), 0)
+
+        self.assertTrue(fake_server.started)
+        self.assertTrue(fake_server.stopped)
+        open_surface.assert_called_once()
+        self.assertEqual(get_runtime_readiness(), {
+            "panel_ready": True,
+            "runtime_ready": False,
+            "runtime_status": "error",
+            "runtime_error": "required runtime backend is unavailable",
+        })
+        unavailable = next(item for item in events if item[0] == "runtime_unavailable")
+        self.assertEqual(unavailable[1]["code"], "API_FAILURE")
+        self.assertEqual(
+            unavailable[1]["recovery_action"],
+            "Open Tobkiri Launcher > Packs to prepare PackVM.",
+        )
+        self.assertNotIn("stale helper identity", str(unavailable[1]))
+
+    def test_valid_stale_profile_does_not_open_authenticated_surface(self):
         from core_runtime.app_lifecycle_manager import (
             get_runtime_readiness,
             reset_runtime_readiness,
@@ -339,6 +472,7 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
 
         captured: dict[str, object] = {}
         events: list[tuple[str, dict[str, object]]] = []
+        server_state = {"stopped": False, "handoff_attempts": 0}
 
         class FakeServer:
             def __init__(self, *_args, **kwargs):
@@ -348,7 +482,13 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                 return None
 
             def stop(self):
-                return None
+                server_state["stopped"] = True
+
+            def issue_panel_login_code(self):
+                server_state["handoff_attempts"] += 1
+                raise RuntimeError(
+                    "current panel authentication capture is unavailable"
+                )
 
         with tempfile.TemporaryDirectory() as tmp:
             user_data = Path(tmp) / "user_data"
@@ -395,12 +535,18 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
                                     with patch(
                                         "defaultspack.native_webview.open_desktop_surface",
                                         return_value="webview",
-                                    ):
-                                        result = desktop_app.main()
+                                    ) as open_surface:
+                                        with self.assertRaisesRegex(
+                                            RuntimeError,
+                                            "authentication capture is unavailable",
+                                        ):
+                                            desktop_app.main()
 
-        self.assertEqual(result, 0)
         self.assertIsNone(captured["dispatch_session"])
         self.assertEqual(captured["contract_bindings"], ())
+        self.assertEqual(server_state["handoff_attempts"], 1)
+        self.assertTrue(server_state["stopped"])
+        open_surface.assert_not_called()
         readiness = get_runtime_readiness()
         self.assertTrue(readiness["panel_ready"])
         self.assertFalse(readiness["runtime_ready"])
@@ -487,13 +633,58 @@ class TestDefaultspackDesktopSurface(unittest.TestCase):
 
         sleeps = []
 
-        with patch.object(desktop_app.urllib.request, "urlopen", return_value=FakeResponse()):
+        with patch.object(
+            desktop_app.urllib.request,
+            "urlopen",
+            return_value=FakeResponse(),
+        ) as urlopen:
             with patch.object(desktop_app.time, "time", side_effect=[0.0, 0.0, 0.1, 0.3]):
                 with patch.object(desktop_app.time, "sleep", side_effect=sleeps.append):
                     result = desktop_app._wait_until_chat_ready("http://localhost:8766/chat", timeout=0.25)
 
         self.assertFalse(result)
         self.assertEqual(sleeps, [0.2, 0.2])
+        self.assertEqual(urlopen.call_count, 2)
+        urlopen.assert_called_with(
+            "http://localhost:8766/chat",
+            timeout=0.25,
+        )
+
+    def test_wait_until_ready_does_not_flood_slow_profile_verification(self):
+        from defaultspack import desktop_app
+
+        class FakeResponse:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, traceback):
+                return False
+
+            def read(self, *_args):
+                return b'{"data":{"runtime_ready":true,"runtime_status":"runtime_ready"}}'
+
+        with patch.object(
+            desktop_app.urllib.request,
+            "urlopen",
+            return_value=FakeResponse(),
+        ) as urlopen:
+            with patch.object(
+                desktop_app.time,
+                "time",
+                side_effect=[0.0, 0.0, 0.0],
+            ):
+                result = desktop_app._wait_until_ready(
+                    "http://localhost:8766/chat",
+                    timeout=30.0,
+                )
+
+        self.assertTrue(result)
+        urlopen.assert_called_once_with(
+            "http://localhost:8766/health",
+            timeout=30.0,
+        )
 
     def test_managed_pack_root_alias_supports_ecosystem_defaultspack_imports(self):
         from defaultspack import desktop_app

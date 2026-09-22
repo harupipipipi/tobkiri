@@ -29,6 +29,8 @@ from .v4_models import (
     GrantLifetime,
     GrantRecord,
     HostExtensionTrustRecord,
+    InteractiveApprovalDecision,
+    InteractiveApprovalRequest,
     InvocationContext,
     InvocationLease,
     LeaseState,
@@ -37,6 +39,7 @@ from .v4_models import (
     SuccessorEvidence,
     UpdateTrustPolicy,
     authority_digest,
+    interactive_confirmation_digest,
     intersect_scopes,
 )
 from .v4_store import AuditUnavailable, AuthorityStore, AuthorityStoreError
@@ -64,6 +67,8 @@ __all__ = [
     "GrantLifetime",
     "GrantRecord",
     "HostExtensionTrustRecord",
+    "InteractiveApprovalDecision",
+    "InteractiveApprovalRequest",
     "InvocationContext",
     "InvocationLease",
     "LeaseState",
@@ -72,6 +77,7 @@ __all__ = [
     "SuccessorEvidence",
     "UpdateTrustPolicy",
     "authority_digest",
+    "interactive_confirmation_digest",
     "intersect_scopes",
     "mint_successor_grant",
     "mint_successor_provider_authority",

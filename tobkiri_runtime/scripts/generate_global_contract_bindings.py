@@ -21,7 +21,8 @@ def generate() -> None:
     (OUT / "global_contract_types.py").write_text(
         '"""Generated from schemas/global_contract_types.schema.json."""\n\n'
         "from __future__ import annotations\n\n"
-        "from typing import Generic, Literal, NotRequired, TypedDict, TypeVar\n\n"
+        "from typing import Generic, Literal, TypedDict, TypeVar\n"
+        "from typing_extensions import NotRequired\n\n"
         f"ContractStatus = Literal[\n    {python_values},\n]\n\n"
         "T = TypeVar(\"T\")\n\n\n"
         "class ContractResult(TypedDict, Generic[T]):\n"

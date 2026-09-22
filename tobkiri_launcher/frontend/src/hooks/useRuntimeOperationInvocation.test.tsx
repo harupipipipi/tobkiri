@@ -49,6 +49,7 @@ function operation(id: string): RuntimeOperationDescriptor {
     invocation_reason: null,
     invokable: true,
     catalog_digest: digest('4'),
+    activation_id: 'activation:profile-a',
     function_id: `${id}.function`,
     function_principal_id: `${id}.principal`,
     caller_function_id: `${id}.caller`,

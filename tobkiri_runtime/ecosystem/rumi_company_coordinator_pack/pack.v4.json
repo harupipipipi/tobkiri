@@ -1,7 +1,7 @@
 {
   "artifacts": [
     {
-      "digest": "sha256:901f1e9b739cef042ffbc26f4c8fa694f04c907be6949432efbe7e8d9af65e6f",
+      "digest": "sha256:7bd8329a9cd820419a4ded2a36c17471d4e814e2d8342362dcfe5eb6c7af66f6",
       "kind": "sidecar",
       "path": "executables.v4.json"
     },
@@ -24,7 +24,7 @@
       "operations": [
         "rumi_company_coordinator_pack.company-supervisor-job-adapter"
       ],
-      "revision_digest": "sha256:c4488f4e1cde0fb205037f384949ded4ef8db28cbd88bbec6935ac0c08b72e79"
+      "revision_digest": "sha256:cda76ede5258c3305d4786a5b48255737d4dff5862579f8f7befaa023c4469f3"
     },
     {
       "contract_id": "tobkiri.resource.company.runtime.v1",
@@ -56,7 +56,7 @@
       "role": "brokered"
     },
     {
-      "contract_revision_digest": "sha256:c4488f4e1cde0fb205037f384949ded4ef8db28cbd88bbec6935ac0c08b72e79",
+      "contract_revision_digest": "sha256:cda76ede5258c3305d4786a5b48255737d4dff5862579f8f7befaa023c4469f3",
       "id": "rumi_company_coordinator_pack.job-adapter.company-supervisor",
       "implementation_digest": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
       "isolation": "dedicated_process",
@@ -67,9 +67,9 @@
     }
   ],
   "integrity": {
-    "artifact_set_digest": "sha256:390bc0fc7f34296533ae1b7fcf47febda08667d86455e7e439e84f1e1dd75264",
-    "contract_catalog_digest": "sha256:f2d62d7ab3abf539f4436b30efb30cae5d9e00254441f034416087afd8c4c658",
-    "source_identity": "sha256:517548b669d73830c1425181e987ed41384ef3281b1a45591cd79ce7428ac438"
+    "artifact_set_digest": "sha256:f8a6a189af5ab5a2116f2173ea416090e7f304f9e149505ba22159e94111c34e",
+    "contract_catalog_digest": "sha256:bce4dc5bb568348b9f81189de701e4e58ebbb230d02d8168283b96c062225597",
+    "source_identity": "sha256:68b4ef66221dc661719564ef59cb4b838f5ededf7d4223046a90e2faf3dbf618"
   },
   "migration": {
     "compatibility": "read_only",
@@ -116,7 +116,7 @@
     }
   ],
   "pack": {
-    "artifact_digest": "sha256:390bc0fc7f34296533ae1b7fcf47febda08667d86455e7e439e84f1e1dd75264",
+    "artifact_digest": "sha256:f8a6a189af5ab5a2116f2173ea416090e7f304f9e149505ba22159e94111c34e",
     "display_name": "Rumi Company Coordinator",
     "id": "rumi_company_coordinator_pack",
     "kind": "normal_sandbox",
@@ -126,7 +126,7 @@
   "provenance": {
     "evidence": [
       {
-        "digest": "sha256:517548b669d73830c1425181e987ed41384ef3281b1a45591cd79ce7428ac438",
+        "digest": "sha256:68b4ef66221dc661719564ef59cb4b838f5ededf7d4223046a90e2faf3dbf618",
         "path": "schemas/pack_v4_catalog.v1.json",
         "rule_id": "canonical-pack-v4-source-record"
       }
@@ -137,7 +137,7 @@
     "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
     "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
     "schema": "io.tobkiri.provenance.v1",
-    "source_digest": "sha256:517548b669d73830c1425181e987ed41384ef3281b1a45591cd79ce7428ac438",
+    "source_digest": "sha256:68b4ef66221dc661719564ef59cb4b838f5ededf7d4223046a90e2faf3dbf618",
     "source_kind": "migration",
     "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_company_coordinator_pack"
   },

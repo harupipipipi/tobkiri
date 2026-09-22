@@ -20,12 +20,26 @@ const ROOTS: &[&str] = &[
     "ecosystem/defaultspack/v4",
     "ecosystem/defaultspack/runtime",
     "ecosystem/defaultspack/defaultspack",
+    "ecosystem/defaultspack/tools",
+    "ecosystem/defaultspack/extensions/tools",
 ];
+// Keep exact-file grants aligned with generator_source_manifest.py::SOURCE_FILES.
+// Do not grant whole metadata directories when adding a UI dependency.
 const FILES: &[&str] = &[
+    "schemas/profile_bundle_generation.v1.json",
     "ecosystem/defaultspack/pack.v4.json",
     "ecosystem/defaultspack/contracts.v4.json",
     "ecosystem/defaultspack/artifact-index.v4.json",
     "ecosystem/defaultspack/executables.v4.json",
+    "ecosystem/defaultspack/host_contract_contributions.v1.json",
+    "ecosystem/defaultspack/domain/runtime_surface_v4.py",
+    "ecosystem/defaultspack/domain/frontend_settings_catalog.py",
+    "ecosystem/defaultspack/domain/frontend_builtin_catalog.py",
+    "ecosystem/defaultspack/domain/frontend_command_catalog.py",
+    "ecosystem/defaultspack/commands/default_commands.json",
+    "ecosystem/defaultspack/schemas/command-protocol-v1.schema.json",
+    "ecosystem/defaultspack/domain/frontend_settings_store.py",
+    "ecosystem/defaultspack/update_metadata.v1.json",
 ];
 const MAX_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_SOURCE_BYTES: u64 = 256 * 1024 * 1024;
@@ -1866,6 +1880,24 @@ fn verify_and_snapshot_against_manifest_with_hook(
 mod tests {
     use super::*;
 
+    #[test]
+    fn ui_source_files_do_not_authorize_sibling_paths() {
+        for path in [
+            "ecosystem/defaultspack/commands/untrusted.json",
+            "ecosystem/defaultspack/schemas/untrusted.json",
+            "ecosystem/defaultspack/domain/untrusted.py",
+            "ecosystem/defaultspack/commands/../commands/default_commands.json",
+        ] {
+            let manifest = serde_json::to_vec(&serde_json::json!({
+                "schema": SCHEMA, "roots": ROOTS,
+                "files": [{"path": path, "type": "regular-file", "size": 0,
+                    "sha256": "0".repeat(64), "executable": false}]
+            }))
+            .unwrap();
+            assert!(parse_manifest(&manifest).is_err(), "accepted {path}");
+        }
+    }
+
     fn copy_fixture_tree(source: &Path, target: &Path) {
         fs::create_dir_all(target).unwrap();
         for entry in fs::read_dir(source).unwrap() {
@@ -1976,7 +2008,17 @@ mod tests {
             .root()
             .join("scripts/generate_packaged_defaultspack_v4_bundle.py")
             .is_file());
+        assert!(snapshot
+            .root()
+            .join("ecosystem/defaultspack/domain/runtime_surface_v4.py")
+            .is_file());
         assert!(!snapshot.root().join("scripts/__pycache__").exists());
+        for relative in FILES {
+            assert!(
+                snapshot.root().join(relative).is_file(),
+                "missing {relative}"
+            );
+        }
     }
 
     #[test]
@@ -2036,7 +2078,7 @@ mod tests {
             "actual generator failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        assert!(bundle_root.join("defaults.profile.v4.json").is_file());
+        assert!(bundle_root.join("defaults.profile.v5.json").is_file());
         assert!(bundle_root
             .join("shell.tauri.default.shell.v1.json")
             .is_file());

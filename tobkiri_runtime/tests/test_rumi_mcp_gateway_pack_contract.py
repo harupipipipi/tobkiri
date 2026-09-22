@@ -71,7 +71,7 @@ def test_mcp_gateway_setup_pack_is_discoverable_and_not_all_ok() -> None:
     assert setup["supports_all_ok"] is False
     assert setup["risk_level"] == "critical"
     assert setup["overlap_policy"]["defaultspack_tool_mcp"] == "do_not_override"
-    assert setup["defaultspack_promotion"]["eligible"] is False
+    assert setup["base_pack_promotion"]["eligible"] is False
 
     candidate = candidates[PACK_ID]
     assert candidate.pack_identity == f"rumi:ecosystem/{PACK_ID}"

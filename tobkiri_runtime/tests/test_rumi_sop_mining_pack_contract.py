@@ -165,8 +165,8 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert candidate.overlap_policy["sop_extraction"] == "owned_by_rumi_sop_mining_pack"
     assert candidate.overlap_policy["trace_schema"] == "owned_by_rumi_sop_mining_pack"
 
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert set(candidate.defaultspack_promotion["promotion_blockers"]) >= {
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert set(candidate.base_pack_promotion["promotion_blockers"]) >= {
         "no_automation_execution_runtime",
         "does_not_control_browsers",
         "does_not_control_computers",

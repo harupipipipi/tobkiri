@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import json
 from dataclasses import dataclass, field
 from typing import Any
 
 from domain.external.event import ExternalEvent
-from domain.frontend_settings import frontend_settings_path
+from domain.frontend_settings import read_optional_frontend_settings
 from domain.input.envelope import RumiInputEnvelope
 
 
@@ -44,13 +46,16 @@ class TriggerDecisionService:
         self.default_action = str(self.config.get("default_action") or "fire").strip().lower() or "fire"
 
     @classmethod
-    def from_profile(cls, profile: Any, context: dict[str, Any] | None = None) -> "TriggerDecisionService":
+    def from_profile(
+        cls, profile: Any, context: dict[str, Any] | None = None, *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> "TriggerDecisionService":
         context = context if isinstance(context, dict) else {}
         override = context.get("trigger_decision_config")
         if isinstance(override, dict):
             return cls(override)
         spec = getattr(profile, "spec", profile if isinstance(profile, dict) else {})
-        frontend_config = _frontend_trigger_config()
+        frontend_config = _frontend_trigger_config(settings_owner=settings_owner)
         profile_config = spec.get("trigger_decision") if isinstance(spec, dict) and isinstance(spec.get("trigger_decision"), dict) else {}
         if not profile_config and isinstance(spec, dict) and isinstance(spec.get("trigger"), dict):
             profile_config = spec.get("trigger") or {}
@@ -275,12 +280,8 @@ def _public_settings(settings: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _frontend_trigger_config() -> dict[str, Any]:
-    path = frontend_settings_path()
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        raw = {}
+def _frontend_trigger_config(*, settings_owner: SettingsOwnerPort | None = None) -> dict[str, Any]:
+    raw = read_optional_frontend_settings(settings_owner=settings_owner)
     triggers = raw.get("triggers") if isinstance(raw, dict) and isinstance(raw.get("triggers"), dict) else {}
     mode = str(triggers.get("mode") or "vector").strip().lower()
     if mode not in {"vector", "llm"}:

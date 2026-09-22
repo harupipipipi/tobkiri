@@ -4,19 +4,42 @@ from urllib.parse import quote
 
 import pytest
 
-from core_runtime.frontend_contract_routes import ContractRouteError, resolve_contract_route
+from core_runtime.global_contracts.http_contract_dispatch import (
+    HTTPContractBinding,
+    HTTPContractRouteError as ContractRouteError,
+    HTTPContractTarget,
+    resolve_contract_route,
+)
 
 pytestmark = pytest.mark.contract
 
 
 SEARCH_HOME_ROUTES = {
-    ("GET", "/api/models"): {"approval_required": False},
-    ("GET", "/api/settings"): {"approval_required": False},
-    ("GET", "/api/route-state"): {"approval_required": False},
-    ("POST", "/api/route"): {"approval_required": False},
-    ("POST", "/api/answer"): {"approval_required": False},
-    ("POST", "/api/settings/model"): {"approval_required": False},
-    ("POST", "/api/route-state"): {"approval_required": False},
+    (method, path): HTTPContractBinding(
+        method=method,
+        path=path,
+        presentation="search_home_result",
+        targets=(
+            HTTPContractTarget(
+                contribution_id=f"search-home.{method.lower()}.{path[5:].replace('/', '.')}",
+                contract_id="search-home.ui.v1",
+                operation_id=path.removeprefix("/api/").replace("/", "."),
+                provider_id="search-home.desktop",
+                function_id="search-home.desktop",
+            ),
+        ),
+        application_id="search_home_pack",
+        route_namespace="search_home_pack",
+    )
+    for method, path in (
+        ("GET", "/api/models"),
+        ("GET", "/api/settings"),
+        ("GET", "/api/route-state"),
+        ("POST", "/api/route"),
+        ("POST", "/api/answer"),
+        ("POST", "/api/settings/model"),
+        ("POST", "/api/route-state"),
+    )
 }
 
 
@@ -33,8 +56,7 @@ def test_search_home_operation_resolves_exact_route_and_query() -> None:
         _SearchHomeHost(),
         "GET",
         _operation("GET", "/api/route-state?source=restart"),
-        pack_id="search_home_pack",
-        route_families=(),
+        namespace="search_home_pack",
     )
 
     assert resolved is not None
@@ -63,49 +85,23 @@ def test_search_home_unknown_or_escaped_operation_fails_closed(
             _SearchHomeHost(),
             method,
             _operation(method, target),
-            pack_id="search_home_pack",
-            route_families=(),
+            namespace="search_home_pack",
         )
     assert exc_info.value.code == code
 
 
-def test_search_home_operation_requires_host_approval_when_declared() -> None:
-    class ApprovalHost:
-        _contract_routes = {
-            ("POST", "/api/answer"): {"approval_required": True},
-        }
+def test_search_home_operation_requires_a_canonical_application_binding() -> None:
+    class UnboundHost:
+        _contract_routes = {("POST", "/api/answer"): object()}
 
     with pytest.raises(ContractRouteError) as exc_info:
         resolve_contract_route(
-            ApprovalHost(),
+            UnboundHost(),
             "POST",
             _operation("POST", "/api/answer"),
-            pack_id="search_home_pack",
-            route_families=(),
+            namespace="search_home_pack",
         )
-    assert exc_info.value.code == "CONTRACT_APPROVAL_REQUIRED"
-    assert exc_info.value.status == 403
-
-
-def test_search_home_approval_requires_server_side_checker() -> None:
-    class ApprovedHost:
-        _contract_routes = {
-            ("POST", "/api/answer"): {"approval_required": True},
-        }
-
-        @staticmethod
-        def _contract_approval_check(method: str, path: str) -> bool:
-            return method == "POST" and path == "/api/answer"
-
-    resolved = resolve_contract_route(
-        ApprovedHost(),
-        "POST",
-        _operation("POST", "/api/answer"),
-        pack_id="search_home_pack",
-        route_families=(),
-    )
-    assert resolved is not None
-    assert resolved.path == "/api/answer"
+    assert exc_info.value.code == "CONTRACT_OPERATION_UNKNOWN"
 
 
 def test_search_home_handler_uses_contract_map_before_legacy_dispatch(tmp_path) -> None:

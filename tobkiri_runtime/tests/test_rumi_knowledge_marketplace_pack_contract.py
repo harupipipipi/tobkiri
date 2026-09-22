@@ -92,10 +92,10 @@ def test_pack_setup_discoverable_validated_and_overlap_scoped() -> None:
     assert setup["risk_level"] == "medium"
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.overlap_policy["bundle_catalog"] == "handoff_to_rumi_pack_suite_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert candidate.defaultspack_promotion["reason"].startswith("Marketplace curation stays optional")
-    assert "would_auto_install_unreviewed_content" in candidate.defaultspack_promotion["promotion_blockers"]
-    assert "install_review_workflow_review" in candidate.defaultspack_promotion["promotion_evidence_required"]
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["reason"].startswith("Marketplace curation stays optional")
+    assert "would_auto_install_unreviewed_content" in candidate.base_pack_promotion["promotion_blockers"]
+    assert "install_review_workflow_review" in candidate.base_pack_promotion["promotion_evidence_required"]
     assert candidate.marketplace["registry"] == "rumi_local_pack_registry"
     assert candidate.marketplace["publisher"] == "rumi-ai"
     assert candidate.marketplace["status"] == "verified"

@@ -10,9 +10,7 @@ from pathlib import Path
 from typing import Iterator
 
 from tobkiri_protocol.durability import publish_file_durable
-from tobkiri_protocol.platform_paths import (
-    canonical_platform_path as canonical_platform_path,
-)
+from tobkiri_protocol.platform_paths import canonical_platform_path
 
 
 class SecurePathError(RuntimeError):
@@ -367,7 +365,12 @@ class SecureParent:
 def secure_parent(path: Path) -> Iterator[SecureParent]:
     """Open every ancestor without symlink traversal and retain the final parent."""
 
-    parent = path.absolute().parent
+    # macOS exposes protected temporary trees through root-owned ``/var``
+    # and ``/tmp`` compatibility aliases.  Normalize only those exact,
+    # validated aliases; caller-controlled symlinks remain unresolved for the
+    # no-follow descriptor walk below.
+    requested = canonical_platform_path(Path(path))
+    parent = requested.parent
     if os.name == "nt":
         current = Path(parent.anchor)
         try:

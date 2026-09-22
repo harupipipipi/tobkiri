@@ -49,9 +49,9 @@
     },
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:5df273279dbb520ef2d60d8343577af25b1d1329e59ced52eb09ff90a00de1cf",
+      "artifact_digest": "sha256:bebac68e0516f75a362d38a89167000588d9ebb475183299ea6f0a9f8b5bfbaa",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:a4baa7d7085ced06c4ecc1f3c2bc7872e898fabf7dc739fa84c7e3bc8472f69c"
+      "source_identity": "sha256:259527b11d91f9e46473368a46fb247e670bff33c418b51a07e41e43aa269f0c"
     },
     "executable_code": false,
     "format": "rumi.ecosystem.v1",
@@ -60,7 +60,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:a4baa7d7085ced06c4ecc1f3c2bc7872e898fabf7dc739fa84c7e3bc8472f69c"
+      "source_content_hash": "sha256:259527b11d91f9e46473368a46fb247e670bff33c418b51a07e41e43aa269f0c"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -106,7 +106,7 @@
   "pack_identity": "rumi:ecosystem/rumi_api_toolsmith_pack",
   "provenance": {
     "build_identity": "rumi_api_toolsmith_pack:0.1.0",
-    "content_hash": "sha256:5df273279dbb520ef2d60d8343577af25b1d1329e59ced52eb09ff90a00de1cf",
+    "content_hash": "sha256:bebac68e0516f75a362d38a89167000588d9ebb475183299ea6f0a9f8b5bfbaa",
     "signature": null,
     "trust_class": "local"
   },

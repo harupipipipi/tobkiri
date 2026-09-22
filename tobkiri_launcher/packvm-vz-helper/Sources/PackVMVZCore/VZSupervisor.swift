@@ -9,6 +9,21 @@ private let helperSubstrateID = "macos-vz"
 private let helperDesignatedIdentifier = "dev.tobkiri.launcher.packvm-vz-helper"
 private let launchStartTimeout: DispatchTimeInterval = .seconds(30)
 private let stopTimeout: DispatchTimeInterval = .seconds(15)
+// The guest service is started by cloud-init after EFI has handed off to the
+// image. A single immediate vsock request races that setup on a cold boot.
+// The signed launch binding has no readiness-deadline field. Use a production
+// default that covers a fresh Debian image's EFI, cloud-init, and systemd
+// startup without creating an unbounded hidden launch phase.
+let directGuestReadinessTimeout: TimeInterval = 300
+private let directGuestOperationTimeout: TimeInterval = 30
+private let directGuestAttemptTimeout: TimeInterval = 2
+private let directGuestInitialRetryDelay: TimeInterval = 0.1
+private let directGuestMaximumRetryDelay: TimeInterval = 1
+// A stuck framework connect has no connection descriptor to close. Keep at
+// most one abandoned attempt plus one fresh attempt so a cold boot can still
+// become ready without unbounded blocked worker accumulation.
+private let directGuestMaximumPendingConnects = 2
+private let directSerialDiagnosticsMaximumBytes = 128 * 1024
 
 public final class VZSupervisor {
     private struct Domain {
@@ -24,9 +39,9 @@ public final class VZSupervisor {
         let validatedAssets: ValidatedDirectLaunchAssets
         let machine: VZMachineHandle
         let queue: DispatchQueue
-        let diagnosticsFD: Int32
+        let diagnostics: DirectSerialDiagnostics
         let guestArtifactIdentity: String
-        var activeRequests: Set<String>
+        let activeRequests: DirectRequestLedger
     }
 
     private var domains: [String: Domain] = [:]
@@ -201,29 +216,39 @@ public final class VZSupervisor {
             throw HelperError.invalidState("HELPER_ALREADY_BOUND_TO_DOMAIN")
         }
         synchronized { launchedDomainID = binding.domainID }
-        var diagnosticsFD: Int32?
-        var started: (machine: VZMachineHandle, queue: DispatchQueue, diagnosticsFD: Int32)?
+        var diagnostics: DirectSerialDiagnostics?
+        var started: (
+            machine: VZMachineHandle,
+            queue: DispatchQueue,
+            diagnostics: DirectSerialDiagnostics
+        )?
         do {
-            diagnosticsFD = try createDirectDiagnostics()
-            guard let diagnosticsFD else {
-                throw HelperError.invalidState("SERIAL_DIAGNOSTICS_CREATE_FAILED")
-            }
-            let configuration = try makeDirectConfiguration(binding, diagnosticsFD: diagnosticsFD)
+            let createdDiagnostics = try DirectSerialDiagnostics.create(
+                runRoot: binding.runRoot
+            )
+            diagnostics = createdDiagnostics
+            let configuration = try makeDirectConfiguration(
+                binding,
+                diagnosticsFD: createdDiagnostics.writeFD
+            )
             do {
                 try configuration.validate()
             } catch {
-                _ = Darwin.close(diagnosticsFD)
                 throw HelperError.invalidState("VZ_CONFIGURATION_REJECTED")
             }
             guard configuration.networkDevices.isEmpty,
                   configuration.directorySharingDevices.isEmpty else {
-                _ = Darwin.close(diagnosticsFD)
                 throw HelperError.invalidState("NETWORK_OR_HOST_SHARE_FORBIDDEN")
             }
             let queue = DispatchQueue(label: "io.tobkiri.packvm-vz.\(binding.domainID)")
-            let machine = VZMachineHandle(VZVirtualMachine(configuration: configuration, queue: queue))
+            let machine = VZMachineHandle(
+                VZVirtualMachine(configuration: configuration, queue: queue),
+                diagnostics: createdDiagnostics
+            )
             try start(machine, on: queue)
-            started = (machine, queue, diagnosticsFD)
+            started = (machine, queue, createdDiagnostics)
+            createdDiagnostics.record("HOST_VM_START_SUCCEEDED")
+            createdDiagnostics.record("HOST_VSOCK_ATTEST_BEGIN")
             let guestResponse = try callDirectGuest(
                 machine: machine,
                 queue: queue,
@@ -240,11 +265,13 @@ public final class VZSupervisor {
                 expectedOperation: "attest",
                 expectedRequestID: "attest-\(binding.domainID)",
                 expectedChallenge: guestChallenge,
-                attestationNonce: hostNonce
+                attestationNonce: hostNonce,
+                retryForReadiness: true
             )
+            createdDiagnostics.record("HOST_VSOCK_ATTEST_RETURNED")
             if guestResponse["success"] as? Bool == false {
                 try? stop(machine, on: queue)
-                _ = Darwin.close(diagnosticsFD)
+                createdDiagnostics.close()
                 synchronized { terminal = true }
                 return guestResponse
             }
@@ -261,18 +288,18 @@ public final class VZSupervisor {
                     validatedAssets: validatedAssets,
                     machine: machine,
                     queue: queue,
-                    diagnosticsFD: diagnosticsFD,
+                    diagnostics: createdDiagnostics,
                     guestArtifactIdentity: guestArtifactIdentity,
-                    activeRequests: []
+                    activeRequests: DirectRequestLedger()
                 )
             }
             return guestResponse
         } catch {
             if let started {
                 try? stop(started.machine, on: started.queue)
-                _ = Darwin.close(started.diagnosticsFD)
-            } else if let diagnosticsFD {
-                _ = Darwin.close(diagnosticsFD)
+                started.diagnostics.close()
+            } else if let diagnostics {
+                diagnostics.close()
             }
             synchronized { terminal = true }
             throw error
@@ -296,17 +323,19 @@ public final class VZSupervisor {
               try CanonicalJSON.data(payload).count <= maxInvokePayloadBytes else {
             throw HelperError.invalidRequest("INVALID_DIRECT_INVOKE")
         }
-        var domain = try activeDirectDomain(domainID)
-        guard domain.activeRequests.insert(requestID).inserted else {
-            throw HelperError.invalidState("REQUEST_ALREADY_ACTIVE")
-        }
-        synchronized { directDomains[domainID] = domain }
+        let domain = try activeDirectDomain(domainID)
+        // This changes only transport retention. Guest/Host validation and captured
+        // Broker edges still decide whether the reserved operation is callable.
+        let savedTurn = request["contract_id"] as? String == "conversation.saved-turn.v1"
+            && request["contract_version"] as? String == "1.0.0"
+            && request["operation_id"] as? String == "saved_complete"
+        let ticket = try domain.activeRequests.begin(requestID, maximumBridges: savedTurn ? 4 : 1)
         var completed = false
         defer {
             // A transport or schema failure must not leave an unowned request
             // pinned in the per-domain helper. The Host has already failed the
             // outer invocation and will not be permitted to resume it.
-            if !completed { removeDirectActiveRequest(requestID, from: domainID) }
+            if !completed { domain.activeRequests.abandon(ticket) }
         }
         let guestPayload: [String: Any] = [
             "operation": "invoke",
@@ -339,11 +368,12 @@ public final class VZSupervisor {
             expectedOperation: "invoke",
             expectedRequestID: requestID,
             expectedChallenge: guestChallenge,
-            attestationNonce: nil
+            attestationNonce: nil,
+            requestDeadline: ticket.deadline
         )
         let pending = (response["data"] as? [String: Any])?["state"] as? String == "pending"
-        if !pending { removeDirectActiveRequest(requestID, from: domainID) }
-        completed = pending
+        try domain.activeRequests.settle(ticket, pending: pending)
+        completed = true
         return response
     }
 
@@ -358,10 +388,11 @@ public final class VZSupervisor {
             throw HelperError.invalidRequest("INVALID_DIRECT_BRIDGE_RESULT")
         }
         let domain = try activeDirectDomain(domainID)
-        guard synchronized({ directDomains[domainID]?.activeRequests.contains(requestID) == true }) else {
-            throw HelperError.invalidState("REQUEST_NOT_ACTIVE")
+        let ticket = try domain.activeRequests.resume(requestID)
+        var completed = false
+        defer {
+            if !completed { domain.activeRequests.abandon(ticket) }
         }
-        defer { removeDirectActiveRequest(requestID, from: domainID) }
         let response = try callDirectGuest(
             machine: domain.machine,
             queue: domain.queue,
@@ -378,8 +409,12 @@ public final class VZSupervisor {
             expectedOperation: "bridge_result",
             expectedRequestID: requestID,
             expectedChallenge: guestChallenge,
-            attestationNonce: nil
+            attestationNonce: nil,
+            requestDeadline: ticket.deadline
         )
+        let pending = (response["data"] as? [String: Any])?["state"] as? String == "pending"
+        try domain.activeRequests.settle(ticket, pending: pending)
+        completed = true
         return response
     }
 
@@ -390,10 +425,7 @@ public final class VZSupervisor {
         guestChallenge: String
     ) throws -> [String: Any] {
         let domain = try activeDirectDomain(domainID)
-        guard synchronized({ directDomains[domainID]?.activeRequests.contains(requestID) == true }) else {
-            throw HelperError.invalidState("REQUEST_NOT_ACTIVE")
-        }
-        defer { removeDirectActiveRequest(requestID, from: domainID) }
+        try domain.activeRequests.cancel(requestID)
         let response = try callDirectGuest(
             machine: domain.machine,
             queue: domain.queue,
@@ -419,13 +451,17 @@ public final class VZSupervisor {
         leaseID: String,
         reservationID: String
     ) throws -> [String: Any] {
-        let domain = try removeDirectDomain(domainID)
+        // Keep the domain owned until every fallible cleanup step succeeds.
+        // A binding mismatch must not evict another lease's VM, and a VZ stop
+        // timeout/failure must remain retryable through this same helper.
+        let domain = try activeDirectDomain(domainID)
         guard domain.binding.leaseID == leaseID,
               domain.binding.reservationID == reservationID else {
             throw HelperError.invalidState("DOMAIN_BINDING_MISMATCH")
         }
         try stop(domain.machine, on: domain.queue)
-        _ = Darwin.close(domain.diagnosticsFD)
+        domain.diagnostics.close()
+        _ = try removeDirectDomain(domainID)
         synchronized {
             preparedEFI = nil
             terminal = true
@@ -669,7 +705,7 @@ public final class VZSupervisor {
         }
         for domain in directDomainsToClean {
             try? stop(domain.machine, on: domain.queue)
-            _ = Darwin.close(domain.diagnosticsFD)
+            domain.diagnostics.close()
         }
         // A successful `prepare_efi_store` is deliberately durable across the
         // one-shot provisioning helper's clean EOF.  The Host owns that
@@ -746,14 +782,6 @@ public final class VZSupervisor {
             throw HelperError.invalidState("DOMAIN_NOT_ACTIVE")
         }
         return domain
-    }
-
-    private func removeDirectActiveRequest(_ requestID: String, from domainID: String) {
-        synchronized {
-            guard var domain = directDomains[domainID] else { return }
-            domain.activeRequests.remove(requestID)
-            directDomains[domainID] = domain
-        }
     }
 
     private func makeConfiguration(_ binding: LaunchBinding) throws -> VZVirtualMachineConfiguration {
@@ -880,17 +908,6 @@ public final class VZSupervisor {
         return configuration
     }
 
-    private func createDirectDiagnostics() throws -> Int32 {
-        // Production transport has no diagnostics descriptor in its binding.
-        // Keep a serial console device (for firmware compatibility) but direct
-        // its output to the OS null sink; never create an unbound Host file.
-        let descriptor = open("/dev/null", O_WRONLY | O_CLOEXEC | O_NOFOLLOW)
-        guard descriptor >= 0 else {
-            throw HelperError.invalidState("SERIAL_DIAGNOSTICS_CREATE_FAILED")
-        }
-        return descriptor
-    }
-
     private func diskAttachment(
         path: String,
         readOnly: Bool
@@ -1015,53 +1032,184 @@ public final class VZSupervisor {
         expectedOperation: String,
         expectedRequestID: String,
         expectedChallenge: String,
-        attestationNonce: String?
+        attestationNonce: String?,
+        retryForReadiness: Bool = false,
+        requestDeadline: TimeInterval? = nil
     ) throws -> [String: Any] {
+        let connectionAttempts = GuestConnectAttemptLimiter(
+            maximumInFlight: directGuestMaximumPendingConnects
+        )
+        if retryForReadiness {
+            return try GuestReadinessRetry.run(
+                policy: .init(
+                    deadline: directGuestReadinessTimeout,
+                    initialDelay: directGuestInitialRetryDelay,
+                    maximumDelay: directGuestMaximumRetryDelay
+                ),
+                attempt: { remaining in
+                    try self.callDirectGuestOnce(
+                        machine: machine,
+                        queue: queue,
+                        binding: binding,
+                        envelope: envelope,
+                        expectedOperation: expectedOperation,
+                        expectedRequestID: expectedRequestID,
+                        expectedChallenge: expectedChallenge,
+                        attestationNonce: attestationNonce,
+                        timeout: min(remaining, directGuestAttemptTimeout),
+                        timeoutErrorCode: "GUEST_AGENT_READINESS_TIMEOUT",
+                        connectionAttempts: connectionAttempts
+                    )
+                },
+                isTransient: Self.isTransientGuestReadinessError
+            )
+        }
+        let remaining = requestDeadline.map { $0 - ProcessInfo.processInfo.systemUptime }
+            ?? directGuestOperationTimeout
+        guard remaining > 0 else {
+            throw HelperError.invalidState("REQUEST_DEADLINE_EXCEEDED")
+        }
+        return try callDirectGuestOnce(
+            machine: machine,
+            queue: queue,
+            binding: binding,
+            envelope: envelope,
+            expectedOperation: expectedOperation,
+            expectedRequestID: expectedRequestID,
+            expectedChallenge: expectedChallenge,
+            attestationNonce: attestationNonce,
+            timeout: min(remaining, directGuestOperationTimeout),
+            timeoutErrorCode: "GUEST_AGENT_TIMEOUT",
+            connectionAttempts: connectionAttempts
+        )
+    }
+
+    private func callDirectGuestOnce(
+        machine: VZMachineHandle,
+        queue: DispatchQueue,
+        binding: DirectLaunchBinding,
+        envelope: [String: Any],
+        expectedOperation: String,
+        expectedRequestID: String,
+        expectedChallenge: String,
+        attestationNonce: String?,
+        timeout: TimeInterval,
+        timeoutErrorCode: String,
+        connectionAttempts: GuestConnectAttemptLimiter
+    ) throws -> [String: Any] {
+        if let code = machine.terminalFailureCode {
+            throw HelperError.unavailable(code)
+        }
         let requestData = try CanonicalJSON.data(envelope) + Data([0x0A])
-        let completion = DispatchSemaphore(value: 0)
-        let result = LockedResult<Result<[String: Any], Error>>()
+        let state = DirectGuestCallState<[String: Any]>()
+        guard let attemptLease = connectionAttempts.acquire() else {
+            throw HelperError.unavailable("GUEST_AGENT_CONNECT_PENDING")
+        }
+
+        // Virtualization requires socket operations to start on the machine's
+        // serial queue. `connect` is asynchronous and returns immediately;
+        // only its initiation is performed there. Completion I/O below moves
+        // off that queue, leaving it available for stop/cleanup if the guest
+        // never answers a pending connect.
         queue.async {
+            guard !state.isCancelled else {
+                attemptLease.release()
+                return
+            }
+            if let code = machine.terminalFailureCode {
+                attemptLease.release()
+                state.complete(.failure(HelperError.unavailable(code)))
+                return
+            }
             guard let socket = machine.value.socketDevices.first as? VZVirtioSocketDevice else {
-                result.value = .failure(HelperError.unavailable("VSOCK_UNAVAILABLE"))
-                completion.signal()
+                attemptLease.release()
+                state.complete(.failure(HelperError.unavailable("VSOCK_UNAVAILABLE")))
                 return
             }
             socket.connect(toPort: binding.guestPort) { connectionResult in
-                guard case let .success(connection) = connectionResult,
-                      connection.fileDescriptor >= 0 else {
-                    result.value = .failure(HelperError.unavailable("GUEST_AGENT_UNAVAILABLE"))
-                    completion.signal()
+                guard !state.isCancelled else {
+                    if case let .success(connection) = connectionResult {
+                        connection.close()
+                    }
+                    attemptLease.release()
                     return
                 }
-                defer { connection.close() }
-                do {
-                    try writeAll(requestData, to: connection.fileDescriptor)
-                    let response = try CanonicalJSON.object(
-                        readBoundedLine(from: connection.fileDescriptor)
-                    )
-                    try Self.validateDirectGuestResponse(
-                        response,
-                        operation: expectedOperation,
-                        requestID: expectedRequestID,
-                        domainID: binding.domainID,
-                        bindingDigests: binding.bindingDigests,
-                        guestChallenge: expectedChallenge,
-                        attestationNonce: attestationNonce
-                    )
-                    result.value = .success(response)
-                } catch {
-                    result.value = .failure(error)
+                guard case let .success(connection) = connectionResult,
+                      connection.fileDescriptor >= 0 else {
+                    attemptLease.release()
+                    state.complete(.failure(HelperError.unavailable("GUEST_AGENT_UNAVAILABLE")))
+                    return
                 }
-                completion.signal()
+                let connectionHandle = VZSocketConnectionHandle(connection)
+                guard state.setActiveConnection(connectionHandle) else {
+                    connection.close()
+                    attemptLease.release()
+                    return
+                }
+                // The completion handler may execute on a Virtualization
+                // queue. Do not read or validate a guest frame there: both
+                // can block until a deadline/cancel closes the descriptor.
+                DispatchQueue.global(qos: .userInitiated).async {
+                    defer {
+                        state.clearActiveConnection(connectionHandle)
+                        connectionHandle.value.close()
+                        attemptLease.release()
+                    }
+                    do {
+                        guard !state.isCancelled else { return }
+                        try writeAll(requestData, to: connectionHandle.value.fileDescriptor)
+                        let response = try CanonicalJSON.object(
+                            readBoundedLine(from: connectionHandle.value.fileDescriptor)
+                        )
+                        try Self.validateDirectGuestResponse(
+                            response,
+                            operation: expectedOperation,
+                            requestID: expectedRequestID,
+                            domainID: binding.domainID,
+                            bindingDigests: binding.bindingDigests,
+                            guestChallenge: expectedChallenge,
+                            attestationNonce: attestationNonce,
+                            publicKeyBytes: binding.guestPublicKey
+                        )
+                        state.complete(.success(response))
+                    } catch {
+                        state.complete(.failure(error))
+                    }
+                }
             }
         }
-        guard completion.wait(timeout: .now() + .seconds(30)) == .success else {
-            throw HelperError.unavailable("GUEST_AGENT_TIMEOUT")
+        let waitMilliseconds = max(1, Int((timeout * 1_000).rounded(.up)))
+        guard state.wait(timeout: .milliseconds(waitMilliseconds)) else {
+            // This cancellation is also effective before a framework connect
+            // callback exists: the asynchronous attempt is logically
+            // abandoned, and a late successful connection is immediately
+            // closed. `directLaunch` then releases the VM, diagnostics
+            // descriptor, and allocation.
+            state.cancel()
+            if let code = machine.terminalFailureCode {
+                throw HelperError.unavailable(code)
+            }
+            throw HelperError.unavailable(timeoutErrorCode)
         }
-        guard let value = result.value else {
+        guard let value = state.result else {
             throw HelperError.unavailable("GUEST_AGENT_UNAVAILABLE")
         }
         return try value.get()
+    }
+
+    static func isTransientGuestReadinessError(_ error: Error) -> Bool {
+        guard case let .unavailable(code) = error as? HelperError else {
+            // Schema, protocol-size, and authentication failures are evidence
+            // of an invalid or hostile peer, not a guest boot race.
+            return false
+        }
+        return [
+            "GUEST_AGENT_UNAVAILABLE",
+            "GUEST_AGENT_WRITE_FAILED",
+            "GUEST_AGENT_READ_FAILED",
+            "GUEST_AGENT_READINESS_TIMEOUT",
+            "GUEST_AGENT_CONNECT_PENDING",
+        ].contains(code)
     }
 
     private func attestationData(_ binding: LaunchBinding, state: String) -> [String: Any] {
@@ -1222,14 +1370,15 @@ public final class VZSupervisor {
         }
     }
 
-    private static func validateDirectGuestResponse(
+    static func validateDirectGuestResponse(
         _ response: [String: Any],
         operation: String,
         requestID: String,
         domainID: String,
         bindingDigests: [String: String],
         guestChallenge: String,
-        attestationNonce: String?
+        attestationNonce: String?,
+        publicKeyBytes: Data
     ) throws {
         var expected: Set<String> = [
             "kind", "protocol", "version", "operation", "request_id", "domain_id",
@@ -1252,6 +1401,13 @@ public final class VZSupervisor {
               let signature = response["agent_signature"] as? String,
               let signatureData = Data(base64Encoded: signature), signatureData.count == 64,
               attestationNonce == nil || response["attestation_nonce"] as? String == attestationNonce else {
+            throw HelperError.unauthenticated
+        }
+        var unsigned = response
+        unsigned.removeValue(forKey: "agent_signature")
+        guard let key = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKeyBytes),
+              let unsignedData = try? CanonicalJSON.data(unsigned),
+              key.isValidSignature(signatureData, for: unsignedData) else {
             throw HelperError.unauthenticated
         }
     }
@@ -1285,10 +1441,85 @@ public final class VZSupervisor {
     }
 }
 
+final class VZMachineLifecycleState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var terminalCode: String?
+
+    func markGuestStopped() {
+        mark("VZ_GUEST_STOPPED")
+    }
+
+    func markGuestStoppedWithError() {
+        mark("VZ_GUEST_STOPPED_WITH_ERROR")
+    }
+
+    var failureCode: String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return terminalCode
+    }
+
+    private func mark(_ code: String) {
+        lock.lock()
+        // Preserve a later error over a generic guest-stop callback, but
+        // never clear any terminal state. The caller consequently fails
+        // closed before it can issue another vsock retry.
+        if terminalCode == nil || code == "VZ_GUEST_STOPPED_WITH_ERROR" {
+            terminalCode = code
+        }
+        lock.unlock()
+    }
+}
+
+private final class VZMachineLifecycleObserver: NSObject, VZVirtualMachineDelegate {
+    private let state: VZMachineLifecycleState
+    private let diagnostics: DirectSerialDiagnostics?
+
+    init(state: VZMachineLifecycleState, diagnostics: DirectSerialDiagnostics?) {
+        self.state = state
+        self.diagnostics = diagnostics
+    }
+
+    func guestDidStop(_ virtualMachine: VZVirtualMachine) {
+        _ = virtualMachine
+        state.markGuestStopped()
+        diagnostics?.record("HOST_VM_GUEST_STOPPED")
+    }
+
+    func virtualMachine(_ virtualMachine: VZVirtualMachine, didStopWithError error: Error) {
+        _ = virtualMachine
+        _ = error
+        state.markGuestStoppedWithError()
+        diagnostics?.record("HOST_VM_STOPPED_WITH_ERROR")
+    }
+}
+
 private final class VZMachineHandle: @unchecked Sendable {
     let value: VZVirtualMachine
+    private let lifecycleState: VZMachineLifecycleState
+    // VZVirtualMachine.delegate is weak; retaining this observer is required
+    // for terminal state to break a readiness wait rather than timing out.
+    private let lifecycleObserver: VZMachineLifecycleObserver
 
-    init(_ value: VZVirtualMachine) {
+    init(_ value: VZVirtualMachine, diagnostics: DirectSerialDiagnostics? = nil) {
+        self.value = value
+        lifecycleState = VZMachineLifecycleState()
+        lifecycleObserver = VZMachineLifecycleObserver(
+            state: lifecycleState,
+            diagnostics: diagnostics
+        )
+        value.delegate = lifecycleObserver
+    }
+
+    var terminalFailureCode: String? {
+        lifecycleState.failureCode
+    }
+}
+
+final class VZSocketConnectionHandle: @unchecked Sendable {
+    let value: VZVirtioSocketConnection
+
+    init(_ value: VZVirtioSocketConnection) {
         self.value = value
     }
 }
@@ -1301,6 +1532,328 @@ private struct GuestCallExpectation: Sendable {
     let guestChallenge: String
     let attestationNonce: String?
     let publicKeyBytes: Data
+}
+
+/// Test-build-only, bounded capture of the direct guest serial console.
+///
+/// Production continues to discard serial output.  Debug helper builds retain
+/// at most 128 KiB in the already private allocation root so an integration
+/// smoke can distinguish EFI/cloud-init/service failures without adding a
+/// guest-to-host sharing channel or persisting secret-bearing output in a
+/// release bundle.
+final class DirectSerialDiagnostics: @unchecked Sendable {
+    let writeFD: Int32
+    private let lock = NSLock()
+    private var writeClosed = false
+
+#if DEBUG
+    private let readerFD: Int32
+    private let captureFD: Int32
+    private let readerDone = DispatchSemaphore(value: 0)
+#endif
+
+#if DEBUG
+    private init(
+        writeFD: Int32,
+        readerFD: Int32,
+        captureFD: Int32
+    ) {
+        self.writeFD = writeFD
+        self.readerFD = readerFD
+        self.captureFD = captureFD
+    }
+#else
+    private init(writeFD: Int32) {
+        self.writeFD = writeFD
+    }
+#endif
+
+    static func create(runRoot: String) throws -> DirectSerialDiagnostics {
+#if DEBUG
+        let root = try SecureLaunchAssetValidator.secureRunRoot(runRoot)
+        let capturePath = root + "/serial-console.log"
+        let captureFD = open(
+            capturePath,
+            O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
+            S_IRUSR | S_IWUSR
+        )
+        guard captureFD >= 0 else {
+            throw HelperError.invalidState("SERIAL_DIAGNOSTICS_CREATE_FAILED")
+        }
+        var descriptors: [Int32] = [0, 0]
+        guard pipe(&descriptors) == 0 else {
+            _ = Darwin.close(captureFD)
+            _ = unlink(capturePath)
+            throw HelperError.invalidState("SERIAL_DIAGNOSTICS_CREATE_FAILED")
+        }
+        let diagnostics = DirectSerialDiagnostics(
+            writeFD: descriptors[1],
+            readerFD: descriptors[0],
+            captureFD: captureFD
+        )
+        DispatchQueue.global(qos: .utility).async {
+            diagnostics.captureBoundedSerialOutput()
+        }
+        return diagnostics
+#else
+        let descriptor = open("/dev/null", O_WRONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            throw HelperError.invalidState("SERIAL_DIAGNOSTICS_CREATE_FAILED")
+        }
+        return DirectSerialDiagnostics(writeFD: descriptor)
+#endif
+    }
+
+    func close() {
+        lock.lock()
+        let shouldClose = !writeClosed
+        writeClosed = true
+        lock.unlock()
+        guard shouldClose else { return }
+        _ = Darwin.close(writeFD)
+#if DEBUG
+        _ = readerDone.wait(timeout: .now() + .seconds(2))
+#endif
+    }
+
+    /// Write a fixed, non-secret Host milestone into the debug-only capture.
+    ///
+    /// The same pipe is attached to the guest console, so a single short
+    /// write preserves bounded framing with ordinary serial output.  Release
+    /// helpers intentionally do not retain any diagnostic output.
+    func record(_ marker: StaticString) {
+#if DEBUG
+        let data = Data("TOBKIRI_HOST:\(marker)\n".utf8)
+        _ = data.withUnsafeBytes { bytes in
+            Darwin.write(writeFD, bytes.baseAddress, bytes.count)
+        }
+#else
+        _ = marker
+#endif
+    }
+
+#if DEBUG
+    private func captureBoundedSerialOutput() {
+        defer {
+            _ = Darwin.close(readerFD)
+            _ = fsync(captureFD)
+            _ = Darwin.close(captureFD)
+            readerDone.signal()
+        }
+        var remaining = directSerialDiagnosticsMaximumBytes
+        var bytes = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let received = bytes.withUnsafeMutableBufferPointer { buffer in
+                Darwin.read(readerFD, buffer.baseAddress, buffer.count)
+            }
+            if received > 0 {
+                let count = min(Int(received), remaining)
+                if count > 0 {
+                    var offset = 0
+                    while offset < count {
+                        let written = bytes.withUnsafeBytes { buffer in
+                            Darwin.write(
+                                captureFD,
+                                buffer.baseAddress!.advanced(by: offset),
+                                count - offset
+                            )
+                        }
+                        guard written > 0 else { return }
+                        offset += Int(written)
+                    }
+                    remaining -= count
+                }
+                continue
+            }
+            if received == -1, errno == EINTR { continue }
+            return
+        }
+    }
+#endif
+}
+
+/// Bounded retry policy for the guest service's first vsock connection.
+///
+/// This deliberately retries only errors selected by the caller. In
+/// particular, response authentication and protocol validation failures must
+/// be returned to the Host immediately rather than being hidden by a retry.
+struct GuestReadinessRetry {
+    struct Policy {
+        let deadline: TimeInterval
+        let initialDelay: TimeInterval
+        let maximumDelay: TimeInterval
+
+        init(
+            deadline: TimeInterval,
+            initialDelay: TimeInterval,
+            maximumDelay: TimeInterval
+        ) {
+            self.deadline = deadline
+            self.initialDelay = initialDelay
+            self.maximumDelay = maximumDelay
+        }
+    }
+
+    static func run<Value>(
+        policy: Policy,
+        now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) },
+        attempt: (TimeInterval) throws -> Value,
+        isTransient: (Error) -> Bool
+    ) throws -> Value {
+        precondition(policy.deadline > 0)
+        precondition(policy.initialDelay > 0)
+        precondition(policy.maximumDelay >= policy.initialDelay)
+
+        let deadline = now() + policy.deadline
+        var nextDelay = policy.initialDelay
+
+        while true {
+            let remaining = deadline - now()
+            guard remaining > 0 else {
+                throw HelperError.unavailable("GUEST_AGENT_TIMEOUT")
+            }
+
+            do {
+                return try attempt(remaining)
+            } catch {
+                guard isTransient(error) else { throw error }
+
+                let remainingAfterAttempt = deadline - now()
+                guard remainingAfterAttempt > 0 else {
+                    throw HelperError.unavailable("GUEST_AGENT_TIMEOUT")
+                }
+                sleep(min(nextDelay, remainingAfterAttempt))
+                nextDelay = min(nextDelay * 2, policy.maximumDelay)
+            }
+        }
+    }
+}
+
+/// Tracks framework connects that have been issued but have not yet invoked
+/// their completion handler. A VZ connect has no cancellation API before it
+/// returns a `VZVirtioSocketConnection`; retaining a small second slot lets a
+/// cold boot recover from one abandoned framework call without creating an
+/// unbounded number of blocked transport workers.
+final class GuestConnectAttemptLimiter: @unchecked Sendable {
+    final class Lease: @unchecked Sendable {
+        private let owner: GuestConnectAttemptLimiter
+        private let lock = NSLock()
+        private var released = false
+
+        fileprivate init(owner: GuestConnectAttemptLimiter) {
+            self.owner = owner
+        }
+
+        func release() {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !released else { return }
+            released = true
+            owner.releaseOne()
+        }
+    }
+
+    private let maximumInFlight: Int
+    private let lock = NSLock()
+    private var active = 0
+
+    init(maximumInFlight: Int) {
+        precondition(maximumInFlight > 0)
+        self.maximumInFlight = maximumInFlight
+    }
+
+    func acquire() -> Lease? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard active < maximumInFlight else { return nil }
+        active += 1
+        return Lease(owner: self)
+    }
+
+    var inFlight: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return active
+    }
+
+    private func releaseOne() {
+        lock.lock()
+        defer { lock.unlock() }
+        precondition(active > 0)
+        active -= 1
+    }
+}
+
+/// One direct guest request's completion and cancellation state.
+///
+/// The state is deliberately independent of the VZ machine queue. A timeout
+/// can therefore abandon a pending framework connect before a connection
+/// object exists, while a late successful connection is closed without guest
+/// I/O. Once a connection exists, cancellation closes its descriptor to wake
+/// the isolated read worker.
+final class DirectGuestCallState<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private let completion = DispatchSemaphore(value: 0)
+    private var storedResult: Result<Value, Error>?
+    private var cancelled = false
+    private var activeConnection: VZSocketConnectionHandle?
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    var result: Result<Value, Error>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedResult
+    }
+
+    func setActiveConnection(_ connection: VZSocketConnectionHandle) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !cancelled, storedResult == nil else { return false }
+        activeConnection = connection
+        return true
+    }
+
+    func clearActiveConnection(_ connection: VZSocketConnectionHandle) {
+        lock.lock()
+        defer { lock.unlock() }
+        if activeConnection === connection {
+            activeConnection = nil
+        }
+    }
+
+    func complete(_ value: Result<Value, Error>) {
+        lock.lock()
+        guard !cancelled, storedResult == nil else {
+            lock.unlock()
+            return
+        }
+        storedResult = value
+        lock.unlock()
+        completion.signal()
+    }
+
+    func wait(timeout: DispatchTimeInterval) -> Bool {
+        completion.wait(timeout: .now() + timeout) == .success
+    }
+
+    func cancel() {
+        lock.lock()
+        guard !cancelled else {
+            lock.unlock()
+            return
+        }
+        cancelled = true
+        let connection = activeConnection
+        activeConnection = nil
+        lock.unlock()
+        connection?.value.close()
+    }
 }
 
 private final class LockedResult<Value>: @unchecked Sendable {

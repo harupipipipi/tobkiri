@@ -45,6 +45,8 @@ from .v4_models import (
     ExecutionDomain,
     GrantRecord,
     HostExtensionTrustRecord,
+    InteractiveApprovalDecision,
+    InteractiveApprovalRequest,
     InvocationLease,
     LeaseState,
     ProviderAuthorityRecord,
@@ -68,6 +70,8 @@ Record: TypeAlias = (
     | GrantRecord
     | ExecutionDomain
     | HostExtensionTrustRecord
+    | InteractiveApprovalRequest
+    | InteractiveApprovalDecision
 )
 
 _P = ParamSpec("_P")
@@ -243,7 +247,8 @@ class AuthorityStore:
             raise AuthorityStoreError("authority process identity is unavailable")
         self._owner_process_start = evidence.identity
         self._refresh_process_identity = (
-            process_start_reader is not None or self._owner_process_start.startswith("windows:")
+            process_start_reader is not None
+            or self._owner_process_start.startswith("windows:")
         )
         self._clock = clock
         self._audit_fault = audit_fault
@@ -294,7 +299,9 @@ class AuthorityStore:
             return
         evidence = self._process_start_reader(self._owner_pid)
         if evidence.state != "live" or evidence.identity != self._owner_process_start:
-            raise AuthorityStoreError("authority process identity is unavailable or changed")
+            raise AuthorityStoreError(
+                "authority process identity is unavailable or changed"
+            )
 
     def _prepare_paths(self) -> None:
         """Create parents, then validate DB, key, and SQLite sidecars safely."""
@@ -352,7 +359,9 @@ class AuthorityStore:
     def _secure_chmod(self, path: Path, expected: FileIdentity | None) -> None:
         try:
             with self._secure_parent(path) as parent:
-                identity = parent.validate_open(path.name, required=True, expected=expected)
+                identity = parent.validate_open(
+                    path.name, required=True, expected=expected
+                )
                 descriptor = parent.open_file(path.name, os.O_RDONLY)
                 try:
                     if identity != FileIdentity.from_stat(os.fstat(descriptor)):
@@ -381,7 +390,10 @@ class AuthorityStore:
                 self._validate_private_storage_mode(parent, self._guard_path.name)
                 descriptor = parent.open_file(self._guard_path.name, os.O_RDWR)
                 try:
-                    if FileIdentity.from_stat(os.fstat(descriptor)) != self._guard_identity:
+                    if (
+                        FileIdentity.from_stat(os.fstat(descriptor))
+                        != self._guard_identity
+                    ):
                         raise SecurePathError("lifecycle guard identity changed")
                     if os.fstat(descriptor).st_size == 0:
                         os.write(descriptor, b"\0")
@@ -394,7 +406,9 @@ class AuthorityStore:
                     expected=self._guard_identity,
                 )
         except (OSError, SecurePathError) as exc:
-            raise AuthorityStoreError("authority lifecycle guard path is unsafe") from exc
+            raise AuthorityStoreError(
+                "authority lifecycle guard path is unsafe"
+            ) from exc
 
     def _load_or_create_key(self) -> bytes:
         try:
@@ -411,12 +425,16 @@ class AuthorityStore:
                 assert metadata is not None
                 mode = stat.S_IMODE(metadata.st_mode)
                 if mode & 0o077:
-                    raise AuthorityStoreError("authority encryption key permissions are too broad")
+                    raise AuthorityStoreError(
+                        "authority encryption key permissions are too broad"
+                    )
             self._key_identity = identity
             return key
         except (FileNotFoundError, SecurePathError):
             if self._key_identity is not None:
-                raise AuthorityStoreError("authority encryption key path is unsafe") from None
+                raise AuthorityStoreError(
+                    "authority encryption key path is unsafe"
+                ) from None
             pass
         except (OSError, ValueError) as exc:
             raise AuthorityStoreError("authority encryption key is invalid") from exc
@@ -459,7 +477,9 @@ class AuthorityStore:
                     parent.unlink_file(temporary_name, missing_ok=True)
                 payload, identity = parent.read_bytes(self.key_path.name)
             if payload.strip() != key:
-                raise AuthorityStoreError("authority encryption key changed during creation")
+                raise AuthorityStoreError(
+                    "authority encryption key changed during creation"
+                )
             self._key_identity = identity
         except (OSError, SecurePathError, ValueError) as exc:
             raise AuthorityStoreError("authority encryption key is invalid") from exc
@@ -486,12 +506,16 @@ class AuthorityStore:
         if not descriptor_root.is_dir():
             descriptor_root = Path("/dev/fd")
         if not descriptor_root.is_dir():
-            raise AuthorityStoreError("authority database handle identity is unavailable")
+            raise AuthorityStoreError(
+                "authority database handle identity is unavailable"
+            )
         identities: dict[int, FileIdentity] = {}
         try:
             names = os.listdir(descriptor_root)
         except OSError as exc:
-            raise AuthorityStoreError("authority database handle identity is unavailable") from exc
+            raise AuthorityStoreError(
+                "authority database handle identity is unavailable"
+            ) from exc
         for name in names:
             try:
                 descriptor = int(name)
@@ -506,7 +530,9 @@ class AuthorityStore:
         rows = sqlite3.Connection.execute(connection, "PRAGMA database_list").fetchall()
         main_paths = [str(row[2]) for row in rows if str(row[1]) == "main"]
         if len(main_paths) != 1 or not main_paths[0]:
-            raise AuthorityStoreError("authority database handle identity is unavailable")
+            raise AuthorityStoreError(
+                "authority database handle identity is unavailable"
+            )
         return canonical_platform_path(Path(main_paths[0]))
 
     @staticmethod
@@ -529,7 +555,9 @@ class AuthorityStore:
         if self._reported_database_path(connection) != self.path:
             raise AuthorityStoreError("authority database handle identity is unsafe")
         pinned: dict[str, _OpenedDatabaseIdentity] = {}
-        descriptor_identities = {} if os.name == "nt" else self._open_descriptor_identities()
+        descriptor_identities = (
+            {} if os.name == "nt" else self._open_descriptor_identities()
+        )
         try:
             with self._secure_parent(self.path) as parent:
                 for suffix in suffixes:
@@ -566,7 +594,9 @@ class AuthorityStore:
                         descriptors = tuple(matches)
                     pinned[suffix] = _OpenedDatabaseIdentity(identity, descriptors)
         except (OSError, SecurePathError) as exc:
-            raise AuthorityStoreError("authority database handle identity is unsafe") from exc
+            raise AuthorityStoreError(
+                "authority database handle identity is unsafe"
+            ) from exc
         return pinned
 
     def _validate_opened_database_files(
@@ -587,7 +617,9 @@ class AuthorityStore:
                     ):
                         raise SecurePathError("SQLite descriptor identity changed")
         except (OSError, SecurePathError) as exc:
-            raise AuthorityStoreError("authority database handle identity is unsafe") from exc
+            raise AuthorityStoreError(
+                "authority database handle identity is unsafe"
+            ) from exc
 
     @staticmethod
     def _descriptor_matches(descriptor: int, expected: FileIdentity) -> bool:
@@ -650,7 +682,9 @@ class AuthorityStore:
                 os.close(descriptor)
             if thread_lock is not None:
                 thread_lock.release()
-            raise AuthorityStoreError("authority database handle identity is unsafe") from exc
+            raise AuthorityStoreError(
+                "authority database handle identity is unsafe"
+            ) from exc
 
     def _assert_crypto_material(self) -> None:
         self._assert_current_process()
@@ -662,7 +696,9 @@ class AuthorityStore:
                     expected=self._key_identity,
                 )
         except (OSError, SecurePathError) as exc:
-            raise AuthorityStoreError("authority encryption key path is unsafe") from exc
+            raise AuthorityStoreError(
+                "authority encryption key path is unsafe"
+            ) from exc
         if self._fernet is None or not self._fernet_key or not self._mac_key:
             raise AuthorityStoreError("authority cryptographic material is unavailable")
 
@@ -689,7 +725,9 @@ class AuthorityStore:
             )
             connection.row_factory = sqlite3.Row
             if self._reported_database_path(connection) != self.path:
-                raise AuthorityStoreError("authority database handle identity is unsafe")
+                raise AuthorityStoreError(
+                    "authority database handle identity is unsafe"
+                )
             main_pinned = self._pin_opened_database_files(
                 connection,
                 descriptors_before_connection,
@@ -814,9 +852,15 @@ class AuthorityStore:
                     "revocations",
                     "authority_audit",
                 }
+                optional_tables = {
+                    "activation_reservations",
+                    "host_pending_effects",
+                }
                 supported_table_sets = {
                     frozenset(authority_tables),
                     frozenset({*authority_tables, "activation_reservations"}),
+                    frozenset({*authority_tables, "host_pending_effects"}),
+                    frozenset({*authority_tables, *optional_tables}),
                 }
                 if frozenset(existing_tables) not in supported_table_sets:
                     raise AuthorityStoreError(
@@ -826,12 +870,15 @@ class AuthorityStore:
                     "SELECT value FROM authority_meta WHERE key='schema_version'"
                 ).fetchone()
                 if version_row is None:
-                    raise AuthorityStoreError("authority database schema version is missing")
+                    raise AuthorityStoreError(
+                        "authority database schema version is missing"
+                    )
                 existing_version = str(version_row["value"])
                 if existing_version not in {"1", "2", "3"}:
-                    raise AuthorityStoreError("authority database schema version is unsupported")
-            connection.executescript(
-                """
+                    raise AuthorityStoreError(
+                        "authority database schema version is unsupported"
+                    )
+            connection.executescript("""
                 CREATE TABLE IF NOT EXISTS authority_meta (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
@@ -922,8 +969,18 @@ class AuthorityStore:
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
                 ) STRICT;
-                """
-            )
+                CREATE TABLE IF NOT EXISTS host_pending_effects (
+                    effect_id TEXT PRIMARY KEY,
+                    revision INTEGER NOT NULL CHECK (revision > 0),
+                    state TEXT NOT NULL,
+                    payload_digest TEXT NOT NULL,
+                    encrypted_payload BLOB NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                ) STRICT;
+                CREATE INDEX IF NOT EXISTS host_pending_effects_state
+                    ON host_pending_effects(state, updated_at);
+                """)
             connection.execute(
                 "INSERT OR IGNORE INTO authority_meta(key, value) VALUES"
                 " ('schema_version', '1'), ('security_epoch', '1')"
@@ -945,7 +1002,9 @@ class AuthorityStore:
             )
             lease_columns = {
                 str(row["name"])
-                for row in connection.execute("PRAGMA table_info(invocation_leases)").fetchall()
+                for row in connection.execute(
+                    "PRAGMA table_info(invocation_leases)"
+                ).fetchall()
             }
             expected_v2_columns = {
                 "lease_id",
@@ -980,17 +1039,39 @@ class AuthorityStore:
                 raise AuthorityStoreError(
                     "authority database lease schema is partial or inconsistent"
                 )
+            pending_effect_columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(host_pending_effects)"
+                ).fetchall()
+            }
+            if pending_effect_columns != {
+                "effect_id",
+                "revision",
+                "state",
+                "payload_digest",
+                "encrypted_payload",
+                "created_at",
+                "updated_at",
+            }:
+                raise AuthorityStoreError(
+                    "authority database pending-effect schema is partial or inconsistent"
+                )
             self._verify_audit_connection(connection)
             if existing_version == "1":
                 self._migrate_request_bound_leases(connection)
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS leases_request ON invocation_leases(request_id)"
             )
-            connection.execute("UPDATE authority_meta SET value='3' WHERE key='schema_version'")
+            connection.execute(
+                "UPDATE authority_meta SET value='3' WHERE key='schema_version'"
+            )
             if existing_version == "1":
                 connection.commit()
 
-    def _migrate_request_bound_leases(self, connection: _IdentityBoundConnection) -> None:
+    def _migrate_request_bound_leases(
+        self, connection: _IdentityBoundConnection
+    ) -> None:
         """Fail closed when upgrading pre-adapter lease rows.
 
         Old leases lack request, activation-snapshot, and plan bindings. They
@@ -1002,7 +1083,9 @@ class AuthorityStore:
         connection.execute(
             "ALTER TABLE invocation_leases ADD COLUMN request_id TEXT NOT NULL DEFAULT ''"
         )
-        connection.execute("UPDATE invocation_leases SET request_id='legacy-' || lease_id")
+        connection.execute(
+            "UPDATE invocation_leases SET request_id='legacy-' || lease_id"
+        )
         rows = connection.execute(
             "SELECT lease_id, lease_digest, encrypted_payload, grant_id,"
             " audit_reservation_id, state"
@@ -1012,12 +1095,16 @@ class AuthorityStore:
         for row in rows:
             legacy_payload = self._decrypt(row["encrypted_payload"])
             if legacy_payload.get("lease_id") != row["lease_id"]:
-                raise AuthorityStoreError("historical InvocationLease identity is inconsistent")
+                raise AuthorityStoreError(
+                    "historical InvocationLease identity is inconsistent"
+                )
             if not hmac.compare_digest(
                 authority_digest(legacy_payload),
                 str(row["lease_digest"]),
             ):
-                raise AuthorityStoreError("historical InvocationLease digest is inconsistent")
+                raise AuthorityStoreError(
+                    "historical InvocationLease digest is inconsistent"
+                )
             legacy_payload["request_id"] = f"legacy-{row['lease_id']}"
             legacy_payload["activation_digest"] = authority_digest(
                 {
@@ -1042,9 +1129,11 @@ class AuthorityStore:
             state = LeaseState.AMBIGUOUS if dispatched else LeaseState.REVOKED
             outcome_digest = authority_digest(
                 {
-                    "status": "ambiguous_after_authority_schema_upgrade"
-                    if dispatched
-                    else "revoked_after_authority_schema_upgrade",
+                    "status": (
+                        "ambiguous_after_authority_schema_upgrade"
+                        if dispatched
+                        else "revoked_after_authority_schema_upgrade"
+                    ),
                     "lease_id": row["lease_id"],
                 }
             )
@@ -1105,6 +1194,10 @@ class AuthorityStore:
             return "approval"
         if isinstance(record, GrantRecord):
             return "grant"
+        if isinstance(record, InteractiveApprovalRequest):
+            return "interactive_approval_request"
+        if isinstance(record, InteractiveApprovalDecision):
+            return "interactive_approval_decision"
         if isinstance(record, ExecutionDomain):
             return "execution_domain"
         if isinstance(record, HostExtensionTrustRecord):
@@ -1119,14 +1212,50 @@ class AuthorityStore:
             return record.approval_id
         if isinstance(record, GrantRecord):
             return record.grant_id
+        if isinstance(record, InteractiveApprovalRequest):
+            return record.request_id
+        if isinstance(record, InteractiveApprovalDecision):
+            return record.decision_id
         if isinstance(record, ExecutionDomain):
             return record.domain_id
         return record.trust_id
+
+    def _insert_record(
+        self,
+        connection: _IdentityBoundConnection,
+        record: Record,
+    ) -> None:
+        """Insert one immutable record into an already-open transaction."""
+
+        payload = record.to_dict()
+        connection.execute(
+            "INSERT INTO authority_records"
+            " (record_type, record_id, record_digest, encrypted_payload, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                self._record_type(record),
+                self._record_id(record),
+                authority_digest(payload),
+                self._encrypt(payload),
+                self._clock(),
+            ),
+        )
+        if isinstance(record, GrantRecord):
+            connection.execute(
+                "INSERT INTO grant_usage(grant_id) VALUES (?)",
+                (record.grant_id,),
+            )
 
     @_process_owned
     def put_record(self, record: Record, *, replace: bool = False) -> None:
         """Persist an encrypted record, rejecting accidental mutation by default."""
 
+        if isinstance(
+            record, (InteractiveApprovalRequest, InteractiveApprovalDecision)
+        ):
+            raise AuthorityValidationError(
+                "interactive approvals require their dedicated state machine"
+            )
         record_type = self._record_type(record)
         record_id = self._record_id(record)
         payload = record.to_dict()
@@ -1139,7 +1268,13 @@ class AuthorityStore:
                     f"{operation} INTO authority_records"
                     " (record_type, record_id, record_digest, encrypted_payload, created_at)"
                     " VALUES (?, ?, ?, ?, ?)",
-                    (record_type, record_id, digest, self._encrypt(payload), self._clock()),
+                    (
+                        record_type,
+                        record_id,
+                        digest,
+                        self._encrypt(payload),
+                        self._clock(),
+                    ),
                 )
                 if isinstance(record, GrantRecord):
                     connection.execute(
@@ -1159,30 +1294,18 @@ class AuthorityStore:
         pending = list(records)
         if not pending:
             raise ValueError("authority transaction cannot be empty")
+        if any(
+            isinstance(item, (InteractiveApprovalRequest, InteractiveApprovalDecision))
+            for item in pending
+        ):
+            raise AuthorityValidationError(
+                "interactive approvals require their dedicated state machine"
+            )
         try:
             with self._lock, self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 for record in pending:
-                    record_type = self._record_type(record)
-                    record_id = self._record_id(record)
-                    payload = record.to_dict()
-                    connection.execute(
-                        "INSERT INTO authority_records"
-                        " (record_type, record_id, record_digest, encrypted_payload,"
-                        " created_at) VALUES (?, ?, ?, ?, ?)",
-                        (
-                            record_type,
-                            record_id,
-                            authority_digest(payload),
-                            self._encrypt(payload),
-                            self._clock(),
-                        ),
-                    )
-                    if isinstance(record, GrantRecord):
-                        connection.execute(
-                            "INSERT INTO grant_usage(grant_id) VALUES (?)",
-                            (record.grant_id,),
-                        )
+                    self._insert_record(connection, record)
                 self._append_audit(
                     connection,
                     event_id="authority-txn-" + secrets.token_hex(16),
@@ -1208,6 +1331,360 @@ class AuthorityStore:
             raise AuthorityStoreError("authority transaction failed") from exc
 
     @_process_owned
+    def commit_provider_authority_bundle(
+        self,
+        *,
+        provider_authorities: tuple[ProviderAuthorityRecord, ...],
+        host_extension_trust: HostExtensionTrustRecord | None = None,
+    ) -> None:
+        """Atomically persist reachability records without a caller Grant.
+
+        Validation that these records match an active domain, security epoch,
+        and Host Extension trust remains in ``AuthorityKernel``.  This narrow
+        store transaction prevents an ``interactive_only`` Profile edge from
+        falling back to the approval-and-persistent-Grant bundle.
+        """
+
+        if not provider_authorities:
+            raise AuthorityValidationError("provider authority bundle cannot be empty")
+        self.put_records_atomically(
+            ((host_extension_trust,) if host_extension_trust is not None else ())
+            + provider_authorities
+        )
+
+    @_process_owned
+    def create_host_pending_effect(
+        self,
+        effect_id: str,
+        payload: Mapping[str, Any],
+    ) -> int:
+        """Create one encrypted Host-only pending-effect snapshot.
+
+        Pending effects are deliberately not generic authority records: unlike
+        immutable approvals and Grants, their durable lifecycle advances by
+        compare-and-swap revision.  The only plaintext columns are an opaque
+        Host-generated identifier, state, revision, and timestamps; owner,
+        presentation, request, and provider payload data remain encrypted.
+        """
+
+        normalized = self._validated_pending_effect_payload(effect_id, payload)
+        now = self._clock()
+        try:
+            with self._lock, self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    "INSERT INTO host_pending_effects"
+                    " (effect_id, revision, state, payload_digest, encrypted_payload,"
+                    " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        effect_id,
+                        1,
+                        str(normalized["state"]),
+                        authority_digest(normalized),
+                        self._encrypt(normalized),
+                        now,
+                        now,
+                    ),
+                )
+                self._append_audit(
+                    connection,
+                    event_id="pending-effect-create-" + secrets.token_hex(16),
+                    event_type="pending_effect",
+                    event_state=str(normalized["state"]),
+                    payload={
+                        "effect_id": effect_id,
+                        "revision": 1,
+                        "payload_digest": authority_digest(normalized),
+                    },
+                )
+                connection.commit()
+        except AuditUnavailable:
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise AuthorityDenied("pending effect is unavailable") from exc
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError("pending effect could not be persisted") from exc
+        return 1
+
+    @_process_owned
+    def get_host_pending_effect(
+        self,
+        effect_id: str,
+    ) -> tuple[int, dict[str, Any]] | None:
+        """Return one authenticated Host-only pending-effect snapshot."""
+
+        if not isinstance(effect_id, str) or not effect_id:
+            raise AuthorityDenied("pending effect is unavailable")
+        try:
+            with self._lock, self._connection() as connection:
+                row = connection.execute(
+                    "SELECT revision, payload_digest, encrypted_payload"
+                    " FROM host_pending_effects WHERE effect_id=?",
+                    (effect_id,),
+                ).fetchone()
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError("pending effect could not be read") from exc
+        if row is None:
+            return None
+        payload = self._decrypt(row["encrypted_payload"])
+        self._validated_pending_effect_payload(effect_id, payload)
+        if not hmac.compare_digest(
+            str(row["payload_digest"]), authority_digest(payload)
+        ):
+            raise AuthorityStoreError("pending effect authentication failed")
+        return int(row["revision"]), payload
+
+    @_process_owned
+    def compare_and_swap_host_pending_effect(
+        self,
+        effect_id: str,
+        *,
+        expected_revision: int,
+        payload: Mapping[str, Any],
+    ) -> int:
+        """Atomically advance one encrypted Host-only snapshot revision."""
+
+        if isinstance(expected_revision, bool) or expected_revision <= 0:
+            raise AuthorityDenied("pending effect is unavailable")
+        normalized = self._validated_pending_effect_payload(effect_id, payload)
+        digest = authority_digest(normalized)
+        now = self._clock()
+        try:
+            with self._lock, self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    "SELECT revision FROM host_pending_effects WHERE effect_id=?",
+                    (effect_id,),
+                ).fetchone()
+                if row is None or int(row["revision"]) != expected_revision:
+                    raise AuthorityDenied("pending effect is unavailable")
+                next_revision = expected_revision + 1
+                updated = connection.execute(
+                    "UPDATE host_pending_effects SET revision=?, state=?,"
+                    " payload_digest=?, encrypted_payload=?, updated_at=?"
+                    " WHERE effect_id=? AND revision=?",
+                    (
+                        next_revision,
+                        str(normalized["state"]),
+                        digest,
+                        self._encrypt(normalized),
+                        now,
+                        effect_id,
+                        expected_revision,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise AuthorityDenied("pending effect is unavailable")
+                self._append_audit(
+                    connection,
+                    event_id="pending-effect-update-" + secrets.token_hex(16),
+                    event_type="pending_effect",
+                    event_state=str(normalized["state"]),
+                    payload={
+                        "effect_id": effect_id,
+                        "revision": next_revision,
+                        "payload_digest": digest,
+                    },
+                )
+                connection.commit()
+        except (AuthorityDenied, AuditUnavailable):
+            raise
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError("pending effect could not be updated") from exc
+        return next_revision
+
+    @_process_owned
+    def list_host_pending_effects(self) -> list[tuple[int, dict[str, Any]]]:
+        """Return authenticated Host-only snapshots for crash recovery.
+
+        There is intentionally no plaintext owner index. Recovery decrypts the
+        small Host-owned table rather than exposing user/owner metadata to a
+        SQLite index or a Pack query surface.
+        """
+
+        try:
+            with self._lock, self._connection() as connection:
+                rows = connection.execute(
+                    "SELECT effect_id, revision, payload_digest, encrypted_payload"
+                    " FROM host_pending_effects ORDER BY created_at, effect_id"
+                ).fetchall()
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError("pending effects could not be read") from exc
+        result: list[tuple[int, dict[str, Any]]] = []
+        for row in rows:
+            payload = self._decrypt(row["encrypted_payload"])
+            effect_id = str(row["effect_id"])
+            self._validated_pending_effect_payload(effect_id, payload)
+            if not hmac.compare_digest(
+                str(row["payload_digest"]), authority_digest(payload)
+            ):
+                raise AuthorityStoreError("pending effect authentication failed")
+            result.append((int(row["revision"]), payload))
+        return result
+
+    @staticmethod
+    def _validated_pending_effect_payload(
+        effect_id: str,
+        payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Accept only canonical Host-owned pending-effect document roots."""
+
+        if (
+            not isinstance(effect_id, str)
+            or not effect_id
+            or len(effect_id) > 512
+            or not isinstance(payload, Mapping)
+        ):
+            raise AuthorityDenied("pending effect is unavailable")
+        value = dict(payload)
+        if value.get("effect_id") != effect_id or not isinstance(
+            value.get("state"), str
+        ):
+            raise AuthorityDenied("pending effect is unavailable")
+        try:
+            canonical_json(value)
+        except Exception as exc:
+            raise AuthorityDenied("pending effect is unavailable") from exc
+        return value
+
+    @_process_owned
+    def create_interactive_approval_request(
+        self,
+        request: InteractiveApprovalRequest,
+    ) -> None:
+        """Persist one pending, immutable Host-owned approval snapshot."""
+
+        try:
+            with self._lock, self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                epoch = connection.execute(
+                    "SELECT value FROM authority_meta WHERE key='security_epoch'"
+                ).fetchone()
+                if epoch is None or int(epoch["value"]) != request.security_epoch:
+                    raise AuthorityDenied(
+                        "interactive approval has a stale SecurityEpoch",
+                        code="stale_epoch",
+                    )
+                if request.expires_at <= self._clock():
+                    raise AuthorityDenied("interactive approval request is expired")
+                self._insert_record(connection, request)
+                self._append_audit(
+                    connection,
+                    event_id="interactive-approval-request-" + secrets.token_hex(16),
+                    event_type="interactive_approval",
+                    event_state="pending",
+                    payload={
+                        "request_id": request.request_id,
+                        "request_snapshot_digest": request.digest,
+                        "caller_principal_id": request.caller.principal_id,
+                        "target_principal_id": request.target.principal_id,
+                        "profile_id": request.profile_id,
+                        "activation_id": request.activation_id,
+                        "plan_digest": request.plan_digest,
+                        "security_epoch": request.security_epoch,
+                        "expires_at": request.expires_at,
+                    },
+                )
+                connection.commit()
+        except (AuthorityDenied, AuditUnavailable):
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise AuthorityDenied(
+                "interactive approval request already exists"
+            ) from exc
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError("interactive approval request failed") from exc
+
+    @_process_owned
+    def settle_interactive_approval(
+        self,
+        decision: InteractiveApprovalDecision,
+        *,
+        approval: ApprovalRecord | None = None,
+        grant: GrantRecord | None = None,
+    ) -> None:
+        """Atomically settle one pending request and mint only approved authority."""
+
+        approved = decision.decision == "approved"
+        if approved != (approval is not None and grant is not None):
+            raise AuthorityValidationError(
+                "interactive approval settlement has an invalid authority bundle"
+            )
+        if not approved and (approval is not None or grant is not None):
+            raise AuthorityValidationError(
+                "denied interactive approval cannot mint authority"
+            )
+        try:
+            with self._lock, self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                request_row = connection.execute(
+                    "SELECT record_digest, encrypted_payload FROM authority_records"
+                    " WHERE record_type='interactive_approval_request' AND record_id=?",
+                    (decision.request_id,),
+                ).fetchone()
+                if request_row is None:
+                    raise AuthorityDenied("interactive approval request is unavailable")
+                request_payload = self._decrypt(request_row["encrypted_payload"])
+                if not hmac.compare_digest(
+                    str(request_row["record_digest"]), authority_digest(request_payload)
+                ):
+                    raise AuthorityStoreError(
+                        "interactive approval request digest mismatch"
+                    )
+                request = InteractiveApprovalRequest.from_dict(request_payload)
+                if decision.request_snapshot_digest != request.digest:
+                    raise AuthorityDenied("interactive approval request changed")
+                if request.expires_at <= self._clock():
+                    raise AuthorityDenied("interactive approval request is expired")
+                epoch = connection.execute(
+                    "SELECT value FROM authority_meta WHERE key='security_epoch'"
+                ).fetchone()
+                if (
+                    epoch is None
+                    or int(epoch["value"]) != request.security_epoch
+                    or decision.security_epoch != request.security_epoch
+                ):
+                    raise AuthorityDenied(
+                        "interactive approval has a stale SecurityEpoch",
+                        code="stale_epoch",
+                    )
+                existing = connection.execute(
+                    "SELECT 1 FROM authority_records"
+                    " WHERE record_type='interactive_approval_decision' AND record_id=?",
+                    (decision.request_id,),
+                ).fetchone()
+                if existing is not None:
+                    raise AuthorityDenied(
+                        "interactive approval request is already settled"
+                    )
+                self._insert_record(connection, decision)
+                if approval is not None and grant is not None:
+                    self._insert_record(connection, approval)
+                    self._insert_record(connection, grant)
+                self._append_audit(
+                    connection,
+                    event_id="interactive-approval-decision-" + secrets.token_hex(16),
+                    event_type="interactive_approval",
+                    event_state=decision.decision,
+                    payload={
+                        "request_id": request.request_id,
+                        "request_snapshot_digest": request.digest,
+                        "decision_digest": decision.digest,
+                        "security_epoch": request.security_epoch,
+                        "authority_minted": approved,
+                    },
+                )
+                connection.commit()
+        except (AuthorityDenied, AuthorityValidationError, AuditUnavailable):
+            raise
+        except sqlite3.IntegrityError as exc:
+            raise AuthorityDenied(
+                "interactive approval settlement lost a race"
+            ) from exc
+        except sqlite3.Error as exc:
+            raise AuthorityStoreError("interactive approval settlement failed") from exc
+
+    @_process_owned
     def get_provider_authority(self, record_id: str) -> ProviderAuthorityRecord | None:
         """Load and authenticate a ProviderAuthorityRecord."""
 
@@ -1220,6 +1697,45 @@ class AuthorityStore:
 
         value = self._get_record("approval", approval_id)
         return ApprovalRecord.from_dict(value) if value else None
+
+    @_process_owned
+    def get_interactive_approval_request(
+        self, request_id: str
+    ) -> InteractiveApprovalRequest | None:
+        """Load one immutable interactive approval request."""
+
+        value = self._get_record("interactive_approval_request", request_id)
+        return InteractiveApprovalRequest.from_dict(value) if value else None
+
+    @_process_owned
+    def list_interactive_approval_requests(self) -> list[InteractiveApprovalRequest]:
+        """Return authenticated request snapshots for Host-only owner filtering."""
+
+        return [
+            InteractiveApprovalRequest.from_dict(value)
+            for value in self._list_records("interactive_approval_request")
+        ]
+
+    @_process_owned
+    def get_interactive_approval_decision(
+        self, request_id: str
+    ) -> InteractiveApprovalDecision | None:
+        """Load the unique decision for one interactive approval request."""
+
+        value = self._get_record("interactive_approval_decision", request_id)
+        return InteractiveApprovalDecision.from_dict(value) if value else None
+
+    @_process_owned
+    def interactive_approval_state(self, request_id: str) -> str | None:
+        """Return pending, approved, denied, or expired without exposing authority."""
+
+        request = self.get_interactive_approval_request(request_id)
+        if request is None:
+            return None
+        decision = self.get_interactive_approval_decision(request_id)
+        if decision is not None:
+            return decision.decision
+        return "expired" if request.expires_at <= self._clock() else "pending"
 
     @_process_owned
     def get_grant(self, grant_id: str) -> GrantRecord | None:
@@ -1236,7 +1752,9 @@ class AuthorityStore:
         return ExecutionDomain.from_dict(value) if value else None
 
     @_process_owned
-    def get_host_extension_trust(self, trust_id: str) -> HostExtensionTrustRecord | None:
+    def get_host_extension_trust(
+        self, trust_id: str
+    ) -> HostExtensionTrustRecord | None:
         """Load and authenticate a HostExtensionTrustRecord."""
 
         value = self._get_record("host_extension_trust", trust_id)
@@ -1279,7 +1797,8 @@ class AuthorityStore:
         """Return all authenticated execution-domain records."""
 
         return [
-            ExecutionDomain.from_dict(value) for value in self._list_records("execution_domain")
+            ExecutionDomain.from_dict(value)
+            for value in self._list_records("execution_domain")
         ]
 
     def _list_records(self, record_type: str) -> list[dict[str, Any]]:
@@ -1295,7 +1814,9 @@ class AuthorityStore:
         output: list[dict[str, Any]] = []
         for row in rows:
             value = self._decrypt(row["encrypted_payload"])
-            if not hmac.compare_digest(str(row["record_digest"]), authority_digest(value)):
+            if not hmac.compare_digest(
+                str(row["record_digest"]), authority_digest(value)
+            ):
                 raise AuthorityStoreError("authority record digest mismatch")
             output.append(value)
         return output
@@ -1518,7 +2039,8 @@ class AuthorityStore:
                     "SELECT value FROM authority_meta WHERE key='security_epoch'"
                 ).fetchone()
                 if new_state not in {"aborted", "retired"} and (
-                    epoch_row is None or int(epoch_row["value"]) != row["security_epoch"]
+                    epoch_row is None
+                    or int(epoch_row["value"]) != row["security_epoch"]
                 ):
                     raise AuthorityDenied(
                         "activation reservation has a stale SecurityEpoch",
@@ -1595,7 +2117,9 @@ class AuthorityStore:
         return dict(row) if row is not None else None
 
     @_process_owned
-    def incomplete_activation_reservations(self, profile_id: str) -> tuple[Mapping[str, Any], ...]:
+    def incomplete_activation_reservations(
+        self, profile_id: str
+    ) -> tuple[Mapping[str, Any], ...]:
         """Return candidate reservations that must be recovered before activation."""
 
         try:
@@ -1611,7 +2135,9 @@ class AuthorityStore:
         return tuple(dict(row) for row in rows)
 
     @_process_owned
-    def active_activation_reservation(self, activation_id: str) -> Mapping[str, Any] | None:
+    def active_activation_reservation(
+        self, activation_id: str
+    ) -> Mapping[str, Any] | None:
         """Return the sole authoritative active reservation for restart capture."""
 
         try:
@@ -1639,9 +2165,13 @@ class AuthorityStore:
         """Bind an authenticated channel to a Host-spawned domain principal."""
 
         if domain.state.value != "active":
-            raise AuthorityDenied("execution domain is not active", code="domain_inactive")
+            raise AuthorityDenied(
+                "execution domain is not active", code="domain_inactive"
+            )
         if domain.security_epoch != self.security_epoch:
-            raise AuthorityDenied("execution domain has a stale SecurityEpoch", code="stale_epoch")
+            raise AuthorityDenied(
+                "execution domain has a stale SecurityEpoch", code="stale_epoch"
+            )
         if channel_digest != domain.authenticated_channel_digest:
             raise AuthorityDenied("authenticated channel does not match domain")
         if principal_id not in domain.principal_ids:
@@ -1716,8 +2246,13 @@ class AuthorityStore:
                 ).fetchone()
                 if row is None:
                     raise AuthorityDenied("execution domain is unavailable")
-                current = ExecutionDomain.from_dict(self._decrypt(row["encrypted_payload"]))
-                if current.boot_epoch != expected_boot_epoch or current.state is not expected_state:
+                current = ExecutionDomain.from_dict(
+                    self._decrypt(row["encrypted_payload"])
+                )
+                if (
+                    current.boot_epoch != expected_boot_epoch
+                    or current.state is not expected_state
+                ):
                     raise AuthorityDenied("execution-domain lifecycle CAS failed")
                 updated = replace(current, state=new_state)
                 payload = updated.to_dict()
@@ -1771,7 +2306,9 @@ class AuthorityStore:
             raise AuthorityStoreError("execution-domain transition failed") from exc
 
     @_process_owned
-    def resolve_authenticated_session(self, session_id: str) -> tuple[ExecutionDomain, str]:
+    def resolve_authenticated_session(
+        self, session_id: str
+    ) -> tuple[ExecutionDomain, str]:
         """Resolve Host-authenticated caller identity; never use payload identity."""
 
         try:
@@ -2040,7 +2577,9 @@ class AuthorityStore:
                 grant_ids: list[str] = []
                 for row in rows:
                     value = self._decrypt(row["encrypted_payload"])
-                    if not hmac.compare_digest(str(row["record_digest"]), authority_digest(value)):
+                    if not hmac.compare_digest(
+                        str(row["record_digest"]), authority_digest(value)
+                    ):
                         raise AuthorityStoreError("authority record digest mismatch")
                     grant = GrantRecord.from_dict(value)
                     if (
@@ -2126,7 +2665,9 @@ class AuthorityStore:
             raise AuthorityStoreError("revocation lookup failed") from exc
 
     @staticmethod
-    def _is_revoked(connection: _IdentityBoundConnection, target_kind: str, target_id: str) -> bool:
+    def _is_revoked(
+        connection: _IdentityBoundConnection, target_kind: str, target_id: str
+    ) -> bool:
         row = connection.execute(
             "SELECT 1 FROM revocations WHERE"
             " (target_kind=? AND target_id=?) OR target_kind='global' LIMIT 1",
@@ -2159,7 +2700,9 @@ class AuthorityStore:
                     raise AuthorityDenied("SecurityEpoch changed", code="stale_epoch")
                 for target_kind, target_id in revocation_targets:
                     if self._is_revoked(connection, target_kind, target_id):
-                        raise AuthorityDenied(f"{target_kind} is revoked", code="revoked")
+                        raise AuthorityDenied(
+                            f"{target_kind} is revoked", code="revoked"
+                        )
                 grant_row = connection.execute(
                     "SELECT record_digest FROM authority_records"
                     " WHERE record_type='grant' AND record_id=?",
@@ -2201,7 +2744,9 @@ class AuthorityStore:
                         or domain.fencing_token != lease.fencing_token
                         or principal_id not in domain.principal_ids
                     ):
-                        raise AuthorityDenied("execution domain changed before reservation")
+                        raise AuthorityDenied(
+                            "execution domain changed before reservation"
+                        )
                     checked_domains[domain_id] = domain
                 target_domain = checked_domains[lease.target_domain_id]
                 if target_domain.resource_namespace != lease.resource_namespace:
@@ -2266,7 +2811,9 @@ class AuthorityStore:
         except AuditUnavailable:
             raise
         except (sqlite3.Error, OSError) as exc:
-            raise AuditUnavailable("authority reservation could not be committed") from exc
+            raise AuditUnavailable(
+                "authority reservation could not be committed"
+            ) from exc
         return self._encode_lease_token(lease)
 
     def _append_audit(
@@ -2287,7 +2834,9 @@ class AuthorityStore:
             "SELECT event_digest FROM authority_audit ORDER BY sequence DESC LIMIT 1"
         ).fetchone()
         previous_digest = (
-            str(previous["event_digest"]) if previous is not None else "sha256:" + "0" * 64
+            str(previous["event_digest"])
+            if previous is not None
+            else "sha256:" + "0" * 64
         )
         created_at = self._clock()
         event_digest = authority_digest(
@@ -2597,7 +3146,12 @@ class AuthorityStore:
                 updated = connection.execute(
                     "UPDATE invocation_leases SET state=?, outcome_digest=?"
                     " WHERE lease_id=? AND state=?",
-                    (state.value, outcome_digest, lease_id, LeaseState.DISPATCHED.value),
+                    (
+                        state.value,
+                        outcome_digest,
+                        lease_id,
+                        LeaseState.DISPATCHED.value,
+                    ),
                 )
                 if updated.rowcount != 1:
                     raise AuthorityDenied("InvocationLease finish lost a race")
@@ -2702,7 +3256,9 @@ class AuthorityStore:
     def _verify_audit_connection(self, connection: _IdentityBoundConnection) -> None:
         """Verify the authoritative chain before any schema migration write."""
 
-        rows = connection.execute("SELECT * FROM authority_audit ORDER BY sequence").fetchall()
+        rows = connection.execute(
+            "SELECT * FROM authority_audit ORDER BY sequence"
+        ).fetchall()
         self._verify_audit_rows(rows)
 
     def _verify_audit_rows(self, rows: Iterable[sqlite3.Row]) -> list[dict[str, Any]]:

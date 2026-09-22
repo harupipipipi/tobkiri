@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import shutil
+import stat
 import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -61,6 +62,16 @@ def _validate_digest(value: object, label: str) -> str:
     return value
 
 
+def _require_regular_file(path: Path, label: str) -> None:
+    """Reject links and special files before reading release metadata."""
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise InventoryError(f"{label} is unavailable: {path}") from error
+    if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
+        raise InventoryError(f"{label} must be a regular file: {path}")
+
+
 def _target_contract(
     target: str, platform: str | None = None, architecture: str | None = None
 ) -> tuple[str, str, tuple[str, ...]]:
@@ -112,6 +123,8 @@ def _check_artifact_suffixes(
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
+    if path.is_symlink():
+        raise InventoryError(f"release metadata output may not be a symlink: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(_canonical_json(value))
 
@@ -184,6 +197,7 @@ def collect_target(
 
 
 def _load_object(path: Path) -> dict[str, Any]:
+    _require_regular_file(path, "release metadata")
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -265,17 +279,40 @@ def _verify_target_manifest(
     }, sorted(records, key=lambda record: str(record["path"]))
 
 
+def _required_target_set(required_targets: Sequence[str] | None) -> set[str]:
+    """Return one explicit, supported, duplicate-free release target set."""
+
+    values = list(TARGETS) if required_targets is None else list(required_targets)
+    if not values:
+        raise InventoryError("release inventory requires at least one target")
+    if any(not isinstance(value, str) or not value for value in values):
+        raise InventoryError("release inventory target requirement is malformed")
+    if len(values) != len(set(values)):
+        raise InventoryError("release inventory target requirement is duplicated")
+    unsupported = sorted(set(values) - set(TARGETS))
+    if unsupported:
+        raise InventoryError(f"unsupported required release targets: {unsupported}")
+    return set(values)
+
+
 def create_inventory(
-    root: Path, output: Path, assets_dir: Path, source_revision: str, tag: str
+    root: Path,
+    output: Path,
+    assets_dir: Path,
+    source_revision: str,
+    tag: str,
+    required_targets: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Verify every uploaded target and create one sorted release inventory."""
+    expected_targets = _required_target_set(required_targets)
     _validate_revision(source_revision)
     if not tag or not tag.startswith("v"):
         raise InventoryError("release inventory requires a v-prefixed tag")
     manifests = sorted(root.rglob(TARGET_MANIFEST))
-    if len(manifests) != len(TARGETS):
+    if len(manifests) != len(expected_targets):
         raise InventoryError(
-            f"release inventory requires exactly {len(TARGETS)} target manifests; found {len(manifests)}"
+            "release inventory requires exactly "
+            f"{len(expected_targets)} target manifests; found {len(manifests)}"
         )
     identities: dict[str, dict[str, Any]] = {}
     all_artifacts: list[dict[str, Any]] = []
@@ -295,9 +332,9 @@ def create_inventory(
                     "size": record["size"],
                 }
             )
-    if set(identities) != set(TARGETS):
-        missing = sorted(set(TARGETS) - set(identities))
-        extra = sorted(set(identities) - set(TARGETS))
+    if set(identities) != expected_targets:
+        missing = sorted(expected_targets - set(identities))
+        extra = sorted(set(identities) - expected_targets)
         raise InventoryError(
             f"release targets missing or unexpected: missing={missing}, extra={extra}"
         )
@@ -335,8 +372,10 @@ def verify_inventory(
     source_revision: str,
     tag: str,
     inventory_sha256: str | None = None,
+    required_targets: Sequence[str] | None = None,
 ) -> None:
     """Reject missing, duplicated, replaced, or unexpected final release assets."""
+    expected_targets = _required_target_set(required_targets)
     inventory = _load_object(inventory_path)
     if inventory.get("schema") != INVENTORY_SCHEMA:
         raise InventoryError("unexpected release inventory schema")
@@ -384,7 +423,7 @@ def verify_inventory(
             "platform": expected_platform,
             "architecture": expected_architecture,
         }
-    if set(target_identities) != set(TARGETS):
+    if set(target_identities) != expected_targets:
         raise InventoryError("release inventory targets are missing or unexpected")
 
     artifacts = inventory.get("artifacts")
@@ -394,8 +433,8 @@ def verify_inventory(
         raise InventoryError("release inventory artifacts are malformed")
     expected_names: list[str] = []
     counts: dict[str, dict[str, int]] = {
-        target: {suffix: 0 for suffix in suffixes}
-        for target, (_, _, suffixes) in TARGETS.items()
+        target: {suffix: 0 for suffix in TARGETS[target][2]}
+        for target in expected_targets
     }
     for record in artifacts:
         target = record.get("target")
@@ -414,6 +453,10 @@ def verify_inventory(
             raise InventoryError("release inventory artifact identity is malformed")
         if record_source_revision != source_revision:
             raise InventoryError("release inventory artifact source binding mismatch")
+        if target not in expected_targets:
+            raise InventoryError(
+                "release inventory artifact target is missing or unexpected"
+            )
         expected_platform, expected_architecture, suffixes = _target_contract(
             target, platform, architecture
         )
@@ -499,6 +542,7 @@ def _parser() -> argparse.ArgumentParser:
     inventory.add_argument("--assets-dir", type=Path, required=True)
     inventory.add_argument("--source-revision", required=True)
     inventory.add_argument("--tag", required=True)
+    inventory.add_argument("--required-target", action="append", dest="required_targets")
 
     verify = subparsers.add_parser("verify")
     verify.add_argument("--inventory", type=Path, required=True)
@@ -506,6 +550,7 @@ def _parser() -> argparse.ArgumentParser:
     verify.add_argument("--source-revision", required=True)
     verify.add_argument("--tag", required=True)
     verify.add_argument("--inventory-sha256")
+    verify.add_argument("--required-target", action="append", dest="required_targets")
     return parser
 
 
@@ -524,7 +569,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(path)
         elif args.command == "create":
             inventory = create_inventory(
-                args.root, args.output, args.assets_dir, args.source_revision, args.tag
+                args.root,
+                args.output,
+                args.assets_dir,
+                args.source_revision,
+                args.tag,
+                args.required_targets,
             )
             digest = hashlib.sha256(args.output.read_bytes()).hexdigest()
             print(
@@ -543,6 +593,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.source_revision,
                 args.tag,
                 args.inventory_sha256,
+                args.required_targets,
             )
             print("release inventory verification passed")
     except (InventoryError, OSError, ValueError) as error:

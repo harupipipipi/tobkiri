@@ -1,7 +1,7 @@
 Tobkiri Pack Architecture 再設計・実装計画
 ============================================
 
-文書状態: Normative / Accepted architecture baseline（production v4 cutover実装済み）
+文書状態: Normative / Accepted architecture baseline（Phase 0実装済み、semantic migration未完了）
 文書owner: Tobkiri Runtime / Pack Architecture
 対象リポジトリ: harupipipipi/tobkiri
 対象ブランチ: codex/pack-architecture-program-soon
@@ -14,11 +14,14 @@ Must be read with:
   - ADR-015_RUNTIME_SECURITY_LIFECYCLE.txt
   - ADR-016_BASE_SHELL_APPLICATION_MODEL.txt
 
-実装結果:
+実装結果（Phase 0）:
 
-  - bundled production inventoryは142 Packすべてがv4-authoritativeである。
+  - bundled production inventoryは140 Packである。
   - 各Packはpack.v4.json、contracts.v4.json、artifact-index.v4.json、
     executables.v4.jsonの4 artifactを持つ。
+  - semantic migrationの現在分類は41 Packがsemantically-reviewed、
+    99 Packがgenerated-draftである。完全移行を示すrelease proofは未整備のため、
+    semantic evidenceはREDであり、Phase 0 CIではreport-onlyとする。
   - defaults Profileは明示Base、shell.tauri.default、Application、Authority
     snapshot、ProfileLock、ResolvedPlan、ActivationRecordだけから構成される。
   - 到達可能なlegacy Registry/installed lookup、implicit fallback、二重authority、

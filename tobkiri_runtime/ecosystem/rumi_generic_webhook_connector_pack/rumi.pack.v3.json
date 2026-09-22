@@ -92,9 +92,9 @@
           "authoritative_owner": false,
           "canonical_v4": {
             "artifact": "pack.v4.json",
-            "artifact_digest": "sha256:0d3b9ca714d257e28aa39994771686a9682b34576ecb6d9402b308626feb6e58",
+            "artifact_digest": "sha256:17c0844b649f27c9e4ec5cf68a462a382bd15c3315df203fb44f2a65b5525883",
             "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-            "source_identity": "sha256:866386b045fbebd2a554efd18f367f4354efb3f686556bb24aea867521f5d53d"
+            "source_identity": "sha256:ae480a909a4f1d778fca24529dbf31a58fb9bfc4ae95e2b0d9de6d1a2a27e446"
           },
           "owner_surfaces": [],
           "projection_owner": "scripts/migrate_manifest_authority.py"
@@ -133,7 +133,7 @@
       "owner": "rumi_generic_webhook_connector_pack",
       "runtime_executable": false,
       "source": "pack.v4.json",
-      "source_identity": "sha256:866386b045fbebd2a554efd18f367f4354efb3f686556bb24aea867521f5d53d"
+      "source_identity": "sha256:ae480a909a4f1d778fca24529dbf31a58fb9bfc4ae95e2b0d9de6d1a2a27e446"
     }
   },
   "migration": {

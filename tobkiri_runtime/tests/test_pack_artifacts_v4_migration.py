@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.migrate_pack_artifacts_v4 as migration
 from scripts.migrate_pack_artifacts_v4 import (
     CATALOG,
     EXCLUDED_PACKS,
@@ -17,7 +18,9 @@ from scripts.migrate_pack_artifacts_v4 import (
     _migration_source_view,
     _render_record,
     _validate_catalog_payload,
+    _verify_global_uniqueness,
     generate,
+    import_legacy,
     verify_rendered_artifacts,
 )
 from tobkiri_protocol.errors import SchemaValidationError
@@ -25,6 +28,84 @@ from tobkiri_protocol.errors import SchemaValidationError
 
 def _catalog() -> dict[str, object]:
     return json.loads(CATALOG.read_text(encoding="utf-8"))
+
+
+def _explicit_multi_function_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, object]:
+    """Build one minimal Pack source using the explicit Function form."""
+
+    record = copy.deepcopy(
+        next(item for item in _catalog()["packs"] if item["pack_id"] == "defaultspack")
+    )
+    pack_root = tmp_path / "ecosystem" / "test_pack"
+    implementation = pack_root / "runtime" / "implementation.py"
+    implementation.parent.mkdir(parents=True)
+    implementation.write_text("def invoke() -> None:\n    return None\n", encoding="utf-8")
+    implementation_digest = _file_digest(implementation)
+    monkeypatch.setattr(migration, "ECOSYSTEM", pack_root.parent)
+
+    record.update(
+        {
+            "pack_id": "test_pack",
+            "display_name": "Test Pack",
+            "capabilities": ["shell.execute", "shell.inspect"],
+            "runtime_artifacts": [
+                {
+                    "path": "runtime/implementation.py",
+                    "digest": implementation_digest,
+                    "kind": "executable",
+                }
+            ],
+            "source_provenance": {
+                "owner": "test_pack",
+                "mode": "canonical-v4",
+                "source_format": "test",
+            },
+        }
+    )
+    contract = record["provided_contracts"][0]
+    # This fixture defines exactly one synthetic Contract. Do not inherit new
+    # production Contracts when Defaultspack grows additional Functions.
+    record["provided_contracts"] = [contract]
+    contract.update(
+        {
+            "contract_id": "tobkiri.service.test.v1",
+            "owner": "test_pack",
+            "provider_id": "test_pack.legacy.provider",
+            "required_capabilities": ["shell.execute", "shell.inspect"],
+            "operations": [
+                {
+                    "id": "test_pack.run.prepare",
+                    "entrypoint_id": "prepare",
+                    "implementation_digest": implementation_digest,
+                    "effect_ceiling": ["capability:shell.inspect"],
+                },
+                {
+                    "id": "test_pack.run.execute",
+                    "entrypoint_id": "execute",
+                    "implementation_digest": implementation_digest,
+                    "effect_ceiling": ["capability:shell.execute"],
+                },
+            ],
+        }
+    )
+    record["functions"] = [
+        {
+            "function_id": "test_pack.run.prepare",
+            "contract_id": "tobkiri.service.test.v1",
+            "operation_ids": ["test_pack.run.prepare"],
+            "implementation_digest": implementation_digest,
+        },
+        {
+            "function_id": "test_pack.run.execute",
+            "contract_id": "tobkiri.service.test.v1",
+            "operation_ids": ["test_pack.run.execute"],
+            "implementation_digest": implementation_digest,
+        },
+    ]
+    return record
 
 
 def test_migration_source_view_excludes_generated_projection_envelopes(
@@ -131,14 +212,125 @@ def test_v3_import_hashes_entrypoint_bytes_not_stale_projection_hashes(
     assert imported == {expected}
 
 
+def test_legacy_import_is_a_draft_and_does_not_promote_or_invent_owners(
+    tmp_path: Path,
+) -> None:
+    """Legacy conversion cannot write v4 authority or pick an owner by order."""
+    source_root = CATALOG.parents[1] / "ecosystem" / "rumi_provider_adapters_pack"
+    pack_root = tmp_path / source_root.name
+    pack_root.mkdir()
+    for name in ("ecosystem.json", "rumi.pack.v3.json"):
+        (pack_root / name).write_text(
+            (source_root / name).read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+    record = _import_record(pack_root)
+    assert record["authority"] == "migration-draft"
+    source_v3 = json.loads((pack_root / "rumi.pack.v3.json").read_text(encoding="utf-8"))
+    expected_owners = {
+        contract["id"]: contract["lifecycle"]["data_owner"]
+        for contract in source_v3["contracts"]["provides"]
+        if contract.get("lifecycle", {}).get("data_owner")
+    }
+    assert {
+        contract["contract_id"]: contract["owner"]
+        for contract in record["provided_contracts"]
+        if "owner" in contract
+    } == {
+        module_id.replace("rumi.", "tobkiri.", 1): owner
+        for module_id, owner in expected_owners.items()
+    }
+
+    with pytest.raises(PackV4MigrationError, match="requires --draft-output"):
+        import_legacy(check=False)
+
+
+def test_catalog_validation_does_not_use_a_pack_count_as_authority() -> None:
+    """The canonical source set is inventory-driven, not a magic total."""
+    payload = copy.deepcopy(_catalog())
+    payload["packs"].pop()
+    payload["pack_ids"].pop()
+
+    records = _validate_catalog_payload(payload)
+
+    assert len(records) == len(payload["pack_ids"])
+
+
+def test_shared_many_contract_accepts_pack_qualified_owners() -> None:
+    """A shared many-Contract is owned by each declaring provider Pack."""
+
+    records = {
+        item["pack_id"]: copy.deepcopy(item)
+        for item in _catalog()["packs"]
+        if item["pack_id"]
+        in {"rumi_discord_connector_pack", "rumi_email_connector_pack"}
+    }
+    email = records["rumi_email_connector_pack"]
+    email["provided_contracts"][0]["owner"] = email["pack_id"]
+
+    _verify_global_uniqueness(
+        {pack_id: _render_record(record) for pack_id, record in records.items()}
+    )
+
+
+def test_shared_many_contract_rejects_schema_disagreement() -> None:
+    """Pack-local ownership cannot hide incompatible shared Contract schemas."""
+
+    records = {
+        item["pack_id"]: copy.deepcopy(item)
+        for item in _catalog()["packs"]
+        if item["pack_id"]
+        in {"rumi_discord_connector_pack", "rumi_email_connector_pack"}
+    }
+    email = records["rumi_email_connector_pack"]
+    email["provided_contracts"][0]["owner"] = email["pack_id"]
+    email["provided_contracts"][0]["schemas"]["input"] = {
+        "type": "object",
+        "required": ["forged"],
+    }
+
+    with pytest.raises(PackV4MigrationError, match="shared contract semantics disagree"):
+        _verify_global_uniqueness(
+            {pack_id: _render_record(record) for pack_id, record in records.items()}
+        )
+
+
+def test_shared_many_contract_rejects_non_provider_owner() -> None:
+    """A shared Contract owner must be one of its actual provider Packs."""
+
+    records = {
+        item["pack_id"]: copy.deepcopy(item)
+        for item in _catalog()["packs"]
+        if item["pack_id"]
+        in {"rumi_discord_connector_pack", "rumi_email_connector_pack"}
+    }
+    records["rumi_email_connector_pack"]["provided_contracts"][0]["owner"] = (
+        "unrelated_pack"
+    )
+
+    with pytest.raises(PackV4MigrationError, match="owner is not Pack-qualified"):
+        _verify_global_uniqueness(
+            {pack_id: _render_record(record) for pack_id, record in records.items()}
+        )
+
+
 def test_all_packs_have_valid_deterministic_v4_artifacts() -> None:
-    """All 143 owned Packs must match a second byte-identical generation."""
+    """Every declared Pack must match a second byte-identical generation."""
+    catalog = _catalog()
+    pack_count = len(catalog["packs"])
+    expected_contracts = sum(len(record["provided_contracts"]) for record in catalog["packs"])
+    expected_operations = sum(
+        len(contract["operations"])
+        for record in catalog["packs"]
+        for contract in record["provided_contracts"]
+    )
     result = generate(check=True)
     assert result == {
-        "packs": 143,
-        "valid": 143,
-        "contracts": 162,
-            "operations": 221,
+        "packs": pack_count,
+        "valid": pack_count,
+        "contracts": expected_contracts,
+        "operations": expected_operations,
     }
     payload = _catalog()
     assert payload["excluded_packs"] == sorted(EXCLUDED_PACKS)
@@ -147,6 +339,122 @@ def test_all_packs_have_valid_deterministic_v4_artifacts() -> None:
         verify_rendered_artifacts(files)
         pack_root = CATALOG.parents[1] / "ecosystem" / record["pack_id"]
         assert {name: (pack_root / name).read_text(encoding="utf-8") for name in files} == files
+
+
+def test_active_shell_policy_pack_is_not_a_read_only_compatibility_projection() -> None:
+    """A sandboxed Defaults provider must remain admissible after activation."""
+    record = next(
+        item
+        for item in _catalog()["packs"]
+        if item["pack_id"] == "rumi_shell_policy_pack"
+    )
+
+    assert record["kind"] == "normal_sandbox"
+    assert record["migration"]["compatibility"] == "none"
+    manifest = json.loads(_render_record(record)["pack.v4.json"])
+    assert manifest["migration"]["compatibility"] == "none"
+
+
+def test_default_tool_definitions_are_sealed_beside_finite_owned_runtime() -> None:
+    """Tool definitions remain data beside the one owned Calculator runtime."""
+    record = next(
+        item for item in _catalog()["packs"]
+        if item["pack_id"] == "rumi_default_tools_pack"
+    )
+    root = migration.ECOSYSTEM / record["pack_id"]
+    definitions = {
+        path.relative_to(root).as_posix(): _file_digest(path)
+        for path in (root / "tools").glob("*/manifest.json")
+    }
+    assert definitions
+    declared = {
+        item["path"]: item for item in record["runtime_artifacts"]
+        if item["path"].startswith("tools/")
+    }
+    assert set(declared) == set(definitions)
+    assert all(
+        declared[path]["digest"] == digest and declared[path]["kind"] == "sidecar"
+        for path, digest in definitions.items()
+    )
+
+    rendered = _render_record(record)
+    manifest = json.loads(rendered["pack.v4.json"])
+    index = json.loads(rendered["artifact-index.v4.json"])
+    for document in (manifest, index):
+        assert {
+            item["path"]: item["digest"] for item in document["artifacts"]
+            if item["path"].startswith("tools/")
+        } == definitions
+    assert manifest["pack"]["kind"] == "host_extension"
+    assert manifest["requirements"]["execution_boundary"] == "host_brokered"
+    assert manifest["requirements"]["capabilities"] == ["tool.local.operation"]
+    assert [item["id"] for item in manifest["functions"]] == [
+        "rumi_default_tools_pack.calculator"
+    ]
+    assert [item["contract_id"] for item in manifest["contracts"]] == [
+        "tobkiri.service.tool.local.operation.v1"
+    ]
+    assert [item["operation_id"] for item in manifest["operation_catalog"]] == [
+        "rumi_default_tools_pack.calculator-evaluate"
+    ]
+    assert [item["provider_id"] for item in manifest["provider_catalog"]] == [
+        "rumi_default_tools_pack.calculator"
+    ]
+
+
+@pytest.mark.parametrize("check", [False, True])
+@pytest.mark.parametrize("damage", ["changed", "missing", "escape"])
+def test_generation_rejects_damaged_declarative_sources_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    check: bool,
+    damage: str,
+) -> None:
+    """Sidecar bytes must match even when the Pack has no executable Function."""
+    catalog = _catalog()
+    record = next(
+        item for item in catalog["packs"]
+        if item["pack_id"] == "rumi_default_tools_pack"
+    )
+    source_root = migration.ECOSYSTEM / record["pack_id"]
+    pack_root = tmp_path / "ecosystem" / record["pack_id"]
+    for artifact in record["runtime_artifacts"]:
+        destination = pack_root / artifact["path"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((source_root / artifact["path"]).read_bytes())
+    catalog["packs"] = [record]
+    catalog["pack_ids"] = [record["pack_id"]]
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text(json.dumps(catalog), encoding="utf-8")
+    monkeypatch.setattr(migration, "CATALOG", catalog_path)
+    monkeypatch.setattr(migration, "ECOSYSTEM", pack_root.parent)
+    monkeypatch.setattr(migration, "RETIREMENTS", ())
+    generate(check=False)
+    generate(check=True)
+    generated_before = {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in pack_root.glob("*.v4.json")
+    }
+
+    target = pack_root / "tools/calculator/manifest.json"
+    if damage == "changed":
+        target.write_text('{"id": "unexpected"}', encoding="utf-8")
+        reason = "digest is stale"
+    elif damage == "missing":
+        target.unlink()
+        reason = "is unreadable"
+    else:
+        outside = tmp_path / "outside.json"
+        outside.write_bytes(target.read_bytes())
+        target.unlink()
+        target.symlink_to(outside)
+        reason = "escapes Pack root"
+    with pytest.raises(PackV4MigrationError, match=reason):
+        generate(check=check)
+    assert {
+        path: (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in generated_before
+    } == generated_before
 
 
 def test_normal_generation_has_no_v3_or_legacy_authority_reads(
@@ -161,7 +469,7 @@ def test_normal_generation_has_no_v3_or_legacy_authority_reads(
         return original(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "read_text", guarded_read)
-    assert generate(check=True)["valid"] == 143
+    assert generate(check=True)["valid"] == len(_catalog()["packs"])
 
 
 @pytest.mark.parametrize("failure", ["duplicate", "missing", "unknown", "malformed"])
@@ -209,15 +517,18 @@ def test_global_catalog_has_no_duplicate_provider_or_operation() -> None:
     """Canonical Provider and Operation identities are globally unique."""
     providers: set[str] = set()
     operations: set[str] = set()
-    owners: dict[str, str] = {}
-    for record in _catalog()["packs"]:
+    catalog = _catalog()
+    expected_provider_count = sum(
+        len(record.get("functions", record["provided_contracts"])) for record in catalog["packs"]
+    )
+    expected_operation_count = sum(
+        len(contract["operations"])
+        for record in catalog["packs"]
+        for contract in record["provided_contracts"]
+    )
+    for record in catalog["packs"]:
         files = _render_record(record)
         manifest = json.loads(files["pack.v4.json"])
-        contracts = json.loads(files["contracts.v4.json"])["contracts"]
-        for contract in contracts:
-            assert (
-                owners.setdefault(contract["contract_id"], contract["owner"]) == contract["owner"]
-            )
         for provider in manifest["provider_catalog"]:
             assert provider["provider_id"] not in providers
             providers.add(provider["provider_id"])
@@ -225,8 +536,8 @@ def test_global_catalog_has_no_duplicate_provider_or_operation() -> None:
             assert operation["source_kind"] == "canonical_v4_contract"
             assert operation["operation_id"] not in operations
             operations.add(operation["operation_id"])
-    assert len(providers) == 162
-    assert len(operations) == 221
+    assert len(providers) == expected_provider_count
+    assert len(operations) == expected_operation_count
 
 
 def test_legacy_operation_source_cannot_enter_v4_authority_catalog() -> None:
@@ -234,7 +545,7 @@ def test_legacy_operation_source_cannot_enter_v4_authority_catalog() -> None:
     record = next(
         item
         for item in _catalog()["packs"]
-        if item["pack_id"] == "rumi_agent_services_pack"
+        if item["pack_id"] == "rumi_agent_continuity_pack"
     )
     files = _render_record(record)
     manifest = json.loads(files["pack.v4.json"])
@@ -244,7 +555,7 @@ def test_legacy_operation_source_cannot_enter_v4_authority_catalog() -> None:
 
     manifest["operation_catalog"] = [
         {
-            "operation_id": "rumi_agent_services_pack.legacy.operation",
+            "operation_id": "rumi_agent_continuity_pack.legacy.operation",
             "owner": record["pack_id"],
             "source_kind": "legacy_component",
             "effect_ceiling": [],
@@ -253,3 +564,146 @@ def test_legacy_operation_source_cannot_enter_v4_authority_catalog() -> None:
     files["pack.v4.json"] = json.dumps(manifest, sort_keys=True) + "\n"
     with pytest.raises(PackV4MigrationError, match="executable catalog entries"):
         verify_rendered_artifacts(files)
+
+
+def test_legacy_record_rendering_remains_byte_identical() -> None:
+    """Omitting explicit Functions keeps the checked-in legacy projection exact."""
+
+    record = next(item for item in _catalog()["packs"] if item["pack_id"] == "defaultspack")
+    rendered = _render_record(record)
+    pack_root = CATALOG.parents[1] / "ecosystem" / "defaultspack"
+
+    assert {name: (pack_root / name).read_text(encoding="utf-8") for name in rendered} == rendered
+
+
+def test_explicit_functions_bind_multiple_principals_and_operation_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Explicit Functions partition one Contract without widening effect ceilings."""
+
+    record = _explicit_multi_function_record(tmp_path, monkeypatch)
+    rendered = _render_record(record)
+    verify_rendered_artifacts(rendered)
+    manifest = json.loads(rendered["pack.v4.json"])
+    executable = json.loads(rendered["executables.v4.json"])
+
+    assert [item["id"] for item in manifest["functions"]] == [
+        "test_pack.run.execute",
+        "test_pack.run.prepare",
+    ]
+    assert {
+        item["operation_id"]: item["effect_ceiling"] for item in manifest["operation_catalog"]
+    } == {
+        "test_pack.run.prepare": ["capability:shell.inspect"],
+        "test_pack.run.execute": ["capability:shell.execute"],
+    }
+    assert {(item["function_id"], item["variant_id"]) for item in executable["variants"]} == {
+        ("test_pack.run.prepare", "test_pack.run.prepare.python"),
+        ("test_pack.run.execute", "test_pack.run.execute.python"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        (
+            lambda record: record["functions"].append(copy.deepcopy(record["functions"][0])),
+            "Function identity",
+        ),
+        (
+            lambda record: record["functions"][0].update(
+                {"operation_ids": ["test_pack.not-declared"]}
+            ),
+            "Contract-external",
+        ),
+        (
+            lambda record: record["functions"][0].update(
+                {"implementation_digest": "sha256:not-a-digest"}
+            ),
+            "Function identity",
+        ),
+        (
+            lambda record: record["functions"][0].update(
+                {"implementation_digest": "sha256:" + "0" * 64}
+            ),
+            "implementation artifact",
+        ),
+        (
+            lambda record: record["functions"][1].update(
+                {"operation_ids": ["test_pack.run.prepare"]}
+            ),
+            "Operation is duplicated",
+        ),
+    ),
+)
+def test_explicit_function_source_rejects_ambiguous_or_invalid_bindings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: object,
+    message: str,
+) -> None:
+    """Ambiguous Function sources never produce a partially valid authority set."""
+
+    record = _explicit_multi_function_record(tmp_path, monkeypatch)
+    assert callable(mutation)
+    mutation(record)
+
+    with pytest.raises(PackV4MigrationError, match=message):
+        _render_record(record)
+
+
+def test_artifact_index_allows_sealed_host_contribution_classifications(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Launcher-consumed sidecar roles are sealed classifications, not grants."""
+
+    record = _explicit_multi_function_record(tmp_path, monkeypatch)
+    record["runtime_artifacts"].extend(
+        [
+            {
+                "path": "host_contract_contributions.v1.json",
+                "digest": "sha256:" + "a" * 64,
+                "kind": "sidecar",
+                "index_role": "host_contract_contribution",
+            },
+            {
+                "path": "update_metadata.v1.json",
+                "digest": "sha256:" + "b" * 64,
+                "kind": "sidecar",
+                "index_role": "host_contract_update_metadata",
+            },
+        ]
+    )
+
+    rendered = _render_record(record)
+    index = json.loads(rendered["artifact-index.v4.json"])
+    roles = {item["path"]: item["role"] for item in index["artifacts"]}
+    assert roles["host_contract_contributions.v1.json"] == "host_contract_contribution"
+    assert roles["update_metadata.v1.json"] == "host_contract_update_metadata"
+    assert all(
+        item["kind"] == "sidecar"
+        for item in json.loads(rendered["pack.v4.json"])["artifacts"]
+        if item["path"] in roles and item["path"].endswith(".v1.json")
+    )
+
+
+def test_explicit_function_digest_requires_one_runtime_executable_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A digest cannot ambiguously select multiple runtime implementation paths."""
+
+    record = _explicit_multi_function_record(tmp_path, monkeypatch)
+    implementation_digest = record["functions"][0]["implementation_digest"]
+    record["runtime_artifacts"].append(
+        {
+            "path": "runtime/duplicate.py",
+            "digest": implementation_digest,
+            "kind": "executable",
+        }
+    )
+
+    with pytest.raises(PackV4MigrationError, match="implementation artifact"):
+        _render_record(record)

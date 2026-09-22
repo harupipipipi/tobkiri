@@ -30,6 +30,7 @@ test("checked-in Defaults setup bindings are generated from the canonical schema
     "requested_scope_digest",
     "adapter_digests",
   ]);
+  assert.deepEqual(result.contract.bindingOptionalKeys, ["authority_mode"]);
 });
 
 test("schema optional-field drift fails closed before frontend generation", async () => {

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 import json
 import os
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -431,11 +433,10 @@ class AIClient:
                 routes.setdefault(model_ref, route_refs)
         return routes
 
-    def _settings_data(self):
-        try:
-            return json.loads(self._settings_path().read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {}
+    def _settings_data(self, *, settings_owner: SettingsOwnerPort | None = None):
+        from domain.frontend_settings import read_optional_frontend_settings
+
+        return read_optional_frontend_settings(settings_owner=settings_owner)
 
     @staticmethod
     def _jsonish(value, fallback):
@@ -1143,7 +1144,7 @@ class AIClient:
         )
         return store.get(model)
 
-    def _complete_model_pack(self, model_pack, messages, tools=None, params=None):
+    def _complete_model_pack(self, model_pack, messages, tools=None, params=None, *, settings_owner: SettingsOwnerPort | None = None):
         params = dict(params or {})
         if (
             str(getattr(model_pack, "id", "") or "").strip() == rumi_process.RUMI_MODEL_PACK_ID
@@ -1154,6 +1155,7 @@ class AIClient:
                     base_model=str(params.get("rumi_base_model_override")).strip()
                 )
             )
+        settings = self._settings_data(settings_owner=settings_owner).get("models")
         selection = select_model_pack(
             model_pack,
             {
@@ -1165,9 +1167,7 @@ class AIClient:
                 if isinstance((params or {}).get("task_hints"), dict)
                 else {},
             },
-            settings=self._settings_data().get("models")
-            if isinstance(self._settings_data().get("models"), dict)
-            else {},
+            settings=settings if isinstance(settings, dict) else {},
         )
         if selection is None or not selection.ordered_members:
             raise RuntimeError("model pack has no runnable members")
@@ -1724,17 +1724,23 @@ class AIClient:
             )
         return active
 
-    def list_profiles(self, provider=None):
+    def list_profiles(
+        self,
+        provider=None,
+        *,
+        settings: dict[str, Any] | None = None,
+    ):
         active_provider_ids = self._active_provider_ids()
         profiles = build_profile_catalog(
             active_provider_ids=active_provider_ids,
             custom_profiles=self._profiles,
         )
         try:
-            from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+            if isinstance(settings, dict):
+                from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
-            service = ModelRuntimeSettingsService()
-            profiles.extend(service.runtime_defined_profiles(service.get_settings()))
+                service = ModelRuntimeSettingsService()
+                profiles.extend(service.runtime_defined_profiles(settings))
             profiles.extend(self._api_key_bound_profiles())
         except Exception:
             pass

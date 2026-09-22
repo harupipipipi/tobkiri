@@ -110,9 +110,23 @@ def _connection(
     *,
     streaming: bool = False,
 ) -> dict[str, Any]:
-    provider_id = str(request.get("provider_id") or "").strip()
-    if not provider_id:
-        raise GlobalContractInvocationError("invalid_request", "provider_id is required")
+    connection_id = request.get("provider_connection_id")
+    if connection_id is None:
+        # Catalog-driven requests retain the legacy provider-slug route.
+        # Explicit saved connection IDs are opaque registry identities and
+        # never pass through this prefixing compatibility path.
+        provider_id = str(request.get("provider_id") or "").strip()
+        if not provider_id:
+            raise GlobalContractInvocationError(
+                "invalid_request", "provider_id is required"
+            )
+        expected = f"provider.{provider_id}"
+    elif not isinstance(connection_id, str) or not connection_id:
+        raise GlobalContractInvocationError(
+            "invalid_request", "provider_connection_id is invalid"
+        )
+    else:
+        expected = connection_id
     registry_payload = {}
     profile_id = str(request.get("profile_id") or "").strip()
     if profile_id:
@@ -124,13 +138,12 @@ def _connection(
     )
     providers = result.get("providers") if isinstance(result, Mapping) else None
     providers = providers if isinstance(providers, list) else []
-    expected = f"provider.{provider_id}"
     matches = [
         dict(item)
         for item in providers
         if isinstance(item, Mapping)
         and str(item.get("provider_instance_id") or "") == expected
-        and bool(item.get("enabled", True))
+        and item.get("enabled") is True
     ]
     if len(matches) != 1:
         raise GlobalContractInvocationError(

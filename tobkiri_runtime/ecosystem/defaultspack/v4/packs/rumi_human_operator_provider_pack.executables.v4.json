@@ -1,76 +1,77 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:c2a80f078a6a7c39f47260a914c15015c39355b9f97429cb322e001fbd724298",
   "pack_id": "rumi_human_operator_provider_pack",
-  "source_identity": "sha256:0d080dd535065c6d93348b908776538534781ed96ef27aa81511fa4af36ce584",
+  "source_identity": "sha256:bfef0ea0fde023fd2f683e0539b7dd046d4a3a39708ce266c5dee266ce00dfe2",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_human_operator_provider_pack.provider.human-operator.generate.python",
       "function_id": "rumi_human_operator_provider_pack.provider.human-operator.generate",
-      "implementation_digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
       "implementation_path": "runtime/provider.py",
+      "implementation_digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.ai.provider.generate.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:2752e838befb3d8468a520a0a58cbebbe222790e57c27a2a0004c9bbdc316d26",
+          "operation_id": "rumi_human_operator_provider_pack.human-generate",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_human_operator_provider_pack.human-generate",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:2752e838befb3d8468a520a0a58cbebbe222790e57c27a2a0004c9bbdc316d26",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_human_operator_provider_pack.provider.human-operator.generate.python"
+      ]
     },
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_human_operator_provider_pack.provider.human-operator.stream.python",
       "function_id": "rumi_human_operator_provider_pack.provider.human-operator.stream",
-      "implementation_digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
       "implementation_path": "runtime/provider.py",
+      "implementation_digest": "sha256:161437966487d63826e87d37c9ee54c35282e2cc16aa5af9844cd9157f4e18fd",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.ai.provider.stream.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:c10fe2d694c5e1d04d5cd2e83ae543e21aa059cf5d16fe20d23076a921292e51",
+          "operation_id": "rumi_human_operator_provider_pack.human-stream",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_human_operator_provider_pack.human-stream",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:c10fe2d694c5e1d04d5cd2e83ae543e21aa059cf5d16fe20d23076a921292e51",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_human_operator_provider_pack.provider.human-operator.stream.python"
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:c2a80f078a6a7c39f47260a914c15015c39355b9f97429cb322e001fbd724298",
+  "catalog_digest": "sha256:9f238c1505693bdad0557bd108196f363ccb31cfed0deab80290b7b1af790483"
 }

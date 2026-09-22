@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -10,6 +15,58 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+
+def test_permission_resolver_keeps_explicit_owners_isolated(tmp_path):
+    from domain.tool.permission_resolver import ToolPermissionResolver
+
+    blocked_path = tmp_path / "blocked.json"
+    blocked_path.write_text(json.dumps({
+        "tools": {"disabled_tool_ids": ["calculator"]},
+    }), encoding="utf-8")
+    blocked_owner = FrontendSettingsStore(blocked_path)
+    other_owner = FrontendSettingsStore(tmp_path / "other.json")
+    tool = {"tool_id": "calculator", "action_class": "read"}
+    blocked = ToolPermissionResolver(settings_owner=blocked_owner)
+    other = ToolPermissionResolver(settings_owner=other_owner)
+    assert blocked.resolve(tool)["permission"] == "block"
+    assert other.resolve(tool)["permission"] != "block"
+    assert blocked.resolve(tool, context={
+        "settings_owner": other_owner,
+    })["permission"] == "block"
+    assert not (tmp_path / "other.json").exists()
+
+
+def test_permission_resolver_still_requires_an_explicit_owner():
+    from domain.tool.permission_resolver import ToolPermissionResolver
+
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        ToolPermissionResolver()
+
+
+def test_owner_bound_actions_preserve_custom_handlers_without_global_binding(tmp_path, monkeypatch):
+    from domain.input import action_registry
+    from domain.input.actions.chat_message import handle
+
+    def custom(envelope, context):
+        return {"status": "custom"}
+
+    shared = action_registry.InputActionRegistry([
+        action_registry.InputActionSpec("chat.message", handle),
+        action_registry.InputActionSpec("custom", custom),
+    ])
+    monkeypatch.setattr(action_registry, "_DEFAULT_REGISTRY", shared)
+    first = FrontendSettingsStore(tmp_path / "first.json")
+    second = FrontendSettingsStore(tmp_path / "second.json")
+    bound_first = action_registry.get_input_action_registry(settings_owner=first)
+    bound_second = action_registry.get_input_action_registry(settings_owner=second)
+    assert bound_first.resolve("custom") is custom
+    assert bound_first.list_actions() == shared.list_actions()
+    assert bound_first.resolve("chat.message").keywords["settings_owner"] is first
+    assert bound_second.resolve("chat.message").keywords["settings_owner"] is second
+    assert action_registry.get_input_action_registry() is shared
+    assert shared.resolve("chat.message") is handle
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_isolated_frontend_settings_selects_cerebras_without_persisting_credential(tmp_path, monkeypatch):
@@ -28,7 +85,8 @@ def test_isolated_frontend_settings_selects_cerebras_without_persisting_credenti
         defaultspack_frontend_settings_path,
     )
 
-    service = ModelRuntimeSettingsService(DEFAULTSPACK_ROOT)
+    owner = FrontendSettingsStore(settings_path)
+    service = ModelRuntimeSettingsService(DEFAULTSPACK_ROOT, settings_owner=owner)
     assert service._settings_path == settings_path.resolve()
     assert service.get_preferred_model() == "cerebras/gemma-4-31b"
     assert (
@@ -39,7 +97,14 @@ def test_isolated_frontend_settings_selects_cerebras_without_persisting_credenti
     AIClient._instance = None
     client = AIClient()
     assert client._settings_path() == settings_path.resolve()
-    assert client._settings_data()["models"]["preferred_model"] == "cerebras/gemma-4-31b"
+    assert client._settings_data(settings_owner=owner)["models"]["preferred_model"] == "cerebras/gemma-4-31b"
+    other_path = tmp_path / "other.json"
+    other_path.write_text('{"models":{"preferred_model":"stub/other"}}', encoding="utf-8")
+    other_owner = FrontendSettingsStore(other_path)
+    assert client._settings_data(settings_owner=other_owner)["models"]["preferred_model"] == "stub/other"
+    with pytest.raises(RuntimeError, match="explicit settings owner"):
+        client._settings_data()
+    assert client._settings_data(settings_owner=owner)["models"]["preferred_model"] == "cerebras/gemma-4-31b"
     AIClient._instance = None
 
     stored = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -69,14 +134,88 @@ def test_all_frontend_settings_consumers_use_isolated_path(tmp_path, monkeypatch
     from domain.integrations.line import addressing, inbound
     from domain.tool import permission_resolver
 
-    assert tool_recommender._read_frontend_settings() == isolated_settings
-    trigger_config = trigger_decision._frontend_trigger_config()
+    owner = FrontendSettingsStore(settings_path)
+    assert tool_recommender._read_frontend_settings(settings_owner=owner) == isolated_settings
+    trigger_config = trigger_decision._frontend_trigger_config(settings_owner=owner)
     assert trigger_config["llm"]["model"] == "isolated/model"
-    assert permission_resolver.read_frontend_settings() == isolated_settings
-    assert run_request._read_frontend_settings() == isolated_settings
-    assert send._frontend_debug_settings_enabled() is True
+    assert permission_resolver.read_frontend_settings(settings_owner=owner) == isolated_settings
+    assert run_request._read_frontend_settings(settings_owner=owner) == isolated_settings
+    assert send._frontend_debug_settings_enabled(settings_owner=owner) is True
     assert addressing._frontend_settings_path() == settings_path.resolve()
     assert inbound._frontend_settings_path() == settings_path.resolve()
-    assert inbound._frontend_external_output_settings() == {"mode": "isolated"}
-    registry = FrontendRegistry(tmp_path / "shared-pack")
+    assert inbound._frontend_external_output_settings(settings_owner=owner) == {"mode": "isolated"}
+    registry = FrontendRegistry(tmp_path / "shared-pack", settings_owner=owner)
     assert registry._settings_path == settings_path.resolve()
+
+
+@pytest.mark.parametrize("content", [None, b"{broken", b"[]", b"\xff", b'{"ok": true}'])
+def test_optional_snapshot_never_repairs_or_creates_state(
+    tmp_path, monkeypatch, content,
+):
+    """Optional preferences read the primary only, even with a valid backup."""
+    from domain.frontend_settings import read_optional_frontend_settings
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
+
+    path = tmp_path / "settings.json"
+    if content is not None:
+        path.write_bytes(content)
+    backup = path.with_suffix(".json.bak")
+    backup.write_text('{"backup": true}', encoding="utf-8")
+    before = {item.name: item.read_bytes() for item in tmp_path.iterdir()}
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(path))
+
+    expected = {"ok": True} if content == b'{"ok": true}' else {}
+    assert read_optional_frontend_settings(settings_owner=FrontendSettingsStore(path)) == expected
+    assert {item.name: item.read_bytes() for item in tmp_path.iterdir()} == before
+
+
+def test_optional_readers_share_owner_snapshot_without_local_parsers(tmp_path, monkeypatch):
+    """All nine legacy optional reads consume the same owner snapshot port."""
+    from blocks.chat import send
+    from domain.ai_client.client import AIClient
+    from domain.chat import run_request, tool_recommender
+    from domain.external import trigger_decision
+    from domain.frontend_settings_store import FrontendSettingsStore
+    from domain.integrations.line import addressing, inbound
+    from domain.tool import permission_resolver
+
+    path = tmp_path / "not-created" / "settings.json"
+    monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(path))
+    snapshot = {
+        "debug": {"enabled": True},
+        "external_output": {"mode": "captured"},
+        "triggers": {"mode": "llm", "model": "owner/model"},
+        "line": {"trigger_words": ["owner-word"], "mention_policy": False},
+    }
+    reads = []
+
+    def read(owner):
+        reads.append(owner.path)
+        return snapshot
+
+    monkeypatch.setattr(FrontendSettingsStore, "read_snapshot", read)
+    assert AIClient._settings_data(object()) == snapshot
+    assert run_request._read_frontend_settings() == snapshot
+    assert tool_recommender._read_frontend_settings(tmp_path) == snapshot
+    assert permission_resolver.read_frontend_settings(tmp_path) == snapshot
+    assert trigger_decision._frontend_trigger_config()["llm"]["model"] == "owner/model"
+    assert send._frontend_debug_settings_enabled() is True
+    assert inbound._frontend_external_output_settings() == {"mode": "captured"}
+    assert inbound._line_mention_policy_default() is False
+    endpoint = SimpleNamespace(response={}, conversation={}, metadata={})
+    assert "owner-word" in addressing._line_addressing_trigger_words(endpoint)
+    assert reads == [path] * 9
+    assert not path.parent.exists()
+
+
+def test_optional_reader_does_not_hide_non_storage_failures(monkeypatch):
+    """A future dispatch/contract error cannot silently become default values."""
+    from blocks.chat import send
+    from domain.frontend_settings_store import FrontendSettingsStore
+
+    def fail(owner):
+        raise RuntimeError("snapshot contract unavailable")
+
+    monkeypatch.setattr(FrontendSettingsStore, "read_snapshot", fail)
+    with pytest.raises(RuntimeError, match="snapshot contract unavailable"):
+        send._frontend_debug_settings_enabled()

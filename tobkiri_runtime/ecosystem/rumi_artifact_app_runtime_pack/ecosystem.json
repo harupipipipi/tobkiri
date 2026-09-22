@@ -83,6 +83,7 @@
         "templates/ui_contract.template.md"
       ]
     },
+    "base_pack_promotion_eligible": false,
     "canonical_v4": {
       "artifact": "pack.v4.json",
       "artifact_digest": "sha256:e8ac7c313c1fd92ea14abd709107d7e33c22f10f8f8f6e9f5a00ef7e65dc2450",
@@ -91,7 +92,6 @@
     },
     "consumes_existing_sources_only": true,
     "declarative_only": true,
-    "defaultspack_promotion_eligible": false,
     "executable_code": false,
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -122,8 +122,8 @@
     ],
     "optional_integrations": [
       {
-        "pack_id": "rumi_reference_ui_pack",
-        "reason": "Hosts reference UI manifests and review surfaces for artifact runtime UI contracts."
+        "pack_id": "rumi_frontend_design_pack",
+        "reason": "Owns frontend design generation and UI review workflows for artifact runtime contracts."
       },
       {
         "pack_id": "defaultspack",

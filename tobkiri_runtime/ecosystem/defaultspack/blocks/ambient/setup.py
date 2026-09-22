@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 from typing import Any
@@ -12,6 +13,7 @@ def run(context: dict[str, Any]):
 
     interface_registry = context["interface_registry"]
     source_component = context.get("_source_component", "defaultspack:ambient:ambient")
+    settings_owner = context.get("_settings_owner_port")
 
     routes = [
         ("GET", "/api/ambient/status", "blocks.ambient.status", {}),
@@ -36,7 +38,11 @@ def run(context: dict[str, Any]):
             {
                 "method": method,
                 "pattern": pattern,
-                "handler": _ambient_handler(module_path, defaults),
+                "handler": _ambient_handler(
+                    module_path,
+                    defaults,
+                    settings_owner=settings_owner,
+                ),
                 "path_inject": {},
                 "local_only": local_only,
             },
@@ -46,13 +52,16 @@ def run(context: dict[str, Any]):
     return {"status": "ok", "registered": [route[1] for route in routes]}
 
 
-def _ambient_handler(module_path: str, defaults: dict[str, Any]):
+def _ambient_handler(module_path: str, defaults: dict[str, Any], *, settings_owner=None):
     def handler(request_data, context):
         import importlib
 
         payload = dict(request_data or {})
         payload.update({key: value for key, value in defaults.items() if key not in payload})
         mod = importlib.import_module(module_path)
-        return mod.run(payload, context)
+        run = mod.run
+        if "settings_owner" in inspect.signature(run).parameters:
+            return run(payload, context, settings_owner=settings_owner)
+        return run(payload, context)
 
     return handler

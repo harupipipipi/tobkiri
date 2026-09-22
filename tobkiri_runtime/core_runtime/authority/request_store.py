@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import importlib
 import json
+import os
 import re
 import secrets
 import threading
+from contextlib import AbstractContextManager, ExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from ..compat import safe_chmod
 from ..hmac_key_manager import generate_or_load_signing_key
@@ -71,6 +74,74 @@ _SECRET_KEY_SUFFIXES = ("token", "secret", "password", "passwd", "cookie", "cred
 _RESOURCE_HASH_IGNORED_KEYS = frozenset({"stream"})
 
 
+class _ProcessLockUnavailable(RuntimeError):
+    """Raised when a durable one-shot record cannot be locked safely."""
+
+
+@contextmanager
+def _exclusive_process_lock(path: Path) -> Iterator[None]:
+    """Hold an exclusive OS-backed lock for one durable record."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    except OSError as exc:
+        raise _ProcessLockUnavailable(str(exc)) from exc
+
+    backend = ""
+    try:
+        try:
+            safe_chmod(path, 0o600)
+        except (OSError, AttributeError):
+            pass
+        try:
+            import fcntl
+        except ImportError:
+            try:
+                msvcrt = importlib.import_module("msvcrt")
+            except ImportError as exc:
+                raise _ProcessLockUnavailable(
+                    "no supported cross-process file-lock backend"
+                ) from exc
+            try:
+                if os.fstat(descriptor).st_size == 0:
+                    os.write(descriptor, b"\0")
+                    os.fsync(descriptor)
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                getattr(msvcrt, "locking")(descriptor, getattr(msvcrt, "LK_LOCK"), 1)
+                backend = "msvcrt"
+            except OSError as exc:
+                raise _ProcessLockUnavailable(str(exc)) from exc
+        else:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+                backend = "fcntl"
+            except OSError as exc:
+                raise _ProcessLockUnavailable(str(exc)) from exc
+        yield
+    finally:
+        try:
+            if backend == "fcntl":
+                import fcntl
+
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            elif backend == "msvcrt":
+                msvcrt = importlib.import_module("msvcrt")
+
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                getattr(msvcrt, "locking")(
+                    descriptor,
+                    getattr(msvcrt, "LK_UNLCK"),
+                    1,
+                )
+        except OSError:
+            # Closing the descriptor also releases either backend's lock.
+            pass
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+
+
 def _normalized_resource_key(key: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(key or "").lower())
 
@@ -111,6 +182,7 @@ class AuthorityRequestStore:
         self._base_dir = Path(base_dir) if base_dir else USER_DATA_DIR / "authority"
         self._requests_dir = self._base_dir / "requests"
         self._one_shot_dir = self._base_dir / "one_shot"
+        self._one_shot_locks_dir = self._one_shot_dir / ".locks"
         self._deny_dir = self._base_dir / "denies"
         self._audit_path = self._base_dir / "audit.jsonl"
         self._hmac_key_manager = hmac_key_manager
@@ -119,8 +191,18 @@ class AuthorityRequestStore:
         self._ensure_dirs()
 
     def _ensure_dirs(self) -> None:
-        for directory in (self._base_dir, self._requests_dir, self._one_shot_dir, self._deny_dir):
+        for directory in (
+            self._base_dir,
+            self._requests_dir,
+            self._one_shot_dir,
+            self._one_shot_locks_dir,
+            self._deny_dir,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
+
+    def _one_shot_lock(self, token_id: str) -> AbstractContextManager[None]:
+        lock_path = self._one_shot_locks_dir / f"{token_id}.lock"
+        return _exclusive_process_lock(lock_path)
 
     def _signing_key(self) -> bytes:
         if self._hmac_key_manager is not None:
@@ -396,10 +478,11 @@ class AuthorityRequestStore:
                     continue
                 path = self._one_shot_dir / f"{normalized}.json"
                 try:
-                    path.unlink()
+                    with self._one_shot_lock(normalized):
+                        path.unlink()
                 except FileNotFoundError:
                     continue
-                except OSError:
+                except (OSError, _ProcessLockUnavailable):
                     continue
                 revoked += 1
                 self.audit(
@@ -420,30 +503,42 @@ class AuthorityRequestStore:
         token_id = hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
         path = self._one_shot_dir / f"{token_id}.json"
         with self._lock:
-            record = self._read_json(path)
-            if not record:
+            try:
+                with self._one_shot_lock(token_id):
+                    record = self._read_json(path)
+                    if not record:
+                        return False
+                    if record.get("consumed"):
+                        return False
+                    expires_at = _parse_ts(str(record.get("expires_at") or ""))
+                    if expires_at and expires_at <= _now_utc():
+                        return False
+                    if str(record.get("request_id") or "") != str(request_id or ""):
+                        return False
+                    if str(record.get("principal_id") or "") != str(principal_id or ""):
+                        return False
+                    if str(record.get("permission_id") or "") != str(permission_id or ""):
+                        return False
+                    if str(record.get("resource_hash") or "") != self.resource_hash(resource):
+                        return False
+                    record["consumed"] = True
+                    record["consumed_at"] = _now_ts()
+                    self._write_json(path, record)
+                    self._audit_best_effort(
+                        "authority_one_shot_consumed",
+                        {"request_id": request_id, "token_id": token_id},
+                    )
+                    return True
+            except _ProcessLockUnavailable as exc:
+                self._audit_best_effort(
+                    "authority_one_shot_lock_failed",
+                    {
+                        "request_id": request_id,
+                        "token_id": token_id,
+                        "error": str(exc),
+                    },
+                )
                 return False
-            if record.get("consumed"):
-                return False
-            expires_at = _parse_ts(str(record.get("expires_at") or ""))
-            if expires_at and expires_at <= _now_utc():
-                return False
-            if str(record.get("request_id") or "") != str(request_id or ""):
-                return False
-            if str(record.get("principal_id") or "") != str(principal_id or ""):
-                return False
-            if str(record.get("permission_id") or "") != str(permission_id or ""):
-                return False
-            if str(record.get("resource_hash") or "") != self.resource_hash(resource):
-                return False
-            record["consumed"] = True
-            record["consumed_at"] = _now_ts()
-            self._write_json(path, record)
-            self._audit_best_effort(
-                "authority_one_shot_consumed",
-                {"request_id": request_id, "token_id": token_id},
-            )
-            return True
 
     def consume_one_shots_atomically(self, items: list[dict[str, Any]]) -> dict[str, Any]:
         """Consume multiple one-shot approvals only if every token is still valid."""
@@ -454,7 +549,7 @@ class AuthorityRequestStore:
 
         with self._lock:
             seen_token_ids: set[str] = set()
-            records: list[tuple[Path, str, dict[str, Any], dict[str, Any], int]] = []
+            candidates: list[tuple[Path, str, dict[str, Any], int]] = []
             for index, item in enumerate(items):
                 token = str(item.get("token") or "")
                 if not token:
@@ -465,65 +560,91 @@ class AuthorityRequestStore:
                 seen_token_ids.add(token_id)
 
                 path = self._one_shot_dir / f"{token_id}.json"
-                record = self._read_json(path) or {}
-                raw_resource = item.get("resource")
-                resource = raw_resource if isinstance(raw_resource, dict) else {}
-                reason = self._one_shot_validation_error(
-                    record,
-                    request_id=str(item.get("request_id") or ""),
-                    principal_id=str(item.get("principal_id") or ""),
-                    permission_id=str(item.get("permission_id") or ""),
-                    resource=resource,
-                )
-                if reason:
-                    return {
-                        "success": False,
-                        "reason": reason,
-                        "failed_index": index,
-                        "request_id": str(item.get("request_id") or ""),
-                        "permission_id": str(item.get("permission_id") or ""),
-                    }
-                records.append((path, token_id, record, item, index))
+                candidates.append((path, token_id, item, index))
 
-            now = _now_ts()
-            written: list[tuple[Path, str, dict[str, Any]]] = []
-            failed_index = 0
             try:
-                for path, token_id, record, item, index in records:
-                    failed_index = index
-                    original_record = dict(record)
-                    updated_record = dict(record)
-                    updated_record["consumed"] = True
-                    updated_record["consumed_at"] = now
-                    self._write_json(path, updated_record)
-                    written.append((path, token_id, original_record))
-                    self._audit_best_effort(
-                        "authority_one_shot_consumed",
-                        {"request_id": str(item.get("request_id") or ""), "token_id": token_id},
-                    )
-            except Exception as exc:
-                for restore_path, token_id, original_record in reversed(written):
-                    try:
-                        self._write_json(restore_path, original_record)
-                        self._audit_best_effort(
-                            "authority_one_shot_consume_rollback",
-                            {"token_id": token_id, "reason": "consume_write_failed"},
-                        )
-                    except Exception as rollback_exc:
-                        self._audit_best_effort(
-                            "authority_one_shot_consume_rollback_failed",
-                            {"token_id": token_id, "error": str(rollback_exc)},
-                        )
-                failed_item = records[failed_index][3]
+                lock_stack = ExitStack()
+                for token_id in sorted(seen_token_ids):
+                    lock_stack.enter_context(self._one_shot_lock(token_id))
+            except _ProcessLockUnavailable as exc:
+                lock_stack.close()
+                self._audit_best_effort(
+                    "authority_one_shot_lock_failed",
+                    {"operation": "batch_consume", "error": str(exc)},
+                )
                 return {
                     "success": False,
-                    "reason": "consume_write_failed",
-                    "error": str(exc),
-                    "failed_index": failed_index,
-                    "request_id": str(failed_item.get("request_id") or ""),
-                    "permission_id": str(failed_item.get("permission_id") or ""),
+                    "reason": "token_lock_unavailable",
+                    "failed_index": 0,
                 }
-            return {"success": True, "consumed_count": len(records)}
+
+            with lock_stack:
+                records: list[
+                    tuple[Path, str, dict[str, Any], dict[str, Any], int]
+                ] = []
+                for path, token_id, item, index in candidates:
+                    record = self._read_json(path) or {}
+                    raw_resource = item.get("resource")
+                    resource = raw_resource if isinstance(raw_resource, dict) else {}
+                    reason = self._one_shot_validation_error(
+                        record,
+                        request_id=str(item.get("request_id") or ""),
+                        principal_id=str(item.get("principal_id") or ""),
+                        permission_id=str(item.get("permission_id") or ""),
+                        resource=resource,
+                    )
+                    if reason:
+                        return {
+                            "success": False,
+                            "reason": reason,
+                            "failed_index": index,
+                            "request_id": str(item.get("request_id") or ""),
+                            "permission_id": str(item.get("permission_id") or ""),
+                        }
+                    records.append((path, token_id, record, item, index))
+
+                now = _now_ts()
+                written: list[tuple[Path, str, dict[str, Any]]] = []
+                failed_index = 0
+                try:
+                    for path, token_id, record, item, index in records:
+                        failed_index = index
+                        original_record = dict(record)
+                        updated_record = dict(record)
+                        updated_record["consumed"] = True
+                        updated_record["consumed_at"] = now
+                        self._write_json(path, updated_record)
+                        written.append((path, token_id, original_record))
+                        self._audit_best_effort(
+                            "authority_one_shot_consumed",
+                            {
+                                "request_id": str(item.get("request_id") or ""),
+                                "token_id": token_id,
+                            },
+                        )
+                except Exception as exc:
+                    for restore_path, token_id, original_record in reversed(written):
+                        try:
+                            self._write_json(restore_path, original_record)
+                            self._audit_best_effort(
+                                "authority_one_shot_consume_rollback",
+                                {"token_id": token_id, "reason": "consume_write_failed"},
+                            )
+                        except Exception as rollback_exc:
+                            self._audit_best_effort(
+                                "authority_one_shot_consume_rollback_failed",
+                                {"token_id": token_id, "error": str(rollback_exc)},
+                            )
+                    failed_item = records[failed_index][3]
+                    return {
+                        "success": False,
+                        "reason": "consume_write_failed",
+                        "error": str(exc),
+                        "failed_index": failed_index,
+                        "request_id": str(failed_item.get("request_id") or ""),
+                        "permission_id": str(failed_item.get("permission_id") or ""),
+                    }
+                return {"success": True, "consumed_count": len(records)}
 
     def _one_shot_validation_error(
         self,

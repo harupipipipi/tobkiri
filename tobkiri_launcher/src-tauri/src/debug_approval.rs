@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
+use crate::host_contract::ExecutionProfileIdentity;
+
 type HmacSha256 = Hmac<Sha256>;
 
 const REQUEST_TTL: Duration = Duration::from_secs(60 * 60);
@@ -74,6 +76,9 @@ struct PendingSession {
     workspace_digest: String,
     pack_id: String,
     profile_id: String,
+    profile_revision: String,
+    activation_id: String,
+    plan_digest: String,
     process_id: u32,
     process_fingerprint: String,
     claim_secret_hash: String,
@@ -90,6 +95,9 @@ struct ActiveLease {
     workspace_digest: String,
     pack_id: String,
     profile_id: String,
+    profile_revision: String,
+    activation_id: String,
+    plan_digest: String,
     process_id: u32,
     process_fingerprint: String,
     session_secret_hash: String,
@@ -134,6 +142,7 @@ struct GuardianRecord {
     workspace: PathBuf,
     http_port: u16,
     api_token_file: PathBuf,
+    execution_identity: ExecutionProfileIdentity,
     #[cfg(windows)]
     _process_handle: std::sync::Arc<std::os::windows::io::OwnedHandle>,
 }
@@ -157,6 +166,9 @@ pub struct DebugApprovalStatus {
     pub workspace_digest: Option<String>,
     pub pack_id: Option<String>,
     pub profile_id: Option<String>,
+    pub profile_revision: Option<String>,
+    pub activation_id: Option<String>,
+    pub plan_digest: Option<String>,
     pub guardian_owned: bool,
     pub lease_epoch: Option<u64>,
     pub expires_at: Option<u64>,
@@ -169,6 +181,10 @@ pub struct DebugGuardianStatus {
     pub run_id: String,
     pub workspace: String,
     pub pack_id: String,
+    pub profile_id: String,
+    pub profile_revision: String,
+    pub activation_id: String,
+    pub plan_digest: String,
     pub guardian_owned: bool,
     pub http_port: u16,
     pub api_token_file: String,
@@ -181,6 +197,9 @@ pub struct DebugSessionStartRequest {
     pub workspace: String,
     pub pack_id: String,
     pub profile_id: String,
+    pub profile_revision: String,
+    pub activation_id: String,
+    pub plan_digest: String,
     pub claim_secret: String,
 }
 
@@ -204,6 +223,9 @@ pub struct DebugOperatorRequest {
     pub workspace_digest: String,
     pub pack_id: String,
     pub profile_id: String,
+    pub profile_revision: String,
+    pub activation_id: String,
+    pub plan_digest: String,
     pub lease_epoch: u64,
     pub session_secret: String,
     pub request_id: String,
@@ -250,6 +272,9 @@ pub struct DebugCliOperator {
     pub workspace_digest: String,
     pub pack_id: String,
     pub profile_id: String,
+    pub profile_revision: String,
+    pub activation_id: String,
+    pub plan_digest: String,
     pub lease_epoch: u64,
     pub request_id: String,
     pub permission_id: String,
@@ -305,9 +330,13 @@ impl DebugApprovalManager {
         workspace: PathBuf,
         http_port: u16,
         api_token_file: PathBuf,
+        execution_identity: ExecutionProfileIdentity,
     ) -> Result<(), String> {
         validate_identifier(&run_id, "run_id")?;
         validate_identifier(&executable_identity, "executable_identity")?;
+        execution_identity
+            .validate()
+            .map_err(|_| "Launcher-owned guardian execution identity is invalid")?;
         if http_port == 0 {
             return Err("Launcher-owned guardian HTTP port is invalid".into());
         }
@@ -339,6 +368,7 @@ impl DebugApprovalManager {
                 workspace,
                 http_port,
                 api_token_file,
+                execution_identity,
                 #[cfg(windows)]
                 _process_handle: std::sync::Arc::new(process_handle),
             },
@@ -372,6 +402,10 @@ impl DebugApprovalManager {
             run_id: run_id.clone(),
             workspace: guardian.workspace.to_string_lossy().into_owned(),
             pack_id: "defaultspack".into(),
+            profile_id: guardian.execution_identity.profile_id.clone(),
+            profile_revision: guardian.execution_identity.profile_revision.clone(),
+            activation_id: guardian.execution_identity.activation_id.clone(),
+            plan_digest: guardian.execution_identity.plan_digest.clone(),
             guardian_owned: true,
             http_port: guardian.http_port,
             api_token_file: guardian.api_token_file.to_string_lossy().into_owned(),
@@ -576,13 +610,16 @@ impl DebugApprovalManager {
         let lease_epoch = state.next_lease_epoch;
         state.next_lease_epoch = state.next_lease_epoch.saturating_add(1);
         let lease_material = format!(
-            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+            "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
             self.instance_nonce,
             candidate.session_id,
             candidate.run_id,
             candidate.workspace_digest,
             candidate.pack_id,
             candidate.profile_id,
+            candidate.profile_revision,
+            candidate.activation_id,
+            candidate.plan_digest,
             lease_epoch,
             duration.key(),
         );
@@ -594,6 +631,9 @@ impl DebugApprovalManager {
             workspace_digest: candidate.workspace_digest,
             pack_id: candidate.pack_id,
             profile_id: candidate.profile_id,
+            profile_revision: candidate.profile_revision,
+            activation_id: candidate.activation_id,
+            plan_digest: candidate.plan_digest,
             process_id: candidate.process_id,
             process_fingerprint: current_fingerprint,
             session_secret_hash: sha256_text(&session_secret),
@@ -651,6 +691,9 @@ impl DebugApprovalManager {
             || active.workspace_digest != request.workspace_digest
             || active.pack_id != request.pack_id
             || active.profile_id != request.profile_id
+            || active.profile_revision != request.profile_revision
+            || active.activation_id != request.activation_id
+            || active.plan_digest != request.plan_digest
             || active.lease_epoch != request.lease_epoch
         {
             return Err("debug request does not match the active session binding".into());
@@ -893,6 +936,9 @@ impl DebugApprovalManager {
             || operator.workspace_digest != active.workspace_digest
             || operator.pack_id != active.pack_id
             || operator.profile_id != active.profile_id
+            || operator.profile_revision != active.profile_revision
+            || operator.activation_id != active.activation_id
+            || operator.plan_digest != active.plan_digest
             || operator.lease_epoch != active.lease_epoch
         {
             return Err("debug operator active lease binding mismatch".into());
@@ -955,6 +1001,22 @@ impl DebugApprovalManager {
                             Some(active.run_id.clone()),
                             Some(active.lease_epoch),
                         )),
+                        Some(guardian)
+                            if guardian.execution_identity.profile_id != active.profile_id
+                                || guardian.execution_identity.profile_revision
+                                    != active.profile_revision
+                                || guardian.execution_identity.activation_id
+                                    != active.activation_id
+                                || guardian.execution_identity.plan_digest
+                                    != active.plan_digest =>
+                        {
+                            Some((
+                                "internal_invariant_failure",
+                                Some(active.lease_hash.clone()),
+                                Some(active.run_id.clone()),
+                                Some(active.lease_epoch),
+                            ))
+                        }
                         Some(guardian) => match process_fingerprint(active.process_id) {
                             Err(_) => Some((
                                 "guardian_missing",
@@ -1053,6 +1115,18 @@ impl DebugApprovalManager {
     }
 }
 
+fn request_execution_identity(
+    request: &DebugSessionStartRequest,
+) -> Result<ExecutionProfileIdentity, String> {
+    ExecutionProfileIdentity::new(
+        request.profile_id.clone(),
+        request.profile_revision.clone(),
+        request.activation_id.clone(),
+        request.plan_digest.clone(),
+    )
+    .map_err(|_| "debug session execution Profile identity is invalid".into())
+}
+
 fn pending_from_request(
     request: &DebugSessionStartRequest,
     guardians: &HashMap<String, GuardianRecord>,
@@ -1068,12 +1142,16 @@ fn pending_from_request(
     if request.claim_secret.len() < 32 {
         return Err("debug session claim secret is invalid".into());
     }
+    let requested_identity = request_execution_identity(request)?;
     let workspace = canonical_workspace(&request.workspace)?;
     let guardian = guardians
         .get(&request.run_id)
         .ok_or_else(|| "run id is not a live Launcher-owned Defaultspack child".to_string())?;
     if guardian.workspace != workspace {
         return Err("workspace does not match the Launcher-owned Defaultspack child".into());
+    }
+    if !guardian.execution_identity.matches(&requested_identity) {
+        return Err("execution Profile identity does not match the Launcher-owned guardian".into());
     }
     let process_fingerprint = process_fingerprint(guardian.process_id)?;
     if process_fingerprint != guardian.process_fingerprint {
@@ -1090,6 +1168,9 @@ fn pending_from_request(
         workspace,
         pack_id: request.pack_id.clone(),
         profile_id: request.profile_id.clone(),
+        profile_revision: request.profile_revision.clone(),
+        activation_id: request.activation_id.clone(),
+        plan_digest: request.plan_digest.clone(),
         process_id: guardian.process_id,
         process_fingerprint,
         claim_secret_hash: sha256_text(&request.claim_secret),
@@ -1106,6 +1187,9 @@ fn pending_matches(left: &PendingSession, right: &PendingSession) -> bool {
         && left.workspace_digest == right.workspace_digest
         && left.pack_id == right.pack_id
         && left.profile_id == right.profile_id
+        && left.profile_revision == right.profile_revision
+        && left.activation_id == right.activation_id
+        && left.plan_digest == right.plan_digest
         && left.process_id == right.process_id
         && left.process_fingerprint == right.process_fingerprint
         && left.claim_secret_hash == right.claim_secret_hash
@@ -1128,6 +1212,9 @@ fn operator_from_request(
         workspace_digest: request.workspace_digest.clone(),
         pack_id: request.pack_id.clone(),
         profile_id: request.profile_id.clone(),
+        profile_revision: request.profile_revision.clone(),
+        activation_id: request.activation_id.clone(),
+        plan_digest: request.plan_digest.clone(),
         lease_epoch: request.lease_epoch,
         request_id: request.request_id.clone(),
         permission_id: request.permission_id.clone(),
@@ -1157,6 +1244,9 @@ fn canonical_operator_payload(operator: &DebugCliOperator) -> Result<String, Str
         "workspace_digest": operator.workspace_digest,
         "pack_id": operator.pack_id,
         "profile_id": operator.profile_id,
+        "profile_revision": operator.profile_revision,
+        "activation_id": operator.activation_id,
+        "plan_digest": operator.plan_digest,
         "lease_epoch": operator.lease_epoch,
         "request_id": operator.request_id,
         "permission_id": operator.permission_id,
@@ -1191,6 +1281,9 @@ fn status_from_state(
         workspace_digest: None,
         pack_id: None,
         profile_id: None,
+        profile_revision: None,
+        activation_id: None,
+        plan_digest: None,
         guardian_owned: false,
         lease_epoch: None,
         expires_at: None,
@@ -1216,6 +1309,9 @@ fn status_from_state(
             status.workspace_digest = Some(pending.workspace_digest.clone());
             status.pack_id = Some(pending.pack_id.clone());
             status.profile_id = Some(pending.profile_id.clone());
+            status.profile_revision = Some(pending.profile_revision.clone());
+            status.activation_id = Some(pending.activation_id.clone());
+            status.plan_digest = Some(pending.plan_digest.clone());
             status.guardian_owned = true;
             status.expires_at = Some(pending.expires_at.max(now_epoch));
             status.duration = pending
@@ -1231,6 +1327,9 @@ fn status_from_state(
             status.workspace_digest = Some(active.workspace_digest.clone());
             status.pack_id = Some(active.pack_id.clone());
             status.profile_id = Some(active.profile_id.clone());
+            status.profile_revision = Some(active.profile_revision.clone());
+            status.activation_id = Some(active.activation_id.clone());
+            status.plan_digest = Some(active.plan_digest.clone());
             status.guardian_owned = true;
             status.lease_epoch = Some(active.lease_epoch);
             status.expires_at = active.duration.seconds().map(|_| active.expires_at);
@@ -1256,6 +1355,7 @@ fn require_secret(active: &ActiveLease, supplied: &str) -> Result<(), String> {
 }
 
 fn validate_operator_request(request: &DebugOperatorRequest) -> Result<(), String> {
+    operator_request_execution_identity(request)?;
     validate_digest(&request.workspace_digest, "workspace_digest")?;
     validate_digest(
         &request.canonical_arguments_digest,
@@ -1291,6 +1391,7 @@ fn validate_operator(operator: &DebugCliOperator) -> Result<(), String> {
     {
         return Err("debug operator provenance is invalid".into());
     }
+    operator_execution_identity(operator)?;
     validate_digest(&operator.workspace_digest, "workspace_digest")?;
     validate_digest(
         &operator.canonical_arguments_digest,
@@ -1300,6 +1401,30 @@ fn validate_operator(operator: &DebugCliOperator) -> Result<(), String> {
         validate_digest(target_digest, "target_digest")?;
     }
     validate_decision(&operator.decision)
+}
+
+fn operator_request_execution_identity(
+    request: &DebugOperatorRequest,
+) -> Result<ExecutionProfileIdentity, String> {
+    ExecutionProfileIdentity::new(
+        request.profile_id.clone(),
+        request.profile_revision.clone(),
+        request.activation_id.clone(),
+        request.plan_digest.clone(),
+    )
+    .map_err(|_| "debug request execution Profile identity is invalid".into())
+}
+
+fn operator_execution_identity(
+    operator: &DebugCliOperator,
+) -> Result<ExecutionProfileIdentity, String> {
+    ExecutionProfileIdentity::new(
+        operator.profile_id.clone(),
+        operator.profile_revision.clone(),
+        operator.activation_id.clone(),
+        operator.plan_digest.clone(),
+    )
+    .map_err(|_| "debug operator execution Profile identity is invalid".into())
 }
 
 fn validate_decision(decision: &str) -> Result<(), String> {
@@ -1519,6 +1644,7 @@ mod tests {
                     std::fs::write(&path, "test-token").unwrap();
                     path
                 },
+                test_execution_identity(),
             )
             .unwrap();
         manager
@@ -1531,8 +1657,21 @@ mod tests {
             workspace: workspace.to_string_lossy().into_owned(),
             pack_id: "defaultspack".into(),
             profile_id: "defaults".into(),
+            profile_revision: format!("sha256:{}", "a".repeat(64)),
+            activation_id: "activation:defaults-test".into(),
+            plan_digest: format!("sha256:{}", "b".repeat(64)),
             claim_secret: "claim-secret-which-is-at-least-thirty-two-bytes".into(),
         }
+    }
+
+    fn test_execution_identity() -> ExecutionProfileIdentity {
+        ExecutionProfileIdentity::new(
+            "defaults",
+            format!("sha256:{}", "a".repeat(64)),
+            "activation:defaults-test",
+            format!("sha256:{}", "b".repeat(64)),
+        )
+        .unwrap()
     }
 
     fn active(manager: &DebugApprovalManager) -> (DebugApprovalStatus, String) {
@@ -1554,6 +1693,9 @@ mod tests {
             workspace_digest: status.workspace_digest.clone().unwrap(),
             pack_id: status.pack_id.clone().unwrap(),
             profile_id: status.profile_id.clone().unwrap(),
+            profile_revision: status.profile_revision.clone().unwrap(),
+            activation_id: status.activation_id.clone().unwrap(),
+            plan_digest: status.plan_digest.clone().unwrap(),
             lease_epoch: status.lease_epoch.unwrap(),
             session_secret: session_secret.into(),
             request_id: "apr-12345678".into(),
@@ -1588,6 +1730,15 @@ mod tests {
             .register_session(forged)
             .unwrap_err()
             .contains("Launcher-owned"));
+    }
+
+    #[test]
+    fn rejects_debug_session_for_a_different_execution_profile_identity() {
+        let manager = manager();
+        let mut forged = request(&std::env::temp_dir());
+        forged.activation_id = "activation:other-profile-test".into();
+        let error = manager.register_session(forged).unwrap_err();
+        assert!(error.contains("execution Profile identity"));
     }
 
     #[test]

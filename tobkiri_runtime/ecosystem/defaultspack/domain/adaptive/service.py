@@ -807,9 +807,9 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
     def operating_profile_list(self, args: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         del args, ctx
         try:
-            from core_runtime.bootstrap.profile_capture import capture_default_profile
+            from core_runtime.bootstrap.profile_capture import capture_active_profile
 
-            active = capture_default_profile()
+            active = capture_active_profile()
         except Exception as exc:
             return {
                 "profiles": [],
@@ -865,9 +865,9 @@ class AdaptiveService(EventServiceMixin, PackRecommendationServiceMixin, SkillSe
         self._ensure_not_frozen("operating_profile.activate")
         target = str(args.get("target_profile_id") or args.get("id") or args.get("profile_id") or self.profile_id)
         try:
-            from core_runtime.bootstrap.profile_capture import capture_default_profile
+            from core_runtime.bootstrap.profile_capture import capture_active_profile
 
-            active = capture_default_profile()
+            active = capture_active_profile()
         except Exception as exc:
             raise AdaptiveError(
                 "PROFILE_CONFIRMATION_REQUIRED",

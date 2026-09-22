@@ -1,8 +1,8 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:209c46ead3d8ab044560245bf4359a3de967051a116446cebb27f267a84e9ee8",
+  "catalog_digest": "sha256:ea53fa7e130af7a6d05355ab410becbd6f36fb29789a6d316848277d635a9a40",
   "pack_id": "rumi_connector_turn_adapter_pack",
-  "source_identity": "sha256:3a4b03628fe3282c4a122d3b5e50d5c723d3d1818ab9d8f86673247741fad6ef",
+  "source_identity": "sha256:18e1d6aed69d192c9baa13b1d9281616741be83ce17a6cc0c386a9f431fcd33d",
   "variants": [
     {
       "architecture": "any",
@@ -29,7 +29,7 @@
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:167234533d7a186c52c03304bd4c336a212d4d8ecf6c816feb0fb51acf9de2db",
+          "revision_digest": "sha256:33d2789fcd1a5bf1ff4b52597daeef29f1692a7fe1e9e0c7764ddc37295b9d9d",
           "timeout_default_ms": 30000,
           "timeout_hard_max_ms": 300000
         }

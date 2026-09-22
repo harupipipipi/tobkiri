@@ -17,6 +17,7 @@ from domain.chat.tool_selection_service import ToolSelectionService
 from domain.chat.tool_selection_schema import normalize_tool_targets
 from domain.tool.registry import ToolRegistry
 from domain.tool.schema_adapter import filter_tool_definitions_for_runtime_profile, resolve_runtime_profile_context
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 
 @dataclass
@@ -30,10 +31,19 @@ class _PreviewSelection:
     preview_id: str | None = None
 
 
-def run(input_data, context):
+def run(
+    input_data,
+    context,
+    *,
+    settings_owner: SettingsOwnerPort | None = None,
+):
     if not isinstance(input_data, dict):
         return error("input_data dict is required", "INVALID_INPUT")
-    raw = input_data.get("tool_selection") if isinstance(input_data.get("tool_selection"), dict) else {}
+    raw: dict[str, Any] = (
+        input_data["tool_selection"]
+        if isinstance(input_data.get("tool_selection"), dict)
+        else {}
+    )
     user_text = str(input_data.get("user_text") or input_data.get("text") or input_data.get("message") or "")
     selection = _PreviewSelection(
         mode=str(raw.get("mode") or "review").strip().lower() or "review",
@@ -58,6 +68,7 @@ def run(input_data, context):
         )
         decision = ToolSelectionService(
             call_handler=resolved_context.get("call_handler"),
+            settings_owner=settings_owner,
         ).select(user_text, tools, selection=selection, context=resolved_context)
     except Exception as exc:
         return error("tool selection preview failed: " + str(exc), "SELECTION_PREVIEW_FAILED")

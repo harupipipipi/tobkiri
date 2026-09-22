@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import multiprocessing
 from pathlib import Path
+from types import SimpleNamespace
 import threading
 import time
 
@@ -15,18 +16,19 @@ from jsonschema import Draft202012Validator
 
 from core_runtime.bootstrap.profile_capture import (
     capture_default_profile,
+    host_profile_catalog,
     prepare_default_profile_confirmation,
     runtime_user_data_root,
 )
 from core_runtime.authority.v4 import AuthorityStore
-from core_runtime.runtime_surface_v4 import (
+from ecosystem.defaultspack.domain.runtime_surface_v4 import (
     RUNTIME_SURFACE_API_VERSION,
     RuntimeSurfaceErrorCode,
     RuntimeProfileChangeService,
     RuntimeSurfaceError,
     RuntimeSurfaceService,
 )
-import core_runtime.runtime_surface_v4 as runtime_surface
+import ecosystem.defaultspack.domain.runtime_surface_v4 as runtime_surface
 from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
 from ecosystem.defaultspack.domain.runtime_v4 import ProfileResolutionDenied
 from ecosystem.defaultspack.domain.runtime_v4 import ResolvedDefaultProfile
@@ -35,6 +37,14 @@ from tobkiri_protocol.canonical import canonical_digest
 
 RUNTIME_ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_ROOT = RUNTIME_ROOT / "ecosystem" / "defaultspack" / "v4"
+FLOW_UI_FIXTURE = (
+    RUNTIME_ROOT
+    / "tests"
+    / "fixtures"
+    / "runtime_surface_v4"
+    / "operations_flow_ui.ready.v1.json"
+)
+FLOW_UI_CALLER_ID = "rumi_model_registry_pack.model-registry.manage"
 
 
 def _approve_profile_process(
@@ -42,9 +52,27 @@ def _approve_profile_process(
     candidate_digest: str,
     session_id: str,
     results: multiprocessing.queues.Queue,
+    bundle_root: str | None = None,
 ) -> None:
     try:
-        approved = RuntimeProfileChangeService().approve(
+        from ecosystem.defaultspack.defaultspack.profile_runtime_composition import (
+            install_defaultspack_profile_runtime,
+        )
+
+        install_defaultspack_profile_runtime()
+        service = RuntimeProfileChangeService(
+            bundle_root=Path(bundle_root) if bundle_root is not None else None,
+            surface_service=(
+                RuntimeSurfaceService(
+                    catalog_loader=lambda: host_profile_catalog(
+                        bundle_root=Path(bundle_root)
+                    )
+                )
+                if bundle_root is not None
+                else None
+            ),
+        )
+        approved = service.approve(
             {
                 "candidate_id": candidate_id,
                 "candidate_digest": candidate_digest,
@@ -114,19 +142,158 @@ def _capability_snapshot(active_runtime, operations) -> dict[str, object]:
         {key: target[key] for key in target if key != "owner_pack_id"} for target in targets
     ]
     profile_id = str(active_runtime.resolved.profile["profile_id"])
+    profile_revision = str(active_runtime.resolved.plan["profile_revision"])
+    activation_id = str(active_runtime.activation["activation_id"])
     plan_digest = str(active_runtime.resolved.plan["plan_digest"])
+    application_digest = "sha256:" + "b" * 64
     return {
         "profile_id": profile_id,
+        "profile_revision": profile_revision,
+        "activation_id": activation_id,
         "plan_digest": plan_digest,
+        "application_artifact_digest": application_digest,
         "catalog_hash": canonical_digest(
             {
                 "profile_id": profile_id,
+                "profile_revision": profile_revision,
+                "activation_id": activation_id,
                 "plan_digest": plan_digest,
+                "application_artifact_digest": application_digest,
                 "contributions": digest_targets,
             }
         ),
         "targets": targets,
     }
+
+
+def _project_fixture_shape(value: object, template: object) -> object:
+    if isinstance(template, dict):
+        assert isinstance(value, dict)
+        return {
+            key: _project_fixture_shape(value[key], child)
+            for key, child in template.items()
+        }
+    if isinstance(template, list):
+        assert isinstance(value, list) and len(value) == len(template)
+        return [
+            _project_fixture_shape(child, expected)
+            for child, expected in zip(value, template, strict=True)
+        ]
+    return value
+
+
+def _normalize_flow_ui_envelope(
+    envelope: dict[str, object],
+    fixture: dict[str, object],
+) -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    data = envelope["data"]
+    assert isinstance(data, dict)
+    flow = next(
+        item for item in data["flows"]
+        if item["flow_id"] == FLOW_UI_CALLER_ID
+    )
+    assert len(flow["edges"]) == 1
+    edge = flow["edges"][0]
+    identity_keys = (
+        "caller_function_id",
+        "target_provider_id",
+        "contract_id",
+        "operation_id",
+    )
+    operation = next(
+        item for item in data["operations"]
+        if all(item[key] == edge[key] for key in identity_keys)
+    )
+    pack = next(
+        item for item in data["packs"]
+        if item["pack_id"] == operation["owner_pack_id"]
+    )
+    operation_key = f"{operation['contract_id']}::{operation['operation_id']}"
+    selected = {
+        **envelope,
+        "data": {
+            "packs": [{**pack, "invokable_operations": [operation_key]}],
+            "operations": [operation],
+            "flows": [flow],
+        },
+    }
+    normalized = _project_fixture_shape(selected, fixture)
+    assert isinstance(normalized, dict)
+    for key in ("profile_revision", "plan_digest", "catalog_revision", "records"):
+        normalized[key] = fixture[key]
+    normalized_pack = normalized["data"]["packs"][0]
+    fixture_pack = fixture["data"]["packs"][0]
+    for key in ("artifact_digest", "artifact_ref"):
+        normalized_pack[key] = fixture_pack[key]
+    normalized_operation = normalized["data"]["operations"][0]
+    fixture_operation = fixture["data"]["operations"][0]
+    volatile_keys = (
+        "artifact_digest", "invocation_catalog_hash", "catalog_digest",
+        "activation_id", "function_principal_id", "authority_reference",
+    )
+    for key in volatile_keys:
+        normalized_operation[key] = fixture_operation[key]
+    return normalized, operation, pack, edge
+
+
+def test_capability_invocation_hash_binds_the_application_map() -> None:
+    active = SimpleNamespace(
+        resolved=SimpleNamespace(profile={"profile_id": "test"},
+                                 plan={"profile_revision": "revision", "plan_digest": "plan"}),
+        activation={"activation_id": "activation"},
+    )
+    operation = {"owner_pack_id": "example", "contract_id": "example.read.v1",
+                 "operation_id": "read", "target_provider_id": "example.reader",
+                 "function_id": "example.reader", "artifact_digest": "sha256:" + "a" * 64}
+    snapshot = _capability_snapshot(active, [operation])
+    resolve = runtime_surface._capability_invocation_target
+    assert resolve(snapshot, active=active, operation=operation) == snapshot["targets"][0]
+    for changed in (None, "sha256:" + "c" * 64):
+        assert resolve({**snapshot, "application_artifact_digest": changed},
+                       active=active, operation=operation) is None
+
+
+@pytest.mark.parametrize("surface", ["profile", "operations"])
+def test_projection_reuses_host_catalog_only_within_one_read(
+    active_runtime, monkeypatch, surface,
+) -> None:
+    catalog = runtime_surface._captured_lifecycle_projection()
+    calls = []
+
+    def reader():
+        calls.append(True)
+        return _capability_snapshot(active_runtime, []), catalog
+
+    def reject_duplicate(*args, **kwargs):
+        pytest.fail("projection must reuse the Host-owned catalog")
+
+    monkeypatch.setattr(runtime_surface, "_captured_lifecycle_projection", reject_duplicate)
+    service = _service(active_runtime, capability_binding_reader=reader)
+    for _ in range(2):
+        if surface == "profile":
+            service.read_profile()
+        else:
+            service.read_advanced(surface)
+    assert len(calls) == 2  # No cache across requests.
+
+
+@pytest.mark.parametrize(
+    "field", ["profile_id", "profile_revision", "plan_digest"],
+)
+def test_projection_rejects_host_catalog_from_another_snapshot(active_runtime, field):
+    catalog = {**runtime_surface._captured_lifecycle_projection(), field: "wrong"}
+    service = _service(
+        active_runtime,
+        capability_binding_reader=lambda: (_capability_snapshot(active_runtime, []), catalog),
+    )
+    with pytest.raises(RuntimeSurfaceError) as caught:
+        service.read_profile()
+    assert caught.value.code == RuntimeSurfaceErrorCode.STALE_REVISION
 
 
 def test_profile_read_model_is_derived_from_verified_v4_graph(active_runtime) -> None:
@@ -238,6 +405,332 @@ def test_operation_and_principal_views_are_resolved_plan_derived(active_runtime)
     )
 
 
+def test_operations_publish_exact_profile_declared_flow_compositions(
+    active_runtime,
+) -> None:
+    """The Flow route gets the same canonical composition as the operations view."""
+
+    data = _service(active_runtime).read_advanced("operations")["data"]
+    flows = data["flows"]
+    assert isinstance(flows, list)
+    assert flows
+    expected: dict[str, set[tuple[str, str, str, str]]] = {}
+    for edge in active_runtime.resolved.profile["requested_edges"]:
+        expected.setdefault(str(edge["caller_function_id"]), set()).add(
+            (
+                str(edge["caller_function_id"]),
+                str(edge["target_provider_id"]),
+                str(edge["contract_id"]),
+                str(edge["operation_id"]),
+            )
+        )
+    assert {
+        str(flow["flow_id"]): {
+            (
+                str(edge["caller_function_id"]),
+                str(edge["target_provider_id"]),
+                str(edge["contract_id"]),
+                str(edge["operation_id"]),
+            )
+            for edge in flow["edges"]
+        }
+        for flow in flows
+    } == expected
+    operation_edges = {
+        (
+            str(operation["caller_function_id"]),
+            str(operation["target_provider_id"]),
+            str(operation["contract_id"]),
+            str(operation["operation_id"]),
+        )
+        for operation in data["operations"]
+    }
+    assert all(
+        {
+            (
+                str(edge["caller_function_id"]),
+                str(edge["target_provider_id"]),
+                str(edge["contract_id"]),
+                str(edge["operation_id"]),
+            )
+            for edge in flow["edges"]
+        }.issubset(operation_edges)
+        for flow in flows
+    )
+    assert all(flow["state"] == "ready" for flow in flows)
+    assert all(
+        flow["operation_ids"]
+        == sorted({edge["operation_id"] for edge in flow["edges"]})
+        for flow in flows
+    )
+
+
+@pytest.mark.contract
+def test_operations_flow_ui_fixture_comes_from_the_real_surface(
+    active_runtime,
+) -> None:
+    """Keep the frontend Flow fixture bound to the real operations producer."""
+
+    initial = _service(active_runtime).read_advanced("operations")
+    capability = _capability_snapshot(
+        active_runtime,
+        [
+            operation for operation in initial["data"]["operations"]
+            if operation["caller_function_id"] == FLOW_UI_CALLER_ID
+        ],
+    )
+    envelope = _service(
+        active_runtime,
+        capability_binding_reader=lambda: (
+            capability,
+            runtime_surface._captured_lifecycle_projection(),
+        ),
+    ).read_advanced("operations")
+
+    assert set(envelope) == {
+        "runtime_surface_api_version", "surface", "state", "profile_id",
+        "profile_revision", "plan_digest", "catalog_revision", "records", "data",
+    }
+    assert set(envelope["data"]) == {"operations", "packs", "flows"}
+    fixture = json.loads(FLOW_UI_FIXTURE.read_text(encoding="utf-8"))
+    normalized, real_operation, real_pack, real_edge = (
+        _normalize_flow_ui_envelope(envelope, fixture)
+    )
+    assert real_operation["invocation_catalog_hash"] == capability["catalog_hash"]
+    assert real_operation["catalog_digest"] == envelope["catalog_revision"]
+    assert real_operation["artifact_digest"] == real_pack["artifact_digest"]
+    assert real_operation["invocation_owner_pack_id"] == real_pack["pack_id"]
+    assert real_operation["invocation_contribution_id"]
+    assert real_edge["caller_function_id"] == real_operation["caller_function_id"]
+    operation = normalized["data"]["operations"][0]
+    pack = normalized["data"]["packs"][0]
+    edge = normalized["data"]["flows"][0]["edges"][0]
+    identity_keys = (
+        "caller_function_id", "target_provider_id", "contract_id", "operation_id",
+    )
+    assert all(operation[key] == edge[key] for key in identity_keys)
+    assert operation["invokable"] is True
+    assert operation["invocation_contribution_id"]
+    assert operation["invocation_owner_pack_id"] == pack["pack_id"]
+    assert operation["invocation_catalog_hash"] != normalized["catalog_revision"]
+    assert operation["catalog_digest"] == normalized["catalog_revision"]
+    assert pack["enabled"] is True and pack["approved"] is True
+    assert pack["artifact_digest"] == operation["artifact_digest"]
+    assert (
+        f"{operation['contract_id']}::{operation['operation_id']}"
+        in pack["invokable_operations"]
+    )
+    assert normalized == fixture
+
+
+def test_resolved_plan_bindings_keep_the_profile_target_provider(
+    active_runtime,
+) -> None:
+    expected = {
+        (
+            str(edge["caller_function_id"]),
+            str(edge["target_provider_id"]),
+            str(edge["contract_id"]),
+            str(edge["operation_id"]),
+        )
+        for edge in active_runtime.resolved.profile["requested_edges"]
+    }
+
+    assert runtime_surface._resolved_profile_edge_keys(
+        active_runtime.resolved.plan["bindings"]
+    ) == expected
+
+
+def test_flow_composition_is_unavailable_when_a_profile_edge_is_not_admitted(
+    active_runtime,
+) -> None:
+    admitted = runtime_surface._resolved_profile_edge_keys(
+        active_runtime.resolved.plan["bindings"]
+    )
+    missing = next(iter(admitted))
+    flows = runtime_surface._flow_composition_projection(
+        active_runtime.resolved.profile,
+        admitted_edges=admitted - {missing},
+    )
+
+    assert any(
+        flow["flow_id"] == missing[0] and flow["state"] == "unavailable"
+        for flow in flows
+    )
+
+
+def test_flow_projection_keeps_same_operation_id_across_contracts() -> None:
+    profile = {
+        "requested_edges": [
+            {
+                "caller_function_id": "caller.one",
+                "target_provider_id": "provider.one",
+                "contract_id": "contract.one",
+                "operation_id": "operation.shared",
+            },
+            {
+                "caller_function_id": "caller.two",
+                "target_provider_id": "provider.two",
+                "contract_id": "contract.two",
+                "operation_id": "operation.shared",
+            },
+        ]
+    }
+
+    flows = runtime_surface._flow_composition_projection(profile)
+
+    assert [flow["flow_id"] for flow in flows] == ["caller.one", "caller.two"]
+    assert [flow["operation_ids"] for flow in flows] == [
+        ["operation.shared"],
+        ["operation.shared"],
+    ]
+    assert [flow["state"] for flow in flows] == ["browsing", "browsing"]
+
+
+def test_flow_projection_keeps_same_operation_id_on_distinct_full_edges() -> None:
+    profile = {
+        "requested_edges": [
+            {
+                "caller_function_id": "caller.one",
+                "target_provider_id": "provider.one",
+                "contract_id": "contract.shared",
+                "operation_id": "operation.shared",
+            },
+            {
+                "caller_function_id": "caller.two",
+                "target_provider_id": "provider.two",
+                "contract_id": "contract.shared",
+                "operation_id": "operation.shared",
+            },
+        ]
+    }
+    admitted = {
+        (
+            str(edge["caller_function_id"]),
+            str(edge["target_provider_id"]),
+            str(edge["contract_id"]),
+            str(edge["operation_id"]),
+        )
+        for edge in profile["requested_edges"]
+    }
+
+    flows = runtime_surface._flow_composition_projection(
+        profile,
+        admitted_edges=admitted,
+    )
+
+    assert [flow["operation_ids"] for flow in flows] == [
+        ["operation.shared"],
+        ["operation.shared"],
+    ]
+    assert [flow["edges"] for flow in flows] == [
+        [{
+            "caller_function_id": "caller.one",
+            "target_provider_id": "provider.one",
+            "contract_id": "contract.shared",
+            "operation_id": "operation.shared",
+        }],
+        [{
+            "caller_function_id": "caller.two",
+            "target_provider_id": "provider.two",
+            "contract_id": "contract.shared",
+            "operation_id": "operation.shared",
+        }],
+    ]
+    assert all(flow["state"] == "ready" for flow in flows)
+
+
+def test_flow_projection_rejects_a_resolved_binding_not_declared_by_profile() -> None:
+    profile = {
+        "requested_edges": [
+            {
+                "caller_function_id": "caller.one",
+                "target_provider_id": "provider.one",
+                "contract_id": "contract.one",
+                "operation_id": "operation.one",
+            }
+        ]
+    }
+    admitted = {
+        ("caller.one", "provider.one", "contract.one", "operation.one"),
+        ("caller.two", "provider.two", "contract.two", "operation.two"),
+    }
+
+    with pytest.raises(RuntimeSurfaceError) as caught:
+        runtime_surface._flow_composition_projection(
+            profile,
+            admitted_edges=admitted,
+        )
+    assert caught.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+@pytest.mark.parametrize(
+    "bindings",
+    [
+        {},
+        [None],
+        [{"function_principal": {"function_id": "provider"}}],
+        [{
+            "caller_function_id": "caller",
+            "function_principal": {"function_id": 1},
+            "contract_id": "contract",
+            "operation_id": "operation",
+        }],
+    ],
+)
+def test_flow_projection_rejects_malformed_resolved_plan_bindings(bindings) -> None:
+    with pytest.raises(RuntimeSurfaceError) as caught:
+        runtime_surface._resolved_profile_edge_keys(bindings)
+    assert caught.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+@pytest.mark.parametrize(
+    "profile",
+    [
+        {},
+        {"requested_edges": [None]},
+        {"requested_edges": [{"caller_function_id": "caller"}]},
+        {"requested_edges": [{
+            "caller_function_id": "caller",
+            "target_provider_id": "provider",
+            "contract_id": "contract",
+            "operation_id": 1,
+        }]},
+    ],
+)
+def test_flow_projection_rejects_malformed_profile_edge(profile) -> None:
+    with pytest.raises(RuntimeSurfaceError) as caught:
+        runtime_surface._flow_composition_projection(profile)
+    assert caught.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
+def test_operations_include_only_approved_enabled_pack_evidence(
+    active_runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Operation owners join verified Pack evidence without reviving revoked Packs."""
+    lifecycle = runtime_surface._captured_lifecycle_projection()
+    enabled = [pack for pack in lifecycle["packs"] if pack["enabled"] and pack["approved"]]
+    assert len(enabled) > 2
+    enabled[0]["approved"] = False
+    enabled[1]["enabled"] = False
+    monkeypatch.setattr(
+        runtime_surface, "_captured_lifecycle_projection", lambda *_args: lifecycle
+    )
+    service = _service(active_runtime)
+    evidence = service.read_advanced("operations")["data"]["packs"]
+    all_packs = service.read_advanced("packs")["data"]["packs"]
+    assert evidence == [pack for pack in all_packs if pack["enabled"] and pack["approved"]]
+    assert evidence
+    assert not {enabled[0]["pack_id"], enabled[1]["pack_id"]} & {
+        pack["pack_id"] for pack in evidence
+    }
+    locked = {
+        item["identity"]: item["artifact_digest"]
+        for item in active_runtime.resolved.lock["effective_set"]
+    }
+    assert all(pack["artifact_digest"] == locked[pack["pack_id"]] for pack in evidence)
+
+
 def test_contract_routes_are_exact_digest_pinned_broker_bindings(active_runtime) -> None:
     result = _service(active_runtime).read_advanced("contracts")
     routes = result["data"]["routes"]
@@ -249,8 +742,24 @@ def test_contract_routes_are_exact_digest_pinned_broker_bindings(active_runtime)
         if item["path"] == "defaultspack/frontend_contract_map.v4.json"
     )
 
-    # The map has 23 logical routes and 32 exact route-to-target bindings.
-    assert len(routes) == 32
+    # Compare every exact declaration, not a count frozen before startup
+    # read routes were added. Extra or omitted targets must still fail.
+    declared_map = json.loads((
+        RUNTIME_ROOT / "ecosystem" / "defaultspack" / "defaultspack"
+        / "frontend_contract_map.v4.json"
+    ).read_text(encoding="utf-8"))
+    identity_keys = ("contract_id", "operation_id", "provider_id", "function_id")
+    expected = {
+        (binding["method"], binding["path"], *(target[key] for key in identity_keys))
+        for binding in declared_map["routes"]
+        for target in binding["targets"]
+    }
+    actual = {
+        (route["method"], route["logical_target"], *(route[key] for key in identity_keys))
+        for route in routes
+    }
+    assert actual == expected
+    assert len(routes) == len(expected)
     assert all(
         set(route)
         >= {
@@ -277,8 +786,46 @@ def test_contract_routes_are_exact_digest_pinned_broker_bindings(active_runtime)
     assert "cookie" not in serialized
 
 
+@pytest.mark.parametrize(
+    "callers, accepted",
+    [(["shell", "nested"], True), (["nested"], False),
+     (["shell", "shell"], False), ([], False)],
+)
+def test_frontend_route_requires_one_shell_edge(callers: list[str], accepted: bool) -> None:
+    """Shared Provider identity does not confer another caller's authority."""
+    target = SimpleNamespace(
+        contract_id="contract", operation_id="read", provider_id="provider",
+        function_id="function", contribution_id="read", allowed_payload_keys=(),
+    )
+    binding = SimpleNamespace(
+        method="GET", path="/read", presentation="broker_result", targets=(target,),
+    )
+    operations = [
+        {"contract_id": "contract", "operation_id": "read", "function_id": "function",
+         "target_provider_id": "provider", "caller_function_id": caller,
+         "owner_pack_id": "owner", "artifact_digest": "artifact",
+         "function_principal_id": "principal"}
+        for caller in callers
+    ]
+
+    def project() -> list[dict[str, object]]:
+        return runtime_surface._verified_route_projection(
+            (binding,), operations=operations, frontend_map_digest="map",
+            shell_function_ids=frozenset({"shell"}),
+        )
+
+    if accepted:
+        assert len(project()) == 1
+    else:
+        with pytest.raises(RuntimeSurfaceError) as denied:
+            project()
+        assert denied.value.code == RuntimeSurfaceErrorCode.DIGEST_MISMATCH
+
+
 def test_contract_route_principal_mismatch_fails_closed(active_runtime) -> None:
-    from core_runtime.frontend_contract_routes import load_frontend_contract_bindings
+    from ecosystem.defaultspack.defaultspack.frontend_contract_loader import (
+        load_frontend_contract_bindings,
+    )
 
     catalog = BundledCatalog.load(_bundle_root())
     bindings = load_frontend_contract_bindings(
@@ -318,7 +865,7 @@ def test_packvm_invocation_requires_fresh_matching_host_attestation(
     monkeypatch.setattr(
         runtime_surface,
         "_captured_lifecycle_projection",
-        lambda: lifecycle,
+        lambda *_args, **_kwargs: lifecycle,
     )
 
     attested = {
@@ -354,9 +901,9 @@ def test_packvm_invocation_requires_fresh_matching_host_attestation(
     ready = _service(
         active_runtime,
         packvm_readiness_reader=lambda: snapshot,
-        capability_binding_reader=lambda: _capability_snapshot(
-            active_runtime,
-            packvm_rows,
+        capability_binding_reader=lambda: (
+            _capability_snapshot(active_runtime, packvm_rows),
+            runtime_surface._captured_lifecycle_projection(),
         ),
     ).read_advanced("operations")["data"]["operations"]
     ready_packvm = [item for item in ready if item["domain_kind"] == "pack_vm"]
@@ -605,7 +1152,7 @@ def test_profile_ceremony_is_ordered_digest_bound_and_one_shot(
     read_service = _service(active_runtime)
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     activated: list[object] = []
 
@@ -644,7 +1191,14 @@ def test_profile_ceremony_is_ordered_digest_bound_and_one_shot(
     real_commit = runtime_surface._commit_authority_profile_approval
     approval_attempts = [0]
 
-    def commit_with_temporary_denial(candidate, *, session_id, approval_id, decided_at):
+    def commit_with_temporary_denial(
+        candidate,
+        *,
+        session_id,
+        approval_id,
+        decided_at,
+        user_data_root,
+    ):
         approval_attempts[0] += 1
         if approval_attempts[0] == 1:
             raise RuntimeSurfaceError(
@@ -656,6 +1210,7 @@ def test_profile_ceremony_is_ordered_digest_bound_and_one_shot(
             session_id=session_id,
             approval_id=approval_id,
             decided_at=decided_at,
+            user_data_root=user_data_root,
         )
 
     monkeypatch.setattr(
@@ -706,7 +1261,7 @@ def test_profile_activation_rejects_wrong_credentials_without_consuming_approval
 ) -> None:
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.activate_resolved_profile_pack_set",
@@ -759,7 +1314,7 @@ def test_profile_activation_reauthenticates_immutable_authority_record(
 ) -> None:
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     ceremony = RuntimeProfileChangeService(surface_service=_service(active_runtime))
     resolved = ceremony.resolve(
@@ -809,7 +1364,7 @@ def test_profile_ceremony_rejects_cross_session_and_expired_review(
     read_service = _service(active_runtime)
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     ceremony = RuntimeProfileChangeService(
         ttl_seconds=1,
@@ -870,7 +1425,7 @@ def test_profile_activation_rejects_expired_durable_approval(
     now = [0.0]
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     ceremony = RuntimeProfileChangeService(
         ttl_seconds=1,
@@ -918,7 +1473,7 @@ def test_profile_activation_concurrent_retry_returns_one_durable_result(
 ) -> None:
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.activate_resolved_profile_pack_set",
@@ -970,7 +1525,7 @@ def test_profile_ceremony_continues_across_restart_at_every_stage(
 ) -> None:
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     activations: list[object] = []
 
@@ -1031,7 +1586,7 @@ def test_profile_activation_recovers_commit_before_receipt_across_restart(
 ) -> None:
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     ceremony = RuntimeProfileChangeService(surface_service=_service(active_runtime))
     resolved = ceremony.resolve(
@@ -1141,7 +1696,7 @@ def test_profile_approval_response_loss_retries_exact_authority_receipt(
 ) -> None:
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
     surface = _service(active_runtime)
     ceremony = RuntimeProfileChangeService(surface_service=surface)
@@ -1205,9 +1760,14 @@ def test_profile_approval_is_idempotent_across_processes(
 ) -> None:
     monkeypatch.setattr(
         "core_runtime.pack_control_v4.resolve_profile_pack_set",
-        lambda _pack_ids: active_runtime.resolved,
+        lambda _pack_ids, **_bindings: active_runtime.resolved,
     )
-    ceremony = RuntimeProfileChangeService(surface_service=_service(active_runtime))
+    ceremony = RuntimeProfileChangeService(
+        surface_service=RuntimeSurfaceService(
+            snapshot_loader=lambda: active_runtime,
+            catalog_loader=host_profile_catalog,
+        )
+    )
     resolved = ceremony.resolve(
         {
             "profile_id": "defaults",
@@ -1235,6 +1795,7 @@ def test_profile_approval_is_idempotent_across_processes(
                 str(reviewed["candidate_digest"]),
                 "session-process-approval",
                 results,
+                str(_bundle_root()),
             ),
         )
         for _index in range(2)
@@ -1246,7 +1807,7 @@ def test_profile_approval_is_idempotent_across_processes(
         assert process.exitcode == 0
     outcomes = [results.get(timeout=2), results.get(timeout=2)]
 
-    assert {item[0] for item in outcomes} == {"approved"}
+    assert {item[0] for item in outcomes} == {"approved"}, outcomes
     assert len({item[1:] for item in outcomes}) == 1
     approval_id = outcomes[0][1]
     with AuthorityStore(runtime_user_data_root() / "authority" / "v4.sqlite3") as authority:

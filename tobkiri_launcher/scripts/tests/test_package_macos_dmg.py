@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import plistlib
+import shlex
 import shutil
 import signal
 import struct
@@ -96,7 +97,11 @@ case "${1:-}" in
     ;;
   -d)
     if [ "${2:-}" = "--entitlements" ]; then
-      printf '%s\\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.security.virtualization</key><true/></dict></plist>'
+      if [ "${FAKE_PACKVM_EXTRA_ENTITLEMENT:-0}" = "1" ]; then
+        printf '%s\\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.security.virtualization</key><true/><key>com.apple.security.get-task-allow</key><true/></dict></plist>'
+      else
+        printf '%s\\n' '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.security.virtualization</key><true/></dict></plist>'
+      fi
     else
       printf '%s\\n' 'Identifier=dev.tobkiri.launcher.packvm-vz-helper' >&2
       printf '%s\\n' 'Signature=adhoc' >&2
@@ -316,9 +321,15 @@ def _fixture_app(root: Path) -> Path:
     return app
 
 
-def _formal_binding() -> tuple[str, str]:
-    interpreter = Path(os.path.realpath(sys.executable))
-    return str(interpreter), hashlib.sha256(interpreter.read_bytes()).hexdigest()
+def _formal_binding(root: Path) -> tuple[str, str]:
+    # Keep the active venv while providing the regular, digest-bound fixture
+    # entrypoint required by the packager; realpath loses venv dependencies.
+    wrapper = root / "formal-python-binding"
+    _write_executable(
+        wrapper,
+        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n',
+    )
+    return str(wrapper), hashlib.sha256(wrapper.read_bytes()).hexdigest()
 
 
 def _prepare(root: Path, mode: str) -> tuple[Path, Path, Path, dict[str, str]]:
@@ -332,7 +343,7 @@ def _prepare(root: Path, mode: str) -> tuple[Path, Path, Path, dict[str, str]]:
     victim = root / "external-victim"
     victim.mkdir()
     (victim / "keep.txt").write_text("keep", encoding="utf-8")
-    interpreter, digest = _formal_binding()
+    interpreter, digest = _formal_binding(root)
     environment = os.environ.copy()
     if mode == "fifo_substitution":
         fifo_wrapper = root / "formal-python-fifo-substitution"
@@ -377,9 +388,11 @@ raise SystemExit(result.returncode)
         environment.update(
             {
                 "FAKE_FIFO_SUBSTITUTION": "1",
-                "FORMAL_PYTHON_DELEGATE": str(Path(os.path.realpath(sys.executable))),
+                "FORMAL_PYTHON_DELEGATE": sys.executable,
             }
         )
+    if mode == "extra_helper_entitlement":
+        environment["FAKE_PACKVM_EXTRA_ENTITLEMENT"] = "1"
     return app, output_dir, state_path, environment
 
 
@@ -391,7 +404,7 @@ def _command(app: Path, output_dir: Path) -> list[str]:
         str(app),
         "--target",
         "x86_64-apple-darwin",
-        "--allow-ad-hoc-local",
+        "--ad-hoc",
         "--output-dir",
         str(output_dir),
     ]
@@ -525,7 +538,7 @@ def test_formal_python_helpers_use_verified_interpreter_and_digest(
 def test_formal_python_runs_from_the_sealed_snapshot_root(tmp_path: Path) -> None:
     app, output_dir, state_path, environment = _prepare(tmp_path, "permanent")
     snapshot = tmp_path / "formal-python-snapshot"
-    delegate = Path(os.path.realpath(sys.executable))
+    delegate = sys.executable
     wrapper = tmp_path / "formal-python"
     _write_executable(
         wrapper,
@@ -644,9 +657,26 @@ def test_packager_uses_explicit_sidecar_and_outer_verification_not_deep_resignin
     assert "codesign --verify --strict --all-architectures" in source
     assert "Signature=adhoc" in source
     assert "designated => cdhash" in source
-    assert "plutil -extract 'com\\.apple\\.security\\.virtualization'" in source
+    assert "verify_packvm_vz_entitlements.py" in source
     assert "codesign --verify --deep" not in source
     assert "codesign --force --deep" not in source
+
+
+def test_packager_rejects_helper_with_extra_entitlement(tmp_path: Path) -> None:
+    """Ad-hoc re-signing cannot add helper privilege before DMG publication."""
+    app, output_dir, state_path, environment = _prepare(
+        tmp_path, "extra_helper_entitlement"
+    )
+    result = subprocess.run(
+        _command(app, output_dir),
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "PackVM VZ helper entitlements are not exact" in result.stderr
+    assert _state(state_path)["create_count"] == 0
 
 
 def test_primary_package_error_wins_when_cleanup_rejects_external_link(

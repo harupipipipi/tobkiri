@@ -81,6 +81,8 @@ def _tag_supports_target(tag: Tag, architecture: str) -> bool:
     )
     if platform_architecture not in {architecture, "universal2"}:
         return False
+    if tag.interpreter.startswith("py") and tag.abi == "none":
+        return True
     if tag.interpreter == "cp313":
         return tag.abi in {"cp313", "abi3"}
     if tag.abi != "abi3" or not tag.interpreter.startswith("cp"):
@@ -95,8 +97,15 @@ def _tag_supports_target(tag: Tag, architecture: str) -> bool:
 def compatible_wheel_hashes(
     package: dict[str, object], architecture: str
 ) -> tuple[str, ...]:
-    """Return only hashes of wheels compatible with the formal target."""
-    hashes: set[str] = set()
+    """Return the most specific wheel hashes for the formal target.
+
+    A distribution may publish a ``py3-none-any`` wheel that embeds binaries
+    for only one operating system alongside correctly tagged native wheels.
+    When a native macOS wheel exists, prefer it and do not admit the portable
+    fallback into a formal macOS package.
+    """
+    native_hashes: set[str] = set()
+    portable_hashes: set[str] = set()
     wheels = package.get("wheels")
     if not isinstance(wheels, list):
         raise LockGenerationError("uv.lock package has no wheel inventory")
@@ -114,13 +123,19 @@ def compatible_wheel_hashes(
             raise LockGenerationError(
                 f"invalid wheel filename in uv.lock: {filename}"
             ) from exc
-        if not any(_tag_supports_target(tag, architecture) for tag in tags):
+        compatible_tags = {
+            tag for tag in tags if _tag_supports_target(tag, architecture)
+        }
+        if not compatible_tags:
             continue
         algorithm, separator, value = digest.partition(":")
         if algorithm != "sha256" or not separator or len(value) != 64:
             raise LockGenerationError(f"invalid wheel digest in uv.lock: {filename}")
-        hashes.add(value)
-    return tuple(sorted(hashes))
+        if any(tag.platform != "any" for tag in compatible_tags):
+            native_hashes.add(value)
+        else:
+            portable_hashes.add(value)
+    return tuple(sorted(native_hashes or portable_hashes))
 
 
 def render_lock(export_path: Path, uv_lock_path: Path, target: str) -> str:

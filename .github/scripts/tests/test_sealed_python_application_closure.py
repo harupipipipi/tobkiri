@@ -31,6 +31,48 @@ BUILDER = _load(BUILDER_PATH, "sealed_application_closure_builder")
 FIXTURES = _load(FIXTURE_PATH, "sealed_application_closure_fixtures")
 
 
+def test_application_closure_policy_is_finite_and_source_owned() -> None:
+    """The builder consumes the checked-in finite closure policy exactly."""
+
+    policy = BUILDER._load_application_closure_policy()
+
+    assert policy.role_targets == BUILDER.SEALED_APPLICATION_ROLE_TARGETS
+    assert policy.closure_files == BUILDER.PACKAGED_APPLICATION_CLOSURE_FILES
+    assert policy.closure_directories == (
+        BUILDER.PACKAGED_APPLICATION_CLOSURE_DIRECTORIES
+    )
+    assert policy.bundle_lock == BUILDER.PACKAGED_APPLICATION_BUNDLE_LOCK
+    assert policy.bundle_entry_kinds == (
+        BUILDER.PACKAGED_APPLICATION_BUNDLE_ENTRY_KINDS
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("closure_files", ["../escape.json"]),
+        ("closure_directories", ["duplicate", "duplicate"]),
+        ("bundle_entry_kinds", ["z-kind", "a-kind"]),
+    ),
+)
+def test_application_closure_policy_rejects_unsafe_or_ambiguous_values(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    """Traversal, duplicates, and nondeterministic ordering fail closed."""
+
+    payload = json.loads(
+        BUILDER.SEALED_APPLICATION_CLOSURE_POLICY.read_text(encoding="utf-8")
+    )
+    payload[field] = value
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(BUILDER.SealedEnvironmentError, match="closure policy"):
+        BUILDER._load_application_closure_policy(policy_path)
+
+
 def _packaged_application_closure(base: Path) -> Path:
     app = base / "packaged-app"
     artifact_id = "shell.fixture.default.linux-x86_64"
@@ -54,7 +96,7 @@ def _packaged_application_closure(base: Path) -> Path:
         "ecosystem/defaultspack/contracts.v4.json": {"contracts": []},
         "ecosystem/defaultspack/artifact-index.v4.json": {"artifacts": []},
         "ecosystem/defaultspack/executables.v4.json": {"executables": []},
-        "ecosystem/defaultspack/v4/defaults.profile.v4.json": {"profile_id": "defaults"},
+        "ecosystem/defaultspack/v4/defaults.profile.v5.json": {"profile_id": "defaults"},
         "ecosystem/defaultspack/v4/bundle.lock.json": {
             "schema": BUILDER.PACKAGED_APPLICATION_BUNDLE_LOCK_SCHEMA,
             "entries": [],
@@ -90,7 +132,7 @@ def _packaged_application_closure(base: Path) -> Path:
         if not path.is_file() or path.name == lock_path.name:
             continue
         relative = path.relative_to(bundle_root).as_posix()
-        kind = "profile" if path.name == "defaults.profile.v4.json" else "shell"
+        kind = "profile" if path.name == "defaults.profile.v5.json" else "shell"
         entries.append(
             {
                 "path": relative,

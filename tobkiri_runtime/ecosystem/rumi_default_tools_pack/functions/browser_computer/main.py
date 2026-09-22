@@ -7,7 +7,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from functions._tool_common import tool_result
-from core_runtime.defaultspack_host_contract_adapter import run_host_contract_action
+from ecosystem.rumi_default_tools_pack import run_host_contract_action
 
 _SEQUENCE_ID_KEYS = (
     "computer_use_haze_sequence_id",

@@ -66,7 +66,15 @@ def run(input_data, context=None):
             )
             denied["_http_status"] = 409 if preflight.get("code") == "ADAPTIVE_LEASE_HELD" else 403
             return denied
-        arguments = {**base_arguments, **git_snapshot(selected_workspace_id)}
+        arguments = {
+            **base_arguments,
+            **git_snapshot(
+                selected_workspace_id,
+                paths=base_arguments["paths"] if paths is not None else None,
+                capture_commit=True,
+                all_tracked=all_tracked,
+            ),
+        }
         for key in (
             "expected_head",
             "expected_tree",

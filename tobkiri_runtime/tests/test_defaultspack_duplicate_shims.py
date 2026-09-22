@@ -39,28 +39,28 @@ def test_rumi_widgets_pack_modules_are_core_runtime_shims():
     assert_profile_resolver_requires_authority_snapshot()
 
 
-def test_prompt_builder_and_session_manager_are_core_runtime_shims():
-    for relative_path, marker in (
-        ("domain/prompt/builder.py", "core_runtime.prompt_builder"),
-        ("domain/chat/session_manager.py", "core_runtime.chat_session_manager"),
+def test_prompt_builder_and_session_manager_are_pack_owned():
+    for relative_path in (
+        "domain/prompt/builder.py",
+        "domain/chat/session_manager.py",
     ):
         assert not (DEFAULTS_ROOT / relative_path).exists()
-        source = _read(DEFAULTSPACK_ROOT / relative_path)
-        assert marker in source
 
     builder_source = _read(DEFAULTSPACK_ROOT / "domain" / "prompt" / "builder.py")
-    assert "class PromptBuilder" not in builder_source
-    assert "def evaluate_condition" not in builder_source
+    assert "class PromptBuilder" in builder_source
+    assert "def evaluate_condition" in builder_source
+    assert "core_runtime.prompt_builder" not in builder_source
     session_source = _read(DEFAULTSPACK_ROOT / "domain" / "chat" / "session_manager.py")
-    assert "def create_session" not in session_source
-    assert "def add_conversation" not in session_source
+    assert "def create_session" in session_source
+    assert "def add_conversation" in session_source
+    assert "core_runtime.chat_session_manager" not in session_source
 
     from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
     assert_profile_resolver_requires_authority_snapshot()
 
 
-def test_unified_template_modules_are_safe_core_runtime_shims():
+def test_unified_template_module_is_pack_owned_and_safe():
     prompt = {
         "id": "reply_style",
         "name": "reply_style",
@@ -72,9 +72,9 @@ def test_unified_template_modules_are_safe_core_runtime_shims():
 
     assert not (DEFAULTS_ROOT / "domain" / "template" / "unified.py").exists()
     source = _read(DEFAULTSPACK_ROOT / "domain" / "template" / "unified.py")
-    assert "core_runtime.template_unified" in source
-    assert '"type": "dynamic"' not in source
-    assert '"type": "prompt"' not in source
+    assert "core_runtime.template_unified" not in source
+    assert "class UnifiedTemplate" in source
+    assert "def convert_prompt_to_tool" in source
 
     module = _load_module(
         DEFAULTSPACK_ROOT / "domain" / "template" / "unified.py",

@@ -3,9 +3,9 @@
   "package": "bubblewrap",
   "schema": "io.tobkiri.packvm-vz-bubblewrap-descriptor.v1",
   "source": {
-    "sha256": "sha256:c838daebddb7fe169ebb461612e90b1fcb981de838f81bfbecf26d45ab5a71ee",
-    "size_bytes": 50132,
-    "url": "https://deb.debian.org/debian/pool/main/b/bubblewrap/bubblewrap_0.11.0-2+deb13u1_arm64.deb"
+    "sha256": "sha256:d1ac1d0d81c815fc15842b9f04fdf414830ed14a0a602bf6344740f90bb36c00",
+    "size_bytes": 54820,
+    "url": "https://deb.debian.org/debian/pool/main/b/bubblewrap/bubblewrap_0.12.0-1~deb13u1_arm64.deb"
   },
-  "version": "0.11.0-2+deb13u1"
+  "version": "0.12.0-1~deb13u1"
 }

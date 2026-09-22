@@ -7,9 +7,12 @@ import { Badge } from '@/src/components/ui/Badge';
 import { Switch } from '@/src/components/ui/Switch';
 import { Card } from '@/src/components/ui/Card';
 import { panelRoutes } from '@/src/lib/routes';
-import { AlertTriangle, Search, Package, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, CircleHelp, Search, Package, ShieldCheck } from 'lucide-react';
 import { Button } from '@/src/components/ui/Button';
+import { CopyErrorButton } from '@/src/components/ui/CopyErrorButton';
 import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
+import { PackScopeSummary } from '@/src/components/packs/PackScopeSummary';
+import { isPackInCatalogScope } from '@/src/lib/packScope';
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning';
 
@@ -59,12 +62,14 @@ function PackListSkeleton() {
 export function Packs() {
   const t = useT();
   const packs = useAppStore(state => state.packs);
+  const packCatalogBinding = useAppStore(state => state.packCatalogBinding);
   const packsLoading = useAppStore(state => state.packsLoading);
   const packsError = useAppStore(state => state.packsError);
   const packInstallPending = useAppStore(state => state.packInstallPending);
   const packTogglePending = useAppStore(state => state.packTogglePending);
   const packApprovalPending = useAppStore(state => state.packApprovalPending);
   const packMutationUnknown = useAppStore(state => state.packMutationUnknown);
+  const packLegacyRecovery = useAppStore(state => state.packLegacyRecovery);
   const loadPacks = useAppStore(state => state.loadPacks);
   const installPack = useAppStore(state => state.installPack);
   const approvePack = useAppStore(state => state.approvePack);
@@ -72,9 +77,14 @@ export function Packs() {
   const addToast = useAppStore(state => state.addToast);
   const showDialog = useAppStore(state => state.showDialog);
   const togglePack = useAppStore(state => state.togglePack);
+  const clearAbsentLegacyPackMutation = useAppStore(
+    state => state.clearAbsentLegacyPackMutation,
+  );
+  const verifyPackMutationStatus = useAppStore(state => state.verifyPackMutationStatus);
   const [search, setSearch] = useState('');
   const [installingPackId, setInstallingPackId] = useState<string | null>(null);
   const [approvingPackId, setApprovingPackId] = useState<string | null>(null);
+  const [verifyingMutationKey, setVerifyingMutationKey] = useState<string | null>(null);
 
   useEffect(() => {
     void loadPacks();
@@ -100,8 +110,23 @@ export function Packs() {
     }
   };
 
+  const handleVerifyMutation = async (key: string) => {
+    setVerifyingMutationKey(key);
+    try {
+      await verifyPackMutationStatus(key);
+    } finally {
+      setVerifyingMutationKey(null);
+    }
+  };
+
   const handleRevoke = (pack: Pack) => {
-    if (!pack.installed || !pack.approved || pack.type === 'core' || pack.required) return;
+    if (
+      !isPackInCatalogScope(pack, packCatalogBinding)
+      || !pack.installed
+      || !pack.approved
+      || pack.type === 'core'
+      || pack.required
+    ) return;
     showDialog({
       title: `Revoke ${pack.name} approval?`,
       message: `This will revoke Tobkiri approval and access for ${pack.name}. The Pack will be disabled, and its capabilities will be unavailable until a new approval succeeds.`,
@@ -113,6 +138,7 @@ export function Packs() {
   };
 
   const handleToggle = async (pack: Pack) => {
+    if (!isPackInCatalogScope(pack, packCatalogBinding)) return;
     if (await togglePack(pack.id)) {
       addToast(t(pack.enabled ? 'packs.toggle_off' : 'packs.toggle_on', {name: pack.name}), 'success');
     }
@@ -126,6 +152,12 @@ export function Packs() {
           <h1 className="text-2xl font-semibold tracking-tight text-text-main">{t('packs.title')}</h1>
           <p className="mt-1 text-sm text-text-muted">Manage installed packs and their capabilities.</p>
         </div>
+
+        <PackScopeSummary
+          binding={packCatalogBinding}
+          packRows={packs}
+          stale={Boolean(packsError && packs.length > 0)}
+        />
 
         {packsError ? (
           <InlineLoadError
@@ -166,11 +198,57 @@ export function Packs() {
           </div>
         ) : (
           <div className="grid gap-3">
-            {filteredPacks.map(pack => (
+            {filteredPacks.map(pack => {
+              const packScopeAuthoritative = isPackInCatalogScope(pack, packCatalogBinding);
+              const scopedProfileId = packCatalogBinding?.profile_id ?? 'unavailable';
+              const unknownMutation = Object.values(packMutationUnknown).find(
+                (record) => record.metadata.pack_id === pack.id,
+              );
+              const legacyRecovery = unknownMutation
+                ? packLegacyRecovery[unknownMutation.key]
+                : undefined;
+              return (
               <Card key={pack.id} className="transition-all hover:shadow-[var(--shadow-md)] focus-within:shadow-[var(--shadow-md)]">
-                {Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id) ? (
+                {unknownMutation ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-300/60 bg-amber-50/60 px-5 py-3 text-xs text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/20 dark:text-amber-200" role="alert">
-                    <span>The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.</span>
+                    <CircleHelp className="h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" data-error-icon="pack-mutation-unknown" />
+                    <span className="min-w-0 flex-1">
+                      {legacyRecovery
+                        ? 'This legacy recovery lock is absent from the current data root and contradicts the authoritative catalog.'
+                        : 'The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again.'}
+                    </span>
+                    <CopyErrorButton label="Copy unknown Pack mutation result" text="The result of a Pack mutation is unknown. Refresh the authoritative catalog before trying again." />
+                    {legacyRecovery ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => showDialog({
+                          title: 'Clear stale recovery lock?',
+                          message: 'Tobkiri verified that this legacy request does not exist in the current data root and that the authoritative catalog does not show its expected result. Clearing removes only this exact local recovery lock. It does not install, approve, enable, disable, or send any Pack request.',
+                          confirmText: 'Clear local lock',
+                          cancelText: 'Keep lock',
+                          onConfirm: () => clearAbsentLegacyPackMutation(
+                            legacyRecovery.key,
+                            legacyRecovery.requestId,
+                          ),
+                        })}
+                      >
+                        Review recovery
+                      </Button>
+                    ) : null}
+                    {!legacyRecovery ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        loading={verifyingMutationKey === unknownMutation.key}
+                        disabled={verifyingMutationKey !== null}
+                        onClick={() => void handleVerifyMutation(unknownMutation.key)}
+                      >
+                        Verify status
+                      </Button>
+                    ) : null}
                     <Button type="button" size="sm" variant="outline" onClick={() => void loadPacks(true)}>Refresh catalog</Button>
                   </div>
                 ) : null}
@@ -188,21 +266,24 @@ export function Packs() {
                         {pack.installed ? 'Installed' : 'Available'}
                       </Badge>
                       {pack.installed ? (
-                        <Badge variant={pack.enabled ? 'success' : 'secondary'}>
-                          {pack.enabled ? 'Enabled' : 'Disabled'}
+                        <Badge variant={packScopeAuthoritative ? (pack.enabled ? 'success' : 'secondary') : 'warning'}>
+                          {packScopeAuthoritative ? (pack.enabled ? 'Enabled' : 'Disabled') : 'Profile state unavailable'}
                         </Badge>
                       ) : null}
-                      <Badge variant={approvalBadgeVariant(pack)} className="inline-flex items-center gap-1">
-                        {pack.installed && pack.approved ? (
+                      <Badge
+                        variant={packScopeAuthoritative ? approvalBadgeVariant(pack) : 'warning'}
+                        className="inline-flex items-center gap-1"
+                      >
+                        {packScopeAuthoritative && pack.installed && pack.approved ? (
                           <ShieldCheck className="h-3 w-3" />
                         ) : (
                           <AlertTriangle className="h-3 w-3" />
                         )}
-                        {approvalBadgeLabel(pack)}
+                        {packScopeAuthoritative ? approvalBadgeLabel(pack) : 'Profile state unavailable'}
                       </Badge>
                     </div>
                     <p className="text-sm text-text-muted truncate">{pack.description}</p>
-                    {(!pack.installed || !pack.approved || pack.approvalIssues.length > 0) && (
+                    {packScopeAuthoritative && (!pack.installed || !pack.approved || pack.approvalIssues.length > 0) && (
                       <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{approvalIssueText(pack)}</span>
@@ -215,7 +296,7 @@ export function Packs() {
                         size="sm"
                         onClick={() => void handleInstall(pack.id)}
                         loading={installingPackId === pack.id || Boolean(packInstallPending[pack.id])}
-                        disabled={installingPackId !== null || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
+                        disabled={!packScopeAuthoritative || installingPackId !== null || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
                       >
                         Install
                       </Button>
@@ -224,13 +305,19 @@ export function Packs() {
                         size="sm"
                         onClick={() => void handleApprove(pack.id)}
                         loading={approvingPackId === pack.id}
-                        disabled={approvingPackId !== null || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
+                        disabled={!packScopeAuthoritative || approvingPackId !== null || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
                       >
                         Approve
                       </Button>
                     ) : null}
                     {pack.installed && pack.approved && pack.required ? (
-                      <Badge variant="secondary">Required by Defaults Profile</Badge>
+                      <Badge variant={packScopeAuthoritative ? 'secondary' : 'warning'}>
+                        {packScopeAuthoritative
+                          ? `Required by active execution Profile · ${scopedProfileId}`
+                          : 'Profile-scoped requirement unavailable'}
+                      </Badge>
+                    ) : pack.installed && pack.approved && !packScopeAuthoritative ? (
+                      <Badge variant="warning">Profile-scoped Pack actions unavailable</Badge>
                     ) : pack.installed && pack.approved ? (
                       <>
                         <Button
@@ -240,7 +327,7 @@ export function Packs() {
                           onClick={() => handleRevoke(pack)}
                           loading={Boolean(packApprovalPending[pack.id])}
                           aria-busy={Boolean(packApprovalPending[pack.id])}
-                          disabled={pack.type === 'core' || Boolean(packApprovalPending[pack.id]) || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
+                          disabled={!packScopeAuthoritative || pack.type === 'core' || Boolean(packApprovalPending[pack.id]) || Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id)}
                           aria-label={`Revoke approval for ${pack.name}`}
                           title={pack.type === 'core' ? 'Core Packs cannot have approval revoked.' : undefined}
                         >
@@ -249,6 +336,8 @@ export function Packs() {
                         <Switch
                           checked={pack.enabled}
                           disabled={
+                            !packScopeAuthoritative
+                            ||
                             pack.type === 'core'
                             || Boolean(packTogglePending[pack.id])
                             || Boolean(packApprovalPending[pack.id])
@@ -265,7 +354,8 @@ export function Packs() {
                   </div>
                 </div>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

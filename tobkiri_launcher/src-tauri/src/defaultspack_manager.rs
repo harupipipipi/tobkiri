@@ -1,8 +1,8 @@
-//! Lifecycle supervision for the local Defaultspack process.
+//! Lifecycle supervision for one Launcher-owned application process.
 //!
-//! The launcher owns only processes it starts itself. An already-running,
-//! authenticated Defaultspack listener is deliberately reused by
-//! `dock_registration` and is never adopted or terminated here.
+//! The launcher owns only processes it starts itself. The historical
+//! Defaultspack adapter remains at the composition boundary, while the
+//! lifecycle state is fenced by the complete Profile execution identity.
 
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
@@ -26,23 +26,85 @@ const DEFAULTSPACK_MONITOR_INTERVAL: Duration = Duration::from_millis(250);
 const DEFAULTSPACK_RESTART_INITIAL_BACKOFF: Duration = Duration::from_millis(250);
 const DEFAULTSPACK_RESTART_MAX_BACKOFF: Duration = Duration::from_secs(5);
 const DEFAULTSPACK_STABLE_RUN_WINDOW: Duration = Duration::from_secs(30);
-const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+// Leave enough of the product's five-second quit budget for the desktop
+// shells to observe the stopped listeners and terminate after this group.
+const DEFAULTSPACK_STOP_TIMEOUT: Duration = Duration::from_secs(2);
+#[cfg(unix)]
+// A loaded macOS runner has taken longer than 750 ms to report every group
+// member gone after SIGKILL. Keep the observation bounded inside the product's
+// five-second quit contract without treating signal delivery as termination.
+const DEFAULTSPACK_FORCE_KILL_TIMEOUT: Duration = Duration::from_millis(1_500);
 #[cfg(unix)]
 const SYSTEM_KILL: &str = "/bin/kill";
 #[cfg(all(test, unix))]
 const SYSTEM_SHELL: &str = "/bin/sh";
 
-/// Tracks the Defaultspack child started by this Launcher instance.
-pub(crate) struct DefaultspackManager {
+fn execution_identity_matches(
+    current: &crate::host_contract::ExecutionProfileIdentity,
+    requested: &crate::host_contract::ExecutionProfileIdentity,
+) -> bool {
+    current.matches(requested)
+}
+
+/// Identity of one materialized Application instance.
+///
+/// The optional application fields retain compatibility with generic callers;
+/// the dock metadata path populates all of them. Keeping the fields in the key
+/// prevents a process from being reused for a different Application or
+/// artifact merely because its Profile ID was unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ApplicationInstanceKey {
+    pub(crate) application_id: Option<String>,
+    pub(crate) provider_id: Option<String>,
+    pub(crate) function_id: Option<String>,
+    pub(crate) artifact_digest: Option<String>,
+    pub(crate) execution_identity: crate::host_contract::ExecutionProfileIdentity,
+}
+
+impl ApplicationInstanceKey {
+    pub(crate) fn matches(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+fn application_instance_key(metadata: &DefaultspackDesktopMetadata) -> ApplicationInstanceKey {
+    ApplicationInstanceKey {
+        application_id: Some(metadata.application_id().to_owned()),
+        provider_id: Some(metadata.provider_id().to_owned()),
+        function_id: Some(metadata.function_id().to_owned()),
+        artifact_digest: Some(metadata.artifact_digest().to_owned()),
+        execution_identity: metadata.execution_identity().clone(),
+    }
+}
+
+fn application_metadata_matches(
+    current: &DefaultspackDesktopMetadata,
+    requested: &DefaultspackDesktopMetadata,
+) -> bool {
+    application_instance_matches(
+        &application_instance_key(current),
+        &application_instance_key(requested),
+    )
+}
+
+fn application_instance_matches(
+    current: &ApplicationInstanceKey,
+    requested: &ApplicationInstanceKey,
+) -> bool {
+    current.matches(requested)
+}
+
+/// Tracks one Application child started by this Launcher instance.
+pub(crate) struct ApplicationProcessManager {
     config: AppConfig,
     shutdown_requested: Arc<AtomicBool>,
     broker_attestation: BrokerAttestationIdentity,
     debug_approval: Arc<DebugApprovalManager>,
-    state: Mutex<DefaultspackState>,
+    state: Mutex<ApplicationProcessState>,
 }
 
 #[derive(Default)]
-struct DefaultspackState {
+struct ApplicationProcessState {
     child: Option<crate::python_env::PythonChild>,
     /// Process groups created by this Launcher. Keep the ids even after the
     /// direct pack-shell child exits because its Python descendant may still
@@ -58,7 +120,13 @@ struct DefaultspackState {
     active_guardian_pid: Option<u32>,
 }
 
-impl DefaultspackManager {
+/// Compatibility alias for the existing Launcher composition root.
+pub(crate) type DefaultspackManager = ApplicationProcessManager;
+
+/// Compatibility alias for focused lifecycle tests and old internal names.
+type DefaultspackState = ApplicationProcessState;
+
+impl ApplicationProcessManager {
     pub(crate) fn new(
         config: AppConfig,
         shutdown_requested: Arc<AtomicBool>,
@@ -70,7 +138,7 @@ impl DefaultspackManager {
             shutdown_requested,
             broker_attestation,
             debug_approval,
-            state: Mutex::new(DefaultspackState::default()),
+            state: Mutex::new(ApplicationProcessState::default()),
         }
     }
 
@@ -78,6 +146,8 @@ impl DefaultspackManager {
     ///
     /// A restart already in progress is reused instead of spawning a duplicate.
     pub(crate) fn start_or_reuse(&self, metadata: DefaultspackDesktopMetadata) -> Result<()> {
+        let mut replaced_child = None;
+        let mut replaced_run_id = None;
         let should_spawn = {
             let mut state = self.lock_state()?;
             if self.shutdown_requested.load(Ordering::SeqCst) {
@@ -85,17 +155,42 @@ impl DefaultspackManager {
             }
 
             state.stop_requested = false;
-            if let Some(child) = state.child.as_mut() {
-                match child
+            if state.child.is_some() {
+                let child_status = state
+                    .child
+                    .as_mut()
+                    .expect("managed child was checked above")
                     .try_wait()
-                    .context("failed to inspect managed Defaultspack process")?
-                {
+                    .context("failed to inspect managed Defaultspack process")?;
+                match child_status {
                     None => {
-                        info!(
-                            "Defaultspack already running under Launcher supervision (pid {})",
-                            child.id()
+                        let identity_matches =
+                            state.launch_metadata.as_ref().is_some_and(|current| {
+                                application_metadata_matches(current, &metadata)
+                            });
+                        if identity_matches {
+                            info!(
+                                "Defaultspack already running under Launcher supervision (pid {})",
+                                state
+                                    .child
+                                    .as_ref()
+                                    .expect("managed child is still present")
+                                    .id()
+                            );
+                            return Ok(());
+                        }
+                        warn!(
+                            "Managed Defaultspack identity changed; replacing the live child before reuse"
                         );
-                        return Ok(());
+                        replaced_child = state.child.take();
+                        replaced_run_id = state.active_run_id.take();
+                        state.active_guardian_pid = None;
+                        state.launch_metadata = None;
+                        state.owned_process_groups.retain(|pid| {
+                            replaced_child
+                                .as_ref()
+                                .map_or(true, |child| child.id() != *pid)
+                        });
                     }
                     Some(status) => {
                         warn!(
@@ -112,6 +207,15 @@ impl DefaultspackManager {
             }
 
             if state.restart_in_progress {
+                if state
+                    .launch_metadata
+                    .as_ref()
+                    .is_some_and(|current| !application_metadata_matches(current, &metadata))
+                {
+                    return Err(anyhow!(
+                        "Defaultspack restart is in progress for a different execution Profile"
+                    ));
+                }
                 info!("Defaultspack restart is already in progress; reusing it");
                 return Ok(());
             }
@@ -130,6 +234,16 @@ impl DefaultspackManager {
             true
         };
 
+        if let Some(run_id) = replaced_run_id.as_deref() {
+            self.debug_approval.unregister_guardian(run_id);
+        }
+        if let Some(mut child) = replaced_child {
+            info!(
+                "Stopping managed Defaultspack child with stale Profile identity (pid {})",
+                child.id()
+            );
+            stop_child(&mut child)?;
+        }
         if should_spawn {
             self.spawn_and_track(metadata, "initial launch")?;
         }
@@ -186,21 +300,21 @@ impl DefaultspackManager {
             self.debug_approval.unregister_guardian(run_id);
         }
 
-        let mut stopped_child_group = None;
-        if let Some(mut child) = child {
-            stopped_child_group = Some(child.id());
-            info!("Stopping managed Defaultspack (pid {})", child.id());
-            stop_child(&mut child)?;
-        }
+        let had_live_child = child.is_some();
 
         #[cfg(unix)]
-        for process_group in owned_process_groups {
-            if Some(process_group) != stopped_child_group {
-                stop_unix_process_group_id(process_group)?;
+        stop_owned_unix_process_groups(child, owned_process_groups)?;
+
+        #[cfg(not(unix))]
+        {
+            let _ = owned_process_groups;
+            if let Some(mut child) = child {
+                info!("Stopping managed Defaultspack (pid {})", child.id());
+                stop_child(&mut child)?;
             }
         }
 
-        if stopped_child_group.is_none() {
+        if !had_live_child {
             info!("No live managed Defaultspack child remained during stop");
         }
         info!("Managed Defaultspack process groups stopped");
@@ -320,6 +434,7 @@ impl DefaultspackManager {
                         .unwrap_or_else(|| metadata.working_dir().to_path_buf()),
                     metadata.port(),
                     self.config.desktop_api_token_path(),
+                    metadata.execution_identity().clone(),
                 ) {
                     registration_error = Some(error);
                     true
@@ -362,7 +477,12 @@ impl DefaultspackManager {
     ) -> Result<()> {
         let (run_id, old_run_id) = {
             let mut state = self.lock_state()?;
-            if state.active_guardian_pid == Some(process_id) {
+            if state.active_guardian_pid == Some(process_id)
+                && state
+                    .launch_metadata
+                    .as_ref()
+                    .is_some_and(|current| application_metadata_matches(current, metadata))
+            {
                 return Ok(());
             }
             let old_run_id = state.active_run_id.take();
@@ -386,6 +506,7 @@ impl DefaultspackManager {
                     .unwrap_or_else(|| metadata.working_dir().to_path_buf()),
                 metadata.port(),
                 self.config.desktop_api_token_path(),
+                metadata.execution_identity().clone(),
             )
             .map_err(|error| {
                 anyhow!("failed to register authenticated Defaultspack listener: {error}")
@@ -414,11 +535,50 @@ impl DefaultspackManager {
         }
     }
 
-    fn lock_state(&self) -> Result<std::sync::MutexGuard<'_, DefaultspackState>> {
+    fn lock_state(&self) -> Result<std::sync::MutexGuard<'_, ApplicationProcessState>> {
         self.state
             .lock()
-            .map_err(|error| anyhow!("Defaultspack manager lock poisoned: {error}"))
+            .map_err(|error| anyhow!("Application process manager lock poisoned: {error}"))
     }
+}
+
+#[cfg(unix)]
+fn stop_owned_unix_process_groups(
+    mut child: Option<crate::python_env::PythonChild>,
+    owned_process_groups: Vec<u32>,
+) -> Result<()> {
+    let child_group = child.as_ref().map(crate::python_env::PythonChild::id);
+    let mut groups = owned_process_groups
+        .into_iter()
+        .filter(|process_group| Some(*process_group) != child_group)
+        .collect::<Vec<_>>();
+    groups.sort_unstable();
+    groups.dedup();
+
+    // A wrapper can exit while its process group remains alive, and multiple
+    // previously-owned groups can therefore be retained for shutdown. Their
+    // grace windows are independent. Stop them concurrently so the product's
+    // fixed quit budget is not multiplied by the number of owned groups.
+    thread::scope(|scope| -> Result<()> {
+        let child_stop = child.as_mut().map(|child| {
+            info!("Stopping managed Defaultspack (pid {})", child.id());
+            scope.spawn(move || stop_child(child))
+        });
+        let group_stops = groups
+            .into_iter()
+            .map(|process_group| scope.spawn(move || stop_unix_process_group_id(process_group)))
+            .collect::<Vec<_>>();
+
+        if let Some(stop) = child_stop {
+            stop.join()
+                .map_err(|_| anyhow!("Defaultspack child stop worker panicked"))??;
+        }
+        for stop in group_stops {
+            stop.join()
+                .map_err(|_| anyhow!("Defaultspack process-group stop worker panicked"))??;
+        }
+        Ok(())
+    })
 }
 
 fn managed_defaultspack_run_id() -> String {
@@ -435,7 +595,7 @@ fn managed_defaultspack_run_id() -> String {
         })
 }
 
-impl DefaultspackState {
+impl ApplicationProcessState {
     fn record_unexpected_exit(&mut self, _status: ExitStatus) -> Duration {
         if self
             .started_at
@@ -572,6 +732,11 @@ fn stop_unix_process_group(child: &mut crate::python_env::PythonChild) -> Result
             .wait()
             .context("failed to wait for killed Defaultspack process group")?;
     }
+    if !wait_for_process_group_exit(pid, DEFAULTSPACK_FORCE_KILL_TIMEOUT) {
+        return Err(anyhow!(
+            "Defaultspack process group {pid} remained live after SIGKILL"
+        ));
+    }
     Ok(())
 }
 
@@ -590,8 +755,32 @@ fn stop_unix_process_group_id(process_group: u32) -> Result<()> {
         thread::sleep(Duration::from_millis(100));
     }
 
-    let _ = send_process_group_signal(process_group, "-KILL");
+    let sent_kill = send_process_group_signal(process_group, "-KILL");
+    if !sent_kill && process_group_exists(process_group) {
+        return Err(anyhow!(
+            "failed to kill Defaultspack process group {process_group}"
+        ));
+    }
+    if !wait_for_process_group_exit(process_group, DEFAULTSPACK_FORCE_KILL_TIMEOUT) {
+        return Err(anyhow!(
+            "Defaultspack process group {process_group} remained live after SIGKILL"
+        ));
+    }
     Ok(())
+}
+
+#[cfg(unix)]
+fn wait_for_process_group_exit(process_group: u32, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if !process_group_exists(process_group) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 #[cfg(not(unix))]
@@ -663,8 +852,62 @@ fn process_group_exists(process_group: u32) -> bool {
         return linux_process_group_has_live_members(process_group).unwrap_or(true);
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    {
+        return macos_process_group_has_live_members(process_group).unwrap_or(true);
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     true
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_group_has_live_members(process_group: u32) -> std::io::Result<bool> {
+    if process_group == 0 || process_group > i32::MAX as u32 {
+        return Err(std::io::Error::other("invalid macOS process group"));
+    }
+    let suggested =
+        unsafe { libc::proc_listpgrppids(process_group as i32, std::ptr::null_mut(), 0) };
+    if suggested <= 0 {
+        return Ok(false);
+    }
+    let capacity = (suggested as usize).saturating_mul(2).max(64);
+    let mut pids = vec![0_i32; capacity];
+    let count = unsafe {
+        libc::proc_listpgrppids(
+            process_group as i32,
+            pids.as_mut_ptr() as *mut libc::c_void,
+            (pids.len() * std::mem::size_of::<i32>()) as i32,
+        )
+    };
+    if count < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    for pid in pids.into_iter().take(count as usize).filter(|pid| *pid > 0) {
+        let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+        let expected = std::mem::size_of::<libc::proc_bsdinfo>();
+        let received = unsafe {
+            libc::proc_pidinfo(
+                pid,
+                libc::PROC_PIDTBSDINFO,
+                0,
+                &mut info as *mut libc::proc_bsdinfo as *mut libc::c_void,
+                expected as i32,
+            )
+        };
+        if received == 0 {
+            continue;
+        }
+        if received != expected as i32 || info.pbi_pid != pid as u32 {
+            return Err(std::io::Error::other(
+                "macOS returned an invalid process-group member",
+            ));
+        }
+        if info.pbi_status != libc::SZOMB {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(target_os = "linux")]
@@ -769,6 +1012,75 @@ mod tests {
             BrokerAttestationIdentity::generate(),
             debug_approval,
         )
+    }
+
+    fn test_execution_identity(
+        profile_id: &str,
+        profile_revision: &str,
+        activation_id: &str,
+        plan_digest: &str,
+    ) -> crate::host_contract::ExecutionProfileIdentity {
+        crate::host_contract::ExecutionProfileIdentity::new(
+            profile_id,
+            format!("sha256:{profile_revision}"),
+            format!("activation:{activation_id}"),
+            format!("sha256:{plan_digest}"),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn manager_reuse_requires_the_complete_execution_profile_identity() {
+        let current = test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-test",
+            &"b".repeat(64),
+        );
+        let requested = test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-next-activation",
+            &"b".repeat(64),
+        );
+        assert!(!execution_identity_matches(&current, &requested));
+        assert!(execution_identity_matches(&current, &current));
+    }
+
+    #[test]
+    fn application_instance_key_fences_application_and_artifact_identity() {
+        let identity = test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-test",
+            &"b".repeat(64),
+        );
+        let current = ApplicationInstanceKey {
+            application_id: Some("application.alpha".into()),
+            provider_id: Some("provider.alpha".into()),
+            function_id: Some("function.alpha".into()),
+            artifact_digest: Some(format!("sha256:{}", "c".repeat(64))),
+            execution_identity: identity.clone(),
+        };
+        let mut different_application = current.clone();
+        different_application.application_id = Some("application.beta".into());
+        let mut different_artifact = current.clone();
+        different_artifact.artifact_digest = Some(format!("sha256:{}", "d".repeat(64)));
+        let mut unknown_activation = current.clone();
+        unknown_activation.execution_identity = test_execution_identity(
+            "profile-a",
+            &"a".repeat(64),
+            "profile-a-next",
+            &"b".repeat(64),
+        );
+
+        assert!(application_instance_matches(&current, &current));
+        assert!(!application_instance_matches(
+            &current,
+            &different_application
+        ));
+        assert!(!application_instance_matches(&current, &different_artifact));
+        assert!(!application_instance_matches(&current, &unknown_activation));
     }
 
     #[cfg(target_os = "linux")]
@@ -881,7 +1193,12 @@ mod tests {
         });
         assert!(shell_exited, "pack-shell wrapper did not exit before stop");
 
+        let started = Instant::now();
         manager.stop().unwrap();
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "orphaned process-group shutdown exceeded the responsive bound"
+        );
 
         let state = manager.lock_state().unwrap();
         assert!(state.stop_requested);
@@ -896,6 +1213,109 @@ mod tests {
             !descendant_alive,
             "Defaultspack descendant {descendant_pid} survived process-group shutdown"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_stop_force_kills_a_group_with_a_term_ignoring_child() {
+        let manager = test_manager();
+        let ready_file = std::env::temp_dir().join(format!(
+            "defaultspack-manager-term-ignore-{}-{}.ready",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let script = format!(
+            "trap '' TERM; printf ready > {}; while :; do sleep 1; done",
+            ready_file.display()
+        );
+        let mut command = process_utils::command(SYSTEM_SHELL);
+        command.args(["-c", &script]);
+        crate::dock_registration::configure_defaultspack_process_group(&mut command);
+        let child = command.spawn().unwrap();
+        let process_group = child.id();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.owned_process_groups.push(process_group);
+            state.child = Some(crate::python_env::PythonChild::development(child));
+        }
+        assert!((0..40).any(|_| {
+            if ready_file.exists() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(25));
+            false
+        }));
+
+        let started = Instant::now();
+        manager.stop().unwrap();
+        fs::remove_file(ready_file).ok();
+
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "forced process-group shutdown exceeded its share of the quit budget"
+        );
+        assert!(!process_group_exists(process_group));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_stop_shares_one_quit_window_across_owned_process_groups() {
+        let manager = test_manager();
+        let unique = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let ready_a =
+            std::env::temp_dir().join(format!("defaultspack-manager-concurrent-a-{unique}.ready"));
+        let ready_b =
+            std::env::temp_dir().join(format!("defaultspack-manager-concurrent-b-{unique}.ready"));
+        let spawn_group = |ready: &std::path::Path| {
+            let script = format!(
+                "trap '' TERM; printf ready > {}; while :; do sleep 1; done",
+                ready.display()
+            );
+            let mut command = process_utils::command(SYSTEM_SHELL);
+            command.args(["-c", &script]);
+            crate::dock_registration::configure_defaultspack_process_group(&mut command);
+            command.spawn().unwrap()
+        };
+        let child_a = spawn_group(&ready_a);
+        let mut child_b = spawn_group(&ready_b);
+        let group_a = child_a.id();
+        let group_b = child_b.id();
+        {
+            let mut state = manager.lock_state().unwrap();
+            state.owned_process_groups.extend([group_a, group_b]);
+            state.child = Some(crate::python_env::PythonChild::development(child_a));
+        }
+        assert!((0..40).any(|_| {
+            if ready_a.exists() && ready_b.exists() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(25));
+            false
+        }));
+
+        let started = Instant::now();
+        manager.stop().unwrap();
+        let elapsed = started.elapsed();
+        let _ = child_b.wait();
+        fs::remove_file(ready_a).ok();
+        fs::remove_file(ready_b).ok();
+
+        assert!(
+            elapsed < Duration::from_secs(4),
+            "owned process-group grace windows accumulated to {elapsed:?}"
+        );
+        assert!(!process_group_exists(group_a));
+        assert!(!process_group_exists(group_b));
     }
 
     #[cfg(unix)]

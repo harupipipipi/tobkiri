@@ -13,6 +13,7 @@ from core_runtime.authority.v4 import AuthorityStore
 from core_runtime.bootstrap import profile_capture
 from ecosystem.defaultspack.domain.runtime_v4 import (
     BundleIntegrityError,
+    BundledCatalog,
     ProfileResolutionDenied,
 )
 from tobkiri_protocol.canonical import canonical_json
@@ -37,7 +38,7 @@ def test_review_and_cancel_are_read_only(tmp_path: Path, monkeypatch) -> None:
     assert confirmation["profile_id"] == "defaults"
     assert confirmation["base"]["pack_id"] == "defaults-basepack"
     assert confirmation["shell"]["provider_id"] == "shell.tauri.default"
-    catalog = profile_capture.BundledCatalog.load(profile_capture._bundle_root())
+    catalog = BundledCatalog.load(profile_capture._bundle_root())
     variant = catalog.shells["shell.tauri.default"]["launch"]["variants"][0]
     assert confirmation["shell"]["executable_artifact_digest"] == variant[
         "entrypoint_digest"
@@ -100,7 +101,7 @@ def test_stale_catalog_shell_executable_pin_is_rejected(
         bundle.parent / "platform-artifacts",
     )
 
-    profile_path = bundle / "defaults.profile.v4.json"
+    profile_path = bundle / "defaults.profile.v5.json"
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
     profile["shell"]["executable_artifact_digest"] = "sha256:" + "0" * 64
     profile_bytes = canonical_json(profile) + b"\n"
@@ -111,7 +112,7 @@ def test_stale_catalog_shell_executable_pin_is_rejected(
     profile_entry = next(
         entry
         for entry in lock["entries"]
-        if entry["path"] == "defaults.profile.v4.json"
+        if entry["path"] == "defaults.profile.v5.json"
     )
     profile_entry["digest"] = "sha256:" + hashlib.sha256(profile_bytes).hexdigest()
     lock_path.write_bytes(canonical_json(lock) + b"\n")
@@ -160,7 +161,7 @@ def test_catalog_byte_tamper_is_rejected_before_user_state(
     bundle = tmp_path / "bundle"
     source = profile_capture._bundle_root()  # noqa: SLF001 - integrity fixture
     shutil.copytree(source, bundle)
-    manifest = bundle / "defaults.profile.v4.json"
+    manifest = bundle / "defaults.profile.v5.json"
     manifest.write_bytes(manifest.read_bytes() + b"\n")
     monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
     monkeypatch.setattr(profile_capture, "_bundle_root", lambda _base=None: bundle)

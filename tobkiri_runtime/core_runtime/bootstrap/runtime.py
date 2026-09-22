@@ -12,7 +12,7 @@ import os
 import tempfile
 from pathlib import Path
 from threading import RLock
-from typing import Any
+from typing import Any, Callable
 
 from ..app_lifecycle_manager import (
     AppLifecycleManager,
@@ -22,25 +22,27 @@ from ..app_lifecycle_manager import (
     reset_runtime_readiness,
 )
 from ..authority.v4 import AuthorityStore
-from ..pack_api_server import PackAPIServer, initialize_pack_api_server
-from ..frontend_contract_routes import (
-    FrontendContractBinding,
-    load_frontend_contract_bindings,
+from ..pack_api_server import (
+    HTTPApplicationPresentation,
+    CapabilitySnapshotFactory,
+    PackAPIServer,
+    RuntimeCaptureFactory,
+    initialize_pack_api_server,
 )
+from ..pack_control_v4 import (
+    HostProfileControlSession,
+    RuntimeSurfaceFactory,
+)
+from ..global_contracts.http_contract_dispatch import HTTPContractBinding
 from ..runtime_port import resolve_runtime_port
 from tobkiri_host.runtime import V4DispatchSession, install_dispatch_session
 from .production_v4 import capture_production_dispatch
 from .profile_capture import (
     _bundle_root,
-    active_default_profile_exists,
-    capture_default_profile,
+    active_profile_exists,
+    capture_active_profile,
     runtime_user_data_root,
 )
-from ecosystem.defaultspack.domain.runtime_v4 import (
-    BundledCatalog,
-    ProfileReconfirmationRequired,
-)
-
 
 logger = logging.getLogger(__name__)
 
@@ -101,15 +103,32 @@ class Kernel:
     API_INIT_STEP = "api_init"
     owns_host_http_surface = True
 
-    def __init__(self) -> None:
-        from ..packvm_lifecycle_v4 import PackVMLifecycleV4
-
+    def __init__(
+        self,
+        *,
+        packvm_lifecycle: Any | None = None,
+        runtime_capture_factory: RuntimeCaptureFactory | None = None,
+        capability_snapshot_factory: CapabilitySnapshotFactory | None = None,
+        application_presentation: HTTPApplicationPresentation | None = None,
+        host_profile_bindings_factory: (
+            Callable[[], tuple[HTTPContractBinding, ...]] | None
+        ) = None,
+        runtime_surface_factory: RuntimeSurfaceFactory | None = None,
+    ) -> None:
         self._lock = RLock()
         self._server: PackAPIServer | None = None
-        self._dispatch_session: V4DispatchSession | None = None
-        self._packvm_lifecycle = PackVMLifecycleV4()
+        self._dispatch_session: V4DispatchSession | HostProfileControlSession | None = (
+            None
+        )
+        self._packvm_lifecycle = packvm_lifecycle
+        self._runtime_capture_factory = runtime_capture_factory
+        self._capability_snapshot_factory = capability_snapshot_factory
+        self._application_presentation = application_presentation
+        self._host_profile_bindings_factory = host_profile_bindings_factory
+        self._runtime_surface_factory = runtime_surface_factory
         self._lifecycle = AppLifecycleManager(
             packvm_lifecycle=self._packvm_lifecycle,
+            runtime_capture_factory=self._runtime_capture_factory,
         )
 
     def run_startup_until(self, step_id: str) -> dict[str, Any]:
@@ -122,56 +141,117 @@ class Kernel:
             reset_runtime_readiness()
             from ..di_container import get_container
 
-            runtime_root = Path(__file__).resolve().parents[2]
             user_data = runtime_user_data_root()
             _prepare_desktop_api_token(user_data)
-            dispatch_session = None
-            contract_bindings: tuple[FrontendContractBinding, ...] = ()
+            bundle_root = _bundle_root()
+            dispatch_session: (
+                V4DispatchSession | HostProfileControlSession | None
+            ) = None
+            bindings_factory = self._host_profile_bindings_factory
+            if bindings_factory is None:
+                raise RuntimeError("application HTTP composition is unavailable")
+            contract_bindings = bindings_factory()
             reconfirmation_error: str | None = None
-            if active_default_profile_exists():
+            control_active_binding = None
+            if active_profile_exists():
+                from ..active_profile_store_v4 import ActiveProfileStore
+
+                selected_pointer = ActiveProfileStore(user_data).load(verify_snapshot=True)
                 try:
-                    active = capture_default_profile()
+                    active = capture_active_profile()
+                    capture_factory = self._runtime_capture_factory
+                    if capture_factory is None:
+                        raise RuntimeError(
+                            "application runtime capture composition is unavailable"
+                        )
+                    inputs = capture_factory(active)
+                    contract_bindings = inputs.contract_bindings
                     authority_store = AuthorityStore(
                         user_data / "authority" / "v4.sqlite3"
-                    )
-                    bundle_root = _bundle_root()
-                    catalog = BundledCatalog.load(bundle_root)
-                    contract_bindings = load_frontend_contract_bindings(
-                        runtime_root
-                        / "ecosystem"
-                        / "defaultspack"
-                        / "defaultspack"
-                        / "frontend_contract_map.v4.json",
-                        catalog.packs["runtime.tauri.application.default"],
                     )
                     try:
                         dispatch_session = capture_production_dispatch(
                             active,
-                            bundle_root=bundle_root,
-                            ecosystem_root=runtime_root / "ecosystem",
+                            bundle_root=inputs.bundle_root,
+                            ecosystem_root=inputs.ecosystem_root,
                             authority_store=authority_store,
-                            packvm_provisioner=self._packvm_lifecycle,
+                            packvm_provisioner=inputs.packvm_backend_factory,
                             packvm_readiness_reader=(
                                 self._packvm_lifecycle.readiness_snapshot
+                                if self._packvm_lifecycle is not None
+                                else None
                             ),
-                            frontend_contract_bindings=contract_bindings,
+                            http_contract_bindings=contract_bindings,
+                            activation_snapshot_loader=(
+                                inputs.activation_snapshot_loader
+                            ),
+                            runtime_surface_factory=inputs.runtime_surface_factory,
+                            capability_binding_snapshot_factory=(
+                                inputs.capability_binding_snapshot_factory
+                            ),
+                            capability_binding_selector=(
+                                inputs.capability_binding_selector
+                            ),
+                            credential_store_factory=(
+                                inputs.credential_store_factory
+                            ),
+                            acceptance_receipts=inputs.acceptance_receipts,
+                            chat_continuation_approve=(
+                                inputs.chat_continuation_approve
+                            ),
+                            chat_continuation_resume=(
+                                inputs.chat_continuation_resume
+                            ),
+                            authority_approval_window_open=(
+                                inputs.authority_approval_window_open
+                            ),
+                            model_search=inputs.model_search,
                         )
                     except Exception:
                         authority_store.close()
                         raise
-                    install_dispatch_session(get_container(), dispatch_session)
                     self._dispatch_session = dispatch_session
-                except ProfileReconfirmationRequired as error:
+                except Exception as error:
+                    from ..profile_runtime_port import require_profile_runtime
+
+                    if not require_profile_runtime().is_reconfirmation_required(error):
+                        raise
                     reconfirmation_error = str(error)
+                    control_active_binding = selected_pointer
+            if dispatch_session is None:
+                contract_bindings = bindings_factory()
+                dispatch_session = HostProfileControlSession(
+                    bundle_root=bundle_root,
+                    user_data_root=user_data,
+                    runtime_surface_factory=self._runtime_surface_factory,
+                    active_profile_binding=control_active_binding,
+                )
+                self._dispatch_session = dispatch_session
             port = resolve_runtime_port()
-            self._server = initialize_pack_api_server(
-                host="127.0.0.1",
-                port=port,
-                dispatch_session=dispatch_session,
-                app_lifecycle_manager=self._lifecycle,
-                contract_bindings=contract_bindings,
-                packvm_lifecycle=self._packvm_lifecycle,
-            )
+            try:
+                self._server = initialize_pack_api_server(
+                    host="127.0.0.1",
+                    port=port,
+                    dispatch_session=dispatch_session,
+                    app_lifecycle_manager=self._lifecycle,
+                    contract_bindings=contract_bindings,
+                    runtime_capture_factory=self._runtime_capture_factory,
+                    capability_snapshot_factory=self._capability_snapshot_factory,
+                    application_presentation=self._application_presentation,
+                    packvm_lifecycle=self._packvm_lifecycle,
+                )
+            except Exception:
+                close = getattr(self._dispatch_session, "close", None)
+                if callable(close):
+                    close()
+                self._dispatch_session = None
+                raise
+            if (
+                dispatch_session is not None
+                and getattr(dispatch_session, "session_kind", None)
+                != "host_profile_control"
+            ):
+                install_dispatch_session(get_container(), dispatch_session)
             if reconfirmation_error is None:
                 mark_panel_ready()
             else:
@@ -183,10 +263,23 @@ class Kernel:
         with self._lock:
             if self._server is None or not self._server.is_running():
                 raise RuntimeError("Pack v4 Host surface is not running")
+            from ..restart_control import is_kernel_restart_requested
+
+            if is_kernel_restart_requested():
+                return {
+                    "status": "restart_required",
+                    "runtime_ready": False,
+                }
             if self._lifecycle.check_setup_status().get("needs_setup") is True:
                 return {
                     "status": "setup_required",
                     "runtime_ready": False,
+                }
+            if not active_profile_exists():
+                return {
+                    "status": "profile_activation_required",
+                    "runtime_ready": False,
+                    "profile_ceremony_available": True,
                 }
             if self._server is not None and not self._server._contract_routes:
                 from ..di_container import get_container
@@ -194,16 +287,12 @@ class Kernel:
                 session = get_container().get_or_none("v4_dispatch_session")
                 if session is None:
                     raise RuntimeError("captured v4 dispatch session is unavailable")
-                runtime_root = Path(__file__).resolve().parents[2]
-                catalog = BundledCatalog.load(_bundle_root())
-                bindings = load_frontend_contract_bindings(
-                    runtime_root
-                    / "ecosystem"
-                    / "defaultspack"
-                    / "defaultspack"
-                    / "frontend_contract_map.v4.json",
-                    catalog.packs["runtime.tauri.application.default"],
-                )
+                capture_factory = self._runtime_capture_factory
+                if capture_factory is None:
+                    raise RuntimeError(
+                        "application runtime capture composition is unavailable"
+                    )
+                bindings = capture_factory(None).contract_bindings
                 port = self._server.port
                 self._server.stop()
                 self._server = initialize_pack_api_server(
@@ -212,6 +301,9 @@ class Kernel:
                     dispatch_session=session,
                     app_lifecycle_manager=self._lifecycle,
                     contract_bindings=bindings,
+                    runtime_capture_factory=self._runtime_capture_factory,
+                    capability_snapshot_factory=self._capability_snapshot_factory,
+                    application_presentation=self._application_presentation,
                     packvm_lifecycle=self._packvm_lifecycle,
                 )
             mark_runtime_ready()

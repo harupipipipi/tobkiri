@@ -15,12 +15,19 @@ from audit_frontend_uiux import (
     _is_excluded,
     _parse_diff,
     load_baseline,
+    load_policy,
     scan_text,
     should_fail,
 )
 
 
 class FrontendUiUxAuditTests(unittest.TestCase):
+    def test_production_policy_excludes_unit_fixtures_not_components(self) -> None:
+        policy = load_policy(Path(__file__).with_name("frontend_uiux_policy.json"))
+        root = Path("tobkiri_launcher/frontend/src/components/ui")
+        self.assertTrue(_is_excluded(root / "Button.test.tsx", policy))
+        self.assertFalse(_is_excluded(root / "Button.tsx", policy))
+
     def test_generated_bundle_glob_does_not_exclude_authored_source(self) -> None:
         policy = AuditPolicy(
             source_roots=("app",),
@@ -47,6 +54,68 @@ export function Example() {
         source = '<button type="button" onClick={() => run()}>Run</button>'
         rules = {item.rule for item in scan_text("src/Example.tsx", source)}
         self.assertNotIn("ux.enabled-noop-button", rules)
+
+    def test_qr_import_and_type_field_are_not_a_secret_payload(self) -> None:
+        source = '''
+import QRCode from "qrcode";
+type MobilePairQrPayload = { pickupSecret: string };
+const qr = QRCode.toDataURL("value");
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertNotIn("security.plaintext-secret-qr", rules)
+
+    def test_expiring_mobile_pairing_secret_is_allowed(self) -> None:
+        source = '''
+import QRCode from "qrcode";
+const qrPayload = {
+  kind: "rumi_mobile_pair_v1",
+  pickupSecret: pairing.pickup_secret,
+  expiresAt: pairing.expires_at,
+};
+const qrValue = JSON.stringify(qrPayload);
+QRCode.toDataURL(qrValue);
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertNotIn("security.plaintext-secret-qr", rules)
+
+    def test_qr_secret_still_requires_the_pairing_contract(self) -> None:
+        source = '''
+import QRCode from "qrcode";
+const qrPayload = { kind: "custom", pickupSecret: reusableSecret };
+const qrValue = JSON.stringify(qrPayload);
+QRCode.toDataURL(qrValue);
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_qr_api_key_is_still_reported(self) -> None:
+        source = '''
+import QRCode from "qrcode";
+const qrPayload = { kind: "custom", apiKey: configuredApiKey };
+const qrValue = JSON.stringify(qrPayload);
+QRCode.toDataURL(qrValue);
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_direct_qr_encoder_secret_is_still_reported(self) -> None:
+        source = 'QRCode.toDataURL(apiKey);'
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_flutter_qr_encoder_secret_is_still_reported(self) -> None:
+        source = 'QrImage(data: accessToken);'
+        rules = {item.rule for item in scan_text("src/Pairing.dart", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
+
+    def test_quoted_qr_secret_field_is_still_reported(self) -> None:
+        source = '''
+const qrPayload = { "apiKey": configuredApiKey };
+const qrValue = JSON.stringify(qrPayload);
+QRCode.toDataURL(qrValue);
+'''
+        rules = {item.rule for item in scan_text("src/Pairing.tsx", source)}
+        self.assertIn("security.plaintext-secret-qr", rules)
 
     def test_scripted_inline_document_requires_review(self) -> None:
         source = '<iframe sandbox="allow-scripts" srcDoc={untrustedHtml} />'

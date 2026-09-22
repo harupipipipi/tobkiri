@@ -5,6 +5,7 @@ import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 import {MemoryRouter, Route, Routes} from 'react-router';
 
+import type {PackControlBinding} from '@/src/lib/apiTypes';
 import {type Pack, useAppStore} from '@/src/store';
 import {Packs} from './Packs';
 
@@ -43,6 +44,14 @@ const availablePack: Pack = {
   approved: false,
 };
 
+const activePackBinding: PackControlBinding = {
+  profile_id: samplePack.profileId,
+  workspace_id: samplePack.workspaceId,
+  profile_revision: samplePack.profileRevision,
+  plan_digest: samplePack.planDigest,
+  catalog_revision: samplePack.catalogRevision,
+};
+
 test('Packs provides independent semantic detail and switch actions', async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'http://localhost/packs',
@@ -58,6 +67,7 @@ test('Packs provides independent semantic detail and switch actions', async () =
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   useAppStore.setState({
     packs: [samplePack],
+    packCatalogBinding: activePackBinding,
     isLoading: false,
     loadPacks: async () => {},
     togglePack: async () => {
@@ -136,6 +146,7 @@ test('Packs requires installation before approval or enablement', async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   useAppStore.setState({
     packs: [availablePack],
+    packCatalogBinding: activePackBinding,
     isLoading: false,
     loadPacks: async () => {},
     installPack: async () => {
@@ -191,6 +202,7 @@ test('Packs exposes required Profile Packs without revoke or toggle actions', as
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   useAppStore.setState({
     packs: [{...samplePack, required: true}],
+    packCatalogBinding: activePackBinding,
     isLoading: false,
     loadPacks: async () => {},
   });
@@ -208,7 +220,52 @@ test('Packs exposes required Profile Packs without revoke or toggle actions', as
   });
 
   try {
-    assert.match(container.textContent ?? '', /Required by Defaults Profile/);
+    assert.match(container.textContent ?? '', /Required by active execution Profile · profile-a/);
+    assert.match(container.textContent ?? '', /Host-global artifact inventory/);
+    assert.match(container.textContent ?? '', /Host-global artifact inventory and install state/);
+    assert.equal(container.querySelector('[role="switch"]'), null);
+    assert.equal(container.querySelector('[aria-label^="Revoke approval"]'), null);
+  } finally {
+    await act(async () => root.unmount());
+    useAppStore.setState(previousState, true);
+    dom.window.close();
+  }
+});
+
+test('Packs locks Profile-scoped state when the catalog binding does not match a row', async () => {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+    url: 'http://localhost/packs',
+  });
+  const previousState = useAppStore.getState();
+  Object.defineProperties(globalThis, {
+    window: {value: dom.window, configurable: true},
+    document: {value: dom.window.document, configurable: true},
+    navigator: {value: dom.window.navigator, configurable: true},
+    localStorage: {value: dom.window.localStorage, configurable: true},
+  });
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  useAppStore.setState({
+    packs: [{...samplePack, required: true}],
+    packCatalogBinding: {...activePackBinding, profile_id: 'profile-b'},
+    isLoading: false,
+    loadPacks: async () => {},
+  });
+  const container = document.querySelector<HTMLElement>('#root');
+  assert.ok(container);
+  const root: Root = createRoot(container);
+  await act(async () => {
+    root.render(
+      <MemoryRouter initialEntries={['/packs']}>
+        <Routes>
+          <Route path="/packs" element={<Packs />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  });
+
+  try {
+    assert.match(container.textContent ?? '', /Profile state unavailable/);
+    assert.match(container.textContent ?? '', /Profile-scoped requirement unavailable/);
     assert.equal(container.querySelector('[role="switch"]'), null);
     assert.equal(container.querySelector('[aria-label^="Revoke approval"]'), null);
   } finally {

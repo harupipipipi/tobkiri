@@ -10,6 +10,7 @@ from domain.safety import approval
 
 _CODING_OPERATION_PREFIXES = ("file.", "git.", "shell.", "terminal.", "workspace.")
 _EXACT_REPLAY_TOOLS = {"pack.approve": "coding_pack_approve"}
+_COMPUTER_TOOLS = {"browser_computer", "browser_use", "computer_use"}
 
 
 def run(input_data: dict[str, Any], context: dict[str, Any] | None = None):
@@ -25,13 +26,24 @@ def run(input_data: dict[str, Any], context: dict[str, Any] | None = None):
     raw_details = request.get("details")
     details = raw_details if isinstance(raw_details, dict) else {}
     operation = str(request.get("operation") or "").strip()
-    tool_name = str(details.get("function_id") or details.get("tool_name") or "").strip()
+    declared_tool_name = str(details.get("tool_name") or "").strip()
+    declared_function_id = str(details.get("function_id") or "").strip()
+    tool_name = (
+        declared_tool_name
+        if declared_tool_name in _COMPUTER_TOOLS
+        else declared_function_id or declared_tool_name
+    )
     arguments = details.get("arguments")
-    expected_tool = _EXACT_REPLAY_TOOLS.get(
-        operation,
-        "coding_" + operation.replace(".", "_")
-        if operation.startswith(_CODING_OPERATION_PREFIXES)
-        else "",
+    expected_tool = (
+        tool_name
+        if tool_name in _COMPUTER_TOOLS
+        and operation.startswith(("browser.", "computer."))
+        else _EXACT_REPLAY_TOOLS.get(
+            operation,
+            "coding_" + operation.replace(".", "_")
+            if operation.startswith(_CODING_OPERATION_PREFIXES)
+            else "",
+        )
     )
     if (
         not expected_tool
@@ -42,7 +54,11 @@ def run(input_data: dict[str, Any], context: dict[str, Any] | None = None):
     ):
         return error("approval replay binding changed", code="DEBUG_RESUME_MISMATCH")
 
-    token = approval.resolve_debug_resume_handle(resume_id, request_id)
+    token = (
+        approval.claim_native_resume_handle(resume_id, request)
+        if resume_id.startswith("native_resume_")
+        else approval.resolve_debug_resume_handle(resume_id, request_id)
+    )
     verification = approval.verify_execution_token(
         token,
         operation,

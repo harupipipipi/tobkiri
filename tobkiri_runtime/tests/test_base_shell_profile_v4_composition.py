@@ -11,7 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from tobkiri_protocol.canonical import canonical_digest
-from tobkiri_protocol.composition import (
+from tobkiri_protocol import (
     CompositionError,
     catalog_payload,
     compose_runtime_profile,
@@ -209,6 +209,7 @@ def test_exact_verified_composition_binds_base_shell_revision_and_local_auth(
         "base",
         "shell",
     ]
+    assert first.profile_lock["content_projections"] == []
     assert verify_profile_lock(first.profile_lock) == first.profile_lock
 
 
@@ -331,6 +332,7 @@ def test_headless_profile_has_no_implicit_shell_or_presentation_artifact(
     assert binding.shell_artifact_path is None
     assert binding.local_auth_protocol is None
     assert binding.profile_lock["shell"] is None
+    assert binding.profile_lock["content_projections"] == []
     assert binding.profile_lock["effective_set"] == [
         {
             "role": "base",

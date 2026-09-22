@@ -97,10 +97,10 @@ def test_pack_setup_discoverable_and_overlap_scoped() -> None:
     assert setup["risk_level"] == "medium"
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.overlap_policy["slide_sheet_doc_creation"] == "handoff_to_rumi_workspace_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
-    assert "reason" in candidate.defaultspack_promotion
-    assert "promotion_blockers" in candidate.defaultspack_promotion
-    assert "promotion_evidence_required" in candidate.defaultspack_promotion
+    assert candidate.base_pack_promotion["eligible"] is False
+    assert "reason" in candidate.base_pack_promotion
+    assert "promotion_blockers" in candidate.base_pack_promotion
+    assert "promotion_evidence_required" in candidate.base_pack_promotion
     assert candidate.marketplace["id"].startswith("rumi.")
     assert candidate.marketplace["registry"] == "bundled"
     assert candidate.marketplace["publisher"] == "rumi-ai"

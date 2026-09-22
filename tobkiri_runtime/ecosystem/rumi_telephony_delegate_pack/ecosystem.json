@@ -71,15 +71,15 @@
         "templates/artifact_card.template.md"
       ]
     },
+    "base_pack_promotion_eligible": false,
     "canonical_v4": {
       "artifact": "pack.v4.json",
-      "artifact_digest": "sha256:69c822841d21f08b412311f65a02b95c5d128a68a7b9630178f5a055215372be",
+      "artifact_digest": "sha256:429947fc4065c51645df0694207f54732de545a39d131f1a74f464cd8e9b1fab",
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
-      "source_identity": "sha256:c12d134bcc7c29656c44237fc17c509d35f08d44d4fd87235e3ed6e2e5b76d74"
+      "source_identity": "sha256:080163507eed2385c6fa3fa88338ac40b0e481a3baf965a600fe803b4afb16cd"
     },
     "consumes_existing_sources_only": true,
     "declarative_only": true,
-    "defaultspack_promotion_eligible": false,
     "executable_code": false,
     "format": "rumi.ecosystem.v1",
     "generated": true,
@@ -87,7 +87,7 @@
       "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
       "historical_format": "ecosystem.json",
       "source": "pack.v4.json",
-      "source_content_hash": "sha256:c12d134bcc7c29656c44237fc17c509d35f08d44d4fd87235e3ed6e2e5b76d74"
+      "source_content_hash": "sha256:080163507eed2385c6fa3fa88338ac40b0e481a3baf965a600fe803b4afb16cd"
     },
     "legacy_annotations": {
       "runtime_dependency_aliases": [
@@ -111,8 +111,8 @@
         "reason": "Provide provider and tooling handoffs for dialing, ASR/TTS-adjacent runtime, transcript/media handling, and contact or calendar lookup outside this pack."
       },
       {
-        "pack_id": "rumi_local_agent_pack",
-        "reason": "Consume redacted transcript packets for recap, note-taking, and other local-first follow-up artifacts."
+        "pack_id": "rumi_meeting_intelligence_pack",
+        "reason": "Consume reviewed, redacted transcript packets for meeting recap and follow-up artifacts."
       },
       {
         "pack_id": "rumi_operations_company_pack",
@@ -140,7 +140,7 @@
   "pack_identity": "rumi:ecosystem/rumi_telephony_delegate_pack",
   "provenance": {
     "build_identity": "rumi_telephony_delegate_pack:0.1.0",
-    "content_hash": "sha256:69c822841d21f08b412311f65a02b95c5d128a68a7b9630178f5a055215372be",
+    "content_hash": "sha256:429947fc4065c51645df0694207f54732de545a39d131f1a74f464cd8e9b1fab",
     "signature": null,
     "trust_class": "local"
   },

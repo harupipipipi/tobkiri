@@ -416,7 +416,14 @@ def test_rumi_function_computer_use_does_not_double_consume_forwarded_approval_t
     decision = approval.approve(request["request_id"])
     assert decision["approved"] is True
 
+    class _ApprovedPackManager:
+        def is_pack_approved_and_verified(self, pack_id):
+            assert pack_id == "rumi_default_tools_pack"
+            return True
+
     class _FakeCapabilityExecutor:
+        _approval_manager = _ApprovedPackManager()
+
         def execute(self, principal_id, request_payload):
             forwarded_context = request_payload.get("context") or {}
             token = forwarded_context["_tool_server_approval_token"]

@@ -326,7 +326,7 @@ def _validate_manifest_shape(document: object) -> dict[str, Any]:
         raise SealedBootstrapError("sealed package provenance shape is invalid")
     if (
         provenance["kind"] != PACKAGE_KIND_BY_PLATFORM[platform_name]
-        or provenance["package_id"] != "dev.tobkiri.launcher"
+        or provenance["package_id"] != "dev.rumiai.app"
         or not _is_sha256_identity(provenance["release_digest"])
     ):
         raise SealedBootstrapError("sealed package provenance identity is invalid")

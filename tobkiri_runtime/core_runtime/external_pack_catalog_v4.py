@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from contextlib import ExitStack, contextmanager
 import hashlib
 import hmac
 import json
@@ -13,7 +14,8 @@ import secrets
 import shutil
 import stat
 import tempfile
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
+import unicodedata
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -22,7 +24,14 @@ from tobkiri_host.artifact_compiler import compile_pack_root
 from tobkiri_protocol.canonical import canonical_digest
 from tobkiri_protocol.validation import validate_document, validate_file
 
-from .hmac_key_manager import generate_or_load_signing_key
+from .hmac_key_manager import SigningKeyError, generate_or_load_signing_key, load_signing_key
+from .pack_artifact_integrity import (
+    HostPolicyLock,
+    exclusive_host_policy_lock,
+    host_policy_identity,
+    read_host_policy_snapshot,
+    verify_host_install_binding,
+)
 from .pack_boundary import PackBoundaryError, load_pack_catalog, resolve_pack_root
 from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_pack
 
@@ -30,6 +39,9 @@ from .pack_signature import SIGNED_MANIFEST_RELATIVE, verify_signed_pack
 _CATALOG_VERSION = "io.tobkiri.external-normal-pack-catalog.v4"
 _ENTRY_VERSION = "io.tobkiri.external-normal-pack-catalog-entry.v4"
 _MAX_CATALOG_BYTES = 16 * 1024 * 1024
+_MAX_PACK_FILES = 10_000
+_MAX_PACK_FILE_BYTES = 128 * 1024 * 1024
+_MAX_PACK_TOTAL_BYTES = 512 * 1024 * 1024
 _DIGEST_PREFIX = "sha256:"
 _V4_ID = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 
@@ -49,6 +61,16 @@ class ExternalPackCatalogSnapshot:
     journal: tuple[Mapping[str, Any], ...]
 
 
+@dataclass(frozen=True)
+class _TrustPolicySnapshot:
+    identity: tuple[int, str]
+    pack_id: str
+    publisher_id: str
+    key_id: str
+    install_record: Mapping[str, Any]
+    publisher: Mapping[str, Any]
+
+
 def admit_signed_external_pack(
     source_root: Path,
     *,
@@ -62,9 +84,60 @@ def admit_signed_external_pack(
     catalog document crosses the client route.
     """
 
+    user_data = _user_data_root()
+    catalog_path = _catalog_path(user_data)
+    with _admission_policy_locks(trust_store_path, catalog_path) as policy_locks:
+        trust_policy_lock, _catalog_policy_lock = policy_locks
+        return _admit_signed_external_pack_locked(
+            source_root,
+            trust_store_path=trust_store_path,
+            user_data=user_data,
+            catalog_path=catalog_path,
+            trust_policy_lock=trust_policy_lock,
+            fault_injector=fault_injector,
+        )
+
+
+@contextmanager
+def _admission_policy_locks(
+    trust_store_path: Path,
+    catalog_path: Path,
+) -> Iterator[tuple[HostPolicyLock, HostPolicyLock]]:
+    stack = ExitStack()
+    try:
+        trust_policy_lock = stack.enter_context(
+            exclusive_host_policy_lock(trust_store_path)
+        )
+        catalog_policy_lock = stack.enter_context(
+            exclusive_host_policy_lock(catalog_path)
+        )
+    except (OSError, ValueError) as error:
+        stack.close()
+        raise ExternalPackCatalogDenied(
+            "external Pack policy transaction is unsafe"
+        ) from error
+    try:
+        yield trust_policy_lock, catalog_policy_lock
+    finally:
+        stack.close()
+
+
+def _admit_signed_external_pack_locked(
+    source_root: Path,
+    *,
+    trust_store_path: Path,
+    user_data: Path,
+    catalog_path: Path,
+    trust_policy_lock: HostPolicyLock,
+    fault_injector: Callable[[str], None] | None,
+) -> Mapping[str, Any]:
     source = Path(source_root)
     source_identity = _directory_identity(source)
-    signed_manifest, install_record = _verify_signed_source(source, trust_store_path)
+    signed_manifest, install_record, trust_snapshot = _verify_signed_source(
+        source,
+        trust_store_path,
+        trust_policy_lock=trust_policy_lock,
+    )
     compiled = compile_pack_root(source)
     pack_id = compiled.artifact.pack_id
     if pack_id != str(signed_manifest["pack_id"]):
@@ -81,8 +154,6 @@ def admit_signed_external_pack(
             "artifact_digest": artifact_digest,
         }
     )
-    user_data = _user_data_root()
-    catalog_path = _catalog_path(user_data)
     artifact_parent = _artifact_store(user_data) / artifact_digest.removeprefix(_DIGEST_PREFIX)
     final_root = artifact_parent / pack_id
     artifact_parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -101,6 +172,9 @@ def admit_signed_external_pack(
             artifact_digest=artifact_digest,
             expected_content_digest=content_digest,
             trust_store_path=trust_store_path,
+            authorized_install_path=source,
+            expected_trust_snapshot=trust_snapshot,
+            trust_policy_lock=trust_policy_lock,
         )
         if _directory_identity(source) != source_identity:
             raise ExternalPackCatalogDenied("signed Pack root changed during installation")
@@ -113,6 +187,11 @@ def admit_signed_external_pack(
             if previous is not None and previous.get("artifact_digest") == artifact_digest:
                 existing_root = _entry_root(previous, user_data)
                 _verify_entry_root(pack_id, previous, existing_root)
+                _require_current_trust_policy(
+                    trust_store_path,
+                    trust_snapshot,
+                    trust_policy_lock=trust_policy_lock,
+                )
                 return dict(previous)
             if previous is not None:
                 raise ExternalPackCatalogDenied(
@@ -155,6 +234,11 @@ def admit_signed_external_pack(
         root_metadata = final_root.lstat()
         committed["root_device"] = int(root_metadata.st_dev)
         committed["root_inode"] = int(root_metadata.st_ino)
+        _require_current_trust_policy(
+            trust_store_path,
+            trust_snapshot,
+            trust_policy_lock=trust_policy_lock,
+        )
         latest = _read_authenticated_catalog(catalog_path, allow_missing=False)
         latest_entries = dict(latest["entries"])
         latest_journal = list(latest["journal"])
@@ -264,6 +348,56 @@ def external_pack_content_digest(pack_id: str) -> str | None:
     return str(entry["content_digest"])
 
 
+def load_admitted_external_executable_catalog(
+    pack_id: str,
+    expected_manifest: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Load one verified executable catalog for an admitted external Pack.
+
+    External Packs are not part of the sealed base-bundle lock.  Their
+    executable catalogs therefore enter Profile resolution only through the
+    Host's signed, content-addressed admission registry.  The caller supplies
+    the manifest it selected for the closure; this prevents a catalog for a
+    different admitted revision from being silently combined with it.
+    """
+
+    normalized = str(pack_id or "").strip()
+    if not normalized or not isinstance(expected_manifest, Mapping):
+        raise ExternalPackCatalogDenied("external Pack executable request is invalid")
+    snapshot = load_external_pack_catalog()
+    entry = snapshot.entries.get(normalized)
+    root = snapshot.roots.get(normalized)
+    if entry is None or root is None:
+        raise ExternalPackCatalogDenied("external Pack is not admitted")
+    try:
+        manifest = validate_file(root / "pack.v4.json", "pack")
+        executable = validate_file(root / "executables.v4.json", "executable_catalog")
+        _require_external_catalog_identity(executable)
+        compiled = compile_pack_root(root)
+    except Exception as error:
+        raise ExternalPackCatalogDenied(
+            "external Pack executable catalog verification failed"
+        ) from error
+    # Reverify the signed CAS root after all individual reads.  A mutation or
+    # root replacement is an admission failure, never a fallback to an
+    # unverified catalog document.
+    _verify_entry_root(normalized, entry, root)
+    if (
+        canonical_digest(manifest) != canonical_digest(expected_manifest)
+        or manifest["pack"]["id"] != normalized
+        or manifest["pack"]["artifact_digest"] != entry["artifact_digest"]
+        or compiled.artifact.pack_id != normalized
+        or compiled.artifact.digest != entry["artifact_digest"]
+        or executable["pack_id"] != normalized
+        or executable["source_identity"]
+        != manifest["integrity"]["source_identity"]
+    ):
+        raise ExternalPackCatalogDenied(
+            "external Pack executable catalog does not match the admitted manifest"
+        )
+    return dict(executable)
+
+
 def resolve_admitted_pack_root(
     pack_id: str,
     bundled_root: Path | None = None,
@@ -301,28 +435,35 @@ def resolve_admitted_pack_roots(
 def _verify_signed_source(
     source: Path,
     trust_store_path: Path,
-) -> tuple[dict[str, Any], Mapping[str, Any]]:
+    *,
+    authorized_install_path: Path | None = None,
+    trust_policy_lock: HostPolicyLock | None = None,
+) -> tuple[dict[str, Any], Mapping[str, Any], _TrustPolicySnapshot]:
     source_identity = _directory_identity(source)
-    trust_path = Path(trust_store_path)
-    try:
-        trust_metadata = trust_path.lstat()
-        trust_parent_metadata = trust_path.parent.lstat()
-    except OSError as exc:
-        raise ExternalPackCatalogDenied("publisher trust store is unavailable") from exc
-    if (
-        trust_path.is_symlink()
-        or not stat.S_ISREG(trust_metadata.st_mode)
-        or stat.S_IMODE(trust_metadata.st_mode) & 0o022
-        or stat.S_IMODE(trust_parent_metadata.st_mode) & 0o022
-    ):
+    unresolved_trust_path = Path(trust_store_path).expanduser()
+    trust_path = Path(os.path.abspath(unresolved_trust_path))
+    if trust_path.is_symlink():
         raise ExternalPackCatalogDenied("publisher trust store permissions are unsafe")
     manifest_path = source / SIGNED_MANIFEST_RELATIVE
     signed_manifest = _read_json_nofollow(manifest_path, _MAX_CATALOG_BYTES)
     if not isinstance(signed_manifest, dict):
         raise ExternalPackCatalogDenied("signed Pack manifest is invalid")
-    trust_store = _read_json_nofollow(trust_path, _MAX_CATALOG_BYTES)
+    try:
+        trust_store = read_host_policy_snapshot(
+            trust_path,
+            policy_lock=trust_policy_lock,
+        )
+        policy_identity = host_policy_identity(trust_store)
+    except (OSError, ValueError) as error:
+        raise ExternalPackCatalogDenied(
+            "publisher trust store permissions are unsafe"
+        ) from error
     if not isinstance(trust_store, Mapping):
         raise ExternalPackCatalogDenied("publisher trust store is invalid")
+    if not policy_identity[1]:
+        raise ExternalPackCatalogDenied(
+            "publisher trust store has no authenticated generation"
+        )
     pack_id = str(signed_manifest.get("pack_id") or "")
     install_records = trust_store.get("install_records")
     install_records = install_records if isinstance(install_records, Mapping) else {}
@@ -367,9 +508,69 @@ def _verify_signed_source(
         },
         core_version=str(core_version),
     )
+    try:
+        verify_host_install_binding(
+            source,
+            install_record,
+            signed_manifest,
+            authorized_install_path=authorized_install_path,
+        )
+    except ValueError as error:
+        raise ExternalPackCatalogDenied(
+            "signed Pack does not match its Host install binding"
+        ) from error
     if _directory_identity(source) != source_identity:
         raise ExternalPackCatalogDenied("signed Pack root changed during verification")
-    return signed_manifest, install_record
+    return (
+        signed_manifest,
+        dict(install_record),
+        _TrustPolicySnapshot(
+            identity=policy_identity,
+            pack_id=pack_id,
+            publisher_id=publisher_id,
+            key_id=str(signed_manifest["signature"]["key_id"]),
+            install_record=dict(install_record),
+            publisher=dict(publisher),
+        ),
+    )
+
+
+def _require_current_trust_policy(
+    trust_store_path: Path,
+    expected: _TrustPolicySnapshot,
+    *,
+    trust_policy_lock: HostPolicyLock,
+) -> None:
+    try:
+        trust_store = read_host_policy_snapshot(
+            trust_store_path,
+            policy_lock=trust_policy_lock,
+        )
+        current_identity = host_policy_identity(trust_store)
+    except (OSError, ValueError) as error:
+        raise ExternalPackCatalogDenied(
+            "publisher trust policy changed during admission"
+        ) from error
+    install_records = trust_store.get("install_records")
+    install_records = install_records if isinstance(install_records, Mapping) else {}
+    publishers = trust_store.get("publishers")
+    publishers = publishers if isinstance(publishers, Mapping) else {}
+    install_record = install_records.get(expected.pack_id)
+    publisher = publishers.get(expected.publisher_id)
+    revoked = (
+        {str(item) for item in publisher.get("revoked_key_ids") or ()}
+        if isinstance(publisher, Mapping)
+        else set()
+    )
+    if (
+        current_identity != expected.identity
+        or install_record != expected.install_record
+        or publisher != expected.publisher
+        or expected.key_id in revoked
+    ):
+        raise ExternalPackCatalogDenied(
+            "publisher trust policy changed during admission"
+        )
 
 
 def _project_catalog_record(
@@ -378,6 +579,7 @@ def _project_catalog_record(
 ) -> dict[str, Any]:
     manifest = validate_file(root / "pack.v4.json", "pack")
     executable = validate_file(root / "executables.v4.json", "executable_catalog")
+    _require_external_catalog_identity(executable)
     pack_id = str(manifest["pack"]["id"])
     if manifest["pack"]["kind"] != "normal_sandbox":
         raise ExternalPackCatalogDenied(
@@ -471,26 +673,233 @@ def _copy_signed_pack(
     destination: Path,
     signed_manifest: Mapping[str, Any],
 ) -> None:
-    for item in signed_manifest["files"]:
-        relative = _safe_relative(str(item["path"]))
-        content, source_mode = _read_regular_nofollow(source, relative)
-        if (
-            len(content) != item["size"]
-            or hashlib.sha256(content).hexdigest() != item["sha256"]
-            or stat.S_IMODE(source_mode) != item["mode"]
-        ):
-            raise ExternalPackCatalogDenied("signed Pack changed while copying")
-        target = destination.joinpath(*PurePosixPath(relative).parts)
-        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        target.write_bytes(content)
-        os.chmod(target, int(item["mode"]))
-    signed_target = destination / SIGNED_MANIFEST_RELATIVE
-    signed_target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    signed_target.write_text(
-        json.dumps(signed_manifest, sort_keys=True, separators=(",", ":")) + "\n",
-        encoding="utf-8",
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    source_descriptor = os.open(source, directory_flags)
+    destination_descriptor = os.open(destination, directory_flags)
+    source_identity = _stat_identity(os.fstat(source_descriptor))
+    total_bytes = 0
+    collision_paths: dict[str, str] = {}
+    try:
+        files = signed_manifest.get("files")
+        if not isinstance(files, list) or not files or len(files) > _MAX_PACK_FILES:
+            raise ExternalPackCatalogDenied("signed Pack file inventory is unsafe")
+        for item in files:
+            if not isinstance(item, Mapping):
+                raise ExternalPackCatalogDenied("signed Pack file inventory is unsafe")
+            relative = _safe_relative(str(item["path"]))
+            _require_normalized_copy_path(relative, collision_paths)
+            content, source_mode = _read_regular_from_root_descriptor(
+                source_descriptor,
+                relative,
+            )
+            total_bytes += len(content)
+            if (
+                len(content) > _MAX_PACK_FILE_BYTES
+                or total_bytes > _MAX_PACK_TOTAL_BYTES
+                or len(content) != item["size"]
+                or hashlib.sha256(content).hexdigest() != item["sha256"]
+                or stat.S_IMODE(source_mode) != item["mode"]
+            ):
+                raise ExternalPackCatalogDenied("signed Pack changed while copying")
+            _write_regular_to_root_descriptor(
+                destination_descriptor,
+                relative,
+                content,
+                int(item["mode"]),
+            )
+        manifest_content = (
+            json.dumps(signed_manifest, sort_keys=True, separators=(",", ":"))
+            + "\n"
+        ).encode("utf-8")
+        _write_regular_to_root_descriptor(
+            destination_descriptor,
+            SIGNED_MANIFEST_RELATIVE,
+            manifest_content,
+            0o400,
+        )
+        if _stat_identity(os.fstat(source_descriptor)) != source_identity:
+            raise ExternalPackCatalogDenied(
+                "signed Pack root changed while copying"
+            )
+        os.fsync(destination_descriptor)
+    finally:
+        os.close(destination_descriptor)
+        os.close(source_descriptor)
+
+
+def _require_normalized_copy_path(
+    relative: str,
+    collision_paths: dict[str, str],
+) -> None:
+    parts = PurePosixPath(relative).parts
+    for index in range(1, len(parts) + 1):
+        prefix = "/".join(parts[:index])
+        normalized = unicodedata.normalize("NFC", prefix)
+        if prefix != normalized:
+            raise ExternalPackCatalogDenied(
+                "signed Pack contains a non-canonical path"
+            )
+        collision_key = normalized.casefold()
+        previous = collision_paths.setdefault(collision_key, prefix)
+        if previous != prefix:
+            raise ExternalPackCatalogDenied(
+                "signed Pack contains a normalized path collision"
+            )
+
+
+def _read_regular_from_root_descriptor(
+    root_descriptor: int,
+    relative: str,
+) -> tuple[bytes, int]:
+    parts = PurePosixPath(relative).parts
+    parent_descriptor, ancestors = _open_directory_components(
+        root_descriptor,
+        parts[:-1],
+        create=False,
     )
-    os.chmod(signed_target, 0o400)
+    descriptor: int | None = None
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        metadata = os.stat(
+            parts[-1],
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        descriptor = os.open(parts[-1], flags, dir_fd=parent_descriptor)
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or _stat_identity(metadata) != _stat_identity(before)
+            or before.st_size > _MAX_PACK_FILE_BYTES
+        ):
+            raise ExternalPackCatalogDenied(
+                "signed Pack entry identity is unsafe"
+            )
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = os.read(
+                descriptor,
+                min(1024 * 1024, _MAX_PACK_FILE_BYTES + 1),
+            )
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > _MAX_PACK_FILE_BYTES:
+                raise ExternalPackCatalogDenied(
+                    "signed Pack entry exceeds the size limit"
+                )
+            chunks.append(chunk)
+        if _stat_identity(before) != _stat_identity(os.fstat(descriptor)):
+            raise ExternalPackCatalogDenied(
+                "signed Pack entry changed while copying"
+            )
+        _verify_open_ancestor_identities(ancestors)
+        return b"".join(chunks), before.st_mode
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        _close_open_ancestors(ancestors)
+
+
+def _write_regular_to_root_descriptor(
+    root_descriptor: int,
+    relative: str,
+    content: bytes,
+    mode: int,
+) -> None:
+    parts = PurePosixPath(relative).parts
+    parent_descriptor, ancestors = _open_directory_components(
+        root_descriptor,
+        parts[:-1],
+        create=True,
+    )
+    descriptor: int | None = None
+    try:
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(
+            parts[-1],
+            flags,
+            0o600,
+            dir_fd=parent_descriptor,
+        )
+        offset = 0
+        while offset < len(content):
+            offset += os.write(descriptor, content[offset:])
+        os.fchmod(descriptor, mode)
+        os.fsync(descriptor)
+        _verify_open_ancestor_identities(ancestors, allow_directory_mtime_change=True)
+        os.fsync(parent_descriptor)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        _close_open_ancestors(ancestors)
+
+
+def _open_directory_components(
+    root_descriptor: int,
+    parts: tuple[str, ...],
+    *,
+    create: bool,
+) -> tuple[int, list[tuple[int, tuple[int, int, int, int]]]]:
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.dup(root_descriptor)
+    ancestors: list[tuple[int, tuple[int, int, int, int]]] = [
+        (descriptor, _stat_identity(os.fstat(descriptor)))
+    ]
+    try:
+        for part in parts:
+            if create:
+                try:
+                    os.mkdir(part, 0o700, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+            metadata = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            child = os.open(part, directory_flags, dir_fd=descriptor)
+            opened = os.fstat(child)
+            if (
+                not stat.S_ISDIR(metadata.st_mode)
+                or _stat_identity(metadata) != _stat_identity(opened)
+            ):
+                os.close(child)
+                raise ExternalPackCatalogDenied(
+                    "signed Pack directory identity is unsafe"
+                )
+            descriptor = child
+            ancestors.append((descriptor, _stat_identity(opened)))
+        return descriptor, ancestors
+    except Exception:
+        _close_open_ancestors(ancestors)
+        raise
+
+
+def _verify_open_ancestor_identities(
+    ancestors: list[tuple[int, tuple[int, int, int, int]]],
+    *,
+    allow_directory_mtime_change: bool = False,
+) -> None:
+    for descriptor, expected in ancestors:
+        actual = _stat_identity(os.fstat(descriptor))
+        if allow_directory_mtime_change:
+            if actual[:2] != expected[:2]:
+                raise ExternalPackCatalogDenied(
+                    "signed Pack directory changed while copying"
+                )
+        elif actual != expected:
+            raise ExternalPackCatalogDenied(
+                "signed Pack directory changed while copying"
+            )
+
+
+def _close_open_ancestors(
+    ancestors: list[tuple[int, tuple[int, int, int, int]]],
+) -> None:
+    for descriptor, _identity in reversed(ancestors):
+        os.close(descriptor)
 
 
 def _catalog_operation_id(operation: Mapping[str, Any]) -> str:
@@ -505,9 +914,16 @@ def _verify_cas_copy(
     artifact_digest: str,
     expected_content_digest: str,
     trust_store_path: Path,
+    authorized_install_path: Path,
+    expected_trust_snapshot: _TrustPolicySnapshot,
+    trust_policy_lock: HostPolicyLock,
 ) -> None:
-    del install_record
-    copied_manifest, _ = _verify_signed_source(root, trust_store_path)
+    copied_manifest, copied_install_record, copied_trust_snapshot = _verify_signed_source(
+        root,
+        trust_store_path,
+        authorized_install_path=authorized_install_path,
+        trust_policy_lock=trust_policy_lock,
+    )
     compiled = compile_pack_root(root)
     content_digest = canonical_digest(
         {
@@ -519,6 +935,8 @@ def _verify_cas_copy(
         compiled.artifact.digest != artifact_digest
         or content_digest != expected_content_digest
         or copied_manifest != signed_manifest
+        or copied_install_record != install_record
+        or copied_trust_snapshot != expected_trust_snapshot
     ):
         raise ExternalPackCatalogDenied("content-addressed Pack verification failed")
 
@@ -540,6 +958,8 @@ def _verify_entry_root(
         ):
             raise ExternalPackCatalogDenied("external Pack root identity changed")
     try:
+        executable = validate_file(root / "executables.v4.json", "executable_catalog")
+        _require_external_catalog_identity(executable)
         compiled = compile_pack_root(root)
     except Exception as error:
         raise ExternalPackCatalogDenied(
@@ -562,6 +982,15 @@ def _verify_entry_root(
     )
     if content_digest != entry.get("content_digest"):
         raise ExternalPackCatalogDenied("external Normal Pack content digest changed")
+
+
+def _require_external_catalog_identity(executable: Mapping[str, Any]) -> None:
+    """Reject bundle-only executable catalog aliases from external Packs."""
+
+    if executable.get("materialization_catalog_digest") is not None:
+        raise ExternalPackCatalogDenied(
+            "external Pack cannot replace its executable catalog identity"
+        )
 
 
 def _validate_entry(pack_id: str, entry: Mapping[str, Any]) -> None:
@@ -660,7 +1089,11 @@ def _read_authenticated_catalog(path: Path, *, allow_missing: bool) -> dict[str,
             "external Pack catalog schema validation failed"
         ) from error
     signature = str(value.pop("signature") or "")
-    expected = hmac.new(_catalog_key(), _canonical_bytes(value), hashlib.sha256).hexdigest()
+    try:
+        key = load_signing_key(path.parent / ".external_normal_pack_catalog_key")
+    except SigningKeyError as error:
+        raise ExternalPackCatalogDenied("external Normal Pack catalog key is unavailable") from error
+    expected = hmac.new(key, _canonical_bytes(value), hashlib.sha256).hexdigest()
     if not signature or not hmac.compare_digest(signature, expected):
         raise ExternalPackCatalogDenied("external Normal Pack catalog authentication failed")
     if (
@@ -775,7 +1208,12 @@ def _atomic_private_json(path: Path, value: Mapping[str, Any]) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
-def _read_json_nofollow(path: Path, max_bytes: int) -> Any:
+def _read_json_nofollow(
+    path: Path,
+    max_bytes: int,
+    *,
+    require_private: bool = False,
+) -> Any:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
@@ -785,6 +1223,8 @@ def _read_json_nofollow(path: Path, max_bytes: int) -> Any:
         before = os.fstat(descriptor)
         if not stat.S_ISREG(before.st_mode) or before.st_size > max_bytes:
             raise ExternalPackCatalogDenied("Host JSON file identity is invalid")
+        if require_private and stat.S_IMODE(before.st_mode) & 0o022:
+            raise ExternalPackCatalogDenied("Host JSON file permissions are unsafe")
         content = os.read(descriptor, max_bytes + 1)
         after = os.fstat(descriptor)
         if len(content) > max_bytes or _stat_identity(before) != _stat_identity(after):
@@ -957,6 +1397,7 @@ __all__ = [
     "admit_signed_external_pack",
     "control_catalog_revision",
     "external_pack_content_digest",
+    "load_admitted_external_executable_catalog",
     "load_admitted_pack_catalog",
     "load_external_pack_catalog",
     "resolve_admitted_pack_root",

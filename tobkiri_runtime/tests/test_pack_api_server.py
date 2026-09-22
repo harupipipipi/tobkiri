@@ -13,41 +13,48 @@ from pathlib import Path
 
 import pytest
 
-from core_runtime.authority.v4 import AuthorityStore
-from core_runtime.bootstrap.production_v4 import capture_production_dispatch
-from core_runtime.bootstrap.profile_capture import (
-    capture_default_profile,
-    prepare_default_profile_confirmation,
+from core_runtime.control_reconciliation_v4 import (
+    ControlReconciliationNotFoundError,
+    ControlReconciliationStore,
 )
-from core_runtime.control_reconciliation_v4 import ControlReconciliationStore
-from core_runtime.frontend_contract_routes import FrontendContractBinding
+from core_runtime.global_contracts.http_contract_dispatch import (
+    HTTPContractBinding as FrontendContractBinding,
+    HTTPContractTarget,
+)
 from core_runtime.pack_api_server import (
     MAX_CONCURRENT_REQUESTS,
     PackAPIHandler,
     PackAPIServer,
+    RuntimeCaptureInputs,
     RuntimeHTTPConfig,
 )
 from core_runtime.pack_control_v4 import (
     PackControlConflict,
     PackControlDigestMismatch,
+    PackControlOperationNotFound,
     PackControlTimedOut,
     PackControlUnavailable,
     PackControlUnapproved,
 )
 from core_runtime.panel_auth import PanelAuthManager
-from tobkiri_host.errors import ProviderExecutionError
+from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
+    DefaultspackHTTPPresentation,
+)
+from tobkiri_host.errors import BackendUnavailableError, ProviderExecutionError
 from tobkiri_protocol.canonical import canonical_digest
-
-
-def _bundle_root() -> Path:
-    from tests.conformance_support.packaged_profile import packaged_profile_bundle_root
-
-    return packaged_profile_bundle_root()
 
 
 class _Dispatch:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, Mapping[str, object]]] = []
+        self.profile_id = "defaults"
+        self.profile_revision = "sha256:" + "1" * 64
+        self.activation_id = "activation:test-pack-api"
+        self.plan_digest = "sha256:" + "2" * 64
+        self.security_epoch = 1
+
+    def assert_current(self) -> None:
+        """Keep this explicit test capture current for handler auth tests."""
 
     def invoke(
         self,
@@ -59,6 +66,217 @@ class _Dispatch:
     ) -> Mapping[str, object]:
         self.calls.append((contract_id, operation_id, dict(payload)))
         return {"contract_id": contract_id, "operation_id": operation_id}
+
+
+class _StartupReadinessDispatch:
+    """Record readiness checks without exposing an invocation path."""
+
+    def __init__(
+        self,
+        *,
+        unavailable_requirement: tuple[str, str] | None = None,
+    ) -> None:
+        self.unavailable_requirement = unavailable_requirement
+        self.current_checks = 0
+        self.ready_checks: list[tuple[str, str]] = []
+        self.invocations = 0
+        self.approvals = 0
+        self.provisions = 0
+
+    def assert_current(self) -> None:
+        self.current_checks += 1
+
+    def assert_operation_ready(self, contract_id: str, operation_id: str) -> None:
+        requirement = (contract_id, operation_id)
+        self.ready_checks.append(requirement)
+        if requirement == self.unavailable_requirement:
+            raise BackendUnavailableError("stale helper identity")
+
+    def invoke(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        self.invocations += 1
+        raise AssertionError("startup readiness must not invoke a Pack operation")
+
+    def request_approval(self) -> None:
+        self.approvals += 1
+        raise AssertionError("startup readiness must not request approval")
+
+    def provision(self) -> None:
+        self.provisions += 1
+        raise AssertionError("startup readiness must not provision PackVM")
+
+
+def _startup_readiness_routes() -> dict[tuple[str, str], FrontendContractBinding]:
+    """Return one deferred PackVM target and one normal UI target."""
+
+    return {
+        (
+            "POST",
+            "/api/ui/capability/invoke",
+        ): FrontendContractBinding(
+            method="POST",
+            path="/api/ui/capability/invoke",
+            presentation="defaultspack",
+            targets=(
+                HTTPContractTarget(
+                    contribution_id="defaults.conversation.complete",
+                    contract_id="conversation.turn.v1",
+                    operation_id="complete",
+                    provider_id="defaultspack.conversation",
+                    function_id="defaultspack.conversation",
+                ),
+                HTTPContractTarget(
+                    contribution_id="defaults.dashboard.read",
+                    contract_id="defaults.dashboard.v1",
+                    operation_id="read",
+                    provider_id="defaultspack.dashboard",
+                    function_id="defaultspack.dashboard",
+                ),
+            ),
+        )
+    }
+
+
+def test_runtime_startup_readiness_checks_deferred_packvm_without_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chat readiness selects the deferred backend without invoking it."""
+
+    dispatch = _StartupReadinessDispatch()
+    server = PackAPIServer(
+        port=0,
+        dispatch_session=dispatch,  # type: ignore[arg-type]
+        application_presentation=DefaultspackHTTPPresentation(),
+    )
+    server._contract_routes = _startup_readiness_routes()
+    validated: list[object] = []
+    monkeypatch.setattr(
+        server,
+        "_validate_contract_capture",
+        lambda *args, **kwargs: validated.append((args, kwargs)),
+    )
+
+    server.assert_runtime_startup_ready()
+
+    assert len(validated) == 1
+    assert dispatch.current_checks == 1
+    assert dispatch.ready_checks == [
+        ("conversation.turn.v1", "complete"),
+        (
+            "tobkiri.resource.application.presentation.v1",
+            "defaultspack.presentation.read",
+        ),
+    ]
+    assert dispatch.invocations == 0
+    assert dispatch.approvals == 0
+    assert dispatch.provisions == 0
+
+
+def test_runtime_startup_readiness_fails_closed_for_presentation_requirement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing presentation backend blocks chat without side effects."""
+
+    dispatch = _StartupReadinessDispatch(
+        unavailable_requirement=(
+            "tobkiri.resource.application.presentation.v1",
+            "defaultspack.presentation.read",
+        )
+    )
+    server = PackAPIServer(
+        port=0,
+        dispatch_session=dispatch,  # type: ignore[arg-type]
+        application_presentation=DefaultspackHTTPPresentation(),
+    )
+    server._contract_routes = _startup_readiness_routes()
+    monkeypatch.setattr(
+        server,
+        "_validate_contract_capture",
+        lambda *args, **kwargs: None,
+    )
+
+    with pytest.raises(BackendUnavailableError, match="stale helper identity"):
+        server.assert_runtime_startup_ready()
+
+    assert dispatch.current_checks == 1
+    assert dispatch.ready_checks == [
+        ("conversation.turn.v1", "complete"),
+        (
+            "tobkiri.resource.application.presentation.v1",
+            "defaultspack.presentation.read",
+        ),
+    ]
+    assert dispatch.invocations == 0
+    assert dispatch.approvals == 0
+    assert dispatch.provisions == 0
+
+
+def test_active_profile_registry_store_reuses_only_a_current_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An active registry read must fence its capture without redoing bootstrap."""
+
+    from core_runtime.bootstrap import profile_capture
+
+    calls: list[str] = []
+    dispatch = _Dispatch()
+
+    def assert_current() -> None:
+        calls.append("assert_current")
+
+    def unexpected_catalog_reload() -> None:
+        raise AssertionError("an active handler reloaded the bootstrap catalog")
+
+    monkeypatch.setattr(dispatch, "assert_current", assert_current)
+    monkeypatch.setattr(PackAPIHandler, "_dispatch_session", dispatch)
+    monkeypatch.setattr(
+        profile_capture,
+        "host_profile_catalog",
+        unexpected_catalog_reload,
+    )
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path))
+
+    store = PackAPIHandler._profile_registry_store()
+
+    assert store.user_data_root == tmp_path
+    assert calls == ["assert_current"]
+
+
+def test_profile_registry_store_keeps_control_preparation_and_rejects_stale_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """First-run preparation remains intact and an active stale capture fails closed."""
+
+    from core_runtime.bootstrap import profile_capture
+
+    catalog_calls: list[str] = []
+
+    class ControlDispatch(_Dispatch):
+        session_kind = "host_profile_control"
+
+        def assert_current(self) -> None:
+            raise AssertionError("control preparation bypassed the catalog")
+
+    monkeypatch.setenv("TOBKIRI_USER_DATA", str(tmp_path))
+    monkeypatch.setattr(
+        profile_capture,
+        "host_profile_catalog",
+        lambda: catalog_calls.append("host_profile_catalog"),
+    )
+    monkeypatch.setattr(PackAPIHandler, "_dispatch_session", ControlDispatch())
+    PackAPIHandler._profile_registry_store()
+    assert catalog_calls == ["host_profile_catalog"]
+
+    class StaleDispatch(_Dispatch):
+        def assert_current(self) -> None:
+            raise RuntimeError("stale active capture")
+
+    monkeypatch.setattr(PackAPIHandler, "_dispatch_session", StaleDispatch())
+    with pytest.raises(RuntimeError, match="stale active capture"):
+        PackAPIHandler._profile_registry_store()
+    assert catalog_calls == ["host_profile_catalog"]
 
 
 class _RefreshDispatch(_Dispatch):
@@ -96,6 +314,7 @@ class _PackVMLifecycle:
             "image_source": "https://images.invalid/pinned.img",
             "image_digest": "sha256:" + "a" * 64,
             "image_size_bytes": 700_000_000,
+            "host_free_space_required_bytes": 8_000_000_000,
             "plan_digest": "sha256:" + "b" * 64,
             "ceremony_nonce": "c" * 32,
             "confirmation": "PROVISION tobkiri-packvm-v4 bbbbbbbbbbbb",
@@ -176,6 +395,7 @@ def test_profile_activation_refresh_requires_durable_success_result() -> None:
         ("UNAPPROVED", 403),
         ("STALE_REVISION", 409),
         ("DIGEST_MISMATCH", 409),
+        ("OPERATION_NOT_FOUND", 404),
         ("TIMEOUT", 504),
         ("API_FAILURE", 503),
         ("backend_unavailable", 503),
@@ -292,6 +512,7 @@ def test_typed_error_initial_lost_response_and_restart_replay_are_exact(
     [
         (PackControlConflict, "STALE_REVISION", 409, False),
         (PackControlDigestMismatch, "DIGEST_MISMATCH", 409, False),
+        (PackControlOperationNotFound, "OPERATION_NOT_FOUND", 404, False),
         (PackControlUnapproved, "UNAPPROVED", 403, False),
         (PackControlUnavailable, "API_FAILURE", 503, True),
         (PackControlTimedOut, "TIMEOUT", 504, True),
@@ -319,6 +540,26 @@ def test_pack_control_exception_cause_chain_keeps_semantic_status_and_sanitizes(
     assert safe["retryable"] is retryable
     serialized = json.dumps(safe).lower()
     for secret in ("sqlite", "/private", "sha256:", "provider-controlled"):
+        assert secret not in serialized
+
+
+def test_absent_operation_has_distinct_public_code_without_leaking_detail() -> None:
+    """Current-root absence is distinct from a cross-session digest mismatch."""
+
+    from core_runtime.pack_api_server import _exception_error_code
+
+    error = ControlReconciliationNotFoundError(
+        "sqlite /private/token.db request secret is unknown"
+    )
+    safe = PackAPIHandler._safe_contract_result(
+        {"state": "error", "code": _exception_error_code(error), "message": str(error)}
+    )
+
+    assert safe["code"] == "OPERATION_NOT_FOUND"
+    assert PackAPIHandler._contract_result_status(safe) == 404
+    assert safe["retryable"] is False
+    serialized = json.dumps(safe).lower()
+    for secret in ("sqlite", "/private", "token", "secret"):
         assert secret not in serialized
 
 
@@ -418,6 +659,7 @@ def test_packvm_lifecycle_routes_require_auth_csrf_and_fresh_request_id() -> Non
     server = PackAPIServer(
         port=0,
         panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
         packvm_lifecycle=lifecycle,
     )
     refreshed: list[object] = []
@@ -447,6 +689,7 @@ def test_packvm_lifecycle_routes_require_auth_csrf_and_fresh_request_id() -> Non
         )
         assert status == 200
         assert prepared["data"]["image_size_bytes"] == 700_000_000
+        assert prepared["data"]["host_free_space_required_bytes"] == 8_000_000_000
         assert prepared["data"]["image_digest"] == "sha256:" + "a" * 64
 
         replay_status, _replay, _headers = _request(
@@ -555,6 +798,54 @@ def test_packvm_lifecycle_routes_require_auth_csrf_and_fresh_request_id() -> Non
         assert refreshed == [None, None]
     finally:
         server.stop()
+
+
+def test_packvm_stop_commits_response_before_slow_runtime_refresh() -> None:
+    """A stop must not inherit the runtime-capture refresh latency."""
+
+    lifecycle = _PackVMLifecycle()
+    refresh_started = threading.Event()
+    release_refresh = threading.Event()
+    refreshed: list[object] = []
+
+    def slow_refresh(session: object) -> None:
+        refresh_started.set()
+        assert release_refresh.wait(timeout=2)
+        refreshed.append(session)
+
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+        packvm_lifecycle=lifecycle,
+    )
+    server._refresh_runtime_capture = slow_refresh  # type: ignore[method-assign]
+    server.start()
+    try:
+        cookie, csrf, origin = _panel_session(server)
+        started = time.monotonic()
+        status, payload, _headers = _request(
+            server,
+            "POST",
+            "/api/v4/packvm/stop",
+            body={"confirmation": "STOP tobkiri-packvm-v4"},
+            headers={
+                "Cookie": cookie,
+                "Origin": origin,
+                "X-Rumi-CSRF": csrf,
+                "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+            },
+        )
+        elapsed = time.monotonic() - started
+        assert status == 200
+        assert payload["data"] == {"ready": False}
+        assert refresh_started.wait(timeout=1)
+        assert elapsed < 1
+    finally:
+        release_refresh.set()
+        server.stop()
+
+    assert refreshed == [None]
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "localhost", "::1"])
@@ -737,14 +1028,9 @@ def _prepare_refresh_race(
     monkeypatch: pytest.MonkeyPatch,
 ) -> int:
     import core_runtime.di_container as di_container_module
-    import core_runtime.pack_api_server as pack_api_server_module
     import tobkiri_host.runtime as host_runtime_module
 
-    monkeypatch.setattr(
-        pack_api_server_module,
-        "_load_production_capture_inputs",
-        lambda: (Path("/runtime"), Path("/bundle"), object(), ()),
-    )
+    server._runtime_capture_factory = _test_runtime_capture_inputs
     monkeypatch.setattr(di_container_module, "get_container", object)
     monkeypatch.setattr(
         host_runtime_module,
@@ -755,6 +1041,18 @@ def _prepare_refresh_race(
         server._lifecycle_state = "running"
         server._lifecycle_generation = 41
     return 41
+
+
+def _test_runtime_capture_inputs(
+    _active: object | None = None,
+) -> RuntimeCaptureInputs:
+    """Provide the app-owned refresh composition required by Host tests."""
+
+    return RuntimeCaptureInputs(
+        bundle_root=Path("/bundle"),
+        ecosystem_root=Path("/runtime"),
+        contract_bindings=(),
+    )
 
 
 def test_server_closes_server_captured_refresh_session_on_stop(
@@ -773,7 +1071,7 @@ def test_server_closes_server_captured_refresh_session_on_stop(
         dispatch_session=initial,  # type: ignore[arg-type]
     )
     generation = _prepare_refresh_race(server, monkeypatch)
-    monkeypatch.setattr(profile_capture, "capture_default_profile", lambda: object())
+    monkeypatch.setattr(profile_capture, "capture_active_profile", lambda: object())
     monkeypatch.setattr(profile_capture, "runtime_user_data_root", lambda: tmp_path)
     monkeypatch.setattr(authority_v4, "AuthorityStore", lambda _path: object())
     monkeypatch.setattr(
@@ -796,11 +1094,87 @@ def test_server_closes_server_captured_refresh_session_on_stop(
     assert server._dispatch_session_owned_by_server is False
 
 
+def test_server_stop_retains_failed_owned_cleanup_for_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _RefreshDispatch("captured")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified"),
+        dispatch_session=captured,  # type: ignore[arg-type]
+    )
+    server.start()
+    server._dispatch_session_owned_by_server = True
+
+    def fail_close() -> None:
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(captured, "close", fail_close)
+    with pytest.raises(RuntimeError, match="teardown incomplete"):
+        server.stop()
+    assert server._lifecycle_state == "drain_failed"
+    assert server._dispatch_session is captured
+    assert server._dispatch_session_owned_by_server is True
+    assert not server.is_running()
+
+    monkeypatch.setattr(captured, "close", lambda: _RefreshDispatch.close(captured))
+    server.stop()
+    server.stop()
+    assert captured.close_calls == 1
+    assert server._dispatch_session is None
+    assert server._dispatch_session_owned_by_server is False
+    assert server._lifecycle_state == "stopped"
+
+
+def test_server_stop_waiters_wait_for_owned_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _RefreshDispatch("captured")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified"),
+        dispatch_session=captured,  # type: ignore[arg-type]
+    )
+    server.start()
+    server._dispatch_session_owned_by_server = True
+    closing = threading.Event()
+    release = threading.Event()
+    waiting = threading.Event()
+    original_wait = server._stop_complete.wait
+
+    def close() -> None:
+        closing.set()
+        assert release.wait(timeout=5)
+        captured.close_calls += 1
+
+    def wait(timeout: float | None = None) -> bool:
+        waiting.set()
+        return original_wait(timeout)
+
+    monkeypatch.setattr(captured, "close", close)
+    monkeypatch.setattr(server._stop_complete, "wait", wait)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(server.stop)
+        try:
+            assert closing.wait(timeout=5)
+            second = executor.submit(server.stop)
+            assert waiting.wait(timeout=5)
+            assert not second.done()
+            assert server._lifecycle_state == "stopping"
+            assert server._dispatch_session is captured
+        finally:
+            release.set()
+        first.result(timeout=5)
+        second.result(timeout=5)
+    assert captured.close_calls == 1
+    assert server._lifecycle_state == "stopped"
+
+
 def test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A refresh must not silently construct an unavailable second provisioner."""
+    """A refresh must retain the app-selected backend factory and readiness port."""
 
     import core_runtime.authority.v4 as authority_v4
     import core_runtime.bootstrap.production_v4 as production_v4
@@ -822,7 +1196,23 @@ def test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture(
         packvm_lifecycle=lifecycle,  # type: ignore[arg-type]
     )
     generation = _prepare_refresh_race(server, monkeypatch)
-    monkeypatch.setattr(profile_capture, "capture_default_profile", lambda: object())
+
+    def app_selected_backend_factory() -> None:
+        return None
+
+    def app_capture_inputs(_active: object | None = None) -> RuntimeCaptureInputs:
+        del _active
+        acceptance_receipts = object()
+        return RuntimeCaptureInputs(
+            bundle_root=Path("/bundle"),
+            ecosystem_root=Path("/runtime"),
+            contract_bindings=(),
+            packvm_backend_factory=app_selected_backend_factory,
+            acceptance_receipts=acceptance_receipts,
+        )
+
+    server._runtime_capture_factory = app_capture_inputs
+    monkeypatch.setattr(profile_capture, "capture_active_profile", lambda: object())
     monkeypatch.setattr(profile_capture, "runtime_user_data_root", lambda: tmp_path)
     monkeypatch.setattr(authority_v4, "AuthorityStore", lambda _path: object())
     seen: dict[str, object] = {}
@@ -838,7 +1228,8 @@ def test_server_refresh_reuses_exact_packvm_lifecycle_for_backend_capture(
     finally:
         server.stop()
 
-    assert seen["packvm_provisioner"] is lifecycle
+    assert seen["packvm_provisioner"] is app_selected_backend_factory
+    assert seen["acceptance_receipts"] is not None
     readiness = seen["packvm_readiness_reader"]
     assert callable(readiness)
     assert readiness() == {"ready": True}
@@ -859,7 +1250,13 @@ def test_older_same_generation_refresh_cannot_replace_newer_publish(
     older_entered = threading.Event()
     release_older = threading.Event()
 
-    def validate(session: object, _routes: object) -> None:
+    def validate(
+        session: object,
+        _routes: object,
+        *,
+        host_contract: object = None,
+    ) -> None:
+        del host_contract
         if session is older:
             older_entered.set()
             assert release_older.wait(2.0)
@@ -909,7 +1306,13 @@ def test_only_latest_of_three_unordered_refreshes_can_publish(
     entered = {candidate: threading.Event() for candidate in (older, middle)}
     release = {candidate: threading.Event() for candidate in (older, middle)}
 
-    def validate(session: object, _routes: object) -> None:
+    def validate(
+        session: object,
+        _routes: object,
+        *,
+        host_contract: object = None,
+    ) -> None:
+        del host_contract
         if session in entered:
             entered[session].set()
             assert release[session].wait(2.0)
@@ -968,7 +1371,13 @@ def test_failed_latest_refresh_invalidates_older_pending_capture(
     older_entered = threading.Event()
     release_older = threading.Event()
 
-    def validate(session: object, _routes: object) -> None:
+    def validate(
+        session: object,
+        _routes: object,
+        *,
+        host_contract: object = None,
+    ) -> None:
+        del host_contract
         if session is older:
             older_entered.set()
             assert release_older.wait(2.0)
@@ -1001,11 +1410,53 @@ def test_failed_latest_refresh_invalidates_older_pending_capture(
         server.stop()
 
 
+@pytest.mark.parametrize("retired_kind", ("previous", "unpublished"))
+def test_refresh_cleanup_failure_is_retained_until_stop_retries(
+    monkeypatch: pytest.MonkeyPatch,
+    retired_kind: str,
+) -> None:
+    initial = _RefreshDispatch("initial")
+    candidate = _RefreshDispatch("candidate")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified"),
+        dispatch_session=initial,  # type: ignore[arg-type]
+    )
+    generation = _prepare_refresh_race(server, monkeypatch)
+    retired = initial if retired_kind == "previous" else candidate
+
+    def fail_close() -> None:
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(retired, "close", fail_close)
+    if retired_kind == "unpublished":
+        def fail_inputs(_active: object | None = None) -> RuntimeCaptureInputs:
+            raise RuntimeError("capture inputs failed")
+
+        server._runtime_capture_factory = fail_inputs
+    with pytest.raises(RuntimeError):
+        server._refresh_runtime_capture(candidate, lifecycle_generation=generation)
+    assert server._retired_dispatch_sessions == [retired]
+    expected_current = candidate if retired_kind == "previous" else initial
+    assert server._dispatch_session is expected_current
+
+    with pytest.raises(RuntimeError, match="teardown incomplete"):
+        server.stop()
+    assert server._retired_dispatch_sessions == [retired]
+    with pytest.raises(RuntimeError, match="teardown is incomplete"):
+        server.start()
+    monkeypatch.setattr(retired, "close", lambda: _RefreshDispatch.close(retired))
+    server.stop()
+    server.stop()
+    assert retired.close_calls == 1
+    assert expected_current.close_calls == 0  # Caller-owned, never server-captured.
+    assert server._retired_dispatch_sessions == []
+    assert server._lifecycle_state == "stopped"
+
+
 def test_capture_input_failure_closes_unpublished_candidate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import core_runtime.pack_api_server as pack_api_server_module
-
     initial = _RefreshDispatch("initial")
     failed = _RefreshDispatch("failed")
     server = PackAPIServer(
@@ -1015,14 +1466,11 @@ def test_capture_input_failure_closes_unpublished_candidate(
     )
     generation = _prepare_refresh_race(server, monkeypatch)
 
-    def fail_capture_inputs() -> object:
+    def fail_capture_inputs(_active: object | None = None) -> RuntimeCaptureInputs:
+        del _active
         raise RuntimeError("capture inputs failed")
 
-    monkeypatch.setattr(
-        pack_api_server_module,
-        "_load_production_capture_inputs",
-        fail_capture_inputs,
-    )
+    server._runtime_capture_factory = fail_capture_inputs
     try:
         with pytest.raises(RuntimeError, match="capture inputs failed"):
             server._refresh_runtime_capture(
@@ -1051,7 +1499,13 @@ def test_generation_change_immediately_before_publish_discards_capture(
     validation_complete = threading.Event()
     allow_publish = threading.Event()
 
-    def validate(_session: object, _routes: object) -> None:
+    def validate(
+        _session: object,
+        _routes: object,
+        *,
+        host_contract: object = None,
+    ) -> None:
+        del host_contract
         validation_complete.set()
         assert allow_publish.wait(2.0)
 
@@ -1077,7 +1531,7 @@ def test_generation_change_immediately_before_publish_discards_capture(
         server.stop()
 
 
-def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
+def test_stop_timeout_blocks_restart_until_pending_capture_is_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     initial = _RefreshDispatch("initial")
@@ -1087,24 +1541,23 @@ def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
         panel_auth_manager=PanelAuthManager(bootstrap_secret="verified"),
         dispatch_session=initial,  # type: ignore[arg-type]
     )
-    import core_runtime.pack_api_server as pack_api_server_module
-
-    monkeypatch.setattr(
-        pack_api_server_module,
-        "_load_production_capture_inputs",
-        lambda: (Path("/runtime"), Path("/bundle"), object(), ()),
-    )
+    generation = _prepare_refresh_race(server, monkeypatch)
     stale_entered = threading.Event()
     release_stale = threading.Event()
 
-    def validate(session: object, _routes: object) -> None:
+    def validate(
+        session: object,
+        _routes: object,
+        *,
+        host_contract: object = None,
+    ) -> None:
+        del host_contract
         if session is stale:
             stale_entered.set()
-            assert release_stale.wait(2.0)
+            assert release_stale.wait(5.0)
 
-    server.start()
     monkeypatch.setattr(server, "_validate_contract_capture", validate)
-    generation = server._lifecycle_generation
+    monkeypatch.setattr("core_runtime.pack_api_server.THREAD_JOIN_TIMEOUT_SECONDS", 0.02)
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:
             pending = executor.submit(
@@ -1113,12 +1566,18 @@ def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
                 lifecycle_generation=generation,
             )
             assert stale_entered.wait(2.0)
+            with pytest.raises(RuntimeError, match="active_runtime_captures.*1"):
+                server.stop()
+            assert server._lifecycle_state == "drain_failed"
+            with pytest.raises(RuntimeError, match="teardown is incomplete"):
+                server.start()
+            release_stale.set()
+            pending.result(timeout=2.0)
+            monkeypatch.setattr("core_runtime.pack_api_server.THREAD_JOIN_TIMEOUT_SECONDS", 5)
             server.stop()
             server.start()
             restarted_handler = server.handler_class
             restarted_routes = server._contract_routes
-            release_stale.set()
-            pending.result(timeout=2.0)
 
         assert server._dispatch_session is initial
         assert server.handler_class is restarted_handler
@@ -1128,6 +1587,87 @@ def test_refresh_finishing_after_stop_restart_cannot_replace_new_handler(
     finally:
         release_stale.set()
         server.stop()
+
+
+def test_stop_drains_capture_construction_and_unpublished_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A candidate not yet returned by its factory still belongs to teardown."""
+    import core_runtime.authority.v4 as authority_v4
+    import core_runtime.bootstrap.production_v4 as production_v4
+    import core_runtime.bootstrap.profile_capture as profile_capture
+
+    initial = _RefreshDispatch("initial")
+    candidate = _RefreshDispatch("candidate")
+    server = PackAPIServer(port=0, dispatch_session=initial)
+    generation = _prepare_refresh_race(server, monkeypatch)
+    server._dispatch_session_owned_by_server = True
+    building, release_build = threading.Event(), threading.Event()
+    closing, release_close = threading.Event(), threading.Event()
+    draining = threading.Event()
+    condition_wait = server._runtime_capture_condition.wait
+
+    def capture(*_args, **_kwargs):
+        building.set()
+        assert release_build.wait(5)
+        return candidate
+
+    def close() -> None:
+        closing.set()
+        assert release_close.wait(5)
+        candidate.close_calls += 1
+
+    def wait(timeout=None):
+        draining.set()
+        return condition_wait(timeout)
+
+    monkeypatch.setattr(profile_capture, "capture_active_profile", object)
+    monkeypatch.setattr(authority_v4, "AuthorityStore", lambda _path: object())
+    monkeypatch.setattr(production_v4, "capture_production_dispatch", capture)
+    monkeypatch.setattr(candidate, "close", close)
+    monkeypatch.setattr(server._runtime_capture_condition, "wait", wait)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        refresh = executor.submit(
+            server._refresh_runtime_capture, lifecycle_generation=generation,
+        )
+        try:
+            assert building.wait(2)
+            stopped = executor.submit(server.stop)
+            assert draining.wait(2)
+            assert not stopped.done()
+            assert initial.close_calls == 0
+            release_build.set()
+            assert closing.wait(2)
+            assert not stopped.done()
+            assert initial.close_calls == 0
+            assert server._lifecycle_state == "stopping"
+        finally:
+            release_build.set()
+            release_close.set()
+        refresh.result(timeout=2)
+        stopped.result(timeout=2)
+    assert candidate.close_calls == initial.close_calls == 1
+    assert server._retired_dispatch_sessions == []
+    assert server._lifecycle_state == "stopped"
+
+
+def test_capture_factory_failure_releases_stop_drain_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed construction cannot leave a phantom in-flight capture."""
+    initial = _RefreshDispatch("initial")
+    server = PackAPIServer(port=0, dispatch_session=initial)
+    generation = _prepare_refresh_race(server, monkeypatch)
+
+    def fail_inputs():
+        raise RuntimeError("capture input failed")
+
+    server._runtime_capture_factory = fail_inputs
+    with pytest.raises(RuntimeError, match="capture input failed"):
+        server._refresh_runtime_capture(initial, lifecycle_generation=generation)
+    server.stop()
+    assert server._lifecycle_state == "stopped"
+    assert initial.close_calls == 0
 
 
 def test_double_stop_and_restart_remain_bounded() -> None:
@@ -1387,10 +1927,44 @@ def test_unknown_api_route_is_physically_absent(
 def test_health_is_public_and_typed(
     live_server: tuple[PackAPIServer, _Dispatch],
 ) -> None:
-    server, _ = live_server
+    server, dispatch = live_server
     status, payload, _ = _request(server, "GET", "/health")
     assert status == 200
-    assert payload["data"] == {"status": "ok", "runtime_ready": True}
+    assert payload["data"] == {
+        "status": "ok",
+        "runtime_ready": True,
+        "profile_id": dispatch.profile_id,
+        "profile_revision": dispatch.profile_revision,
+        "activation_id": dispatch.activation_id,
+        "plan_digest": dispatch.plan_digest,
+    }
+
+
+def test_health_shares_capture_between_readiness_and_identity_only_within_request(
+    live_server: tuple[PackAPIServer, _Dispatch],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core_runtime.bootstrap import profile_capture
+
+    server, dispatch = live_server
+    scopes: list[object] = []
+
+    def health(_self: _Lifecycle) -> dict[str, object]:
+        scopes.append(profile_capture._PROFILE_CAPTURE_SCOPE.get())
+        return {"status": "ok", "runtime_ready": True}
+
+    def assert_current() -> None:
+        scopes.append(profile_capture._PROFILE_CAPTURE_SCOPE.get())
+
+    monkeypatch.setattr(_Lifecycle, "get_health", health)
+    monkeypatch.setattr(dispatch, "assert_current", assert_current)
+    for _ in range(2):
+        assert _request(server, "GET", "/health")[0] == 200
+    assert len(scopes) == 4
+    assert scopes[0] is not None and scopes[0] is scopes[1]
+    assert scopes[2] is not None and scopes[2] is scopes[3]
+    assert scopes[0] is not scopes[2]
+    assert profile_capture._PROFILE_CAPTURE_SCOPE.get() is None
 
 
 def test_panel_bootstrap_rejects_wrong_secret(
@@ -1405,6 +1979,243 @@ def test_panel_bootstrap_rejects_wrong_secret(
         headers={"X-Rumi-Desktop-Bootstrap": "wrong"},
     )
     assert status == 401
+
+
+
+@pytest.mark.parametrize("refresh_fails", [False, True])
+def test_authenticated_bootstrap_refreshes_stale_capture_without_issuing_old_code(
+    live_server: tuple[PackAPIServer, _Dispatch],
+    monkeypatch: pytest.MonkeyPatch,
+    refresh_fails: bool,
+) -> None:
+    """Only authenticated retry may recover; no stale identity gets a code."""
+    import core_runtime.di_container as di_container_module
+    import tobkiri_host.runtime as host_runtime_module
+
+    server, stale = live_server
+    current = _Dispatch()
+    current.activation_id = "activation:successor"
+    refreshes: list[object] = []
+    server._runtime_capture_factory = _test_runtime_capture_inputs
+    monkeypatch.setattr(di_container_module, "get_container", object)
+    monkeypatch.setattr(
+        host_runtime_module, "install_dispatch_session", lambda *_args: None
+    )
+
+    def reject_stale() -> None:
+        raise RuntimeError("execution identity changed")
+
+    def refresh(session: object) -> None:
+        refreshes.append(session)
+        if refresh_fails:
+            raise RuntimeError("Host contract identity mismatch")
+        server._refresh_runtime_capture(
+            current, lifecycle_generation=server._lifecycle_generation
+        )
+
+    monkeypatch.setattr(stale, "assert_current", reject_stale)
+    assert server.handler_class is not None
+    monkeypatch.setattr(server.handler_class, "_runtime_refresh", staticmethod(refresh))
+    for secret, expected_refreshes in [("wrong", []), ("verified-desktop", [None])]:
+        status, payload, _ = _request(
+            server, "POST", "/api/panel/auth/bootstrap", body={},
+            headers={"X-Rumi-Desktop-Bootstrap": secret},
+        )
+        assert status == 401
+        assert payload["data"] is None
+        assert refreshes == expected_refreshes
+    if not refresh_fails:
+        cookie, _, _ = _panel_session(server)
+        assert cookie.startswith("rumi_panel_session=")
+        assert server._dispatch_session is current
+        assert refreshes == [None]
+
+
+def test_panel_auth_shell_waits_for_dom_before_touching_body(
+    live_server: tuple[PackAPIServer, _Dispatch],
+) -> None:
+    """Serve the real unauthenticated panel shell with a usable DOM boundary."""
+
+    server, _ = live_server
+    connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+    connection.request("GET", "/panel/?code=one-time-bootstrap")
+    response = connection.getresponse()
+    document = response.read().decode("utf-8")
+    content_type = response.getheader("Content-Type")
+    connection.close()
+
+    assert response.status == 200
+    assert content_type == "text/html; charset=utf-8"
+    assert document.startswith("<!doctype html>")
+    event_boundary = "document.addEventListener('DOMContentLoaded',()=>{"
+    assert event_boundary in document
+    assert document.index(event_boundary) < document.index("document.body.textContent")
+    assert document.count("document.body.textContent") == 2
+    assert document.endswith("</script>")
+
+
+def test_profile_screen_bootstrap_preserves_exact_captured_route(
+    tmp_path: Path,
+) -> None:
+    """A Shell deep link exchanges its code before serving the Profile SPA."""
+
+    web_root = tmp_path / "ui"
+    web_root.mkdir()
+    (web_root / "shell.html").write_text("profile application", encoding="utf-8")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+        web_mounts=(
+            {
+                "path_prefix": "/p",
+                "web_root": web_root,
+                "spa_fallback": True,
+                "index_file": "shell.html",
+                "auth_required": True,
+                "auth_bootstrap": True,
+            },
+        ),
+    )
+    server.start()
+    try:
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "verified-desktop"},
+        )
+        assert status == 200
+        code = str(bootstrap["data"]["code"])
+
+        for rejected_path in (
+            f"/p?code={code}",
+            f"/p/other/chat?code={code}",
+            f"/p/defaults-other/chat?code={code}",
+        ):
+            connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+            connection.request("GET", rejected_path)
+            response = connection.getresponse()
+            response.read()
+            connection.close()
+            assert response.status == 401
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+        connection.request("GET", f"/p/defaults/chat?code={code}")
+        response = connection.getresponse()
+        document = response.read().decode("utf-8")
+        connection.close()
+        assert response.status == 200
+        assert 'location.replace("/p/defaults/chat")' in document
+        assert "v.data?.csrf_token||!v.data?.journal_scope" in document
+        assert (
+            "sessionStorage.setItem('tobkiri-panel-journal-scope-v1',"
+            "v.data.journal_scope)"
+        ) in document
+        assert code not in document
+
+        origin = f"http://127.0.0.1:{server.port}"
+        status, _exchange, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={"code": code},
+            headers={"Origin": origin},
+        )
+        assert status == 200
+        cookie = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        ).split(";", 1)[0]
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+        connection.request("GET", "/p/defaults/chat", headers={"Cookie": cookie})
+        response = connection.getresponse()
+        assert response.read() == b"profile application"
+        connection.close()
+        assert response.status == 200
+    finally:
+        server.stop()
+
+
+def test_approval_bootstrap_preserves_request_id_and_strips_code(
+    tmp_path: Path,
+) -> None:
+    """The approval bootstrap redirect keeps non-code params and cleans the URL."""
+
+    web_root = tmp_path / "ui"
+    web_root.mkdir()
+    (web_root / "shell.html").write_text("approval application", encoding="utf-8")
+    server = PackAPIServer(
+        port=0,
+        panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
+        dispatch_session=_Dispatch(),
+        web_mounts=(
+            {
+                "path_prefix": "/approval",
+                "web_root": web_root,
+                "spa_fallback": True,
+                "index_file": "shell.html",
+                "auth_required": True,
+                "auth_bootstrap": True,
+            },
+        ),
+    )
+    server.start()
+    try:
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "verified-desktop"},
+        )
+        assert status == 200
+        code = str(bootstrap["data"]["code"])
+
+        connection = http.client.HTTPConnection("127.0.0.1", server.port, timeout=5)
+        connection.request(
+            "GET",
+            f"/approval?request_id=req-1&code={code}",
+        )
+        response = connection.getresponse()
+        document = response.read().decode("utf-8")
+        connection.close()
+        assert response.status == 200
+        assert 'location.replace("/approval?request_id=req-1")' in document
+
+        origin = f"http://127.0.0.1:{server.port}"
+        status, _exchange, headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={"code": code},
+            headers={"Origin": origin},
+        )
+        assert status == 200
+        cookie = next(
+            value for key, value in headers if key.lower() == "set-cookie"
+        ).split(";", 1)[0]
+
+        for url, expected in (
+            (f"/approval?request_id=req-1&code={code}", "/approval?request_id=req-1"),
+            (f"/approval?code={code}", "/approval"),
+            ("/approval?request_id=req-1", "/approval?request_id=req-1"),
+        ):
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.port, timeout=5
+            )
+            connection.request("GET", url, headers={"Cookie": cookie})
+            response = connection.getresponse()
+            if url == "/approval?request_id=req-1":
+                assert response.read() == b"approval application"
+                assert response.status == 200
+            else:
+                response.read()
+                assert response.status == 302
+                assert response.getheader("Location") == expected
+            connection.close()
+    finally:
+        server.stop()
 
 
 def test_panel_exchange_rejects_foreign_origin(
@@ -1465,19 +2276,9 @@ def test_dispatch_requires_panel_cookie_and_csrf(
 
 
 def test_authenticated_generic_dispatch_is_retired_before_production_broker(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Retired generic dispatch cannot reach the production Broker or ledger."""
-    user_data = tmp_path / "clean-home"
-    monkeypatch.setenv("TOBKIRI_USER_DATA", str(user_data))
-    active = capture_default_profile(confirmation=prepare_default_profile_confirmation())
-    dispatch = capture_production_dispatch(
-        active,
-        bundle_root=_bundle_root(),
-        ecosystem_root=Path(__file__).resolve().parents[1] / "ecosystem",
-        authority_store=AuthorityStore(user_data / "authority" / "v4.sqlite3"),
-    )
+    dispatch = _Dispatch()
     server = PackAPIServer(
         port=0,
         panel_auth_manager=PanelAuthManager(bootstrap_secret="verified-desktop"),
@@ -1487,8 +2288,6 @@ def test_authenticated_generic_dispatch_is_retired_before_production_broker(
     server.start()
     try:
         cookie, csrf, origin = _panel_session(server)
-        with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
-            audit_before = authority.audit_events()
         headers = {
             "Cookie": cookie,
             "Origin": origin,
@@ -1519,8 +2318,7 @@ def test_authenticated_generic_dispatch_is_retired_before_production_broker(
             headers=headers,
         )
         _assert_retired_generic_dispatch(status, payload)
-        with AuthorityStore(user_data / "authority" / "v4.sqlite3") as authority:
-            assert authority.audit_events() == audit_before
+        assert dispatch.calls == []
     finally:
         server.stop()
 

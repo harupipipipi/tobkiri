@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-import core_runtime.frontend_host as frontend_host_module
-from core_runtime.frontend_host import FrontendHostRegistry
+import ecosystem.defaultspack.domain.frontend.host as frontend_host_module
+from ecosystem.defaultspack.domain.frontend.host import FrontendHostRegistry
 from core_runtime.pack_artifact_integrity import write_host_install_record
 from core_runtime.resolved_profile import ResolutionInput, resolve_profile
 
@@ -23,9 +23,12 @@ def _authorize_developer_packs(
 ) -> None:
     trust_store = tmp_path / "host-policy" / "publisher-trust.json"
     for pack_id in pack_ids:
+        install_path = tmp_path / "ecosystem" / pack_id
+        install_path.mkdir(parents=True, exist_ok=True)
         write_host_install_record(
             trust_store,
             pack_id=pack_id,
+            install_path=install_path,
             record={
                 "signature_required": False,
                 "developer_mode": True,

@@ -33,7 +33,7 @@ class PackCandidate:
     depends_on: List[Dict[str, str]] = field(default_factory=list)
     conflicts_with: List[Dict[str, str]] = field(default_factory=list)
     overlap_policy: Dict[str, Any] = field(default_factory=dict)
-    defaultspack_promotion: Dict[str, Any] = field(default_factory=dict)
+    base_pack_promotion: Dict[str, Any] = field(default_factory=dict)
     compatibility: Dict[str, Any] = field(default_factory=dict)
     marketplace: Dict[str, Any] = field(default_factory=dict)
     signing: Dict[str, Any] = field(default_factory=dict)
@@ -56,7 +56,7 @@ class PackCandidate:
             "depends_on": list(self.depends_on or []),
             "conflicts_with": list(self.conflicts_with or []),
             "overlap_policy": dict(self.overlap_policy or {}),
-            "defaultspack_promotion": dict(self.defaultspack_promotion or {}),
+            "base_pack_promotion": dict(self.base_pack_promotion or {}),
             "compatibility": dict(self.compatibility or {}),
             "marketplace": dict(self.marketplace or {}),
             "signing": dict(self.signing or {}),
@@ -211,7 +211,7 @@ class PackSelector:
                     ),
                     conflicts_with=self._normalize_pack_ref_specs(data.get("conflicts_with", [])),
                     overlap_policy=self._as_dict(data.get("overlap_policy")),
-                    defaultspack_promotion=self._as_dict(data.get("defaultspack_promotion")),
+                    base_pack_promotion=self._as_dict(data.get("base_pack_promotion")),
                     compatibility=compatibility,
                     marketplace=self._as_dict(data.get("marketplace")),
                     signing=self._as_dict(data.get("signing")),

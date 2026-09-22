@@ -39,6 +39,25 @@ function objectDefinition(value, label) {
   return [...value.required];
 }
 
+function objectDefinitionWithOptional(value, label, optionalKeys) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    fail(`${label} is not an object definition`);
+  }
+  if (value.type !== "object" || value.additionalProperties !== false) {
+    fail(`${label} must be an exact object`);
+  }
+  if (!value.properties || typeof value.properties !== "object" || Array.isArray(value.properties)) {
+    fail(`${label} has no properties`);
+  }
+  if (!Array.isArray(value.required)) fail(`${label} has no required field list`);
+  const properties = Object.keys(value.properties).sort();
+  const expected = [...value.required, ...optionalKeys].sort();
+  if (JSON.stringify(properties) !== JSON.stringify(expected)) {
+    fail(`${label} has optional or unrequired serialized fields`);
+  }
+  return {required: [...value.required], optional: [...optionalKeys]};
+}
+
 function stringEnum(value, label) {
   if (!value || !Array.isArray(value.enum) || value.enum.length === 0
     || value.enum.some((item) => typeof item !== "string")) {
@@ -55,6 +74,11 @@ function readContract(schema) {
   if (!definitions || typeof definitions !== "object" || Array.isArray(definitions)) {
     fail("schema definitions are unavailable");
   }
+  const binding = objectDefinitionWithOptional(
+    definitions.binding,
+    "binding",
+    ["authority_mode"],
+  );
   return {
     setupKeys: objectDefinition(schema, "setup response"),
     profileKeys: objectDefinition(definitions.recommendedProfile, "recommended Profile"),
@@ -63,7 +87,8 @@ function readContract(schema) {
     confirmationKeys: objectDefinition(definitions.confirmation, "confirmation"),
     baseKeys: objectDefinition(definitions.base, "confirmed Base"),
     confirmedShellKeys: objectDefinition(definitions.confirmedShell, "confirmed Shell"),
-    bindingKeys: objectDefinition(definitions.binding, "binding"),
+    bindingKeys: binding.required,
+    bindingOptionalKeys: binding.optional,
     principalKeys: objectDefinition(definitions.functionPrincipal, "function principal"),
     setupStates: stringEnum(schema.properties.state, "setup state"),
     domainKinds: stringEnum(definitions.binding.properties.domain_kind, "domain kind"),
@@ -93,6 +118,7 @@ ${constant("DEFAULTS_CONFIRMATION_KEYS", contract.confirmationKeys)}
 ${constant("DEFAULTS_BASE_KEYS", contract.baseKeys)}
 ${constant("DEFAULTS_CONFIRMED_SHELL_KEYS", contract.confirmedShellKeys)}
 ${constant("DEFAULTS_BINDING_KEYS", contract.bindingKeys)}
+${constant("DEFAULTS_BINDING_OPTIONAL_KEYS", contract.bindingOptionalKeys)}
 ${constant("DEFAULTS_FUNCTION_PRINCIPAL_KEYS", contract.principalKeys)}
 ${constant("DEFAULTS_SETUP_STATES", contract.setupStates)}
 ${constant("DEFAULTS_BINDING_DOMAIN_KINDS", contract.domainKinds)}

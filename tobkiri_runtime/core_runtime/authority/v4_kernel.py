@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import math
 import secrets
 import time
@@ -22,12 +23,15 @@ from .v4_models import (
     GrantLifetime,
     GrantRecord,
     HostExtensionTrustRecord,
+    InteractiveApprovalDecision,
+    InteractiveApprovalRequest,
     InvocationContext,
     InvocationLease,
     LeaseState,
     ProviderAuthorityRecord,
     SuccessorEvidence,
     UpdateTrustPolicy,
+    interactive_confirmation_digest,
     intersect_scopes,
 )
 from .v4_store import AuditUnavailable, AuthorityStore, AuthorityStoreError
@@ -107,7 +111,9 @@ class AuthorityKernelProtocol(Protocol):
     ) -> AuthorizationResult:
         """Evaluate the full intersection and issue an audited one-use Lease."""
 
-    def check_static_path(self, context: InvocationContext, request_scope: AuthorityScope) -> None:
+    def check_static_path(
+        self, context: InvocationContext, request_scope: AuthorityScope
+    ) -> None:
         """Check an exact potential authority path without issuing authority."""
 
     def dispatch(
@@ -140,6 +146,69 @@ class AuthorityKernelProtocol(Protocol):
         host_extension_trust: HostExtensionTrustRecord | None = None,
     ) -> None:
         """Atomically persist already-verified non-expanding successor records."""
+
+    def commit_provider_authority_bundle(
+        self,
+        *,
+        provider_authorities: tuple[ProviderAuthorityRecord, ...],
+        host_extension_trust: HostExtensionTrustRecord | None = None,
+    ) -> None:
+        """Persist Host reachability without minting a caller Grant."""
+
+    def open_interactive_approval(
+        self,
+        *,
+        request_id: str,
+        request_digest: str,
+        caller: FunctionPrincipal,
+        target: FunctionPrincipal,
+        profile_id: str,
+        activation_id: str,
+        activation_digest: str,
+        plan_digest: str,
+        profile_authority_digest: str,
+        profile_revision: str,
+        security_epoch: int,
+        fencing_token: int,
+        caller_domain_id: str,
+        caller_boot_epoch: int,
+        target_domain_id: str,
+        target_boot_epoch: int,
+        target_backend_digest: str,
+        handle_namespace: str,
+        base_scope: AuthorityScope,
+        invocation_owner_id: str,
+        presentation_owner_principal_id: str,
+        presentation_owner_session_id: str,
+        caller_session_id: str,
+        caller_publisher_lineage: str,
+        target_publisher_lineage: str,
+        expires_at: float,
+        redacted_metadata: dict[str, str],
+        typed_confirmation_digest: str | None,
+    ) -> InteractiveApprovalRequest:
+        """Persist one Host-bound interactive approval request."""
+
+    def interactive_approval(
+        self, request_id: str
+    ) -> tuple[InteractiveApprovalRequest, str]:
+        """Return one immutable approval request and its secret-free state."""
+
+    def settle_interactive_approval(
+        self,
+        decision: InteractiveApprovalDecision,
+        *,
+        approval: ApprovalRecord | None = None,
+        grant: GrantRecord | None = None,
+        confirmation_text: str | None = None,
+    ) -> None:
+        """Atomically settle one interactive approval request."""
+
+    def interactive_approval_now(self) -> float:
+        """Return the Host-owned clock used to create a decision timestamp."""
+
+    def assert_interactive_approval_grant(self, request_id: str) -> None:
+        """Fail closed unless an approved request still owns an unused one-shot Grant."""
 
 
 class AuthorityKernel:
@@ -227,8 +296,12 @@ class AuthorityKernel:
         provider_ids = {item.provider.principal_id for item in provider_authorities}
         for provider in provider_authorities:
             if provider.provider != approval.target:
-                raise AuthorityValidationError("Provider authority does not match Approval target")
-            self._validate_provider_domain(provider, trust_override=host_extension_trust)
+                raise AuthorityValidationError(
+                    "Provider authority does not match Approval target"
+                )
+            self._validate_provider_domain(
+                provider, trust_override=host_extension_trust
+            )
             if provider.security_epoch != approval.security_epoch:
                 raise AuthorityValidationError("Provider authority epoch mismatch")
         for grant in grants:
@@ -248,13 +321,17 @@ class AuthorityKernel:
                 raise AuthorityValidationError("Grant target publisher does not match")
             if not grant.scope.is_subset_of(matching_provider.scope):
                 raise AuthorityValidationError("Grant exceeds Provider authority")
-            provider_domain = self.store.get_domain(matching_provider.execution_domain_id)
+            provider_domain = self.store.get_domain(
+                matching_provider.execution_domain_id
+            )
             if (
                 provider_domain is None
                 or provider_domain.profile_id != grant.profile_id
                 or provider_domain.activation_id != grant.activation_id
             ):
-                raise AuthorityValidationError("Grant activation does not match Provider domain")
+                raise AuthorityValidationError(
+                    "Grant activation does not match Provider domain"
+                )
         records = (
             ((host_extension_trust,) if host_extension_trust is not None else ())
             + (approval,)
@@ -262,6 +339,38 @@ class AuthorityKernel:
             + grants
         )
         self.store.put_records_atomically(records)
+
+    def commit_provider_authority_bundle(
+        self,
+        *,
+        provider_authorities: tuple[ProviderAuthorityRecord, ...],
+        host_extension_trust: HostExtensionTrustRecord | None = None,
+    ) -> None:
+        """Commit a Profile-selected Provider path without caller use authority.
+
+        ``interactive_only`` edges must remain addressable by the Host so a
+        later interactive one-shot Grant can reach the exact Provider.  They
+        deliberately create neither an ApprovalRecord nor a persistent Grant.
+        """
+
+        if not provider_authorities:
+            raise AuthorityValidationError("provider authority bundle cannot be empty")
+        if host_extension_trust is not None and (
+            host_extension_trust.security_epoch != self.store.security_epoch
+            or host_extension_trust.revoked
+        ):
+            raise AuthorityValidationError("Host Extension trust snapshot mismatch")
+        for provider in provider_authorities:
+            if provider.security_epoch != self.store.security_epoch:
+                raise AuthorityDenied("Provider authority has a stale SecurityEpoch")
+            self._validate_provider_domain(
+                provider,
+                trust_override=host_extension_trust,
+            )
+        self.store.commit_provider_authority_bundle(
+            provider_authorities=provider_authorities,
+            host_extension_trust=host_extension_trust,
+        )
 
     def commit_policy_ephemeral_grant(self, grant: GrantRecord) -> None:
         """Persist a low-risk policy Grant through the same runtime path."""
@@ -273,6 +382,300 @@ class AuthorityKernel:
         if grant.security_epoch != self.store.security_epoch:
             raise AuthorityDenied("policy Grant has a stale SecurityEpoch")
         self.store.put_records_atomically((grant,))
+
+    def open_interactive_approval(
+        self,
+        *,
+        request_id: str,
+        request_digest: str,
+        caller: FunctionPrincipal,
+        target: FunctionPrincipal,
+        profile_id: str,
+        activation_id: str,
+        activation_digest: str,
+        plan_digest: str,
+        profile_authority_digest: str,
+        profile_revision: str,
+        security_epoch: int,
+        fencing_token: int,
+        caller_domain_id: str,
+        caller_boot_epoch: int,
+        target_domain_id: str,
+        target_boot_epoch: int,
+        target_backend_digest: str,
+        handle_namespace: str,
+        base_scope: AuthorityScope,
+        invocation_owner_id: str,
+        presentation_owner_principal_id: str,
+        presentation_owner_session_id: str,
+        caller_session_id: str,
+        caller_publisher_lineage: str,
+        target_publisher_lineage: str,
+        expires_at: float,
+        redacted_metadata: dict[str, str],
+        typed_confirmation_digest: str | None,
+    ) -> InteractiveApprovalRequest:
+        """Capture a complete Host binding before requesting human approval."""
+
+        now = self._clock()
+        request = InteractiveApprovalRequest(
+            request_id=request_id,
+            request_digest=request_digest,
+            caller=caller,
+            target=target,
+            profile_id=profile_id,
+            activation_id=activation_id,
+            activation_digest=activation_digest,
+            plan_digest=plan_digest,
+            profile_authority_digest=profile_authority_digest,
+            profile_revision=profile_revision,
+            security_epoch=security_epoch,
+            fencing_token=fencing_token,
+            caller_domain_id=caller_domain_id,
+            caller_boot_epoch=caller_boot_epoch,
+            target_domain_id=target_domain_id,
+            target_boot_epoch=target_boot_epoch,
+            target_backend_digest=target_backend_digest,
+            handle_namespace=handle_namespace,
+            base_scope=base_scope,
+            invocation_owner_id=invocation_owner_id,
+            presentation_owner_principal_id=presentation_owner_principal_id,
+            presentation_owner_session_id=presentation_owner_session_id,
+            caller_session_id=caller_session_id,
+            caller_publisher_lineage=caller_publisher_lineage,
+            target_publisher_lineage=target_publisher_lineage,
+            created_at=now,
+            expires_at=expires_at,
+            redacted_metadata=redacted_metadata,
+            typed_confirmation_digest=typed_confirmation_digest,
+        )
+        self._validate_interactive_request_binding(request)
+        self.store.create_interactive_approval_request(request)
+        return request
+
+    def interactive_approval(
+        self, request_id: str
+    ) -> tuple[InteractiveApprovalRequest, str]:
+        """Return a request and non-secret lifecycle state for the Host port."""
+
+        request = self.store.get_interactive_approval_request(request_id)
+        if request is None:
+            raise AuthorityDenied("interactive approval request is unavailable")
+        state = self.store.interactive_approval_state(request_id)
+        if state is None:
+            raise AuthorityStoreError("interactive approval state is unavailable")
+        return request, state
+
+    def interactive_approval_now(self) -> float:
+        """Return the canonical clock for Host-created decision records."""
+
+        return self._clock()
+
+    def assert_interactive_approval_grant(self, request_id: str) -> None:
+        """Verify a settled interactive one-shot Grant without exposing it.
+
+        The Host adapter separately compares its full future invocation view to
+        the immutable request.  This core check proves that approval still has
+        a current, unused, request-bound Grant and has not survived a session,
+        domain, epoch, fencing, or expiry transition.
+        """
+
+        request, state = self.interactive_approval(request_id)
+        if state != "approved" or request.expires_at <= self._clock():
+            raise AuthorityDenied("interactive approval authority is unavailable")
+        self._validate_interactive_request_binding(request)
+        decision = self.store.get_interactive_approval_decision(request_id)
+        if (
+            decision is None
+            or decision.decision != "approved"
+            or decision.approval_id is None
+            or decision.grant_id is None
+            or decision.request_snapshot_digest != request.digest
+            or decision.security_epoch != request.security_epoch
+        ):
+            raise AuthorityDenied("interactive approval authority is unavailable")
+        grant = self.store.get_grant(decision.grant_id)
+        if (
+            grant is None
+            or grant.approval_id != decision.approval_id
+            or grant.caller != request.caller
+            or grant.target != request.target
+            or grant.profile_id != request.profile_id
+            or grant.activation_id != request.activation_id
+            or grant.profile_authority_digest != request.profile_authority_digest
+            or grant.caller_publisher_lineage != request.caller_publisher_lineage
+            or grant.target_publisher_lineage != request.target_publisher_lineage
+            or grant.scope != request.base_scope
+            or grant.lifetime is not GrantLifetime.ONE_SHOT
+            or grant.security_epoch != request.security_epoch
+            or grant.expires_at != request.expires_at
+            or grant.max_uses != 1
+            or grant.session_id != request.caller_session_id
+            or grant.revoked
+        ):
+            raise AuthorityDenied("interactive approval authority is unavailable")
+        reserved_uses, committed_uses = self.store.grant_usage(grant.grant_id)
+        if reserved_uses or committed_uses:
+            raise AuthorityDenied("interactive approval authority is unavailable")
+
+    def settle_interactive_approval(
+        self,
+        decision: InteractiveApprovalDecision,
+        *,
+        approval: ApprovalRecord | None = None,
+        grant: GrantRecord | None = None,
+        confirmation_text: str | None = None,
+    ) -> None:
+        """Validate an immutable decision before its single durable settlement."""
+
+        request = self.store.get_interactive_approval_request(decision.request_id)
+        if request is None:
+            raise AuthorityDenied("interactive approval request is unavailable")
+        if (
+            decision.request_snapshot_digest != request.digest
+            or decision.security_epoch != request.security_epoch
+            or decision.decided_at < request.created_at
+            or decision.decided_at > request.expires_at
+        ):
+            raise AuthorityDenied(
+                "interactive approval decision does not match request"
+            )
+        # Re-resolve the Host-authenticated session and domain here, not only
+        # when opening the prompt.  A decision cannot survive an activation,
+        # session, epoch, fencing, or caller-principal transition.
+        self._validate_interactive_request_binding(request)
+        if decision.decision == "approved":
+            if approval is None or grant is None:
+                raise AuthorityValidationError(
+                    "approved interactive decision requires approval and Grant"
+                )
+            if request.typed_confirmation_digest is not None:
+                if not isinstance(confirmation_text, str):
+                    raise AuthorityDenied("typed confirmation is required")
+                supplied_digest = interactive_confirmation_digest(confirmation_text)
+                if not hmac.compare_digest(
+                    supplied_digest,
+                    request.typed_confirmation_digest,
+                ):
+                    raise AuthorityDenied("typed confirmation does not match")
+                # This boolean is retained as an immutable audit assertion,
+                # never as evidence.  The actual phrase is checked above.
+                if not decision.typed_confirmation_verified:
+                    raise AuthorityValidationError(
+                        "typed confirmation audit assertion is inconsistent"
+                    )
+            elif decision.typed_confirmation_verified:
+                raise AuthorityValidationError(
+                    "unexpected typed confirmation audit assertion"
+                )
+            if (
+                approval.approval_id != decision.approval_id
+                or approval.snapshot_digest != request.digest
+                or approval.actor_id != decision.actor_id
+                or approval.decision != "approved"
+                or approval.decided_at != decision.decided_at
+                or approval.caller != request.caller
+                or approval.target != request.target
+                or approval.profile_id != request.profile_id
+                or approval.effect_bundle_digest != request.base_scope.digest
+                or approval.security_epoch != request.security_epoch
+            ):
+                raise AuthorityValidationError(
+                    "ApprovalRecord does not match interactive request"
+                )
+            if (
+                grant.grant_id != decision.grant_id
+                or grant.approval_id != approval.approval_id
+                or grant.caller != request.caller
+                or grant.target != request.target
+                or grant.profile_id != request.profile_id
+                or grant.activation_id != request.activation_id
+                or grant.profile_authority_digest != request.profile_authority_digest
+                or grant.caller_publisher_lineage != request.caller_publisher_lineage
+                or grant.target_publisher_lineage != request.target_publisher_lineage
+                or grant.scope != request.base_scope
+                or grant.lifetime is not GrantLifetime.ONE_SHOT
+                or grant.security_epoch != request.security_epoch
+                or grant.issued_at != decision.decided_at
+                or grant.expires_at != request.expires_at
+                or grant.max_uses != 1
+                or grant.session_id != request.caller_session_id
+            ):
+                raise AuthorityValidationError(
+                    "one-shot Grant does not match interactive request"
+                )
+        elif approval is not None or grant is not None:
+            raise AuthorityValidationError(
+                "denied interactive decision cannot mint authority"
+            )
+        elif decision.typed_confirmation_verified:
+            raise AuthorityValidationError(
+                "denied decision cannot claim typed confirmation"
+            )
+        self.store.settle_interactive_approval(
+            decision,
+            approval=approval,
+            grant=grant,
+        )
+
+    def _validate_interactive_request_binding(
+        self,
+        request: InteractiveApprovalRequest,
+    ) -> None:
+        """Revalidate every Host binding that an approval decision depends on."""
+
+        if request.security_epoch != self.store.security_epoch:
+            raise AuthorityDenied(
+                "interactive approval has a stale SecurityEpoch", code="stale_epoch"
+            )
+        required_dimensions = {
+            "invocation_owner_id": request.invocation_owner_id,
+            "caller_session_id": request.caller_session_id,
+            "plan_digest": request.plan_digest,
+        }
+        if request.base_scope.exact_request_digest != request.request_digest:
+            raise AuthorityDenied("interactive scope is not exact-request bound")
+        for name, expected in required_dimensions.items():
+            if request.base_scope.dimensions.get(name) != (expected,):
+                raise AuthorityDenied(f"interactive scope is not bound to {name}")
+        caller_domain, caller_principal_id = self.store.resolve_authenticated_session(
+            request.caller_session_id
+        )
+        if (
+            caller_principal_id != request.caller.principal_id
+            or caller_domain.domain_id != request.caller_domain_id
+            or caller_domain.boot_epoch != request.caller_boot_epoch
+            or caller_domain.profile_id != request.profile_id
+            or caller_domain.activation_id != request.activation_id
+            or caller_domain.security_epoch != request.security_epoch
+            or caller_domain.fencing_token != request.fencing_token
+        ):
+            raise AuthorityDenied("interactive approval caller binding is stale")
+        target_domain = self.store.get_domain(request.target_domain_id)
+        if (
+            target_domain is None
+            or target_domain.state is not DomainState.ACTIVE
+            or target_domain.boot_epoch != request.target_boot_epoch
+            or request.target.principal_id not in target_domain.principal_ids
+            or target_domain.profile_id != request.profile_id
+            or target_domain.activation_id != request.activation_id
+            or target_domain.security_epoch != request.security_epoch
+            or target_domain.fencing_token != request.fencing_token
+        ):
+            raise AuthorityDenied("interactive approval target binding is stale")
+        presentation_domain, presentation_principal_id = (
+            self.store.resolve_authenticated_session(
+                request.presentation_owner_session_id
+            )
+        )
+        if (
+            presentation_principal_id != request.presentation_owner_principal_id
+            or presentation_domain.profile_id != request.profile_id
+            or presentation_domain.activation_id != request.activation_id
+            or presentation_domain.security_epoch != request.security_epoch
+            or presentation_domain.fencing_token != request.fencing_token
+        ):
+            raise AuthorityDenied("interactive approval presentation binding is stale")
 
     def commit_successor_authority(
         self,
@@ -306,7 +709,9 @@ class AuthorityKernel:
             raise AuthorityValidationError(
                 "successor Grant activation does not match Provider domain"
             )
-        records: list[ProviderAuthorityRecord | GrantRecord | HostExtensionTrustRecord] = [
+        records: list[
+            ProviderAuthorityRecord | GrantRecord | HostExtensionTrustRecord
+        ] = [
             provider,
             grant,
         ]
@@ -325,7 +730,9 @@ class AuthorityKernel:
         now = self._clock()
         epoch = self.store.security_epoch
         if context.security_epoch != epoch:
-            raise AuthorityDenied("invocation has a stale SecurityEpoch", code="stale_epoch")
+            raise AuthorityDenied(
+                "invocation has a stale SecurityEpoch", code="stale_epoch"
+            )
         caller_domain, caller_principal_id = self.store.resolve_authenticated_session(
             context.caller_session_id
         )
@@ -362,7 +769,10 @@ class AuthorityKernel:
             now=now,
         )
         reserved_uses, committed_uses = self.store.grant_usage(grant.grant_id)
-        if grant.max_uses is not None and reserved_uses + committed_uses >= grant.max_uses:
+        if (
+            grant.max_uses is not None
+            and reserved_uses + committed_uses >= grant.max_uses
+        ):
             raise AuthorityDenied("Grant use limit is exhausted")
         ceilings = (
             binding.caller_effect_ceiling,
@@ -374,8 +784,13 @@ class AuthorityKernel:
         effective_scope = intersect_scopes(*ceilings)
         if not request_scope.is_subset_of(effective_scope):
             raise AuthorityDenied("request exceeds effective authority intersection")
-        if request_scope.opaque and request_scope.exact_request_digest != context.request_digest:
-            raise AuthorityDenied("opaque scope is not bound to this request")
+        if (
+            request_scope.exact_request_digest is not None
+            and request_scope.exact_request_digest != context.request_digest
+        ):
+            if request_scope.opaque:
+                raise AuthorityDenied("opaque scope is not bound to this request")
+            raise AuthorityDenied("exact scope is not bound to this request")
 
         self._validate_call_chain(context, caller, grant, request_scope)
         lease = InvocationLease(
@@ -458,7 +873,9 @@ class AuthorityKernel:
             resource_namespace=target_domain.resource_namespace,
         )
 
-    def check_static_path(self, context: InvocationContext, request_scope: AuthorityScope) -> None:
+    def check_static_path(
+        self, context: InvocationContext, request_scope: AuthorityScope
+    ) -> None:
         """Validate a potential exact authority path without reserving a use.
 
         Static admission is deliberately read-only: it neither creates a lease
@@ -468,7 +885,9 @@ class AuthorityKernel:
         if self._emergency_stop:
             raise AuthorityDenied("authority kernel is emergency-fenced")
         if context.security_epoch != self.store.security_epoch:
-            raise AuthorityDenied("invocation has a stale SecurityEpoch", code="stale_epoch")
+            raise AuthorityDenied(
+                "invocation has a stale SecurityEpoch", code="stale_epoch"
+            )
         caller_domain, caller_principal_id = self.store.resolve_authenticated_session(
             context.caller_session_id
         )
@@ -504,7 +923,10 @@ class AuthorityKernel:
             now=now,
         )
         reserved_uses, committed_uses = self.store.grant_usage(grant.grant_id)
-        if grant.max_uses is not None and reserved_uses + committed_uses >= grant.max_uses:
+        if (
+            grant.max_uses is not None
+            and reserved_uses + committed_uses >= grant.max_uses
+        ):
             raise AuthorityDenied("Grant use limit is exhausted")
         effective_scope = intersect_scopes(
             binding.caller_effect_ceiling,
@@ -515,8 +937,13 @@ class AuthorityKernel:
         )
         if not request_scope.is_subset_of(effective_scope):
             raise AuthorityDenied("request exceeds effective authority intersection")
-        if request_scope.opaque and request_scope.exact_request_digest != context.request_digest:
-            raise AuthorityDenied("opaque scope is not bound to this request")
+        if (
+            request_scope.exact_request_digest is not None
+            and request_scope.exact_request_digest != context.request_digest
+        ):
+            if request_scope.opaque:
+                raise AuthorityDenied("opaque scope is not bound to this request")
+            raise AuthorityDenied("exact scope is not bound to this request")
         self._validate_call_chain(context, caller, grant, request_scope)
 
     def dispatch(
@@ -589,9 +1016,18 @@ class AuthorityKernel:
         }:
             for provider in self.store.list_provider_authorities():
                 if (
-                    (target_kind == "provider_authority" and provider.record_id == target_id)
-                    or (target_kind == "host_extension" and provider.host_extension_id == target_id)
-                    or (target_kind == "publisher" and provider.publisher_lineage == target_id)
+                    (
+                        target_kind == "provider_authority"
+                        and provider.record_id == target_id
+                    )
+                    or (
+                        target_kind == "host_extension"
+                        and provider.host_extension_id == target_id
+                    )
+                    or (
+                        target_kind == "publisher"
+                        and provider.publisher_lineage == target_id
+                    )
                 ):
                     self._terminate_domain(provider.execution_domain_id)
         elif target_kind in {
@@ -604,9 +1040,15 @@ class AuthorityKernel:
             for domain in self.store.list_domains():
                 if (
                     target_kind == "global"
-                    or (target_kind == "function_principal" and target_id in domain.principal_ids)
+                    or (
+                        target_kind == "function_principal"
+                        and target_id in domain.principal_ids
+                    )
                     or (target_kind == "profile" and target_id == domain.profile_id)
-                    or (target_kind == "activation" and target_id == domain.activation_id)
+                    or (
+                        target_kind == "activation"
+                        and target_id == domain.activation_id
+                    )
                     or (
                         target_kind == "pack_artifact"
                         and any(
@@ -648,7 +1090,8 @@ class AuthorityKernel:
                 not record.revoked
                 and record.provider == context.target
                 and record.execution_domain_id == target_domain.domain_id
-                and record.execution_domain_identity_digest == target_domain.identity_digest
+                and record.execution_domain_identity_digest
+                == target_domain.identity_digest
                 and record.security_epoch == context.security_epoch
                 and record.valid_from <= now
                 and (record.expires_at is None or now < record.expires_at)
@@ -657,9 +1100,21 @@ class AuthorityKernel:
             ):
                 self._validate_provider_domain(record)
                 matches.append(record)
-        if len(matches) != 1:
+        if not matches:
             raise AuthorityDenied("exact Provider authority is missing or ambiguous")
-        return matches[0]
+        # Provider authority is target reachability; caller-specific authority
+        # remains in GrantRecord. Profile capture can therefore persist one
+        # immutable Provider row per caller while representing the same exact
+        # target/domain/scope authority. Collapse only records whose complete
+        # dataclass fields are equal apart from their durable row identity, and
+        # retain fail-closed ambiguity for every material difference.
+        equivalent = replace(matches[0], record_id="provider-authority-equivalent")
+        if any(
+            replace(candidate, record_id="provider-authority-equivalent") != equivalent
+            for candidate in matches[1:]
+        ):
+            raise AuthorityDenied("exact Provider authority is missing or ambiguous")
+        return min(matches, key=lambda record: record.record_id)
 
     def _select_grant(
         self,
@@ -719,7 +1174,10 @@ class AuthorityKernel:
         trust_override: HostExtensionTrustRecord | None = None,
     ) -> None:
         domain = self.store.get_domain(provider.execution_domain_id)
-        if domain is None or domain.identity_digest != provider.execution_domain_identity_digest:
+        if (
+            domain is None
+            or domain.identity_digest != provider.execution_domain_identity_digest
+        ):
             raise AuthorityDenied("Provider execution domain does not match authority")
         if provider.provider.principal_id not in domain.principal_ids:
             raise AuthorityDenied("Provider principal is not enforced by its domain")
@@ -728,7 +1186,9 @@ class AuthorityKernel:
                 domain.boundary is not DomainBoundary.DEDICATED_PROCESS
                 or len(domain.principals) != 1
             ):
-                raise AuthorityDenied("os_entitlement Provider requires an exact dedicated process")
+                raise AuthorityDenied(
+                    "os_entitlement Provider requires an exact dedicated process"
+                )
         elif domain.boundary is DomainBoundary.AUTHORITY_EQUIVALENCE:
             if (
                 domain.equivalence is None
@@ -746,7 +1206,8 @@ class AuthorityKernel:
                 or trust.revoked
                 or trust.security_epoch != provider.security_epoch
                 or trust.publisher_lineage != provider.publisher_lineage
-                or trust.parent_artifact_digest != provider.provider.parent_artifact_digest
+                or trust.parent_artifact_digest
+                != provider.provider.parent_artifact_digest
                 or provider.provider.principal_id not in trust.provider_principal_ids
                 or trust.valid_from > now
                 or (trust.expires_at is not None and now >= trust.expires_at)
@@ -755,7 +1216,9 @@ class AuthorityKernel:
                 raise AuthorityDenied("Host Extension trust is unavailable")
 
     @staticmethod
-    def _principal_in_domain(domain: ExecutionDomain, principal_id: str) -> FunctionPrincipal:
+    def _principal_in_domain(
+        domain: ExecutionDomain, principal_id: str
+    ) -> FunctionPrincipal:
         for principal in domain.principals:
             if principal.principal_id == principal_id:
                 return principal
@@ -816,7 +1279,9 @@ def mint_successor_grant(
         ):
             raise AuthorityDenied("successor Function semantics changed")
     if old.caller == new_caller and old.target == new_target:
-        raise AuthorityValidationError("successor must bind a new exact artifact identity")
+        raise AuthorityValidationError(
+            "successor must bind a new exact artifact identity"
+        )
     return replace(
         old,
         grant_id="grant-" + secrets.token_hex(16),
@@ -848,13 +1313,18 @@ def mint_successor_provider_authority(
     if (
         old.provider.function_id != new_provider.function_id
         or old.provider.operation_id != new_provider.operation_id
-        or old.provider.contract_revision_digest != new_provider.contract_revision_digest
+        or old.provider.contract_revision_digest
+        != new_provider.contract_revision_digest
     ):
         raise AuthorityDenied("successor Provider semantics changed")
     if old.provider == new_provider:
-        raise AuthorityValidationError("successor Provider must have a new artifact identity")
+        raise AuthorityValidationError(
+            "successor Provider must have a new artifact identity"
+        )
     if old.host_extension_id != "runtime-tcb" and not new_host_extension_id:
-        raise AuthorityValidationError("Host Extension successor requires a new exact trust record")
+        raise AuthorityValidationError(
+            "Host Extension successor requires a new exact trust record"
+        )
     return replace(
         old,
         record_id="provider-authority-" + secrets.token_hex(16),

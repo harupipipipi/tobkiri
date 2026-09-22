@@ -36,6 +36,7 @@ const planPayload = {
   image_digest: digest('a'),
   image_size_bytes: 703_594_496,
   image_download_required: true,
+  host_free_space_required_bytes: 6 * 1024 ** 3,
   config_digest: digest('b'),
   guest_runner_digest: digest('c'),
   host_build_digest: digest('d'),
@@ -90,8 +91,49 @@ test('PackVM plan normalization drops host paths while preserving pinned facts',
   const plan = normalizePackVMPlan(planPayload);
   assert.equal(plan.plan_digest, digest('e'));
   assert.equal(plan.image_size_bytes, 703_594_496);
+  assert.equal(plan.host_free_space_required_bytes, 6 * 1024 ** 3);
   assert.equal('limactl' in plan, false);
   assert.doesNotMatch(JSON.stringify(plan), /Users|limactl/);
+});
+
+test('PackVM registration updates require exact old and new digest evidence and no download', () => {
+  const registration = {
+    previous_attestation_digest: digest('1'),
+    previous_config_digest: digest('2'),
+    previous_guest_runner_digest: digest('3'),
+    previous_host_build_digest: digest('4'),
+    asset_manifest_digest: digest('5'),
+  };
+  const updatePlan = {...planPayload, image_download_required: false, registration_update: registration};
+  assert.deepEqual(normalizePackVMPlan(updatePlan).registration_update, registration);
+  for (const malformed of [false, {}, {...registration, extra: true}, {...registration, previous_attestation_digest: null}]) {
+    assert.throws(() => normalizePackVMPlan({...updatePlan, registration_update: malformed}));
+  }
+  assert.throws(() => normalizePackVMPlan({...updatePlan, image_download_required: true}));
+});
+
+test('PackVM storage re-registration requires exact current and previous identity', () => {
+  const registration = {
+    previous_attestation_digest: digest('1'), previous_config_digest: digest('2'),
+    previous_guest_runner_digest: digest('3'), previous_host_build_digest: digest('4'),
+    asset_manifest_digest: digest('5'),
+  };
+  const rebind = {
+    digest: digest('6'), previous_attestation_digest: digest('1'),
+    state_root: '/private/existing-vm', instance_root: '/private/existing-vm/instances/tobkiri-packvm-v4',
+    previous_device: 16777233, current_device: 16777234,
+    state_root_inode: 1234, instance_root_inode: 5678,
+  };
+  const candidate = {...planPayload, image_download_required: false, registration_update: registration, storage_rebind: rebind};
+  assert.deepEqual(normalizePackVMPlan(candidate).storage_rebind, rebind);
+  for (const invalid of [
+    {registration_update: null}, {image_download_required: true},
+    ...[{}, {...rebind, extra: true}, {...rebind, digest: null},
+      {...rebind, previous_attestation_digest: digest('2')}, {...rebind, current_device: rebind.previous_device},
+      {...rebind, state_root_inode: true}, {...rebind, instance_root: '/private/other'},
+      {...rebind, state_root: '/private/../existing-vm'}, {...rebind, state_root: '/private/\nvm'},
+    ].map((storage_rebind) => ({storage_rebind})),
+  ]) assert.throws(() => normalizePackVMPlan({...candidate, ...invalid}));
 });
 
 test('PackVM plan normalization accepts only strict fail-closed unavailable evidence', () => {
@@ -131,6 +173,15 @@ test('PackVM normalization rejects tampered digests and missing success evidence
     () => normalizePackVMPlan({...planPayload, image_digest: digest('z').slice(0, -1)}),
     /invalid PackVM image_digest digest/,
   );
+  for (const hostFreeSpaceRequired of [undefined, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(
+      () => normalizePackVMPlan({
+        ...planPayload,
+        host_free_space_required_bytes: hostFreeSpaceRequired,
+      }),
+      /invalid PackVM host_free_space_required_bytes/,
+    );
+  }
   assert.throws(
     () => normalizePackVMDoctor({...readyDoctor, attestation_digest: null}),
     /without an attestation digest/,
@@ -274,6 +325,7 @@ test('catalog stays blocked until healthy attestation and ignores a stale respon
     version: 'rumi.ui.contribution.v1',
     profile_id: 'profile-a',
     profile_revision: digest('1'),
+    activation_id: 'activation:profile-a',
     plan_hash: digest('2'),
     contributions: [],
     diagnostics: [],

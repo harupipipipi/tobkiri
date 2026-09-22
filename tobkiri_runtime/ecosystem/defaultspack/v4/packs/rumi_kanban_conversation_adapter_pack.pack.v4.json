@@ -1,0 +1,153 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:5c0e2e388f0c466705a38fde17cf6886c506f8acbb18636fabaf94a4b895a925",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:3a1c4b115c1f07a423aaf32cb281452ef21e0d79a559ac6b6a24f5c99711296f",
+      "kind": "executable",
+      "path": "runtime/adapter.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.kanban.conversation_import.v1",
+      "operations": [
+        "rumi_kanban_conversation_adapter_pack.kanban-conversation-import"
+      ],
+      "revision_digest": "sha256:078bb6d96ff420cbefa4d7b7b2fc61b28b1a8b419e002c34d406edfc463557b3"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:078bb6d96ff420cbefa4d7b7b2fc61b28b1a8b419e002c34d406edfc463557b3",
+      "id": "rumi_kanban_conversation_adapter_pack.kanban-conversation.import",
+      "implementation_digest": "sha256:3a1c4b115c1f07a423aaf32cb281452ef21e0d79a559ac6b6a24f5c99711296f",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_kanban_conversation_adapter_pack.kanban-conversation-import"
+      ],
+      "role": "brokered"
+    }
+  ],
+  "integrity": {
+    "source_identity": "sha256:99ebbdcad026b608a510de65b3427fee46cf53d4575cec9b4671dd0c400c2c28",
+    "artifact_set_digest": "sha256:ff4f9aa76c26e27688c64d55dbb666e2092aa22dd2cf38d7782e1d5acb32a17b",
+    "contract_catalog_digest": "sha256:500e6cefe5bea950b70f07694059a21c0799c9b4ded95b65cdccd620f652c04d"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.kanban.conversation_import.v1",
+      "rumi:ecosystem/rumi_kanban_conversation_adapter_pack",
+      "rumi_kanban_conversation_adapter_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "operation_id": "rumi_kanban_conversation_adapter_pack.kanban-conversation-import",
+      "owner": "rumi_kanban_conversation_adapter_pack",
+      "contract_reference": "tobkiri.action.kanban.conversation_import.v1",
+      "provider_id": "rumi_kanban_conversation_adapter_pack.kanban-conversation.import",
+      "source_kind": "canonical_v4_contract",
+      "effect_ceiling": []
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:a7d9809777a75d9b99ac09638b0bb90eb735e8964b03126a5d1c60954af57bd1",
+    "display_name": "Rumi Kanban Conversation Adapter",
+    "id": "rumi_kanban_conversation_adapter_pack",
+    "kind": "normal_sandbox",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/rumi_kanban_conversation_adapter_pack/pack.v4.json",
+    "source_digest": "sha256:99ebbdcad026b608a510de65b3427fee46cf53d4575cec9b4671dd0c400c2c28",
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:db1f6ff4bae957b732aaeb0b9934aa1fe3d8c2e352d8a7c638d7a7a2aa795c85",
+    "generator": "tobkiri.scripts.generate_defaultspack_v4_bundle",
+    "generator_version": "2.1.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
+    "input_inventory_digest": "sha256:e78d99bf76eab8a4d025c09cd73b42f160ec3cc0e193558684d26a2e1728fc55",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+      },
+      {
+        "path": "ecosystem/rumi_kanban_conversation_adapter_pack/pack.v4.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:99ebbdcad026b608a510de65b3427fee46cf53d4575cec9b4671dd0c400c2c28"
+      }
+    ]
+  },
+  "provider_catalog": [
+    {
+      "provider_id": "rumi_kanban_conversation_adapter_pack.kanban-conversation.import",
+      "owner": "rumi_kanban_conversation_adapter_pack",
+      "contract_reference": "tobkiri.action.kanban.conversation_import.v1",
+      "operations": [
+        "rumi_kanban_conversation_adapter_pack.kanban-conversation-import"
+      ]
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "conversation.read",
+      "host.authority.consume",
+      "kanban.conversation.import",
+      "kanban.state.manage",
+      "kanban.state.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.action.kanban.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.conversation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.kanban.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "sandbox",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_conversation_store_pack": ">=1.0.0,<2.0.0",
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+      "rumi_kanban_state_store_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from threading import Barrier, Event, Lock
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -24,6 +27,7 @@ from tobkiri_host.artifact_materialization import (
     MaterializedPackArtifact,
 )
 from tobkiri_host.backends import production_backend_registry
+from tobkiri_host.broker import RequestEnvelope
 from tobkiri_host.contracts import OperationCatalog, OperationRoute
 from tobkiri_host.errors import (
     AuthorizationError,
@@ -44,6 +48,12 @@ from tobkiri_host.models import (
     OpaqueAuthorityRef,
     PackArtifact,
     PackageKind,
+    RequestContext,
+)
+from tobkiri_host.operation_cancellation import (
+    OwnedCancellationBinding,
+    OwnedCancellationHandles,
+    nested_cancellation_proof_for,
 )
 from tobkiri_host.platform_backends import (
     IsolationLaunch,
@@ -156,6 +166,53 @@ def materialized_artifact() -> MaterializedPackArtifact:
     )
 
 
+def cancellation_parent() -> tuple[RequestEnvelope, OwnedCancellationBinding]:
+    """Create one live-proof-capable outer request for platform adapter tests."""
+
+    context = RequestContext(
+        request_id="outer-platform-request",
+        trace_id="outer-platform-trace",
+        caller_principal=OpaqueAuthorityRef("authority:platform-caller"),
+        profile_id="profile-platform",
+        activation_id="activation-platform",
+        activation_digest=digest("platform-activation"),
+        plan_digest=digest("platform-plan"),
+        security_epoch=1,
+        caller_session_id="platform-caller-session",
+        caller_domain_id="platform-caller-domain",
+        caller_boot_epoch=1,
+        target_domain_id="platform-target-domain",
+        target_boot_epoch=1,
+        target_backend_digest=digest("platform-target-backend"),
+        profile_authority_digest=digest("platform-authority"),
+        fencing_token=1,
+        handle_namespace="platform-handles",
+    )
+    envelope = RequestEnvelope(
+        context=context,
+        target_principal=OpaqueAuthorityRef("authority:platform-target"),
+        target_domain=OpaqueAuthorityRef("domain:platform-target"),
+        contract_id="platform.contract",
+        contract_version="1.0.0",
+        operation_id="invoke",
+        payload={},
+        request_digest=digest("platform-request"),
+        deadline_monotonic=time.monotonic() + 30,
+        lease=OpaqueInvocationLease(b"platform-lease"),
+        idempotency_key=None,
+    )
+    handles = OwnedCancellationHandles()
+    binding = handles.bind(
+        group=("pack", "platform"),
+        role="execute",
+        envelope=envelope,
+        owner_principal="platform-owner",
+        owner_session="platform-session",
+        guard=lambda: None,
+    )
+    return envelope, binding
+
+
 class Driver:
     backend_id = "tobkiri.python-pack-v4"
     substrate_id = "macos-vz"
@@ -165,10 +222,13 @@ class Driver:
     def __init__(self) -> None:
         self.last_launch: IsolationLaunch | None = None
         self.attestation_platform: str | None = None
+        self.capability_ready = True
+        self.capability_reason: str | None = None
         self.terminated: list[str] = []
+        self.termination_error: Exception | None = None
 
     def capability(self) -> tuple[bool, str | None]:
-        return True, None
+        return self.capability_ready, self.capability_reason
 
     def launch(self, request: IsolationLaunch) -> PlatformAttestation:
         self.last_launch = request
@@ -204,6 +264,8 @@ class Driver:
         return None
 
     def terminate(self, domain_id: str) -> None:
+        if self.termination_error is not None:
+            raise self.termination_error
         self.terminated.append(domain_id)
 
 
@@ -254,12 +316,396 @@ def test_platform_selection_and_attestation_fail_closed() -> None:
     assert evidence.resource_reservation_id == "reservation-1"
     assert driver.last_launch is not None
     assert evidence.domain_lease_id == driver.last_launch.lease.lease_id
-    driver.attestation_platform = "linux-arm64"
+    invalid_driver = Driver()
+    invalid_driver.attestation_platform = "linux-arm64"
+    invalid_backend = ProductionIsolationBackend(
+        invalid_driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.invalid",
+    )
     with pytest.raises(BackendUnavailableError, match="attestation"):
-        backend.materialize(selected, "reservation-2")
+        invalid_backend.materialize(selected, "reservation-2")
     wrong = replace(selected.variant, backend="other-packvm")
     with pytest.raises(BackendUnavailableError, match="wrong platform"):
         backend.materialize(replace(selected, variant=wrong), "reservation-3")
+
+
+def test_platform_bridge_carries_private_proof_outside_provider_envelope() -> None:
+    """Only the platform adapter side-channel receives a nested proof."""
+
+    class BridgeDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.bridge = None
+
+        def bind_capability_bridge(self, callback) -> None:
+            self.bridge = callback
+
+        def invoke(self, request: object) -> object:
+            assert not hasattr(request, "nested_cancellation_proof")
+            assert self.bridge is not None
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(
+                    self.bridge,
+                    request,
+                    {"kind": "bridge"},
+                ).result(timeout=2)
+
+    driver = BridgeDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.bridge",
+    )
+    observed_proofs: list[object | None] = []
+
+    def bridge(
+        _outer_request: object,
+        bridge_request: object,
+        proof: object | None,
+    ) -> dict[str, object]:
+        assert bridge_request == {"kind": "bridge"}
+        observed_proofs.append(proof)
+        return {"proof": proof is not None}
+
+    backend.bind_capability_bridge(bridge)
+    evidence = backend.materialize(binding(), "reservation-bridge")
+    parent, cancellation_binding = cancellation_parent()
+    request = replace(
+        parent,
+        target_domain=evidence.domain_ref,
+        context=replace(parent.context, request_id="request-bridge"),
+    )
+    with cancellation_binding.track("turn"):
+        proof = nested_cancellation_proof_for(
+            parent,
+            "platform-owner",
+            "platform-session",
+        )
+        assert proof is not None
+        assert backend.invoke_with_nested_cancellation_proof(request, proof) == {
+            "proof": True
+        }
+    forged_request = replace(
+        request,
+        context=replace(request.context, request_id="request-forged-proof"),
+    )
+    with pytest.raises(BackendUnavailableError, match="proof is invalid"):
+        backend.invoke_with_nested_cancellation_proof(forged_request, object())
+    request = replace(
+        request,
+        context=replace(request.context, request_id="request-without-proof"),
+    )
+    with pytest.raises(BackendUnavailableError, match="context is unavailable"):
+        backend.invoke(request)
+    assert observed_proofs == [proof]
+
+
+def test_saved_platform_preflight_and_bridge_share_private_proof() -> None:
+    """Saved preflight and continuation inherit the same private proof."""
+
+    class SavedDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.saved_bridge = None
+            self.saved_preflight = None
+
+        def bind_capability_bridge(self, callback) -> None:
+            return None
+
+        def bind_saved_capability_bridge(self, callback, preflight) -> None:
+            self.saved_bridge = callback
+            self.saved_preflight = preflight
+
+        def invoke(self, request: object) -> object:
+            assert not hasattr(request, "nested_cancellation_proof")
+            assert self.saved_bridge is not None
+            assert self.saved_preflight is not None
+
+            def invoke_saved() -> object:
+                self.saved_preflight(request)
+                return self.saved_bridge(request, {"kind": "saved"})
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(invoke_saved).result(timeout=2)
+
+    driver = SavedDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.saved",
+    )
+    observed_proofs: list[tuple[str, object | None]] = []
+
+    def bridge(
+        _outer_request: object,
+        bridge_request: object,
+        proof: object | None,
+    ) -> dict[str, object]:
+        assert bridge_request == {"kind": "saved"}
+        observed_proofs.append(("bridge", proof))
+        return {"proof": proof is not None}
+
+    def preflight(_outer_request: object, proof: object | None) -> None:
+        observed_proofs.append(("preflight", proof))
+
+    backend.bind_saved_capability_bridge(bridge, preflight)
+    evidence = backend.materialize(binding(), "reservation-saved")
+    parent, cancellation_binding = cancellation_parent()
+    request = replace(
+        parent,
+        target_domain=evidence.domain_ref,
+        context=replace(parent.context, request_id="request-saved"),
+    )
+    with cancellation_binding.track("turn"):
+        proof = nested_cancellation_proof_for(
+            parent,
+            "platform-owner",
+            "platform-session",
+        )
+        assert proof is not None
+        assert backend.invoke_with_nested_cancellation_proof(request, proof) == {
+            "proof": True
+        }
+    assert observed_proofs == [("preflight", proof), ("bridge", proof)]
+
+
+def test_platform_backend_reuses_only_exact_live_resident_domain() -> None:
+    now = [100.0]
+    driver = Driver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.resident",
+        lease_seconds=30.0,
+        clock=lambda: now[0],
+    )
+
+    first = backend.materialize(binding(), "reservation-first")
+    second = backend.materialize(binding(), "reservation-second")
+
+    assert second == first
+    assert driver.last_launch is not None
+    assert driver.last_launch.reservation_id == "reservation-first"
+    assert driver.terminated == []
+
+    driver.capability_ready = False
+    driver.capability_reason = "supervisor compromised"
+    with pytest.raises(BackendUnavailableError, match="compromised"):
+        backend.materialize(binding(), "reservation-compromised")
+    driver.capability_ready = True
+    driver.capability_reason = None
+
+    now[0] = 131.0
+    backend._request_domains["request-active"] = "domain.vz.resident"
+    with pytest.raises(BackendUnavailableError, match="while active"):
+        backend.materialize(binding(), "reservation-active")
+    assert driver.terminated == []
+    backend._request_domains.pop("request-active")
+
+    third = backend.materialize(binding(), "reservation-third")
+
+    assert driver.terminated == ["domain.vz.resident"]
+    assert driver.last_launch.reservation_id == "reservation-third"
+    assert third.resource_reservation_id == "reservation-third"
+
+
+def test_platform_backend_tracks_concurrent_requests_in_one_resident_domain() -> None:
+    """Distinct authorized requests can overlap without changing domain identity."""
+
+    barrier = Barrier(3)
+
+    class ConcurrentDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.launches = 0
+            self.invoked: list[str] = []
+            self.invocation_lock = Lock()
+
+        def launch(self, request: IsolationLaunch) -> PlatformAttestation:
+            self.launches += 1
+            return super().launch(request)
+
+        def invoke(self, request: object) -> object:
+            request_id = getattr(getattr(request, "context", None), "request_id")
+            with self.invocation_lock:
+                self.invoked.append(request_id)
+            barrier.wait(timeout=3)
+            return request
+
+    driver = ConcurrentDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.concurrent",
+    )
+    evidence = backend.materialize(binding(), "reservation-concurrent")
+
+    def request(request_id: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            target_domain=SimpleNamespace(value=evidence.domain_ref.value),
+            context=SimpleNamespace(request_id=request_id),
+            cancellation_requested=Event(),
+        )
+
+    requests = (request("request-a"), request("request-b"))
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(backend.invoke, item) for item in requests]
+        barrier.wait(timeout=3)
+        assert set(backend._request_domains) == {"request-a", "request-b"}
+        assert [future.result(timeout=3) for future in futures] == list(requests)
+
+    assert driver.launches == 1
+    assert set(driver.invoked) == {"request-a", "request-b"}
+    assert backend._request_domains == {}
+
+
+def test_platform_backend_cancels_only_one_concurrent_resident_request() -> None:
+    """Cancelling one request neither fences nor stops its resident peer."""
+
+    started = {"request-a": Event(), "request-b": Event()}
+    releases = {"request-a": Event(), "request-b": Event()}
+
+    class ConcurrentCancelDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.cancelled: list[str] = []
+
+        def invoke(self, request: object) -> object:
+            request_id = getattr(getattr(request, "context", None), "request_id")
+            started[request_id].set()
+            assert releases[request_id].wait(timeout=3)
+            if getattr(request, "cancellation_requested").is_set():
+                raise BackendUnavailableError("cancelled request result was fenced")
+            return request
+
+        def cancel(self, request_id: str) -> None:
+            self.cancelled.append(request_id)
+            releases[request_id].set()
+
+    driver = ConcurrentCancelDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.concurrent-cancel",
+    )
+    evidence = backend.materialize(binding(), "reservation-concurrent-cancel")
+
+    def request(request_id: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            target_domain=SimpleNamespace(value=evidence.domain_ref.value),
+            context=SimpleNamespace(request_id=request_id),
+            cancellation_requested=Event(),
+        )
+
+    request_a = request("request-a")
+    request_b = request("request-b")
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_a = executor.submit(backend.invoke, request_a)
+        future_b = executor.submit(backend.invoke, request_b)
+        assert started["request-a"].wait(timeout=3)
+        assert started["request-b"].wait(timeout=3)
+        assert backend._request_domains == {
+            "request-a": "domain.vz.concurrent-cancel",
+            "request-b": "domain.vz.concurrent-cancel",
+        }
+
+        request_b.cancellation_requested.set()
+        backend.cancel("request-b")
+        with pytest.raises(BackendUnavailableError, match="result was fenced"):
+            future_b.result(timeout=3)
+
+        assert not request_a.cancellation_requested.is_set()
+        releases["request-a"].set()
+        assert future_a.result(timeout=3) is request_a
+
+    assert driver.cancelled == ["request-b"]
+    assert backend._pending_requests == {}
+    assert backend._request_domains == {}
+
+
+def test_platform_backend_cancels_pending_request_before_domain_execution() -> None:
+    """A started Future waiting on materialization never enters the guest late."""
+
+    class PendingDriver(Driver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.invoked: list[str] = []
+            self.cancelled: list[str] = []
+
+        def invoke(self, request: object) -> object:
+            request_id = getattr(getattr(request, "context", None), "request_id")
+            self.invoked.append(request_id)
+            return request
+
+        def cancel(self, request_id: str) -> None:
+            self.cancelled.append(request_id)
+
+    driver = PendingDriver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.pending",
+    )
+    evidence = backend.materialize(binding(), "reservation-pending")
+    cancellation = Event()
+    request = SimpleNamespace(
+        target_domain=SimpleNamespace(value=evidence.domain_ref.value),
+        context=SimpleNamespace(request_id="request-pending"),
+        cancellation_requested=cancellation,
+    )
+
+    materialization_lock_held = True
+    backend._materialization_lock.acquire()
+    try:
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(backend.invoke, request)
+            deadline = time.monotonic() + 2
+            while (
+                "request-pending" not in backend._pending_requests
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.01)
+            assert backend._pending_requests == {
+                "request-pending": ("domain.vz.pending", cancellation)
+            }
+            backend.cancel("request-pending")
+            assert cancellation.is_set()
+            backend._materialization_lock.release()
+            materialization_lock_held = False
+            with pytest.raises(BackendUnavailableError, match="cancelled before execution"):
+                future.result(timeout=2)
+    finally:
+        if materialization_lock_held:
+            backend._materialization_lock.release()
+
+    assert driver.invoked == []
+    assert driver.cancelled == []
+    assert backend._pending_requests == {}
+    assert backend._request_domains == {}
+
+
+def test_platform_backend_close_terminates_and_retries_failed_cleanup() -> None:
+    driver = Driver()
+    backend = ProductionIsolationBackend(
+        driver,
+        artifact_resolver=lambda _binding: materialized_artifact(),
+        target_domain_resolver=lambda _binding: "domain.vz.close",
+    )
+    backend.materialize(binding(), "reservation-close")
+    driver.termination_error = RuntimeError("verified cleanup failed")
+
+    with pytest.raises(BackendUnavailableError, match="could not be terminated"):
+        backend.close()
+
+    assert "domain.vz.close" in backend._domains
+    assert backend._reservations["reservation-close"] == "domain.vz.close"
+    driver.termination_error = None
+    backend.close()
+    backend.close()
+    assert driver.terminated == ["domain.vz.close"]
+    assert backend._domains == {}
+    assert backend._reservations == {}
 
 
 @pytest.mark.parametrize(
@@ -388,6 +834,10 @@ def test_production_composition_registers_only_verified_direct_vz_facts(
         def production_backend_registration(self) -> MacOSVZProvisionedFacts:
             return facts
 
+        def recover_interrupted_allocation(self, **binding: object) -> bool:
+            recovery_calls.append(binding)
+            return True
+
         def prepare_direct_vz(self) -> None:
             raise AssertionError("lifecycle registration must be preferred")
 
@@ -402,9 +852,27 @@ def test_production_composition_registers_only_verified_direct_vz_facts(
     monkeypatch.setattr(macos_vz_supervisor, "MacOSVZSupervisorDriver", CapturedDriver)
     monkeypatch.setattr(platform_backends, "MacOSVZBackend", CapturedBackend)
 
-    backend = _authenticated_packvm_backend(Lifecycle())
+    from ecosystem.defaultspack.defaultspack.runtime_composition import (
+        defaultspack_packvm_backend_factory,
+    )
+
+    recovery_calls: list[dict[str, object]] = []
+    factory = defaultspack_packvm_backend_factory(Lifecycle())
+    assert factory.recover_interrupted_allocation(
+        domain_id="domain.provider.test.1",
+        reservation_id="reservation.test",
+        executable_digest="sha256:" + "a" * 64,
+    )
+    backend = factory()
 
     assert isinstance(backend, CapturedBackend)
+    assert recovery_calls == [
+        {
+            "domain_id": "domain.provider.test.1",
+            "reservation_id": "reservation.test",
+            "executable_digest": "sha256:" + "a" * 64,
+        }
+    ]
     assert transport_factory_calls == []
     assert backend.driver.kwargs == {
         "transport_factory": transport_factory,
@@ -628,7 +1096,7 @@ def test_generated_tauri_roles_are_separate_and_production_selects_runtime_only(
     toolchain = json.loads(
         (bundle / "packs" / "dev.tauri.toolchain.default.pack.v4.json").read_text(encoding="utf-8")
     )
-    profile = json.loads((bundle / "defaults.profile.v4.json").read_text(encoding="utf-8"))
+    profile = json.loads((bundle / "defaults.profile.v5.json").read_text(encoding="utf-8"))
     assert runtime["pack"]["kind"] == "application"
     assert runtime["contracts"][0]["contract_id"] == "runtime.tauri.application.v1"
     assert toolchain["pack"]["kind"] == "host_extension"

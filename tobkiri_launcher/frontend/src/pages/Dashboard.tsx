@@ -1,27 +1,44 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
-import {
-  fetchDashboard,
-} from '@/src/lib/api';
-import { useAppStore } from '@/src/store';
-import { TobkiriLoader, TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
+import type {FormEvent} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
+import {Link, useSearchParams, useOutletContext} from 'react-router';
 import {
   AlertCircle,
-  Copy,
+  ArrowRight,
   Monitor,
-  Route,
-  ShieldCheck,
-  Terminal,
-  Cloud,
   Package,
+  Plus,
+  RefreshCw,
+  Search,
   Workflow,
 } from 'lucide-react';
-import { Button } from '@/src/components/ui/Button';
-import { Badge } from '@/src/components/ui/Badge';
-import { transformDashboard } from '@/src/lib/transforms';
-import type { DashboardData } from '@/src/store';
-import { panelRoutes } from '@/src/lib/routes';
-import { ShellLaunchCard } from '@/src/components/presentation/ShellLaunchCard';
+
+import type {LayoutOutletContext} from '@/src/components/layout/Layout';
+import {ProfileCard} from '@/src/components/dashboard/ProfileCard';
+import {Button} from '@/src/components/ui/Button';
+import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
+import {Badge} from '@/src/components/ui/Badge';
+import {TobkiriLoader, TobkiriLoadingMark} from '@/src/components/ui/TobkiriLoader';
+import {
+  createNamedProfile,
+  deleteNamedProfile,
+  duplicateNamedProfile,
+  fetchNamedProfiles,
+  updateNamedProfile,
+  type NamedProfileRecord,
+  type NamedProfileRegistry,
+} from '@/src/lib/hostClient';
+import {fetchDashboard} from '@/src/lib/defaultspackClient';
+import {isDesktopShellAvailable, launchSelectedPresentation} from '@/src/lib/desktopHost';
+import {panelRoutes} from '@/src/lib/routes';
+import {
+  buildNamedProfileView,
+  filterAndSortNamedProfiles,
+  namedProfileDisplayName,
+  type NamedProfileSortMode,
+} from '@/src/lib/profileRegistryView';
+import {transformDashboard} from '@/src/lib/transforms';
+import type {DashboardData} from '@/src/store';
+import {useAppStore} from '@/src/store';
 
 const defaultDashboard: DashboardData = {
   kernelStatus: 'stopped',
@@ -32,32 +49,84 @@ const defaultDashboard: DashboardData = {
   supervisor: null,
 };
 
-export async function copyTextToClipboard(
-  text: string,
-  clipboard: Pick<Clipboard, 'writeText'> | undefined = typeof navigator === 'undefined'
-    ? undefined
-    : navigator.clipboard,
-): Promise<boolean> {
-  if (!clipboard) return false;
+export {copyTextToClipboard} from '@/src/lib/clipboard';
 
-  try {
-    await clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
+export function nextDuplicateProfileId(
+  profileId: string,
+  existingProfileIds: Iterable<string>,
+): string {
+  const baseId = `${profileId}-copy`;
+  const usedIds = new Set(existingProfileIds);
+  let candidate = baseId;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `${baseId}-${suffix}`;
+    suffix += 1;
   }
+  return candidate;
+}
+
+function isActiveExecutionProfile(
+  registry: NamedProfileRegistry,
+  entry: NamedProfileRecord,
+): boolean {
+  // The active revision is the resolved execution snapshot. It is deliberately
+  // not compared with the immutable definition revision on the registry row.
+  return registry.active_profile_id === entry.profile_id
+    && registry.active_profile_revision !== null;
+}
+
+function profileHref(profileId: string, hash?: string): string {
+  const query = `?profile_id=${encodeURIComponent(profileId)}`;
+  return `${panelRoutes.profile}${query}${hash ? `#${hash}` : ''}`;
+}
+
+function sortModeFromParam(value: string | null): NamedProfileSortMode {
+  return value === 'recent' || value === 'name' ? value : 'recommended';
 }
 
 export function Dashboard() {
+  const verificationBanner = useOutletContext<LayoutOutletContext | undefined>()?.verificationBanner;
   const addToast = useAppStore((state) => state.addToast);
+  const showDialog = useAppStore((state) => state.showDialog);
   const runtimeReady = useAppStore((state) => state.runtimeReady);
   const runtimeStatus = useAppStore((state) => state.runtimeStatus);
-  const runtimeError = useAppStore((state) => state.runtimeError);
-  const navigate = useNavigate();
+  const hostCatalogVerified = useAppStore((state) => state.hostCatalogVerified);
+  const profileCeremonyAvailable = useAppStore((state) => state.profileCeremonyAvailable);
+  const defaultsBootstrapRequired = useAppStore((state) => state.defaultsBootstrapRequired);
+  const activeProfileReady = useAppStore((state) => state.activeProfileReady);
+  const launchReady = useAppStore((state) => state.launchReady);
+  const desktopShellAvailable = isDesktopShellAvailable();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [dashboard, setDashboard] = useState<DashboardData>(defaultDashboard);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const summaryAvailable = runtimeReady && !dashboardLoading && !dashboardError;
+  const [registry, setRegistry] = useState<NamedProfileRegistry | null>(null);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
+  const [profileActionError, setProfileActionError] = useState<string | null>(null);
+  const [profileBusy, setProfileBusy] = useState<string | null>(null);
+  const profileOperationKeyRef = useRef<string | null>(null);
+  const [newProfileId, setNewProfileId] = useState('');
+  const [newProfileName, setNewProfileName] = useState('');
+  const [newProfileSourceId, setNewProfileSourceId] = useState('');
+  const [showAddProfile, setShowAddProfile] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [editingProfileName, setEditingProfileName] = useState('');
+
+  const profileQuery = searchParams.get('q') ?? '';
+  const sortMode = sortModeFromParam(searchParams.get('sort'));
+  const browsingProfileId = searchParams.get('profile_id');
+
+  const updateProfileSearch = (key: 'q' | 'sort', value: string) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    }, {replace: true});
+  };
 
   const refreshDashboard = async () => {
     setDashboardLoading(true);
@@ -73,6 +142,16 @@ export function Dashboard() {
     }
   };
 
+  const refreshProfiles = async () => {
+    try {
+      setRegistry(await fetchNamedProfiles());
+      setProfileLoadError(null);
+      setProfileActionError(null);
+    } catch (error) {
+      setProfileLoadError(error instanceof Error ? error.message : 'Named Profiles could not be loaded.');
+    }
+  };
+
   useEffect(() => {
     if (runtimeReady) {
       void refreshDashboard();
@@ -81,321 +160,529 @@ export function Dashboard() {
     }
   }, [runtimeReady]);
 
-  const copyRuntimeError = async () => {
-    const message = runtimeError || 'The control panel opened, but the background runtime startup failed.';
-    const copied = await copyTextToClipboard(message);
-    addToast(
-      copied ? 'Error copied to clipboard.' : 'Could not copy the error. Please select and copy it manually.',
-      copied ? 'success' : 'error',
+  useEffect(() => {
+    void refreshProfiles();
+  }, []);
+
+  const visibleProfiles = useMemo(() => filterAndSortNamedProfiles(
+    registry?.profiles ?? [],
+    profileQuery,
+    sortMode,
+    registry?.active_profile_id ?? null,
+  ), [profileQuery, registry, sortMode]);
+
+  const activeProfile = useMemo(() => {
+    if (!registry || !registry.active_profile_id || registry.active_profile_revision === null) {
+      return null;
+    }
+    return registry.profiles.find((entry) => isActiveExecutionProfile(registry, entry)) ?? null;
+  }, [registry]);
+  const browsingProfile = registry?.profiles.find((entry) => entry.profile_id === browsingProfileId) ?? null;
+  const profileError = profileLoadError ?? profileActionError;
+  const profileCatalogVerified = hostCatalogVerified
+    && registry !== null
+    && profileLoadError === null;
+  const profileActivationAvailable = profileCeremonyAvailable && !defaultsBootstrapRequired;
+  const sourceProfileOptions = useMemo(() => (
+    [...(registry?.profiles ?? [])].sort((left, right) => {
+      const displayNameOrder = namedProfileDisplayName(left).localeCompare(
+        namedProfileDisplayName(right),
+      );
+      return displayNameOrder || left.profile_id.localeCompare(right.profile_id);
+    })
+  ), [registry]);
+
+  const beginProfileOperation = (key: string): boolean => {
+    if (profileOperationKeyRef.current !== null) return false;
+    profileOperationKeyRef.current = key;
+    setProfileBusy(key);
+    return true;
+  };
+
+  const finishProfileOperation = (key: string): void => {
+    if (profileOperationKeyRef.current !== key) return;
+    profileOperationKeyRef.current = null;
+    setProfileBusy((current) => current === key ? null : current);
+  };
+
+  const commitProfileMutation = async (
+    key: string,
+    operation: () => Promise<NamedProfileRegistry>,
+    successMessage: string,
+    throwOnError = false,
+  ) => {
+    if (!profileCatalogVerified) {
+      const message = 'Profile catalog verification is required before changing Profiles.';
+      setProfileActionError(message);
+      addToast(message, 'error');
+      return false;
+    }
+    if (!beginProfileOperation(key)) return false;
+    try {
+      setRegistry(await operation());
+      setProfileActionError(null);
+      addToast(successMessage, 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Profile mutation was rejected.';
+      setProfileActionError(message);
+      addToast(message, 'error');
+      if (throwOnError) throw error;
+      return false;
+    } finally {
+      finishProfileOperation(key);
+    }
+    return true;
+  };
+
+  const submitNewProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const profileId = (form.elements.namedItem('profile_id') as HTMLInputElement | null)?.value.trim()
+      ?? newProfileId.trim();
+    const displayName = (form.elements.namedItem('display_name') as HTMLInputElement | null)?.value.trim()
+      ?? newProfileName.trim();
+    if (!registry) return;
+    if (!profileId || !displayName) {
+      setProfileActionError('Enter a Profile ID and display name before creating a Profile.');
+      return;
+    }
+    const sourceProfileId = (form.elements.namedItem('source_profile_id') as HTMLSelectElement | null)?.value.trim()
+      ?? newProfileSourceId.trim();
+    if (!sourceProfileId) {
+      setProfileActionError('Choose a source Profile before adding another Profile.');
+      return;
+    }
+    if (!registry.profiles.some((entry) => entry.profile_id === sourceProfileId)) {
+      setProfileActionError('Choose an existing Profile as the source for this Profile.');
+      return;
+    }
+    const created = await commitProfileMutation(
+      'create',
+      () => createNamedProfile({
+        profile_id: profileId,
+        display_name: displayName,
+        source_profile_id: sourceProfileId,
+        expected_store_generation: registry.generation,
+      }),
+      `Profile ${displayName} created.`,
+    );
+    if (!created) return;
+    setNewProfileId('');
+    setNewProfileName('');
+    setNewProfileSourceId('');
+    setShowAddProfile(false);
+  };
+
+  const submitProfileName = async (
+    event: FormEvent<HTMLFormElement>,
+    entry: NamedProfileRecord,
+  ) => {
+    event.preventDefault();
+    if (!registry) return;
+    const displayName = (event.currentTarget.elements.namedItem('display_name') as HTMLInputElement | null)?.value.trim()
+      ?? editingProfileName.trim();
+    if (!displayName) return;
+    const updated = await commitProfileMutation(
+      `edit:${entry.profile_id}`,
+      () => updateNamedProfile({
+        profile_id: entry.profile_id,
+        display_name: displayName,
+        expected_profile_revision: entry.profile_revision,
+        expected_store_generation: registry.generation,
+      }),
+      `Profile ${displayName} updated.`,
+    );
+    if (!updated) return;
+    setEditingProfileId(null);
+    setEditingProfileName('');
+  };
+
+  const duplicateProfile = async (entry: NamedProfileRecord) => {
+    if (!registry) return;
+    const candidate = nextDuplicateProfileId(
+      entry.profile_id,
+      registry.profiles.map((profile) => profile.profile_id),
+    );
+    const displayName = `${namedProfileDisplayName(entry)} Copy`;
+    await commitProfileMutation(
+      `duplicate:${entry.profile_id}`,
+      () => duplicateNamedProfile({
+        profile_id: entry.profile_id,
+        new_profile_id: candidate,
+        display_name: displayName,
+        expected_profile_revision: entry.profile_revision,
+        expected_store_generation: registry.generation,
+      }),
+      `Profile ${displayName} created.`,
     );
   };
 
-  if (runtimeStatus === 'error' && !dashboardLoading && !dashboard.activePacks && !dashboard.supervisor) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-6">
-        <div className="flex max-w-md flex-col gap-4 rounded-xl border border-red-200 bg-red-50 p-6 dark:border-red-900/40 dark:bg-red-950/20">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 text-red-500 shrink-0" />
-            <div className="space-y-1">
-              <h2 className="text-base font-semibold text-text-main">Runtime could not finish starting</h2>
-              <div className="flex items-start gap-1">
-                <p className="text-sm text-text-muted">{runtimeError || 'The control panel opened, but the background runtime startup failed.'}</p>
-                <Button
-                  aria-label="Copy error message"
-                  className="h-7 w-7 shrink-0 p-0"
-                  onClick={() => void copyRuntimeError()}
-                  size="icon"
-                  title="Copy error message"
-                  variant="ghost"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={() => window.location.reload()} size="sm"><AlertCircle className="h-3.5 w-3.5" /> Reload</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const removeProfile = (entry: NamedProfileRecord) => {
+    if (!registry || registry.active_profile_id === entry.profile_id) return;
+    const displayName = namedProfileDisplayName(entry);
+    showDialog({
+      title: `Delete ${displayName}?`,
+      message: `This removes ${displayName} from the live Profile registry. Its immutable revision history remains retained by the Host, and the active execution Profile is not changed.`,
+      confirmText: 'Delete Profile',
+      cancelText: 'Keep Profile',
+      onConfirm: async () => {
+        await commitProfileMutation(
+          `delete:${entry.profile_id}`,
+          () => deleteNamedProfile({
+            profile_id: entry.profile_id,
+            expected_profile_revision: entry.profile_revision,
+            expected_store_generation: registry.generation,
+          }),
+          `Profile ${displayName} deleted.`,
+          true,
+        );
+      },
+    });
+  };
 
-  if (dashboardLoading && !dashboard.activePacks && !dashboard.supervisor) {
-    return <DashboardSkeleton />;
-  }
+  const launchProfile = async (entry: NamedProfileRecord) => {
+    if (!registry || !isActiveExecutionProfile(registry, entry)) return;
+    const profileView = buildNamedProfileView(entry, {activeSnapshotReady: activeProfileReady});
+    if (
+      !activeProfileReady
+      || !launchReady
+      || !desktopShellAvailable
+      || profileView.status !== 'ready'
+    ) return;
 
-  if (dashboardError && !dashboard.activePacks && !dashboard.supervisor) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-6">
-        <div className="flex max-w-md flex-col gap-4 rounded-xl border border-border bg-bg-card p-6">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 text-red-500 shrink-0" />
-            <div className="space-y-1">
-              <h2 className="text-base font-semibold text-text-main">Home could not load</h2>
-              <p className="text-sm text-text-muted">{dashboardError}</p>
-            </div>
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={() => void refreshDashboard()} size="sm"><Route className="h-3.5 w-3.5" /> Retry</Button>
-          </div>
-        </div>
-      </div>
-    );
+    const key = `launch:${entry.profile_id}`;
+    if (!beginProfileOperation(key)) return;
+    try {
+      const result = await launchSelectedPresentation();
+      addToast(result.message || `${namedProfileDisplayName(entry)} launched.`, 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Profile launch was rejected.';
+      addToast(message, 'error');
+    } finally {
+      finishProfileOperation(key);
+    }
+  };
+
+  if (dashboardLoading && !registry && !profileError) {
+    return <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-6">{verificationBanner}<DashboardSkeleton /></div>;
   }
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-6 py-8 lg:px-10 scrollbar-hidden overflow-y-auto page-enter">
-        {/* Header section */}
+    <div className="flex min-w-0 flex-1 overflow-hidden">
+      <div className="mx-auto flex min-w-0 w-full max-w-[1100px] flex-col gap-6 overflow-y-auto px-6 py-8 page-enter lg:px-10">
         <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-text-main">Home</h1>
-            <p className="mt-1 text-sm text-text-muted">Your workspace summary and active packs.</p>
+            <p className="mt-1 text-sm text-text-muted">Browse every Profile without changing the active execution Profile.</p>
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={() => navigate(panelRoutes.packs)}>
-              <Package className="h-4 w-4" /> Manage Packs
+            <Button
+              aria-label="Add Profile"
+              aria-controls="add-profile-form"
+              aria-expanded={showAddProfile}
+              disabled={!profileCatalogVerified || profileBusy !== null}
+              onClick={() => setShowAddProfile((shown) => !shown)}
+              title={profileCatalogVerified ? 'Add a new named Profile' : 'Profile catalog verification is unavailable'}
+              type="button"
+            >
+              <Plus aria-hidden="true" className="h-4 w-4" /> Add Profile
             </Button>
-            <Button variant="outline" size="icon" title="Refresh" onClick={() => void refreshDashboard()}>
-              <Route className="h-4 w-4" />
+            <Button
+              aria-label="Refresh Home and Profiles"
+              onClick={() => {
+                void refreshDashboard();
+                void refreshProfiles();
+              }}
+              size="icon"
+              title="Refresh Home and Profiles"
+              type="button"
+              variant="outline"
+            >
+              <RefreshCw aria-hidden="true" className="h-4 w-4" />
             </Button>
           </div>
         </section>
+
+        {verificationBanner}
 
         {dashboardError && (
-          <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
-            <AlertCircle className="h-4 w-4 shrink-0" />
+          <div className="flex items-center gap-3 rounded-lg border border-warning/35 bg-warning/8 px-4 py-3 text-sm text-warning" role="alert">
+            <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
             <span className="flex-1">{dashboardError}</span>
-            <Button variant="ghost" size="sm" onClick={() => void refreshDashboard()}>
-              <Route className="h-3.5 w-3.5" /> Retry
+            <CopyErrorButton text={dashboardError} label="Copy dashboard error" />
+            <Button onClick={() => void refreshDashboard()} size="sm" type="button" variant="ghost">
+              Retry
             </Button>
           </div>
         )}
 
-        {!runtimeReady && runtimeStatus === 'panel_ready' && (
-          <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-200">
+        {!verificationBanner && !runtimeReady && runtimeStatus === 'panel_ready' && (
+          <div className="flex items-center gap-3 rounded-lg border border-warning/35 bg-warning/8 px-4 py-3 text-sm text-warning" role="status">
             <TobkiriLoadingMark />
-            <span className="flex-1">Runtime is still preparing. Packs are available now, and launch surfaces will open after readiness.</span>
+            <span className="flex-1">Runtime is still preparing. Profiles and Add remain available; launch and activation wait for readiness.</span>
           </div>
         )}
 
-        <ShellLaunchCard runtimeReady={runtimeReady} />
-
-        {/* Summary tiles */}
-        <section className="grid gap-4 sm:grid-cols-3">
-          <Link
-            to={panelRoutes.packs}
-            className="rounded-xl border border-border bg-bg-card p-5 transition hover:border-accent/25 hover:bg-bg-hover/40"
-          >
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold text-text-main">Active Packs</h2>
+        <div aria-label="Profile execution status" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-muted">
+          <span className="text-xs font-medium text-text-main">Execution</span>
+          {activeProfile ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+              <span className="truncate text-sm font-medium text-text-main">{namedProfileDisplayName(activeProfile)}</span>
+              <span className="font-mono text-[11px] text-text-muted">{activeProfile.profile_id}</span>
             </div>
-            <div className="mt-3 text-3xl font-semibold tracking-tight text-text-main">{dashboard.activePacks}</div>
-            <p className="mt-1 text-xs text-text-muted">Enabled in the current v4 Profile</p>
-          </Link>
-          <div className="rounded-xl border border-border bg-bg-card p-5">
-            <div className="flex items-center gap-2">
-              <Workflow className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold text-text-main">Flows</h2>
-            </div>
-            <div className="mt-3 text-3xl font-semibold tracking-tight text-text-main">{dashboard.registeredFlows}</div>
-            <p className="mt-1 text-xs text-text-muted">Registered flow definitions</p>
-          </div>
-          <div className="rounded-xl border border-border bg-bg-card p-5">
-            <div className="flex items-center gap-2">
-              <Monitor className="h-4 w-4 text-accent" />
-              <h2 className="text-sm font-semibold text-text-main">Kernel</h2>
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${
-                dashboard.kernelStatus === 'running' ? 'bg-emerald-500' : 'bg-amber-500'
-              }`} />
-              <span className="text-xl font-semibold tracking-tight text-text-main">
-                {dashboard.kernelStatus === 'running' ? 'Running' : 'Stopped'}
+          ) : (
+            <Badge variant="warning">No active execution Profile</Badge>
+          )}
+          {browsingProfileId && (
+            <div className="flex min-w-0 flex-wrap items-center gap-2 border-l border-border pl-4">
+              <Badge>Selected browsing</Badge>
+              <span className="truncate text-sm text-text-main">
+                {browsingProfile ? namedProfileDisplayName(browsingProfile) : browsingProfileId}
               </span>
             </div>
-            <p className="mt-1 text-xs text-text-muted">Uptime: {dashboard.uptime}</p>
+          )}
+        </div>
+
+        <section aria-labelledby="profiles-title">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-text-main" id="profiles-title">Profiles</h2>
+              <p className="mt-1 text-xs text-text-muted">
+                Browse a Profile without changing execution. Set Active lets you review and approve a Profile before starting it.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label className="relative block sm:w-64">
+                <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-text-muted" />
+                <input
+                  aria-label="Search Profiles"
+                  className="h-9 w-full rounded-lg border border-border bg-bg-card pl-9 pr-3 text-sm text-text-main outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+                  onChange={(event) => updateProfileSearch('q', event.target.value)}
+                  placeholder="Search Profiles"
+                  type="search"
+                  value={profileQuery}
+                />
+              </label>
+              <label className="sr-only" htmlFor="profile-sort">Sort Profiles</label>
+              <select
+                aria-label="Sort Profiles"
+                className="h-9 rounded-lg border border-border bg-bg-card px-3 text-sm text-text-main outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+                id="profile-sort"
+                onChange={(event) => updateProfileSearch('sort', event.target.value === 'recommended' ? '' : event.target.value)}
+                value={sortMode}
+              >
+                <option value="recommended">Recommended</option>
+                <option value="recent">Recently updated</option>
+                <option value="name">Name</option>
+              </select>
+            </div>
+          </div>
+
+          {showAddProfile && (
+            <form
+              aria-describedby="add-profile-help"
+              className="mt-4 grid gap-3 rounded-lg border border-border bg-bg-card p-4 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end"
+              id="add-profile-form"
+              onSubmit={submitNewProfile}
+            >
+              <label className="space-y-1.5 text-sm font-medium text-text-main">
+                <span>Profile ID <span aria-hidden="true" className="text-destructive">*</span></span>
+                <input
+                  aria-label="New Profile ID"
+                  className="h-9 w-full rounded-lg border border-border bg-bg-main px-3 text-sm font-normal text-text-main outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+                  maxLength={80}
+                  name="profile_id"
+                  onChange={(event) => setNewProfileId(event.target.value)}
+                  pattern="[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*"
+                  placeholder="profile-id"
+                  required
+                  value={newProfileId}
+                />
+              </label>
+              <label className="space-y-1.5 text-sm font-medium text-text-main">
+                <span>Display name <span aria-hidden="true" className="text-destructive">*</span></span>
+                <input
+                  aria-label="New Profile name"
+                  className="h-9 w-full rounded-lg border border-border bg-bg-main px-3 text-sm font-normal text-text-main outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+                  maxLength={120}
+                  name="display_name"
+                  onChange={(event) => setNewProfileName(event.target.value)}
+                  placeholder="Display name"
+                  required
+                  value={newProfileName}
+                />
+              </label>
+              <label className="space-y-1.5 text-sm font-medium text-text-main">
+                <span>Source Profile <span aria-hidden="true" className="text-destructive">*</span></span>
+                <select
+                  aria-label="Source Profile"
+                  className="h-9 w-full rounded-lg border border-border bg-bg-main px-3 text-sm font-normal text-text-main outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+                  onChange={(event) => setNewProfileSourceId(event.target.value)}
+                  name="source_profile_id"
+                  required
+                  value={newProfileSourceId}
+                >
+                  <option disabled value="">Choose a source Profile</option>
+                  {sourceProfileOptions.map((entry) => (
+                    <option key={entry.profile_id} value={entry.profile_id}>
+                      {namedProfileDisplayName(entry)} ({entry.profile_id})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex flex-col gap-2">
+                <span className="sr-only" id="add-profile-help">Create a named Profile by explicitly choosing an existing source Profile.</span>
+                <Button
+                  disabled={!profileCatalogVerified || !newProfileSourceId || profileBusy !== null}
+                  size="sm"
+                  type="submit"
+                >
+                  <Plus aria-hidden="true" className="h-3.5 w-3.5" /> Create
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {profileError && (
+            <div aria-live="assertive" className="mt-4 flex items-center gap-2 rounded-lg border border-destructive/35 bg-destructive/8 px-3 py-2 text-sm text-destructive" role="alert">
+              <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span className="flex-1">{profileError}</span>
+              <CopyErrorButton text={profileError} label="Copy Profile error" />
+              <Button
+                onClick={() => {
+                  if (profileLoadError) {
+                    void refreshProfiles();
+                  } else {
+                    setProfileActionError(null);
+                  }
+                }}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                {profileLoadError ? 'Retry' : 'Dismiss'}
+              </Button>
+            </div>
+          )}
+
+          <div aria-live="polite" className="mt-5">
+            {!registry && !profileError && (
+              <div className="flex items-center justify-center py-8"><TobkiriLoadingMark /></div>
+            )}
+            {registry && visibleProfiles.length === 0 && profileQuery && (
+              <p className="py-8 text-center text-sm text-text-muted">No Profiles match this search.</p>
+            )}
+            {registry && visibleProfiles.length === 0 && !profileQuery && (
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg-card px-6 py-10 text-center">
+                <h3 className="text-sm font-semibold text-text-main">No Profiles yet</h3>
+                <p className="mt-1 max-w-sm text-xs text-text-muted">
+                  Add a named Profile to begin browsing your own Profile catalog.
+                </p>
+                <Button
+                  aria-label="Create Profile"
+                  className="mt-4"
+                  disabled={!profileCatalogVerified || profileBusy !== null}
+                  onClick={() => setShowAddProfile(true)}
+                  type="button"
+                >
+                  <Plus aria-hidden="true" className="h-4 w-4" /> Add Profile
+                </Button>
+              </div>
+            )}
+            {registry && visibleProfiles.length > 0 && (
+              <div className="grid min-w-0 auto-rows-fr gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))'}} data-testid="profile-grid">
+                {visibleProfiles.map((entry) => {
+                  const active = isActiveExecutionProfile(registry, entry);
+                  const profileView = buildNamedProfileView(entry, {activeSnapshotReady: active && activeProfileReady});
+                  // Only the card whose own action is in flight reports busy.
+                  // Any pending mutation still locks the catalog for every card
+                  // through mutationsAvailable, so a create cannot race a rename.
+                  const cardBusyKey = profileBusy?.endsWith(`:${entry.profile_id}`) === true
+                    ? profileBusy
+                    : null;
+                  const busy = cardBusyKey !== null;
+                  return (
+                    <ProfileCard
+                      activationHref={profileHref(entry.profile_id, 'profile-ceremony')}
+                      actionType={cardBusyKey?.split(':')[0] ?? null}
+                      browseHref={profileHref(entry.profile_id)}
+                      closureHref={profileHref(entry.profile_id, 'profile-closure')}
+                      desktopShellAvailable={desktopShellAvailable}
+                      editing={editingProfileId === entry.profile_id}
+                      editingName={editingProfileName}
+                      isActive={active}
+                      isBrowsing={browsingProfileId === entry.profile_id}
+                      isBusy={busy}
+                      key={entry.profile_id}
+                      mutationsAvailable={profileCatalogVerified && profileBusy === null}
+                      onCancelEdit={() => {
+                        setEditingProfileId(null);
+                        setEditingProfileName('');
+                      }}
+                      onDelete={removeProfile}
+                      onDuplicate={(profile) => void duplicateProfile(profile)}
+                      onEdit={(profile) => {
+                        setEditingProfileId(profile.profile_id);
+                        setEditingProfileName(namedProfileDisplayName(profile));
+                      }}
+                      onEditingNameChange={setEditingProfileName}
+                      onLaunch={(profile) => void launchProfile(profile)}
+                      onSubmitEdit={(event, profile) => void submitProfileName(event, profile)}
+                      profile={entry}
+                      profileView={profileView}
+                      profileCeremonyAvailable={profileActivationAvailable}
+                      activeProfileReady={activeProfileReady}
+                      launchReady={launchReady}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         </section>
 
-        {/* Supervisor Snapshot */}
-        <SupervisorSnapshot
-          data={dashboard.supervisor}
-          loading={dashboardLoading && !dashboard.supervisor}
-          error={dashboardError}
-        />
+        <section aria-label="Workspace summary" className="grid gap-4 sm:grid-cols-3">
+          <Link
+            className="group rounded-xl border border-border bg-bg-card p-4 transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+            to={panelRoutes.packs}
+          >
+            <div className="flex items-center gap-2">
+              <Package aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted" />
+              <h3 className="text-sm font-semibold text-text-main group-hover:underline">Active Packs</h3>
+              <ArrowRight aria-hidden="true" className="ml-auto h-4 w-4 shrink-0 text-text-muted" />
+            </div>
+            <div className="mt-2 text-2xl font-semibold tracking-tight text-text-main">{summaryAvailable ? dashboard.activePacks : '--'}</div>
+            <p className="mt-1 text-xs text-text-muted">Enabled in the current v4 Profile</p>
+          </Link>
+          <div className="rounded-xl border border-border bg-bg-card p-4">
+            <div className="flex items-center gap-2">
+              <Workflow aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted" />
+              <h3 className="text-sm font-semibold text-text-main">Flows</h3>
+            </div>
+            <div className="mt-2 text-2xl font-semibold tracking-tight text-text-main">{summaryAvailable ? dashboard.registeredFlows : '--'}</div>
+            <p className="mt-1 text-xs text-text-muted">Registered flow definitions</p>
+          </div>
+          <div className="rounded-xl border border-border bg-bg-card p-4">
+            <div className="flex items-center gap-2">
+              <Monitor aria-hidden="true" className="h-4 w-4 shrink-0 text-text-muted" />
+              <h3 className="text-sm font-semibold text-text-main">Kernel</h3>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className={summaryAvailable && dashboard.kernelStatus === 'running' ? 'h-2.5 w-2.5 shrink-0 rounded-full bg-success' : 'h-2.5 w-2.5 shrink-0 rounded-full bg-warning'}
+              />
+              <span className="text-lg font-semibold tracking-tight text-text-main">
+                {!summaryAvailable ? 'Not verified' : dashboard.kernelStatus === 'running' ? 'Running' : dashboard.kernelStatus === 'error' ? 'Error' : 'Stopped'}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-text-muted">Uptime: {summaryAvailable ? dashboard.uptime : '--'}</p>
+          </div>
+        </section>
       </div>
     </div>
   );
-}
-
-function SupervisorSnapshot({
-  data,
-  loading,
-  error,
-}: {
-  data: DashboardData['supervisor'];
-  loading: boolean;
-  error: string | null;
-}) {
-  const router = data?.router ?? null;
-  const metrics = data?.metrics ?? null;
-  const defaultSandbox = data?.sandbox_providers.find((provider) => provider.default) ?? null;
-  const localSandbox = data?.sandbox_providers.find((provider) => provider.id === 'local_packaged') ?? null;
-  const selectedSession = data?.selected_session ?? null;
-  const computerLayer = router?.fallback_layers.find((layer) => layer.id === 'computer_use') ?? null;
-  const recentEvent = data?.recent_events[0] ?? null;
-  const macDriverOrder = router?.computer_driver_order.darwin ?? [];
-  const routeCount = (router?.operation_layers.length ?? 0) + (router?.fallback_layers.length ?? 0);
-  const capabilities = data?.capabilities ?? null;
-
-  if (!data) {
-    return (
-      <section className="rounded-xl border border-border bg-bg-card p-5">
-        <div className="flex items-center gap-3">
-          <Monitor className="h-4 w-4 text-text-muted" />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold text-text-main">Supervisor Snapshot</h2>
-            <p className="text-xs text-text-muted">
-              {loading ? 'Loading runtime snapshot...' : error || 'Runtime snapshot unavailable.'}
-            </p>
-          </div>
-          {loading && <TobkiriLoadingMark />}
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_minmax(0,1fr)]">
-      <article className="min-w-0 rounded-xl border border-border bg-bg-card p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Route className="h-4 w-4 text-accent" />
-            <h2 className="text-sm font-semibold text-text-main">Runtime Router</h2>
-          </div>
-          <Badge variant="secondary" className="text-[10px]">{formatRuntimeLabel(router?.policy)}</Badge>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-          <MetricTile label="Routes" value={String(routeCount || '--')} />
-          <MetricTile label="Structured" value={String(router?.operation_layers.length ?? '--')} />
-          <MetricTile label="Fallback" value={String(router?.fallback_layers.length ?? '--')} />
-        </div>
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-text-muted">First layer</span>
-            <span className="truncate text-text-main">{router?.operation_layers[0]?.label ?? '--'}</span>
-          </div>
-          <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-text-muted">Last layer</span>
-            <span className="truncate text-text-main">{computerLayer?.label ?? 'Computer use'}</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-text-muted">
-            <Terminal className="h-3.5 w-3.5" />
-            <span className="truncate">{formatCompactList(macDriverOrder.slice(0, 4))}</span>
-          </div>
-        </div>
-      </article>
-
-      <article className="min-w-0 rounded-xl border border-border bg-bg-card p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Cloud className="h-4 w-4 text-accent" />
-            <h2 className="text-sm font-semibold text-text-main">Sandbox Providers</h2>
-          </div>
-          <Badge variant="success" className="text-[10px]">{defaultSandbox?.tier ?? 'default'}</Badge>
-        </div>
-        <div className="mt-4 space-y-3">
-          <ProviderRow provider={defaultSandbox} />
-          <ProviderRow provider={localSandbox} />
-        </div>
-        <div className="mt-4 flex items-center gap-2 text-xs text-text-muted">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          <span className="truncate">{formatCompactList(data.security_guardrails.slice(0, 3))}</span>
-        </div>
-      </article>
-
-      <article className="min-w-0 rounded-xl border border-border bg-bg-card p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Monitor className="h-4 w-4 text-accent" />
-            <h2 className="text-sm font-semibold text-text-main">Run Snapshot</h2>
-          </div>
-          <Badge variant={capabilities?.snapshot ? 'success' : 'secondary'} className="text-[10px]">
-            {capabilities?.snapshot ? 'Snapshot' : 'Unavailable'}
-          </Badge>
-        </div>
-        <div className="mt-4 grid grid-cols-4 gap-2 text-center">
-          <MetricTile label="Active" value={String(metrics?.active_runs ?? 0)} />
-          <MetricTile label="Approval" value={String(metrics?.waiting_approvals ?? 0)} />
-          <MetricTile label="Stale" value={String(metrics?.stale_runs ?? 0)} />
-          <MetricTile label="Failed" value={String(metrics?.failed_runs ?? 0)} />
-        </div>
-        <div className="mt-4 space-y-2 text-xs">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-text-muted">Run</span>
-            <span className="truncate text-text-main">{selectedSession?.run_id ?? 'No run snapshot'}</span>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-text-muted">Last event</span>
-            <span className="truncate text-text-main">{recentEvent?.event_type ?? '--'}</span>
-          </div>
-          <CapabilityRow label="Live screen" enabled={capabilities?.live_screen === true} />
-          <CapabilityRow label="Takeover" enabled={capabilities?.takeover === true} />
-          <CapabilityRow label="Replay" enabled={capabilities?.replay === true} />
-        </div>
-      </article>
-    </section>
-  );
-}
-
-function MetricTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-bg-hover/40 px-2 py-2">
-      <div className="text-[11px] text-text-muted">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-text-main">{value}</div>
-    </div>
-  );
-}
-
-function CapabilityRow({ label, enabled }: { label: string; enabled: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-text-muted">{label}</span>
-      <span className={enabled ? 'truncate text-text-main' : 'truncate text-text-muted'}>
-        {enabled ? 'Available' : 'Not available'}
-      </span>
-    </div>
-  );
-}
-
-function ProviderRow({ provider }: { provider: NonNullable<DashboardData['supervisor']>['sandbox_providers'][number] | null }) {
-  if (!provider) {
-    return null;
-  }
-  return (
-    <div className="flex items-start justify-between gap-3 rounded-lg border border-border bg-bg-hover/40 px-3 py-2">
-      <div className="min-w-0">
-        <div className="truncate text-xs font-medium text-text-main">{provider.label}</div>
-        <div className="mt-0.5 truncate text-[11px] text-text-muted">{formatCompactList(provider.providers.slice(0, 4))}</div>
-      </div>
-      <Badge variant={provider.default ? 'success' : 'secondary'} className="shrink-0 text-[10px]">
-        {provider.default ? 'Default' : formatRuntimeLabel(provider.user_burden)}
-      </Badge>
-    </div>
-  );
-}
-
-function formatRuntimeLabel(value: string | undefined): string {
-  if (!value) return '--';
-  return value.replaceAll('_', ' ');
-}
-
-function formatCompactList(values: string[]): string {
-  if (!values.length) return '--';
-  return values.map(formatRuntimeLabel).join(' / ');
 }
 
 function DashboardSkeleton() {

@@ -1,76 +1,77 @@
 {
   "catalog_api_version": "io.tobkiri.executable-catalog.v4",
-  "catalog_digest": "sha256:d327b2bb02fcd58f36e9c37750e337cbcb370cc2d44193b2a3e8587af8753ec1",
   "pack_id": "rumi_tool_authoring_pack",
-  "source_identity": "sha256:110aedd002865a99636ea79703f5ea62ea7fdd029c203db0265f2b35cbae1ecd",
+  "source_identity": "sha256:9aa5f29bcaa42407b352364b3a8a08b4c6f358232fc34d69370ca464dfd9bd3d",
   "variants": [
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_tool_authoring_pack.tool-authoring.publish.python",
       "function_id": "rumi_tool_authoring_pack.tool-authoring.publish",
-      "implementation_digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
       "implementation_path": "runtime/authoring.py",
+      "implementation_digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.action.tool.authoring.publish.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:cd7a3ebc54c48ab00c37224f96f056dabc07b8863bbded6ee0747bf0974da656",
+          "operation_id": "rumi_tool_authoring_pack.tool-authoring-publish",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_tool_authoring_pack.tool-authoring-publish",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:cd7a3ebc54c48ab00c37224f96f056dabc07b8863bbded6ee0747bf0974da656",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_tool_authoring_pack.tool-authoring.publish.python"
+      ]
     },
     {
-      "architecture": "any",
-      "backend": "tobkiri.python-host-v4",
-      "execution_domain_profile": "host.extension.default.v1",
-      "execution_kind": "host_extension",
+      "variant_id": "rumi_tool_authoring_pack.tool-authoring.validate.python",
       "function_id": "rumi_tool_authoring_pack.tool-authoring.validate",
-      "implementation_digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
       "implementation_path": "runtime/authoring.py",
+      "implementation_digest": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
+      "execution_kind": "host_extension",
+      "platform": "any",
+      "architecture": "any",
+      "runtime_abi": "python3.13",
+      "backend": "tobkiri.python-host-v4",
       "materialization_mode": "on_demand",
+      "execution_domain_profile": "host.extension.default.v1",
       "operations": [
         {
           "contract_id": "tobkiri.service.tool.authoring.validate.v1",
           "contract_version": "1.0.0",
-          "effect_class": "privileged",
-          "error_schema": {
-            "type": "object"
-          },
-          "idempotency": "none",
+          "revision_digest": "sha256:19feb9d8bbd4ff7cc45275b0192413bdae7155a6ec60704fec953ca09618fb6e",
+          "operation_id": "rumi_tool_authoring_pack.tool-authoring-validate",
           "input_schema": {
             "type": "object"
           },
-          "operation_id": "rumi_tool_authoring_pack.tool-authoring-validate",
           "output_schema": {
             "type": "object"
           },
-          "revision_digest": "sha256:19feb9d8bbd4ff7cc45275b0192413bdae7155a6ec60704fec953ca09618fb6e",
+          "error_schema": {
+            "type": "object"
+          },
+          "effect_class": "privileged",
           "timeout_default_ms": 30000,
-          "timeout_hard_max_ms": 300000
+          "timeout_hard_max_ms": 300000,
+          "idempotency": "none"
         }
-      ],
-      "platform": "any",
-      "runtime_abi": "python3.13",
-      "variant_id": "rumi_tool_authoring_pack.tool-authoring.validate.python"
+      ]
     }
-  ]
+  ],
+  "materialization_catalog_digest": "sha256:d327b2bb02fcd58f36e9c37750e337cbcb370cc2d44193b2a3e8587af8753ec1",
+  "catalog_digest": "sha256:f8f3c681fa926a002f49c5a3bcd36cb399f22868085c1c10b6f52a6e51e35e07"
 }

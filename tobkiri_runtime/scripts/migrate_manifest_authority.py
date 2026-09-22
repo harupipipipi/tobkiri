@@ -17,6 +17,7 @@ from backend_core.ecosystem.spec.schema.validator import (  # noqa: E402
     validate_ecosystem,
 )
 from scripts.quality.legacy_manifest_v3 import load_manifest  # noqa: E402
+from scripts.generate_executable_source_registry_v1 import build_registry  # noqa: E402
 from scripts.offline_legacy_projection import (  # noqa: E402
     render_legacy_ecosystem,
 )
@@ -25,6 +26,8 @@ from tobkiri_protocol.validation import validate_document  # noqa: E402
 
 ECOSYSTEM = ROOT / "ecosystem"
 CATALOG = ROOT / "schemas" / "manifest_authority.v1.json"
+PACK_V4_CATALOG = ROOT / "schemas" / "pack_v4_catalog.v1.json"
+MIGRATION_POLICY = ROOT / "schemas" / "legacy_manifest_migration_policy.v1.json"
 V4_PROJECTION_GENERATOR = "tobkiri.scripts.migrate_manifest_authority/v2"
 
 
@@ -62,7 +65,48 @@ def _load_v4(pack_root: Path) -> dict[str, Any]:
         "source_identity": source_identity,
         "artifact_digest": artifact_digest,
         "implementation_digests": implementation_digests,
+        "functions": {
+            function["id"]: function["implementation_digest"]
+            for function in payload.get("functions", [])
+        },
     }
+
+
+def _matches_legacy_adapter(
+    pack_root: Path, entrypoint: dict[str, Any], v4: dict[str, Any], digest: str
+) -> bool:
+    """Accept only independently verified same-owner implementation migrations.
+
+    A completely migrated Pack no longer has a v4 Function executing its legacy
+    source. Keep that source as offline provenance, not as a fake live Function.
+    The registry builder verifies old/new bytes and the full adapter identity.
+    """
+    registry = build_registry(ECOSYSTEM)
+    module = entrypoint.get("module")
+    for function_id, record in registry["packs"].items():
+        if (
+            record["pack_id"] != pack_root.name
+            or record["owner"] != pack_root.name
+            or v4.get("functions", {}).get(function_id) != record["implementation_digest"]
+        ):
+            continue
+        sources = record["source"]
+        legacy = any(
+            source.get("kind") == "legacy-v3-entrypoint"
+            and source.get("entrypoint_id") == entrypoint.get("id")
+            and source.get("module") == module
+            and source.get("symbol") == entrypoint.get("symbol")
+            for source in sources
+        )
+        adapted = any(
+            source.get("kind") == "explicit-implementation-adapter"
+            and source.get("legacy_implementation_digest") == digest
+            and module == "ecosystem." + pack_root.name + "." + source["legacy_implementation_path"].removesuffix(".py").replace("/", ".")
+            for source in sources
+        )
+        if legacy and adapted:
+            return True
+    return False
 
 
 def _v4_build_identity(v4: dict[str, Any]) -> str:
@@ -220,9 +264,11 @@ def _normalize_v3(
         if not candidate.is_file():
             raise SystemExit(f"v3 entrypoint module is missing: {candidate}")
         artifact_hash = _sha256(candidate)
-        if v4["implementation_digests"] and artifact_hash not in v4[
-            "implementation_digests"
-        ]:
+        if (
+            v4["implementation_digests"]
+            and artifact_hash not in v4["implementation_digests"]
+            and not _matches_legacy_adapter(pack_root, entrypoint, v4, artifact_hash)
+        ):
             raise SystemExit(
                 f"v3 entrypoint is not pinned by canonical v4 implementation: {candidate}"
             )
@@ -312,7 +358,35 @@ def _schema_properties() -> set[str]:
     return set(schema["properties"])
 
 
-def _normalize_legacy(data: dict[str, Any]) -> dict[str, Any]:
+def _runtime_dependency_aliases(pack_ids: tuple[str, ...]) -> frozenset[str]:
+    """Load the finite dependency aliases retired by legacy projection."""
+
+    try:
+        policy = json.loads(MIGRATION_POLICY.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot read legacy manifest migration policy: {exc}") from exc
+    aliases = policy.get("runtime_dependency_aliases")
+    valid = (
+        policy.get("policy_api_version")
+        == "io.tobkiri.legacy-manifest-migration-policy.v1"
+        and isinstance(aliases, list)
+        and bool(aliases)
+        and all(
+            isinstance(alias, str) and alias.strip() == alias and alias
+            for alias in aliases
+        )
+        and aliases == sorted(aliases)
+        and len(aliases) == len(set(aliases))
+        and set(aliases).issubset(pack_ids)
+    )
+    if not valid:
+        raise SystemExit("legacy manifest migration policy is invalid")
+    return frozenset(aliases)
+
+
+def _normalize_legacy(
+    data: dict[str, Any], *, runtime_dependency_aliases: frozenset[str]
+) -> dict[str, Any]:
     result = dict(data)
     metadata = result.get("metadata")
     metadata = dict(metadata) if isinstance(metadata, dict) else {}
@@ -336,11 +410,14 @@ def _normalize_legacy(data: dict[str, Any]) -> dict[str, Any]:
     elif depends_on is not None:
         annotations["depends_on"] = depends_on
     dependencies = result.get("dependencies")
-    if isinstance(dependencies, dict) and "defaultspack" in dependencies:
-        annotations["runtime_dependency_aliases"] = ["defaultspack"]
+    if isinstance(dependencies, dict):
+        aliases = sorted(set(dependencies) & runtime_dependency_aliases)
         dependencies = dict(dependencies)
-        dependencies.pop("defaultspack", None)
-        result["dependencies"] = dependencies
+        for alias in aliases:
+            dependencies.pop(alias, None)
+        if aliases:
+            annotations["runtime_dependency_aliases"] = aliases
+            result["dependencies"] = dependencies
     elif isinstance(dependencies, list):
         runtime_aliases = []
         filtered = []
@@ -350,8 +427,9 @@ def _normalize_legacy(data: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(dependency, dict)
                 else dependency
             )
-            if str(dependency_id or "").strip() == "defaultspack":
-                runtime_aliases.append("defaultspack")
+            normalized_dependency_id = str(dependency_id or "").strip()
+            if normalized_dependency_id in runtime_dependency_aliases:
+                runtime_aliases.append(normalized_dependency_id)
                 continue
             filtered.append(dependency)
         if runtime_aliases:
@@ -380,12 +458,15 @@ def _normalize_legacy(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def migrate(*, check: bool) -> None:
-    pack_roots = sorted(path for path in ECOSYSTEM.iterdir() if path.is_dir())
-    authorities = {
-        root.name: "v4-authoritative"
-        for root in pack_roots
-        if root.name != "setup_pack" and not root.name.startswith(".")
-    }
+    pack_catalog = json.loads(PACK_V4_CATALOG.read_text(encoding="utf-8"))
+    pack_ids = tuple(str(item) for item in pack_catalog.get("pack_ids") or ())
+    if len(pack_ids) != len(set(pack_ids)):
+        raise SystemExit("canonical Pack catalog contains duplicate IDs")
+    runtime_dependency_aliases = _runtime_dependency_aliases(pack_ids)
+    pack_roots = [ECOSYSTEM / pack_id for pack_id in sorted(pack_ids)]
+    if any(not root.is_dir() for root in pack_roots):
+        raise SystemExit("canonical Pack catalog references a missing Pack root")
+    authorities = {root.name: "v4-authoritative" for root in pack_roots}
     catalog_text = json.dumps(
         {"version": 1, "packs": authorities},
         ensure_ascii=False,
@@ -404,7 +485,8 @@ def migrate(*, check: bool) -> None:
             continue
         v4 = _load_v4(root)
         ecosystem = _normalize_legacy(
-            json.loads(ecosystem_path.read_text(encoding="utf-8"))
+            json.loads(ecosystem_path.read_text(encoding="utf-8")),
+            runtime_dependency_aliases=runtime_dependency_aliases,
         )
         v3_path = root / "rumi.pack.v3.json"
         artifact_index_hash = _normalize_artifact_index(
