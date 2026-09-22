@@ -1,17 +1,16 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from domain.frontend.command_protocol import CommandProtocolRegistry
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 from domain.frontend.offline_queue import OfflineQueueError
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
+    """Run with a trusted caller-supplied owner, never one from request data."""
     payload = input_data if isinstance(input_data, dict) else {}
     action = str(payload.get("action") or "enqueue").strip()
-    registry = CommandProtocolRegistry()
+    registry = CommandProtocolRegistry(settings_owner=settings_owner)
     try:
         owner_key = registry.owner_key(payload, context or {})
         if action == "enqueue":
@@ -37,15 +36,16 @@ def run(input_data, context):
                 )
             )
         if action == "cancel":
+            cancellation = registry.offline.cancel(
+                str(payload.get("queue_id") or ""),
+                owner_key=owner_key,
+            )
             return ok(
                 {
                     "api_version": "tobkiri.commands/v1",
-                    "status": "cancelled"
-                    if registry.offline.cancel(
-                        str(payload.get("queue_id") or ""),
-                        owner_key=owner_key,
-                    )
-                    else "failed",
+                    "status": cancellation["status"],
+                    "too_late": cancellation["too_late"],
+                    "queue": cancellation.get("queue"),
                 }
             )
     except (TypeError, ValueError, OfflineQueueError) as exc:

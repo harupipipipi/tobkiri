@@ -242,6 +242,10 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "general.composer_placeholder": { label: "入力欄の案内文", help: "メッセージ入力欄が空のときに表示する案内文です。" },
   "general.show_activity_in_messages": { label: "回答に処理状況を表示", help: "回答の上部に、処理の進み具合や利用した機能を表示します。" },
   "general.keyboard_button_navigation": { label: "キーボードでボタンを移動", help: "Tabキーで入力欄やサイドバーのボタンへ移動できるようにします。" },
+  "general.manual_runtime_mode_selection": {
+    label: "実行モードを手動選択できるようにする",
+    help: "通常はオフのまま、自律エージェントを使用します。オンにすると入力欄に実行モード選択を表示します。",
+  },
   "general.spotlight_shortcut_enabled": { label: "会話検索のショートカットを使う", help: "どの画面からでもショートカットで会話検索を開けます。" },
   "general.spotlight_shortcut": { label: "会話検索のキー", help: "会話検索を開くキーの組み合わせを指定します。" },
   "general.spotlight_shortcut_text_input": { label: "入力中も会話検索を開く", help: "入力欄にカーソルがあるときも会話検索のショートカットを使えます。" },
@@ -282,7 +286,10 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "*.lightweight_model": { label: "軽量モデル" },
   "*.preferred_model_group": { label: "モデルグループ" },
   "*.auto_route_within_group": { label: "用途に合わせてグループ内で自動選択" },
-  "*.model_api_routes": { label: "モデルごとのAPI接続" },
+  "*.model_api_routes": {
+    label: "モデル別の接続先",
+    help: "必要な場合だけ、モデルごとに使用するAPIキーを指定します。通常はプロバイダーの既定キーが使われます。",
+  },
   "*.thinking_level": { label: "考える深さ" },
   "*.deepthink_enabled": { label: "長時間の深い検討を使う" },
   "*.model_allowlist": { label: "利用するモデル", help: "モデル選択画面に表示し、Tobkiriが自動選択できるモデルを選びます。" },
@@ -391,6 +398,16 @@ function localizedSectionMeta(locale: LocaleSetting): Array<Omit<ControlCenterSe
 
 const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   quick_setup: "quick_setup",
+  models_api: "models_api",
+  workspace_ui: "workspace_ui",
+  accounts_connections: "accounts_connections",
+  tools_mcp: "tools_mcp",
+  computer_automation: "computer_automation",
+  privacy_security: "privacy_security",
+  profiles: "profiles",
+  packs_extensions: "packs_extensions",
+  advanced: "advanced",
+  diagnostics: "diagnostics",
   settings_home: "quick_setup",
   home: "quick_setup",
   setup: "quick_setup",
@@ -404,14 +421,17 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   providers: "accounts_connections",
   provider: "accounts_connections",
   accounts: "accounts_connections",
+  app: "accounts_connections",
+  apps: "accounts_connections",
   connections: "accounts_connections",
   integrations: "accounts_connections",
+  mobile: "accounts_connections",
+  pairing: "accounts_connections",
   oauth: "accounts_connections",
   external_input: "accounts_connections",
   external_output: "accounts_connections",
   external_channel: "accounts_connections",
   line: "accounts_connections",
-  mobile: "accounts_connections",
   features: "features",
   feature: "features",
   calendar: "features",
@@ -437,7 +457,6 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   workspace: "workspace_ui",
   ui: "workspace_ui",
   profile: "profiles",
-  profiles: "profiles",
   adaptive: "profiles",
   privacy: "privacy_security",
   security: "privacy_security",
@@ -448,8 +467,6 @@ const SECTION_ID_ALIASES: Record<string, ControlCenterSectionId> = {
   pack: "packs_extensions",
   extensions: "packs_extensions",
   extension: "packs_extensions",
-  advanced: "advanced",
-  diagnostics: "diagnostics",
   debug: "diagnostics",
   logs: "diagnostics",
 };
@@ -636,6 +653,46 @@ export function buildControlCenterSections(settingsSections: SettingsSection[], 
     for (const targetId of sourceSectionTargets) {
       byId.get(targetId)?.sourceSections.push(sourceSection);
     }
+  }
+  const connections = byId.get("accounts_connections");
+  const models = byId.get("models_api");
+  const sharedApiKeyField = connections?.fields.find((field) => (
+    field.sourceSectionId === "apis"
+    && field.id === "api_keys"
+    && (field.type === "api_keys" || String(field.type) === "api_key_setup")
+  ));
+  if (models && sharedApiKeyField) {
+    const modelApiKeyField = {
+      ...sharedApiKeyField,
+      label: normalizeLocale(locale) === "ja" ? "AI APIキー" : "AI API keys",
+      help: normalizeLocale(locale) === "ja"
+        ? "メインモデルなどを選んだあと、AIモデルで使うAPIキーをここで登録します。"
+        : "After choosing your main models, register the API keys those AI models can use here.",
+      type: "api_key_setup",
+      renderer: "api_key_setup",
+      provider_scope: "llm",
+      controlSectionId: "models_api" as const,
+    } as ControlCenterField;
+    models.fields.push(modelApiKeyField);
+    const apiSource = settingsSections.find((section) => section.id === "apis");
+    if (apiSource && !models.sourceSections.some((section) => section.id === apiSource.id)) {
+      models.sourceSections.push(apiSource);
+    }
+    const modelFieldRank = (field: ControlCenterField): number => {
+      if (["main_model", "lightweight_model", "preferred_model", "preferred_model_group", "auto_route_within_group"].includes(field.id)) {
+        return 100;
+      }
+      if (field.sourceSectionId === "apis" && field.id === "api_keys") return 200;
+      if (field.id === "model_api_routes") return 900;
+      return 400;
+    };
+    models.fields = models.fields
+      .map((field, index) => ({ field, index }))
+      .sort((left, right) => (
+        modelFieldRank(left.field) - modelFieldRank(right.field)
+        || left.index - right.index
+      ))
+      .map(({ field }) => field);
   }
   const quickSetup = byId.get("quick_setup");
   if (quickSetup) {

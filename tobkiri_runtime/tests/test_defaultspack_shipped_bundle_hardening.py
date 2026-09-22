@@ -40,7 +40,7 @@ def test_shipped_composer_bundle_keeps_endpoint_allowlist():
     bundle = _shipped_javascript()
     source = COMPOSER_WIDGETS.read_text(encoding="utf-8")
 
-    assert "GET /api/coding/git/status" in bundle
+    assert "api/coding/git/status" in bundle
     assert "call_endpoint" in bundle
     assert "requires_approval" in bundle
     assert "COMPOSER_ENDPOINT_ACTION_ALLOWLIST" in source

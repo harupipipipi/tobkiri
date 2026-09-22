@@ -12,7 +12,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List
 
-from ..api_key_store import provider_named_api_keys
+from ..api_key_store import provider_named_api_keys, read_provider_api_key
 from ..base_provider import BaseProvider
 
 
@@ -22,22 +22,14 @@ class AzureOpenAIProvider(BaseProvider):
     _MODEL_INVENTORY_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
     _MODEL_INVENTORY_CACHE_TTL_SECONDS = 300
 
-    def __init__(self):
-        self._api_key = str(os.environ.get("AZURE_OPENAI_API_KEY", "") or "").strip()
+    def __init__(self, api_key: str | None = None):
+        self._api_key = str(api_key or read_provider_api_key(self.provider_id, "legacy") or "").strip()
         self._base_url = self._configured_base_url()
-        self._api_version = str(
-            os.environ.get("AZURE_OPENAI_API_VERSION", self.DEFAULT_API_VERSION)
-            or self.DEFAULT_API_VERSION
-        ).strip()
+        self._api_version = str(self.DEFAULT_API_VERSION).strip()
         self._ssl_ctx = ssl.create_default_context()
 
     @classmethod
     def _configured_base_url(cls) -> str:
-        configured = str(
-            os.environ.get("AZURE_OPENAI_ENDPOINT") or os.environ.get("AZURE_OPENAI_BASE_URL") or ""
-        ).strip()
-        if configured:
-            return configured.rstrip("/")
         for connection in provider_named_api_keys(cls.provider_id):
             base_url = str(connection.get("base_url") or "").strip()
             if connection.get("configured") and base_url:

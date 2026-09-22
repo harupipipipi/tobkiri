@@ -28,4 +28,3 @@ class ContractResult<T> {
   final List<String> diagnostics;
   final T? value;
 }
-

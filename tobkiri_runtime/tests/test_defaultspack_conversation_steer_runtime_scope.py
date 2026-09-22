@@ -23,7 +23,11 @@ def test_steer_recovers_persisted_profile_for_request_worker(monkeypatch):
         "get_container",
         lambda: SimpleNamespace(get_or_none=lambda key: registry),
     )
-    monkeypatch.setattr(steer, "persisted_resolved_profile", lambda: plan)
+    monkeypatch.setattr(
+        steer,
+        "captured_profile_id",
+        lambda current_registry: plan.profile_id,
+    )
     monkeypatch.setattr(
         steer,
         "invoke_global_contract",

@@ -48,9 +48,13 @@ def _connection_provider(provider_id: str, *, pack_root: Path | None = None):
 
 
 def _secrets_dir(pack_root: Path | None = None) -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
-    if override:
-        return Path(override)
+    if pack_root is None:
+        configured_override = os.getenv("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
+        if configured_override:
+            return Path(configured_override).expanduser()
+        configured_user_data = os.getenv("RUMI_USER_DATA", "").strip()
+        if configured_user_data:
+            return Path(configured_user_data).expanduser() / "secrets"
     return (pack_root or _pack_root()) / "user_data" / "secrets"
 
 

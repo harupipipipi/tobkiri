@@ -36,7 +36,7 @@
     "replay_index": "owned_by_rumi_agent_workroom_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Rumi Agent Workroom Pack is declarative and cannot enter defaultspack until owner-pack integration, audit receipts, and real success cases prove it should be default.",
     "criteria": [

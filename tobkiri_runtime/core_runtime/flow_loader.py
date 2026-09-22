@@ -414,9 +414,11 @@ class FlowLoader:
         for yaml_file in sorted(directory.glob("*.flow.yaml")):
             result = self.load_flow_file(yaml_file, "official", None)
 
-            if result.success and result.flow_def:
+            flow_id = result.flow_id
+            flow_def = result.flow_def
+            if result.success and flow_def is not None and flow_id is not None:
                 # 重複チェック
-                if result.flow_id in self._loaded_flows:
+                if flow_id in self._loaded_flows:
                     self._load_errors.append({
                         "file": str(yaml_file),
                         "error": f"Duplicate flow_id: {result.flow_id}",
@@ -424,7 +426,7 @@ class FlowLoader:
                     })
                     continue
 
-                self._loaded_flows[result.flow_id] = result.flow_def
+                self._loaded_flows[flow_id] = flow_def
             else:
                 self._load_errors.append({
                     "file": str(yaml_file),
@@ -450,9 +452,11 @@ class FlowLoader:
 
             result = self.load_flow_file(yaml_file, "shared", None)
 
-            if result.success and result.flow_def:
-                if result.flow_id in self._loaded_flows:
-                    existing = self._loaded_flows[result.flow_id]
+            flow_id = result.flow_id
+            flow_def = result.flow_def
+            if result.success and flow_def is not None and flow_id is not None:
+                if flow_id in self._loaded_flows:
+                    existing = self._loaded_flows[flow_id]
                     if existing.source_type == "official":
                         self._load_errors.append({
                             "file": str(yaml_file),
@@ -461,7 +465,7 @@ class FlowLoader:
                         })
                         continue
 
-                self._loaded_flows[result.flow_id] = result.flow_def
+                self._loaded_flows[flow_id] = flow_def
             else:
                 self._load_errors.append({
                     "file": str(yaml_file),
@@ -529,9 +533,11 @@ class FlowLoader:
 
                 result = self.load_flow_file(yaml_file, "local_pack", LOCAL_PACK_ID)
 
-                if result.success and result.flow_def:
-                    if result.flow_id in self._loaded_flows:
-                        existing = self._loaded_flows[result.flow_id]
+                flow_id = result.flow_id
+                flow_def = result.flow_def
+                if result.success and flow_def is not None and flow_id is not None:
+                    if flow_id in self._loaded_flows:
+                        existing = self._loaded_flows[flow_id]
                         # 公式・shared・pack提供を上書きしない
                         if existing.source_type in ("official", "shared", "pack"):
                             self._load_errors.append({
@@ -542,7 +548,7 @@ class FlowLoader:
                             })
                             continue
 
-                    self._loaded_flows[result.flow_id] = result.flow_def
+                    self._loaded_flows[flow_id] = flow_def
                 else:
                     self._load_errors.append({
                         "file": str(yaml_file),
@@ -559,11 +565,13 @@ class FlowLoader:
 
             result = self.load_flow_file(yaml_file, source_type, pack_id)
 
-            if result.success and result.flow_def:
+            flow_id = result.flow_id
+            flow_def = result.flow_def
+            if result.success and flow_def is not None and flow_id is not None:
                 # Wave 9: Pack提供 Flow の ID プレフィックスチェック
                 if source_type == "pack" and pack_id:
                     expected_prefix = f"{pack_id}."
-                    if not result.flow_id.startswith(expected_prefix):
+                    if not flow_id.startswith(expected_prefix):
                         warn_msg = (
                             f"Pack '{pack_id}' provides flow '{result.flow_id}' "
                             f"without expected prefix '{expected_prefix}'. "
@@ -589,8 +597,8 @@ class FlowLoader:
                             pass
 
                 # 重複チェック
-                if result.flow_id in self._loaded_flows:
-                    existing = self._loaded_flows[result.flow_id]
+                if flow_id in self._loaded_flows:
+                    existing = self._loaded_flows[flow_id]
                     # 公式を上書きしない
                     if existing.source_type == "official" and source_type != "official":
                         self._load_errors.append({
@@ -611,7 +619,7 @@ class FlowLoader:
                         })
                         continue
 
-                self._loaded_flows[result.flow_id] = result.flow_def
+                self._loaded_flows[flow_id] = flow_def
             else:
                 self._load_errors.append({
                     "file": str(yaml_file),

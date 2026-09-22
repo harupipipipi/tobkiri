@@ -432,7 +432,11 @@ def _apply_selector_schema(catalog: dict[str, Any]) -> None:
         if not isinstance(section, dict):
             continue
         for field in section.get("fields", []):
-            if isinstance(field, dict) and field.get("type") in {"model_select", "provider_select"}:
+            if isinstance(field, dict) and field.get("type") in {
+                "model_select",
+                "provider_select",
+                "model_api_routes",
+            }:
                 field["selector_schema"] = deepcopy(selector_schema)
 
 
@@ -726,7 +730,7 @@ def _dedupe_diagnostics(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _diagnostic_to_dict(diagnostic: TemplateDiagnostic) -> dict[str, Any]:
-    result = {
+    result: dict[str, Any] = {
         "level": diagnostic.severity,
         "severity": diagnostic.severity,
         "code": diagnostic.code,

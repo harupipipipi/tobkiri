@@ -1,15 +1,167 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.job_action_broker","version":"1.0.0","kind":"service","display_name":"Rumi Job Action Broker","description":"Deterministic global job adapter routing and replay protection."},
-  "contracts":{"provides":[
-    {"id":"rumi.action.job.v1","version":"1.0.0","provider_instance_id":"job-action.broker","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_job_action_broker_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["job.dispatch"]}
-  ],"requires":[{"id":"rumi.action.job.adapter.v1","version":">=1.0.0,<2.0.0","cardinality":"many","optional":true,"failure":"isolate"}]},
-  "entrypoints":[{"id":"job-action-broker","contract_id":"rumi.action.job.v1","loader":"python","module":"ecosystem.rumi_job_action_broker_pack.runtime.broker","symbol":"create_job_action","artifact_hash":"sha256:af2449859b11637b4bf4062b83fed69decf5a663f72ad77e81c05aab7265a51a"}],
-  "resources":[],
-  "storage":[{"namespace":"rumi.job.dispatch_ledger","schema_version":"1.0.0","authoritative":true,"retention":"profile policy","export_import":false}],
-  "permissions":[{"capability":"job.dispatch","access":"execute","approval_required":false},{"capability":"job.adapter.invoke","access":"execute","approval_required":false}],
-  "provenance":{"content_hash":"sha256:af2449859b11637b4bf4062b83fed69decf5a663f72ad77e81c05aab7265a51a","build_identity":"rumi-job-action-broker-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.scheduler.runner"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Stop dispatch, expire leases, then select the prior broker without replaying completed keys."},
-  "extensions":{"rumi.job_action.boundary":{"adapter_selection":"exact_instance_key","first_found_fallback":false,"idempotency":true,"replay_mismatch":"deny","target_imports":false}}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.job.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_job_action_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "job-action.broker",
+        "required_capabilities": [
+          "job.dispatch"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "many",
+        "id": "rumi.action.job.adapter.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:741ba3bb0e01cbd0a485cb63baa3c5ba5b5635a85ede9289d214ea71a73711ac",
+      "contract_id": "rumi.action.job.v1",
+      "id": "job-action-broker",
+      "loader": "python",
+      "module": "ecosystem.rumi_job_action_broker_pack.runtime.broker",
+      "symbol": "create_job_action"
+    }
+  ],
+  "extensions": {
+    "rumi.job_action.boundary": {
+      "adapter_selection": "exact_instance_key",
+      "first_found_fallback": false,
+      "idempotency": true,
+      "replay_mismatch": "deny",
+      "target_imports": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.job.v1"
+          ],
+          "requires": [
+            "rumi.action.job.adapter.v1"
+          ]
+        },
+        "dependencies": {},
+        "description": "Deterministic global job adapter routing and replay protection.",
+        "display_name": "Rumi Job Action Broker",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:43757a9f974acf5cd42934af7d0795e19722cae0b2cf195e1999e793006c0bad",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:e3813b73fc0b5c599ba9a1075f10d81b89fcaed9796690d768ad02b66bc881b4"
+          },
+          "owner_surfaces": [
+            "job_dispatch_idempotency_ledger"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_job_action_broker_pack",
+        "pack_identity": "rumi:ecosystem/rumi_job_action_broker_pack",
+        "provenance": {
+          "build_identity": "rumi_job_action_broker_pack:1.0.0",
+          "content_hash": "sha256:741ba3bb0e01cbd0a485cb63baa3c5ba5b5635a85ede9289d214ea71a73711ac",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "job.adapter.invoke",
+          "job.dispatch"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_job_action_broker_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_job_action_broker_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:e3813b73fc0b5c599ba9a1075f10d81b89fcaed9796690d768ad02b66bc881b4"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.scheduler.runner"
+    ],
+    "removal_wave": 10,
+    "rollback": "Stop dispatch, expire leases, then select the prior broker without replaying completed keys.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Deterministic global job adapter routing and replay protection.",
+    "display_name": "Rumi Job Action Broker",
+    "id": "rumi.job_action_broker",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "job.dispatch"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "job.adapter.invoke"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_job_action_broker_pack:1.0.0",
+    "content_hash": "sha256:741ba3bb0e01cbd0a485cb63baa3c5ba5b5635a85ede9289d214ea71a73711ac",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.job.dispatch_ledger",
+      "retention": "profile policy",
+      "schema_version": "1.0.0"
+    }
+  ]
 }
-

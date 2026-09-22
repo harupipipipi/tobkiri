@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 from blocks._common import error, ok
 from blocks.coding._approval import approval_required
+from blocks.coding._workspace import canonical_mutation_guard
 from domain.coding.contract_adapter import (
     WORKSPACE_ACTION,
     WORKSPACE_RESOURCE,
@@ -50,6 +51,7 @@ def mutate(
         input_data=input_data,
         context=dict(context) if isinstance(context, Mapping) else None,
         selected_workspace_id=str(arguments.get("workspace_id") or ""),
+        mutation_guard=canonical_mutation_guard,
     )
     if not authorization.get("authorized"):
         if authorization.get("reason") == "approval_required":

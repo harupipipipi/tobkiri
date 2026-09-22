@@ -17,6 +17,15 @@ export interface GetRequestSnapshot {
   prefetchInFlight: number;
 }
 
+export interface GetRequestInvalidationOptions {
+  /**
+   * The request currently refreshing an expired session. It has not yet read
+   * the protected resource, so it can safely continue after the new session
+   * is installed while every other in-flight request is made stale.
+   */
+  preserveSignal?: AbortSignal;
+}
+
 interface CacheEntry {
   bytes: number;
   expiresAt: number;
@@ -28,6 +37,7 @@ interface InFlightEntry {
   epoch: number;
   foreground: boolean;
   promise: Promise<unknown>;
+  extendDeadline: (timeoutMs: number) => void;
 }
 
 export class RequestInvalidatedError extends Error {
@@ -105,22 +115,37 @@ export class GetRequestCoordinator {
     let shared = this.inFlight.get(key);
     if (shared) {
       if (mode === 'foreground') shared.foreground = true;
+      shared.extendDeadline(timeoutMs);
       return withConsumerTimeout(shared.promise as Promise<T>, timeoutMs, key);
     }
 
     const abortController = new AbortController();
+    const startedAt = Date.now();
+    let hardTimeoutMs = 0;
+    let hardTimeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+    const extendDeadline = (budget: number) => {
+      const nextBudget = Number.isFinite(budget) && budget > 0
+        ? Math.max(this.hardTimeoutMs, budget)
+        : this.hardTimeoutMs;
+      if (nextBudget <= hardTimeoutMs) return;
+      hardTimeoutMs = nextBudget;
+      globalThis.clearTimeout(hardTimeout);
+      // Anchor extensions to the original request: repeated consumers cannot
+      // keep a shared request alive indefinitely with the same budget.
+      hardTimeout = globalThis.setTimeout(() => {
+        abortController.abort(new RequestTimeoutError(
+          `Shared GET request exceeded ${hardTimeoutMs}ms: ${key}`,
+        ));
+      }, Math.max(0, startedAt + hardTimeoutMs - Date.now()));
+    };
+    extendDeadline(timeoutMs);
     shared = {
       abortController,
       epoch: this.epoch,
       foreground: mode === 'foreground',
       promise: Promise.resolve(undefined),
+      extendDeadline,
     };
-
-    const hardTimeout = globalThis.setTimeout(() => {
-      abortController.abort(new RequestTimeoutError(
-        `Shared GET request exceeded ${this.hardTimeoutMs}ms: ${key}`,
-      ));
-    }, this.hardTimeoutMs);
 
     const entry = shared;
     entry.promise = Promise.resolve()
@@ -153,11 +178,15 @@ export class GetRequestCoordinator {
     return withConsumerTimeout(entry.promise as Promise<T>, timeoutMs, key);
   }
 
-  invalidate(options: { preserveForeground?: boolean } = {}): void {
-    if (!options.preserveForeground) this.epoch += 1;
+  invalidate(options: GetRequestInvalidationOptions = {}): void {
+    this.epoch += 1;
     this.cache.clear();
     this.cacheBytes = 0;
     for (const entry of this.inFlight.values()) {
+      if (entry.abortController.signal === options.preserveSignal) {
+        entry.epoch = this.epoch;
+        continue;
+      }
       if (!entry.foreground) {
         entry.abortController.abort(new Error('Prefetch invalidated by a mutation or session change'));
       }

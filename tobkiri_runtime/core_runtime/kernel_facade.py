@@ -16,7 +16,7 @@ Pack コード（HTTP サーバー、flow.construct.* 等）に公開する
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 class KernelSecurityError(Exception):

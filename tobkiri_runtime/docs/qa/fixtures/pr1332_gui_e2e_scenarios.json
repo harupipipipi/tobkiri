@@ -1,0 +1,374 @@
+{
+  "schema": "io.tobkiri.qa.pr1332-gui-e2e-fixtures.v1",
+  "purpose": "Synthetic, isolated inputs for PR #1332 GUI E2E QA; never production data.",
+  "redaction": {
+    "digests": "sha256:<64 hex>",
+    "tokens": "never store",
+    "paths": "use /private/tmp/<run-id>"
+  },
+  "identity_template": {
+    "profile_id": "defaults",
+    "workspace_id": "qa-workspace-pr1332",
+    "profile_revision": "sha256:<64 hex>",
+    "plan_digest": "sha256:<64 hex>",
+    "catalog_revision": "sha256:<64 hex>",
+    "catalog_hash": "sha256:<64 hex>"
+  },
+  "contract_map_template": {
+    "path": "defaultspack/frontend_contract_map.v4.json",
+    "schema": "io.tobkiri.frontend-contract-map.v4",
+    "pack_id": "defaultspack",
+    "sha256": "sha256:<64 hex>",
+    "required_target_fields": [
+      "contribution_id",
+      "contract_id",
+      "operation_id",
+      "provider_id",
+      "function_id",
+      "allowed_payload_keys"
+    ],
+    "principal_template": {
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operation_id": "catalog.read",
+      "provider_id": "tobkiri.host.pack-control",
+      "function_id": "tobkiri.host.pack-control",
+      "function_principal_digest": "sha256:<64 hex>",
+      "profile_id": "defaults",
+      "plan_digest": "sha256:<64 hex>"
+    }
+  },
+  "allowed_host_boundaries": [
+    {
+      "method": "POST",
+      "path": "/api/panel/auth/bootstrap",
+      "purpose": "host bootstrap page issues one-time panel code",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/panel/auth/exchange",
+      "purpose": "panel session code exchange",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/setup/packs",
+      "purpose": "Defaults Profile review/setup state",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/setup/packs/install",
+      "purpose": "exact Defaults Profile activation confirmation",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/packvm/doctor",
+      "purpose": "Host-owned PackVM attestation",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/packvm/progress?operation_id=<UUID>",
+      "purpose": "same PackVM operation progress",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/packvm/prepare",
+      "purpose": "PackVM provisioning plan",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/packvm/consent",
+      "purpose": "digest-pinned image consent",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/packvm/provision",
+      "purpose": "consented PackVM operation start",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/packvm/cancel",
+      "purpose": "same PackVM operation cancel",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/packvm/stop",
+      "purpose": "typed PackVM stop",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/packvm/cleanup",
+      "purpose": "typed PackVM cleanup",
+      "launcher_product_fallback": false
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "purpose": "local Host liveness/readiness",
+      "launcher_product_fallback": false
+    }
+  ],
+  "tauri_command_policy": {
+    "presentation_only_allowed": [
+      "open_external_url",
+      "send_to_background",
+      "show_app_window",
+      "get_background_control_status",
+      "get_desktop_system_info",
+      "launch_defaultspack_desktop",
+      "get_presentation_catalog",
+      "select_presentation",
+      "launch_selected_presentation"
+    ],
+    "runtime_profile_data_forbidden": true,
+    "topology_data_forbidden": true,
+    "activation_data_forbidden": true,
+    "authority_mutations_forbidden": true,
+    "user_local_frontend_settings": [
+      "theme",
+      "color_mode",
+      "sidebar_open",
+      "viewport_preferences"
+    ]
+  },
+  "pack_template": {
+    "pack_id": "qa.pack.gui.e2e",
+    "artifact_digest": "sha256:<64 hex>",
+    "approval_status": "unapproved",
+    "installed": false,
+    "enabled": false,
+    "owner_pack_id": "qa.pack.gui.e2e",
+    "contribution_id": "qa.pack.gui.e2e.frontend",
+    "operation_id": "qa.pack.gui.e2e.inspect",
+    "contract_id": "tobkiri.service.media.inspect.v1",
+    "provider_id": "qa.pack.gui.e2e.inspect",
+    "function_id": "qa.pack.gui.e2e.inspect",
+    "function_principal_digest": "sha256:<64 hex>"
+  },
+  "scenarios": [
+    {
+      "id": "baseline",
+      "kind": "normal",
+      "pack": {
+        "installed": false,
+        "enabled": false,
+        "approval_status": "unapproved"
+      },
+      "expected": {
+        "dynamic_contributions": [],
+        "callable_operations": [],
+        "effective_pack_ids": ["defaults-basepack"]
+      }
+    },
+    {
+      "id": "pack_added",
+      "kind": "normal",
+      "pack": {
+        "installed": true,
+        "enabled": false,
+        "approval_status": "unapproved"
+      },
+      "expected": {
+        "approval_action": "approval.candidate",
+        "dynamic_contributions": [],
+        "callable_operations": [],
+        "effective_pack_ids": ["defaults-basepack"]
+      }
+    },
+    {
+      "id": "pack_approved_enabled",
+      "kind": "normal",
+      "pack": {
+        "installed": true,
+        "enabled": true,
+        "approval_status": "approved"
+      },
+      "expected": {
+        "dynamic_contributions": ["qa.pack.gui.e2e.frontend"],
+        "callable_operations": ["qa.pack.gui.e2e.inspect"],
+        "effective_pack_ids": ["defaults-basepack", "qa.pack.gui.e2e"]
+      }
+    },
+    {
+      "id": "client_trusted_approval_assertion",
+      "kind": "failure",
+      "fault": {
+        "request_operation": "pack.enable",
+        "request_body_extra": {"approved": true}
+      },
+      "expected": {
+        "error_class": "invalid_contract_payload_or_client_approval_not_trusted",
+        "state_mutated": false,
+        "enabled": false,
+        "audit_commit": false
+      }
+    },
+    {
+      "id": "contract_map_stale",
+      "kind": "failure",
+      "fault": {
+        "map_sha256": "sha256:<old 64 hex>",
+        "manifest_expected_sha256": "sha256:<new 64 hex>"
+      },
+      "expected": {
+        "error_class": "CONTRACT_MAP_STALE",
+        "socket_bound": false,
+        "legacy_or_registry_fallback": false
+      }
+    },
+    {
+      "id": "contract_map_tampered",
+      "kind": "failure",
+      "fault": {
+        "tamper_target": "route_target_or_principal",
+        "map_sha256_after_tamper": "sha256:<different 64 hex>"
+      },
+      "expected": {
+        "error_class": "CONTRACT_MAP_STALE_OR_INVALID",
+        "socket_bound": false,
+        "legacy_or_registry_fallback": false
+      }
+    },
+    {
+      "id": "legacy_route_probe",
+      "kind": "failure",
+      "fault": {
+        "direct_path": "/api/panel/dashboard"
+      },
+      "expected": {
+        "http_status": 410,
+        "error_state": "legacy_api_retired",
+        "contract_audit_event": false
+      }
+    },
+    {
+      "id": "registry_fallback_probe",
+      "kind": "failure",
+      "fault": {
+        "canonical_target": "GET /api/pack-control/not-selected"
+      },
+      "expected": {
+        "http_status": 404,
+        "error_class": "CONTRACT_OPERATION_UNKNOWN",
+        "handler_invoked": false,
+        "registry_fallback": false
+      }
+    },
+    {
+      "id": "noncanonical_direct_route_probe",
+      "kind": "failure",
+      "fault": {
+        "forbidden_paths": ["/api/runtime-recovery/v4", "/api/panel/legacy", "/api/registry/fallback"],
+        "allowlisted_boundaries": ["allowed_host_boundaries"]
+      },
+      "expected": {
+        "unallowlisted_direct_requests": 0,
+        "allowlisted_boundary_requests_may_exist": true,
+        "unallowlisted_boundary_request_count": 0,
+        "canonical_business_requests_only": true,
+        "boundary_requests_have_purpose": true,
+        "restored_surfaces_use_boundary_as_fallback": false
+      }
+    },
+    {
+      "id": "tauri_business_data_probe",
+      "kind": "failure",
+      "fault": {
+        "surface": "restored-profile-advanced-settings",
+        "tauri_result_fields": [
+          "profile_id",
+          "profile_revision",
+          "effective_pack_ids",
+          "catalog_revision",
+          "activation_id",
+          "authority_grant"
+        ]
+      },
+      "expected": {
+        "tauri_runtime_profile_data_used": false,
+        "tauri_authority_mutations": 0,
+        "canonical_backend_snapshot_used": true,
+        "result": "reject_as_business_data_escape_hatch"
+      }
+    },
+    {
+      "id": "approval_rejected",
+      "kind": "failure",
+      "pack": {
+        "installed": true,
+        "enabled": false,
+        "approval_status": "unapproved"
+      },
+      "fault": {
+        "operation": "approval.approve",
+        "outcome": "rejected"
+      },
+      "expected": {
+        "approval_status": "unapproved",
+        "enabled": false,
+        "dynamic_contributions": [],
+        "retry_allowed": true
+      }
+    },
+    {
+      "id": "approval_timeout",
+      "kind": "failure",
+      "pack": {
+        "installed": true,
+        "enabled": false,
+        "approval_status": "unapproved"
+      },
+      "fault": {
+        "operation": "approval.approve",
+        "outcome": "timeout",
+        "deadline_seconds": 10
+      },
+      "expected": {
+        "approval_status": "unapproved",
+        "enabled": false,
+        "spinner_stops": true,
+        "retry_allowed": true
+      }
+    },
+    {
+      "id": "stale_catalog",
+      "kind": "failure",
+      "fault": {
+        "request_catalog_revision": "sha256:<old 64 hex>",
+        "current_catalog_revision": "sha256:<new 64 hex>",
+        "request_profile_revision": "sha256:<old 64 hex>"
+      },
+      "expected": {
+        "error_class": "stale_catalog_or_profile_revision",
+        "state_mutated": false,
+        "refresh_required": true,
+        "callable_operations": []
+      }
+    },
+    {
+      "id": "tampered_revision",
+      "kind": "failure",
+      "fault": {
+        "tamper_target": "catalog_or_plan_or_artifact",
+        "digest_after_tamper": "sha256:<different 64 hex>"
+      },
+      "expected": {
+        "fail_closed": true,
+        "catalog_state": "rejected_or_quarantined",
+        "quarantined_pack_ids_if_catalog_is_returned": ["qa.pack.gui.e2e"],
+        "dynamic_contributions": [],
+        "callable_operations": [],
+        "home_remains_usable": true
+      }
+    }
+  ]
+}

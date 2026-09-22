@@ -16,9 +16,6 @@ edit_prompt_live との違い:
     - 編集後のレンダリング結果をプレビューとして返す
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from blocks._common import ok, error
 
 from domain.prompt.manager import get_manager

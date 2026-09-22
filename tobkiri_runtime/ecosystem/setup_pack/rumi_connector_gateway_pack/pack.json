@@ -20,7 +20,7 @@
     "workflow_delivery": "handoff_schedules_to_defaultspack_scheduler",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "criteria": [
       "connector_scope_reviews",

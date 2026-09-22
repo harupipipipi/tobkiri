@@ -1,5 +1,4 @@
 {
-  "version": "rumi.pack-artifacts.v1",
   "artifacts": [
     {
       "path": "runtime/__init__.py",
@@ -7,7 +6,8 @@
     },
     {
       "path": "runtime/normalizer.py",
-      "sha256": "sha256:f46e5681c2974a9e7e9c37a2479a701742b5a6cada61defc507fe4766180d333"
+      "sha256": "sha256:ffedc4dc81336ac5e708d7b954af08d83a2c5f0533360e82968699fb096b8a54"
     }
-  ]
+  ],
+  "version": "rumi.pack-artifacts.v1"
 }

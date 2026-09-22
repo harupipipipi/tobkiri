@@ -1,16 +1,167 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {"id": "rumi.media_inspect_service", "version": "1.0.0", "kind": "service", "display_name": "Rumi Media Inspect Service", "description": "Read-only workspace document and media inspection."},
   "contracts": {
-    "provides": [{"id": "rumi.service.media.inspect.v1", "version": "1.0.0", "provider_instance_id": "media-inspect.service", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": null}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["media.inspect"]}],
-    "requires": [{"id": "rumi.service.file.inspect.v1", "version": ">=1.0.0,<2.0.0", "cardinality": "one", "failure": "fail_closed"}]
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.media.inspect.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "media-inspect.service",
+        "required_capabilities": [
+          "media.inspect"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.file.inspect.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
   },
-  "entrypoints": [{"id": "media-inspect", "contract_id": "rumi.service.media.inspect.v1", "loader": "python", "module": "ecosystem.rumi_media_inspect_service_pack.runtime.inspect", "symbol": "create_media_inspector", "artifact_hash": "sha256:39cc9931de498f4a5f683179ad518d48c5c056e119f7117884dad370698f04c6"}],
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:73d0c3316b34ace2b00abf868dbbc6ac47c67be1a694b472485637f63b22553e",
+      "contract_id": "rumi.service.media.inspect.v1",
+      "id": "media-inspect",
+      "loader": "python",
+      "module": "ecosystem.rumi_media_inspect_service_pack.runtime.inspect",
+      "symbol": "create_media_inspector"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_file_inspect_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.media.inspect.v1"
+          ],
+          "requires": [
+            "rumi.service.file.inspect.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_file_inspect_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Read-only workspace document and media inspection.",
+        "display_name": "Rumi Media Inspect Service",
+        "host_execution": false,
+        "metadata": {
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:945779951b78e8a0efacc486a28383a46d40afb575b915f7298014bb31587450",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91"
+          },
+          "capture": false,
+          "file_access": "global_contract_only",
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "read_only": true,
+          "tool_or_ui_registry_imports": false,
+          "vision_inference": false
+        },
+        "pack_id": "rumi_media_inspect_service_pack",
+        "pack_identity": "rumi:ecosystem/rumi_media_inspect_service_pack",
+        "provenance": {
+          "build_identity": "rumi_media_inspect_service_pack:1.0.0",
+          "content_hash": "sha256:73d0c3316b34ace2b00abf868dbbc6ac47c67be1a694b472485637f63b22553e",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "file.inspect",
+          "media.inspect"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_media_inspect_service_pack"
+    },
+    "rumi.media_inspect.boundary": {
+      "absolute_paths": false,
+      "capture": false,
+      "file_access": "contract_only",
+      "max_text_bytes": 4194304,
+      "parent_traversal": "deny",
+      "read_only": true,
+      "unsupported_format": "unavailable",
+      "vision_inference": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_media_inspect_service_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:d62965b30ed62a68329fb611d1a2889700f81dd36852d31b7342dd64833e8d91"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.media.processor.read_image",
+      "defaultspack.domain.media.processor.parse_document"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior read adapter; this service owns no persistent data.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Read-only workspace document and media inspection.",
+    "display_name": "Rumi Media Inspect Service",
+    "id": "rumi.media_inspect_service",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "media.inspect"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "file.inspect"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_media_inspect_service_pack:1.0.0",
+    "content_hash": "sha256:73d0c3316b34ace2b00abf868dbbc6ac47c67be1a694b472485637f63b22553e",
+    "signature": null,
+    "trust_class": "local"
+  },
   "resources": [],
-  "storage": [],
-  "permissions": [{"capability": "media.inspect", "access": "read", "approval_required": false}, {"capability": "file.inspect", "access": "read", "approval_required": false}],
-  "provenance": {"content_hash": "sha256:39cc9931de498f4a5f683179ad518d48c5c056e119f7117884dad370698f04c6", "build_identity": "rumi-media-inspect-service-pack:1.0.0", "trust_class": "local", "signature": null},
-  "migration": {"from": ["defaultspack.domain.media.processor.read_image", "defaultspack.domain.media.processor.parse_document"], "compatibility_aliases": ["defaults.media.image_read", "defaults.media.doc_parse"], "compatibility_projection": "one_way_contract_adapter", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Select the pinned prior read adapter; this service owns no persistent data."},
-  "extensions": {"rumi.media_inspect.boundary": {"read_only": true, "file_access": "contract_only", "absolute_paths": false, "parent_traversal": "deny", "max_text_bytes": 4194304, "unsupported_format": "unavailable", "capture": false, "vision_inference": false}}
+  "storage": []
 }
-

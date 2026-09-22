@@ -23,7 +23,8 @@ from itertools import count
 from typing import Any
 from datetime import datetime, timezone, timedelta
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 
 from blocks._common import gen_id, timestamp
 from domain.agent.schedule_store import (
@@ -1134,17 +1135,21 @@ class Scheduler:
     _instance = None
     _instance_lock = threading.Lock()
 
-    def __new__(cls):
+    def __new__(cls, *, settings_owner: SettingsOwnerPort | None = None):
+        del settings_owner
         with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
                 cls._instance._initialised = False
             return cls._instance
 
-    def __init__(self):
+    def __init__(self, *, settings_owner: SettingsOwnerPort | None = None):
         if self._initialised:
+            if settings_owner is not None:
+                self._settings_owner = settings_owner
             return
         self._initialised = True
+        self._settings_owner = settings_owner
         self._lock = threading.Lock()
         self._mutation_lock = threading.RLock()
         self._timers = {}        # schedule_id -> threading.Timer
@@ -1566,10 +1571,15 @@ class Scheduler:
         try:
             from blocks.chat.send import run as chat_send_run
 
+            def send_chat(payload, context):
+                if self._settings_owner is None:
+                    return chat_send_run(payload, context)
+                return chat_send_run(payload, context, settings_owner=self._settings_owner)
+
             def run_recovery():
                 return _resume_scheduled_chat_approvals(
                     result=result,
-                    send_chat=chat_send_run,
+                    send_chat=send_chat,
                     conversation_id=conversation_id,
                     task_cfg=task_cfg,
                     schedule_id=schedule_id,
@@ -2228,11 +2238,18 @@ class Scheduler:
                 try:
                     from blocks.chat.send import run as chat_send_run
 
+                    def send_chat(payload, context):
+                        if self._settings_owner is None:
+                            return chat_send_run(payload, context)
+                        return chat_send_run(
+                            payload, context, settings_owner=self._settings_owner
+                        )
+
                     params, tools = _scheduler_chat_params_and_tools(task_cfg, timeout_seconds=timeout_seconds)
 
                     def run_chat_task():
                         initial_parent_id = _current_conversation_node_id(str(conversation_id))
-                        chat_result = chat_send_run(
+                        chat_result = send_chat(
                             _scheduler_chat_payload(
                                 conversation_id=conversation_id,
                                 content=message,
@@ -2248,7 +2265,7 @@ class Scheduler:
                         )
                         return _resume_scheduled_chat_approvals(
                             result=chat_result,
-                            send_chat=chat_send_run,
+                            send_chat=send_chat,
                             conversation_id=conversation_id,
                             task_cfg=task_cfg,
                             schedule_id=schedule_id,
@@ -2288,7 +2305,11 @@ class Scheduler:
                     payload = {"messages": messages, "model": model}
                     if completion_params:
                         payload["params"] = completion_params
-                    return ai_complete_run(payload, scheduler_context)
+                    if self._settings_owner is None:
+                        return ai_complete_run(payload, scheduler_context)
+                    return ai_complete_run(
+                        payload, scheduler_context, settings_owner=self._settings_owner
+                    )
 
                 result = _run_with_timeout(
                     run_completion_task,

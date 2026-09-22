@@ -8,10 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    from ...domain.tool.registry import ToolRegistry as DomainToolRegistry
-except ImportError:
-    from domain.tool.registry import ToolRegistry as DomainToolRegistry
+from ...domain.tool.registry import ToolRegistry as DomainToolRegistry
 
 
 @dataclass
@@ -150,3 +147,13 @@ class ToolManager:
             json.dumps(entry.to_dict(), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+
+
+_TOOL_MANAGER: ToolManager | None = None
+
+
+def get_tool_manager() -> ToolManager:
+    global _TOOL_MANAGER
+    if _TOOL_MANAGER is None:
+        _TOOL_MANAGER = ToolManager()
+    return _TOOL_MANAGER

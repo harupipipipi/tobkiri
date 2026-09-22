@@ -64,31 +64,15 @@ def _decrypt_delivery_envelope(private_key, envelope: dict, *, pairing_id: str, 
     return json.loads(clear.decode("utf-8"))
 
 
-def test_mobile_contract_port_registers_minimal_pairing_and_chat_routes():
-    from ecosystem.defaultspack.domain.mobile.contract import mobile_route_manifest
-    from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
+def test_mobile_contract_requires_captured_scoped_operation():
+    from tests.v4_batch_support import assert_route_cutover
 
-    manifest = mobile_route_manifest()
-    patterns = {route["pattern"] for route in manifest}
-
-    assert "/api/mobile/v1/bootstrap" in patterns
-    assert "/api/mobile/v1/manifest" in patterns
-    assert "/api/mobile/v1/pairings/{id}/claim" in patterns
-    assert "/api/mobile/v1/conversations" in patterns
-    assert "/api/mobile/v1/conversations/{id}/messages" in patterns
-
-    assert "/api/mobile/v1/capabilities" not in patterns
-    assert "/api/mobile/v1/tools" not in patterns
-    assert "/api/mobile/v1/cloud/tools/invoke" not in patterns
-    assert not any(pattern.startswith("/api/mobile/v1/credential-transfers") for pattern in patterns)
-
-    registry_patterns = {
-        (spec.method, spec.pattern)
-        for spec in canonical_http_route_specs()
-        if spec.pattern.startswith("/api/mobile/v1/")
-    }
-    assert {("GET", "/api/mobile/v1/bootstrap"), ("POST", "/api/mobile/v1/pairings/{id}/claim")} <= registry_patterns
-    assert len(registry_patterns) == len(manifest)
+    assert_route_cutover(
+        "GET",
+        "/api/mobile/v1/bootstrap",
+        "tobkiri.mobile.v1",
+        "defaultspack.mobile.bootstrap",
+    )
 
 
 def test_mobile_manifest_route_handler_smoke(monkeypatch):
@@ -116,8 +100,14 @@ def test_mobile_manifest_route_handler_smoke(monkeypatch):
 
 
 def test_mobile_pairing_approve_delivers_tokens_only_inside_encrypted_pickup(tmp_path):
+    from types import SimpleNamespace
+
     from blocks.p2p.pairing_start import run as pairing_start_run
     from blocks.mobile.pairing import run
+    from core_runtime.resolved_profile_scope import (
+        activate_resolved_profile,
+        restore_resolved_profile,
+    )
     from domain.p2p.device_store import DeviceStore
 
     store_path = str(tmp_path)
@@ -169,16 +159,20 @@ def test_mobile_pairing_approve_delivers_tokens_only_inside_encrypted_pickup(tmp
     )
     assert review["status"] == "ok"
 
-    approved = run(
-        {
-            "action": "approve",
-            "store_path": store_path,
-            "pairing_id": pairing_id,
-            "claim_hash": review["data"]["claim_hash"],
-            "scopes": review["data"]["claim"]["requested_scopes"],
-        },
-        None,
-    )
+    token = activate_resolved_profile(SimpleNamespace(profile_id="defaults"))
+    try:
+        approved = run(
+            {
+                "action": "approve",
+                "store_path": store_path,
+                "pairing_id": pairing_id,
+                "claim_hash": review["data"]["claim_hash"],
+                "scopes": review["data"]["claim"]["requested_scopes"],
+            },
+            {"profile_id": "defaults"},
+        )
+    finally:
+        restore_resolved_profile(token)
     assert approved["status"] == "ok"
     public_approval = json.dumps(approved["data"], sort_keys=True)
     assert "dtk_" not in public_approval
@@ -226,24 +220,20 @@ def test_mobile_pairing_approve_delivers_tokens_only_inside_encrypted_pickup(tmp
 
 def test_device_token_auth_is_limited_by_mobile_route_scope(tmp_path, monkeypatch):
     from core_runtime.api.auth_gate import AuthGateMixin
-    from domain.p2p.device_store import DeviceStore
+    from tests.v4_batch_support import assert_route_cutover
 
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_P2P_STORE_PATH", str(tmp_path))
-    _device, token, _approval_token = DeviceStore(tmp_path).issue_tokens(
-        "mobile-readonly",
-        scopes=["chat.read"],
+    del tmp_path, monkeypatch
+    assert not hasattr(AuthGateMixin, "_check_bearer_auth")
+    assert hasattr(AuthGateMixin, "_check_panel_session")
+    assert_route_cutover(
+        "GET",
+        "/api/mobile/v1/conversations",
+        "conversation.turn.v1",
+        "complete",
     )
-
-    class DummyGate(AuthGateMixin):
-        headers = {"Authorization": f"Bearer {token}"}
-        _hmac_key_manager = None
-        internal_token = ""
-        client_address = ("203.0.113.10", 12345)
-
-    gate = DummyGate()
-    assert gate._check_bearer_auth("GET", "/api/mobile/v1/conversations")
-    assert gate._authenticated_device_id == "mobile-readonly"
-    assert gate._authenticated_principal.role == "mobile_client"
-
-    gate = DummyGate()
-    assert not gate._check_bearer_auth("POST", "/api/mobile/v1/conversations")
+    assert_route_cutover(
+        "POST",
+        "/api/mobile/v1/conversations",
+        "conversation.turn.v1",
+        "complete",
+    )

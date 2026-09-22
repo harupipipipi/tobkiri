@@ -24,6 +24,7 @@ AUTHORITY_PERMISSION_IDS = frozenset(
         "file.write",
         "pack.read",
         "pack.manage",
+        "pack.approve",
         "provider.read",
         "provider.manage",
         "authority.request.read",
@@ -107,18 +108,35 @@ class AuthorityRequest:
     profile_id: str | None = None
     node_id: str | None = None
     graph_id: str | None = None
+    debug_session_id: str = ""
+    lease_epoch: int = 0
+    debug_run_id: str = ""
+    workspace_identity_digest: str = ""
+    pack_id: str = ""
+    debug_profile_id: str = ""
+    operation_owner: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AuthorityRequest":
+        raw_status = data.get("status")
+        status: Literal["pending", "approved", "denied", "expired"] = "pending"
+        if raw_status == "approved":
+            status = "approved"
+        elif raw_status == "denied":
+            status = "denied"
+        elif raw_status == "expired":
+            status = "expired"
+        raw_resource = data.get("resource")
+        resource = dict(raw_resource) if isinstance(raw_resource, dict) else {}
         return cls(
             request_id=str(data.get("request_id") or ""),
-            status=data.get("status") if data.get("status") in {"pending", "approved", "denied", "expired"} else "pending",
+            status=status,
             principal_id=str(data.get("principal_id") or ""),
             permission_id=str(data.get("permission_id") or ""),
-            resource=dict(data.get("resource") if isinstance(data.get("resource"), dict) else {}),
+            resource=resource,
             reason=str(data.get("reason") or ""),
             risk_level=str(data.get("risk_level") or "low"),
             created_at=str(data.get("created_at") or ""),
@@ -127,4 +145,11 @@ class AuthorityRequest:
             profile_id=str(data.get("profile_id") or "") or None,
             node_id=str(data.get("node_id") or "") or None,
             graph_id=str(data.get("graph_id") or "") or None,
+            debug_session_id=str(data.get("debug_session_id") or ""),
+            lease_epoch=int(data.get("lease_epoch") or 0),
+            debug_run_id=str(data.get("debug_run_id") or ""),
+            workspace_identity_digest=str(data.get("workspace_identity_digest") or ""),
+            pack_id=str(data.get("pack_id") or ""),
+            debug_profile_id=str(data.get("debug_profile_id") or ""),
+            operation_owner=str(data.get("operation_owner") or ""),
         )

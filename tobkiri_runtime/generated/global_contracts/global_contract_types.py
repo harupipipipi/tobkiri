@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Generic, Literal, NotRequired, TypedDict, TypeVar
+from typing import Generic, Literal, TypedDict, TypeVar
+
+from typing_extensions import NotRequired
 
 ContractStatus = Literal[
-    "ok",
-    "unknown",
-    "unavailable",
-    "not_configured",
-    "denied",
-    "incompatible",
-    "missing_provider",
-    "stale_resolution",
-    "invalid_manifest",
+    'ok',
+    'unknown',
+    'unavailable',
+    'not_configured',
+    'denied',
+    'incompatible',
+    'missing_provider',
+    'stale_resolution',
+    'invalid_manifest',
 ]
 
 T = TypeVar("T")
@@ -28,4 +30,3 @@ class ContractResult(TypedDict, Generic[T]):
     provider_instance_id: str
     diagnostics: NotRequired[list[str]]
     value: NotRequired[T]
-

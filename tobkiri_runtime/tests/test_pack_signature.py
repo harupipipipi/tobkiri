@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from core_runtime.pack_artifact_integrity import (
+    read_host_policy_snapshot,
     verify_declared_artifacts,
+    verify_host_install_binding,
     write_host_install_record,
 )
 from core_runtime.pack_signature import (
@@ -195,17 +199,6 @@ def test_declared_signature_is_enforced_during_pack_activation(
     trust_store.write_text(
         json.dumps(
             {
-                "install_records": {
-                    "example_pack": {
-                        "signature_required": True,
-                        "publisher_id": "publisher.example",
-                        "key_id": manifest["signature"]["key_id"],
-                        "installed_version": "1.2.3",
-                        "signed_manifest_path": ".tobkiri/signed-pack.json",
-                        "contract_versions": {"rumi.command": "1.0.0"},
-                        "requested_capabilities": ["network.read"],
-                    }
-                },
                 "publishers": {
                     "publisher.example": {
                         "public_key_pem": public_pem,
@@ -215,6 +208,21 @@ def test_declared_signature_is_enforced_during_pack_activation(
             }
         ),
         encoding="utf-8",
+    )
+    trust_store.chmod(0o600)
+    write_host_install_record(
+        trust_store,
+        pack_id="example_pack",
+        install_path=pack_root,
+        record={
+            "signature_required": True,
+            "publisher_id": "publisher.example",
+            "key_id": manifest["signature"]["key_id"],
+            "installed_version": "1.2.3",
+            "signed_manifest_path": ".tobkiri/signed-pack.json",
+            "contract_versions": {"rumi.command": "1.0.0"},
+            "requested_capabilities": ["network.read"],
+        },
     )
     monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
     ecosystem = {
@@ -273,17 +281,6 @@ def test_host_install_record_prevents_signature_declaration_downgrade(
     trust_store.write_text(
         json.dumps(
             {
-                "install_records": {
-                    "example_pack": {
-                        "signature_required": True,
-                        "publisher_id": "publisher.example",
-                        "key_id": manifest["signature"]["key_id"],
-                        "installed_version": "1.2.3",
-                        "signed_manifest_path": ".tobkiri/signed-pack.json",
-                        "contract_versions": {"rumi.command": "1.0.0"},
-                        "requested_capabilities": ["network.read"],
-                    }
-                },
                 "publishers": {
                     "publisher.example": {
                         "public_key_pem": public_pem,
@@ -293,6 +290,21 @@ def test_host_install_record_prevents_signature_declaration_downgrade(
             }
         ),
         encoding="utf-8",
+    )
+    trust_store.chmod(0o600)
+    write_host_install_record(
+        trust_store,
+        pack_id="example_pack",
+        install_path=pack_root,
+        record={
+            "signature_required": True,
+            "publisher_id": "publisher.example",
+            "key_id": manifest["signature"]["key_id"],
+            "installed_version": "1.2.3",
+            "signed_manifest_path": ".tobkiri/signed-pack.json",
+            "contract_versions": {"rumi.command": "1.0.0"},
+            "requested_capabilities": ["network.read"],
+        },
     )
     monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
 
@@ -306,14 +318,92 @@ def test_host_install_record_prevents_signature_declaration_downgrade(
     assert "signed Pack verification failed" in diagnostics[0]
 
 
+def test_host_install_record_rejects_same_key_resigned_different_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Publisher policy cannot replace the exact Host-selected artifact."""
+
+    pack_root, private_key, original_manifest = _signed_pack(tmp_path)
+    signed_path = pack_root / ".tobkiri" / "signed-pack.json"
+    signed_path.parent.mkdir()
+    signed_path.write_text(json.dumps(original_manifest), encoding="utf-8")
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
+    trust_store = tmp_path / "publisher-trust.json"
+    trust_store.write_text(
+        json.dumps(
+            {
+                "publishers": {
+                    "publisher.example": {
+                        "public_key_pem": public_pem,
+                        "revoked_key_ids": [],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    trust_store.chmod(0o600)
+    write_host_install_record(
+        trust_store,
+        pack_id="example_pack",
+        install_path=pack_root,
+        record={
+            "signature_required": True,
+            "publisher_id": "publisher.example",
+            "key_id": original_manifest["signature"]["key_id"],
+            "installed_version": "1.2.3",
+            "signed_manifest_path": ".tobkiri/signed-pack.json",
+            "contract_versions": {"rumi.command": "1.0.0"},
+            "requested_capabilities": ["network.read"],
+        },
+    )
+    monkeypatch.setenv("RUMI_PACK_PUBLISHER_TRUST_STORE", str(trust_store))
+
+    (pack_root / "handler.py").write_text("VALUE = 2\n", encoding="utf-8")
+    replacement = build_signed_manifest(
+        pack_root,
+        pack_id="example_pack",
+        version="1.2.3",
+        publisher_id="publisher.example",
+        core_compatibility=">=1.10,<2",
+        contract_versions={"rumi.command": "1.0.0"},
+        requested_capabilities=["network.read"],
+        created_at="2026-07-24T00:00:00+00:00",
+    )
+    signed_path.write_text(
+        json.dumps(sign_manifest(replacement, private_key)),
+        encoding="utf-8",
+    )
+    ok, diagnostics = verify_declared_artifacts(
+        pack_root,
+        {
+            "id": "example_pack",
+            "metadata": {
+                "integrity": {"signed_manifest": ".tobkiri/signed-pack.json"}
+            },
+        },
+    )
+
+    assert ok is False
+    assert "Host install record" in diagnostics[0]
+
+
 def test_host_install_record_writer_is_atomic_and_complete(
     tmp_path: Path,
 ) -> None:
+    pack_root, _private_key, manifest = _signed_pack(tmp_path)
+    signed_path = pack_root / ".tobkiri" / "signed-pack.json"
+    signed_path.parent.mkdir()
+    signed_path.write_text(json.dumps(manifest), encoding="utf-8")
     trust_store = tmp_path / "policy" / "publisher-trust.json"
     record = {
         "signature_required": True,
         "publisher_id": "publisher.example",
-        "key_id": "a" * 32,
+        "key_id": manifest["signature"]["key_id"],
         "installed_version": "1.2.3",
         "signed_manifest_path": ".tobkiri/signed-pack.json",
         "contract_versions": {"rumi.command": "1.0.0"},
@@ -323,13 +413,184 @@ def test_host_install_record_writer_is_atomic_and_complete(
     write_host_install_record(
         trust_store,
         pack_id="example_pack",
+        install_path=pack_root,
         record=record,
     )
 
     stored = json.loads(trust_store.read_text(encoding="utf-8"))
-    assert stored["install_records"]["example_pack"] == record
+    stored_record = stored["install_records"]["example_pack"]
+    assert {key: stored_record[key] for key in record} == record
+    assert stored_record["install_path"] == str(pack_root.resolve())
+    assert stored_record["signed_manifest_digest"].startswith("sha256:")
+    assert stored_record["artifact_digest"].startswith("sha256:")
     assert trust_store.stat().st_mode & 0o777 == 0o600
-    assert not list(trust_store.parent.glob(f".{trust_store.name}.*"))
+    assert not [
+        path
+        for path in trust_store.parent.glob(f".{trust_store.name}.*")
+        if path.name != f".{trust_store.name}.lock"
+    ]
+
+
+def test_concurrent_install_records_merge_under_host_lock(tmp_path: Path) -> None:
+    """Concurrent Host installs cannot erase one another's policy records."""
+
+    first_root, private_key, manifest = _signed_pack(tmp_path)
+    signed_path = first_root / ".tobkiri" / "signed-pack.json"
+    signed_path.parent.mkdir()
+    signed_path.write_text(json.dumps(manifest), encoding="utf-8")
+    second_root = tmp_path / "second_pack"
+    shutil.copytree(first_root, second_root)
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
+    trust_store = tmp_path / "policy" / "publisher-trust.json"
+    trust_store.parent.mkdir(mode=0o700)
+    trust_store.write_text(
+        json.dumps(
+            {
+                "publishers": {
+                    "publisher.example": {
+                        "public_key_pem": public_pem,
+                        "revoked_key_ids": [],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    trust_store.chmod(0o600)
+    base_record = {
+        "signature_required": True,
+        "publisher_id": "publisher.example",
+        "key_id": manifest["signature"]["key_id"],
+        "installed_version": "1.2.3",
+        "signed_manifest_path": ".tobkiri/signed-pack.json",
+        "contract_versions": {"rumi.command": "1.0.0"},
+        "requested_capabilities": ["network.read"],
+    }
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(
+                write_host_install_record,
+                trust_store,
+                pack_id=pack_id,
+                install_path=root,
+                record=base_record,
+            )
+            for pack_id, root in (
+                ("example_pack", first_root),
+                ("second_pack", second_root),
+            )
+        ]
+        for future in futures:
+            future.result()
+
+    policy = read_host_policy_snapshot(trust_store)
+    assert set(policy["install_records"]) == {"example_pack", "second_pack"}
+    assert policy["policy_generation"] == 2
+
+
+def test_install_capture_rejects_hardlinks_and_noncanonical_names(
+    tmp_path: Path,
+) -> None:
+    """The Host tree capture rejects aliasing and cross-platform collisions."""
+
+    hardlink_root = tmp_path / "hardlink-pack"
+    hardlink_root.mkdir()
+    original = hardlink_root / "handler.py"
+    original.write_text("VALUE = 1\n", encoding="utf-8")
+    (hardlink_root / "alias.py").hardlink_to(original)
+    trust_store = tmp_path / "policy" / "publisher-trust.json"
+    developer_record = {
+        "signature_required": False,
+        "publisher_id": "",
+        "key_id": "",
+        "installed_version": "dev",
+        "signed_manifest_path": "",
+        "contract_versions": {},
+        "requested_capabilities": [],
+        "developer_mode": True,
+    }
+    with pytest.raises(ValueError, match="identity is unsafe"):
+        write_host_install_record(
+            trust_store,
+            pack_id="hardlink-pack",
+            install_path=hardlink_root,
+            record=developer_record,
+        )
+
+    unicode_root = tmp_path / "unicode-pack"
+    unicode_root.mkdir()
+    (unicode_root / "e\u0301.txt").write_text("unsafe\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="normalized path collision"):
+        write_host_install_record(
+            trust_store,
+            pack_id="unicode-pack",
+            install_path=unicode_root,
+            record=developer_record,
+        )
+
+
+def test_unsigned_binding_hashes_reserved_signed_manifest_path(
+    tmp_path: Path,
+) -> None:
+    """Unsigned developer trees cannot hide bytes at the reserved manifest path."""
+
+    pack_root = tmp_path / "developer-pack"
+    reserved = pack_root / ".tobkiri" / "signed-pack.json"
+    reserved.parent.mkdir(parents=True)
+    reserved.write_text('{"unsigned":true}', encoding="utf-8")
+    trust_store = tmp_path / "policy" / "publisher-trust.json"
+    record = {
+        "signature_required": False,
+        "publisher_id": "",
+        "key_id": "",
+        "installed_version": "dev",
+        "signed_manifest_path": "",
+        "contract_versions": {},
+        "requested_capabilities": [],
+        "developer_mode": True,
+    }
+    write_host_install_record(
+        trust_store,
+        pack_id="developer-pack",
+        install_path=pack_root,
+        record=record,
+    )
+    policy = read_host_policy_snapshot(trust_store)
+    install_record = policy["install_records"]["developer-pack"]
+    verify_host_install_binding(pack_root, install_record)
+
+    reserved.write_text('{"unsigned":false}', encoding="utf-8")
+    with pytest.raises(ValueError, match="artifact differs"):
+        verify_host_install_binding(pack_root, install_record)
+
+
+def test_policy_reader_rejects_unsafe_ancestor_permissions(tmp_path: Path) -> None:
+    """Every trust-store ancestor is part of the Host-owned security boundary."""
+
+    unsafe = tmp_path / "unsafe"
+    policy_dir = unsafe / "policy"
+    policy_dir.mkdir(parents=True, mode=0o700)
+    unsafe.chmod(0o777)
+    trust_store = policy_dir / "publisher-trust.json"
+    trust_store.write_text("{}", encoding="utf-8")
+    trust_store.chmod(0o600)
+
+    with pytest.raises(ValueError, match="ancestor permissions are unsafe"):
+        read_host_policy_snapshot(trust_store)
+
+    real = tmp_path / "real-policy"
+    real.mkdir(mode=0o700)
+    real_store = real / "publisher-trust.json"
+    real_store.write_text("{}", encoding="utf-8")
+    real_store.chmod(0o600)
+    linked = tmp_path / "linked-policy"
+    linked.symlink_to(real, target_is_directory=True)
+    with pytest.raises((OSError, ValueError)):
+        read_host_policy_snapshot(linked / real_store.name)
 
 
 @pytest.mark.parametrize("name", ["private.pem", ".env", "runtime.sqlite3"])

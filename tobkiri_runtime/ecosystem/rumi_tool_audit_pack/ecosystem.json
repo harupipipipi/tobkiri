@@ -1,1 +1,65 @@
-{"pack_id": "rumi_tool_audit_pack", "pack_identity": "rumi:ecosystem/rumi_tool_audit_pack", "display_name": "Rumi Tool Audit Pack", "version": "1.0.0", "description": "Redacted tool lifecycle event adapter.", "dependencies": {}, "connectivity": {"requires": [], "provides": ["rumi.event.tool.invocation.v1"]}, "required_secrets": [], "required_capabilities": ["tool.audit.emit"], "required_network": {"allowed_domains": [], "allowed_ports": []}, "host_execution": true, "resources": [], "provenance": {"content_hash": "sha256:351b455411466b3e03c755d6419929a6c691d0b73365dcd7d972290f3e6188ce", "build_identity": "rumi-tool-audit-pack:1.0.0", "trust_class": "local", "signature": null}, "metadata": {"authoritative_owner": false, "owner_surfaces": ["tool_audit_adapter"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"raw_arguments": false, "raw_results": false}}}
+{
+  "connectivity": {
+    "provides": [
+      "rumi.event.tool.invocation.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Redacted tool lifecycle events forwarded to the core audit owner.",
+  "display_name": "Rumi Tool Audit",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:321b2856e1618dbfaadb12e24d67a7603ff469ee46c8631ccabf88d574bb76c7",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:399bacdcaaa830fbbcd8b1ed97f3c34a19715a150f64b946499a839c19ea88c3"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:399bacdcaaa830fbbcd8b1ed97f3c34a19715a150f64b946499a839c19ea88c3"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "tool_audit_adapter"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "raw_arguments": false,
+      "raw_results": false
+    }
+  },
+  "pack_id": "rumi_tool_audit_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_audit_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_audit_pack:1.0.0",
+    "content_hash": "sha256:ce817bc170289595d834fca05ac2d78ad58958fb63aa166025aefab65429c853",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.audit.emit"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

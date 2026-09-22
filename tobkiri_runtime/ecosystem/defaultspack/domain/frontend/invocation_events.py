@@ -5,7 +5,7 @@ import os
 import re
 import sqlite3
 import threading
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +26,13 @@ EVENT_TYPES = {
     "expired",
 }
 TERMINAL_EVENT_TYPES = {"completed", "failed", "cancelled", "conflicted", "expired"}
+_TERMINAL_STATE_EVENTS = {
+    "succeeded": "completed",
+    "failed": "failed",
+    "cancelled": "cancelled",
+    "conflicted": "conflicted",
+    "expired": "expired",
+}
 _SECRET_FRAGMENTS = {
     "api_key",
     "authorization",
@@ -89,7 +96,7 @@ class InvocationEventStore:
         self._initialize()
         _restrict_sqlite_files(self.path)
         self.prune(
-            before=(datetime.now(UTC) - timedelta(days=retention_days)).isoformat(),
+            before=(datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat(),
             terminal_only=True,
         )
 
@@ -115,7 +122,7 @@ class InvocationEventStore:
         encoded = _canonical_json(redacted_payload)
         if len(encoded.encode("utf-8")) > self.max_payload_bytes:
             raise InvocationEventError("event payload exceeds the configured size limit")
-        occurred_at = timestamp or datetime.now(UTC).isoformat()
+        occurred_at = timestamp or datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             if owner_key is None:
@@ -203,7 +210,7 @@ class InvocationEventStore:
         encoded = _canonical_json(redacted_payload)
         if len(encoded.encode("utf-8")) > self.max_payload_bytes:
             raise InvocationEventError("event payload exceeds the configured size limit")
-        occurred_at = datetime.now(UTC).isoformat()
+        occurred_at = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
@@ -255,7 +262,7 @@ class InvocationEventStore:
     ) -> bool:
         """Atomically claim one approval continuation."""
 
-        current = datetime.now(UTC)
+        current = datetime.now(timezone.utc)
         now = current.isoformat()
         stale_before = (current - timedelta(seconds=self.lease_seconds)).isoformat()
         with self._lock, self._connect() as connection:
@@ -295,7 +302,13 @@ class InvocationEventStore:
         expected_states: set[str] | None = None,
         lease_id: str | None = None,
     ) -> None:
-        """Durably settle invocation state/result independently of audit events."""
+        """Persist a non-terminal invocation state independently of audit events."""
+
+        normalized_state = str(state or "").strip()
+        if normalized_state in _TERMINAL_STATE_EVENTS:
+            raise InvocationEventError(
+                "terminal states must be persisted with settle_terminal"
+            )
 
         safe_result = _redact(result) if result is not None else None
         encoded_result = _canonical_json(safe_result) if safe_result is not None else None
@@ -306,7 +319,7 @@ class InvocationEventStore:
             raise InvocationEventError(
                 "invocation result exceeds the configured size limit"
             )
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as connection:
             expected = sorted(expected_states or [])
             state_clause = (
@@ -316,7 +329,7 @@ class InvocationEventStore:
             )
             lease_clause = "AND lease_id = ?" if lease_id is not None else ""
             parameters: list[Any] = [
-                str(state),
+                normalized_state,
                 encoded_result,
                 approval_request_id,
                 now,
@@ -341,6 +354,158 @@ class InvocationEventStore:
             if cursor.rowcount != 1:
                 raise InvocationEventError("invocation state transition conflict")
 
+    def settle_terminal(
+        self,
+        invocation_id: str,
+        state: str,
+        *,
+        owner_key: str,
+        event_type: str,
+        result: dict[str, Any] | None = None,
+        event_payload: dict[str, Any] | None = None,
+        approval_request_id: str | None = None,
+        expected_states: set[str] | None = None,
+        lease_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomically persist a terminal state/result and its terminal event.
+
+        ``state`` and ``event_type`` deliberately use the two established
+        vocabularies: a successful invocation has state ``succeeded`` and
+        event type ``completed``.  Keeping the two writes in one immediate
+        SQLite transaction prevents a durable result without an observable
+        terminal event (and the reverse).
+        """
+
+        normalized_id = str(invocation_id or "").strip()
+        if not normalized_id or len(normalized_id) > 256:
+            raise InvocationEventError("invocation_id must be 1-256 characters")
+        normalized_owner = _owner_key(owner_key)
+        normalized_state = str(state or "").strip()
+        normalized_type = str(event_type or "").strip()
+        if normalized_type not in TERMINAL_EVENT_TYPES:
+            raise InvocationEventError(
+                "terminal settlement requires a terminal event type"
+            )
+        if _TERMINAL_STATE_EVENTS.get(normalized_state) != normalized_type:
+            raise InvocationEventError("terminal state/event mismatch")
+
+        safe_result = _redact(result) if result is not None else None
+        encoded_result = (
+            _canonical_json(safe_result) if safe_result is not None else None
+        )
+        if (
+            encoded_result is not None
+            and len(encoded_result.encode("utf-8")) > self.max_result_bytes
+        ):
+            raise InvocationEventError(
+                "invocation result exceeds the configured size limit"
+            )
+        safe_payload = _redact(event_payload or {})
+        encoded_payload = _canonical_json(safe_payload)
+        if len(encoded_payload.encode("utf-8")) > self.max_payload_bytes:
+            raise InvocationEventError(
+                "event payload exceeds the configured size limit"
+            )
+
+        now = datetime.now(timezone.utc).isoformat()
+        expected = sorted(expected_states or [])
+        state_clause = (
+            f"AND state IN ({','.join('?' for _ in expected)})"
+            if expected
+            else ""
+        )
+        lease_clause = "AND lease_id = ?" if lease_id is not None else ""
+        parameters: list[Any] = [
+            normalized_state,
+            encoded_result,
+            approval_request_id,
+            now,
+            normalized_id,
+            normalized_owner,
+            *expected,
+        ]
+        if lease_id is not None:
+            parameters.append(str(lease_id))
+
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            terminal_event = connection.execute(
+                """
+                SELECT event_type
+                FROM invocation_events
+                WHERE owner_key = ? AND invocation_id = ?
+                  AND event_type IN ('completed', 'failed', 'cancelled', 'conflicted', 'expired')
+                ORDER BY sequence DESC
+                LIMIT 1
+                """,
+                (normalized_owner, normalized_id),
+            ).fetchone()
+            if terminal_event is not None:
+                raise InvocationEventError(
+                    f"invocation already terminated with {terminal_event[0]}"
+                )
+            terminal_state = connection.execute(
+                """
+                SELECT state
+                FROM command_invocations
+                WHERE owner_key = ? AND invocation_id = ?
+                """,
+                (normalized_owner, normalized_id),
+            ).fetchone()
+            if (
+                terminal_state is not None
+                and str(terminal_state[0]) in _TERMINAL_STATE_EVENTS
+            ):
+                raise InvocationEventError(
+                    f"invocation already terminated with {terminal_state[0]}"
+                )
+            cursor = connection.execute(
+                f"""
+                UPDATE command_invocations
+                SET state = ?, result_json = ?, approval_request_id = ?,
+                    lease_id = NULL, updated_at = ?
+                WHERE invocation_id = ? AND owner_key = ?
+                {state_clause}
+                {lease_clause}
+                """,
+                tuple(parameters),
+            )
+            if cursor.rowcount != 1:
+                raise InvocationEventError("invocation state transition conflict")
+            row = connection.execute(
+                """
+                SELECT COALESCE(MAX(sequence), 0) + 1
+                FROM invocation_events
+                WHERE owner_key = ? AND invocation_id = ?
+                """,
+                (normalized_owner, normalized_id),
+            ).fetchone()
+            sequence = int(row[0])
+            connection.execute(
+                """
+                INSERT INTO invocation_events (
+                    owner_key, invocation_id, sequence, event_type,
+                    occurred_at, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    normalized_owner,
+                    normalized_id,
+                    sequence,
+                    normalized_type,
+                    now,
+                    encoded_payload,
+                ),
+            )
+            connection.commit()
+        return {
+            "invocation_id": normalized_id,
+            "sequence": sequence,
+            "type": normalized_type,
+            "timestamp": now,
+            "payload": safe_payload,
+        }
+
     def recover_stale(
         self,
         invocation_id: str,
@@ -350,9 +515,9 @@ class InvocationEventStore:
         """Recover an abandoned lease without repeating an uncertain side effect."""
 
         cutoff = (
-            datetime.now(UTC) - timedelta(seconds=self.lease_seconds)
+            datetime.now(timezone.utc) - timedelta(seconds=self.lease_seconds)
         ).isoformat()
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         unknown_result = _canonical_json(
             {
                 "api_version": "tobkiri.commands/v1",
@@ -366,6 +531,17 @@ class InvocationEventStore:
                         "automatic retry is unsafe"
                     ),
                 },
+            }
+        )
+        unknown_payload = _canonical_json(
+            {
+                "error": {
+                    "code": "EXECUTION_OUTCOME_UNKNOWN",
+                    "message": (
+                        "execution lease expired after side-effect dispatch; "
+                        "automatic retry is unsafe"
+                    ),
+                }
             }
         )
         with self._lock, self._connect() as connection:
@@ -398,6 +574,31 @@ class InvocationEventStore:
                     cutoff,
                 ),
             )
+            if executing.rowcount == 1:
+                row = connection.execute(
+                    """
+                    SELECT COALESCE(MAX(sequence), 0) + 1
+                    FROM invocation_events
+                    WHERE owner_key = ? AND invocation_id = ?
+                    """,
+                    (_owner_key(owner_key), str(invocation_id)),
+                ).fetchone()
+                sequence = int(row[0])
+                connection.execute(
+                    """
+                    INSERT INTO invocation_events (
+                        owner_key, invocation_id, sequence, event_type,
+                        occurred_at, payload_json
+                    ) VALUES (?, ?, ?, 'failed', ?, ?)
+                    """,
+                    (
+                        _owner_key(owner_key),
+                        str(invocation_id),
+                        sequence,
+                        now,
+                        unknown_payload,
+                    ),
+                )
             connection.commit()
             return "failed" if executing.rowcount == 1 else None
 
@@ -409,7 +610,7 @@ class InvocationEventStore:
         expected_state: str,
         lease_id: str | None = None,
     ) -> bool:
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         lease_clause = "AND lease_id = ?" if lease_id is not None else ""
         parameters: list[Any] = [
             now,

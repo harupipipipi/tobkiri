@@ -1,10 +1,6 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _common import error
+from blocks._common import error
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.tool.ui_compiler_tools import ui_build_recursive
 from domain.tool_policy.internal_context import (

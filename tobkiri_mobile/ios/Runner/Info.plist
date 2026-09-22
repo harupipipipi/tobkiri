@@ -31,6 +31,10 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Rumi Remote connects to the Rumi instance running on your PC over your private network.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>RumiはAPI/モデル情報やPC接続情報をQRコードで取り込むためにカメラを使用します。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>RumiはQRコード画像から設定を取り込むためにフォトライブラリを使用します。</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -48,5 +52,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
 </dict>
 </plist>

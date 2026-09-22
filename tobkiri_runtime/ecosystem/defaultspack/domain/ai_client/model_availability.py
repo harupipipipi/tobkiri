@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 from pathlib import Path
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.ai_client.api_key_store import (
     provider_api_metadata,
@@ -15,9 +16,13 @@ from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 class ModelAvailabilityService:
     """Single merge point for model visibility after provider credential changes."""
 
-    def __init__(self, pack_root: Path | None = None) -> None:
+    def __init__(
+        self, pack_root: Path | None = None, *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
+        """Use only the settings owner explicitly bound by the caller."""
         self._pack_root = pack_root
-        self._settings = ModelRuntimeSettingsService(pack_root)
+        self._settings = ModelRuntimeSettingsService(pack_root, settings_owner=settings_owner)
 
     def snapshot(self) -> dict[str, Any]:
         settings = self._settings.get_settings()
@@ -230,6 +235,7 @@ class ModelAvailabilityService:
             # in full without a Settings-side model list.
             if source and source not in {
                 "remote_models_endpoint",
+                "openai_models_endpoint",
                 "openrouter_models_api",
                 "vercel_gateway_models_api",
                 "vercel_ai_gateway_models_api",
