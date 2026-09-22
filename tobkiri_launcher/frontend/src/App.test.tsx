@@ -426,3 +426,32 @@ test('runtime-only routes show one recovery gate without a duplicate layout bann
   assert.match(html, /data-testid="runtime-route-verification-gate"/);
   assert.doesNotMatch(html, /runtime content/);
 });
+
+
+test('Host verification opens routes in a fresh browser without a local setup flag', () => {
+  const props = gateProps({
+    isSetupDone: false,
+    runtimeReady: true,
+    runtimeStatus: 'runtime_ready',
+    hostCatalogVerified: true,
+    profileCeremonyAvailable: true,
+  });
+  const html = renderToStaticMarkup(
+    <MemoryRouter>
+      <SetupVerificationBanner {...props} />
+      <SetupVerificationGate {...props}><p>verified runtime page</p></SetupVerificationGate>
+    </MemoryRouter>,
+  );
+  assert.match(html, /verified runtime page/);
+  assert.doesNotMatch(html, /Complete setup|setup-verification-banner|setup-verification-gate/);
+
+  const blocked = renderToStaticMarkup(
+    <MemoryRouter>
+      <SetupVerificationGate {...props} defaultsBootstrapRequired>
+        <p>verified runtime page</p>
+      </SetupVerificationGate>
+    </MemoryRouter>,
+  );
+  assert.match(blocked, /Complete setup/);
+  assert.doesNotMatch(blocked, /verified runtime page/);
+});

@@ -19,11 +19,9 @@ export function Profile() {
   const loadFrontendCatalog = useAppStore((state) => state.loadFrontendCatalog);
   const profileCeremonyAvailable = useAppStore((state) => state.profileCeremonyAvailable);
   const defaultsBootstrapRequired = useAppStore((state) => state.defaultsBootstrapRequired);
-  const surface = useRuntimeSurface<unknown>('profile');
   const catalogSurface = useRuntimeSurface<RuntimeProfileCatalogProjection>('profiles');
   const profileCeremonyVerified = profileCeremonyAvailable && !defaultsBootstrapRequired;
 
-  useEffect(() => { void loadPacks(); }, [loadPacks]);
   useEffect(() => {
     const anchor = location.hash.slice(1);
     if (['profile-packs', 'profile-closure', 'profile-ceremony'].includes(anchor)) {
@@ -38,7 +36,9 @@ export function Profile() {
         <h1 className="text-2xl font-semibold text-text-main">{t('nav.profile')}</h1>
         <ProfileCatalogSelector
           compact
-          profileSurface={surface}
+          // The verified catalog carries the current execution revision and Plan
+          // as well as saved definitions. Activation must use that same capture.
+          profileSurface={catalogSurface}
           catalogSurface={catalogSurface}
           packs={packs}
           packsLoading={packsLoading}

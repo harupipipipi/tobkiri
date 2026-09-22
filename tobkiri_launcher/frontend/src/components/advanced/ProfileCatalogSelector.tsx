@@ -210,24 +210,20 @@ function ProfileDefinitionDetails({
         ) : null}
       </section>
 
-          <section className="scroll-mt-6 rounded-lg border border-border bg-bg-card p-4" id="profile-closure">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="flex items-center gap-2 text-sm font-semibold text-text-main"><PackageCheck className="h-4 w-4" aria-hidden="true" />Authoritative Pack closure</h4>
-              <Badge variant="outline">{entry.pack_closure.length} exact rows</Badge>
+      <section className="scroll-mt-6 border border-border p-4" id="profile-closure">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="flex items-center gap-2 text-sm font-semibold text-text-main"><PackageCheck className="h-4 w-4" aria-hidden="true" />Authoritative Pack closure</h4>
+          <span className="text-xs text-text-muted">{entry.pack_closure.length} Packs</span>
+        </div>
+        <div className="mt-3 max-h-60 overflow-y-auto divide-y divide-border">
+          {entry.pack_closure.map((pack) => (
+            <div key={pack.pack_id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 text-xs">
+              <span className="min-w-0 break-all text-text-main">{pack.pack_id}</span>
+              <span className="shrink-0 text-text-muted">{pack.version} · {pack.role}</span>
             </div>
-            <div className="mt-3 flex flex-col gap-2">
-              {entry.pack_closure.map((pack) => (
-                <div key={pack.pack_id} className="grid gap-2 rounded-md border border-border/70 px-3 py-2 text-xs sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)] sm:items-center">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-text-main">{pack.pack_id}</p>
-                    <p className="truncate text-text-muted">role: {pack.role} · version: {pack.version}</p>
-                  </div>
-                  <span className="font-mono text-text-muted">{pack.artifact_digest}</span>
-                  <span className="break-all font-mono text-text-muted">{pack.artifact_ref}</span>
-                </div>
-              ))}
-            </div>
-          </section>
+          ))}
+        </div>
+      </section>
 
       <details className="rounded-lg border border-border bg-bg-main px-4 py-4" data-testid="profile-technical-details">
         <summary className="cursor-pointer text-sm font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]">
@@ -264,6 +260,18 @@ function ProfileDefinitionDetails({
               ) : <p className="text-sm text-text-muted">No application binding was published.</p>}
             </BindingCard>
           </div>
+          <section className="border border-border p-4">
+            <h4 className="text-sm font-medium">Pack artifact references</h4>
+            <dl className="mt-3 max-h-60 space-y-3 overflow-y-auto text-xs">
+              {entry.pack_closure.map((pack) => (
+                <div key={pack.pack_id}>
+                  <dt className="font-medium">{pack.pack_id}</dt>
+                  <dd className="mt-1 break-all font-mono text-text-muted">{pack.artifact_digest}</dd>
+                  <dd className="break-all font-mono text-text-muted">{pack.artifact_ref}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
           <OptionalConversationCapability
             entry={entry}
             catalog={catalog}
@@ -542,7 +550,6 @@ export function ProfileCatalogSelector({
           <Card>
             <CardHeader>
               <CardTitle>{t('profile_catalog.configure', {name: selectedEntry.display_name})}</CardTitle>
-              <CardDescription>{t('profile_catalog.configure_description')}</CardDescription>
             </CardHeader>
             <CardContent>
               <ProfilePackEditor
@@ -558,9 +565,6 @@ export function ProfileCatalogSelector({
                 frontendCatalogLoading={frontendCatalogLoading}
                 frontendCatalogError={frontendCatalogError}
               />
-              <p className="mt-5 text-sm text-text-muted">
-                {t('profile_catalog.selected_instruction')}
-              </p>
             </CardContent>
           </Card>
         </>

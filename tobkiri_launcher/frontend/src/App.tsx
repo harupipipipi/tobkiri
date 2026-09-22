@@ -26,6 +26,7 @@ import {
   resolveSetupVerificationState,
   type SetupVerificationState,
 } from '@/src/lib/setupVerification';
+import {broadcastRuntimeSurfaceRefresh} from '@/src/hooks/useRuntimeSurface';
 import { RouteAnnouncer } from '@/src/components/layout/RouteAnnouncer';
 import {
   LazyAiInput,
@@ -47,6 +48,8 @@ export default function App() {
   const colorMode = useAppStore(state => state.colorMode);
   const isSetupDone = useAppStore(state => state.isSetupDone);
   const runtimeReady = useAppStore(state => state.runtimeReady);
+  const hostCatalogVerified = useAppStore(state => state.hostCatalogVerified);
+  const profileCeremonyAvailable = useAppStore(state => state.profileCeremonyAvailable);
   const runtimeStatus = useAppStore(state => state.runtimeStatus);
   const runtimeDisconnected = useAppStore(state => state.runtimeDisconnected);
   const defaultsBootstrapRequired = useAppStore(state => state.defaultsBootstrapRequired);
@@ -117,11 +120,19 @@ export default function App() {
     };
   }, [refreshRuntimeHealth]);
 
+  useEffect(() => {
+    if (runtimeReady && runtimeStatus === 'runtime_ready') {
+      broadcastRuntimeSurfaceRefresh();
+    }
+  }, [runtimeReady, runtimeStatus]);
+
   return (
     <BrowserRouter basename="/panel">
       <RouteTree
         isSetupDone={isSetupDone}
         runtimeReady={runtimeReady}
+        hostCatalogVerified={hostCatalogVerified}
+        profileCeremonyAvailable={profileCeremonyAvailable}
         runtimeStatus={runtimeStatus}
         runtimeDisconnected={runtimeDisconnected}
         defaultsBootstrapRequired={defaultsBootstrapRequired}
@@ -137,6 +148,8 @@ export interface SetupVerificationGateProps {
   children: ReactNode;
   isSetupDone: boolean;
   runtimeReady: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
@@ -148,6 +161,8 @@ export interface SetupVerificationGateProps {
 export interface SetupVerificationBannerProps {
   isSetupDone: boolean;
   runtimeReady: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
@@ -304,6 +319,8 @@ function VerificationMessage({
 function useSetupVerification({
   isSetupDone,
   runtimeReady,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
@@ -312,6 +329,8 @@ function useSetupVerification({
   const state = resolveSetupVerificationState({
     isSetupDone,
     runtimeReady,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
@@ -331,6 +350,8 @@ function useSetupVerification({
 export function SetupVerificationBanner({
   isSetupDone,
   runtimeReady,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
@@ -339,6 +360,8 @@ export function SetupVerificationBanner({
   const {state, retrying, retry} = useSetupVerification({
     isSetupDone,
     runtimeReady,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
@@ -429,6 +452,8 @@ export function SetupVerificationGate({
   children,
   isSetupDone,
   runtimeReady,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
@@ -438,6 +463,8 @@ export function SetupVerificationGate({
   const {state, retrying, retry} = useSetupVerification({
     isSetupDone,
     runtimeReady,
+    hostCatalogVerified,
+    profileCeremonyAvailable,
     runtimeStatus,
     runtimeDisconnected,
     defaultsBootstrapRequired,
@@ -474,6 +501,8 @@ export function SetupVerificationGate({
 export function RouteTree({
   isSetupDone,
   runtimeReady,
+  hostCatalogVerified,
+  profileCeremonyAvailable,
   runtimeStatus,
   runtimeDisconnected,
   defaultsBootstrapRequired,
@@ -481,6 +510,8 @@ export function RouteTree({
 }: {
   isSetupDone: boolean;
   runtimeReady: boolean;
+  hostCatalogVerified?: boolean;
+  profileCeremonyAvailable?: boolean;
   runtimeStatus: RuntimeStatus;
   runtimeDisconnected: boolean;
   defaultsBootstrapRequired: boolean;
@@ -492,6 +523,8 @@ export function RouteTree({
     <SetupVerificationBanner
       isSetupDone={isSetupDone}
       runtimeReady={runtimeReady}
+      hostCatalogVerified={hostCatalogVerified}
+      profileCeremonyAvailable={profileCeremonyAvailable}
       runtimeStatus={runtimeStatus}
       runtimeDisconnected={runtimeDisconnected}
       defaultsBootstrapRequired={defaultsBootstrapRequired}
@@ -502,6 +535,8 @@ export function RouteTree({
     <SetupVerificationGate
       isSetupDone={isSetupDone}
       runtimeReady={runtimeReady}
+      hostCatalogVerified={hostCatalogVerified}
+      profileCeremonyAvailable={profileCeremonyAvailable}
       runtimeStatus={runtimeStatus}
       runtimeDisconnected={runtimeDisconnected}
       defaultsBootstrapRequired={defaultsBootstrapRequired}
