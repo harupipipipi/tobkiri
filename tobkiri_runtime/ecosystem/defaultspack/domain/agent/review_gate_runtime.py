@@ -141,7 +141,14 @@ def _authority_review_consumer() -> AuthorityReviewConsumer:
         candidate = None
     if callable(getattr(candidate, "consume_review", None)):
         return cast(AuthorityReviewConsumer, candidate)
-    return _MissingAuthorityReviewConsumer()
+    try:
+        from domain.agent.review_gate_consumer import (
+            AutomaticAuthorityReviewConsumer,
+        )
+
+        return AutomaticAuthorityReviewConsumer()
+    except Exception:
+        return _MissingAuthorityReviewConsumer()
 
 
 def _artifact_revision(artifact: Mapping[str, Any], digest: str) -> str:

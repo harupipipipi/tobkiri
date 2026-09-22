@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,9 @@ from core_runtime.operating_profile import (  # noqa: E402
 )
 from core_runtime.profile_workspace import ProfileWorkspaceManager  # noqa: E402
 from domain.agent.review_gate_runtime import enforce_finalization_review  # noqa: E402
+from domain.agent.review_gate_consumer import (  # noqa: E402
+    AutomaticAuthorityReviewConsumer,
+)
 from domain.tool_policy.internal_context import (  # noqa: E402
     mark_tool_server_approval_context,
     mark_trusted_review_gate_context,
@@ -166,6 +170,50 @@ def test_runtime_consumes_approved_review_and_untrusted_callers_cannot_forge_mod
     assert approved.decision.reason == "review_approved"
 
 
+def test_production_consumer_runs_configured_profile_and_consumes_once(tmp_path):
+    request_authority = _Authority(approved=False)
+    enforcement = enforce_finalization_review(
+        FinalizationAction.DELIVERY,
+        {"provider": "slack", "text_sha256": "a" * 64},
+        _context(AgentExecutionMode.TEAM_AGENT),
+        plan_store=_PlanStore(_profile()),
+        authority=request_authority,
+        run_store=_RunStore(),
+    )
+    assert enforcement is not None
+    request = request_authority.requests[0]
+    calls: list[str] = []
+
+    def run_reviewer(review_request):
+        calls.append(review_request.binding_digest)
+        return {
+            "verdict": "approved",
+            "findings": ["No blocking issue found."],
+            "missing_tests": [],
+            "security_concerns": [],
+            "residual_risk": "Provider availability remains external.",
+            "reviewer_run_id": f"review-run-{len(calls)}",
+            "reviewer_model": "local/reviewer",
+        }
+
+    consumer = AutomaticAuthorityReviewConsumer(
+        tmp_path / "reviews.sqlite3",
+        runner=run_reviewer,
+    )
+
+    first = consumer.consume_review(request)
+    second = consumer.consume_review(request)
+
+    assert first is not None
+    assert second is not None
+    assert first.binding_digest == request.binding_digest
+    assert first.reviewer_profile == "reviewer_agent"
+    assert first.reviewer_run_id == "review-run-1"
+    assert second.reviewer_run_id == "review-run-2"
+    assert first.authority_record_id != second.authority_record_id
+    assert calls == [request.binding_digest, request.binding_digest]
+
+
 def test_runtime_reloads_activated_review_settings_after_restart(tmp_path):
     manager = ProfileWorkspaceManager(tmp_path)
     first_store = OperatingProfilePlanStore(manager)
@@ -298,6 +346,72 @@ def test_external_delivery_stops_before_provider_when_review_is_missing(
     assert result["is_error"] is True
     assert result["error_type"] == "review_required"
     assert result["review_gate"]["request"]["context"]["action"] == "delivery"
+
+
+def test_external_delivery_retries_through_automatic_reviewer_and_then_sends(
+    monkeypatch,
+    tmp_path,
+):
+    from domain.agent import review_gate_runtime
+    from domain.external import send_tool
+    from domain.tool.executor import ToolExecutor
+
+    verdicts = iter(("changes_requested", "approved"))
+    consumer = AutomaticAuthorityReviewConsumer(
+        tmp_path / "reviews.sqlite3",
+        runner=lambda _request: {
+            "verdict": next(verdicts),
+            "findings": ["Fix the first attempt."],
+            "reviewer_run_id": f"review-run-{uuid.uuid4().hex}",
+            "reviewer_model": "local/reviewer",
+        },
+    )
+    monkeypatch.setattr(
+        review_gate_runtime,
+        "OperatingProfilePlanStore",
+        lambda: _PlanStore(_profile()),
+    )
+    monkeypatch.setattr(review_gate_runtime, "AgentRunStore", _RunStore)
+    monkeypatch.setattr(
+        review_gate_runtime,
+        "_authority_review_consumer",
+        lambda: consumer,
+    )
+    sent: list[str] = []
+
+    class _Send:
+        def send_channel_message(self, channel, text, **_kwargs):
+            sent.append(f"{channel}:{text}")
+            return {"sent": True}
+
+    monkeypatch.setattr(send_tool, "SlackResponseAdapter", _Send)
+    tool = {
+        "tool_id": "external_send",
+        "name": "external_send",
+        "requires_approval": True,
+        "execution": {
+            "type": "local",
+            "handler": "domain.external.send_tool:external_send_tool",
+        },
+    }
+    arguments = {"provider": "slack", "channel_id": "C1", "text": "ship"}
+
+    first = ToolExecutor()._execute_handler(
+        tool,
+        arguments,
+        mark_tool_server_approval_context(_context(AgentExecutionMode.TEAM_AGENT)),
+    )
+    second = ToolExecutor()._execute_handler(
+        tool,
+        arguments,
+        mark_tool_server_approval_context(_context(AgentExecutionMode.TEAM_AGENT)),
+    )
+
+    assert first["is_error"] is True
+    assert first["review_gate"]["review"]["verdict"] == "changes_requested"
+    assert second["is_error"] is False
+    assert second["review_gate"]["review"]["verdict"] == "approved"
+    assert sent == ["C1:ship"]
 
 
 def test_git_capability_stops_after_approval_consumption_and_before_effect(

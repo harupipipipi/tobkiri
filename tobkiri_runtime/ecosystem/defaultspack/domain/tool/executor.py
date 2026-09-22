@@ -3643,10 +3643,14 @@ def _finalization_action_for_tool(tool_def):
 
 def _review_gate_blocked_response(review_gate):
     details = review_gate.to_dict()
+    unavailable = review_gate.decision.reason == "authority_review_unavailable"
     return {
         "result": (
-            "A profile review is required before this finalization action. "
-            "Schedule the requested reviewer and retry the same artifact."
+            "The configured reviewer profile could not run. Connect the default "
+            "model in Settings > AI API, then retry this action."
+            if unavailable
+            else "A profile review is required before this finalization action. "
+            "Address the attached findings and retry the same artifact."
         ),
         "is_error": True,
         "error_type": "review_required",

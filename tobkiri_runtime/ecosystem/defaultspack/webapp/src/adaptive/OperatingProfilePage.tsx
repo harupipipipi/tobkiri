@@ -149,7 +149,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
                 </select>
               </label>
               <label className="block">
-                <span className="text-xs font-medium text-zinc-400">Reviewer profile</span>
+                <span className="text-xs font-medium text-zinc-400">Reviewer profile ID</span>
                 <input
                   value={reviewPolicyDraft.reviewerProfile}
                   onChange={(event) => setReviewPolicyDraft((current) => ({ ...current, reviewerProfile: event.target.value }))}
@@ -199,7 +199,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
               </label>
             </div>
             <p className="mt-3 text-xs leading-5 text-zinc-500">
-              Blocking gates pause the selected final step until the configured profile submits an Authority-bound review for the exact artifact.
+              The configured profile runs automatically as a separate, tool-free reviewer using the connected default model. Blocking gates stop the final step when that reviewer is unavailable, requests changes, or cannot verify the exact artifact; fix the model connection or finding and retry the action.
             </p>
           </fieldset>
           <div className="mt-3 flex flex-wrap gap-2">
