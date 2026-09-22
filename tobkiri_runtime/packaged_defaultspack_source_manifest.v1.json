@@ -3633,8 +3633,8 @@
     {
       "path": "tobkiri_protocol/inventory.py",
       "type": "regular-file",
-      "size": 9979,
-      "sha256": "3220a1670204071e1aff653d2738efcb3039b4b616c1d1ef4988c2b8d7535932",
+      "size": 10092,
+      "sha256": "628f141421a1849ebd22e4809e30b61a634894ace9bfe949e0808fd8fbab642c",
       "executable": false
     },
     {

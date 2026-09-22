@@ -100,13 +100,15 @@ test("every unresolved route remains unavailable without a Chat fallback", () =>
 test("vendors the exact local animation shipped by Tobkiri Launcher", async () => {
   const defaultspackAsset = await readFile(
     new URL("../../public/assets/tobkiri-startup-blade-cut.svg", import.meta.url),
+    "utf8",
   );
   const launcherAsset = await readFile(
     new URL(
       "../../../../../../tobkiri_launcher/frontend/public/assets/tobkiri-startup-blade-cut.svg",
       import.meta.url,
     ),
+    "utf8",
   );
 
-  assert.deepEqual(defaultspackAsset, launcherAsset);
+  assert.equal(defaultspackAsset.replace(/\r\n/g, "\n"), launcherAsset.replace(/\r\n/g, "\n"));
 });

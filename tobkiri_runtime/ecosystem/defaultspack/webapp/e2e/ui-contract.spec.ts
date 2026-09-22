@@ -32,7 +32,7 @@ test("bootstrap loading state uses the Tobkiri Launcher animation and honors red
     await route.abort();
   });
 
-  await page.goto("/");
+  await page.goto("/p/defaults/chat");
 
   const loader = page.locator("[data-tobkiri-loading-screen]").first();
   await expect(loader).toBeVisible();
@@ -67,7 +67,7 @@ test("keeps the startup boundary until slash commands and mention sources are re
     beforeCommandCatalogResponse: () => commandGate,
   });
 
-  await page.goto("/static/chat");
+  await page.goto("/p/defaults/chat");
 
   const loader = page.locator("[data-tobkiri-loading-screen]").first();
   await expect(loader).toBeVisible();
@@ -88,9 +88,9 @@ test("keeps the startup boundary until slash commands and mention sources are re
 });
 
 test("verified Pack v4 conversation boots from the dynamic-host catalog", async ({ page }) => {
-  await installDefaultspackApiMocks(page);
+  await installDefaultspackApiMocks(page, { catalogMode: "conversation_v4" });
 
-  await page.goto("/chat");
+  await page.goto("/p/defaults/chat");
 
   await expect(page.locator('[data-rumi-frontend-host][data-plan-hash^="sha256:"]')).toBeVisible();
   await expect(page.locator('[data-conversation-surface="v4"]')).toBeVisible();
@@ -102,6 +102,7 @@ test("verified Pack v4 conversation boots from the dynamic-host catalog", async 
 });
 
 type ApiMockOptions = {
+  catalogMode?: "application" | "conversation_v4";
   beforeCommandCatalogResponse?: () => Promise<void> | void;
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
   initialSettingsValues?: Record<string, Record<string, unknown>>;
@@ -225,44 +226,73 @@ function smokeConversation() {
 }
 
 /**
- * The smallest catalog accepted by the Pack v4 dynamic host for /chat.
+ * A profile-bound catalog for the selected Application or focused v4 fixture.
  *
- * Compatibility-surface tests deliberately use /static/chat below. This
- * fixture keeps the production /chat route on the same verified-contribution
- * contract as the Host instead of silently falling back to legacy UI.
+ * Dense-shell interactions use the same sealed application_builtin entries
+ * as the production frontend map. The dedicated conversation-v4 smoke test
+ * opts into its declarative contribution explicitly.
  */
-function dynamicHostCatalog() {
+function dynamicHostCatalog(mode: "application" | "conversation_v4" = "application") {
   const profileId = "defaults";
   const profileRevision = "e2e-profile-revision";
   const activationId = "e2e-activation";
   const planHash = `sha256:${"b".repeat(64)}`;
+  const ownerPackHash = `sha256:${"c".repeat(64)}`;
+  const descriptorHash = `sha256:${"d".repeat(64)}`;
+  const applicationContributions = [
+    ["chat", "/chat", "Chat"],
+    ["coding", "/coding", "Coding"],
+    ["calendar", "/calendar", "Calendar"],
+  ].map(([entryId, route, label]) => ({
+    contribution_id: `defaultspack.frontend.${entryId}`,
+    kind: "route" as const,
+    mode: "application_builtin" as const,
+    label,
+    priority: 0,
+    owner_pack_id: "defaultspack",
+    owner_pack_hash: ownerPackHash,
+    build_identity: "runtime.tauri.application.default",
+    resolved_profile_id: profileId,
+    resolved_profile_revision: profileRevision,
+    resolved_activation_id: activationId,
+    resolved_plan_hash: planHash,
+    descriptor_hash: descriptorHash,
+    route,
+    implementation: "defaultspack.chat",
+    localization: {},
+    accessibility: { name: label, keyboard: true },
+  }));
+  const conversationContribution = {
+    contribution_id: "defaults.conversation.complete",
+    kind: "route" as const,
+    mode: "declarative" as const,
+    label: "Tobkiri Conversation",
+    description: "Start a conversation with Tobkiri.",
+    priority: 0,
+    owner_pack_id: "defaultspack",
+    owner_pack_hash: ownerPackHash,
+    build_identity: "defaultspack.conversation",
+    resolved_profile_id: profileId,
+    resolved_profile_revision: profileRevision,
+    resolved_activation_id: activationId,
+    resolved_plan_hash: planHash,
+    descriptor_hash: descriptorHash,
+    route: "/chat",
+    action_contract: "conversation.turn.v1",
+    view: { type: "conversation_v4" },
+    localization: {},
+    accessibility: { name: "Tobkiri Conversation", keyboard: true },
+  };
   return {
     version: "rumi.ui.contribution.v1" as const,
     profile_id: profileId,
     profile_revision: profileRevision,
     activation_id: activationId,
     plan_hash: planHash,
-    contributions: [{
-      contribution_id: "defaults.conversation.complete",
-      kind: "route" as const,
-      mode: "declarative" as const,
-      label: "Tobkiri Conversation",
-      description: "Start a conversation with Tobkiri.",
-      priority: 0,
-      owner_pack_id: "defaultspack",
-      owner_pack_hash: `sha256:${"c".repeat(64)}`,
-      build_identity: "defaultspack.conversation",
-      resolved_profile_id: profileId,
-      resolved_profile_revision: profileRevision,
-      resolved_activation_id: activationId,
-      resolved_plan_hash: planHash,
-      descriptor_hash: `sha256:${"d".repeat(64)}`,
-      route: "/chat",
-      action_contract: "conversation.turn.v1",
-      view: { type: "conversation_v4" },
-      localization: {},
-      accessibility: { name: "Tobkiri Conversation", keyboard: true },
-    }],
+    selected_entry_route: "/chat",
+    contributions: mode === "conversation_v4"
+      ? [conversationContribution]
+      : applicationContributions,
     diagnostics: [],
     quarantined_pack_ids: [],
     catalog_hash: `sha256:${"e".repeat(64)}`,
@@ -738,6 +768,10 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     { server_id: "filesystem", name: "Filesystem MCP", transport: "stdio", connected: true, permissions: { approved: true }, tools: ["mcp_fs_read_file"] },
   ];
 
+  await page.route("**/health", async (route) => {
+    await fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
+  });
+
   await page.route("**/api/contracts/defaultspack/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -772,9 +806,9 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
     }
 
-    if (path === routeKey("api/ui/catalog")) {
+    if (path === routeKey("api/ui/catalog") || path === routeKey("api/ui/full-catalog")) {
       return fulfill(route, {
-        dynamic_host: dynamicHostCatalog(),
+        dynamic_host: dynamicHostCatalog(options.catalogMode),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
         agent_service: { profiles: [], capabilities: [], presets: [] },
         sidebar: {
@@ -826,11 +860,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
           };
         }
       }
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      return fulfill(route, { sections: settingsSections, values: currentSettingsValues, document_revision: 1 });
     }
 
     if (path === routeKey("api/ui/settings")) {
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      return fulfill(route, { sections: settingsSections, values: currentSettingsValues, document_revision: 1 });
     }
 
     if (path === routeKey("api/command-protocol/v1/catalog")) {
@@ -965,6 +999,10 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
     if (path === routeKey("api/chat/conversations") && method === "POST") {
       options.onConversationCreate?.(request.postDataJSON() as Record<string, unknown>);
+      return fulfill(route, conversation);
+    }
+
+    if (path === routeKey("api/chat/conversation") && method === "GET") {
       return fulfill(route, conversation);
     }
 
@@ -1337,10 +1375,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
 
 async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOptions = {}) {
   await installDefaultspackApiMocks(page, options);
-  // Existing dense-shell interactions remain compatibility tests. The real
-  // /chat route is asserted separately through the verified Pack v4 catalog.
-  const compatibilityPath = path === "/chat" ? "/static/chat" : path;
-  await page.goto(compatibilityPath);
+  const applicationPath = path === "/static/chat" ? "/chat" : path;
+  const profilePath = applicationPath.startsWith("/p/")
+    ? applicationPath
+    : `/p/defaults${applicationPath}`;
+  await page.goto(profilePath);
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 }
 
@@ -1721,7 +1760,7 @@ test("browser approval uses the shared user-first decision surface at narrow wid
 
 test("settings modal contains focus, dismisses nested layers in order, and restores its opener", async ({ page }) => {
   await installDefaultspackApiMocks(page);
-  await page.goto("/static/");
+  await page.goto("/p/defaults/chat");
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 
   const opener = page.getByTitle("Settings").last();
@@ -1794,7 +1833,7 @@ test("tool hub service selections can be scoped to the conversation and survive 
 
   // Explicitly revisit the compatibility route. Interactions may normalize
   // history to /chat, which is intentionally owned by the Pack v4 host.
-  await page.goto("/static/chat");
+  await page.goto("/p/defaults/chat");
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
   await page.locator('button[title="機能"]').click();
   await page.getByRole("button", { name: "この会話" }).click();
@@ -2575,7 +2614,7 @@ test("history reload restores localized semantic mention badges", async ({ page 
   await openDefaultspack(page, "/chat");
   await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
 
-  await page.goto("/static/chat");
+  await page.goto("/p/defaults/chat");
   await expect(page.getByTestId("message-mention-badge").filter({ hasText: "@Web Search" })).toBeVisible();
 });
 
@@ -2754,6 +2793,8 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   const now = new Date();
   const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-09`;
   const nextDayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-10`;
+  const rangeStartKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-12`;
+  const rangeEndKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-14`;
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const nextMonthKey = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
   const dayLabel = `${now.getFullYear()}年${now.getMonth() + 1}月9日`;
@@ -2786,8 +2827,8 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("Design review edited")).toBeVisible();
 
-  const rangeStart = page.getByTestId(`${"calendar-day"}-${dayKey.replace("-09", "-12")}`);
-  const rangeEnd = page.getByTestId(`${"calendar-day"}-${dayKey.replace("-09", "-14")}`);
+  const rangeStart = page.getByTestId(`calendar-day-${rangeStartKey}`);
+  const rangeEnd = page.getByTestId(`calendar-day-${rangeEndKey}`);
   const startBox = await rangeStart.boundingBox();
   const endBox = await rangeEnd.boundingBox();
   expect(startBox).not.toBeNull();

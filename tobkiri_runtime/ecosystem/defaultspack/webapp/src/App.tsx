@@ -86,6 +86,16 @@ import { loadConversationForRefresh, resolveSupersededConversationRedirect } fro
 import { cn } from "./lib/cn";
 import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleDeletion";
 import {
+  CALENDAR_TIME_POLICY_VERSION,
+  browserCalendarTimeZone,
+  calendarTimeZoneOptions,
+  calendarWallTimeFromInstant,
+  formatCalendarResolvedInstant,
+  resolveCalendarWallTime,
+  type CalendarDstResolution,
+  type CalendarTimeMode,
+} from "./lib/calendarTimeZone";
+import {
   canExecuteComposerEndpointAction,
   composerMentionMetadataFromWidgets,
   composerMentionSyntaxesForToolId,
@@ -193,6 +203,13 @@ type CalendarItem = {
   scheduleStatus?: string;
   title: string;
   time?: string;
+  timeZone?: string;
+  timeMode?: CalendarTimeMode;
+  dstResolution?: CalendarDstResolution;
+  interpretationPolicy?: string;
+  resolvedRunAt?: string;
+  timeRevision?: string;
+  multiDayTimeScope?: "start_only" | "each_day";
 };
 
 type CalendarSettings = {
@@ -559,6 +576,12 @@ function calendarKeysBetween(startKey: string, endKey: string): string[] {
   return keys;
 }
 
+function calendarKeyPlusDays(key: string, days: number): string {
+  const date = calendarDateFromKey(key);
+  date.setDate(date.getDate() + days);
+  return calendarDateKey(date);
+}
+
 function calendarRangeLabel(startKey: string, endKey: string): string {
   const [start, end] = orderedCalendarRange(startKey, endKey);
   const startLabel = calendarDateLabel(calendarDateFromKey(start));
@@ -613,11 +636,6 @@ function buildCalendarTimeOptions(stepMinutes: CalendarSettings["timeSlotMinutes
     options.push(`${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`);
   }
   return options;
-}
-
-function calendarRunAtIso(dateKey: string, time: string): string {
-  const normalized = normalizeCalendarTimeInput(time);
-  return new Date(`${dateKey}T${normalized}:00`).toISOString();
 }
 
 function createCalendarItemId(): string {
@@ -715,6 +733,11 @@ function CalendarComposerPanel({
   const [draftTitle, setDraftTitle] = useState("");
   const [draftKind, setDraftKind] = useState<CalendarItemKind>(settings.defaultItemType);
   const [draftTime, setDraftTime] = useState(formatCalendarTime(settings.defaultTime));
+  const [draftTimeZone, setDraftTimeZone] = useState(browserCalendarTimeZone);
+  const [draftTimeMode, setDraftTimeMode] = useState<CalendarTimeMode>("floating");
+  const [draftDstResolution, setDraftDstResolution] = useState<CalendarDstResolution>("exact");
+  const [draftFixedRunAt, setDraftFixedRunAt] = useState<string | null>(null);
+  const [legacyTimeZoneReviewed, setLegacyTimeZoneReviewed] = useState(true);
   const [draftAgentEnabled, setDraftAgentEnabled] = useState(settings.agentTaskDefault);
   const [draftAgentPrompt, setDraftAgentPrompt] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -787,6 +810,25 @@ function CalendarComposerPanel({
   const activeRangeKeys = activeEditor ? new Set(calendarKeysBetween(activeEditor.startKey, activeEditor.endKey)) : new Set<string>();
   const dragRangeKeys = dragState ? new Set(calendarKeysBetween(dragState.startKey, dragState.currentKey)) : new Set<string>();
   const activeItem = activeEditor?.itemId ? items.find((item) => item.id === activeEditor.itemId) ?? null : null;
+  const normalizedDraftTime = normalizeCalendarTimeInput(draftTime, settings.defaultTime);
+  const draftTemporalResolution = activeEditor
+    ? resolveCalendarWallTime(
+      activeEditor.startKey,
+      normalizedDraftTime,
+      draftTimeZone,
+      draftDstResolution,
+    )
+    : null;
+  const resolvedDraftInstant = draftTemporalResolution?.selected?.iso ?? null;
+  const resolvedDraftLabels = resolvedDraftInstant
+    ? formatCalendarResolvedInstant(resolvedDraftInstant, draftTimeZone)
+    : null;
+  const storedInstantChanged = Boolean(
+    activeItem?.resolvedRunAt
+    && resolvedDraftInstant
+    && activeItem.resolvedRunAt !== resolvedDraftInstant,
+  );
+  const timeZoneOptions = calendarTimeZoneOptions(draftTimeZone);
   const timeOptions = buildCalendarTimeOptions(settings.timeSlotMinutes);
   const popoverStyle = activeEditor ? {
     left: `${(activeEditor.cell.col / 7) * 100}%`,
@@ -823,6 +865,11 @@ function CalendarComposerPanel({
     setDraftTitle("");
     setDraftKind(kind);
     setDraftTime(formatCalendarTime(settings.defaultTime));
+    setDraftTimeZone(browserCalendarTimeZone());
+    setDraftTimeMode("floating");
+    setDraftDstResolution("exact");
+    setDraftFixedRunAt(null);
+    setLegacyTimeZoneReviewed(true);
     setDraftAgentEnabled(settings.agentTaskDefault && kind === "task");
     setDraftAgentPrompt("");
     setDraftError(null);
@@ -847,6 +894,15 @@ function CalendarComposerPanel({
     setDraftTitle(item.title);
     setDraftKind(item.kind);
     setDraftTime(formatCalendarTime(item.time ?? settings.defaultTime));
+    setDraftTimeZone(item.timeZone || browserCalendarTimeZone());
+    setDraftTimeMode(item.timeMode === "fixed" ? "fixed" : "floating");
+    setDraftDstResolution(
+      item.dstResolution === "earlier" || item.dstResolution === "later"
+        ? item.dstResolution
+        : "exact",
+    );
+    setDraftFixedRunAt(item.resolvedRunAt ?? null);
+    setLegacyTimeZoneReviewed(Boolean(item.timeZone && item.interpretationPolicy));
     setDraftAgentEnabled(Boolean(item.scheduleId));
     setDraftAgentPrompt(item.agentPrompt ?? item.title);
     setDraftError(null);
@@ -854,11 +910,77 @@ function CalendarComposerPanel({
     setIsTimeMenuOpen(false);
   };
 
-  const schedulePayloadForItem = (itemId: string, title: string, startKey: string, endKey: string, time: string, agentPrompt: string) => ({
+  const changeDraftTimeZone = (nextTimeZone: string) => {
+    if (draftTimeMode === "fixed") {
+      const fixedInstant = draftFixedRunAt ?? resolvedDraftInstant;
+      const wallTime = fixedInstant
+        ? calendarWallTimeFromInstant(fixedInstant, nextTimeZone)
+        : null;
+      if (wallTime && activeEditor) {
+        const rangeDays = calendarKeysBetween(
+          activeEditor.startKey,
+          activeEditor.endKey,
+        ).length - 1;
+        setActiveEditor({
+          ...activeEditor,
+          startKey: wallTime.date,
+          endKey: calendarKeyPlusDays(wallTime.date, rangeDays),
+        });
+        setDraftTime(formatCalendarTime(wallTime.time));
+      }
+    }
+    setDraftTimeZone(nextTimeZone);
+    setDraftDstResolution("exact");
+    setLegacyTimeZoneReviewed(true);
+  };
+
+  const changeDraftTimeMode = (nextMode: CalendarTimeMode) => {
+    setDraftTimeMode(nextMode);
+    if (nextMode === "fixed") {
+      setDraftFixedRunAt(resolvedDraftInstant ?? draftFixedRunAt);
+    } else {
+      setDraftFixedRunAt(null);
+    }
+  };
+
+  const useSuggestedValidWallTime = () => {
+    if (!activeEditor || !draftTemporalResolution?.suggestedDate || !draftTemporalResolution.suggestedTime) return;
+    const rangeDays = calendarKeysBetween(activeEditor.startKey, activeEditor.endKey).length - 1;
+    setActiveEditor({
+      ...activeEditor,
+      startKey: draftTemporalResolution.suggestedDate,
+      endKey: calendarKeyPlusDays(draftTemporalResolution.suggestedDate, rangeDays),
+    });
+    setDraftTime(formatCalendarTime(draftTemporalResolution.suggestedTime));
+    if (draftTimeMode === "fixed") setDraftFixedRunAt(null);
+    setDraftDstResolution("exact");
+  };
+
+  const schedulePayloadForItem = (
+    itemId: string,
+    title: string,
+    startKey: string,
+    endKey: string,
+    time: string,
+    agentPrompt: string,
+    runAt: string,
+    expectedTimeRevision?: string,
+  ) => ({
     name: `Calendar: ${title}`,
-    description: `Created from Rumi calendar for ${calendarRangeLabel(startKey, endKey)}.`,
+    description: `Created from Tobkiri calendar for ${calendarRangeLabel(startKey, endKey)}.`,
     schedule_type: "once",
-    schedule_config: { run_at: calendarRunAtIso(startKey, time) },
+    schedule_config: {
+      run_at: runAt,
+      normalized_run_at: runAt,
+      local_date: startKey,
+      local_time: normalizeCalendarTimeInput(time),
+      time_zone: draftTimeZone,
+      time_mode: draftTimeMode,
+      dst_resolution: draftTemporalResolution?.status === "ambiguous" ? draftDstResolution : "exact",
+      interpretation_policy: CALENDAR_TIME_POLICY_VERSION,
+      multi_day_time_scope: "start_only",
+      ...(expectedTimeRevision ? { expected_time_revision: expectedTimeRevision } : {}),
+    },
     task: {
       message: agentPrompt || title,
       model: resolveCalendarAgentModel(settings, modelId, modelProfiles),
@@ -869,6 +991,12 @@ function CalendarComposerPanel({
         calendar_start_date: startKey,
         calendar_end_date: endKey,
         calendar_time: normalizeCalendarTimeInput(time),
+        calendar_time_zone: draftTimeZone,
+        calendar_time_mode: draftTimeMode,
+        calendar_dst_resolution: draftTemporalResolution?.status === "ambiguous" ? draftDstResolution : "exact",
+        calendar_interpretation_policy: CALENDAR_TIME_POLICY_VERSION,
+        calendar_resolved_run_at: runAt,
+        calendar_multi_day_time_scope: "start_only",
       },
     },
   });
@@ -886,20 +1014,41 @@ function CalendarComposerPanel({
     endKey: string,
     time: string,
     agentPrompt: string,
-  ): Promise<{ scheduleId?: string; scheduleStatus?: string }> => {
-    const payload = schedulePayloadForItem(itemId, title, startKey, endKey, time, agentPrompt);
+    runAt: string,
+  ): Promise<{
+    scheduleId?: string;
+    scheduleStatus?: string;
+    normalizedRunAt?: string;
+    timeRevision?: string;
+  }> => {
+    const payload = schedulePayloadForItem(
+      itemId,
+      title,
+      startKey,
+      endKey,
+      time,
+      agentPrompt,
+      runAt,
+      existing?.timeRevision,
+    );
     if (existing?.scheduleId) {
       const updated = extractScheduleRecord(await api.updateSchedule(existing.scheduleId, payload));
+      const updatedConfig = isRecord(updated.config) ? updated.config : {};
       return {
         scheduleId: String(updated.id ?? existing.scheduleId),
         scheduleStatus: String(updated.status ?? existing.scheduleStatus ?? "active"),
+        normalizedRunAt: String(updated.next_execution_at ?? runAt),
+        timeRevision: String(updatedConfig.time_revision ?? existing.timeRevision ?? "") || undefined,
       };
     }
     const created = extractScheduleRecord(await api.createSchedule(payload));
+    const createdConfig = isRecord(created.config) ? created.config : {};
     const scheduleId = created.id ? String(created.id) : undefined;
     return {
       scheduleId,
       scheduleStatus: String(created.status ?? "active"),
+      normalizedRunAt: String(created.next_execution_at ?? runAt),
+      timeRevision: String(createdConfig.time_revision ?? "") || undefined,
     };
   };
 
@@ -916,12 +1065,32 @@ function CalendarComposerPanel({
     const itemId = existing?.id ?? createCalendarItemId();
     const agentPrompt = draftAgentPrompt.trim() || title;
     try {
+      if (!legacyTimeZoneReviewed) {
+        throw new Error("既存項目のタイムゾーンを確認してください。");
+      }
+      if (!draftTemporalResolution?.selected) {
+        throw new Error(draftTemporalResolution?.message || "実行時刻を解決できません。");
+      }
+      const runAt = draftTemporalResolution.selected.iso;
       let scheduleId = existing?.scheduleId;
       let scheduleStatus = existing?.scheduleStatus;
+      let normalizedRunAt = runAt;
+      let timeRevision = existing?.timeRevision;
       if (draftKind === "task" && draftAgentEnabled) {
-        const schedule = await persistAgentSchedule(existing, itemId, title, startKey, endKey, normalizedTime, agentPrompt);
+        const schedule = await persistAgentSchedule(
+          existing,
+          itemId,
+          title,
+          startKey,
+          endKey,
+          normalizedTime,
+          agentPrompt,
+          runAt,
+        );
         scheduleId = schedule.scheduleId;
         scheduleStatus = schedule.scheduleStatus;
+        normalizedRunAt = schedule.normalizedRunAt ?? runAt;
+        timeRevision = schedule.timeRevision;
       } else if (existing?.scheduleId) {
         await deleteCalendarScheduleBeforeLocalChange(existing.scheduleId, api.deleteSchedule);
         scheduleId = undefined;
@@ -938,6 +1107,13 @@ function CalendarComposerPanel({
         scheduleId,
         scheduleStatus,
         lastRunStatus: existing?.lastRunStatus,
+        timeZone: draftTimeZone,
+        timeMode: draftTimeMode,
+        dstResolution: draftTemporalResolution.status === "ambiguous" ? draftDstResolution : "exact",
+        interpretationPolicy: CALENDAR_TIME_POLICY_VERSION,
+        resolvedRunAt: normalizedRunAt,
+        timeRevision,
+        multiDayTimeScope: "start_only",
       };
       setItems((current) => activeEditor.mode === "edit"
         ? current.map((item) => item.id === itemId ? nextItem : item)
@@ -1138,7 +1314,7 @@ function CalendarComposerPanel({
           key={`${activeEditor.mode}-${activeEditor.itemId ?? "new"}-${activeEditor.startKey}-${activeEditor.endKey}`}
           role="dialog"
           aria-label={`${calendarRangeLabel(activeEditor.startKey, activeEditor.endKey)}に追加`}
-          className="rumi-calendar-popover absolute rumi-layer-global-overlay w-[min(320px,calc(100%-24px))] rounded-2xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-[0_24px_70px_rgba(0,0,0,0.65)] backdrop-blur"
+          className="rumi-calendar-popover absolute rumi-layer-global-overlay max-h-[calc(100vh-24px)] w-[min(320px,calc(100%-24px))] overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-950/95 p-3 text-left shadow-[0_24px_70px_rgba(0,0,0,0.65)] backdrop-blur"
           style={popoverStyle}
           onPointerDown={(event) => {
             const target = event.target as HTMLElement | null;
@@ -1213,6 +1389,8 @@ function CalendarComposerPanel({
                 onBlur={() => window.setTimeout(() => setIsTimeMenuOpen(false), 120)}
                 onChange={(event) => {
                   setDraftTime(event.target.value);
+                  if (draftTimeMode === "fixed") setDraftFixedRunAt(null);
+                  setDraftDstResolution("exact");
                   setIsTimeMenuOpen(settings.showTimePicker);
                 }}
                 className="h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 text-xs text-zinc-200 outline-none focus:border-zinc-600"
@@ -1235,6 +1413,8 @@ function CalendarComposerPanel({
                       )}
                       onClick={() => {
                         setDraftTime(formatCalendarTime(option));
+                        if (draftTimeMode === "fixed") setDraftFixedRunAt(null);
+                        setDraftDstResolution("exact");
                         setIsTimeMenuOpen(false);
                       }}
                     >
@@ -1246,11 +1426,127 @@ function CalendarComposerPanel({
             </label>
             <button
               type="submit"
-              disabled={isSavingDraft}
+              disabled={isSavingDraft || !draftTemporalResolution?.selected || !legacyTimeZoneReviewed}
               className="h-9 rounded-lg bg-zinc-100 px-4 text-xs font-semibold text-zinc-950 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {activeEditor.mode === "edit" ? "保存" : "追加"}
             </button>
+          </div>
+          <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/55 p-2.5" data-testid="calendar-time-contract">
+            <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
+              タイムゾーン
+              <input
+                type="text"
+                list="calendar-time-zone-options"
+                value={draftTimeZone}
+                aria-label="カレンダー項目のタイムゾーン"
+                onChange={(event) => changeDraftTimeZone(event.target.value)}
+                className="mt-1 h-11 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 text-xs normal-case tracking-normal text-zinc-100 outline-none focus:border-blue-400/70"
+              />
+              <datalist id="calendar-time-zone-options">
+                {timeZoneOptions.map((timeZone) => (
+                  <option key={timeZone} value={timeZone}>{timeZone}</option>
+                ))}
+              </datalist>
+            </label>
+            <div className="mt-2 grid grid-cols-2 gap-1.5" role="group" aria-label="時刻の保持方法">
+              <button
+                type="button"
+                aria-pressed={draftTimeMode === "floating"}
+                onClick={() => changeDraftTimeMode("floating")}
+                className={cn(
+                  "min-h-11 rounded-lg border px-2 py-1 text-left text-xs",
+                  draftTimeMode === "floating"
+                    ? "border-blue-400/60 bg-blue-500/10 text-blue-100"
+                    : "border-zinc-800 text-zinc-400",
+                )}
+              >
+                <span className="block font-semibold">現地時刻を保つ</span>
+                <span className="block text-xs opacity-70">移動後も{normalizedDraftTime}</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={draftTimeMode === "fixed"}
+                onClick={() => changeDraftTimeMode("fixed")}
+                className={cn(
+                  "min-h-11 rounded-lg border px-2 py-1 text-left text-xs",
+                  draftTimeMode === "fixed"
+                    ? "border-blue-400/60 bg-blue-500/10 text-blue-100"
+                    : "border-zinc-800 text-zinc-400",
+                )}
+              >
+                <span className="block font-semibold">瞬間を固定</span>
+                <span className="block text-xs opacity-70">ゾーン変更でもUTCを維持</span>
+              </button>
+            </div>
+            {!legacyTimeZoneReviewed && (
+              <div className="mt-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-2 text-xs text-amber-100">
+                <p>この既存項目には作成時のタイムゾーンがありません。現在の表示を自動確定せず、選択内容を確認してください。</p>
+                <button
+                  type="button"
+                  onClick={() => setLegacyTimeZoneReviewed(true)}
+                  className="mt-1.5 min-h-11 rounded-md border border-amber-300/40 px-2 font-semibold hover:bg-amber-400/10"
+                >
+                  {draftTimeZone}として確認
+                </button>
+              </div>
+            )}
+            {draftTemporalResolution?.status === "ambiguous" && !draftTemporalResolution.selected && (
+              <div className="mt-2 rounded-lg border border-amber-400/40 bg-amber-500/10 p-2 text-xs text-amber-100">
+                <p>{draftTemporalResolution.message}</p>
+                <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDraftDstResolution("earlier")}
+                    className="min-h-11 rounded-md border border-amber-300/40 px-2 font-semibold hover:bg-amber-400/10"
+                  >
+                    先の時刻 {draftTemporalResolution.candidates[0]?.offset}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraftDstResolution("later")}
+                    className="min-h-11 rounded-md border border-amber-300/40 px-2 font-semibold hover:bg-amber-400/10"
+                  >
+                    後の時刻 {draftTemporalResolution.candidates[1]?.offset}
+                  </button>
+                </div>
+              </div>
+            )}
+            {draftTemporalResolution?.status === "nonexistent" && (
+              <div className="mt-2 rounded-lg border border-red-400/40 bg-red-500/10 p-2 text-xs text-red-100">
+                <p>{draftTemporalResolution.message}</p>
+                {draftTemporalResolution.suggestedDate && draftTemporalResolution.suggestedTime && (
+                  <button
+                    type="button"
+                    onClick={useSuggestedValidWallTime}
+                    className="mt-1.5 min-h-11 rounded-md border border-red-300/40 px-2 font-semibold hover:bg-red-400/10"
+                  >
+                    次の有効時刻 {draftTemporalResolution.suggestedDate} {draftTemporalResolution.suggestedTime} に変更
+                  </button>
+                )}
+              </div>
+            )}
+            {draftTemporalResolution?.status === "invalid" && (
+              <p className="mt-2 rounded-lg border border-red-400/40 bg-red-500/10 p-2 text-xs text-red-100">
+                {draftTemporalResolution.message}
+              </p>
+            )}
+            {resolvedDraftLabels && (
+              <div className="mt-2 text-xs text-zinc-300" role="status" aria-live="polite" data-testid="calendar-resolved-time">
+                <p className="font-medium">実行予定: {resolvedDraftLabels.local}</p>
+                <p className="mt-0.5 font-mono text-xs text-zinc-500">{resolvedDraftLabels.utc}</p>
+              </div>
+            )}
+            {storedInstantChanged && (
+              <div className="mt-2 rounded-lg border border-blue-400/30 bg-blue-500/10 p-2 text-xs text-blue-100">
+                <p>前回確定: {activeItem?.resolvedRunAt}</p>
+                <p>今回の解決: {resolvedDraftInstant}</p>
+                <p className="mt-1">タイムゾーンまたは時刻の変更を保存すると、実行瞬間も更新されます。</p>
+              </div>
+            )}
+            {activeEditor.startKey !== activeEditor.endKey && (
+              <p className="mt-2 text-xs text-zinc-500">複数日の項目では、Agentの実行時刻は開始日のみに適用されます。</p>
+            )}
           </div>
           {draftKind === "task" && (
             <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-2.5">

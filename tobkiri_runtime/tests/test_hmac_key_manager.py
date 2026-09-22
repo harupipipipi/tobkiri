@@ -168,7 +168,12 @@ class TestGenerateOrLoadSigningKey:
         outside = tmp_path / "outside.key"
         _write_owner_key(outside, "s" * 64)
         key_path = tmp_path / "signing.key"
-        key_path.symlink_to(outside)
+        try:
+            key_path.symlink_to(outside)
+        except OSError as exc:
+            if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+                pytest.skip("Windows symlink creation requires Developer Mode or elevation")
+            raise
         with pytest.raises(SigningKeyError, match="symlinked"):
             generate_or_load_signing_key(key_path)
 

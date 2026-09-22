@@ -33,6 +33,7 @@ from domain.agent.schedule_store import (
     append_history,
     load_history,
 )
+from domain.agent.calendar_schedule_time import normalize_once_calendar_config
 from domain.tool.scheduled_approval import (
     approve_schedule_pending_approval,
     obsolete_superseded_scheduled_approvals,
@@ -1220,6 +1221,7 @@ class Scheduler:
             if not run_at:
                 raise ValueError("schedule_config.run_at is required for once type")
             _parse_iso_datetime(run_at)  # validates datetime
+            schedule_config = normalize_once_calendar_config(schedule_config)
 
         now = timestamp()
         sid = "sched_" + gen_id()
@@ -1313,6 +1315,14 @@ class Scheduler:
                         if not run_at:
                             raise ValueError("config.run_at is required for once type")
                         _parse_iso_datetime(run_at)
+                        updates["config"] = normalize_once_calendar_config(
+                            cfg,
+                            current_config=(
+                                sched.get("config")
+                                if isinstance(sched.get("config"), dict)
+                                else None
+                            ),
+                        )
                 if key == "task":
                     if not isinstance(updates["task"], dict):
                         raise ValueError("task must be a dict")

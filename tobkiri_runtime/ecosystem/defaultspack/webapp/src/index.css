@@ -757,6 +757,16 @@ body {
   pointer-events: auto;
 }
 
+@media (max-width: 640px) {
+  .rumi-calendar-popover {
+    position: fixed !important;
+    inset: 12px !important;
+    width: auto !important;
+    max-height: none !important;
+    overflow-y: auto;
+  }
+}
+
 .rumi-history-rail {
   animation: none;
 }

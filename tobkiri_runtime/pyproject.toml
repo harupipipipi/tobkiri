@@ -12,6 +12,7 @@ dependencies = [
   "jsonschema>=4.26.0",
   "packaging>=24.0",
   "PyYAML>=6.0.2",
+  "tzdata>=2026.3",
   "typing-extensions>=4.4",
   "wasmtime==48.0.0",
 ]

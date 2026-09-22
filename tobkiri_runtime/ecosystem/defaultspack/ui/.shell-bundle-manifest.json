@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "bb05ab2f6d7ae79dbb29e359de457fbee76f636a2fc938e64cce3dc9b0d3b478",
+    "digest": "f17e6e438509c93650e5f29e368ae7ca77589944a6d0ab0f75f8f8653d841024",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5711,
-        "sha256": "1b695975cc8bd5eadd0024fefc711cbe2066ba0af1466f531f4bc6a00de878bc"
+        "size": 5744,
+        "sha256": "7af5c609d8f8d9a892a7dc704f3c3efbb54b5d2a5aaf33a0489696e0c2dea512"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -115,8 +115,8 @@
       },
       {
         "path": "src/App.tsx",
-        "size": 343414,
-        "sha256": "3629e4aca98dee8003d182d260736d82310237a7ec94e2cc80a8d4df08f0fa1d"
+        "size": 356786,
+        "sha256": "c2df078f5969479604dd991fcee90232fb986eba4eb5c28247cb899beb428d8e"
       },
       {
         "path": "src/adaptive/ActivityCenter.tsx",
@@ -450,8 +450,8 @@
       },
       {
         "path": "src/components/TobkiriLoadingScreen.test.tsx",
-        "size": 4703,
-        "sha256": "4c6efde70cf6b104e62f35b48710f04ef9c81e3d5934dadff3d3f79a1491a24f"
+        "size": 4769,
+        "sha256": "43f8a19efc7359c6f68ca0426f51f660c6655b0972d89ab6b60e187963cdf8d0"
       },
       {
         "path": "src/components/TobkiriLoadingScreen.tsx",
@@ -1115,8 +1115,8 @@
       },
       {
         "path": "src/index.css",
-        "size": 37815,
-        "sha256": "9b3daa7bc90f14aa2e1ad8c16b82017efa80e182205d5926b4444ef14fb79a80"
+        "size": 38020,
+        "sha256": "ce046c9533d76d4c38c24ef54c9205f35d79a4e6d36294cccb69e14395c1d049"
       },
       {
         "path": "src/lib/adaptiveApi.ts",
@@ -1222,6 +1222,16 @@
         "path": "src/lib/calendarScheduleDeletion.ts",
         "size": 506,
         "sha256": "db5e94cdcebd417f6eaa7ee8acde11e704b150cc88230ba9f40626a17d2c8ce8"
+      },
+      {
+        "path": "src/lib/calendarTimeZone.test.ts",
+        "size": 2651,
+        "sha256": "ca3457c9dff663c88195dab58b588355b72b3a7ef0a6ab203543db765d6eb62e"
+      },
+      {
+        "path": "src/lib/calendarTimeZone.ts",
+        "size": 7852,
+        "sha256": "662148c7e5f65a8460b65825c86aa667ef826380ec7e0f31f619d57c12317596"
       },
       {
         "path": "src/lib/changeRequests.test.ts",
@@ -1931,12 +1941,12 @@
     ]
   },
   "bundle": {
-    "digest": "8ac203be7df476d2a9fd3108ee2a361d32259e40f9c1da2a8dc371ae16122f3f",
+    "digest": "1dd8411cf108f99750bea3ab6e126ce8d088aae76ce1783028ebad47f2160910",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 232456,
-        "sha256": "9ed65a93ac44df6cba7dea05fd98d4549f594deaa0e5e7b2080fd2832b234a16"
+        "size": 233278,
+        "sha256": "eb146393148521c47ba2e27ecef845986b8e8bb16c07fce89df7d7e81c6d142e"
       },
       {
         "path": "shell-app.js",
@@ -1945,8 +1955,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239224,
-        "sha256": "c475c0b32af8b76b9cc825bf7061a09e6e1f493a6f910f18d2319bbd85eb9758"
+        "size": 2249748,
+        "sha256": "20f59fd8c9424a3bdc7d714ea18988b27e57b8d14cef6562a74ea71cac7367ad"
       },
       {
         "path": "shell-rolldown-runtime.js",
