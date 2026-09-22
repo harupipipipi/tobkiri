@@ -33,7 +33,7 @@ from domain.safety.audit import record_approval, record_denial
 
 
 _STATE_ENV = "RUMI_CODEX_APP_SERVER_SESSION_STATE_PATH"
-_TERMINAL_TURN_STATES = {"completed", "failed", "interrupted"}
+_TERMINAL_TURN_STATES = {"completed", "failed", "interrupted", "cancelled"}
 
 
 class CodexRuntimeError(RuntimeError):
@@ -82,6 +82,13 @@ def _turn_id(result: dict[str, Any]) -> str:
     if isinstance(turn, dict) and turn.get("id"):
         return str(turn["id"])
     return str(result.get("turnId") or result.get("turn_id") or "")
+
+
+def _turn_status(turn: dict[str, Any]) -> str:
+    value = turn.get("status")
+    if isinstance(value, dict):
+        value = value.get("type") or value.get("status")
+    return str(value or "").strip().lower()
 
 
 class CodexAppServerRuntime:
@@ -244,10 +251,28 @@ class CodexAppServerRuntime:
         )
         try:
             models = client.list_models()
+            try:
+                client.read_account()
+            except Exception:
+                pass
+            try:
+                client.read_usage()
+            except Exception:
+                pass
             saved_thread = self._saved_thread(workspace_id, resolution.root_path)
+            active_turn_id = ""
             if saved_thread:
                 try:
                     session = client.resume_thread(saved_thread, resolution.root_path)
+                    thread_result = client.read_thread(saved_thread, include_turns=True)
+                    thread = thread_result.get("thread")
+                    turns = thread.get("turns") if isinstance(thread, dict) else None
+                    if isinstance(turns, list) and turns:
+                        latest = turns[-1]
+                        if isinstance(latest, dict) and _turn_status(latest) not in (
+                            _TERMINAL_TURN_STATES
+                        ):
+                            active_turn_id = str(latest.get("id") or "")
                 except Exception:
                     session = client.start_thread(resolution.root_path)
             else:
@@ -262,6 +287,7 @@ class CodexAppServerRuntime:
             client=client,
             session=session,
             models=models,
+            active_turn_id=active_turn_id,
         )
         with self._lock:
             self._bindings[workspace_id] = binding
@@ -301,7 +327,7 @@ class CodexAppServerRuntime:
                     except RequestTimeout:
                         break
         turn = binding.client.turn_status.get(binding.active_turn_id, {})
-        if str(turn.get("status") or "") in _TERMINAL_TURN_STATES:
+        if _turn_status(turn) in _TERMINAL_TURN_STATES:
             binding.active_turn_id = ""
         return self._snapshot(binding)
 
@@ -317,7 +343,7 @@ class CodexAppServerRuntime:
         with binding.lock:
             if binding.active_turn_id:
                 known = binding.client.turn_status.get(binding.active_turn_id, {})
-                if str(known.get("status") or "") not in _TERMINAL_TURN_STATES:
+                if _turn_status(known) not in _TERMINAL_TURN_STATES:
                     raise CodexRuntimeError("a Codex App Server turn is already active")
             allowed_models = {str(item.get("id") or "") for item in binding.models}
             if model and model not in allowed_models:

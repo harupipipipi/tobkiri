@@ -38,6 +38,16 @@ class FakeClient:
         self.resumed.append(thread_id)
         return CodingSession("session-resumed", root, thread_id=thread_id)
 
+    def read_thread(self, thread_id: str, *, include_turns: bool):
+        assert include_turns is True
+        return {"thread": {"id": thread_id, "turns": []}}
+
+    def read_account(self):
+        return self.account
+
+    def read_usage(self):
+        return self.usage
+
     def start_turn(self, session, text: str, *, model=None, effort=None):
         assert session.thread_id
         assert text == "inspect changes"
