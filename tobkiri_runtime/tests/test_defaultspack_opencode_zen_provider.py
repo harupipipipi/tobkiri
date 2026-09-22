@@ -224,6 +224,24 @@ def test_opencode_zen_mimo_free_rejects_nameless_tool_call(monkeypatch):
         list(provider._synthetic_stream_events(response))
 
 
+def test_opencode_zen_mimo_free_rejects_tool_call_without_id(monkeypatch):
+    provider = _provider(monkeypatch)
+    response = {
+        "content": [
+            {
+                "type": "tool_use",
+                "name": "noop",
+                "input": {},
+            }
+        ],
+        "finish_reason": "tool_calls",
+        "usage": {},
+    }
+
+    with pytest.raises(RuntimeError, match="tool call without an id"):
+        list(provider._synthetic_stream_events(response))
+
+
 def test_opencode_zen_mimo_free_rejects_empty_choices(monkeypatch):
     provider = _provider(monkeypatch)
 

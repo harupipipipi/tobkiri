@@ -441,6 +441,16 @@ class OpencodeZenProvider(AnthropicProvider):
             raise RuntimeError(
                 "OpenCode Zen MiMo V2.5 Free returned a tool call without a name"
             )
+        missing_tool_call_id = any(
+            isinstance(item, dict)
+            and str(item.get("type") or "") == "tool_use"
+            and not str(item.get("id") or "").strip()
+            for item in content
+        )
+        if missing_tool_call_id:
+            raise RuntimeError(
+                "OpenCode Zen MiMo V2.5 Free returned a tool call without an id"
+            )
         has_output = any(
             isinstance(item, dict)
             and (
@@ -488,7 +498,7 @@ class OpencodeZenProvider(AnthropicProvider):
                 continue
             if item_type != "tool_use":
                 continue
-            call_id = str(item.get("id") or "tool_call_completed")
+            call_id = str(item["id"]).strip()
             name = str(item.get("name") or "")
             yield {"type": "tool_call_start", "id": call_id, "name": name}
             arguments = item.get("input")
