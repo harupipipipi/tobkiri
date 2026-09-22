@@ -1149,6 +1149,8 @@ export function RightSidebar({
   const placementMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const contextMenuOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const activePanelOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const fallbackRailControlRef = useRef<HTMLButtonElement | null>(null);
   const buttonTabIndex = undefined;
   void keyboardButtonNavigation;
   const selectedToolIdSet = useMemo(() => new Set(selectedToolIds), [selectedToolIds]);
@@ -1172,6 +1174,19 @@ export function RightSidebar({
       placement.id === manifest.id && placement.surface === "right_sidebar"
     )))
   ), [pinnedPlacements, placementManifestMap]);
+
+  const restorePanelFocus = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const opener = activePanelOpenerRef.current;
+      const target = opener?.isConnected ? opener : fallbackRailControlRef.current;
+      if (target?.isConnected) target.focus();
+    });
+  }, []);
+
+  const closeActivePanel = useCallback(() => {
+    setActivePanel(null);
+    restorePanelFocus();
+  }, [restorePanelFocus]);
 
   useEffect(() => {
     try {
@@ -1254,17 +1269,17 @@ export function RightSidebar({
       return;
     }
     if (!items.some((item) => item.id === activePanel)) {
-      setActivePanel(null);
+      closeActivePanel();
     }
-  }, [activePanel, codingPanel, companyPanel, hasPromptWidget, items, placementManifestMap, workspaceTabs.length]);
+  }, [activePanel, closeActivePanel, codingPanel, companyPanel, hasPromptWidget, items, placementManifestMap, workspaceTabs.length]);
 
   useEffect(() => {
     if (!activePanel || categoryFilter === "all") return;
     const active = items.find((item) => item.id === activePanel);
     if (active && active.category !== categoryFilter && !pinnedItemIdSet.has(active.id)) {
-      setActivePanel(null);
+      closeActivePanel();
     }
-  }, [activePanel, categoryFilter, items, pinnedItemIdSet]);
+  }, [activePanel, categoryFilter, closeActivePanel, items, pinnedItemIdSet]);
 
   useEffect(() => {
     if (!openToolGroupMenu) return;
@@ -1400,9 +1415,9 @@ export function RightSidebar({
   useEffect(() => {
     if (!activePanel || activePanel === "__tool_manager__" || activePanel === "__tool_filter_log__" || activePanel === "__runtime_status__" || activePanel === "__context_usage__" || activePanel === "__prompt_usage__" || activePanel === "__company_workspace__" || activePanel === "__coding_widget__" || activePanel === "__workspace_tabs__" || !searchQuery.trim()) return;
     if (!searchFilteredItems.some((item) => item.id === activePanel)) {
-      setActivePanel(null);
+      closeActivePanel();
     }
-  }, [activePanel, searchFilteredItems, searchQuery]);
+  }, [activePanel, closeActivePanel, searchFilteredItems, searchQuery]);
   const counts = useMemo(() => {
     const next: Record<string, number> = { all: searchFilteredItems.length };
     for (const item of searchFilteredItems) {
@@ -1781,7 +1796,14 @@ export function RightSidebar({
         event.preventDefault();
         openItemContextMenuFromKeyboard(event.currentTarget, item);
       }}
-      onClick={() => setActivePanel((current) => (current === item.id ? null : item.id))}
+      onClick={(event) => {
+        if (activePanel === item.id) {
+          closeActivePanel();
+          return;
+        }
+        activePanelOpenerRef.current = event.currentTarget;
+        setActivePanel(item.id);
+      }}
       tabIndex={buttonTabIndex}
       aria-label={item.label}
       aria-controls="right-sidebar-detail-panel"
@@ -1949,7 +1971,7 @@ export function RightSidebar({
               )}
               <button
                 type="button"
-                onClick={() => setActivePanel(null)}
+                onClick={closeActivePanel}
                 className="flex h-11 w-11 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
                 title="Close panel"
                 aria-label="Close panel"
@@ -3056,8 +3078,9 @@ export function RightSidebar({
                           role="menuitem"
                           tabIndex={-1}
                           onClick={() => {
+                            activePanelOpenerRef.current = contextMenuOpenerRef.current;
                             setActivePanel(item.id);
-                            closeItemContextMenu(false);
+                            closeItemContextMenu(true);
                           }}
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-zinc-300 hover:bg-zinc-800/80 hover:text-zinc-100"
                 >
@@ -3073,6 +3096,7 @@ export function RightSidebar({
 
                   <button
                     type="button"
+                    ref={fallbackRailControlRef}
                     tabIndex={buttonTabIndex}
                     onClick={onOpenSettings}
                     aria-label="Settings"
