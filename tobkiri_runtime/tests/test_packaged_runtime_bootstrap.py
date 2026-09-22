@@ -193,7 +193,11 @@ def test_kernel_bootstrap_publishes_and_reuses_desktop_api_token(
         first_token = get_hmac_key_manager().get_active_key()
         assert (user_data / "hmac_keys.json").is_file()
         assert token_cache.read_text(encoding="utf-8") == first_token
-        if os.name != "nt":
+        if os.name == "nt":
+            from core_runtime import hmac_key_manager
+
+            hmac_key_manager._verify_windows_signing_key_acl(token_cache)
+        else:
             assert stat.S_IMODE(token_cache.stat().st_mode) == 0o600
     finally:
         first_kernel.shutdown()
