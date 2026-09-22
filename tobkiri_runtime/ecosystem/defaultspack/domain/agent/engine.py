@@ -490,57 +490,59 @@ class AgentEngine:
         return True
 
     def _process_conversation_steer(self, execution):
+        context = dict(getattr(execution, "context", {}) or {})
+        conversation_id = str(context.get("conversation_id") or "")
+        processed = []
         try:
             from domain.chat.steer import ConversationSteerStore
 
-            context = dict(getattr(execution, "context", {}) or {})
-            conversation_id = str(context.get("conversation_id") or "")
-            processed = ConversationSteerStore().process_for_agent_run(
-                execution.execution_id,
-                conversation_id=conversation_id,
-                context=context,
+            processed.extend(
+                ConversationSteerStore().process_for_agent_run(
+                    execution.execution_id,
+                    conversation_id=conversation_id,
+                    context=context,
+                )
             )
-            try:
-                from domain.chat.deferred_steer import DeferredSteerFacade
+        except Exception as exc:
+            execution.add_step("conversation_steer_error", {"error": str(exc)})
+        try:
+            from domain.chat.deferred_steer import DeferredSteerFacade
 
-                deferred = DeferredSteerFacade(context)
-                for checkpoint in ("after_subtask", "after_execution"):
+            deferred = DeferredSteerFacade(context)
+            for checkpoint in ("after_subtask", "after_execution"):
+                processed.extend(
+                    deferred.checkpoint(
+                        {
+                            "checkpoint": checkpoint,
+                            "scope_type": "execution",
+                            "scope_id": execution.execution_id,
+                        }
+                    )
+                )
+                if conversation_id:
                     processed.extend(
                         deferred.checkpoint(
                             {
                                 "checkpoint": checkpoint,
-                                "scope_type": "execution",
-                                "scope_id": execution.execution_id,
+                                "scope_type": "conversation",
+                                "scope_id": conversation_id,
                             }
                         )
                     )
-                    if conversation_id:
-                        processed.extend(
-                            deferred.checkpoint(
-                                {
-                                    "checkpoint": checkpoint,
-                                    "scope_type": "conversation",
-                                    "scope_id": conversation_id,
-                                }
-                            )
-                        )
-            except Exception as exc:
-                execution.add_step(
-                    "deferred_steer_checkpoint_error", {"error": str(exc)}
-                )
-            if processed:
-                execution.add_step("conversation_steer", {
-                    "processed": len(processed),
-                    "items": [
-                        {"id": item.get("id"), "status": item.get("status")}
-                        for item in processed
-                        if isinstance(item, dict)
-                    ],
-                })
-            return processed
         except Exception as exc:
-            execution.add_step("conversation_steer_error", {"error": str(exc)})
-            return []
+            execution.add_step(
+                "deferred_steer_checkpoint_error", {"error": str(exc)}
+            )
+        if processed:
+            execution.add_step("conversation_steer", {
+                "processed": len(processed),
+                "items": [
+                    {"id": item.get("id"), "status": item.get("status")}
+                    for item in processed
+                    if isinstance(item, dict)
+                ],
+            })
+        return processed
 
     def _ai_complete(self, messages, model, context, tools=None):
         from blocks.ai.complete import run as ai_complete_run

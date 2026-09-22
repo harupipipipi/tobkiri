@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -356,3 +358,109 @@ def test_conversation_route_registers_visible_non_auto_executing_deferred_steer(
     assert registered["data"]["confirmation"] == "Deferred steer registered"
     assert authority_scopes[0]["authority"] == "agent.state.manage"
     assert authority_scopes[0]["approval_required"] is False
+
+
+def test_deferred_checkpoints_survive_legacy_steer_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep durable follow-ups reachable when the legacy queue has failed."""
+
+    from domain.chat import deferred_steer, steer
+    from domain.chat.stream_engine import ChatRunEngine
+
+    def fail_live_steer(*args: object, **kwargs: object) -> list[dict[str, object]]:
+        raise RuntimeError("legacy steer storage unavailable")
+
+    class DeferredFacade:
+        def __init__(self, context: dict[str, object]) -> None:
+            self.context = context
+
+        def checkpoint(self, payload: dict[str, str]) -> list[dict[str, str]]:
+            return [{"id": "deferred-1", "status": "ready"}]
+
+    monkeypatch.setattr(
+        steer.ConversationSteerStore,
+        "process_for_conversation",
+        fail_live_steer,
+    )
+    monkeypatch.setattr(deferred_steer, "DeferredSteerFacade", DeferredFacade)
+    engine = object.__new__(ChatRunEngine)
+    emitted: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        engine,
+        "_emit",
+        lambda event_type, **kwargs: emitted.append(
+            {"type": event_type, **kwargs}
+        ),
+        raising=False,
+    )
+
+    processed = engine._process_conversation_steer("conversation-1", {})
+
+    assert processed == [{"id": "deferred-1", "status": "ready"}]
+    assert emitted[0]["phase"] == "conversation_steer_failed"
+
+
+def test_agent_deferred_checkpoints_survive_legacy_steer_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep execution and conversation deferred steers independent of live state."""
+
+    from domain.agent.engine import AgentEngine
+    from domain.chat import deferred_steer, steer
+
+    def fail_live_steer(*args: object, **kwargs: object) -> list[dict[str, object]]:
+        raise RuntimeError("legacy steer storage unavailable")
+
+    class DeferredFacade:
+        def __init__(self, context: dict[str, object]) -> None:
+            self.context = context
+
+        def checkpoint(self, payload: dict[str, str]) -> list[dict[str, str]]:
+            if payload["checkpoint"] != "after_execution":
+                return []
+            return [
+                {
+                    "id": f"{payload['scope_type']}-deferred-1",
+                    "status": "ready",
+                }
+            ]
+
+    monkeypatch.setattr(
+        steer.ConversationSteerStore,
+        "process_for_agent_run",
+        fail_live_steer,
+    )
+    monkeypatch.setattr(deferred_steer, "DeferredSteerFacade", DeferredFacade)
+    steps: list[tuple[str, dict[str, object]]] = []
+    execution = SimpleNamespace(
+        execution_id="execution-1",
+        context={"conversation_id": "conversation-1"},
+        add_step=lambda name, payload: steps.append((name, payload)),
+    )
+
+    processed = object.__new__(AgentEngine)._process_conversation_steer(execution)
+
+    assert {item["id"] for item in processed} == {
+        "execution-deferred-1",
+        "conversation-deferred-1",
+    }
+    assert steps[0][0] == "conversation_steer_error"
+    assert steps[-1][0] == "conversation_steer"
+
+
+def test_deferred_steer_manifest_is_generated_from_runtime_catalog() -> None:
+    """Advertise deferred controls through the catalog used by live tool discovery."""
+
+    from domain.function_runtime.manifest_factory import FUNCTION_SPECS_BY_ID, manifest_for
+
+    generated = manifest_for(FUNCTION_SPECS_BY_ID["conversation_steer"])
+    committed = json.loads(
+        (DEFAULTSPACK_ROOT / "functions" / "conversation_steer" / "manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert generated["description"] == committed["description"]
+    assert "register" in generated["description"]
+    assert "never auto-executes" in generated["description"]

@@ -320,7 +320,7 @@ CONVERSATION_FUNCTIONS: tuple[FunctionSpec, ...] = (
     ),
     _spec(
         "conversation_steer",
-        "Queue, list, cancel, or process a follow-up steer after a conversation task completes.",
+        "Manage live conversation steering or register, inspect, edit, apply, defer, dismiss, and complete a durable deferred steer. Deferred registration requires title, instruction, reason, scope_type, scope_id, checkpoint, source, and idempotency_key and never auto-executes.",
         ("conversation", "steer"),
         risk="medium",
         block="blocks.conversation.steer",

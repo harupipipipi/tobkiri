@@ -2364,12 +2364,15 @@ class ChatRunEngine:
             pass
 
     def _process_conversation_steer(self, conversation_id: str, context: dict[str, Any]) -> list[dict[str, Any]]:
+        processed: list[dict[str, Any]] = []
         try:
             from domain.chat.steer import ConversationSteerStore
 
-            processed = ConversationSteerStore().process_for_conversation(
-                conversation_id,
-                context=context,
+            processed.extend(
+                ConversationSteerStore().process_for_conversation(
+                    conversation_id,
+                    context=context,
+                )
             )
         except Exception as exc:
             self._emit(
@@ -2378,7 +2381,6 @@ class ChatRunEngine:
                 message="conversation steer の処理に失敗しました",
                 phase="conversation_steer_failed",
             )
-            return []
         try:
             from domain.chat.deferred_steer import DeferredSteerFacade
 
