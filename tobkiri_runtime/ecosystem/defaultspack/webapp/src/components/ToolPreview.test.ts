@@ -14,6 +14,7 @@ import {
   hardenedHtmlPreviewDocument,
   isCanvasPreviewItemRenderable,
   MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH,
+  MAX_INLINE_PREVIEW_TEXT_LENGTH,
   remotePreviewText,
   RemotePreviewBoundary,
   safePreviewImageUrl,
@@ -46,6 +47,8 @@ const previews: ToolPreviewItem[] = [
     data: { type: "web", url: "https://example.com", title: "Example" },
   },
 ];
+
+const ONE_PIXEL_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
 
 test("canvas close button has a stable accessible name and closes the panel", () => {
   let closeCalls = 0;
@@ -153,12 +156,12 @@ test("tool preview artifacts map to reusable foreground dialog items", () => {
     id: "img",
     toolStepId: "tool-img",
     timestamp: 3,
-    data: { type: "image", url: "data:image/png;base64,abc", alt: "screenshot", path: "/tmp/screen.png" },
+    data: { type: "image", url: ONE_PIXEL_PNG, alt: "screenshot", path: "/tmp/screen.png" },
   });
   const file = artifactDialogItemFromToolPreview(previews[0]);
 
   assert.equal(image.kind, "image");
-  assert.equal(image.imageUrl, "data:image/png;base64,abc");
+  assert.equal(image.imageUrl, ONE_PIXEL_PNG);
   assert.equal(image.href, undefined);
   assert.equal(image.untrustedSourceUrl, undefined);
   assert.equal(file.kind, "file");
@@ -167,7 +170,8 @@ test("tool preview artifacts map to reusable foreground dialog items", () => {
 
 
 test("tool preview image policy permits raster data only and rejects SVG", () => {
-  assert.equal(safePreviewImageUrl("data:image/png;base64,abc", "https://rumi.example/"), "data:image/png;base64,abc");
+  assert.equal(safePreviewImageUrl(ONE_PIXEL_PNG, "https://rumi.example/"), ONE_PIXEL_PNG);
+  assert.equal(safePreviewImageUrl("data:image/png;base64,abc", "https://rumi.example/"), undefined);
   assert.equal(safePreviewImageUrl("data:image/svg+xml;base64,PHN2Zz4=", "https://rumi.example/"), undefined);
   assert.equal(safePreviewImageUrl("/artifact/1", "https://rumi.example/"), undefined);
   assert.equal(safePreviewImageUrl("https://attacker.example/pixel.gif", "https://rumi.example/"), undefined);
@@ -175,6 +179,15 @@ test("tool preview image policy permits raster data only and rejects SVG", () =>
     safePreviewImageUrl(`data:image/png;base64,${"a".repeat(MAX_INLINE_PREVIEW_IMAGE_URL_LENGTH)}`),
     undefined,
   );
+});
+
+test("tool preview image policy rejects raster headers with unsafe dimensions", () => {
+  const header = Buffer.from([
+    137, 80, 78, 71, 13, 10, 26, 10,
+    0, 0, 0, 13, 73, 72, 68, 82,
+    0, 0, 0x40, 0, 0, 0, 0x40, 0,
+  ]).toString("base64");
+  assert.equal(safePreviewImageUrl(`data:image/png;base64,${header}`), undefined);
 });
 
 test("remote file URLs stay inert until the host provides verified artifact content", () => {
@@ -199,6 +212,17 @@ test("remote file URLs stay inert until the host provides verified artifact cont
   assert.equal(inline.text, "<p>inline content</p>");
 });
 
+test("oversized inline tool content is not parsed into a preview document", () => {
+  const oversized = remotePreviewText({
+    type: "file",
+    filename: "oversized.html",
+    size: "untrusted",
+    content: "x".repeat(MAX_INLINE_PREVIEW_TEXT_LENGTH + 1),
+  });
+  assert.match(oversized.error ?? "", /exceeds the safe rendering limit/);
+  assert.equal(oversized.text, "");
+});
+
 test("blocked remote previews expose source copy without a network-bearing element", () => {
   const html = renderToStaticMarkup(createElement(RemotePreviewBoundary, {
     url: "https://attacker.example/side-effect",
@@ -216,6 +240,8 @@ test("HTML preview document has a fail-closed CSP and no injected base URL", () 
   assert.match(document, /Content-Security-Policy/);
   assert.match(document, /default-src 'none'/);
   assert.match(document, /connect-src 'none'/);
+  assert.match(document, /img-src 'none'/);
+  assert.match(document, /font-src 'none'/);
   assert.match(document, /form-action 'none'/);
   assert.match(document, /base-uri 'none'/);
   assert.match(document, /navigate-to 'none'/);
