@@ -112,6 +112,8 @@ export function shortcutSpecMatchesEvent(
 }
 
 function normalizeShortcutKey(value: string): string {
+  // KeyboardEvent.key uses a literal space, not the configuration alias.
+  if (value === " ") return " ";
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
   const lower = trimmed.toLowerCase();

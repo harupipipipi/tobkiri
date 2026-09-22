@@ -55,3 +55,24 @@ test("spotlight shortcut can be disabled in text inputs", () => {
   assert.equal(shortcutSpecMatchesEvent("Ctrl+Esc", { ctrlKey: true, key: "Escape" }), true);
   assert.equal(shortcutLabel("Ctrl+K+L"), "Off");
 });
+
+test("spotlight Space shortcut matches the real keyboard event", () => {
+  assert.equal(shortcutLabel("Ctrl+Space"), "Ctrl+Space");
+  assert.equal(
+    shortcutSpecMatchesEvent("Ctrl+Space", { ctrlKey: true, key: " " }),
+    true,
+  );
+  assert.equal(shortcutSpecMatchesEvent("Ctrl+Space", { key: " " }), false);
+  assert.equal(
+    shortcutSpecMatchesEvent("Ctrl+Space", { ctrlKey: true, key: "" }),
+    false,
+  );
+  assert.equal(
+    shortcutSpecMatchesEvent("Ctrl+Space", {
+      ctrlKey: true,
+      key: " ",
+      isComposing: true,
+    }),
+    false,
+  );
+});
