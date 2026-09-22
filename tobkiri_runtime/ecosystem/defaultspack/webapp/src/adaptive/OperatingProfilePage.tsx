@@ -110,7 +110,10 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
       adaptiveDraftKey("operating-profile", data.id),
       {
         baseRevision: options.nextBaseRevision ?? baseRevision,
-        requestId: options.nextRequestId === undefined ? requestId : options.nextRequestId,
+        // A local edit is a new mutation. Retrying a network-uncertain save
+        // keeps its explicit request ID, but a changed draft must not reuse
+        // the old ID and receive an idempotency-conflict response.
+        requestId: options.nextRequestId === undefined ? null : options.nextRequestId,
         resourceId: data.resourceId,
         updatedAt: new Date().toISOString(),
         value: { summary, autonomyLevel },
@@ -215,8 +218,10 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
               value={summaryDraft}
               onChange={(event) => {
                 setSummaryDraft(event.target.value);
-                persistDraft(event.target.value, autonomyDraft);
+                setRequestId(null);
+                persistDraft(event.target.value, autonomyDraft, { nextRequestId: null });
               }}
+              disabled={draftState === "saving"}
               className="mt-2 min-h-24 w-full rounded-md border border-zinc-800 bg-zinc-950/60 p-3 text-sm leading-6 text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
               aria-label="Operating profile summary"
             />
@@ -229,8 +234,10 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
                 onChange={(event) => {
                   const next = event.target.value as typeof autonomyDraft;
                   setAutonomyDraft(next);
-                  persistDraft(summaryDraft, next);
+                  setRequestId(null);
+                  persistDraft(summaryDraft, next, { nextRequestId: null });
                 }}
+                disabled={draftState === "saving"}
                 className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-2 text-sm text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
                 aria-label="Autonomy mode"
               >
@@ -251,7 +258,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
               type="button"
               className={adaptivePrimaryControlClass}
               onClick={() => void handleSave()}
-              disabled={draftState === "saving"}
+              disabled={draftState === "saving" || draftState === "conflict"}
               aria-label="Save operating profile draft"
             >
               <Save size={14} aria-hidden="true" />
