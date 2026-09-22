@@ -1794,3 +1794,193 @@ def test_activation_persistence_failure_keeps_old_pointer_and_aborts_reservation
         authority.active_activation_reservation("activation:defaults-failed-pointer")
         is None
     )
+
+
+def test_activation_commit_artifact_hash_runs_outside_process_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A writer's packaged-tree hash must not consume a reader's lock budget."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+    writer = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+    )
+    writer.activate(
+        _resolve(),
+        activation_id="activation:defaults-hash-base",
+        created_at="2026-08-10T00:00:00Z",
+    )
+    reader = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        lock_timeout_seconds=0.03,
+    )
+    verification_started = threading.Event()
+    release_verification = threading.Event()
+
+    def slow_verification(*_args: object, **_kwargs: object) -> None:
+        verification_started.set()
+        if not release_verification.wait(timeout=10):
+            raise RuntimeError("verification release timed out")
+
+    monkeypatch.setattr(writer, "_verify_selected_artifact", slow_verification)
+    errors: list[BaseException] = []
+
+    def activate() -> None:
+        try:
+            writer.activate(
+                _resolve(),
+                activation_id="activation:defaults-hash-second",
+                created_at="2026-08-10T00:01:00Z",
+            )
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    worker = threading.Thread(target=activate)
+    worker.start()
+    assert verification_started.wait(timeout=2)
+    try:
+        active = reader.load_active_snapshot()
+        assert active.activation["activation_id"] == "activation:defaults-hash-base"
+    finally:
+        release_verification.set()
+        worker.join(timeout=10)
+        authority.close()
+    assert not worker.is_alive()
+    assert errors == []
+    assert (
+        reader.load_active_snapshot().activation["activation_id"]
+        == "activation:defaults-hash-second"
+    )
+
+
+def test_pending_republish_artifact_hash_runs_outside_process_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A committed pending republish must not hash while holding the lock."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+
+    def crash(stage: str) -> None:
+        if stage == "after_authority_commit":
+            raise RuntimeError("simulated crash after authority commit")
+
+    crashing = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        fault=crash,
+    )
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        crashing.activate(
+            _resolve(),
+            activation_id="activation:defaults-republish",
+            created_at="2026-08-05T00:00:00Z",
+        )
+    assert (state / "pending.json").is_file()
+
+    healer = ActivationStore(state, workspace, profile_id="defaults", authority=authority)
+    reader = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        lock_timeout_seconds=0.03,
+    )
+    verification_started = threading.Event()
+    release_verification = threading.Event()
+
+    def slow_verification(*_args: object, **_kwargs: object) -> None:
+        verification_started.set()
+        if not release_verification.wait(timeout=10):
+            raise RuntimeError("verification release timed out")
+
+    monkeypatch.setattr(healer, "_verify_selected_artifact", slow_verification)
+    errors: list[BaseException] = []
+
+    def heal() -> None:
+        try:
+            healer.recover()
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    worker = threading.Thread(target=heal)
+    worker.start()
+    assert verification_started.wait(timeout=2)
+    try:
+        # The reader may heal the same committed pending itself; it must not
+        # stall behind the writer's unlocked packaged-tree hash.
+        active = reader.load_active_snapshot()
+        assert active.activation["activation_id"] == "activation:defaults-republish"
+    finally:
+        release_verification.set()
+        worker.join(timeout=10)
+        authority.close()
+    assert not worker.is_alive()
+    assert errors == []
+    assert not (state / "pending.json").exists()
+    assert (
+        healer.load_active_snapshot().activation["activation_id"]
+        == "activation:defaults-republish"
+    )
+
+
+def test_pending_republish_skips_superseded_or_tampered_journal(
+    tmp_path: Path,
+) -> None:
+    """An unlocked republish still cannot publish over a moved journal."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    state = tmp_path / "state"
+
+    def crash(stage: str) -> None:
+        if stage == "after_authority_commit":
+            raise RuntimeError("simulated crash after authority commit")
+
+    crashing = ActivationStore(
+        state, workspace, profile_id="defaults", authority=authority, fault=crash
+    )
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        crashing.activate(
+            _resolve(),
+            activation_id="activation:defaults-republish-fence",
+            created_at="2026-08-05T00:00:00Z",
+        )
+
+    healer = ActivationStore(state, workspace, profile_id="defaults", authority=authority)
+    pending_path = state / "pending.json"
+    original_pending = pending_path.read_bytes()
+    with healer._activation_lock():
+        with pytest.raises(runtime_service._PendingRepublishRequired) as captured:
+            healer._recover_locked()
+    republish = captured.value.republish
+
+    # A moved journal must not be overwritten by the stale verified candidate.
+    tampered = dict(republish.pending)
+    tampered["envelope_digest"] = "sha256:" + "0" * 64
+    pending_path.write_text(json.dumps(tampered), encoding="utf-8")
+    healer._republish_pending(republish)
+    assert not (state / "active.json").exists()
+    assert pending_path.is_file()
+
+    # The unchanged committed journal still republishes after revalidation.
+    pending_path.write_bytes(original_pending)
+    healer._republish_pending(republish)
+    pointer = json.loads((state / "active.json").read_text(encoding="utf-8"))
+    assert pointer["activation_id"] == "activation:defaults-republish-fence"
+    assert not pending_path.exists()
+    authority.close()
