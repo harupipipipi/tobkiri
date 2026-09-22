@@ -112,6 +112,8 @@ type ApiMockOptions = {
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
   codingApprovalAfterTerminal?: boolean;
   codingApprovalAfterRestore?: boolean;
+  catalogMutator?: (catalog: Record<string, unknown>) => void;
+  onClientDiagnostic?: (payload: Record<string, unknown>) => void;
   structuredComposer?: boolean;
   interactiveApproval?: InteractiveApprovalFixture;
   onInteractiveApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
@@ -738,6 +740,10 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     { server_id: "filesystem", name: "Filesystem MCP", transport: "stdio", connected: true, permissions: { approved: true }, tools: ["mcp_fs_read_file"] },
   ];
 
+  await page.route("**/health", async (route) => {
+    await fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
+  });
+
   await page.route("**/api/contracts/defaultspack/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -772,8 +778,8 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
     }
 
-    if (path === routeKey("api/ui/catalog")) {
-      return fulfill(route, {
+    if (path === routeKey("api/ui/catalog") || path === routeKey("api/ui/full-catalog")) {
+      const catalog: Record<string, unknown> = {
         dynamic_host: dynamicHostCatalog(),
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
         agent_service: { profiles: [], capabilities: [], presets: [] },
@@ -802,6 +808,27 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         }] : [],
         skills: catalogSkills,
         extension_points: [],
+      };
+      options.catalogMutator?.(catalog);
+      return fulfill(route, catalog);
+    }
+
+    if (path === routeKey("api/ui/recovery-diagnostics")) {
+      return fulfill(route, { namespace: "e2e", revision: 0, record_count: 0 });
+    }
+
+    if (path === routeKey("api/ui/client-events") && method === "POST") {
+      const payload = request.postDataJSON() as {
+        diagnostic?: Record<string, unknown>;
+        mutation_id?: string;
+      };
+      options.onClientDiagnostic?.(payload.diagnostic ?? {});
+      return fulfill(route, {
+        recorded: true,
+        diagnostic_id: "diagnostic-renderer-e2e",
+        revision: 1,
+        mutation_id: payload.mutation_id,
+        receipt: `sha256:${"d".repeat(64)}`,
       });
     }
 
@@ -830,7 +857,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     }
 
     if (path === routeKey("api/ui/settings")) {
-      return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
+      return fulfill(route, {
+        sections: settingsSections,
+        values: currentSettingsValues,
+        document_revision: 0,
+      });
     }
 
     if (path === routeKey("api/command-protocol/v1/catalog")) {
@@ -1048,6 +1079,10 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     }
 
     if (path === routeKey("api/chat/conversations/c-smoke")) {
+      return fulfill(route, conversation);
+    }
+
+    if (path === routeKey("api/chat/conversation") && method === "GET") {
       return fulfill(route, conversation);
     }
 
@@ -1564,6 +1599,111 @@ test("projects replace New Group and are searchable from the composer", async ({
   await expect.poll(() => conversationCreates.length).toBe(1);
   expect(conversationCreates[0].group_id).toBe(persistedProject?.id);
   expect((conversationCreates[0].metadata as Record<string, unknown>).group_id).toBe(persistedProject?.id);
+});
+
+test("verified renderer failures stay region-scoped, redacted, and recoverable in safe mode", async ({ page }) => {
+  const diagnostics: Record<string, unknown>[] = [];
+  const consoleMessages: string[] = [];
+  let rendererRequests = 0;
+  page.on("console", (message) => consoleMessages.push(message.text()));
+  await page.route("**/static/renderers/e2e-*.js", async (route) => {
+    rendererRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "text/javascript",
+      headers: { "Cache-Control": "no-store" },
+      body: 'throw new Error("renderer-raw-secret-should-not-escape")',
+    });
+  });
+  await installDefaultspackApiMocks(page, {
+    onClientDiagnostic: (payload) => diagnostics.push(payload),
+    catalogMutator: (catalog) => {
+      const dynamicHost = catalog.dynamic_host as { contributions: Array<Record<string, unknown>> };
+      dynamicHost.contributions[0] = {
+        ...dynamicHost.contributions[0],
+        mode: "application_builtin",
+        implementation: "defaultspack.chat",
+        action_contract: null,
+        view: null,
+      };
+      catalog.shell = {
+        layout: {
+          id: "renderer-failure-e2e",
+          regions: [
+            { id: "title_bar", renderer: "crashing_title", enabled: true },
+            { id: "history", enabled: true },
+            { id: "chat_header", enabled: true },
+            { id: "chat_messages", enabled: true },
+            { id: "composer", enabled: true },
+            { id: "activity_preview", enabled: true },
+            { id: "right_sidebar", enabled: true },
+            { id: "settings_modal", enabled: true },
+          ],
+        },
+        renderers: [{
+          id: "crashing_title",
+          component: "CrashingTitle",
+          module: "/static/renderers/e2e-crash.js",
+          export: "default",
+          trust: "local",
+          verified: true,
+          provenance: {
+            source: "builtin",
+            content_hash: "a".repeat(64),
+            build_id: "e2e-build-1",
+          },
+        }],
+      };
+    },
+  });
+
+  await page.goto("/p/defaults/chat");
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+  const recovery = page.getByTestId("renderer-recovery-crashing_title");
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toContainText("標準表示へ戻しました");
+  await expect(recovery).toContainText("e2e-build-1");
+  await expect(page.locator("body")).not.toContainText("renderer-raw-secret-should-not-escape");
+  await expect.poll(() => diagnostics.length).toBe(1);
+  expect(JSON.stringify(diagnostics)).not.toContain("renderer-raw-secret-should-not-escape");
+  expect(diagnostics[0]).toMatchObject({
+    source: "react.renderer_boundary",
+    category: "renderer_failure",
+    detail: {
+      error_name: "VerifiedRendererFailure",
+      error_code: "import_failed",
+      reason_type: "crashing_title:builtin:e2e-build-1",
+      route: "/static/renderers/e2e-crash.js",
+    },
+  });
+  expect(consoleMessages.join("\n")).not.toContain("renderer-raw-secret-should-not-escape");
+
+  await page.setViewportSize({ width: 390, height: 720 });
+  const recoveryBounds = await recovery.boundingBox();
+  expect(recoveryBounds).not.toBeNull();
+  expect(recoveryBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(recoveryBounds!.x + recoveryBounds!.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+    recovery.getByRole("button", { name: "再試行" }).click(),
+  ]);
+  const disabledRecovery = page.getByTestId("renderer-recovery-crashing_title");
+  await expect(disabledRecovery).toBeVisible();
+  await disabledRecovery.getByRole("button", { name: "このセッションでは無効のまま使う" }).click();
+  await expect(disabledRecovery).toHaveCount(0);
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+
+  await page.reload();
+  const reloadedRecovery = page.getByTestId("renderer-recovery-crashing_title");
+  await expect(reloadedRecovery).toBeVisible();
+  const requestsBeforeSafeMode = rendererRequests;
+  await reloadedRecovery.getByRole("button", { name: "セーフモードで再読込" }).click();
+  await expect(page).toHaveURL(/safe_mode=1/);
+  await expect(page.getByTestId("renderer-recovery-crashing_title")).toHaveCount(0);
+  await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
+  expect(rendererRequests).toBe(requestsBeforeSafeMode);
 });
 
 test("document scroll fallback survives small and keyboard-like viewports", async ({ page }) => {

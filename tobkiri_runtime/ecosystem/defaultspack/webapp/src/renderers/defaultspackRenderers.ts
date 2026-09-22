@@ -1,5 +1,5 @@
 import type { UICatalog } from "../lib/api";
-import { shellRendererForRegion } from "../lib/uiShell";
+import { hasShellRegion, shellRendererForRegion } from "../lib/uiShell";
 import { ChatHeaderRenderer } from "./ChatHeaderRenderer";
 import { ChatMessagesRenderer } from "./ChatMessagesRenderer";
 import { ComposerRenderer } from "./ComposerRenderer";
@@ -8,7 +8,7 @@ import { RightSidebarRenderer } from "./RightSidebarRenderer";
 import { SettingsModalRenderer } from "./SettingsModalRenderer";
 import { TitleBarRenderer } from "./TitleBarRenderer";
 import { ToolPreviewPanelRenderer } from "./ToolPreviewPanelRenderer";
-import { loadTrustedRenderer } from "./trustedRendererLoader";
+import { loadTrustedRenderer, rendererSafeModeEnabled } from "./trustedRendererLoader";
 
 export const defaultspackRendererIds = [
   "title_bar",
@@ -34,15 +34,28 @@ export const defaultspackRenderers = {
   settingsModal: SettingsModalRenderer,
 } as const;
 
-export function resolveDefaultspackRenderers(catalog: UICatalog | null | undefined) {
+export function isDefaultspackRegionVisible(
+  catalog: UICatalog | null | undefined,
+  regionId: string,
+  safeMode: boolean,
+): boolean {
+  return safeMode || !catalog?.shell || hasShellRegion(catalog, regionId);
+}
+
+export function resolveDefaultspackRenderers(
+  catalog: UICatalog | null | undefined,
+  options: { safeMode?: boolean } = {},
+) {
+  const safeMode = options.safeMode ?? rendererSafeModeEnabled();
+  const rendererForRegion = (regionId: string) => safeMode ? null : shellRendererForRegion(catalog, regionId);
   return {
-    titleBar: loadTrustedRenderer(shellRendererForRegion(catalog, "title_bar"), TitleBarRenderer),
-    historyBoard: loadTrustedRenderer(shellRendererForRegion(catalog, "history"), HistoryBoardRenderer),
-    chatHeader: loadTrustedRenderer(shellRendererForRegion(catalog, "chat_header"), ChatHeaderRenderer),
-    chatMessages: loadTrustedRenderer(shellRendererForRegion(catalog, "chat_messages"), ChatMessagesRenderer),
-    composer: loadTrustedRenderer(shellRendererForRegion(catalog, "composer"), ComposerRenderer),
-    toolPreviewPanel: loadTrustedRenderer(shellRendererForRegion(catalog, "activity_preview"), ToolPreviewPanelRenderer),
-    rightSidebar: loadTrustedRenderer(shellRendererForRegion(catalog, "right_sidebar"), RightSidebarRenderer),
-    settingsModal: loadTrustedRenderer(shellRendererForRegion(catalog, "settings_modal"), SettingsModalRenderer),
+    titleBar: loadTrustedRenderer(rendererForRegion("title_bar"), TitleBarRenderer),
+    historyBoard: loadTrustedRenderer(rendererForRegion("history"), HistoryBoardRenderer),
+    chatHeader: loadTrustedRenderer(rendererForRegion("chat_header"), ChatHeaderRenderer),
+    chatMessages: loadTrustedRenderer(rendererForRegion("chat_messages"), ChatMessagesRenderer),
+    composer: loadTrustedRenderer(rendererForRegion("composer"), ComposerRenderer),
+    toolPreviewPanel: loadTrustedRenderer(rendererForRegion("activity_preview"), ToolPreviewPanelRenderer),
+    rightSidebar: loadTrustedRenderer(rendererForRegion("right_sidebar"), RightSidebarRenderer),
+    settingsModal: loadTrustedRenderer(rendererForRegion("settings_modal"), SettingsModalRenderer),
   };
 }

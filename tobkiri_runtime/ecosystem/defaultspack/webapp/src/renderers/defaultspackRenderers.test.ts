@@ -23,7 +23,12 @@ import {
   resolveSelectedCompanyRecord,
 } from "../components/company/CompanyWorkspacePanel";
 import { buildCompactHistoryRailItems, buildGroupsFromChats } from "../components/HistoryBoard";
-import { defaultspackRendererIds, defaultspackRenderers, resolveDefaultspackRenderers } from "./defaultspackRenderers";
+import {
+  defaultspackRendererIds,
+  defaultspackRenderers,
+  isDefaultspackRegionVisible,
+  resolveDefaultspackRenderers,
+} from "./defaultspackRenderers";
 
 test("defaultspack renderer registry covers visible shell regions", () => {
   assert.deepEqual([...defaultspackRendererIds].sort(), [
@@ -74,6 +79,39 @@ test("defaultspack renderer resolver keeps builtin fallback for untrusted module
   });
 
   assert.equal(resolved.composer, defaultspackRenderers.composer);
+});
+
+test("safe mode ignores verified renderer and shell layout overrides", () => {
+  const catalog = {
+    shell: {
+      layout: {
+        id: "custom",
+        regions: [{ id: "composer", renderer: "custom_composer", enabled: true }],
+      },
+      renderers: [{
+        id: "custom_composer",
+        component: "CustomComposer",
+        module: "/static/renderers/custom-composer.js",
+        trust: "local" as const,
+        verified: true,
+        provenance: {
+          source: "builtin",
+          content_hash: "a".repeat(64),
+          build_id: "build-1",
+        },
+      }],
+    },
+    sidebar: { filters: [], items: [] },
+    settings: { sections: [], values: {} },
+    chat_rendering: { renderers: [] },
+    extension_points: [],
+  };
+
+  const safe = resolveDefaultspackRenderers(catalog, { safeMode: true });
+
+  assert.equal(safe.composer, defaultspackRenderers.composer);
+  assert.equal(isDefaultspackRegionVisible(catalog, "history", false), false);
+  assert.equal(isDefaultspackRegionVisible(catalog, "history", true), true);
 });
 
 test("company agent list renders operational role details", () => {

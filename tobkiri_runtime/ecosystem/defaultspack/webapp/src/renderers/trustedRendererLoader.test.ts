@@ -4,6 +4,8 @@ function routeKey(path: string): string {
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import type { ShellRenderer } from "../lib/api";
 import {
@@ -11,6 +13,9 @@ import {
   isRendererModuleQuarantined,
   isTrustedLocalRendererModule,
   loadTrustedRenderer,
+  RendererRecoveryNotice,
+  rendererSafeModeEnabled,
+  rendererSafeModePath,
   resetRendererQuarantineForTests,
 } from "./trustedRendererLoader";
 
@@ -88,4 +93,44 @@ test("loader falls back for self-declared or writable renderer sources", () => {
 test("renderer quarantine is session-scoped and resettable for tests", () => {
   resetRendererQuarantineForTests();
   assert.equal(isRendererModuleQuarantined("/static/renderers/custom.js"), false);
+});
+
+test("renderer safe mode requires the explicit one value and preserves the current route", () => {
+  assert.equal(rendererSafeModeEnabled("?safe_mode=1"), true);
+  assert.equal(rendererSafeModeEnabled("?safe_mode=true"), false);
+  assert.equal(rendererSafeModeEnabled("?safe_mode=0"), false);
+  assert.equal(rendererSafeModeEnabled("?safe_mode=1&safe_mode=0"), true);
+  assert.equal(
+    rendererSafeModePath("https://attacker.example/chat?draft=1#composer"),
+    "/chat?draft=1&safe_mode=1#composer",
+  );
+});
+
+test("renderer recovery notice exposes only bounded provenance and accessible actions", () => {
+  const html = renderToStaticMarkup(createElement(RendererRecoveryNotice, {
+    renderer: renderer({
+      id: "composer<script>",
+      module: "/static/renderers/custom-composer.js",
+      provenance: {
+        source: "builtin",
+        content_hash: "a".repeat(64),
+        build_id: "build 1",
+      },
+    }),
+    reason: "render_failed",
+    onRetry: () => {},
+    onDisable: () => {},
+    onSafeMode: () => {},
+  }));
+
+  assert.match(html, /role="status"/);
+  assert.match(html, /composer_script_/);
+  assert.match(html, /custom-composer\.js/);
+  assert.match(html, /build_1/);
+  assert.match(html, /render_failed/);
+  assert.match(html, /再試行/);
+  assert.match(html, /このセッションでは無効のまま使う/);
+  assert.match(html, /セーフモードで再読込/);
+  assert.doesNotMatch(html, /a{16}/);
+  assert.doesNotMatch(html, /&lt;script&gt;/);
 });

@@ -132,13 +132,12 @@ import { selectTemplateAiInput, selectTemplateComposerInput, selectTemplateToolP
 import { initialComposerFieldValues, normalizeComposerFields, structuredComposerPayload } from "./lib/structuredComposer";
 import { isHumanOperatorCanvasPreview, isRecord, toolPreviewsFromMessages, upsertStreamActivityEvent } from "./lib/toolPreviews";
 import { extractLatestToolFilterContext } from "./lib/toolStatus";
-import { hasShellRegion } from "./lib/uiShell";
 import { hasWorkspaceAttachment, workspaceFileToAttachment } from "./lib/workspaceAttachments";
 import { createWidgetConversationContext } from "./lib/widgetContext";
 import { promptResources } from "./features/prompts/resources/promptResources";
 import { manualRuntimeModeSelectionEnabled } from "./features/runtimeMode/runtimeMode";
-import { resolveDefaultspackRenderers } from "./renderers/defaultspackRenderers";
-import { RendererBoundary } from "./renderers/trustedRendererLoader";
+import { isDefaultspackRegionVisible, resolveDefaultspackRenderers } from "./renderers/defaultspackRenderers";
+import { RendererBoundary, rendererSafeModeEnabled } from "./renderers/trustedRendererLoader";
 import type { AppMode, AttachedFile, ChatUiMessage, CodingContext, ComposerExtensionItem, ComposerModelStatusIndicator, ComposerSkillItem, ComposerSteerStatus, ContextUsageInfo, DroppedWidget, SettingsLoadState, SettingsSaveState } from "./renderers/types";
 import { LayerPortal } from "./ui/layers/LayerPortal";
 
@@ -3314,7 +3313,8 @@ export function ChatApp() {
   const unknownBlockStrategy = String(settingsValues.chat_rendering?.unknown_block_strategy ?? "placeholder");
   const showWidgets = settingsValues.chat_rendering?.show_widgets !== false;
   const showActivityInMessages = settingsValues.general?.show_activity_in_messages !== false;
-  const showRegion = (regionId: string) => !catalog?.shell || hasShellRegion(catalog, regionId);
+  const rendererSafeMode = rendererSafeModeEnabled();
+  const showRegion = (regionId: string) => isDefaultspackRegionVisible(catalog, regionId, rendererSafeMode);
   const isActivityPreviewVisible =
     showRegion("activity_preview") &&
     effectiveShowPreview &&
@@ -6880,7 +6880,10 @@ export function ChatApp() {
     toolSelectionController.setTurnMode("manual");
   };
 
-  const Renderers = useMemo(() => resolveDefaultspackRenderers(catalog), [catalog]);
+  const Renderers = useMemo(
+    () => resolveDefaultspackRenderers(catalog, { safeMode: rendererSafeMode }),
+    [catalog, rendererSafeMode],
+  );
   const codingSidebarPanel = mode === "coding" ? (
     <CodingCockpit
       variant="sidebar"
