@@ -62,7 +62,17 @@ def _persist_desktop_api_token_cache(user_data: Path, api_token: str) -> Path:
     )
     temporary = Path(temporary_name)
     try:
-        if os.name != "nt":
+        if os.name == "nt":
+            from ..hmac_key_manager import _secure_windows_signing_key
+
+            os.close(descriptor)
+            descriptor = -1
+            _secure_windows_signing_key(temporary)
+            descriptor = os.open(
+                temporary,
+                os.O_WRONLY | os.O_TRUNC | getattr(os, "O_BINARY", 0),
+            )
+        else:
             os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
             descriptor = -1
@@ -70,7 +80,9 @@ def _persist_desktop_api_token_cache(user_data: Path, api_token: str) -> Path:
             output.flush()
             os.fsync(output.fileno())
         os.replace(temporary, destination)
-        if os.name != "nt":
+        if os.name == "nt":
+            _secure_windows_signing_key(destination)
+        else:
             destination.chmod(0o600)
         return destination
     except Exception:

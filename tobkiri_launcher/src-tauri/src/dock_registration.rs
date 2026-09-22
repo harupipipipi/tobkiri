@@ -3,8 +3,6 @@
 use std::ffi::OsString;
 use std::fs;
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -930,6 +928,8 @@ fn read_desktop_api_token_from_config(config: &AppConfig) -> AnyResult<String> {
 }
 
 fn read_saved_desktop_api_token(token_path: &Path) -> AnyResult<String> {
+    crate::shell_handoff::restrict_private_file(token_path)
+        .context("desktop API token cache permissions are unsafe")?;
     let token = fs::read_to_string(token_path)
         .with_context(|| format!("failed to read {}", token_path.display()))?;
     let token = token.trim().to_string();
@@ -946,10 +946,8 @@ fn persist_desktop_api_token(config: &AppConfig, api_token: &str) -> AnyResult<P
     }
     fs::write(&token_path, api_token)
         .with_context(|| format!("failed to write token to {}", token_path.display()))?;
-    #[cfg(unix)]
-    {
-        let _ = fs::set_permissions(&token_path, fs::Permissions::from_mode(0o600));
-    }
+    crate::shell_handoff::restrict_private_file(&token_path)
+        .context("failed to restrict desktop API token cache permissions")?;
     info!("Desktop API token saved to {}", token_path.display());
     Ok(token_path)
 }

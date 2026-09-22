@@ -2101,7 +2101,41 @@ fn restrict_panel_bootstrap_secret_permissions(path: &std::path::Path) -> AnyRes
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn restrict_panel_bootstrap_secret_permissions(path: &std::path::Path) -> AnyResult<()> {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    let metadata = fs::symlink_metadata(path).with_context(|| {
+        format!(
+            "failed to inspect persisted panel bootstrap secret at {}",
+            path.display()
+        )
+    })?;
+    if metadata.file_type().is_symlink()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        || !metadata.is_file()
+    {
+        bail!(
+            "refusing to use redirected panel bootstrap secret at {}",
+            path.display()
+        );
+    }
+    crate::shell_handoff::apply_windows_private_dacl(path).with_context(|| {
+        format!(
+            "failed to restrict panel bootstrap secret permissions at {}",
+            path.display()
+        )
+    })?;
+    crate::shell_handoff::validate_windows_private_dacl(path).with_context(|| {
+        format!(
+            "panel bootstrap secret permissions remain unsafe at {}",
+            path.display()
+        )
+    })
+}
+
+#[cfg(not(any(unix, windows)))]
 fn restrict_panel_bootstrap_secret_permissions(_path: &std::path::Path) -> AnyResult<()> {
     Ok(())
 }
@@ -2164,7 +2198,48 @@ fn secure_panel_bootstrap_secret_file(path: &std::path::Path) -> AnyResult<fs::F
         })
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn secure_panel_bootstrap_secret_file(path: &std::path::Path) -> AnyResult<fs::File> {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    match fs::symlink_metadata(path) {
+        Ok(metadata)
+            if metadata.file_type().is_symlink()
+                || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+                || !metadata.is_file() =>
+        {
+            bail!(
+                "refusing to overwrite redirected panel bootstrap secret at {}",
+                path.display()
+            );
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(error).with_context(|| {
+                format!(
+                    "failed to inspect panel bootstrap secret before writing at {}",
+                    path.display()
+                )
+            });
+        }
+    }
+
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .with_context(|| {
+            format!(
+                "failed to open panel bootstrap secret for write at {}",
+                path.display()
+            )
+        })
+}
+
+#[cfg(not(any(unix, windows)))]
 fn secure_panel_bootstrap_secret_file(path: &std::path::Path) -> AnyResult<fs::File> {
     fs::OpenOptions::new()
         .write(true)
@@ -5347,6 +5422,18 @@ mod tests {
         fs::remove_dir_all(root).ok();
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn creates_panel_bootstrap_secret_with_private_windows_acl() {
+        let (root, config) = isolated_app_config("tobkiri_launcher_secret_acl");
+
+        load_or_create_panel_bootstrap_secret(&config).unwrap();
+
+        crate::shell_handoff::validate_windows_private_dacl(&config.panel_bootstrap_secret_path())
+            .unwrap();
+        fs::remove_dir_all(root).ok();
+    }
+
     #[cfg(unix)]
     #[test]
     fn restricts_existing_panel_bootstrap_secret_permissions() {
@@ -5364,6 +5451,21 @@ mod tests {
         let mode = fs::metadata(path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
 
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn restricts_existing_panel_bootstrap_secret_windows_acl() {
+        let (root, config) = isolated_app_config("tobkiri_launcher_secret_acl_restrict");
+        let path = config.panel_bootstrap_secret_path();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, "existing-secret").unwrap();
+
+        let loaded = load_or_create_panel_bootstrap_secret(&config).unwrap();
+
+        assert_eq!(loaded, "existing-secret");
+        crate::shell_handoff::validate_windows_private_dacl(&path).unwrap();
         fs::remove_dir_all(root).ok();
     }
 
