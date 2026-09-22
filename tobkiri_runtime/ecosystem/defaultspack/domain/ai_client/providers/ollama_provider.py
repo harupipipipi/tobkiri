@@ -256,8 +256,17 @@ class OllamaProvider(OpenAICompatibleProvider):
                 continue
             digest = str(raw.get("digest") or "").strip()
             previous = previous_map.get(model_id) or {}
-            previous_digest = str((previous.get("metadata") or {}).get("detail_digest") or "")
-            if not previous or not digest or digest != previous_digest:
+            previous_metadata = previous.get("metadata")
+            if not isinstance(previous_metadata, dict):
+                previous_metadata = {}
+            previous_digest = str(previous_metadata.get("detail_digest") or "")
+            detail_available = previous_metadata.get("detail_state") == "available"
+            if (
+                not previous
+                or not digest
+                or digest != previous_digest
+                or not detail_available
+            ):
                 pending.append(model_id)
 
         if not pending:

@@ -207,6 +207,26 @@ def test_detail_and_running_failures_remain_unknown_without_name_guessing():
     assert model["metadata"]["running_state_source"] == "unavailable"
 
 
+def test_refresh_retries_unavailable_detail_for_an_unchanged_digest():
+    provider = _provider(detail_workers=1)
+
+    def detail_failure(path, *, body=None, timeout=None):
+        if path == "/api/show":
+            raise OllamaAPIError("temporarily unavailable", kind="network_error")
+        return _fake_native(path, body=body, timeout=timeout)
+
+    with patch.object(provider, "_native_request_json", side_effect=detail_failure):
+        incomplete = provider._fetch_native_inventory([])
+
+    assert incomplete[0]["metadata"]["detail_state"] == "unavailable"
+
+    with patch.object(provider, "_native_request_json", side_effect=_fake_native):
+        refreshed = provider._fetch_native_inventory(incomplete)
+
+    assert refreshed[0]["metadata"]["detail_state"] == "available"
+    assert refreshed[0]["capabilities"]["tool_calling"] is True
+
+
 def test_url_normalization_no_auth_and_optional_proxy_auth(monkeypatch):
     for name in ("OLLAMA_BASE_URL", "OLLAMA_HOST", "OLLAMA_API_KEY"):
         monkeypatch.delenv(name, raising=False)
