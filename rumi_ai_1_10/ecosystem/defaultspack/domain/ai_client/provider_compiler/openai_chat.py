@@ -10,6 +10,7 @@ from domain.ai_client.provider_compiler.base import (
     standard_response_to_ir,
 )
 from domain.ai_client.providers.openai_provider import OpenAIProvider
+from domain.ai_client.provider_compiler.reasoning import reasoning_text_from_delta
 from domain.chat.ir import RumiStreamEventIR
 from domain.chat.ir_legacy_adapter import ir_to_legacy_standard_messages
 
@@ -51,12 +52,7 @@ class OpenAIChatCompiler(ProviderCompiler):
             text = delta.get("content")
             if text:
                 events.append(RumiStreamEventIR(type="content_delta", delta={"type": "text", "text": str(text)}))
-            reasoning = (
-                delta.get("reasoning_content")
-                or delta.get("reasoning")
-                or delta.get("thinking")
-                or delta.get("trace")
-            )
+            reasoning = reasoning_text_from_delta(delta)
             if reasoning:
                 events.append(RumiStreamEventIR(type="reasoning_delta", delta={"type": "text", "text": str(reasoning)}))
             for tool_call in delta.get("tool_calls") or []:
