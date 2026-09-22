@@ -146,7 +146,9 @@ class TestMountManager:
         manager = MountManager()
 
         assert manager.config_path == user_data / "mounts.json"
-        assert manager.get_path("data.settings") == user_data / "settings"
+        assert manager.get_path("data.settings").resolve() == (
+            user_data / "settings"
+        ).resolve()
     """マウント管理のテスト"""
     
     @pytest.fixture

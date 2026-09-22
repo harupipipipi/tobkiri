@@ -22,13 +22,14 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
         cls,
         manifest: Dict[str, Any],
         *,
+        api_key: str = "",
         model_manifests: List[Dict[str, Any]] | None = None,
         allow_declared_models: bool = True,
     ) -> "VercelAIGatewayProvider":
         """Build the dedicated adapter while preserving manifest model overlays."""
         del manifest
         del allow_declared_models
-        return cls(known_models=model_manifests)
+        return cls(api_key=api_key, known_models=model_manifests)
 
     def __init__(
         self,
@@ -69,7 +70,19 @@ class VercelAIGatewayProvider(OpenAICompatibleProvider):
 
     @classmethod
     def _catalog_models(cls) -> List[Dict[str, Any]]:
-        path = Path(__file__).resolve().parents[2] / "providers" / cls.provider_name / "models.json"
+        # Keep this compatibility catalog read anchored to the repository's
+        # canonical model-catalog pack. Runtime invocation still receives an
+        # explicit empty inventory and discovers the gateway's live /models
+        # response; this path is only for callers that request the public
+        # Vercel catalog directly.
+        path = (
+            Path(__file__).resolve().parents[4]
+            / "rumi_model_catalog_pack"
+            / "catalog"
+            / "providers"
+            / cls.provider_name
+            / "models.json"
+        )
         try:
             payload = load_strict_metadata_json(path)
             validate_model_catalog_source(payload, path=path)

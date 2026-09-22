@@ -20,7 +20,7 @@ from core_runtime.pack_templates import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-PACK_SCHEMA = ROOT / "schemas" / "pack_manifest_v3.schema.json"
+PACK_SCHEMA = ROOT / "tobkiri_protocol" / "schemas" / "pack_manifest_v4.schema.json"
 CONTRACT_SCHEMA = ROOT / "schemas" / "global_contract_types.schema.json"
 
 
@@ -66,9 +66,12 @@ def test_scaffold_is_strictly_valid_and_untrusted(tmp_path: Path) -> None:
 
     manifest = validate_pack_manifest(manifest_path, schema_path=PACK_SCHEMA)
 
+    assert manifest_path.name == "pack.v4.json"
     assert manifest["pack"]["id"] == "example.echo"
-    assert manifest["provenance"]["trust_class"] == "untrusted"
-    assert manifest["permissions"] == []
+    assert manifest["provenance"]["source_kind"] == "generated"
+    assert manifest["requirements"]["capabilities"] == []
+    assert manifest["requirements"]["execution_boundary"] == "declarative_only"
+    assert manifest["migration"]["compatibility"] == "none"
     assert (manifest_path.parent / "AGENTS.md").is_file()
     contract = json.loads(
         (manifest_path.parent / "template.contract.json").read_text(
@@ -78,6 +81,10 @@ def test_scaffold_is_strictly_valid_and_untrusted(tmp_path: Path) -> None:
     assert contract["selection"]["owner"] == "ai"
     assert contract["selection"]["schema_policy"] == "progressive"
     assert contract["security"]["default_authority"] == "none"
+    assert not (manifest_path.parent / "ecosystem.json").exists()
+    assert not (manifest_path.parent / "rumi.pack.v3.json").exists()
+    for name in ("contracts.v4.json", "artifact-index.v4.json", "executables.v4.json"):
+        assert (manifest_path.parent / name).is_file()
     validate_template_components(
         manifest_path.parent,
         ROOT / "ecosystem" / "defaultspack" / "schemas",
@@ -93,7 +100,7 @@ def test_manifest_validation_rejects_unknown_security_fields(
         display_name="Echo",
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["provenance"]["trusted"] = True
+    manifest["pack"]["trusted"] = True
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(PackSdkError, match="Additional properties"):
@@ -189,7 +196,7 @@ def test_add_component_is_strict_and_never_overwrites(tmp_path: Path) -> None:
 def test_add_component_requires_pack_root_and_preflights_every_file(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(PackTemplateError, match="pack.json"):
+    with pytest.raises(PackTemplateError, match="pack.v4.json"):
         scaffold_component(
             tmp_path / "not-a-pack",
             kind="activity",

@@ -10,6 +10,7 @@ from domain.human_operator.session_store import absolute_session_url, save_sessi
 from domain.prompt.studio_client import compact_prompt_via_owner
 
 from ._agent_os_common import err, ok
+from .schema_adapter import list_or_empty, mapping_or_empty
 
 
 def human_operator_canvas_open(arguments: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -22,11 +23,11 @@ def human_operator_canvas_open(arguments: dict[str, Any], context: dict[str, Any
     if not session_id:
         return err("session_id is required", "INVALID_INPUT")
 
-    messages = arguments.get("messages") if isinstance(arguments.get("messages"), list) else []
-    params = arguments.get("params") if isinstance(arguments.get("params"), dict) else {}
+    messages = list_or_empty(arguments.get("messages"))
+    params = mapping_or_empty(arguments.get("params"))
     tool_names = [
         str(item).strip()
-        for item in (arguments.get("tool_names") if isinstance(arguments.get("tool_names"), list) else [])
+        for item in list_or_empty(arguments.get("tool_names"))
         if str(item or "").strip()
     ]
     system_prompt = _system_prompt_from_messages(messages)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw, ShieldCheck, ShieldQuestion } from "lucide-react";
 
+import { ErrorNotice } from "../components/ErrorNotice";
 import { cn } from "../lib/cn";
 import { openHostPermissionSettings } from "../lib/desktopApproval";
 import { isDesktopSystemInfoAvailable } from "../lib/desktopSystemInfo";
@@ -58,7 +59,7 @@ export function HostPermissionsPage() {
     setStaleSince(null);
     setLoadState("ready");
     setMessage(nextSnapshot.authorityError
-      ? `Rumi approval history is unavailable: ${nextSnapshot.authorityError}`
+      ? `Tobkiri approval history is unavailable: ${nextSnapshot.authorityError}`
       : null);
   }, []);
 
@@ -240,27 +241,40 @@ export function HostPermissionsPage() {
           </p>
 
           {!tauriAvailable && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
-              <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-              OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge.
-            </div>
+            <ErrorNotice
+              className="rounded-lg px-3 py-2 text-xs leading-5"
+              copyLabel="Copy desktop bridge warning"
+              copyText="OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge."
+              errorIcon="desktop-bridge"
+              message="OS settings buttons are disabled because this page is not running inside the Tobkiri Launcher desktop bridge."
+              severity="warning"
+            />
           )}
 
           {message && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs leading-5 text-zinc-400">
-              {message}
-            </div>
+            <ErrorNotice
+              className="rounded-lg px-3 py-2 text-xs leading-5"
+              copyLabel={staleSince ? "Copy host permissions error" : "Copy host permissions warning"}
+              copyText={message}
+              errorIcon={staleSince ? "host-permissions-error" : "host-permissions-warning"}
+              message={message}
+              severity={staleSince ? "error" : "warning"}
+            />
           )}
 
           {loadState === "error" ? (
-            <div className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-4 text-sm text-rose-100">
-              Host permission status could not be loaded.
-            </div>
+            <ErrorNotice
+              className="rounded-lg px-3 py-4 text-sm"
+              copyLabel="Copy host permissions load error"
+              copyText="Host permission status could not be loaded."
+              errorIcon="host-permissions-load"
+              message="Host permission status could not be loaded."
+            />
           ) : (
             <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/70">
               <div className="grid grid-cols-[minmax(190px,1.2fr)_minmax(120px,0.7fr)_minmax(120px,0.7fr)_minmax(78px,0.45fr)_minmax(90px,0.5fr)_minmax(180px,1fr)_minmax(220px,0.8fr)] gap-3 border-b border-zinc-800 bg-zinc-900/50 px-3 py-2 text-xs font-semibold text-zinc-500 max-lg:hidden">
                 <span>Permission</span>
-                <span>Rumi approval</span>
+                <span>Tobkiri approval</span>
                 <span>OS permission</span>
                 <span>Risk</span>
                 <span>Stream</span>
@@ -299,7 +313,7 @@ export function HostPermissionsPage() {
 function StatusStrip({ snapshot, loading }: { snapshot: HostPermissionsSnapshot | null; loading: boolean }) {
   const summary = snapshot?.summary;
   const items = [
-    { label: "Rumi approvals", value: summary ? `${summary.approved}/${summary.total}` : "..." },
+    { label: "Tobkiri approvals", value: summary ? `${summary.approved}/${summary.total}` : "..." },
     { label: "OS ready", value: summary ? `${summary.osReady}/${summary.total}` : "..." },
     { label: "Permission host", value: snapshot?.info?.permission_subject || snapshot?.info?.app_name || "Unknown" },
     { label: "Reliability", value: snapshot?.info ? (snapshot.info.reliable ? "Verified" : "Unverified") : "Unavailable" },
@@ -348,7 +362,7 @@ function HostPermissionListRow({
         </div>
         <p className="mt-1 text-xs leading-5 text-zinc-500 lg:hidden">{row.description}</p>
       </div>
-      <LabeledCell label="Rumi approval">
+      <LabeledCell label="Tobkiri approval">
         <StatusBadge status={row.rumiStatus} />
       </LabeledCell>
       <LabeledCell label="OS permission">

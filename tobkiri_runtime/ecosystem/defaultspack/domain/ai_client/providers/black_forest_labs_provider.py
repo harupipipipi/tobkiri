@@ -13,6 +13,7 @@ import urllib.request
 from typing import Any, Dict, List
 
 from ..base_provider import BaseProvider
+from ..api_key_store import read_provider_api_key
 
 
 class BlackForestLabsProvider(BaseProvider):
@@ -21,8 +22,8 @@ class BlackForestLabsProvider(BaseProvider):
     DOC_INDEX_URL = "https://docs.bfl.ai/llms.txt"
     _CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
 
-    def __init__(self):
-        self._key = str(os.environ.get("BFL_API_KEY") or "").strip()
+    def __init__(self, api_key: str | None = None):
+        self._key = str(api_key or read_provider_api_key("black-forest-labs", "legacy") or "").strip()
         self._base_url = str(os.environ.get("BFL_BASE_URL") or self.BASE_URL).strip().rstrip("/")
         self._ssl_ctx = ssl.create_default_context()
 

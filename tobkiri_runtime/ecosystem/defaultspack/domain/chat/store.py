@@ -13,15 +13,19 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from core_runtime.di_container import get_container
-from core_runtime.global_contract_dispatch import invoke_global_contract
+from core_runtime.global_contract_dispatch import (
+    captured_profile_id,
+    invoke_global_contract,
+)
 from core_runtime.paths import USER_DATA_DIR
-from core_runtime.resolved_profile_scope import persisted_resolved_profile
+from domain.chat.attachments.store import upsert_attachment_records
 from domain.chat.icon_matcher import match_icon
 
 CONVERSATION = "rumi.resource.conversation.v1"
 CONVERSATION_MANAGE = "rumi.action.conversation.manage.v1"
 MESSAGE = "rumi.resource.message.v1"
 MESSAGE_MANAGE = "rumi.action.message.manage.v1"
+MAX_APPEND_RETRIES = 32
 
 
 class ChatStore:
@@ -161,8 +165,18 @@ class ChatStore:
             if workspace_id is not None and str(metadata.get("workspace_id") or "") != str(workspace_id):
                 continue
             searchable = " ".join(
-                [item.get("title") or ""]
-                + [_message_text(message) for message in item.get("messages") or []]
+                [
+                    item.get("title") or "",
+                    *(
+                        str(value)
+                        for value in metadata.values()
+                        if isinstance(value, (str, int, float, bool))
+                    ),
+                    *(
+                        _message_text(message)
+                        for message in (item.get("messages") or [] if include_messages else [])
+                    ),
+                ]
             ).casefold()
             if query and query not in searchable:
                 continue
@@ -188,7 +202,11 @@ class ChatStore:
         }
         extras = {key: value for key, value in patch.items() if key not in supported}
         if extras:
-            metadata = dict(current.get("metadata") or {})
+            metadata = dict(
+                patch.get("metadata")
+                if isinstance(patch.get("metadata"), Mapping)
+                else current.get("metadata") or {}
+            )
             metadata.update(extras)
             patch["metadata"] = metadata
         patch["metadata"] = _set_metadata_icon(
@@ -226,20 +244,33 @@ class ChatStore:
         self, conversation_id: str, message_dict: Mapping[str, Any]
     ) -> dict[str, Any] | None:
         """Append one message in the owner transaction."""
-        conversation = self.get_conversation(conversation_id)
-        if conversation is None or _read_only(conversation):
-            return None
-        message = _prepare_message(conversation_id, conversation, message_dict)
-        result = _invoke(
-            MESSAGE_MANAGE,
-            "append",
-            {
-                "conversation_id": conversation_id,
-                "message": message,
-                "expected_conversation_revision": conversation["conversation_revision"],
-            },
-        )
-        return _legacy_message(result["message"], conversation_id)
+        last_conflict: Exception | None = None
+        for _ in range(MAX_APPEND_RETRIES):
+            conversation = self.get_conversation(conversation_id)
+            if conversation is None or _read_only(conversation):
+                return None
+            message = _prepare_message(conversation_id, conversation, message_dict)
+            try:
+                result = _invoke(
+                    MESSAGE_MANAGE,
+                    "append",
+                    {
+                        "conversation_id": conversation_id,
+                        "message": message,
+                        "expected_conversation_revision": conversation[
+                            "conversation_revision"
+                        ],
+                    },
+                )
+            except Exception as exc:
+                if type(exc).__name__ != "ConversationConflict":
+                    raise
+                last_conflict = exc
+                continue
+            return _legacy_message(result["message"], conversation_id)
+        if last_conflict is not None:
+            raise last_conflict
+        raise RuntimeError("message append did not complete")
 
     def get_message(
         self, conversation_id: str, message_id: str
@@ -273,7 +304,11 @@ class ChatStore:
         }
         extras = {key: value for key, value in patch.items() if key not in supported}
         if extras:
-            metadata = dict(current.get("metadata") or {})
+            metadata = dict(
+                patch.get("metadata")
+                if isinstance(patch.get("metadata"), Mapping)
+                else current.get("metadata") or {}
+            )
             metadata.update(extras)
             patch["metadata"] = metadata
         result = _invoke(
@@ -392,10 +427,13 @@ class ChatStore:
         needle = str(query or "").casefold()
         results = []
         for item in conversations:
-            matches = [
-                message for message in item.get("messages") or []
-                if needle in _message_text(message).casefold()
-            ]
+            matches = []
+            for message in item.get("messages") or []:
+                if needle not in _message_text(message).casefold():
+                    continue
+                match = copy.deepcopy(message)
+                match["exact"] = True
+                matches.append(match)
             if needle not in str(item.get("title") or "").casefold() and not matches:
                 continue
             results.append({
@@ -495,6 +533,20 @@ class ChatStore:
                 "size": attachment.get("size"), "type": attachment.get("type"),
                 "workspace_path": path.relative_to(self.conversation_dir(conversation_id)).as_posix(),
             })
+        if refs:
+            upsert_attachment_records(
+                self.conversation_workspace_dir(conversation_id),
+                [
+                    item
+                    for item in attachments
+                    if isinstance(item, Mapping)
+                    and not any(
+                        item.get(key)
+                        for key in ("ephemeral", "do_not_persist", "no_persist")
+                    )
+                ],
+                refs,
+            )
         return refs
 
     def _replace_messages(
@@ -517,18 +569,22 @@ class ChatStore:
 
     @staticmethod
     def _artifact_root() -> Path:
-        plan = persisted_resolved_profile()
-        profile_id = plan.profile_id if plan is not None else "default"
+        session = get_container().get_or_none("v4_dispatch_session")
+        if session is None:
+            raise RuntimeError("global conversation owner is unavailable")
+        profile_id = captured_profile_id(session)
         return Path(USER_DATA_DIR) / "compatibility" / "conversation_artifacts" / profile_id
 
 
 def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
-    plan = persisted_resolved_profile()
-    if registry is None or plan is None:
+    registry = get_container().get_or_none("v4_dispatch_session")
+    if registry is None:
         raise RuntimeError("global conversation owner is unavailable")
     return invoke_global_contract(
-        registry, contract_id, operation, {"profile_id": plan.profile_id, **dict(payload)}
+        registry,
+        contract_id,
+        operation,
+        {"profile_id": captured_profile_id(registry), **dict(payload)},
     )
 
 
@@ -545,7 +601,10 @@ def _legacy_conversation(value: Mapping[str, Any]) -> dict[str, Any]:
 def _legacy_message(value: Mapping[str, Any], conversation_id: str) -> dict[str, Any]:
     result = copy.deepcopy(dict(value))
     result["conversation_id"] = conversation_id
-    result["sequence_number"] = int(result.get("sequence_number") or result.get("sequence", 0) + 1)
+    if "sequence" in result:
+        result["sequence_number"] = int(result.get("sequence") or 0) + 1
+    else:
+        result["sequence_number"] = int(result.get("sequence_number") or 1)
     return result
 
 
@@ -592,7 +651,10 @@ def _message_text(message: Mapping[str, Any]) -> str:
 
 def _read_only(conversation: Mapping[str, Any]) -> bool:
     metadata = conversation.get("metadata")
-    return isinstance(metadata, Mapping) and metadata.get("read_only") is True
+    return isinstance(metadata, Mapping) and (
+        metadata.get("read_only") is True
+        or metadata.get("shared_read_only") is True
+    )
 
 
 def _set_metadata_icon(

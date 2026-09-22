@@ -18,8 +18,12 @@ if str(ROOT) not in sys.path:
 
 from core_runtime.pack_sdk import (  # noqa: E402
     PackSdkGenerator,
+    refresh_scaffold_artifacts,
     scaffold_pack,
     validate_pack_manifest,
+)
+from scripts.offline_legacy_projection import (  # noqa: E402
+    generate_legacy_ecosystem_projection,
 )
 from core_runtime.pack_templates import (  # noqa: E402
     COMPONENT_KINDS,
@@ -35,7 +39,7 @@ from core_runtime.pack_signature import (  # noqa: E402
 )
 
 DEFAULT_SCHEMAS = [
-    ROOT / "schemas" / "pack_manifest_v3.schema.json",
+    ROOT / "tobkiri_protocol" / "schemas" / "pack_manifest_v4.schema.json",
     ROOT / "schemas" / "global_contract_types.schema.json",
     ROOT
     / "ecosystem"
@@ -91,9 +95,15 @@ def _parser() -> argparse.ArgumentParser:
     validate.add_argument(
         "--schema",
         type=Path,
-        default=ROOT / "schemas" / "pack_manifest_v3.schema.json",
+        default=ROOT / "tobkiri_protocol" / "schemas" / "pack_manifest_v4.schema.json",
     )
     validate.set_defaults(handler=_validate)
+
+    project_legacy = subcommands.add_parser("project-legacy")
+    project_legacy.add_argument("manifest", type=Path)
+    project_legacy.add_argument("output", type=Path)
+    project_legacy.add_argument("--check", action="store_true")
+    project_legacy.set_defaults(handler=_project_legacy)
 
     sign = subcommands.add_parser("sign")
     sign.add_argument("pack_root", type=Path)
@@ -170,6 +180,7 @@ def _add(args: argparse.Namespace) -> dict[str, object]:
         ROOT / "ecosystem" / "defaultspack" / "schemas",
         component_paths=paths,
     )
+    refresh_scaffold_artifacts(args.pack_root)
     return {
         "created": [str(path) for path in paths],
         "kind": args.kind,
@@ -233,6 +244,20 @@ def _validate(args: argparse.Namespace) -> dict[str, object]:
         "valid": True,
         "pack_id": manifest["pack"]["id"],
         "version": manifest["pack"]["version"],
+    }
+
+
+def _project_legacy(args: argparse.Namespace) -> dict[str, object]:
+    """Generate or verify the read-only ecosystem.json compatibility view."""
+    source_identity = generate_legacy_ecosystem_projection(
+        args.manifest,
+        args.output,
+        check=bool(args.check),
+    )
+    return {
+        "output": str(args.output),
+        "check": bool(args.check),
+        "source_content_hash": source_identity,
     }
 
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from blocks._common import ok
 from blocks.p2p._helpers import error_response, settings_from
 from domain.external.event import ExternalEvent
@@ -11,9 +13,11 @@ from domain.p2p.peer_store import PeerStore
 from domain.p2p.replay_guard import ReplayGuard
 
 
-def run(input_data, context):
+def run(input_data, context, *, settings_owner: SettingsOwnerPort | None = None):
     input_data = input_data if isinstance(input_data, dict) else {}
     context = context if isinstance(context, dict) else {}
+    if settings_owner is None:
+        settings_owner = context.get("_settings_owner_port")
     settings = settings_from(input_data, context)
     result = handle_inbound_envelope(
         input_data,
@@ -33,6 +37,7 @@ def run(input_data, context):
         audience_policy={"default": "allow", "require": {"verified": True}},
         context=_dispatch_context(context),
         send_response=False,
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
     )
     return ok({**result, "dispatch": dispatch})
 

@@ -69,6 +69,7 @@ def test_rumi_code_ide_pack_has_required_docs_and_declarative_assets():
 def test_rumi_code_ide_pack_setup_metadata_is_optional_and_dependency_scoped():
     ecosystem = _read_json(PACK_ROOT / "ecosystem.json")
     setup = _read_json(SETUP_PACK)
+    manifest = _read_json(PACK_ROOT / "pack.v4.json")
 
     assert setup["pack_id"] == "rumi_code_ide_pack"
     assert setup["target_pack_id"] == ecosystem["pack_id"]
@@ -77,15 +78,27 @@ def test_rumi_code_ide_pack_setup_metadata_is_optional_and_dependency_scoped():
     assert setup["supports_all_ok"] is False
     assert setup["risk_level"] == "medium"
 
-    ecosystem_deps = {item["pack_id"]: item["version"] for item in ecosystem["depends_on"]}
     setup_deps = {item["pack_id"]: item["version"] for item in setup["depends_on"]}
+    v4_deps = manifest["requirements"]["pack_dependencies"]
 
-    assert ecosystem_deps["defaultspack"].startswith(">=")
-    assert ecosystem_deps["rumi_default_tools_pack"].startswith(">=")
     assert setup_deps == {
         "defaultspack": ">=2.0.0",
         "rumi_default_tools_pack": ">=1.0.0",
     }
+    assert v4_deps == {"rumi_default_tools_pack": ">=1.0.0"}
+    assert "rumi_local_agent_pack" not in v4_deps
+    assert ecosystem["metadata"]["legacy_annotations"]["optional_integrations"] == [
+        {
+            "pack_id": "rumi_local_agent_pack",
+            "reason": "Can coexist with starter local-agent presets; this pack is narrower and IDE/CLI specific.",
+            "version": ">=1.0.0",
+        }
+    ]
+    assert manifest["requirements"]["network"] == {
+        "allowed_domains": [],
+        "allowed_ports": [],
+    }
+    assert manifest["requirements"]["secrets"] == []
 
 
 def test_rumi_code_ide_pack_documents_no_secrets_and_overlap_notes():

@@ -94,6 +94,7 @@
             "rumi_function",
             "capability",
             "mcp",
+            "global_contract",
             "sandbox_function",
             "declarative_http"
           ]
@@ -101,6 +102,9 @@
         "qualified_name": {"type": "string"},
         "permission_id": {"type": "string"},
         "server_name": {"type": "string"},
+        "contract_id": {"type": "string"},
+        "provider_instance_id": {"type": "string"},
+        "operation": {"type": "string"},
         "timeout_ms": {"type": "integer", "minimum": 1},
         "cancellable": {"type": "boolean"},
         "idempotency": {"enum": ["none", "idempotent", "keyed"]},

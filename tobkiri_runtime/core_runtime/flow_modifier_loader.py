@@ -29,8 +29,6 @@ try:
 except ImportError:
     HAS_YAML = False
 
-logger = logging.getLogger(__name__)
-
 from .flow_modifier_models import (
     FlowModifierDef,
     ModifierLoadResult,
@@ -40,15 +38,15 @@ from .flow_modifier_models import (
 
 from .paths import (
     LOCAL_PACK_ID,
-    LOCAL_PACK_DIR,
     LOCAL_PACK_MODIFIERS_DIR,
     ECOSYSTEM_DIR,
     resolve_pack_locations,
     get_pack_modifier_dirs,
     get_shared_modifier_dir,
-    PackLocation,
 )
 from .resolved_profile_scope import effective_pack_ids
+
+logger = logging.getLogger(__name__)
 
 
 class FlowModifierLoader:
@@ -246,8 +244,10 @@ class FlowModifierLoader:
         for yaml_file in sorted(directory.glob("**/*.modifier.yaml")):
             result = self.load_modifier_file(yaml_file, pack_id)
 
-            if result.success and result.modifier_def:
-                if result.modifier_id in self._loaded_modifiers:
+            modifier_id = result.modifier_id
+            modifier_def = result.modifier_def
+            if result.success and modifier_def is not None and modifier_id is not None:
+                if modifier_id in self._loaded_modifiers:
                     self._load_errors.append({
                         "file": str(yaml_file),
                         "error": f"Duplicate modifier_id: {result.modifier_id}",
@@ -255,9 +255,9 @@ class FlowModifierLoader:
                     })
                     continue
 
-                self._loaded_modifiers[result.modifier_id] = result.modifier_def
+                self._loaded_modifiers[modifier_id] = modifier_def
 
-                if result.modifier_def.target_flow_id == "*":
+                if modifier_def.target_flow_id == "*":
                     if not self._is_wildcard_modifier_allowed(pack_id):
                         logger.warning(
                             "[FlowModifier] Modifier '%s' targets ALL flows "
@@ -271,7 +271,7 @@ class FlowModifierLoader:
                         self._record_skip(
                             yaml_file, pack_id, "wildcard_modifier_not_allowed"
                         )
-                        del self._loaded_modifiers[result.modifier_id]
+                        del self._loaded_modifiers[modifier_id]
                         continue
 
                     logger.warning(
@@ -287,7 +287,7 @@ class FlowModifierLoader:
                             success=True,
                             details={
                                 "modifier_id": result.modifier_id,
-                                "source_pack_id": result.modifier_def.source_pack_id,
+                                "source_pack_id": modifier_def.source_pack_id,
                                 "warning": "This modifier applies to ALL flows",
                             }
                         )

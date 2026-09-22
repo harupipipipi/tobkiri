@@ -1,75 +1,226 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {
-    "id": "rumi.browser_host_service",
-    "version": "1.0.0",
-    "kind": "service",
-    "display_name": "Rumi Browser Host Service",
-    "description": "Typed browser observe/control requests mediated by core Authority and the Viewer host broker."
-  },
   "contracts": {
     "provides": [
       {
-        "id": "rumi.resource.browser.host.v1",
-        "version": "1.0.0",
-        "provider_instance_id": "browser-host.observe",
         "cardinality": "one",
-        "security": "sensitive",
         "failure": "fail_closed",
-        "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_browser_host_service_pack"},
-        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "id": "rumi.resource.browser.host.v1",
         "isolation": "process",
-        "required_capabilities": ["browser.host.observe"]
+        "lifecycle": {
+          "data_owner": "rumi_browser_host_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "browser-host.observe",
+        "required_capabilities": [
+          "browser.host.observe"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
       },
       {
-        "id": "rumi.action.browser.host.v1",
-        "version": "1.0.0",
-        "provider_instance_id": "browser-host.control",
         "cardinality": "one",
-        "security": "critical",
         "failure": "fail_closed",
-        "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_browser_host_service_pack"},
-        "schemas": {"input": {"type": "object"}, "output": {"type": "object"}},
+        "id": "rumi.action.browser.host.v1",
         "isolation": "process",
-        "required_capabilities": ["browser.host.control"]
+        "lifecycle": {
+          "data_owner": "rumi_browser_host_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "browser-host.control",
+        "required_capabilities": [
+          "browser.host.control"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
       }
     ],
     "requires": [
-      {"id": "rumi.service.host.authorize.v1", "version": ">=1.0.0,<2.0.0", "cardinality": "one", "failure": "fail_closed"}
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
     ]
   },
   "entrypoints": [
-    {"id": "browser-host-observe", "contract_id": "rumi.resource.browser.host.v1", "loader": "python", "module": "ecosystem.rumi_browser_host_service_pack.runtime.service", "symbol": "create_browser_observer", "artifact_hash": "sha256:ccf0f8e44377928fed1062529582ca2824b7f173ba60bf35d0f44304b1fec995"},
-    {"id": "browser-host-control", "contract_id": "rumi.action.browser.host.v1", "loader": "python", "module": "ecosystem.rumi_browser_host_service_pack.runtime.service", "symbol": "create_browser_control", "artifact_hash": "sha256:ccf0f8e44377928fed1062529582ca2824b7f173ba60bf35d0f44304b1fec995"}
+    {
+      "artifact_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+      "contract_id": "rumi.resource.browser.host.v1",
+      "id": "browser-host-observe",
+      "loader": "python",
+      "module": "ecosystem.rumi_browser_host_service_pack.runtime.service",
+      "symbol": "create_browser_observer"
+    },
+    {
+      "artifact_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+      "contract_id": "rumi.action.browser.host.v1",
+      "id": "browser-host-control",
+      "loader": "python",
+      "module": "ecosystem.rumi_browser_host_service_pack.runtime.service",
+      "symbol": "create_browser_control"
+    }
   ],
-  "resources": [],
-  "storage": [
-    {"namespace": "rumi.browser.host.profiles", "schema_version": "1.0.0", "authoritative": true, "retention": "profile lifetime", "export_import": true},
-    {"namespace": "rumi.browser.host.sessions", "schema_version": "1.0.0", "authoritative": true, "retention": "session lifetime", "export_import": false}
-  ],
-  "permissions": [
-    {"capability": "browser.host.observe", "access": "observe", "approval_required": true},
-    {"capability": "browser.host.control", "access": "control", "approval_required": true},
-    {"capability": "host.authority.consume", "access": "control", "approval_required": false}
-  ],
-  "provenance": {"content_hash": "sha256:ccf0f8e44377928fed1062529582ca2824b7f173ba60bf35d0f44304b1fec995", "build_identity": "rumi-browser-host-service-pack:1.0.0", "trust_class": "local", "signature": null},
-  "migration": {
-    "from": ["rumi_default_tools_pack.domain.tool.browser_computer", "defaultspack.domain.tool.browser_artifact_tools"],
-    "compatibility_aliases": ["browser_computer", "browser_use"],
-    "compatibility_projection": "one_way_contract_adapter",
-    "removal_wave": 10,
-    "sunset_at": "2027-12-31",
-    "rollback": "Select the pinned prior adapters; do not copy profile or cookie storage into a second owner."
-  },
   "extensions": {
     "rumi.browser_host.boundary": {
-      "observe_control_split": true,
       "authority": "core_runtime.authority",
-      "executor": "rumi_viewer_host_broker",
-      "self_approval": false,
       "client_approval_material": "forbidden",
+      "executor": "rumi_viewer_host_broker",
+      "observe_control_split": true,
+      "self_approval": false,
       "tool_agent_chat_ui_imports": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.browser.host.v1",
+            "rumi.resource.browser.host.v1"
+          ],
+          "requires": [
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Typed browser observe/control requests mediated by core Authority and the Viewer host broker.",
+        "display_name": "Rumi Browser Host Service",
+        "host_execution": true,
+        "metadata": {
+          "authority_split": [
+            "observe",
+            "control"
+          ],
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:50ee7dbc13da91c9ed3e867204f5e0a06bed040e7e878931cd7e5701df1f423e",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1"
+          },
+          "executor_owner": "rumi_viewer_host_broker",
+          "operation_descriptor_owner": true,
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "runner": "runtime/runner.py invoked only by Viewer helper after token validation",
+          "tool_or_ui_registry_imports": false
+        },
+        "pack_id": "rumi_browser_host_service_pack",
+        "pack_identity": "rumi:ecosystem/rumi_browser_host_service_pack",
+        "provenance": {
+          "build_identity": "rumi_browser_host_service_pack:1.0.0",
+          "content_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "browser.host.control",
+          "browser.host.observe",
+          "host.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "host",
+            "browser",
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_browser_host_service_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_browser_host_service_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:9c519c46f89dce140e93ba4b98682bc46fc159cde68d8577c72781167a4409e1"
     }
-  }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "rumi_default_tools_pack.domain.tool.browser_computer",
+      "defaultspack.domain.tool.browser_artifact_tools"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior adapters; do not copy profile or cookie storage into a second owner.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Typed browser observe/control requests mediated by core Authority and the Viewer host broker.",
+    "display_name": "Rumi Browser Host Service",
+    "id": "rumi.browser_host_service",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "observe",
+      "approval_required": true,
+      "capability": "browser.host.observe"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "browser.host.control"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_browser_host_service_pack:1.0.0",
+    "content_hash": "sha256:93c188c2347bcee2337f83d6145fe696faaaee7318f2a2b6333b97228f6791ef",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": true,
+      "namespace": "rumi.browser.host.profiles",
+      "retention": "profile lifetime",
+      "schema_version": "1.0.0"
+    },
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.browser.host.sessions",
+      "retention": "session lifetime",
+      "schema_version": "1.0.0"
+    }
+  ]
 }
-

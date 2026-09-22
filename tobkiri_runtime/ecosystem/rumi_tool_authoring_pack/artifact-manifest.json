@@ -1,9 +1,9 @@
 {
-  "version": "rumi.pack-artifacts.v1",
   "artifacts": [
     {
       "path": "runtime/authoring.py",
       "sha256": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860"
     }
-  ]
+  ],
+  "version": "rumi.pack-artifacts.v1"
 }

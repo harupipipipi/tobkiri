@@ -1,0 +1,440 @@
+# ADR-014: Host authority is provided by exact Function principals and context-bound Grants
+
+- Status: Accepted
+- Date: 2026-08-04
+- Decision owners: Tobkiri Runtime / Pack Architecture
+- Applies to: Runtime TCB, Pack Runtime, Profile activation, Workflow Runtime,
+  Capability Providers, Host Extensions, Approval UI
+- Must be read with: ADR-015_RUNTIME_SECURITY_LIFECYCLE.txt
+
+## Context
+
+Tobkiriは未知のPackをsandbox内で動かしながら、filesystem、network、
+credential、process、OS、deviceなど、現在および将来のHost能力もPackとして
+拡張できなければならない。
+
+Runtime Coreがすべてのvendor、device、operation、permission taxonomyを
+中央実装すると、TCBが肥大化し、未知Capabilityの追加にCore更新が必要になる。
+反対に、通常Packがmanifestへ権限を書くだけでHost authorityを取得できると、
+sandbox、Policy、Approval、Auditを迂回できる。
+
+また、Packは配布単位であり、一つのPackArtifactに複数Functionが存在できる。
+Pack署名またはHost Extension installを、Pack内全Functionへの権限付与として
+扱ってはならない。Function単位の承認を安全に強制するには、Function identityを
+自己申告ではなくprocess、Wasm instance、sandbox、認証済みchannelへ固定する
+実行境界が必要である。
+
+## Decision
+
+### 1. Root authority boundary
+
+Runtimeが直接定義する根本authorityは二つとする。
+
+Sandbox authority:
+
+- Pack専用sandbox内で完結する。
+- Pack同梱code import、純粋計算、内部Function、private tmp/stateを含む。
+- 通常はユーザーApprovalを要求しない。
+- CPU、RAM、deadline、disk、process/thread、output、concurrency等のresource
+  limitはHostが常時強制する。
+- raw network、Host filesystem、他Pack state、Host process、credential、
+  OS、deviceへ到達できない。
+
+Host authority:
+
+- sandbox外のHost resourceまたは外部作用へ到達できる。
+- exact Host Capability Provider Function/Operationだけが実装できる。
+- Provider trust、caller-specific Grant、ExecutionDomain enforcement、
+  InvocationLease、authoritative auditを必要とする。
+- 通常Packのmanifest、publisher署名、Profile activationだけでは取得できない。
+
+Runtime immutable safety policyは、この根本境界、identity、isolation、Grant、
+Lease、audit、revocation、resource limitを強制する。filesystem、Slack、
+camera、printer等の全permission taxonomyやvendor semanticsをCoreへ列挙しない。
+
+### 2. Trust classes and Function roles
+
+v1のtrust classは次の三つとする。
+
+1. Normal Sandbox Pack
+2. Host Extension Pack
+3. Runtime TCB
+
+Function roleはtrust classと別軸とする。
+
+- normal/pure Function
+- vendor semantic Function
+- brokered Function
+- Host Capability Provider Function
+
+Host Capability Provider Functionというroleだけではauthorityを得ない。
+Host境界を実装するProviderはHost Extension PackまたはRuntime TCBに属し、
+後述するProviderAuthorityRecordを必要とする。
+
+Normal Packはmanifest変更やProfile設定によってHost Extensionへ昇格できない。
+Host Extensionは別package kind、別install API、別署名namespaceとする。
+
+### 3. Administrative identity, authority principal, enforcement domain
+
+次の三層を分離する。
+
+PackArtifact identity:
+
+- Pack ID
+- exact parent artifact digest
+- publisher/signing lineage
+- version（表示・rollback metadata）
+- package kind
+- Function subartifact digest inventory
+
+これは配布、署名、install、updateのadministrative identityである。
+PackArtifact trustはPack内全FunctionへのHost authorityではない。
+
+FunctionPrincipal:
+
+- exact parent artifact digest
+- exact Function implementation/subartifact digest
+- Function ID
+- Contract revision digest
+- Operation ID
+
+ProviderAuthorityRecord、ApprovalRecord、GrantRecord、Effect scopeのauthority単位は
+FunctionPrincipalとする。一つのFunctionが複数Operationを実装する場合、
+各Operationを独立authority principalとして扱う。
+
+ExecutionDomain:
+
+- process、Wasm Component instance、または認定sandbox
+- Host-assigned domain ID
+- Host-authenticated IPC channel/session
+- process/component identity
+- domain boot epoch
+- OS sandbox profile/entitlements
+- ResourceHandle namespace
+- FunctionPrincipal集合
+- revocation/lifecycle state
+
+Function identityはPack payloadのFunction ID自己申告から導出しない。
+Hostがverified manifest、spawn record、routing、instance、authenticated channelから
+FunctionPrincipalを固定する。
+
+### 4. Host Extension SDK and Capability Provider registration
+
+Runtimeのbuilt-in Broker一覧をHost Capabilityの上限としない。
+
+Host Extension SDKは、署名済みHost Extensionがnamespaced Capability Providerを
+追加する登録面を提供する。登録対象は次を含む。
+
+- Provider Function/Operation identity
+- input/output/error/progress schema
+- Effect/Capability name
+- scope schema
+- attenuation/canonicalization definition
+- riskとApproval表示metadata
+- audit/redaction metadata
+- provider ceiling
+- authority mode
+- ExecutionDomain requirements
+- conformance vectors
+
+Extensionは任意Policy code、identity resolver、Grant matcher、Approval rendererを
+Runtime Kernelへin-process loadできない。
+
+scope normalize/subset/intersectionは次のいずれかで強制する。
+
+- Runtime提供の安全なdeclarative Scope Definition Language
+- Host-owned generic Broker/Handle semantics
+- capability-restricted Wasm component
+- 明示的にTCB昇格されたHost Extension process
+
+Runtimeが安全に意味を比較できないCapabilityは、細粒度の永続Grantを装わない。
+exact-request one-shotまたは、blast radiusを表示したopaque trusted-host scopeとして
+承認する。Unknown semanticsをJSON equalityでfail-openしてはならない。
+
+### 5. Provider trust and ProviderAuthorityRecord
+
+HostExtensionTrustRecordはPackArtifactをHost Extensionとしてinstallし、
+宣言Providerを登録できることを表す。Pack内全Functionへの権限ではない。
+
+Host authorityを実装する各Function/Operationは、別のProviderAuthorityRecordを持つ。
+
+ProviderAuthorityRecordには次をbindする。
+
+- exact FunctionPrincipal
+- exact ExecutionDomain identity/profile
+- Capability/Effect identity
+- scope semantics digest
+- Provider authority ceiling
+- authority mode
+- OS entitlementまたはHost Broker binding
+- background/network/process behavior
+- validity、revocation、trust provenance
+
+同一Pack内の別Function/OperationはProviderAuthorityRecordを継承しない。
+
+### 6. Authority modes
+
+Host authorityの行使方式を二つに分ける。
+
+lease_only:
+
+- raw Host authorityはHost KernelまたはHost-owned Brokerが保持する。
+- Providerへはrequest-bound InvocationLease、opaque ResourceHandle、
+  sealed CredentialLease、限定Wasm importだけを渡す。
+- raw Host path、raw secret、unbounded FD、portable tokenを渡さない。
+- ProviderはLeaseなしにHost effectを実行できない構造にする。
+
+os_entitlement:
+
+- camera、accessibility、device等、OSが専用extension process自体へ権限を
+  付与する必要がある場合に使う。
+- entitlementはexact ExecutionDomain/process identityへ付与する。
+- processはauthority-bearing TCBであり、侵害時blast radiusをUI、audit、
+  documentationへ表示する。
+- dedicated process、least privilege OS sandbox、egress制限、watchdog、
+  crash-loop disable、background default deny、revoke時killを必須とする。
+
+ユーザー向けには「信頼済みHost FunctionがHost権限を持つ」と表示してよい。
+正式仕様と監査ではauthority modeを必ず区別する。
+
+### 7. Co-location invariant
+
+Packが同じであることはexecution domain共有理由にならない。
+
+異なるProvider ceiling、Effect scope、OS entitlement、ResourceHandle class、
+credential access、background policy、trust、revocation lifecycleを持つ
+FunctionPrincipalを同一native address spaceへ同居させてはならない。
+
+v1で認めるFunction authority boundaryは次とする。
+
+- dedicated OS process
+- separate Wasm Component instance with per-instance memory/imports
+- Host-owned Brokerに対するunprivileged worker
+- verified authority-equivalence domain
+
+authority-equivalence domainへ同居できるのは、同一authority ceiling、scope class、
+trust、lifecycleを持ち、相互co-locationが明示承認されたprincipalだけである。
+
+異なるdomain間でraw FD、Handle、Lease、credential、writable memory、
+environment secret、authenticated capability channelを共有しない。
+共有stateはStorage Contract経由とする。
+
+単なるFunction ID field、native dispatcher、thread、Python subinterpreter、
+language namespaceをHost authority boundaryとして扱わない。
+
+### 8. Approval, Grant, and Lease
+
+ApprovalRecord:
+
+- ユーザーまたは管理者がimmutable snapshotを見て行った意思決定記録。
+- runtime authorityではない。
+
+ProviderAuthorityRecord:
+
+- exact Provider Function/Operationが実装できる最大Host authority ceiling。
+- caller利用権限ではない。
+
+GrantRecord:
+
+- exact caller FunctionPrincipalがexact target Provider FunctionPrincipalを、
+  specific Profile、Effect scope、lifetimeで利用できる保存authority。
+- Host authority DBだけが発行・保存・変更できる。
+
+InvocationLease:
+
+- exact Requestへだけ使える短寿命、single-use、non-transferable token。
+- exact caller/target FunctionPrincipal、ExecutionDomain ID、domain boot epoch、
+  request/effect digest、ResourceHandle namespaceへbindする。
+- ProviderへGrantRecord本体を渡さない。
+
+一つのApprovalRecordはatomic Effect bundleに対応する複数Grantを生成できる。
+low-risk auto allowもpolicy_ephemeral Grantを発行し、同じruntime pathを通す。
+
+### 9. Formal authorization rule
+
+正規化済みconcrete Request scopeをRとする。
+
+ALLOWは、次のすべてが成立する場合だけ返す。
+
+- R is within caller Function/Operation Effect ceiling
+- R is within Runtime immutable safety policy
+- R is within Profile/admin ceiling
+- R is within caller-specific Use Grant
+- R is within ProviderAuthority ceiling
+- R is enforceable by the selected ExecutionDomain/OS mode
+- caller、target、Profile、activation、domain、schema、revocation bindingが一致
+- authoritative audit reservationとGrant use reservationが成功
+
+ApprovalRecordはintersectionへ含めない。ApprovalはGrant/Provider trust発行の
+provenanceである。
+
+明示deny、identity mismatch、unknown/unverifiable semantics、revocation、
+stale domain boot epoch、audit failureは常にdenyする。
+
+### 10. Profile authority
+
+Profile自身はHost authorityをmint、拡張、署名、移植できない。
+
+Profileが保持できるのは次だけである。
+
+- Pack、Provider、Functionの構成とrouting
+- caller FunctionからProvider Function/Operationへのrequested edge
+- requested scope template
+- Host authority DB内のexact Grantへのopaque reference
+- ProfileAuthoritySnapshot digest
+
+実際のApproval、ProviderAuthority、Grant、revocation、Extension trustは
+Host Kernel encrypted authority databaseへ保存する。
+
+ProfileAuthoritySnapshotはactive artifacts、Function implementation digests、
+provider routing、ExecutionDomain identities、policy/admin ceiling、
+credential/resource mappings、Workflow catalog等のauthority-relevant stateをpinする。
+
+別ProfileへのGrant自動移植を禁止する。Profile変更でauthorityが拡張される場合、
+matching Grantがなくなり、新Approvalを要求する。
+
+### 11. Approval UX and lifecycle
+
+Provider trust/審査Approvalとcaller-to-Provider Use Approvalは別recordとする。
+
+UIでは初回に一つのtransactional approvalへまとめられる。transactionは、
+Extension trust、ProviderAuthorityRecord、caller-specific Grantの全部が
+commit可能な場合だけ成功する。部分的authorityを残さない。
+
+Providerが既に信頼済みでmatching ProviderAuthorityRecordを持つ場合、
+caller Use Approvalだけを表示する。
+
+Grant scope内の反復利用ではHost内部操作を再承認しない。Requestごとに
+InvocationLeaseは再発行するが、ユーザーpromptは不要である。
+
+Pack/Profile単位の一括UIは現在列挙されたexact Function/Operation/Effect scopeを
+個別recordへ展開する。将来追加されるFunction/Operationを含めない。
+
+### 12. Caller, delegation, and Workflow
+
+InvocationContextのorigin、caller、target、Profile、Workflow、call chain、
+ExecutionDomainはHostが生成する。Packは申告・上書きできない。
+
+Grantはexact immediate caller Function/Operationへbindする。
+
+A -> B -> Host ProviderではBはAのGrantをambient継承しない。BからProviderへの
+別Grant、またはHostがvalid parent Leaseからattenuateした明示child Leaseを
+必要とする。
+
+Delegationはdefault false、max_depth=0。明示時もscope attenuationを必須とし、
+call chain最大depthは4、cycleはdenyする。
+
+Workflow全体へambient authorityを与えない。published Workflow revision/stepへ
+Grantを展開し、各StepAttemptで再評価する。checkpointへLease、raw credential、
+unbounded Handleを保存しない。
+
+### 13. Update and successor authority
+
+version label単独をauthority identityまたは失効根拠にしない。
+
+全authority recordはexact parent artifact digestとFunction implementation digestへ
+bindする。新artifactは旧recordへ直接一致しない。
+
+次をすべて満たす場合だけKernelがsuccessor ProviderAuthority/Grantを発行できる。
+
+- same publisher signing lineage
+- same package trust class
+- same Function ID、Contract revision semantics、Operation
+- same Function implementation digest、または検証可能な非拡張変更
+- no Effect、scope、Capability、domain、account、credential、OS entitlement、
+  authority mode、background、network、process identity expansion
+- same scope semantics/canonicalizer security
+- old/new artifact and provider are not revoked
+- user UpdateTrustPolicy permits non-expanding successor
+
+対象Function implementation digestとauthority semanticsが不変なら、同じPack内の
+無関係Function変更だけで全権限を再promptしなくてよい。ただし新parent digest向け
+successor recordを発行し、旧recordを直接流用しない。
+
+Third-party Host Extensionの自動更新はdefault OFFとする。
+
+### 14. Revocation and storage
+
+Host authority DBには次を保存する。
+
+- HostExtensionTrustRecord
+- ProviderAuthorityRecord
+- ApprovalRecord
+- GrantRecord definition/runtime state
+- ExecutionDomainRecord
+- UpdateTrustPolicy
+- RevocationSet/epochs
+- hash-chained authority journal
+
+SecurityEpochの定義、binding、emergency advance、queue/materialization/effect境界での
+再検査はADR-015に従う。互換性pin、version pin、Workflow pinはSecurityEpochまたは
+明示revocationを上書きできない。
+
+Profile file、Pack state、通常user configへauthorityを保存しない。
+PackとExtensionはauthority DBを読み書きできない。
+
+RevocationはFunctionPrincipal、Operation、ExecutionDomain、PackArtifact、
+publisher、credential、resource root、Profile、Workflow、Host Extension、
+global emergency stop単位で行える。
+
+Request受付、Lease発行、Provider dispatch直前、可能ならirreversible commit直前に
+再確認する。ExecutionDomain revokeでは新Leaseを停止し、Handle/channelを閉じ、
+必要ならprocessをkillする。
+
+### 15. Distribution
+
+Distributionは非実行artifactでありauthorityを持たない。
+
+signed recommended edge/scope templateを含められるが、recommendationは
+Approval、ProviderAuthority、Grantにならない。
+
+Bundle approvalは現在列挙されたexact Function/Operation/Effect候補の
+transactional batch approvalに限定する。
+
+## Consequences
+
+- Runtimeのroot Policy/authority modelは小さく保たれる。
+- filesystem、network、device、将来の未知CapabilityをHost Extension SDKで追加できる。
+- Pack署名とFunction authorityを混同しない。
+- Function単位のApprovalを実際のExecutionDomainで強制できる。
+- lease_onlyはHost raw authorityをProviderから隔離できる。
+- os_entitlementは完全安全ではないが、TCBとblast radiusを明示できる。
+- Profileは構成を持てるがauthorityを自己生成できない。
+- Grant数とdomain数は増えるため、transactional UI、Wasm instance、
+  authority-equivalence grouping、lazy materializationが必要になる。
+- semanticsをHostが検証できないCapabilityは、粗いtrustまたはone-shotへ
+  downgradeされ、細粒度保証を偽装しない。
+
+## Rejected alternatives
+
+- Runtime Coreへの巨大なvendor/permission taxonomy
+- Pack ID、publisher、Profile、Distribution wildcard authority
+- Host Extension installによるPack内全Functionへのauthority
+- Function effect declarationの自己承認
+- Profile activationによるimplicit Grant
+- Function ID自己申告によるprincipal selection
+- 異なるauthority Functionの同一native address space co-location
+- arbitrary executable Policy/subset pluginのKernel load
+- unknown semanticsのJSON equality fallback
+- Verified Normal Packへのraw Host/network authority
+- Providerへのdurable raw Handle、raw secret、portable Grant
+- ApprovalRecordをruntime authorityとして使用
+- best-effort auditでHost effectを継続
+
+## Security invariants
+
+1. Normal Sandbox Packはraw Host path、raw secret、raw network、Host process、
+   OS、device authorityへ到達できない。
+2. PackArtifact trustはPack内全FunctionへのHost authorityを付与しない。
+3. ProviderAuthority、Approval、Grantはexact FunctionPrincipal/Operationへbindする。
+4. FunctionPrincipalはHost spawn/routing/channelから導出し、Pack自己申告を信用しない。
+5. 異なるauthority principalは同一native address spaceでcapability stateを共有しない。
+6. Profileはauthorityをmint、拡張、exportできない。
+7. ProviderへGrantRecord本体を渡さず、request-bound InvocationLeaseだけを渡す。
+8. lease_only Providerはraw Host authorityを保持しない。
+9. os_entitlement Providerはexact dedicated ExecutionDomainとしてTCB表示する。
+10. Unknown/unverifiable scope semanticsはfail closedまたはone-shot/opaque trustへ落とす。
+11. Authoritative audit reservationなしでHost effectを開始しない。
+12. Update、co-location、domain restartでsilent authority expansionを許さない。
+13. Revocationはcached decision、Handle、Lease、ExecutionDomainへ反映される。
+14. Distribution、publisher reputation、version labelはauthorityを付与しない。

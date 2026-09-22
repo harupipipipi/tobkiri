@@ -132,28 +132,32 @@ def test_vercel_invocation_strips_provider_prefix_exactly_once(monkeypatch):
     ]
 
 
-def test_manifest_detection_uses_dedicated_vercel_adapter(monkeypatch):
-    from domain.ai_client.providers import detect_available_providers
-    from domain.ai_client.providers.vercel_ai_gateway_provider import (
-        VercelAIGatewayProvider,
+def test_manifest_detection_uses_dedicated_vercel_adapter(tmp_path, monkeypatch):
+    from tests.v4_provider_runtime_support import exercise_captured_provider_send
+
+    sent = exercise_captured_provider_send(
+        tmp_path,
+        monkeypatch,
+        "vercel-ai-gateway",
+        endpoint="https://ai-gateway.vercel.sh/v1",
     )
 
-    monkeypatch.setenv("AI_GATEWAY_API_KEY", "test-key")
-
-    assert isinstance(
-        detect_available_providers()["vercel-ai-gateway"],
-        VercelAIGatewayProvider,
+    assert sent["captured"]["url"] == (
+        "https://ai-gateway.vercel.sh/v1/chat/completions"
     )
+    assert "credential-canary" not in str(sent["result"])
 
 
 def test_openrouter_invocation_uses_catalog_without_network_refresh(monkeypatch):
+    from domain.ai_client.providers import openrouter_provider
+
     monkeypatch.setattr(
-        "domain.ai_client.providers.openrouter_provider.openrouter_provider_options",
+        openrouter_provider,
+        "openrouter_provider_options",
         lambda: {},
     )
-    from domain.ai_client.providers.openrouter_provider import OpenRouterProvider
 
-    provider = OpenRouterProvider(
+    provider = openrouter_provider.OpenRouterProvider(
         known_models=[
             {
                 "id": "openrouter/openai/test-model",

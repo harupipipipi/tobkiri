@@ -29,20 +29,18 @@ class IBMWatsonxProvider(BaseProvider):
             ),
             {},
         )
-        self._key = str(
-            os.environ.get("WATSONX_API_KEY") or os.environ.get("IBM_WATSONX_API_KEY") or ""
-        ).strip()
+        self._key = ""
         if not self._key and connection.get("api_id"):
             self._key = str(
                 read_provider_api_key(self.provider_id, str(connection["api_id"])) or ""
             ).strip()
         self._base_url = (
-            str(connection.get("base_url") or os.environ.get("WATSONX_BASE_URL") or "")
+            str(connection.get("base_url") or "")
             .strip()
             .rstrip("/")
         )
-        self._project_id = str(os.environ.get("WATSONX_PROJECT_ID") or "").strip()
-        self._token = str(os.environ.get("WATSONX_ACCESS_TOKEN") or "").strip()
+        self._project_id = str(connection.get("project_id") or "").strip()
+        self._token = str(connection.get("access_token") or "").strip()
         self._ssl_ctx = ssl.create_default_context()
 
     def _access_token(self) -> str:

@@ -1,20 +1,193 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {"id": "rumi.media_analysis_adapter", "version": "1.0.0", "kind": "adapter", "display_name": "Rumi Media Analysis Adapter", "description": "Workspace media reference adapter for replaceable vision and transcription services."},
   "contracts": {
-    "provides": [{"id": "rumi.service.media.analysis.v1", "version": "1.0.0", "provider_instance_id": "media-analysis.adapter", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": null}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["media.analysis"]}],
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.media.analysis.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "media-analysis.adapter",
+        "required_capabilities": [
+          "media.analysis"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
     "requires": [
-      {"id": "rumi.service.media.inspect.v1", "version": ">=1.0.0,<2.0.0", "cardinality": "one", "failure": "fail_closed"},
-      {"id": "rumi.service.ai.image.v1", "version": ">=1.0.0,<2.0.0", "cardinality": "one", "failure": "fail_closed"},
-      {"id": "rumi.service.ai.audio.transcribe.v1", "version": ">=1.0.0,<2.0.0", "cardinality": "one", "failure": "fail_closed"}
+      {
+        "cardinality": "one",
+        "id": "rumi.service.media.inspect.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.ai.image.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.ai.audio.transcribe.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
     ]
   },
-  "entrypoints": [{"id": "media-analysis", "contract_id": "rumi.service.media.analysis.v1", "loader": "python", "module": "ecosystem.rumi_media_analysis_adapter_pack.runtime.adapter", "symbol": "create_media_analysis_adapter", "artifact_hash": "sha256:ac3a90d1b02a8eae7e995d405ab51b6474a3bd8a72f536530b046c08d42508c2"}],
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:70ca9c2696d710018be89a1f8fa406e1185698ec623fbd7860e0bb70fdcd0897",
+      "contract_id": "rumi.service.media.analysis.v1",
+      "id": "media-analysis",
+      "loader": "python",
+      "module": "ecosystem.rumi_media_analysis_adapter_pack.runtime.adapter",
+      "symbol": "create_media_analysis_adapter"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_ai_modality_pack": ">=1.0.0,<2.0.0",
+        "rumi_media_inspect_service_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.media.analysis.v1"
+          ],
+          "requires": [
+            "rumi.service.ai.audio.transcribe.v1",
+            "rumi.service.ai.image.v1",
+            "rumi.service.media.inspect.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_ai_modality_pack": ">=1.0.0,<2.0.0",
+          "rumi_media_inspect_service_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Workspace media reference adapter for replaceable vision and transcription services.",
+        "display_name": "Rumi Media Analysis Adapter",
+        "host_execution": false,
+        "metadata": {
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:8745410a540d71f4afc8a189e7daf802673d3a3efa1fb67ca2d7a532e3751616",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:2383a868e187b31697d5d6e3cc282dd8a76669d7351b53f2fadafaa99f227317"
+          },
+          "capture_authority": false,
+          "file_access": "global_contract_only",
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "provider_execution": false,
+          "tool_or_ui_registry_imports": false
+        },
+        "pack_id": "rumi_media_analysis_adapter_pack",
+        "pack_identity": "rumi:ecosystem/rumi_media_analysis_adapter_pack",
+        "provenance": {
+          "build_identity": "rumi_media_analysis_adapter_pack:1.0.0",
+          "content_hash": "sha256:70ca9c2696d710018be89a1f8fa406e1185698ec623fbd7860e0bb70fdcd0897",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.audio.transcribe",
+          "ai.image",
+          "media.analysis",
+          "media.inspect"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_media_analysis_adapter_pack"
+    },
+    "rumi.media_analysis.boundary": {
+      "capture_authority": false,
+      "credential_access": false,
+      "file_access": "contract_only",
+      "inline_media": false,
+      "missing_provider_result": "unavailable",
+      "provider_execution": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_media_analysis_adapter_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:2383a868e187b31697d5d6e3cc282dd8a76669d7351b53f2fadafaa99f227317"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.media",
+      "defaultspack.ai_client.image",
+      "defaultspack.ai_client.audio"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the adapter and select the pinned prior modality route; no data migration exists.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Workspace media reference adapter for replaceable vision and transcription services.",
+    "display_name": "Rumi Media Analysis Adapter",
+    "id": "rumi.media_analysis_adapter",
+    "kind": "adapter",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "media.analysis"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "media.inspect"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.image"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.audio.transcribe"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_media_analysis_adapter_pack:1.0.0",
+    "content_hash": "sha256:70ca9c2696d710018be89a1f8fa406e1185698ec623fbd7860e0bb70fdcd0897",
+    "signature": null,
+    "trust_class": "local"
+  },
   "resources": [],
-  "storage": [],
-  "permissions": [{"capability": "media.analysis", "access": "execute", "approval_required": false}, {"capability": "media.inspect", "access": "read", "approval_required": false}, {"capability": "ai.image", "access": "execute", "approval_required": false}, {"capability": "ai.audio.transcribe", "access": "execute", "approval_required": false}],
-  "provenance": {"content_hash": "sha256:ac3a90d1b02a8eae7e995d405ab51b6474a3bd8a72f536530b046c08d42508c2", "build_identity": "rumi-media-analysis-adapter-pack:1.0.0", "trust_class": "local", "signature": null},
-  "migration": {"from": ["defaultspack.domain.media", "defaultspack.ai_client.image", "defaultspack.ai_client.audio"], "compatibility_aliases": [], "compatibility_projection": "finite_contract_adapter", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Remove the adapter and select the pinned prior modality route; no data migration exists."},
-  "extensions": {"rumi.media_analysis.boundary": {"capture_authority": false, "provider_execution": false, "credential_access": false, "file_access": "contract_only", "inline_media": false, "missing_provider_result": "unavailable"}}
+  "storage": []
 }
-

@@ -1,17 +1,232 @@
 {
-  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.ide_bridge_service","version":"1.0.0","kind":"service","display_name":"Rumi IDE Bridge Service","description":"Bounded IDE session envelopes independent of chat and UI."},
-  "contracts":{"provides":[
-    {"id":"rumi.resource.ide.session.v1","version":"1.0.0","provider_instance_id":"ide-bridge.observe","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_ide_bridge_service_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["ide.session.observe"]},
-    {"id":"rumi.action.ide.session.v1","version":"1.0.0","provider_instance_id":"ide-bridge.control","cardinality":"one","security":"restricted","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_ide_bridge_service_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["ide.session.control"]}
-  ],"requires":[{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
-  "entrypoints":[
-    {"id":"ide-observe","contract_id":"rumi.resource.ide.session.v1","loader":"python","module":"ecosystem.rumi_ide_bridge_service_pack.runtime.sessions","symbol":"create_ide_observe","artifact_hash":"sha256:57675999a0dfcdceab4c1da2b01358b41f4acf0d0a749be8af5fe5265b0d3d04"},
-    {"id":"ide-control","contract_id":"rumi.action.ide.session.v1","loader":"python","module":"ecosystem.rumi_ide_bridge_service_pack.runtime.sessions","symbol":"create_ide_control","artifact_hash":"sha256:57675999a0dfcdceab4c1da2b01358b41f4acf0d0a749be8af5fe5265b0d3d04"}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.ide.session.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ide_bridge_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "ide-bridge.observe",
+        "required_capabilities": [
+          "ide.session.observe"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.ide.session.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_ide_bridge_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "ide-bridge.control",
+        "required_capabilities": [
+          "ide.session.control"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:ee1dfc4d2c78d4bc65ebfe1b96bf1ee41d30bb63021f25d7a61e2f31de93f1a9",
+      "contract_id": "rumi.resource.ide.session.v1",
+      "id": "ide-observe",
+      "loader": "python",
+      "module": "ecosystem.rumi_ide_bridge_service_pack.runtime.sessions",
+      "symbol": "create_ide_observe"
+    },
+    {
+      "artifact_hash": "sha256:ee1dfc4d2c78d4bc65ebfe1b96bf1ee41d30bb63021f25d7a61e2f31de93f1a9",
+      "contract_id": "rumi.action.ide.session.v1",
+      "id": "ide-control",
+      "loader": "python",
+      "module": "ecosystem.rumi_ide_bridge_service_pack.runtime.sessions",
+      "symbol": "create_ide_control"
+    }
   ],
-  "resources":[],"storage":[{"namespace":"rumi.ide.sessions.ephemeral","schema_version":"1.0.0","authoritative":true,"retention":"bounded process lifetime","export_import":false}],
-  "permissions":[{"capability":"ide.session.observe","access":"observe","approval_required":false},{"capability":"ide.session.control","access":"control","approval_required":true},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:57675999a0dfcdceab4c1da2b01358b41f4acf0d0a749be8af5fe5265b0d3d04","build_identity":"rumi-ide-bridge-service-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.blocks.coding.codex_app_server"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Close ephemeral sessions and select the pinned prior bridge adapter."},
-  "extensions":{"rumi.ide_bridge.boundary":{"observe_control_split":true,"control_receipt":"required_per_operation","chat":false,"llm_provider":false,"file_shell_git_authority":false,"client_approval":false,"max_sessions":64,"max_events":512}}
+  "extensions": {
+    "rumi.ide_bridge.boundary": {
+      "chat": false,
+      "client_approval": false,
+      "control_receipt": "required_per_operation",
+      "file_shell_git_authority": false,
+      "llm_provider": false,
+      "max_events": 512,
+      "max_sessions": 64,
+      "observe_control_split": true
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+        "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.ide.session.v1",
+            "rumi.resource.ide.session.v1"
+          ],
+          "requires": [
+            "rumi.resource.workspace.v1",
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+          "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Bounded IDE session envelopes independent of chat and UI.",
+        "display_name": "Rumi IDE Bridge Service",
+        "host_execution": false,
+        "metadata": {
+          "authority_split": [
+            "observe",
+            "control"
+          ],
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:4e2274744bb75921e7587282c92ad7ec110a1840d8eb6c019fcefe8dd70659d4",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:d875a4928afdb08bb60ba631e451641c87849b11d799050fca4980d1d8d9635c"
+          },
+          "chat_or_ui_imports": false,
+          "file_shell_git_authority": false,
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "receipt_required": true
+        },
+        "pack_id": "rumi_ide_bridge_service_pack",
+        "pack_identity": "rumi:ecosystem/rumi_ide_bridge_service_pack",
+        "provenance": {
+          "build_identity": "rumi_ide_bridge_service_pack:1.0.0",
+          "content_hash": "sha256:ee1dfc4d2c78d4bc65ebfe1b96bf1ee41d30bb63021f25d7a61e2f31de93f1a9",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume",
+          "ide.session.control",
+          "ide.session.observe",
+          "workspace.metadata.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_ide_bridge_service_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_ide_bridge_service_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:d875a4928afdb08bb60ba631e451641c87849b11d799050fca4980d1d8d9635c"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.blocks.coding.codex_app_server"
+    ],
+    "removal_wave": 10,
+    "rollback": "Close ephemeral sessions and select the pinned prior bridge adapter.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Bounded IDE session envelopes independent of chat and UI.",
+    "display_name": "Rumi IDE Bridge Service",
+    "id": "rumi.ide_bridge_service",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "observe",
+      "approval_required": false,
+      "capability": "ide.session.observe"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "ide.session.control"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "workspace.metadata.read"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_ide_bridge_service_pack:1.0.0",
+    "content_hash": "sha256:ee1dfc4d2c78d4bc65ebfe1b96bf1ee41d30bb63021f25d7a61e2f31de93f1a9",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.ide.sessions.ephemeral",
+      "retention": "bounded process lifetime",
+      "schema_version": "1.0.0"
+    }
+  ]
 }
-

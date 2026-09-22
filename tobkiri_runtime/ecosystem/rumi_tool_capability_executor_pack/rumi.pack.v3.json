@@ -1,29 +1,23 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {
-    "id": "rumi.tool_capability_executor",
-    "version": "1.0.0",
-    "kind": "adapter",
-    "display_name": "Rumi Tool Capability Executor",
-    "description": "Capability-backed executor retaining core trust, grant, timeout, and audit checks."
-  },
   "contracts": {
     "provides": [
       {
+        "cardinality": "many",
+        "failure": "fail_closed",
         "id": "rumi.service.tool.execute.v1",
-        "version": "1.0.0",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "domain-service",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
         "provider_instance_id": "tool-executor.capability",
+        "required_capabilities": [
+          "tool.execute"
+        ],
         "routing_keys": [
           "capability"
         ],
-        "cardinality": "many",
-        "security": "restricted",
-        "failure": "fail_closed",
-        "lifecycle": {
-          "introduced": "1.0.0",
-          "deprecated": false,
-          "data_owner": "domain-service"
-        },
         "schemas": {
           "input": {
             "type": "object"
@@ -32,56 +26,129 @@
             "type": "object"
           }
         },
-        "isolation": "in_process",
-        "required_capabilities": [
-          "tool.execute"
-        ]
+        "security": "restricted",
+        "version": "1.0.0"
       }
     ],
     "requires": []
   },
   "entrypoints": [
     {
-      "id": "tool-capability-execute",
+      "artifact_hash": "sha256:32c817fdddaeef88f7ca88364e6b3bc2fb985c820f514dc46b88fbfe93a34eb2",
       "contract_id": "rumi.service.tool.execute.v1",
+      "id": "tool-capability-execute",
       "loader": "python",
       "module": "ecosystem.rumi_tool_capability_executor_pack.runtime.executor",
-      "symbol": "create_execute_operation",
-      "artifact_hash": "sha256:32c817fdddaeef88f7ca88364e6b3bc2fb985c820f514dc46b88fbfe93a34eb2"
+      "symbol": "create_execute_operation"
     }
   ],
-  "resources": [],
-  "storage": [],
-  "permissions": [
-    {
-      "capability": "tool.execute",
-      "access": "execute",
-      "approval_required": false
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.tool.execute.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Capability-backed executor retaining core trust, grant, timeout, and audit checks.",
+        "display_name": "Rumi Tool Capability Executor",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:49e1d7c27e280ad3f47f4e46b3dfa6833a9ff94d12fe9fb161591eac05924bc4",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:99b8832115f05aac77e246aaeb27ae8ea4f5e352e879fbd55607d2b77ba80db2"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "capability_tool_adapter"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "grant_bypass": false,
+            "trust_bypass": false
+          }
+        },
+        "pack_id": "rumi_tool_capability_executor_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_capability_executor_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_capability_executor_pack:1.0.0",
+          "content_hash": "sha256:dc9082521f822926a6040c8e5d20c543aef31d072cc9d59b6ef4f533aa66c9f9",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.execute"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_capability_executor_pack"
+    },
+    "rumi.tool_executor.boundary": {
+      "domain_service_owner": false,
+      "execution_kind": "capability",
+      "grant_bypass": false,
+      "trust_bypass": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_capability_executor_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:99b8832115f05aac77e246aaeb27ae8ea4f5e352e879fbd55607d2b77ba80db2"
     }
-  ],
-  "provenance": {
-    "content_hash": "sha256:d2c3bf5577d57bfbe6f6d8bb4e976b05bc57f78493d3d6b3d9f3de9fcfcf2857",
-    "build_identity": "rumi-tool-capability-executor-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
   },
   "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
     "from": [
       "defaultspack.domain.tool.executor.capability",
       "core_runtime.capability_executor"
     ],
-    "compatibility_aliases": [],
-    "compatibility_projection": "none",
     "removal_wave": 10,
-    "sunset_at": "2027-12-31",
-    "rollback": "Remove this adapter; underlying capability services remain available."
+    "rollback": "Remove this adapter; underlying capability services remain available.",
+    "sunset_at": "2027-12-31"
   },
-  "extensions": {
-    "rumi.tool_executor.boundary": {
-      "execution_kind": "capability",
-      "grant_bypass": false,
-      "trust_bypass": false,
-      "domain_service_owner": false
+  "pack": {
+    "description": "Capability-backed executor retaining core trust, grant, timeout, and audit checks.",
+    "display_name": "Rumi Tool Capability Executor",
+    "id": "rumi.tool_capability_executor",
+    "kind": "adapter",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.execute"
     }
-  }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_capability_executor_pack:1.0.0",
+    "content_hash": "sha256:dc9082521f822926a6040c8e5d20c543aef31d072cc9d59b6ef4f533aa66c9f9",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }

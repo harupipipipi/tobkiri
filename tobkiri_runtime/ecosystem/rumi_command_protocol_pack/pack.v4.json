@@ -1,0 +1,313 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:f19a676e707a60e37ba22692113b91615d90e5c4363875a7f8157570dee3c4ba",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+      "kind": "executable",
+      "path": "runtime/catalog.py"
+    },
+    {
+      "digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "kind": "executable",
+      "path": "runtime/datasource.py"
+    },
+    {
+      "digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
+      "kind": "executable",
+      "path": "runtime/high_risk_adapter.py"
+    },
+    {
+      "digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
+      "kind": "executable",
+      "path": "runtime/invoke.py"
+    },
+    {
+      "digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+      "kind": "executable",
+      "path": "runtime/state.py"
+    },
+    {
+      "digest": "sha256:745eb8d6b16e46284feafa8a76fd26f1f74d25a1eca6cfc3f303908dee9ebe7a",
+      "kind": "schema",
+      "path": "schemas/command-protocol-v1.schema.json"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.command.invoke.v1",
+      "operations": [
+        "command.invoke"
+      ],
+      "revision_digest": "sha256:801ad3b21f4782d3d03c237d5c0dfd907cf5a437bc24910954f32f4addbfa2db"
+    },
+    {
+      "contract_id": "tobkiri.resource.command.state.v1",
+      "operations": [
+        "command.state.query"
+      ],
+      "revision_digest": "sha256:5561eccef0ab7444420f23455aeb029b4a7b2400b96ba3df92aafa0c465aa815"
+    },
+    {
+      "contract_id": "tobkiri.resource.command.datasource.v1",
+      "operations": [
+        "command.datasource.query"
+      ],
+      "revision_digest": "sha256:0e660d5b3ebc6ebcdff186a95ab831dd056a354ce6278a5661d771701a0a4647"
+    },
+    {
+      "contract_id": "tobkiri.service.command.high-risk.v1",
+      "operations": [
+        "high_risk_command.manage"
+      ],
+      "revision_digest": "sha256:036e4b61a2be06a5cfe321d9d15c2511bd0f2b7feb55ebdccca764b4685b732f"
+    },
+    {
+      "contract_id": "tobkiri.resource.command.catalog.v1",
+      "operations": [
+        "command.catalog.read"
+      ],
+      "revision_digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:5c4331eb18c513f72b57ae7310400710fed18cecf2d99f9b068bb04ba6f5c391",
+      "id": "rumi_command_protocol_pack.catalog.read",
+      "implementation_digest": "sha256:ff8ff76a53f685a2febdcc5555e8e619f82d774591ad2d7e546a3571d2120935",
+      "isolation": "dedicated_process",
+      "operations": [
+        "command.catalog.read"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:0e660d5b3ebc6ebcdff186a95ab831dd056a354ce6278a5661d771701a0a4647",
+      "id": "rumi_command_protocol_pack.command.datasource",
+      "implementation_digest": "sha256:77b83ccd9223b51aa89c8e0203693cc6d76eb7dd6d0189ca6d570d585c1129c7",
+      "isolation": "dedicated_process",
+      "operations": [
+        "command.datasource.query"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:801ad3b21f4782d3d03c237d5c0dfd907cf5a437bc24910954f32f4addbfa2db",
+      "id": "rumi_command_protocol_pack.command.invoke",
+      "implementation_digest": "sha256:2344b4bfa7b1e0211fb4067875e873c93c71a1351ee5d92300074eceaa011761",
+      "isolation": "dedicated_process",
+      "operations": [
+        "command.invoke"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:5561eccef0ab7444420f23455aeb029b4a7b2400b96ba3df92aafa0c465aa815",
+      "id": "rumi_command_protocol_pack.command.state",
+      "implementation_digest": "sha256:9171d03ffe8847830e788dc7edfd99c508ead810f71019bd680fd2d5ddd7c5f4",
+      "isolation": "dedicated_process",
+      "operations": [
+        "command.state.query"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:036e4b61a2be06a5cfe321d9d15c2511bd0f2b7feb55ebdccca764b4685b732f",
+      "id": "rumi_command_protocol_pack.high-risk-command.service",
+      "implementation_digest": "sha256:b168952a90bd931d9562239ed57644d9bb355bb377ff31ec8cccbe4c55c30813",
+      "isolation": "dedicated_process",
+      "operations": [
+        "high_risk_command.manage"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:5ecbd66b3e2691b3ab9f55e65db79981547a9c267756df56aaf7647c9a1eb72c",
+    "contract_catalog_digest": "sha256:536d4ed314475b1f62ef3dcf707d0ad659a63138e756b2b8849c3387c9589e36",
+    "source_identity": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_command_protocol_pack",
+      "rumi_command_protocol_pack"
+    ],
+    "removal_wave": 0,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.resource.command.catalog.v1",
+      "effect_ceiling": [
+        "capability:command.catalog.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "command.catalog.read",
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.catalog.read",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.command.datasource.v1",
+      "effect_ceiling": [
+        "capability:command.catalog.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "command.datasource.query",
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.datasource",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.command.invoke.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:command.invoke"
+      ],
+      "operation_id": "command.invoke",
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.invoke",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.command.state.v1",
+      "effect_ceiling": [
+        "capability:command.catalog.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "command.state.query",
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.state",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.service.command.high-risk.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:host.authority.consume"
+      ],
+      "operation_id": "high_risk_command.manage",
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.high-risk-command.service",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:5ecbd66b3e2691b3ab9f55e65db79981547a9c267756df56aaf7647c9a1eb72c",
+    "display_name": "Tobkiri Command Protocol",
+    "id": "rumi_command_protocol_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:a53c0b45c77e2f8950d5b7962423f36e890bc4194dbe3ef259bfb5a9a4da0a65",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_command_protocol_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.resource.command.catalog.v1",
+      "operations": [
+        "command.catalog.read"
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.catalog.read"
+    },
+    {
+      "contract_reference": "tobkiri.resource.command.datasource.v1",
+      "operations": [
+        "command.datasource.query"
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.datasource"
+    },
+    {
+      "contract_reference": "tobkiri.action.command.invoke.v1",
+      "operations": [
+        "command.invoke"
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.invoke"
+    },
+    {
+      "contract_reference": "tobkiri.resource.command.state.v1",
+      "operations": [
+        "command.state.query"
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.command.state"
+    },
+    {
+      "contract_reference": "tobkiri.service.command.high-risk.v1",
+      "operations": [
+        "high_risk_command.manage"
+      ],
+      "owner": "rumi_command_protocol_pack",
+      "provider_id": "rumi_command_protocol_pack.high-risk-command.service"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "command.invoke",
+      "command.state.query",
+      "command.datasource.query",
+      "host.authority.consume",
+      "command.catalog.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.interactive-effect.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.application.presentation.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.model.profile.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.ai.provider.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

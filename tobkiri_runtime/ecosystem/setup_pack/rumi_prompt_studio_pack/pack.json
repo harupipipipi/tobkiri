@@ -35,7 +35,7 @@
     "prompt_version_ledger": "owned_by_rumi_prompt_studio_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Prompt authoring remains optional and independently removable from the default facade.",
     "criteria": [

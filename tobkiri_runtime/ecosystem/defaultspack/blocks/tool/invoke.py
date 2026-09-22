@@ -1,12 +1,8 @@
 """Compatibility route that cannot bypass the Capability Plan authority."""
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from _common import error
+from blocks._common import error
 from blocks.capability.api import run as run_capability_api
 
 

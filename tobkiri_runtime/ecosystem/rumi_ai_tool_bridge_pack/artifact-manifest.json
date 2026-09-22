@@ -1,5 +1,4 @@
 {
-  "version": "rumi.pack-artifacts.v1",
   "artifacts": [
     {
       "path": "runtime/__init__.py",
@@ -7,7 +6,8 @@
     },
     {
       "path": "runtime/bridge.py",
-      "sha256": "sha256:3e02ebccda25ca2c8c7d0eeb772007fbf22ec3c4328a9337e8a2f677c66f9a43"
+      "sha256": "sha256:27c6d726d1c1db4bb7a67565e4d56c9bddaab875d30824f330e15ec5c3e7e6b0"
     }
-  ]
+  ],
+  "version": "rumi.pack-artifacts.v1"
 }

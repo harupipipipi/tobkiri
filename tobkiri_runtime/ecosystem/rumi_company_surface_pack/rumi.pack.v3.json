@@ -1,16 +1,154 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.company_surface","version":"1.0.0","kind":"content","display_name":"Rumi Company Surface","description":"Removable Company content and isolated read-only UI projection."},
-  "contracts":{"provides":[],"requires":[
-    {"id":"rumi.resource.company.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.resource.company.runtime.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"isolate"}
-  ]},
-  "entrypoints":[],
-  "resources":[{"id":"frontend/contributions/companies.json","kind":"ui.contribution","content_hash":"sha256:0ddf0a96221188243f2352fe5852d51b16b02859378e1565288c031a5e930c70"}],
-  "storage":[],
-  "permissions":[{"capability":"company.state.read","access":"read","approval_required":false},{"capability":"company.runtime.observe","access":"observe","approval_required":false}],
-  "provenance":{"content_hash":"sha256:e1ca7e330a87383d2f27a1df7ce646f160c6c8eab069999b9e1367641068d3c7","build_identity":"rumi-company-surface-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.webapp.company","defaultspack.blocks.company"],"compatibility_aliases":[],"compatibility_projection":"finite_route_projection","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Remove the Company UI pack; state and coordinator remain independently available."},
-  "extensions":{"rumi.company_surface.boundary":{"state_owner":false,"coordinator_owner":false,"agent_owner":false,"connector_imports":false,"scheduler_imports":false,"mutations":false,"authority_receipts":false,"profile_scoped":true,"isolated":true}}
+  "contracts": {
+    "provides": [],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.company.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.company.runtime.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [],
+  "extensions": {
+    "rumi.company_surface.boundary": {
+      "agent_owner": false,
+      "authority_receipts": false,
+      "connector_imports": false,
+      "coordinator_owner": false,
+      "isolated": true,
+      "mutations": false,
+      "profile_scoped": true,
+      "scheduler_imports": false,
+      "state_owner": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_company_coordinator_pack": ">=1.0.0,<2.0.0",
+        "rumi_company_state_store_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [],
+          "requires": [
+            "rumi.resource.company.runtime.v1",
+            "rumi.resource.company.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_company_coordinator_pack": ">=1.0.0,<2.0.0",
+          "rumi_company_state_store_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Removable Company content and isolated read-only UI projection.",
+        "display_name": "Rumi Company Surface",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:e4c7fb37db73e45fbb895aca518c07726613fce725e8995580ed7d2f59a66f75",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:6a358ebb0dd6ac49eb037642ed4af915df729a2e3df877e4b4d214bdabcdf023"
+          },
+          "executable_code": true,
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "isolated_ui": true,
+          "owner_surfaces": [
+            "companies_route",
+            "companies_content"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_company_surface_pack",
+        "pack_identity": "rumi:ecosystem/rumi_company_surface_pack",
+        "provenance": {
+          "build_identity": "rumi_company_surface_pack:1.0.0",
+          "content_hash": "sha256:ba4fb3edf25a1860e9e633c961594c8051304ecea55fa3ad35695c81117184f3",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "company.runtime.observe",
+          "company.state.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [
+          "frontend/contributions/companies.json"
+        ],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_company_surface_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_company_surface_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:6a358ebb0dd6ac49eb037642ed4af915df729a2e3df877e4b4d214bdabcdf023"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.webapp.company",
+      "defaultspack.blocks.company"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove the Company UI pack; state and coordinator remain independently available.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Removable Company content and isolated read-only UI projection.",
+    "display_name": "Rumi Company Surface",
+    "id": "rumi.company_surface",
+    "kind": "content",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "company.state.read"
+    },
+    {
+      "access": "observe",
+      "approval_required": false,
+      "capability": "company.runtime.observe"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_company_surface_pack:1.0.0",
+    "content_hash": "sha256:ba4fb3edf25a1860e9e633c961594c8051304ecea55fa3ad35695c81117184f3",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [
+    {
+      "content_hash": "sha256:0ddf0a96221188243f2352fe5852d51b16b02859378e1565288c031a5e930c70",
+      "id": "frontend/contributions/companies.json",
+      "kind": "ui.contribution"
+    }
+  ],
+  "storage": []
 }
-

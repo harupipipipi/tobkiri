@@ -1,2 +1,68 @@
-{"pack_id":"rumi_kanban_surface_pack","pack_identity":"rumi:ecosystem/rumi_kanban_surface_pack","display_name":"Rumi Kanban Surface Pack","version":"1.0.0","description":"Removable read-only Kanban UI projection.","dependencies":{"rumi_kanban_state_store_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.resource.kanban.v1"],"provides":["rumi.ui.route.module.v1"]},"required_secrets":[],"required_capabilities":["kanban.state.read"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":false,"resources":[{"id":"frontend/contributions/kanban.json","kind":"ui.contribution","content_hash":"sha256:fc808ce0032c0a18b1059031a77d95f8691d428304642bea138897b096ebfb57"}],"provenance":{"content_hash":"sha256:5898e39b53c9599e9c05f1103df2348cd8cc15e1a00acc430fb235b60deca091","build_identity":"rumi-kanban-surface-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":false,"executable_code":true,"isolated_ui":true,"owner_surfaces":["kanban_route","kanban_content"],"integrity":{"artifact_manifest":"artifact-manifest.json"}}}
-
+{
+  "connectivity": {
+    "provides": [],
+    "requires": [
+      "rumi.resource.kanban.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_kanban_state_store_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Removable read-only Kanban content projection.",
+  "display_name": "Rumi Kanban Surface",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:6776cec2583ef3ffe10c2258b9a5c33c4283642f6495c9846761f3e37a1ccae3",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:74e0ccd856ee27de9d8544dcb7303656b4dcecbf88c6406eb8a090afd7215741"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:74e0ccd856ee27de9d8544dcb7303656b4dcecbf88c6406eb8a090afd7215741"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "isolated_ui": true,
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "kanban_route",
+      "kanban_content"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_kanban_surface_pack",
+  "pack_identity": "rumi:ecosystem/rumi_kanban_surface_pack",
+  "provenance": {
+    "build_identity": "rumi_kanban_surface_pack:1.0.0",
+    "content_hash": "sha256:c51f2cb992b2406d2ecee2eb51d21ef55d8541e8d4381c82d1a6caf043b490c9",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "kanban.state.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "frontend/contributions/kanban.json"
+  ],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -48,6 +48,12 @@ def run(context, args):
     for key in (
         "url",
         "url_contains",
+        "browser",
+        "browser_app",
+        "profile_id",
+        "session_id",
+        "persistent",
+        "target_app",
         "x",
         "y",
         "point",
