@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "bb386f36a9101d6357dd9783cc4d8586be25acdb0a1af817a22a893a933152da",
+    "digest": "3b731a4623998a045a736aca713db02d96f5b939021140c6e107b32c0ac64f01",
     "entries": [
       {
         "path": "index.html",
@@ -15,8 +15,8 @@
       },
       {
         "path": "package.json",
-        "size": 5711,
-        "sha256": "1b695975cc8bd5eadd0024fefc711cbe2066ba0af1466f531f4bc6a00de878bc"
+        "size": 5768,
+        "sha256": "321f6b2d037277ae953b1dd322f530978e8576c1f0b686c410fbb48c96284f25"
       },
       {
         "path": "public/assets/tobkiri-startup-blade-cut.svg",
@@ -1090,8 +1090,18 @@
       },
       {
         "path": "src/hostPermissions/HostPermissionsPage.tsx",
-        "size": 14025,
-        "sha256": "0284d61d2f1d8caf736577ba8c740d68e8d82e80a7c63736e5318cd5d1339a8d"
+        "size": 21614,
+        "sha256": "fd93f48cee072679ebe11633a21fb4f4a1e4a9fc50048d922f53a34a3be77dc1"
+      },
+      {
+        "path": "src/hostPermissions/hostPermissionReconciliation.test.ts",
+        "size": 4738,
+        "sha256": "afe163b7b9163fa5f858e52d948c4edca2aa9643fbbe19211277fb3c6c38eef7"
+      },
+      {
+        "path": "src/hostPermissions/hostPermissionReconciliation.ts",
+        "size": 4478,
+        "sha256": "37dd94aab610c1dd3b93601f130382d9e867b2c8ea81ee041df35f78810f40d7"
       },
       {
         "path": "src/hostPermissions/hostPermissionRegistry.json",
@@ -1931,12 +1941,12 @@
     ]
   },
   "bundle": {
-    "digest": "4decd363fa8379a939f3cf96fb9a7f2912a02bd0963268479091456f66d8b286",
+    "digest": "f893ca99444e9c85665643525236b8ee1c7f8e6fe2e864dd14154d2b88fdce66",
     "entries": [
       {
         "path": "shell-app.css",
-        "size": 232456,
-        "sha256": "9ed65a93ac44df6cba7dea05fd98d4549f594deaa0e5e7b2080fd2832b234a16"
+        "size": 261341,
+        "sha256": "c20228e64c646a7ff049ea0a530bba450c1b3e9b8d37e3612711ac082af1f444"
       },
       {
         "path": "shell-app.js",
@@ -1945,8 +1955,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2239075,
-        "sha256": "5808c76f47411c41fc9238bac144d30b2ed02fe8293c3e3f6f47525d4cc14bad"
+        "size": 2243890,
+        "sha256": "cf642051ed807c7ecc865366f95313a355327daedb7181771b45616081ea6c2b"
       },
       {
         "path": "shell-rolldown-runtime.js",
