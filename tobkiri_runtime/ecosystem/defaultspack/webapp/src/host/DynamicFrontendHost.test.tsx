@@ -10,6 +10,7 @@ import {
   contributionsForRoute,
   frontendContributionRevisionKey,
   frontendActionErrorMessage,
+  isolatedEditorRouteContext,
   isolatedFrontendFrameUrl,
   parseIsolatedCapabilityRequest,
   parseIsolatedDirtyState,
@@ -306,6 +307,18 @@ test("isolated contribution URLs are owner-bound and receive an opaque frame san
       "https://tobkiri.local",
     ),
     null,
+  );
+  assert.equal(
+    isolatedFrontendFrameUrl(
+      isolated,
+      "profile-1",
+      "nonce-1",
+      "https://tobkiri.local",
+      isolatedEditorRouteContext(
+        "?prompt_id=system.main&model=writer-v2&conversation_id=chat-7&ignored=1",
+      ),
+    ),
+    "/isolated/packs/feature-pack/index.html?profile_id=profile-1&prompt_id=system.main&model_profile_id=writer-v2&conversation_id=chat-7#rumi_rpc_nonce=nonce-1",
   );
   assert.equal(
     parseIsolatedNavigationRequest(

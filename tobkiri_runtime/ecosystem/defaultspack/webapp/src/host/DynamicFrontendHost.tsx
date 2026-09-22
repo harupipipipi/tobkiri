@@ -432,6 +432,7 @@ export function isolatedFrontendFrameUrl(
   origin = typeof window === "undefined"
     ? "http://localhost"
     : window.location.origin,
+  editorContext = isolatedEditorRouteContext(),
 ): string | null {
   if (!item.isolated || !nonce) return null;
   try {
@@ -447,11 +448,44 @@ export function isolatedFrontendFrameUrl(
       return null;
     }
     url.searchParams.set("profile_id", profileId);
+    if (editorContext.promptId) {
+      url.searchParams.set("prompt_id", editorContext.promptId);
+    }
+    if (editorContext.modelProfileId) {
+      url.searchParams.set("model_profile_id", editorContext.modelProfileId);
+    }
+    if (editorContext.conversationId) {
+      url.searchParams.set("conversation_id", editorContext.conversationId);
+    }
     url.hash = new URLSearchParams({ rumi_rpc_nonce: nonce }).toString();
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return null;
   }
+}
+
+export type IsolatedEditorRouteContext = {
+  promptId?: string;
+  modelProfileId?: string;
+  conversationId?: string;
+};
+
+/** Select the only parent-route values that an isolated editor may consume. */
+export function isolatedEditorRouteContext(
+  search = typeof window === "undefined" ? "" : window.location.search,
+): IsolatedEditorRouteContext {
+  const params = new URLSearchParams(search);
+  const promptId = boundedString(params.get("prompt_id"), 256);
+  const modelProfileId = boundedString(
+    params.get("model_profile_id") ?? params.get("model"),
+    256,
+  );
+  const conversationId = boundedString(params.get("conversation_id"), 256);
+  return {
+    ...(promptId ? { promptId } : {}),
+    ...(modelProfileId ? { modelProfileId } : {}),
+    ...(conversationId ? { conversationId } : {}),
+  };
 }
 
 export function parseIsolatedCapabilityRequest(
