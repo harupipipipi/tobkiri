@@ -11,6 +11,7 @@ from tobkiri_protocol.inventory import (
     _included_paths,
     generate_inventory,
     inventory_drift,
+    write_inventory,
 )
 from tobkiri_protocol.scanners import scan_duplicate_ids, scan_v4_scope
 from tobkiri_protocol.validation import validate_document
@@ -145,6 +146,23 @@ def test_generated_inventory_excludes_python_cache_artifacts() -> None:
 
     assert all("__pycache__" not in path.parts for path in included)
     assert all(path.suffix != ".pyc" for path in included)
+
+
+def test_inventory_writer_uses_canonical_lf_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tracked JSON representation is independent of host newlines."""
+    output = tmp_path / "inventory.json"
+    monkeypatch.setattr(
+        "tobkiri_protocol.inventory.generate_inventory",
+        lambda _root: {"schema": "fixture", "value": "caf\u00e9"},
+    )
+
+    write_inventory(tmp_path, output)
+
+    payload = output.read_bytes()
+    assert payload.endswith(b"\n")
+    assert b"\r\n" not in payload
 
 
 def _signed_distribution() -> dict[str, object]:
