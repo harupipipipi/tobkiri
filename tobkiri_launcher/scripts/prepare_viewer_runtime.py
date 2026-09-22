@@ -465,7 +465,9 @@ def prepare_dev_pack_shell(repo_root: Path, target: str) -> Path:
     if not binary.is_file():
         raise RuntimeError(f"Development pack-shell was not produced: {binary}")
     digest_path = binary.with_name(f"{binary.name}.sha256")
-    digest_path.write_text(hashlib.sha256(binary.read_bytes()).hexdigest() + "\n", encoding="ascii")
+    digest_path.write_bytes(
+        (hashlib.sha256(binary.read_bytes()).hexdigest() + "\n").encode("ascii")
+    )
     bundled_root = repo_root / "tobkiri_runtime" / "bundled"
     bundled_root.mkdir(parents=True, exist_ok=True)
     copy_dev_uv(binary, bundled_root / binary_name)

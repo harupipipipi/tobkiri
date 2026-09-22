@@ -345,8 +345,8 @@ def test_prepare_dev_pack_shell_writes_verified_debug_digest(tmp_path, monkeypat
 
     assert result == binary
     assert calls[0][0][:3] == ["cargo", "build", "--target"]
-    assert binary.with_name("pack-shell.sha256").read_text(encoding="ascii") == (
-        "09c7e24d31c73da978ebed794be79537edf9d0f2e2f7ff6f1ffa985f4db676a1\n"
+    assert binary.with_name("pack-shell.sha256").read_bytes() == (
+        b"09c7e24d31c73da978ebed794be79537edf9d0f2e2f7ff6f1ffa985f4db676a1\n"
     )
     assert (tmp_path / "tobkiri_runtime/bundled/pack-shell").read_bytes() == binary.read_bytes()
     assert (tmp_path / "tobkiri_runtime/bundled/presentation_catalog.json").read_text(
