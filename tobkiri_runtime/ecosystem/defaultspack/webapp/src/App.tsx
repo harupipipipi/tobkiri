@@ -5600,6 +5600,9 @@ export function ChatApp() {
 
   useEffect(() => {
     const handleWorkspaceTabShortcut = (event: KeyboardEvent) => {
+      // Global capture runs before a dialog can prevent its own key event.
+      // Never change the workspace behind a settings, search, or share modal.
+      if (isSettingsOpen || isSpotlightOpen || shareDialogOpen) return;
       const action = workspaceTabShortcutAction(event);
       if (!action) return;
       let handled = false;
@@ -5617,7 +5620,14 @@ export function ChatApp() {
     };
     window.addEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
     return () => window.removeEventListener("keydown", handleWorkspaceTabShortcut, { capture: true });
-  }, [activeConversationId, activeWorkspaceTabId, workspaceTabs]);
+  }, [
+    activeConversationId,
+    activeWorkspaceTabId,
+    isSettingsOpen,
+    isSpotlightOpen,
+    shareDialogOpen,
+    workspaceTabs,
+  ]);
 
   const handleCodingBranchSwitch = (branch: string, create = false) => {
     void api.switchGitBranch(branch, create, { workspace_id: effectiveWorkspaceId })
