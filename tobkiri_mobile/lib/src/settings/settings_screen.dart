@@ -112,7 +112,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _pc = settings.pc;
         _notificationSettings = notificationSettings;
         _pairedDevices = pairedDevices;
-        if (_pc == null && paired != null) {
+        // A revisioned record with a null PC is an explicit disconnect. Only
+        // use the paired-device fallback while migrating the legacy split
+        // records, otherwise a previously paired device would silently undo
+        // a saved disconnect after restart.
+        if (_pc == null && settings.revision == 0 && paired != null) {
           _pc = paired.toPcConnection();
         }
         _deviceIdentity = identity;

@@ -165,6 +165,34 @@ void main() {
     expect(saved.pc?.token, 'secret-token');
   });
 
+  testWidgets('a saved disconnect does not revive an older paired device',
+      (tester) async {
+    final storage = _FaultingSecureStorage();
+    final configStore = ApiConfigStore(storage: storage);
+    final committed = await configStore.commitSettings(
+      api: ApiConfig.defaults,
+      pc: null,
+      expectedRevision: 0,
+    );
+    expect(committed.status, SettingsCommitStatus.saved);
+    await MobileDeviceStore(storage: storage).savePairedDevice(
+      const PairedDevice(
+        deviceId: 'device-1',
+        deviceToken: 'older-paired-token',
+        label: 'Phone',
+        scopes: ['chat.read'],
+        pcBaseUrl: 'https://paired.example.test',
+        pcLabel: 'Paired PC',
+        pairingId: 'pairing-1',
+      ),
+    );
+
+    await _pumpSettings(tester, storage);
+
+    expect(find.text('PC接続済み'), findsOneWidget);
+    expect(find.text('使用中のPC'), findsNothing);
+  });
+
   testWidgets('duplicate submit and navigation are blocked during commit',
       (tester) async {
     final storage = _FaultingSecureStorage();
