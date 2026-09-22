@@ -46,6 +46,8 @@ export function EvidenceViewer({ initialBundle }: { initialBundle?: AdaptiveEvid
       <ResourceBanner status={status} error={error} onRefresh={refresh} />
       {!data ? (
         <AdaptiveEmptyState>Adaptive evidence is unavailable until the API returns live state.</AdaptiveEmptyState>
+      ) : data.items.length === 0 ? (
+        <AdaptiveEmptyState>No evidence is available.</AdaptiveEmptyState>
       ) : (
       <div className="grid border-t border-zinc-800/70 lg:grid-cols-[290px_1fr]">
         <div className={adaptiveSectionClass} role="tablist" aria-label="Evidence items" aria-orientation="vertical">
@@ -66,10 +68,14 @@ export function EvidenceViewer({ initialBundle }: { initialBundle?: AdaptiveEvid
           </div>
         </div>
         <div
-          id={selected ? evidenceTabs.panelId(selected.id) : undefined}
-          role="tabpanel"
-          aria-labelledby={selected ? evidenceTabs.tabId(selected.id) : undefined}
-          tabIndex={0}
+          {...(selected
+            ? {
+                id: evidenceTabs.panelId(selected.id),
+                role: "tabpanel" as const,
+                "aria-labelledby": evidenceTabs.tabId(selected.id),
+                tabIndex: 0,
+              }
+            : {})}
           className={adaptiveSectionClass}
         >
           {selected ? (

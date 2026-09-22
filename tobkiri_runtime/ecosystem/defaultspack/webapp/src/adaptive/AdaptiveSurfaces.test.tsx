@@ -268,6 +268,16 @@ test("EvidenceViewer exposes a vertical tab set with one focusable evidence item
   assert.match(html, /role="tabpanel" aria-labelledby="adaptive-evidence-tab-/);
 });
 
+test("EvidenceViewer does not expose an orphan tabpanel for an empty bundle", () => {
+  const html = renderToStaticMarkup(createElement(EvidenceViewer, {
+    initialBundle: { items: [] },
+  }));
+
+  assert.match(html, /No evidence is available/);
+  assert.doesNotMatch(html, /role="tabpanel"/);
+  assert.doesNotMatch(html, /role="tablist"/);
+});
+
 test("AutomationStudio renders automations, templates, and simulation", () => {
   const html = renderToStaticMarkup(createElement(AutomationStudio, { initialState: demoAutomationState }));
 
