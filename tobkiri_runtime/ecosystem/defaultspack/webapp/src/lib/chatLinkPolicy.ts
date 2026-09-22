@@ -1,3 +1,9 @@
+import {
+  parseProfileScreenPath,
+  profileScreenPath,
+} from "./profileRoute";
+import { isDefaultspackRouteKey } from "./api";
+
 export type ChatLinkKind = "internal" | "web" | "download" | "local" | "unsupported" | "malformed";
 
 export type ChatLinkDecision = {
@@ -49,15 +55,15 @@ function visibleTargetHost(text: string): string | undefined {
   }
 }
 
-export function classifyChatLink(rawHref: string | undefined, visibleText = "", appOrigin?: string): ChatLinkDecision {
+export function classifyChatLink(rawHref: string | undefined, visibleText = "", appLocation?: string): ChatLinkDecision {
   if (!rawHref || rawHref.length > 8192 || /[\u0000-\u001f\u007f]/.test(rawHref)) {
     return { kind: "malformed", allowed: false, requiresStrongConfirmation: false, reason: "Malformed destination", textMismatch: false };
   }
   let parsed: URL;
-  let origin: URL | undefined;
+  let location: URL | undefined;
   try {
-    origin = appOrigin ? new URL(appOrigin) : undefined;
-    parsed = new URL(rawHref, origin);
+    location = appLocation ? new URL(appLocation) : undefined;
+    parsed = new URL(rawHref, location);
   } catch {
     return { kind: "malformed", allowed: false, requiresStrongConfirmation: false, reason: "Malformed destination", textMismatch: false };
   }
@@ -71,7 +77,45 @@ export function classifyChatLink(rawHref: string | undefined, visibleText = "", 
   const host = parsed.hostname.toLowerCase();
   const displayedHost = visibleTargetHost(visibleText);
   const textMismatch = Boolean(displayedHost && displayedHost !== host);
-  if (origin && parsed.origin === origin.origin) {
+  if (location && parsed.origin === location.origin) {
+    const currentScreen = parseProfileScreenPath(location.pathname);
+    const targetScreen = parseProfileScreenPath(parsed.pathname);
+    if (targetScreen) {
+      if (!currentScreen || targetScreen.profileId !== currentScreen.profileId) {
+        return {
+          kind: "internal",
+          allowed: false,
+          requiresStrongConfirmation: false,
+          normalizedUrl: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+          host,
+          reason: "The link targets a different or unavailable Runtime Profile.",
+          textMismatch,
+        };
+      }
+    } else if (!isDefaultspackRouteKey(parsed.pathname)) {
+      if (!currentScreen) {
+        return {
+          kind: "internal",
+          allowed: false,
+          requiresStrongConfirmation: false,
+          normalizedUrl: `${parsed.pathname}${parsed.search}${parsed.hash}`,
+          host,
+          reason: "The active Runtime Profile identity is unavailable.",
+          textMismatch,
+        };
+      }
+      try {
+        parsed.pathname = profileScreenPath(currentScreen.profileId, parsed.pathname);
+      } catch {
+        return {
+          kind: "malformed",
+          allowed: false,
+          requiresStrongConfirmation: false,
+          reason: "Malformed screen destination",
+          textMismatch,
+        };
+      }
+    }
     return { kind: "internal", allowed: true, requiresStrongConfirmation: false, normalizedUrl: `${parsed.pathname}${parsed.search}${parsed.hash}`, host, textMismatch };
   }
   if (isLocalHost(host)) {

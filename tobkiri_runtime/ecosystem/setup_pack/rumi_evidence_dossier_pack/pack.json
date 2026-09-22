@@ -33,7 +33,7 @@
     "citation_ledger": "owned_by_rumi_evidence_dossier_pack",
     "tool_aliases": "prefer_explicit_pack_namespace"
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Rumi Evidence Dossier Pack is declarative and cannot enter defaultspack until owner-pack integration, audit receipts, and real success cases prove it should be default.",
     "criteria": [

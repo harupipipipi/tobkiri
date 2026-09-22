@@ -25,8 +25,11 @@ backend extension manifest は次の順で読み込まれる。
 
 1. `ecosystem/defaultspack/extensions/`
 2. 選択中の sibling pack の `extensions/`
-3. `ecosystem/defaultspack/user_data/shared/extensions/`
-4. `RUMI_DEFAULTSPACK_EXTENSION_ROOTS` で指定した追加 root
+
+runtime は captured Pack v4 activation に含まれない filesystem root や
+ambient environment variable を extension root として読み込まない。テストで
+一時 manifest を使う場合だけ、`build_extensions_roots(..., extra_roots=...)` に
+明示的に渡す。
 
 frontend extension manifest は sibling pack の `frontend_extensions/` と
 `user_data/shared/frontend_extensions/` から読み込まれる。

@@ -26,6 +26,7 @@ if str(DEFAULTSPACK_ROOT) not in sys.path:
 @contextmanager
 def _default_tools_function_imports():
     isolated_roots = ("browser_computer", "browser_use", "computer_use", "functions")
+    saved_path = list(sys.path)
     saved_modules = {
         name: module
         for name, module in sys.modules.items()
@@ -35,9 +36,7 @@ def _default_tools_function_imports():
     try:
         yield
     finally:
-        for path in (str(RUMI_DEFAULT_TOOLS_FUNCTIONS), str(RUMI_DEFAULT_TOOLS_ROOT)):
-            while path in sys.path:
-                sys.path.remove(path)
+        sys.path[:] = saved_path
         for name in list(sys.modules):
             if name in isolated_roots or any(name.startswith(f"{root}.") for root in isolated_roots):
                 if name in saved_modules:
@@ -524,33 +523,35 @@ def test_browser_computer_injects_haze_sequence_from_context_without_overwriting
     assert explicit["computer_use_haze_sequence_id"] == "explicit"
 
 
-def test_browser_computer_run_passes_context_sequence_to_controller(monkeypatch):
+def test_browser_computer_run_passes_context_sequence_to_global_contract(monkeypatch):
     with _default_tools_function_imports():
         from browser_computer import main as browser_computer_main
-        from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
 
         captured: dict[str, object] = {}
 
-        def fake_controller_run(self, action, payload, *, yolo_mode=False):
+        def fake_host_contract(action, payload, *, source_function_id):
             captured["action"] = action
             captured["payload"] = payload
+            captured["source_function_id"] = source_function_id
             return {"action": action}
 
-        monkeypatch.setattr(BrowserComputerController, "run", fake_controller_run)
-        monkeypatch.setenv("RUMI_COMPUTER_HOST_INTERNAL", "1")
+        monkeypatch.setattr(
+            browser_computer_main,
+            "run_host_contract_action",
+            fake_host_contract,
+        )
 
         browser_computer_main.run({"request_id": "req_ctx"}, {"action": "computer.type", "payload": {"text": "hi"}})
 
     assert captured["action"] == "computer.type"
     assert captured["payload"]["computer_use_haze_sequence_id"] == "req_ctx"
+    assert captured["source_function_id"] == "browser_computer"
 
 
 def test_browser_computer_run_ends_haze_sequence_and_removes_lease(tmp_path, monkeypatch):
     with _default_tools_function_imports():
         from browser_computer import main as browser_computer_main
         from ecosystem.rumi_default_tools_pack.domain.computer.mac.edge_haze import ComputerUseEdgeHazeManager
-
-        from ecosystem.defaultspack.domain.host_bridge import computer_router as router
 
         terminated: list[int] = []
         monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "user_data"))
@@ -560,9 +561,12 @@ def test_browser_computer_run_ends_haze_sequence_and_removes_lease(tmp_path, mon
             classmethod(lambda cls, pid: terminated.append(pid)),
         )
         monkeypatch.setattr(
-            router,
-            "run_computer_action",
-            lambda *args, **kwargs: {"action": "computer.type", "executed": True},
+            browser_computer_main,
+            "run_host_contract_action",
+            lambda action, payload, *, source_function_id: {
+                "action": action,
+                "executed": True,
+            },
         )
 
         lease_path = tmp_path / "user_data" / "shared" / "helpers" / "edge_haze" / "edge_haze.lease.json"
@@ -589,7 +593,7 @@ def test_browser_computer_run_ends_haze_sequence_and_removes_lease(tmp_path, mon
             raise TimeoutError("timed out")
 
         write_lease("run_timeout", 9102)
-        monkeypatch.setattr(router, "run_computer_action", raise_timeout)
+        monkeypatch.setattr(browser_computer_main, "run_host_contract_action", raise_timeout)
         try:
             browser_computer_main.run({"request_id": "run_timeout"}, {"action": "computer.type", "payload": {"text": "hi"}})
         except TimeoutError:
@@ -600,7 +604,7 @@ def test_browser_computer_run_ends_haze_sequence_and_removes_lease(tmp_path, mon
             raise asyncio.CancelledError()
 
         write_lease("run_cancelled", 9103)
-        monkeypatch.setattr(router, "run_computer_action", raise_cancelled)
+        monkeypatch.setattr(browser_computer_main, "run_host_contract_action", raise_cancelled)
         try:
             browser_computer_main.run({"request_id": "run_cancelled"}, {"action": "computer.type", "payload": {"text": "hi"}})
         except asyncio.CancelledError:
@@ -751,6 +755,11 @@ def test_browser_computer_wraps_foreground_open_url_with_haze(tmp_path, monkeypa
 
     monkeypatch.setattr(BrowserComputerController, "_edge_haze", fake_haze)
     monkeypatch.setattr(BrowserComputerController, "_open_url_foreground", staticmethod(lambda url, app_name="": True))
+    monkeypatch.setattr(
+        BrowserComputerController,
+        "_darwin_open_url_with_target_app",
+        lambda self, url, app_name: {"opened": True},
+    )
 
     result = BrowserComputerController(artifact_root=tmp_path).run(
         "browser.open_url",

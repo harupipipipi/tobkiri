@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from ..mention import extract_mention_values
 from .models import DEFAULT_CHANNEL_ID
 from .store import CompanyStore
@@ -30,8 +32,14 @@ def extract_mentions(text: str, known_values: list[str] | None = None) -> list[s
 
 
 class CompanyMentionService:
-    def __init__(self, store: CompanyStore | None = None) -> None:
+    def __init__(
+        self,
+        store: CompanyStore | None = None,
+        *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self.store = store or CompanyStore()
+        self.settings_owner = settings_owner
 
     def resolve(self, company_id: str, text_or_mentions: str | list[str]) -> dict[str, Any] | None:
         company = self.store.get_company(company_id)
@@ -116,7 +124,10 @@ class CompanyMentionService:
     ) -> dict[str, Any] | None:
         from .message_router import CompanySlackRuntime
 
-        return CompanySlackRuntime(company_store=self.store).post_message(
+        return CompanySlackRuntime(
+            company_store=self.store,
+            settings_owner=self.settings_owner,
+        ).post_message(
             company_id,
             content=content,
             sender_id=sender_id,

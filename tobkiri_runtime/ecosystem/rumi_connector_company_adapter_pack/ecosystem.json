@@ -1,0 +1,69 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.connector.route.v1"
+    ],
+    "requires": [
+      "rumi.action.company.coordinator.v1",
+      "rumi.action.company.state.v1",
+      "rumi.resource.company.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_company_coordinator_pack": ">=1.0.0,<2.0.0",
+    "rumi_company_state_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Explicit connector-event projection into Company contracts.",
+  "display_name": "Rumi Connector Company Adapter",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:d6c25840c0af5391b052d3c334675222d3ae41b52f868873404a88ab3988b200",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:64d95a6b924fe40904bf6e97a328f646edd7a4e2314aae8d1d3850dbe1cff208"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:64d95a6b924fe40904bf6e97a328f646edd7a4e2314aae8d1d3850dbe1cff208"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_connector_company_adapter_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_company_adapter_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_company_adapter_pack:1.0.0",
+    "content_hash": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "company.coordinate",
+    "company.state.manage",
+    "company.state.read",
+    "connector.route",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

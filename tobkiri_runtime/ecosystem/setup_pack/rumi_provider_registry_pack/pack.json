@@ -1,0 +1,18 @@
+{
+  "pack_id": "rumi_provider_registry_pack",
+  "display_name": "Rumi Provider Registry Pack",
+  "description": "Authoritative provider connection state and conservative verified health evidence.",
+  "target_pack_id": "rumi_provider_registry_pack",
+  "version": "1.0.0",
+  "recommended": true,
+  "risk_level": "medium",
+  "supports_all_ok": false,
+  "depends_on": ["rumi_credential_broker_pack"],
+  "required_permissions": ["ai.provider.registry.read", "ai.provider.registry.manage", "ai.provider.health.read"],
+  "conflicts_with": [],
+  "compatibility": {"python": ">=3.10", "platforms": ["macos", "linux", "windows"]},
+  "marketplace": {"id": "rumi.provider_registry", "registry": "bundled", "publisher": "rumi-ai", "status": "verified", "category": "ai-runtime", "channel": "experimental"},
+  "signing": {"mode": "repository_reviewed", "verified": true},
+  "security_notes": ["Credentials are opaque handles only.", "Remote health remains unknown until verified.", "Mutations require approval and a fresh revision."]
+}
+

@@ -4,12 +4,9 @@ domain/agent/inter_agent_comm.py — エージェント間通信
 質問/回答、指示、報告の非同期メッセージングを提供する。
 """
 
-import sys
-import os
 import copy
 import threading
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id, timestamp
 

@@ -67,10 +67,11 @@ def template_function_specs(defaultspack_root: str | Path | None = None) -> dict
         if spec is None or spec.function_id in specs:
             continue
         if spec.permission_id:
-            if spec.permission_id in registered_permission_ids:
+            permission_id = spec.permission_id
+            if permission_id in registered_permission_ids:
                 spec = replace(spec, permission_id=None)
             else:
-                registered_permission_ids.add(spec.permission_id)
+                registered_permission_ids.add(permission_id)
         specs[spec.function_id] = spec
     return specs
 

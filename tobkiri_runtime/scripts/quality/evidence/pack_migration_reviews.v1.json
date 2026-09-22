@@ -1,0 +1,3592 @@
+{
+  "authority": "curated-review",
+  "generator_id": null,
+  "reviews": {
+    "rumi_agent_continuity_pack": {
+      "pack_id": "rumi_agent_continuity_pack",
+      "review_attestation_digest": "sha256:d4e82db0fdd33a30bb7eac9e7106706ba900799b4379d00ae0d2b631b267bd2c",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_continuity_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_agent_continuity_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:d705737994e272d9af8596e9965c234c50fd04c7351bb8b79ba5cd5422861c70",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:d705737994e272d9af8596e9965c234c50fd04c7351bb8b79ba5cd5422861c70",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:fc4fba7954af27b0db9bb27e14b743c43760bf5149d267a4dbf566aea195018a"
+    },
+    "rumi_agent_runtime_service_pack": {
+      "pack_id": "rumi_agent_runtime_service_pack",
+      "review_attestation_digest": "sha256:f78a12e8f990f286ac3b95e37ab4abcac9554fa26e0da1209475fffa0824e857",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_runtime_service_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:61457d84bae9b039872832a6ff3d702860cf8236942b23765cb48cad976c46f3",
+      "source_digest": "sha256:bacf551df0073c8e407bd579ba0dea39a5457ac87a9a74adb84d50f21312eaa1",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:260f14978dd057b5862e3c830e8152677958b575ad1dde73b2cf289fdc753ffa"
+    },
+    "rumi_agent_state_store_pack": {
+      "pack_id": "rumi_agent_state_store_pack",
+      "review_attestation_digest": "sha256:23ccb7118632278c60689134be8d4fb2b80b5dbc5ca6d00169b0b808cce471b7",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_state_store_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:75155a3839e4cba1f3edd8b4055f7de59199b66d9ed305761592265f8d4e7e30",
+      "source_digest": "sha256:d9ee3d4192134bfd9e8dd56f04bf7b6f68b8596637620ec5b956ca1900c4d465",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:936014f87b2f6414c1f199625f46c58b6e04a194ca440127e96fec8b78b894e0"
+    },
+    "rumi_agent_workroom_pack": {
+      "pack_id": "rumi_agent_workroom_pack",
+      "review_attestation_digest": "sha256:006ad0142282691852b0d88ebb2ae12528c8f82ae96165c24717b5d755254cec",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_agent_workroom_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_workroom_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_workroom_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_workroom_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agent_workroom_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_agent_workroom_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:ba0550a5161871973b93554f60a17d46f3862ecd639f554793adb7ab235de484",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:ba0550a5161871973b93554f60a17d46f3862ecd639f554793adb7ab235de484",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:0b2285de31bba8d26f98279865f195b2aa058465216b44e8b8dce39256fd6324"
+    },
+    "rumi_agentic_qa_pack": {
+      "pack_id": "rumi_agentic_qa_pack",
+      "review_attestation_digest": "sha256:c7d3e14762c0521acd9508d8b7364bbb45dd748e87dbb0b2a5df8736df40be18",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_agentic_qa_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agentic_qa_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agentic_qa_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agentic_qa_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_agentic_qa_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_agentic_qa_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:09afb96631f52523c06b483f4d65841a0761031415502ed507023487f4cf91ef",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:09afb96631f52523c06b483f4d65841a0761031415502ed507023487f4cf91ef",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:abcb0c1344c8d52c2574e5d030453b3a14b07db68aa296ff1a9235658f225669"
+    },
+    "rumi_ambient_trigger_pack": {
+      "pack_id": "rumi_ambient_trigger_pack",
+      "review_attestation_digest": "sha256:477e116ea4dccde96c62b3b62f5b31b992c4f19fcd29a845f787e8ed0a22f656",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_ambient_trigger_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_ambient_trigger_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:03403b2554e9511bcbf612d00fd80cb6b061cf322c1b11912b0ce2ce9b3a9686",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:03403b2554e9511bcbf612d00fd80cb6b061cf322c1b11912b0ce2ce9b3a9686",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:d62910436be4d49289270bc74a31aa660b23ebafffa520a31317ab76dc6a0e79"
+    },
+    "rumi_api_toolsmith_pack": {
+      "pack_id": "rumi_api_toolsmith_pack",
+      "review_attestation_digest": "sha256:6a7945f5678ce6c2f7a1e257b92e466ffec8c09f76c8654b9353ce976463572a",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_api_toolsmith_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_api_toolsmith_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:498c9dbadf6da31340c256ae13ffbe2b9e4e533345a34f63a0bef780be148ab5",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:498c9dbadf6da31340c256ae13ffbe2b9e4e533345a34f63a0bef780be148ab5",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:bebac68e0516f75a362d38a89167000588d9ebb475183299ea6f0a9f8b5bfbaa"
+    },
+    "rumi_browser_automation_pack": {
+      "pack_id": "rumi_browser_automation_pack",
+      "review_attestation_digest": "sha256:a774b90321a64317bc658c8f2a0f2e817b3bb7ab0369403972dd4971d4fa90b4",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_browser_automation_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_automation_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_automation_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_automation_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_automation_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_browser_automation_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:158e7d811e47226572f11b7a8ad4eabb965b0635ca48917d4d06ea84f7043b97",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:158e7d811e47226572f11b7a8ad4eabb965b0635ca48917d4d06ea84f7043b97",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:de95f1fa260cb0a5b8b35f44247087ad8cb1001b5b8f6aabfa812b48f8ef352d"
+    },
+    "rumi_browser_element_pack": {
+      "pack_id": "rumi_browser_element_pack",
+      "review_attestation_digest": "sha256:cd39b170ceda5101d627f42b619056ad913a330d4ba7fe324df6b1aac343d266",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_browser_element_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_element_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_element_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_element_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_element_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_browser_element_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:884799930594018ba71f0c061d3da6edfd0f4603ce381518a96c1620cee09b63",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:884799930594018ba71f0c061d3da6edfd0f4603ce381518a96c1620cee09b63",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:be73958b6e407035a01128a28d09dcbbca58217a57a37eb6b7e9525882dd05a9"
+    },
+    "rumi_browser_form_operator_pack": {
+      "pack_id": "rumi_browser_form_operator_pack",
+      "review_attestation_digest": "sha256:bb5262c7c1d77990c3cd191afe46d4686e1a9842906678977f69d22132d6adf5",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_form_operator_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_browser_form_operator_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:952cb59697f704ec6df869dbbb7328c06f9b04257f1309a7871799ca68aadc92",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:952cb59697f704ec6df869dbbb7328c06f9b04257f1309a7871799ca68aadc92",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:485b7e577aa436d7076b2acc814b3b3a566577f1f30b2bc7077af574057fbc5c"
+    },
+    "rumi_browser_session_replay_pack": {
+      "pack_id": "rumi_browser_session_replay_pack",
+      "review_attestation_digest": "sha256:9b2b32cfd134228921bf3e23ad09548cd2d5f5292ea61824a0a2ff59ef0a4574",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_browser_session_replay_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_session_replay_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_session_replay_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_session_replay_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_browser_session_replay_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_browser_session_replay_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:aa8fa30abecef5c41a5b1a86752e86ad18a6c1600d40cec7ec03bb4efebfd4de",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:aa8fa30abecef5c41a5b1a86752e86ad18a6c1600d40cec7ec03bb4efebfd4de",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:90196494b969f9f8029aa6757f60c6dec1a57ce1ebca605363d06866b38f61f5"
+    },
+    "rumi_business_ops_pack": {
+      "pack_id": "rumi_business_ops_pack",
+      "review_attestation_digest": "sha256:0215633f670bf7acaac0d3bccc2ba7a22bf12e761b751ee63a330a4b29b99b6a",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_business_ops_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_business_ops_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_business_ops_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_business_ops_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_business_ops_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_business_ops_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:e89353c84f062e75336c229636ed9727bef8477d32230eb5f0e6ad703161f501",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:e89353c84f062e75336c229636ed9727bef8477d32230eb5f0e6ad703161f501",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:a2c230fc7b0090fcf9f63867c3e4917566d73b0e67db44d3a22b8f2878a085ec"
+    },
+    "rumi_code_ide_pack": {
+      "pack_id": "rumi_code_ide_pack",
+      "review_attestation_digest": "sha256:045ab2bca453dbaa25ca2cfd359465cfde13b6e7145cfa1e673f6e6dc0d94aa1",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_code_ide_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_code_ide_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_code_ide_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_code_ide_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_code_ide_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_code_ide_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:3200605b29cc6df0622cc4f77078c4b1190c79cc419442a64c45db9a18f74020",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:3200605b29cc6df0622cc4f77078c4b1190c79cc419442a64c45db9a18f74020",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:432bc34761f64e01f7cb9dba3106eaf9186f4207b1e91b561b048e90a0554247"
+    },
+    "rumi_code_migration_pack": {
+      "pack_id": "rumi_code_migration_pack",
+      "review_attestation_digest": "sha256:6a5f60ce24beca0c7c8bd63af91c100f7f94b7ab1f1b8a1439a3d53661ffb87e",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_code_migration_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_code_migration_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_code_migration_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_code_migration_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_code_migration_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_code_migration_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:fd219a4654059f0caee7681e7cb013b0810afdc188c1cbd046a8a234d5c5ca7f",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:fd219a4654059f0caee7681e7cb013b0810afdc188c1cbd046a8a234d5c5ca7f",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:a862b6052d1f04307028cec91c1cfd8f2da492fded30fe50354697c8b345ed91"
+    },
+    "rumi_coding_sandbox_service_pack": {
+      "pack_id": "rumi_coding_sandbox_service_pack",
+      "review_attestation_digest": "sha256:bf404ad792d57f7f5232197914c47f130dbdd2d7f090f4e95aab6843fc05a035",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_coding_sandbox_service_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_coding_sandbox_service_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_coding_sandbox_service_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_coding_sandbox_service_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_coding_sandbox_service_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:0a63c129dbe9d295a382e99a091c1ddd29ebef4275a61c586b4624fd7a755398",
+      "source_digest": "sha256:dbff286dba7a0dba377cedfaa59371b3969400b885dadb5084d10819c5ec423b",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:69b5e64e9d88a843fe57c8dea829fcba8498aa43f554fffa3795b77b0e9a18bb"
+    },
+    "rumi_company_agent_adapter_pack": {
+      "pack_id": "rumi_company_agent_adapter_pack",
+      "review_attestation_digest": "sha256:0a3e9b27d2d361389e5e1fc4d5bf2e793029d5b7fa9929280370f4d0c47141d1",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_agent_adapter_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:a6639411ca0d0190cb5e4a68b15b63a1f54607901cecf856382826e165c97889",
+      "source_digest": "sha256:9a0f2c9e6527193533280b11140a560ed25a4f760a2be67a9fc6750b9ce8e3bf",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:1b69db1b7e477545f9e039be58b9b2fa3206cc39214bacb35d4fbf60044cc988"
+    },
+    "rumi_company_coordinator_pack": {
+      "pack_id": "rumi_company_coordinator_pack",
+      "review_attestation_digest": "sha256:d0681aa1b057b9e058bf16625ec6637268c5b4f9d7f0670f4425c70e9f92164d",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_company_coordinator_pack/runtime/coordinator.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:52d21f7e13c91de8df6d50f204e35c10ef9d27afe415eb74c34222ee9fdc47a9",
+      "source_digest": "sha256:846242f69cabbd76d93192bdba9870c7dad7671d78f7746014bff555ee5fe902",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:f8a6a189af5ab5a2116f2173ea416090e7f304f9e149505ba22159e94111c34e"
+    },
+    "rumi_company_state_store_pack": {
+      "pack_id": "rumi_company_state_store_pack",
+      "review_attestation_digest": "sha256:f29cca70907157ca469ce873253e3cd6bc8e26d129e341110b7f4bfe4ce2c29d",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_company_state_store_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:e6a714b36728e553092748a0b4cdb595113f965d9d0da514bd7881d8f9d49cf3",
+      "source_digest": "sha256:3336d46b92a676c7e53b33882cb0237baf6bdd0c24c703621a022dcfcccb0e78",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:74aa760a824fd0c5631a109cdfdc430a15708b02094f3b5aaf3bb2cc0d242a7b"
+    },
+    "rumi_computer_control_pack": {
+      "pack_id": "rumi_computer_control_pack",
+      "review_attestation_digest": "sha256:92cac854d10a7396da4428a838c5d45fd7ad0cf9ee11e211f38dca8ff0bdedd6",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_computer_control_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_computer_control_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_computer_control_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_computer_control_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_computer_control_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_computer_control_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:99e0de9031b438b937b21bede0021126f3fc069bd25ec105cbccde4e8ed3d998",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:99e0de9031b438b937b21bede0021126f3fc069bd25ec105cbccde4e8ed3d998",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:671bf5904ba4574f2c5c1a0702bf3ecc60f7cc6f3530373a1007b79f1924122f"
+    },
+    "rumi_connector_company_adapter_pack": {
+      "pack_id": "rumi_connector_company_adapter_pack",
+      "review_attestation_digest": "sha256:ff3b5123789ed38c668109c4fa42c61f48b2c6c499fb5dc3c74ef1ed165ee575",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_company_adapter_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:474d63fb62438add75d62c4ee407d7f0820d623938641edc9e16b2211460a381",
+      "source_digest": "sha256:8c4be6ccd98adb7f7e156f22d9996aec78ebeb20e081346be3f91aceacdc66d2",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:d6c25840c0af5391b052d3c334675222d3ae41b52f868873404a88ab3988b200"
+    },
+    "rumi_connector_gateway_pack": {
+      "pack_id": "rumi_connector_gateway_pack",
+      "review_attestation_digest": "sha256:4c585e3f511f96c8e97a398de02ce148465afca9d1d0df2ef56384429358d5b4",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_gateway_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_connector_gateway_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:389c874bb4f8f9445c959e5788453601bf82eab442eba246de16a5efd27dd209",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:389c874bb4f8f9445c959e5788453601bf82eab442eba246de16a5efd27dd209",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:12cd5760785b0430bb4e4a7c0240e45c021fc50083fb9144c85d804f3036901f"
+    },
+    "rumi_connector_inbound_broker_pack": {
+      "pack_id": "rumi_connector_inbound_broker_pack",
+      "review_attestation_digest": "sha256:87f2f3b2ec24620e0e60b0bcf0cbfd21ebd25aa68dd9c017598939383f240ff6",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_inbound_broker_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:9e039143ff3b93ba417290a7c6b2bba47e36b704e7205038fdd2423d278dcb21",
+      "source_digest": "sha256:7ce51d2254c693cfb38d052185b5b98c6a4a5071108aa18863308c25f6dc45cb",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:634c46d225f0c7239abc8de40a1211650e735e0d3eda9c5d0a260a2e68984d92"
+    },
+    "rumi_connector_oauth_broker_pack": {
+      "pack_id": "rumi_connector_oauth_broker_pack",
+      "review_attestation_digest": "sha256:4d715338182c5fe9cc054e41e5a0f993118a7600c09684e05c4d0c04cb37f0a4",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_oauth_broker_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_oauth_broker_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_oauth_broker_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_oauth_broker_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_oauth_broker_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:4b9237cbc77c1283bfe1bf593a12e7d839d22e0c6e4b96c4f46a03cbcc6c5cc8",
+      "source_digest": "sha256:58e23c495cad66ee0ca5de2f831fc3aa9736df1959121dc08e63d83fc91f868d",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:b5b637c3e820787d55f2eb5d87247bf1158c4eabbabaff6bd9684c8d853ca353"
+    },
+    "rumi_connector_outbound_broker_pack": {
+      "pack_id": "rumi_connector_outbound_broker_pack",
+      "review_attestation_digest": "sha256:2fb65dfbe4576393ee25ddc804c1477ac7b014265db8f11febc12045e3db10e9",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_outbound_broker_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_outbound_broker_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_outbound_broker_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_outbound_broker_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_outbound_broker_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:22dfc56633c50c49d4c64afc2fb3adc99337051ad1430179e510eb11a8afc161",
+      "source_digest": "sha256:174cafda75fbc768db41677726d2b753256242a3295159d5eb455b9eedd8f51d",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:c29973235ac7124eb27e5c0ab69aff94663f2c14ef6664849d4345bf20d0fc8b"
+    },
+    "rumi_connector_registry_service_pack": {
+      "pack_id": "rumi_connector_registry_service_pack",
+      "review_attestation_digest": "sha256:fa7a633e3edb22e0df52752757a0e96802a09464aaa4210af6ab661b44830c53",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_registry_service_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_registry_service_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_registry_service_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_registry_service_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_registry_service_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:2e415ecd1c516401967b89ba78da7ce31b8dee6a90a7e997d822d17cccd598f1",
+      "source_digest": "sha256:26d6b9b3d803aef7d818b5c777a1aeee0394d8ed1e6f5bd1d6d3207ace04b33a",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:f612b76a1363d40e46e6912eb011c33f46709892ebacc54431a377a59b09d192"
+    },
+    "rumi_connector_transport_gateway_pack": {
+      "pack_id": "rumi_connector_transport_gateway_pack",
+      "review_attestation_digest": "sha256:e115126ab50d7f90c38c060e8a771a0d56c5bfe2e2636ba8c38cde0a93ebdf02",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_transport_gateway_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_transport_gateway_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_transport_gateway_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_transport_gateway_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_transport_gateway_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:2ea0c1189075efbf200bdd94912606a160489a3aab6c24a9a1a5759d1ebbd9aa",
+      "source_digest": "sha256:d6aa038dd327a9ff3e98d961e68937d8f6160c5c792d25e6c560153797e7520a",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:3f5c9e8b96061c598d2a1e6d499ec475c8f77d0a740027ade29fae98245adbe2"
+    },
+    "rumi_connector_turn_adapter_pack": {
+      "pack_id": "rumi_connector_turn_adapter_pack",
+      "review_attestation_digest": "sha256:6108d251f269d32709f3e99558eef8d0caa07f13b070d3d7110e3be588170dce",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_connector_turn_adapter_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:91c9d68c07321287c1f494eb4e229a49e94c3c659f5f25a8305eba43d0069f00",
+      "source_digest": "sha256:91c7e49be79ee462f5fd2305df048541c67f0772c640414561e61edc02cd7c51",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:40f9e3fbfdc6c3fa14add5a27a85df03451808e07eaed50e59be6b608fe3951e"
+    },
+    "rumi_context_runtime_pack": {
+      "pack_id": "rumi_context_runtime_pack",
+      "review_attestation_digest": "sha256:bfe9e73b6f740245e4eeb3ef9cd8daa7885c3646a9bc056cbb0c4b562d5ce31e",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_context_runtime_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:3d03be2e850477563b2baf60a95d3dbfe145c7179ccb1de08eb76d1f4f478a94",
+      "source_digest": "sha256:89e637b8cee98a91c626a11dfa78a72e00d78950116ace82d46c6281f3237d84",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:1d0a4329cd25c818085e0522880ab3859cd7a2b0045c585b9459e1fb98ed0b8a"
+    },
+    "rumi_devops_release_pack": {
+      "pack_id": "rumi_devops_release_pack",
+      "review_attestation_digest": "sha256:97a16f43e962f0e7bb250c763b9e4aba6178e8f5cc975e2c3aab27d147850ed2",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_devops_release_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_devops_release_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_devops_release_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_devops_release_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_devops_release_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_devops_release_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:47ed904e6d0ebc82b58a11c74a50586d8e347413e42789eaa3b413c022e4c058",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:47ed904e6d0ebc82b58a11c74a50586d8e347413e42789eaa3b413c022e4c058",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:d08152c580d9b616cf112eb0fb56fca392aad33747bdfa69c77d5a2acac94019"
+    },
+    "rumi_discord_connector_pack": {
+      "pack_id": "rumi_discord_connector_pack",
+      "review_attestation_digest": "sha256:e7d7f005de7b4e60df4891f15a8b8e7f5f4e7a24bfa359666f1a43902fb02480",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_discord_connector_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:b99a7a946d101c2ad138f2ba77c376c036fc084d99c5259ce2faccb1c71fece2",
+      "source_digest": "sha256:380f4afcdb405df230b8232056a457704cf77d55a36677708ce12cc68e77ff1c",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:53af2e7a34dfc424760db6162473a96474f15621a8893321b6a5c3c57269aeb5"
+    },
+    "rumi_document_intelligence_pack": {
+      "pack_id": "rumi_document_intelligence_pack",
+      "review_attestation_digest": "sha256:3f5a8c60a304184481117ee9ea558b2766990460b3a2e9b28938f40c16357e7e",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_document_intelligence_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_document_intelligence_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:9cbc1479e5db8a3533ad005b0a50f886b5a4bf4da15f9e77e66211e0d1af5998",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:9cbc1479e5db8a3533ad005b0a50f886b5a4bf4da15f9e77e66211e0d1af5998",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:90119ec903c632fad9a561d5408e2f6eb01349360bba1df6b253c464d7384c6b"
+    },
+    "rumi_email_connector_pack": {
+      "pack_id": "rumi_email_connector_pack",
+      "review_attestation_digest": "sha256:9d1623b7edb0d2bc7ef625c6fb2160e632a37710c15a4ca4e692c684462175cc",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_email_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_email_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_email_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_email_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_email_connector_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_email_connector_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_email_connector_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:4b83eba1be14a93fb4678c5a58985ca08985568a7c9a4682569ffcdf9d661879",
+      "source_digest": "sha256:42d69abd95ce806affe73838fa941d01dcee8b2aba251ac509635768417a9737",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:32f38dca0a7ee4ae4e201389aac3331a0eecddffa03a347412924ee0bed97726"
+    },
+    "rumi_evidence_dossier_pack": {
+      "pack_id": "rumi_evidence_dossier_pack",
+      "review_attestation_digest": "sha256:d805d8827a746e3c7e10df249de0d1837fe5d817719fbbf11d3a166047f82fc0",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_evidence_dossier_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_evidence_dossier_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_evidence_dossier_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_evidence_dossier_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_evidence_dossier_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_evidence_dossier_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:8c2013cd64b87189727b1e9ab4b72a0292445823631afad32255b533291a3059",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:8c2013cd64b87189727b1e9ab4b72a0292445823631afad32255b533291a3059",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:f6504b5e397b31aa687cb94f8b73fedd6780e9cf4fa4086295213a861e591511"
+    },
+    "rumi_experiment_design_pack": {
+      "pack_id": "rumi_experiment_design_pack",
+      "review_attestation_digest": "sha256:93dec7d6e04c14c41baa5dcc8ada4c38794bea603311b283b8f55220fa0f68f3",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_experiment_design_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_experiment_design_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_experiment_design_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_experiment_design_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_experiment_design_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_experiment_design_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:3e6ca5ded0bcd270517848562e7f097e30db88fb1c67b4f0e72c132869fae1a0",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:3e6ca5ded0bcd270517848562e7f097e30db88fb1c67b4f0e72c132869fae1a0",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:719b05ac4bb8bd1f358068d63424d5be66a3cc40cd876ab73af745f86772bcd3"
+    },
+    "rumi_file_mutation_pack": {
+      "pack_id": "rumi_file_mutation_pack",
+      "review_attestation_digest": "sha256:aeeca3534d814cfb3e2f6e13bab755f758d9e798ea05a3868ab33767fc9a299b",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_mutation_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:138e733f7170a2de005a946e9da6de3480f771bfcc48561adfafbf0a7eb6c167",
+      "source_digest": "sha256:149d72830cb385589e217e7c56a793095197a34f818bfc3b549b4b20258a4465",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:3631adb05772eebedc69cd7bf697a20da88c6d4a5d739b3553e6a8cd1015c4dc"
+    },
+    "rumi_file_patch_pack": {
+      "pack_id": "rumi_file_patch_pack",
+      "review_attestation_digest": "sha256:86b41ad626ddc428fa82cf503477bebbc395848b6ef781d771a363c85c275ea9",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_file_patch_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:2293e4a2651845c7690cd8831c03888489784fbb2e1f669a1ca4fd15da34068f",
+      "source_digest": "sha256:b1fa68d95b3ba45dacc5af852da386612fad36de67090744994e4bfe67ce6a3d",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:e2e0c140e32ea27e1d1fdd792dbd46ac332b512664c9bda402af42d4047aa820"
+    },
+    "rumi_frontend_design_pack": {
+      "pack_id": "rumi_frontend_design_pack",
+      "review_attestation_digest": "sha256:8661f013ffe4895ea10e20bdf7764847a9330c6f4093a334137bc7ff8b121d65",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_frontend_design_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_frontend_design_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:c8a9904b35d22893ccf73003e1637df92efe95c1af81627f0c9617bdb798a3d4",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:c8a9904b35d22893ccf73003e1637df92efe95c1af81627f0c9617bdb798a3d4",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:9fc5382eeddb88fc52d2716bec132f53e76c838eaee69b69ba2a78d928fc9b31"
+    },
+    "rumi_generic_webhook_connector_pack": {
+      "pack_id": "rumi_generic_webhook_connector_pack",
+      "review_attestation_digest": "sha256:91ea4557c44ed9d42b529d21683e2ddc8f8c3da974f7da9ab694a8dce53f664e",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_generic_webhook_connector_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:98acee983c3fa1af0a283ef0837f7e7ab18b3ff89b69408c61a226d1bbd40c35",
+      "source_digest": "sha256:71f0c1755377c5d2d63fcdda64dd1c122a0fd54516bf07665ca17299c98ee365",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:17c0844b649f27c9e4ec5cf68a462a382bd15c3315df203fb44f2a65b5525883"
+    },
+    "rumi_git_read_pack": {
+      "pack_id": "rumi_git_read_pack",
+      "review_attestation_digest": "sha256:843fb8de029d7470ca8dd1bb81316d7d8fdee140cf516260f4774ee4292cc3bd",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_git_read_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:8b6e0985c518affdcb2c1031f96235683dab9e718a87fa3a62e98683db02a392",
+      "source_digest": "sha256:a7aad472395ee1ad5e33c8cc7c176f95167c7f6136e2eef6154a88db8ae83179",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:2bcbb019fac7f2b21d2fa67b7bd79f392e7c10d60a1bb39664aef6b8387dab9f"
+    },
+    "rumi_host_capabilities_pack": {
+      "pack_id": "rumi_host_capabilities_pack",
+      "review_attestation_digest": "sha256:07bd2dbc02581c66adf0386fb0adf3510bf28b6cadf43854e0f49a51944a11d7",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/ecosystem.json",
+          "tobkiri_runtime/ecosystem/rumi_host_capabilities_pack/functions/_host_mediator.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent",
+          "Python files ship exclusively as non-executable asset/sidecar artifacts"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_host_capabilities_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only. Python files are present only as non-executable asset/sidecar artifacts in the v4 artifact index.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:9f2b7150faf9d519ecc2db3a83aea8f63c6d61881dcb2d39dc58538a4def2f75",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:9f2b7150faf9d519ecc2db3a83aea8f63c6d61881dcb2d39dc58538a4def2f75",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:279834b70350137716865bf09b00d7bd86519304e3a6944804882c6361274709"
+    },
+    "rumi_http_api_connector_pack": {
+      "pack_id": "rumi_http_api_connector_pack",
+      "review_attestation_digest": "sha256:d2e166849096fd85d829ee0629619b0a88e0878e0ad969041bbcac0848a5718d",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_http_api_connector_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:d334ee3d7e3c783a33a1f4a3e3b60a7f62af6043a54f13e90977887f8df680fe",
+      "source_digest": "sha256:d25b087bd6895e1f5ef3f3d6ea01e6b7e57f6b17019ff922a9486c63e5c666e9",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:7b89a9a20f366a732c8443307c452f4c55968305d0756b411252956761a87133"
+    },
+    "rumi_ide_bridge_service_pack": {
+      "pack_id": "rumi_ide_bridge_service_pack",
+      "review_attestation_digest": "sha256:76b9562ccc384914360bf97628c6d43dfcf2c6d96c5c985bc71c59ac2b1483bf",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_ide_bridge_service_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_ide_bridge_service_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_ide_bridge_service_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_ide_bridge_service_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_ide_bridge_service_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:ea7d8cb7ffa25c3873ff3f3d842e11ba85a4ccfb62d61081db84a94b2b8de9c2",
+      "source_digest": "sha256:acb34de617aed5ee0bf25531eb43e9a03f08acf86b122e42192e94255130c941",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:4e2274744bb75921e7587282c92ad7ec110a1840d8eb6c019fcefe8dd70659d4"
+    },
+    "rumi_job_action_broker_pack": {
+      "pack_id": "rumi_job_action_broker_pack",
+      "review_attestation_digest": "sha256:868481942d4be98e247dd3da1d9ff3101e9e8f9dac26f402e21f05537fa4509a",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_job_action_broker_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:a3268e924d06cf90e72c00dfb88dcd0d8ba372d92eba065747f0db247bcd4520",
+      "source_digest": "sha256:3b72e9a00bf24369e0e58cb1376b087ded805dc89beb85ca24b9e093128b6c02",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:43757a9f974acf5cd42934af7d0795e19722cae0b2cf195e1999e793006c0bad"
+    },
+    "rumi_kanban_conversation_adapter_pack": {
+      "pack_id": "rumi_kanban_conversation_adapter_pack",
+      "review_attestation_digest": "sha256:3a64b99114f9873ad6130bdee369d78e1cd0e753611ef8331e5aa7c6380c9908",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_conversation_adapter_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "one-to-one operation identity",
+          "canonical input/output schema equality",
+          "runtime artifact path/digest equality",
+          "target owner equality",
+          "authority field equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T15:55:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:93eb21117e5d7ec37abe1ad0696c90b4a50656cf65298fd4ac6e62cc2dd21f75",
+      "source_digest": "sha256:f6416793570f397e312137433b22b854d9bdf9a57c997cf2af06bbae7c0ff532",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:a7d9809777a75d9b99ac09638b0bb90eb735e8964b03126a5d1c60954af57bd1"
+    },
+    "rumi_kanban_state_store_pack": {
+      "pack_id": "rumi_kanban_state_store_pack",
+      "review_attestation_digest": "sha256:ff08e2ab3791061bdbddcce39f50bfa863addb5f820ab214fa622deb4f7f7815",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_kanban_state_store_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:b413fdfb1c1c58e51c7da6b6fe904ac97cfea9aeae0d7e0c88781696c572b999",
+      "source_digest": "sha256:93b8e55981173036862bbd7904a7f4a5c7ce4e0e7180e40acce4b9efaeece002",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:5d3b69b5258e320b73c23efa3ca44575321bfb848d51bc306a5d1dedd12b6334"
+    },
+    "rumi_knowledge_marketplace_pack": {
+      "pack_id": "rumi_knowledge_marketplace_pack",
+      "review_attestation_digest": "sha256:67ccc05711644fad409f7228ba48c7ffac80171e9ac23af3ee0f024994b60dac",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_knowledge_marketplace_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_knowledge_marketplace_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:2a53bd2ea20547a09f7a668be324ade794de256320c33e3b417f406178961660",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:2a53bd2ea20547a09f7a668be324ade794de256320c33e3b417f406178961660",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:574c99f1ba8c812efcfe6412b575fe48dbfb673389f065b68d7b76da88b953b5"
+    },
+    "rumi_knowledge_store_pack": {
+      "pack_id": "rumi_knowledge_store_pack",
+      "review_attestation_digest": "sha256:41e47a38ef70cbdf36190aead8fa90de4b6a4b5ea7d108605a2441ec26b883c1",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_knowledge_store_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_knowledge_store_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_knowledge_store_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_knowledge_store_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_knowledge_store_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:28cacc15af1e1fa03e823df3d539c9d7211ce19dff1fe7f2c3a67a6d1f71ab74",
+      "source_digest": "sha256:2fe8414a050173763f02032d3dbaee3a8b6a16a5577d037e7d0a715ce35f9add",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:7ef869be74baf850bb0c244bad81a9abc6d00012e1110644bb70cf827dde43e5"
+    },
+    "rumi_line_connector_pack": {
+      "pack_id": "rumi_line_connector_pack",
+      "review_attestation_digest": "sha256:18fdbf3facb127c176fc9a298752eef18c1d4a743e1ed9fe8aaaa764c81790f2",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_line_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_line_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_line_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_line_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_line_connector_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_line_connector_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_line_connector_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:8f6db69b9e36ca1c5ace84028608b0d856f4180fde6468b26b3a917cf3133529",
+      "source_digest": "sha256:cd5c647357dbaf9b869603f93dbbb0c95a56624e033b850204b5ce1e4bfb3c28",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:cc01088aed52fae29b2476488222a182bad8d913af686e8c1b1ca0a8d022b336"
+    },
+    "rumi_localization_pack": {
+      "pack_id": "rumi_localization_pack",
+      "review_attestation_digest": "sha256:f7c4df1f52f5e10b8db5805ceda9b4f4acb62232d3b3e471bc7232460abba00b",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_localization_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_localization_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_localization_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_localization_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_localization_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_localization_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:4017aa2b0187c7845aa23f86cce17d19a6db040e2f6fe8e7b9ee73a59deecb66",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:4017aa2b0187c7845aa23f86cce17d19a6db040e2f6fe8e7b9ee73a59deecb66",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:2ca7b7e746dd2b4ff5cdaf4d0ba58b5f7f6dfdd37d6adab33cba48a4bfce07ea"
+    },
+    "rumi_meeting_intelligence_pack": {
+      "pack_id": "rumi_meeting_intelligence_pack",
+      "review_attestation_digest": "sha256:fca421e2345110a6bc08c6077912e31f718c27f919bbfd9c89312f1936f3c23f",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_meeting_intelligence_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_meeting_intelligence_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:561c88bbe7b56c6c2cfe33be7646a205a09d605ca75129d24d5f30aecd3798a9",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:561c88bbe7b56c6c2cfe33be7646a205a09d605ca75129d24d5f30aecd3798a9",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:2d03b8c20b174ccc967bb33ae7d8bb14e8a9d3b67469392ff9d43066ad64a933"
+    },
+    "rumi_memory_knowledge_pack": {
+      "pack_id": "rumi_memory_knowledge_pack",
+      "review_attestation_digest": "sha256:361688ada020f2e85dc4eeaa9df3373c2ad8e76ced7ea1fd8eff4f629b2c7d9e",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_memory_knowledge_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_memory_knowledge_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:fb94adb5f76f85b23340de8f1371d45dc1dd8333582110e60b56090cb9b4239b",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:fb94adb5f76f85b23340de8f1371d45dc1dd8333582110e60b56090cb9b4239b",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:bf4e1288d0dd878b2d489f89a4c2f6344f1ed77bf9993de75666c6ace0ec0b7b"
+    },
+    "rumi_memory_store_pack": {
+      "pack_id": "rumi_memory_store_pack",
+      "review_attestation_digest": "sha256:3053971c9c157e20e51dd2f20d563ba24d30e13450704d25c32296e8c4d220ad",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_memory_store_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_memory_store_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_memory_store_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_memory_store_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_memory_store_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:c94366f2b46de0a0c41db252aad3067fcc11175991dc42b3ef520aaf27a66be5",
+      "source_digest": "sha256:225e6c83651458e068026dc8bb682e7a2fa0cc10785e5ff40130f2ef12613df7",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:e6c41be1578ca92be19f9dbe4658903bcb9e0ba737c11f31f836e0ee3bc1d6f1"
+    },
+    "rumi_mobile_pairing_connector_pack": {
+      "pack_id": "rumi_mobile_pairing_connector_pack",
+      "review_attestation_digest": "sha256:ce00a787df8da523e4d22f4c670c554531bcb5cec38444ca7d5f6164f214f8ca",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_mobile_pairing_connector_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:d632ec7673192403f7982c6c80311e409b02c9b4f7b2034f828ff9185e650750",
+      "source_digest": "sha256:68eb301379cc8d0fa97bd7afb6d406a69fd606f25c12e9a7bb0f3128acd06ffc",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:42efe0de1057152c7e4c6368cadff853e878f185eaa3d493cc13cabd86331ec5"
+    },
+    "rumi_multimodal_media_pack": {
+      "pack_id": "rumi_multimodal_media_pack",
+      "review_attestation_digest": "sha256:17580f51ba92a415d6e0ec4c4e79f32113a99a123e8c47d5f9874cd6fa40d52f",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_multimodal_media_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_multimodal_media_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:31bc4b1fbb0c8ae378dfe1fbef2da58001864527b83e059334b2be000ad4780f",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:31bc4b1fbb0c8ae378dfe1fbef2da58001864527b83e059334b2be000ad4780f",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:87eab2926665b389748f516abf5b38a105f11c0f14dd1e28ecd4214067b344e6"
+    },
+    "rumi_observability_pack": {
+      "pack_id": "rumi_observability_pack",
+      "review_attestation_digest": "sha256:d43cf96664938085348420dd5dc9449b600cf89681db755e7fedd472d3017fb0",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_observability_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_observability_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_observability_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_observability_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_observability_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_observability_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:70ab26ba2e79329d8eeeada09f331b07b4e14d7d41c7eedeb7672b32e0f925ef",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:70ab26ba2e79329d8eeeada09f331b07b4e14d7d41c7eedeb7672b32e0f925ef",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:77a2b0fb7e8c76ec4e054de5f66446fd0a93ae296e8dad14a3408b0c20a17537"
+    },
+    "rumi_omnichannel_agent_inbox_pack": {
+      "pack_id": "rumi_omnichannel_agent_inbox_pack",
+      "review_attestation_digest": "sha256:efd6b5a2d51186c38a42e95051ea567e1a1a28cf7d633300baccdb4a5cb96114",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_omnichannel_agent_inbox_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_omnichannel_agent_inbox_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_omnichannel_agent_inbox_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_omnichannel_agent_inbox_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_omnichannel_agent_inbox_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_omnichannel_agent_inbox_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:4ae21ecbcfd72e2a76f0fc5c9850920ba58b89e04944bd81802392894508be28",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:4ae21ecbcfd72e2a76f0fc5c9850920ba58b89e04944bd81802392894508be28",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:cd324c4cbe681b70e893ed1545061cef157d777395aca1a1a9cd3442fa3034f8"
+    },
+    "rumi_operations_company_pack": {
+      "pack_id": "rumi_operations_company_pack",
+      "review_attestation_digest": "sha256:99197d4d498522a201860833e2fed897ee09477c599b7821072cb890a61a3fc9",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_operations_company_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_operations_company_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_operations_company_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_operations_company_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_operations_company_pack/ecosystem.json",
+          "tobkiri_runtime/ecosystem/rumi_operations_company_pack/domain/agent/operations_company.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent",
+          "Python files ship exclusively as non-executable asset/sidecar artifacts"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_operations_company_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only. Python files are present only as non-executable asset/sidecar artifacts in the v4 artifact index.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:c6dcca796b2c54781b4302fe597e317e396c68ce9513deeaa4a7646783405de3",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:c6dcca796b2c54781b4302fe597e317e396c68ce9513deeaa4a7646783405de3",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:f04a5970e2d7012873c98709469b708f9184c6cf00935ad5ecfda4d3c108747e"
+    },
+    "rumi_p2p_connector_pack": {
+      "pack_id": "rumi_p2p_connector_pack",
+      "review_attestation_digest": "sha256:e2de1a33e18a4319da905d3d775567137e04659f751d7e064057b080e4103756",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_p2p_connector_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:40e20a90d72dcaf2a1a7af1bb7c2fbae6b211388b468d88c8dbb87adc0ae9846",
+      "source_digest": "sha256:0246a8594b45b6a1abb846d3fc57aa2bae5d9bc0a3ba4ee31b108149f723e098",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:ce6cf26ceec620851acabf7e34a2fbcd63d57880912c48c317ec626790250067"
+    },
+    "rumi_qr_pairing_connector_pack": {
+      "pack_id": "rumi_qr_pairing_connector_pack",
+      "review_attestation_digest": "sha256:9cfe8e76cab6c3ce75e7ba5850a6b5523162eec544f2c20a6851567b35bbfd06",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_qr_pairing_connector_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:83a2b89951f714d20ee675cd6eda89b112e64b5b04decbe03efc890144a0483f",
+      "source_digest": "sha256:bae45de696fcbf8902cfe7940f8519b14a75f12ea49a113e5faa4187344da39c",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:6e78a6178f54fd18b32003a4984dedf56a488eab2a137e8945301764ce6c69f1"
+    },
+    "rumi_repository_context_pack": {
+      "pack_id": "rumi_repository_context_pack",
+      "review_attestation_digest": "sha256:cea76bd20d299567fb0aa661afec506492c40a0751fb31d18c8cfa63d462a42a",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_repository_context_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_repository_context_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_repository_context_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_repository_context_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_repository_context_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:f1168e218c4c7b5c33d71e14bcc2a1584680d12cc65120b783c45d524f0a77f3",
+      "source_digest": "sha256:3a80946981560ab8ce5e9eb9c748d31bc5669a47e85b9b1e7a3ea8924c925fe0",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:8dd8edc2e73f29487a82d6d85b6486ab1968ca588eba6fbc41deb5c3bd100856"
+    },
+    "rumi_runtime_benchmark_pack": {
+      "pack_id": "rumi_runtime_benchmark_pack",
+      "review_attestation_digest": "sha256:e4ae34e28f03e17856cd1b78ea3974f566eb6e85468aa12649d16659f6e58044",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_runtime_benchmark_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_runtime_benchmark_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:f5abf30fb61ef43c97cdb41c4a93a776a0814164dc9a0ce8fb20cab324fbc7ec",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:f5abf30fb61ef43c97cdb41c4a93a776a0814164dc9a0ce8fb20cab324fbc7ec",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:ee107e11eee6a1523927bdd78ec26c582ea3e4ada8e0224379d856f3fd39cf08"
+    },
+    "rumi_sandbox_runtime_pack": {
+      "pack_id": "rumi_sandbox_runtime_pack",
+      "review_attestation_digest": "sha256:28050bcb2ba5371f296a608a80b679e47b1f02ff699bcfa60773e354ce20a4a6",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_sandbox_runtime_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_sandbox_runtime_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:36c29c59a141fc1a0dbc51dfbc1a9f1a3d7b6b3c5f5075d810854109e5b58777",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:36c29c59a141fc1a0dbc51dfbc1a9f1a3d7b6b3c5f5075d810854109e5b58777",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:4e4c3d6d011381cb8c1837a05a01248833d85a423b74bf3e097ebf555cd868b6"
+    },
+    "rumi_schedule_store_pack": {
+      "pack_id": "rumi_schedule_store_pack",
+      "review_attestation_digest": "sha256:04d4d22f662d1d82b96613d1177769668ce90992c40d92125b930dd7a9306985",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_schedule_store_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_schedule_store_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_schedule_store_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_schedule_store_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_schedule_store_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:63bbd25e1d34d3f7bbc2abeac5424d3c5c9b7b9376c7c8aa13786f80ed5149df",
+      "source_digest": "sha256:8fe6d27ecaf91939a430a7335ccf09e98b59b10658ea3cb55a6d861cf62d0651",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:12453c22320bcb5a96bb35d1ebbb67df0f68e8962987fd8238e6168846a21a25"
+    },
+    "rumi_scheduler_runtime_pack": {
+      "pack_id": "rumi_scheduler_runtime_pack",
+      "review_attestation_digest": "sha256:cf5f3d5ced0b650091b278773915dece6603a39004d66b5f3c7f85bbc64b4806",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_scheduler_runtime_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_scheduler_runtime_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_scheduler_runtime_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_scheduler_runtime_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_scheduler_runtime_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:a386effa637a2500c05e6d820767b831e8d55c77ac6920c98dbf654c697eb73d",
+      "source_digest": "sha256:afec0196975f8800b2ac205a633057f863fca62e3445c0de707f0c9b2b765091",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:99a35f095b39ea9d790cfe0e95d2939b845ce38ac1c06c319373eda240b69069"
+    },
+    "rumi_security_review_pack": {
+      "pack_id": "rumi_security_review_pack",
+      "review_attestation_digest": "sha256:adeb2e688c516cc2cdcff60c6033fa9cae8c8c12e417abd17f846611c2ef634f",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_security_review_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_security_review_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_security_review_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_security_review_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_security_review_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_security_review_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:f2540ed3181f952fdf1041d2e50f813f22325775108832b42ba5eef7cbb26a39",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:f2540ed3181f952fdf1041d2e50f813f22325775108832b42ba5eef7cbb26a39",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:cc7271955cfd91dd2d5575c1a3174b367b6ae3a4ea229d9db1845fef39a2b37b"
+    },
+    "rumi_shell_policy_pack": {
+      "pack_id": "rumi_shell_policy_pack",
+      "review_attestation_digest": "sha256:4f15e2cbce1f800b5df43402b32464a86fe61c4c640a296862700655551f349a",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_shell_policy_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:20:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:7d9bf341baf0f5b5cbf48416888d90e4abbab004fb333957d4230d1e510d0e17",
+      "source_digest": "sha256:dba071ad19ef35febe48c5dd9f5de747fdb34497660cad791b17c682e4a4119a",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:cc6420af77762ffc3d982f4c1275027af04c01548495c0d366ec112e33195b8b"
+    },
+    "rumi_slack_connector_pack": {
+      "pack_id": "rumi_slack_connector_pack",
+      "review_attestation_digest": "sha256:c9d80b4eeef6dfa2a5df4972f2da3b76ae11cb716e0bc354b6544792b141d924",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/artifact-index.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json",
+          "tobkiri_runtime/ecosystem/rumi_slack_connector_pack/runtime/adapter.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "Pack-qualified provider identity",
+          "authority fields including instance key equality",
+          "canonical input/output schema equality",
+          "complete operation coverage",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "legacy entrypoint module/symbol/digest binding"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:b71be75a5781a1f44a52428840f0b8ac01ac6194b15f7281a3e321642963fd3e",
+      "source_digest": "sha256:48cade208dbb3fd27fbf349a699ebef4917a9ef5e8d9974c74a44bd0e76ce9c4",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:0d6e072eb0074717084a84a469e4ec9bd5e38763121340fd6ca3670adc39f150"
+    },
+    "rumi_sop_mining_pack": {
+      "pack_id": "rumi_sop_mining_pack",
+      "review_attestation_digest": "sha256:a69cc25cc1a6fc08ee570cfd25ee2e8094ff409b2cf31ecafb3b8b76dcd45cfa",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_sop_mining_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_sop_mining_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:cc31f5382143c0ee73dc53e743d9ea704d3baeda81aba68306338d3f1538374f",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:cc31f5382143c0ee73dc53e743d9ea704d3baeda81aba68306338d3f1538374f",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:aadfe0ada7c669b376b12113bb91842c35cac06d63b1e5305d77a02f9d857bd3"
+    },
+    "rumi_study_coach_pack": {
+      "pack_id": "rumi_study_coach_pack",
+      "review_attestation_digest": "sha256:9aa4955eea4ec0d677fe160462ec2e41c7860d2b3f01d7af480a03ffadd81834",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_study_coach_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_study_coach_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_study_coach_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_study_coach_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_study_coach_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_study_coach_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:cfe7fad24877fb094327d8c56a5d03e651d487033c9233f01cd58b7d08d2d864",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:cfe7fad24877fb094327d8c56a5d03e651d487033c9233f01cd58b7d08d2d864",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:18ae6243113c8876a048597cecf08731bf666805b18fff7d04b943658be53c8c"
+    },
+    "rumi_subagent_placement_pack": {
+      "pack_id": "rumi_subagent_placement_pack",
+      "review_attestation_digest": "sha256:2bb6b8ca0f79b702de5af88d248a93b93e61a7ef7ccbac9cdf1cff942c8b1e81",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_subagent_placement_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:8556e3f3ad88e4b4da0d97f418a7cdc1fe156845f4a36ac67f4b8606ad497459",
+      "source_digest": "sha256:4d79fe35277ba76388668af4d97ea435603d823026077009497b724325745baf",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:31ec471fe94ea6537bf0083d6f940a5a5620d61b8ecd8b54d7fea0b3f3e25a5e"
+    },
+    "rumi_subagent_pr_manager_pack": {
+      "pack_id": "rumi_subagent_pr_manager_pack",
+      "review_attestation_digest": "sha256:8bffdfc1e3e2f05b6d5dd9fefdba458316ac6137a92bed84fc8374f21d5033bb",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_subagent_pr_manager_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_subagent_pr_manager_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_subagent_pr_manager_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_subagent_pr_manager_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_subagent_pr_manager_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_subagent_pr_manager_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:bdececf3061fcfec5e04384a0dbdb7725b230537cd886674fce686f62677b217",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:bdececf3061fcfec5e04384a0dbdb7725b230537cd886674fce686f62677b217",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:c119ad0045ed44daf37f611d5adee6360fb886ecf861e2888f895ac0472c747d"
+    },
+    "rumi_telephony_delegate_pack": {
+      "pack_id": "rumi_telephony_delegate_pack",
+      "review_attestation_digest": "sha256:32cd7e3cb1ede87d40f7ef801fb0a9225785aca94950d37674eb2624b1635889",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_telephony_delegate_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_telephony_delegate_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_telephony_delegate_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_telephony_delegate_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_telephony_delegate_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_telephony_delegate_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:114aab64aa9c300f3a4b0aee48f1cc5e19aabebbd51fccb3d26259d63254988d",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:114aab64aa9c300f3a4b0aee48f1cc5e19aabebbd51fccb3d26259d63254988d",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:429947fc4065c51645df0694207f54732de545a39d131f1a74f464cd8e9b1fab"
+    },
+    "rumi_terminal_session_pack": {
+      "pack_id": "rumi_terminal_session_pack",
+      "review_attestation_digest": "sha256:317e848b1fa26ed94ddadb8be2d83e1d50729ca69f045d5d90d1535e2062e7c6",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_terminal_session_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_terminal_session_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_terminal_session_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_terminal_session_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_terminal_session_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:5857935fb4eca0e06cff1205936efc1a6c28272acc073504b88d38ab49779b8c",
+      "source_digest": "sha256:611c84435b7d77fe7689bb5ce2310043e892999cd53406b9d5dd07da00ab813e",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:3cdcc4ddee72a21de63c97cd823638d040cad4912fefaec802d233939991a289"
+    },
+    "rumi_voice_mobile_pack": {
+      "pack_id": "rumi_voice_mobile_pack",
+      "review_attestation_digest": "sha256:f60986f2b6e846285430a83429ed2686321903fe3e21a8625e0f12fb86d335dc",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_voice_mobile_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_voice_mobile_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:ae369c026c94d97293673a2d652ebace02948d24a428fd5771ffff0e50bd9827",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:ae369c026c94d97293673a2d652ebace02948d24a428fd5771ffff0e50bd9827",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:a9c2930a6626fa3a5d2028291ba283e8f58306478dcfb61a527edd5fee8770f9"
+    },
+    "rumi_workflow_scheduler_pack": {
+      "pack_id": "rumi_workflow_scheduler_pack",
+      "review_attestation_digest": "sha256:ba65e2b6ede8acb290dc32588f36e6c077d96f85463654f0007b8978ed1d0eb9",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workflow_scheduler_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_workflow_scheduler_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:54abe8145a15041d5468baf9cf4cd173051d9aef20c37185a5d397a63d94299c",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:54abe8145a15041d5468baf9cf4cd173051d9aef20c37185a5d397a63d94299c",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:93d4a9e6dd3577dd6fe1d8cb539ce49e330f718555137008e696903a47cbb9e9"
+    },
+    "rumi_workspace_mount_pack": {
+      "pack_id": "rumi_workspace_mount_pack",
+      "review_attestation_digest": "sha256:683d3b076f75380e45533e31cdb48c8d34ae6feb44b0cfedcd15da92a0715ba1",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/rumi.pack.v3.json",
+          "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/artifact-manifest.json",
+          "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workspace_mount_pack/executables.v4.json",
+          "tobkiri_runtime/schemas/executable_sources.v1.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "complete operation coverage",
+          "canonical input/output schema equality",
+          "runtime artifact role/path/digest equality",
+          "target owner equality",
+          "authority fields including instance key equality",
+          "Pack-qualified provider identity"
+        ]
+      },
+      "reviewed_at": "2026-09-16T16:35:00+09:00",
+      "reviewer_id": "codex:independent-semantic-review:v1",
+      "semantic_record_digest": "sha256:f1b92023ce7d5e65d95e5900927d0c4980307e0c6d89efd0ced945b183e52ade",
+      "source_digest": "sha256:28213a5c71326ba99b5dc58b63bfeca12142fc82337a690cf21589baace64122",
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:8cea2c82b3d585d04b5b0adec918a4ecb4a6db957e8593feb423b0b646d918b2"
+    },
+    "rumi_workspace_pack": {
+      "pack_id": "rumi_workspace_pack",
+      "review_attestation_digest": "sha256:80ef4fc7e51d16a7ab2781852a6a4f4a9f532ad2e7e1f96135e60bd7bce2f1bc",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/rumi_workspace_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workspace_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workspace_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workspace_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/rumi_workspace_pack/ecosystem.json"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=rumi_workspace_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:69d1e988696c96b5f7447b6f5b604cba15fd37b36b1e8b46017cb4cc759da829",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:69d1e988696c96b5f7447b6f5b604cba15fd37b36b1e8b46017cb4cc759da829",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:8cf394cd6ac348163620ee1af3e26c79225ec442a01e47eb22eede600be5f544"
+    },
+    "search_home_pack": {
+      "pack_id": "search_home_pack",
+      "review_attestation_digest": "sha256:013651bbfb20b606f70e080395d008a96c99efd18c94507275f3ed7a1af08b69",
+      "review_basis": {
+        "evidence_paths": [
+          "tobkiri_runtime/ecosystem/search_home_pack/pack.v4.json",
+          "tobkiri_runtime/ecosystem/search_home_pack/contracts.v4.json",
+          "tobkiri_runtime/ecosystem/search_home_pack/executables.v4.json",
+          "tobkiri_runtime/ecosystem/search_home_pack/artifact-index.v4.json",
+          "tobkiri_runtime/ecosystem/search_home_pack/ecosystem.json",
+          "tobkiri_runtime/ecosystem/search_home_pack/domain/search_target_resolver.py"
+        ],
+        "excluded_claims": [
+          "runtime admission",
+          "installation",
+          "isolated conformance",
+          "release readiness"
+        ],
+        "method": "independent-file-by-file-review.v1",
+        "verified_claims": [
+          "zero executable variants, operations, and functions in the v4 catalog",
+          "zero executable-kind artifacts in the sealed artifact index",
+          "no legacy v3 manifest, artifact manifest, fixture, or registry record",
+          "declared behavior is data-only (docs/specs/presets/profiles assets)",
+          "Pack identity and kind declarations are self-consistent",
+          "Python files ship exclusively as non-executable asset/sidecar artifacts"
+        ]
+      },
+      "reviewed_at": "2026-09-18T23:55:00+09:00",
+      "reviewer_id": "devin:independent-semantic-review:v1",
+      "semantic_record": {
+        "authority_review": {
+          "scope": "admission-only",
+          "status": "verified",
+          "summary": "pack.v4.json id=search_home_pack, kind=application; zero contracts so no cross-Pack authority is declared."
+        },
+        "behavior_review": {
+          "scope": "declared-data",
+          "status": "verified",
+          "summary": "Declared surface reviewed: ecosystem.json, docs/specs/presets/profiles assets; zero executable-kind artifacts in the sealed artifact index."
+        },
+        "equivalent": true,
+        "kind": "admission-only",
+        "method": "curated-admission-only-review.v1",
+        "no_operations_reason": "The Pack's v4 catalog declares zero executable operations (executables.v4.json variants: 0, pack.v4.json functions: 0) and no legacy source record exists (no rumi.pack.v3.json, no artifact-manifest.json, no legacy fixture or executable-source-registry entry); it declares application assets only. Python files are present only as non-executable asset/sidecar artifacts in the v4 artifact index.",
+        "operation_inventory": {
+          "legacy_count": 0,
+          "v4_count": 0
+        },
+        "operation_mappings": [],
+        "semantic_record_digest": "sha256:3065697cf71478e6ddd15bebbf4503385ab12d668f86074951a9dc0cadbbebda",
+        "status": "verified"
+      },
+      "semantic_record_digest": "sha256:3065697cf71478e6ddd15bebbf4503385ab12d668f86074951a9dc0cadbbebda",
+      "source_digest": null,
+      "source_kind": "independent-curated",
+      "target_digest": "sha256:768c8a5b38c9fb521e086b4de89d897dcb7885fb9de8a3d981c482e4d1352221"
+    }
+  },
+  "schema": "io.tobkiri.quality.pack-migration-reviews.v1"
+}
