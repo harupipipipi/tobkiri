@@ -1262,8 +1262,7 @@ class _ChatScreenState extends State<ChatScreen>
   List<MobileProviderConfig> _mobileProvidersForSelection(
     List<MobileProviderConfig> providers, {
     ApiConfig? activeConfig,
-  }
-  ) {
+  }) {
     final active = activeConfig ?? _apiConfig ?? ApiConfig.defaults;
     final options = mobileProviderOptionsWithActiveModel(providers, active);
     final favorites = options

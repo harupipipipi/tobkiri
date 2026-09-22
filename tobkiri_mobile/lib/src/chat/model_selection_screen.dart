@@ -88,14 +88,14 @@ List<MobileProviderConfig> mobileProviderOptionsWithActiveModel(
             apiCompatibility: activeConfig.apiCompatibility,
           ))
       .copyWith(
-        label: activeConfig.label.trim().isEmpty
-            ? savedProvider?.label
-            : activeConfig.label.trim(),
-        apiKey: activeConfig.apiKey,
-        baseUrl: activeConfig.baseUrl,
-        model: activeModel,
-        apiCompatibility: activeConfig.apiCompatibility,
-      );
+    label: activeConfig.label.trim().isEmpty
+        ? savedProvider?.label
+        : activeConfig.label.trim(),
+    apiKey: activeConfig.apiKey,
+    baseUrl: activeConfig.baseUrl,
+    model: activeModel,
+    apiCompatibility: activeConfig.apiCompatibility,
+  );
   return [...providers, activeProvider];
 }
 
