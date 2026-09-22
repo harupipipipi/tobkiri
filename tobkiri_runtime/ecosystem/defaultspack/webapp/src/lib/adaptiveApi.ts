@@ -117,6 +117,13 @@ export type AdaptiveOperatingProfile = {
   skillLearning: AdaptiveOnboardingState["skillLearning"];
   packRecommendations: AdaptivePackRecommendation[];
   review: AdaptiveOnboardingState["review"];
+  reviewPolicy?: {
+    mode: "off" | "warning" | "blocking";
+    reviewerProfile: string;
+    requireSeparateRun: boolean;
+    appliesTo: Array<"merge" | "commit" | "push" | "publish" | "delivery">;
+    storeFindings: boolean;
+  };
   updatedAt?: string | null;
 };
 
@@ -445,10 +452,35 @@ export function fetchAdaptiveOperatingProfile(): Promise<AdaptiveOperatingProfil
 }
 
 export function saveAdaptiveOperatingProfile(profile: AdaptiveOperatingProfile): Promise<AdaptiveOperatingProfile> {
+  const reviewPolicy = profile.reviewPolicy ?? {
+    mode: "off" as const,
+    reviewerProfile: "",
+    requireSeparateRun: true,
+    appliesTo: [],
+    storeFindings: true,
+  };
+  const answers = {
+    profile_id: profile.id,
+    role_context: profile.role,
+    review_topology: {
+      mode: reviewPolicy.mode,
+      reviewer_profile: reviewPolicy.reviewerProfile.trim() || null,
+      require_separate_run: reviewPolicy.requireSeparateRun,
+      applies_to: reviewPolicy.appliesTo,
+      store_findings: reviewPolicy.storeFindings,
+    },
+  };
   return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute(`api/operating-profiles/${encodeURIComponent(profile.id)}/preview`), {
     method: "POST",
-    body: JSON.stringify({ answers: { profile_id: profile.id, role_context: profile.role } }),
-  }).then(() => profile);
+    body: JSON.stringify({ answers }),
+  }).then((preview) => {
+    const plan = recordValue(preview.plan);
+    if (!Object.keys(plan).length) throw new Error("The profile preview did not return a signed activation plan.");
+    return adaptiveApiRequest<Record<string, unknown>>(defaultspackContractRoute("api/onboarding/apply"), {
+      method: "POST",
+      body: JSON.stringify({ plan }),
+    });
+  }).then((applied) => toOperatingProfile(applied));
 }
 
 export function fetchAdaptiveActivity(): Promise<AdaptiveActivityState> {
@@ -673,6 +705,8 @@ export function toOnboardingState(payload: Record<string, unknown>): AdaptiveOnb
 export function toOperatingProfile(payload: Record<string, unknown>): AdaptiveOperatingProfile {
   const profile = recordValue(payload.operating_profile);
   const sideEffect = recordValue(profile.side_effect_policy ?? profile.policy);
+  const reviewPolicy = recordValue(profile.review_topology ?? profile.review_policy);
+  const reviewMode = String(reviewPolicy.mode ?? "off");
   const presetLabel = String(recordValue(profile.source).preset_id ?? profile.preset_id ?? "guided");
   return {
     id: String(profile.profile_id ?? "default"),
@@ -687,6 +721,16 @@ export function toOperatingProfile(payload: Record<string, unknown>): AdaptiveOp
     skillLearning: { enabled: false, sources: ["verified episodes"], reviewRequired: true },
     packRecommendations: [],
     review: { cadence: "Before high-risk actions", reviewers: ["User"], gates: ["Exact plan"] },
+    reviewPolicy: {
+      mode: reviewMode === "warning" || reviewMode === "blocking" ? reviewMode : "off",
+      reviewerProfile: String(reviewPolicy.reviewer_profile ?? ""),
+      requireSeparateRun: reviewPolicy.require_separate_run !== false,
+      appliesTo: stringArray(reviewPolicy.applies_to).filter(
+        (action): action is "merge" | "commit" | "push" | "publish" | "delivery" =>
+          ["merge", "commit", "push", "publish", "delivery"].includes(action),
+      ),
+      storeFindings: reviewPolicy.store_findings !== false,
+    },
     updatedAt: String(profile.updated_at ?? ""),
   };
 }

@@ -26,6 +26,16 @@ const autonomyOptions = [
   { value: "autonomous", label: "Autonomous inside policy" },
 ] as const;
 
+const finalizationActions = ["merge", "commit", "push", "publish", "delivery"] as const;
+
+const defaultReviewPolicy: NonNullable<AdaptiveOperatingProfile["reviewPolicy"]> = {
+  mode: "off",
+  reviewerProfile: "",
+  requireSeparateRun: true,
+  appliesTo: [],
+  storeFindings: true,
+};
+
 export function OperatingProfilePage({ initialProfile }: { initialProfile?: AdaptiveOperatingProfile }) {
   const { data, status, error, refresh } = useAdaptiveResource({
     demoData: demoOperatingProfile,
@@ -35,6 +45,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
   const initialDraft = initialProfile ?? demoOperatingProfile;
   const [summaryDraft, setSummaryDraft] = useState(initialDraft.summary);
   const [autonomyDraft, setAutonomyDraft] = useState(initialDraft.autonomy.level);
+  const [reviewPolicyDraft, setReviewPolicyDraft] = useState(initialDraft.reviewPolicy ?? defaultReviewPolicy);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -42,6 +53,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
     if (!data) return;
     setSummaryDraft(data.summary);
     setAutonomyDraft(data.autonomy.level);
+    setReviewPolicyDraft(data.reviewPolicy ?? defaultReviewPolicy);
   }, [data]);
 
   const handleSave = async () => {
@@ -61,8 +73,9 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
           level: autonomyDraft,
           label: autonomyOptions.find((option) => option.value === autonomyDraft)?.label ?? data.autonomy.label,
         },
+        reviewPolicy: reviewPolicyDraft,
       });
-      setSaveStatus("Profile draft saved.");
+      setSaveStatus("Profile settings saved and activated.");
     } catch (err) {
       setSaveStatus(null);
       setSaveError(`Kept local draft. ${err instanceof Error ? err.message : String(err)}`);
@@ -119,10 +132,80 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
               <p className="mt-2 text-sm text-zinc-100">{data.review.cadence}</p>
             </div>
           </div>
+          <fieldset className="mt-4 rounded-md border border-zinc-800 bg-zinc-950/45 p-3">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Agent review gate</legend>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="block">
+                <span className="text-xs font-medium text-zinc-400">Enforcement</span>
+                <select
+                  value={reviewPolicyDraft.mode}
+                  onChange={(event) => setReviewPolicyDraft((current) => ({ ...current, mode: event.target.value as typeof current.mode }))}
+                  className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-2 text-sm text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
+                  aria-label="Agent review gate enforcement"
+                >
+                  <option value="off">Off</option>
+                  <option value="warning">Warning</option>
+                  <option value="blocking">Blocking</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-zinc-400">Reviewer profile</span>
+                <input
+                  value={reviewPolicyDraft.reviewerProfile}
+                  onChange={(event) => setReviewPolicyDraft((current) => ({ ...current, reviewerProfile: event.target.value }))}
+                  disabled={reviewPolicyDraft.mode === "off"}
+                  className="mt-2 h-9 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-2 text-sm text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60 disabled:opacity-50"
+                  placeholder="reviewer_agent"
+                  aria-label="Agent reviewer profile"
+                />
+              </label>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2" aria-label="Reviewed finalization actions">
+              {finalizationActions.map((action) => (
+                <label key={action} className="flex items-center gap-2 text-xs text-zinc-300">
+                  <input
+                    type="checkbox"
+                    checked={reviewPolicyDraft.appliesTo.includes(action)}
+                    disabled={reviewPolicyDraft.mode === "off"}
+                    onChange={(event) => setReviewPolicyDraft((current) => ({
+                      ...current,
+                      appliesTo: event.target.checked
+                        ? [...new Set([...current.appliesTo, action])]
+                        : current.appliesTo.filter((item) => item !== action),
+                    }))}
+                  />
+                  {action}
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+              <label className="flex items-center gap-2 text-xs text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={reviewPolicyDraft.requireSeparateRun}
+                  disabled={reviewPolicyDraft.mode === "off"}
+                  onChange={(event) => setReviewPolicyDraft((current) => ({ ...current, requireSeparateRun: event.target.checked }))}
+                />
+                Require a separate reviewer run
+              </label>
+              <label className="flex items-center gap-2 text-xs text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={reviewPolicyDraft.storeFindings}
+                  disabled={reviewPolicyDraft.mode === "off"}
+                  onChange={(event) => setReviewPolicyDraft((current) => ({ ...current, storeFindings: event.target.checked }))}
+                />
+                Attach findings to the run
+              </label>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-zinc-500">
+              Blocking gates pause the selected final step until the configured profile submits an Authority-bound review for the exact artifact.
+            </p>
+          </fieldset>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className={adaptivePrimaryControlClass} onClick={handleSave} aria-label="Save operating profile draft">
               <Save size={14} aria-hidden="true" />
-              Save draft
+              Save and activate
             </button>
             <button type="button" className={adaptiveControlClass} onClick={refresh} aria-label="Reload operating profile">
               Reload

@@ -1,7 +1,6 @@
 """defaults.coding.git_push — Gitプッシュブロック"""
 
 from blocks._common import ok, error
-from core_runtime.operating_profile import FinalizationAction
 from blocks.coding._approval import approval_required
 from blocks.coding._workspace import canonical_mutation_guard
 from domain.coding.contract_adapter import (
@@ -13,7 +12,6 @@ from domain.coding.contract_adapter import (
     service_payload,
     workspace_id,
 )
-from domain.agent.review_gate_runtime import enforce_finalization_review
 from domain.safety.audit import record_attempt, record_execution, record_failure
 
 
@@ -86,31 +84,11 @@ def run(input_data, context=None):
                 str(authorization.get("message") or authorization.get("reason")),
                 code=str(authorization.get("code") or "APPROVAL_INVALID"),
             )
-        review_gate = None
-        if not dry_run:
-            review_gate = enforce_finalization_review(
-                FinalizationAction.PUSH,
-                {
-                    "operation": operation,
-                    "workspace_id": selected_workspace_id,
-                    **arguments,
-                },
-                context,
-            )
-            if review_gate is not None and review_gate.blocked:
-                return error(
-                    "A profile review is required before this push. "
-                    "Schedule the requested reviewer and retry the same artifact.",
-                    code="REVIEW_REQUIRED",
-                    details=review_gate.to_dict(),
-                )
         result = invoke_coding_contract(
             GIT_PUBLISH,
             service_name,
             service_payload(authorization, arguments),
         )
-        if review_gate is not None and review_gate.decision.requires_review:
-            result["review_gate"] = review_gate.to_dict()
         result["pushed"] = bool(result.get("published"))
         record_execution(operation, "high", {"remote": remote, "branch": branch})
         return ok(result)

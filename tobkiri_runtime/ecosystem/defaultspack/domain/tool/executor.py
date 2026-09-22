@@ -973,6 +973,9 @@ class ToolExecutor:
             consume_error = self._consume_deferred_tool_approval(context)
             if consume_error is not None:
                 return consume_error
+            review_gate = _enforce_finalization_review(tool_def, request, context)
+            if review_gate is not None and review_gate.blocked:
+                return _review_gate_blocked_response(review_gate)
             response = executor.execute(principal_id, request)
             if getattr(response, "error_type", "") == "caller_requires_denied":
                 logger.warning(
@@ -992,12 +995,13 @@ class ToolExecutor:
                 "is_error": True,
                 "widget": None,
             }
-        return self._tool_response_from_capability(
+        result = self._tool_response_from_capability(
             response,
             tool_def,
             request.get("args") or {},
             context,
         )
+        return _attach_review_gate(result, review_gate)
 
     @staticmethod
     def _function_call_pack_approval_status(capability_executor, pack_id):
@@ -1332,8 +1336,10 @@ class ToolExecutor:
         if approval_error is not None:
             return approval_error
 
+        review_gate = None
+
         def finish_handler_result(result):
-            return result
+            return _attach_review_gate(result, review_gate)
 
         if _truthy(policy.get("yolo_mode")):
             mark_tool_server_approval_context(next_context)
@@ -1347,6 +1353,13 @@ class ToolExecutor:
         consume_error = self._consume_deferred_tool_approval(next_context)
         if consume_error is not None:
             return consume_error
+        review_gate = _enforce_finalization_review(
+            tool_def,
+            {"args": next_arguments},
+            next_context,
+        )
+        if review_gate is not None and review_gate.blocked:
+            return _review_gate_blocked_response(review_gate)
         module_name, attr_name = handler.split(":", 1)
         try:
             module = importlib.import_module(module_name)
@@ -3558,6 +3571,74 @@ def _function_call_context(context, tool_def):
             if isinstance(value, (str, int, float)) and str(value).strip():
                 forwarded[key] = value
     return forwarded
+
+
+def _enforce_finalization_review(tool_def, request, context):
+    action = _finalization_action_for_tool(tool_def)
+    if action is None:
+        return None
+    arguments = request.get("args") if isinstance(request, dict) else {}
+    arguments = arguments if isinstance(arguments, dict) else {}
+    if arguments.get("dry_run") is True:
+        return None
+    from domain.agent.review_gate_runtime import enforce_finalization_review
+
+    return enforce_finalization_review(
+        action,
+        {
+            "tool_name": _tool_approval_tool_name(tool_def),
+            "qualified_name": str((request or {}).get("qualified_name") or ""),
+            "arguments": arguments,
+        },
+        context,
+    )
+
+
+def _finalization_action_for_tool(tool_def):
+    from core_runtime.operating_profile import FinalizationAction
+
+    tool_name = _tool_approval_tool_name(tool_def).strip().lower()
+    execution = tool_def.get("execution") if isinstance(tool_def, dict) else {}
+    execution = execution if isinstance(execution, dict) else {}
+    operation = str(execution.get("operation") or "").strip().lower()
+    identity = f"{tool_name} {operation}"
+    if tool_name in {"coding_git_commit", "git_commit"} or "git.commit" in identity:
+        return FinalizationAction.COMMIT
+    if tool_name in {"coding_git_push", "git_push"} or "git.push" in identity:
+        return FinalizationAction.PUSH
+    if tool_name in {"coding_git_merge", "git_merge"} or "git.merge" in identity:
+        return FinalizationAction.MERGE
+    if tool_name == "external_send":
+        return FinalizationAction.DELIVERY
+    if "publish" in identity:
+        return FinalizationAction.PUBLISH
+    return None
+
+
+def _review_gate_blocked_response(review_gate):
+    details = review_gate.to_dict()
+    return {
+        "result": (
+            "A profile review is required before this finalization action. "
+            "Schedule the requested reviewer and retry the same artifact."
+        ),
+        "is_error": True,
+        "error_type": "review_required",
+        "review_gate": details,
+        "widget": {"type": "review_required", "review_gate": details},
+    }
+
+
+def _attach_review_gate(result, review_gate):
+    if review_gate is None or not review_gate.decision.requires_review:
+        return result
+    output = dict(result) if isinstance(result, dict) else {"result": str(result)}
+    details = review_gate.to_dict()
+    output["review_gate"] = details
+    widget = output.get("widget")
+    if isinstance(widget, dict):
+        output["widget"] = {**widget, "review_gate": details}
+    return output
 
 
 def _execution_timeout_seconds(tool_def):

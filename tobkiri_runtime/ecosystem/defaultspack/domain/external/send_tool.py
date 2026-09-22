@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from core_runtime.operating_profile import FinalizationAction
-from domain.agent.review_gate_runtime import (
-    ReviewGateEnforcement,
-    enforce_finalization_review,
-)
 from domain.external.adapters.discord import DiscordResponseAdapter
 from domain.external.adapters.line import LineResponseAdapter
 from domain.external.adapters.slack import SlackResponseAdapter
@@ -44,21 +39,7 @@ def external_send_tool(
             }
         )
 
-    review_gate = enforce_finalization_review(
-        FinalizationAction.DELIVERY,
-        {
-            "operation": "external_send",
-            "provider": provider,
-            "arguments": args,
-        },
-        context,
-    )
-    if review_gate is not None and review_gate.blocked:
-        return _tool_error(
-            "A profile review is required before this delivery. "
-            "Schedule the requested reviewer and retry the same artifact.",
-            details=review_gate.to_dict(),
-        )
+    del context
 
     if provider == "line":
         adapter = LineResponseAdapter()
@@ -75,7 +56,7 @@ def external_send_tool(
             if reply_token
             else adapter.send_text_push(target_id, text)
         )
-        return _with_review_gate(_tool_ok({"provider": provider, **result}), review_gate)
+        return _tool_ok({"provider": provider, **result})
 
     if provider == "discord":
         adapter = DiscordResponseAdapter()
@@ -84,7 +65,7 @@ def external_send_tool(
             result = adapter.send_webhook_message(webhook_url, text)
         else:
             result = adapter.send_channel_message(str(args.get("channel_id") or "").strip(), text)
-        return _with_review_gate(_tool_ok({"provider": provider, **result}), review_gate)
+        return _tool_ok({"provider": provider, **result})
 
     if provider == "slack":
         result = SlackResponseAdapter().send_channel_message(
@@ -92,7 +73,7 @@ def external_send_tool(
             text,
             thread_ts=str(args.get("thread_ts") or "").strip(),
         )
-        return _with_review_gate(_tool_ok({"provider": provider, **result}), review_gate)
+        return _tool_ok({"provider": provider, **result})
 
     if provider in {"generic", "webhook", "web"}:
         callback_url = str(args.get("callback_url") or args.get("webhook_url") or "").strip()
@@ -107,15 +88,12 @@ def external_send_tool(
                 "metadata": args.get("metadata") if isinstance(args.get("metadata"), dict) else {},
             },
         )
-        return _with_review_gate(
-            _tool_ok(
-                {
-                    "provider": provider,
-                    "sent": bool(result.get("ok")),
-                    "provider_response": result,
-                }
-            ),
-            review_gate,
+        return _tool_ok(
+            {
+                "provider": provider,
+                "sent": bool(result.get("ok")),
+                "provider_response": result,
+            }
         )
 
     return _tool_error(f"unsupported provider: {provider}")
@@ -160,32 +138,9 @@ def _tool_ok(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _tool_error(
-    message: str,
-    *,
-    details: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    output = {
+def _tool_error(message: str) -> dict[str, Any]:
+    return {
         "result": message,
         "is_error": True,
         "widget": {"type": "external_send", "error": message},
     }
-    if details is not None:
-        output["error_type"] = "review_required"
-        output["review_gate"] = details
-        output["widget"]["review_gate"] = details
-    return output
-
-
-def _with_review_gate(
-    result: dict[str, Any],
-    enforcement: ReviewGateEnforcement | None,
-) -> dict[str, Any]:
-    if enforcement is None or not enforcement.decision.requires_review:
-        return result
-    output = dict(result)
-    output["review_gate"] = enforcement.to_dict()
-    widget = output.get("widget")
-    if isinstance(widget, dict):
-        output["widget"] = {**widget, "review_gate": enforcement.to_dict()}
-    return output

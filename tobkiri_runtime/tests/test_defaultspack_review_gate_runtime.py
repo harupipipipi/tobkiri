@@ -9,16 +9,21 @@ import pytest
 PACK_ROOT = Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(PACK_ROOT))
 
-from core_runtime.operating_profile import (
+from core_runtime.operating_profile import (  # noqa: E402
     AgentExecutionMode,
     AuthorityReviewResult,
     FinalizationAction,
     ReviewGateRequest,
     ReviewVerdict,
+    OperatingProfilePlanStore,
     compile_operating_profile,
 )
-from domain.agent.review_gate_runtime import enforce_finalization_review
-from domain.tool_policy.internal_context import mark_trusted_review_gate_context
+from core_runtime.profile_workspace import ProfileWorkspaceManager  # noqa: E402
+from domain.agent.review_gate_runtime import enforce_finalization_review  # noqa: E402
+from domain.tool_policy.internal_context import (  # noqa: E402
+    mark_tool_server_approval_context,
+    mark_trusted_review_gate_context,
+)
 
 
 class _PlanStore:
@@ -161,10 +166,34 @@ def test_runtime_consumes_approved_review_and_untrusted_callers_cannot_forge_mod
     assert approved.decision.reason == "review_approved"
 
 
+def test_runtime_reloads_activated_review_settings_after_restart(tmp_path):
+    manager = ProfileWorkspaceManager(tmp_path)
+    first_store = OperatingProfilePlanStore(manager)
+    profile = _profile()
+    plan = first_store.create_plan(profile.profile_id, profile)
+    first_store.apply_plan(plan)
+
+    restarted_store = OperatingProfilePlanStore(ProfileWorkspaceManager(tmp_path))
+    enforcement = enforce_finalization_review(
+        FinalizationAction.COMMIT,
+        {"expected_head": "restart-head"},
+        _context(AgentExecutionMode.MODE_AGENT),
+        plan_store=restarted_store,
+        authority=_Authority(approved=False),
+        run_store=_RunStore(),
+    )
+
+    assert enforcement is not None
+    assert enforcement.blocked is True
+    assert enforcement.decision.request.policy.reviewer_profile == "reviewer_agent"
+
+
 def test_external_delivery_stops_before_provider_when_review_is_missing(
     monkeypatch,
 ):
+    from domain.agent import review_gate_runtime
     from domain.external import send_tool
+    from domain.tool.executor import ToolExecutor
 
     authority = _Authority(approved=False)
     enforcement = enforce_finalization_review(
@@ -178,7 +207,7 @@ def test_external_delivery_stops_before_provider_when_review_is_missing(
     assert enforcement is not None
 
     monkeypatch.setattr(
-        send_tool,
+        review_gate_runtime,
         "enforce_finalization_review",
         lambda *_args, **_kwargs: enforcement,
     )
@@ -188,11 +217,82 @@ def test_external_delivery_stops_before_provider_when_review_is_missing(
             raise AssertionError("provider effect ran before the review gate")
 
     monkeypatch.setattr(send_tool, "SlackResponseAdapter", _MustNotSend)
-    result = send_tool.external_send_tool(
+    context = mark_tool_server_approval_context(
+        _context(AgentExecutionMode.TEAM_AGENT)
+    )
+    result = ToolExecutor()._execute_handler(
+        {
+            "tool_id": "external_send",
+            "name": "external_send",
+            "requires_approval": True,
+            "execution": {
+                "type": "local",
+                "handler": "domain.external.send_tool:external_send_tool",
+            },
+        },
         {"provider": "slack", "channel_id": "C1", "text": "ship"},
-        _context(AgentExecutionMode.TEAM_AGENT),
+        context,
     )
 
     assert result["is_error"] is True
     assert result["error_type"] == "review_required"
     assert result["review_gate"]["request"]["context"]["action"] == "delivery"
+
+
+def test_git_capability_stops_after_approval_consumption_and_before_effect(
+    monkeypatch,
+):
+    from domain.agent import review_gate_runtime
+    from domain.tool.executor import ToolExecutor
+
+    authority = _Authority(approved=False)
+    enforcement = enforce_finalization_review(
+        FinalizationAction.PUSH,
+        {"branch": "main", "expected_remote_url_hash": "b" * 64},
+        _context(AgentExecutionMode.MODE_AGENT),
+        plan_store=_PlanStore(_profile()),
+        authority=authority,
+        run_store=_RunStore(),
+    )
+    assert enforcement is not None
+    monkeypatch.setattr(
+        review_gate_runtime,
+        "enforce_finalization_review",
+        lambda *_args, **_kwargs: enforcement,
+    )
+
+    class _MustNotExecute:
+        def execute(self, *_args, **_kwargs):
+            raise AssertionError("capability effect ran before the review gate")
+
+    executor = ToolExecutor()
+    monkeypatch.setattr(executor, "_capability_executor", lambda _context: _MustNotExecute())
+    monkeypatch.setattr(
+        executor,
+        "_prepare_deferred_tool_approval",
+        lambda *_args, **_kwargs: None,
+    )
+    consumed: list[bool] = []
+    monkeypatch.setattr(
+        executor,
+        "_consume_deferred_tool_approval",
+        lambda _context: consumed.append(True) and None,
+    )
+    result = executor._execute_capability_request(
+        {
+            "tool_id": "coding_git_push",
+            "name": "coding_git_push",
+            "execution": {"type": "rumi_function"},
+        },
+        {
+            "type": "function.call",
+            "qualified_name": "defaultspack:coding_git_push",
+            "args": {"branch": "main"},
+        },
+        _context(AgentExecutionMode.MODE_AGENT),
+    )
+
+    assert consumed == [True]
+    assert result["is_error"] is True
+    assert result["error_type"] == "review_required"
+    assert result["review_gate"]["request"]["context"]["action"] == "push"
