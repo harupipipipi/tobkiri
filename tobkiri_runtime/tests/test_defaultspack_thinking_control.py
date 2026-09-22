@@ -113,7 +113,9 @@ def test_service_persists_raw_and_normalized_profile_control(
         "qualified_model_id": "example/numeric",
         "provider_id": "example",
         "model_id": "numeric",
-        "supports_thinking": True,
+        # A profile-owned control must work even when an older catalog has not
+        # projected the legacy supports_thinking flag.
+        "supports_thinking": False,
         "thinking_control": NUMERIC_CONTRACT,
     }
     monkeypatch.setattr(service, "_list_profile_catalog", lambda **_kwargs: [profile])

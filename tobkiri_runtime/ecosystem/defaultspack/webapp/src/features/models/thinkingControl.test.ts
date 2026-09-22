@@ -13,7 +13,9 @@ import {
 const numericProfile: ModelProfile = {
   profile_id: "example/numeric",
   display_name: "Numeric",
-  supports_thinking: true,
+  // The profile contract is authoritative. Older catalogs need not also carry
+  // the legacy supports_thinking capability flag.
+  supports_thinking: false,
   thinking_control: {
     supported: true,
     input_schema: {

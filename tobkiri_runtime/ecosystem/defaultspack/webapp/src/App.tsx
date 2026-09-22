@@ -72,6 +72,7 @@ import {
   normalizeThinkingControlInput,
   thinkingControlCandidates,
   thinkingControlForProfile,
+  thinkingControlInputError,
   thinkingControlMode,
 } from "./features/models/thinkingControl";
 import type { ConversationToolPreferences } from "./features/tools/types";
@@ -4801,6 +4802,11 @@ export function ChatApp() {
   const handleThinkingLevelChange = (level: string | null) => {
     const key = profileKey(activeProfile, preferredModel);
     const raw = level ?? "medium";
+    const validationError = thinkingControlInputError(activeProfile, raw);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     const normalized = normalizeThinkingControlInput(activeProfile, raw);
     updateModelSettings({
       thinking_level: normalized,
@@ -7049,7 +7055,7 @@ export function ChatApp() {
       favoriteProfiles={favoriteProfiles}
       modelProfiles={selectableModelProfiles}
       modelSelectorSchema={modelSelectorSchema}
-      thinkingLevel={activeProfile?.supports_thinking ? selectedThinkingLevel : null}
+      thinkingLevel={profileSupportsThinking(activeProfile) ? selectedThinkingLevel : null}
       contextUsage={contextUsage}
       inlineExtensions={composerExtensions}
       belowExtensions={[]}
