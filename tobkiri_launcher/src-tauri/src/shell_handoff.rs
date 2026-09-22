@@ -892,7 +892,7 @@ impl Drop for WindowsLocalAllocation {
 }
 
 #[cfg(windows)]
-fn apply_windows_private_dacl(path: &Path) -> Result<()> {
+pub(crate) fn apply_windows_private_dacl(path: &Path) -> Result<()> {
     use std::ptr::null_mut;
     use windows_sys::Win32::Security::Authorization::{
         ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
@@ -1026,7 +1026,7 @@ fn windows_security_descriptor(path: &Path, information: u32) -> Result<Vec<u8>>
 }
 
 #[cfg(windows)]
-fn validate_windows_private_dacl(path: &Path) -> Result<()> {
+pub(crate) fn validate_windows_private_dacl(path: &Path) -> Result<()> {
     if !windows_private_security_descriptor_is_valid(path)? {
         bail!(
             "Windows Shell handoff ACL is not owner-and-system-only for {}",

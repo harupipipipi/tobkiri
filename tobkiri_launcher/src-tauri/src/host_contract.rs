@@ -280,12 +280,24 @@ fn restrict_owner_only_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn restrict_owner_only_file(path: &Path) -> Result<()> {
+    crate::shell_handoff::apply_windows_private_dacl(path)?;
+    crate::shell_handoff::validate_windows_private_dacl(path)
+}
+
+#[cfg(windows)]
+fn restrict_owner_only(path: &Path) -> Result<()> {
+    crate::shell_handoff::apply_windows_private_dacl(path)?;
+    crate::shell_handoff::validate_windows_private_dacl(path)
+}
+
+#[cfg(not(any(unix, windows)))]
 fn restrict_owner_only_file(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn restrict_owner_only(_path: &Path) -> Result<()> {
     Ok(())
 }
