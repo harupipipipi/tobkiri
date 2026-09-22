@@ -55,7 +55,7 @@ def _minimal_bundle(tmp_path: Path) -> tuple[Path, Path]:
 
 def test_shell_manifest_rejects_source_and_bundle_drift(tmp_path: Path) -> None:
     webapp_root, ui_dir = _minimal_bundle(tmp_path)
-    module = json.dumps(str(MANIFEST_MODULE))
+    module = json.dumps(MANIFEST_MODULE.as_uri())
     write_expression = (
         f"import {{ writeShellBundleManifest }} from {module}; "
         "writeShellBundleManifest({webappRoot: process.argv[1], uiDir: process.argv[2]});"
@@ -86,7 +86,7 @@ def test_shell_manifest_normalizes_text_newlines_across_source_and_bundle(
     tmp_path: Path,
 ) -> None:
     webapp_root, ui_dir = _minimal_bundle(tmp_path)
-    module = json.dumps(str(MANIFEST_MODULE))
+    module = json.dumps(MANIFEST_MODULE.as_uri())
     build_expression = (
         f"import {{ buildShellBundleManifest }} from {module}; "
         "console.log(JSON.stringify(buildShellBundleManifest("
