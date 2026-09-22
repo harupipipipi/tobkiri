@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from typing import Any
 
 import pytest
+
+
+DEFAULTSPACK_ROOT = Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack"
+if str(DEFAULTSPACK_ROOT) not in sys.path:
+    sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
 class FakeClient:
