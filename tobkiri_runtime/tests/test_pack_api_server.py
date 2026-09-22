@@ -233,8 +233,8 @@ class _TransientLockDispatch(_StartupReadinessDispatch):
         self, contract_id: str
     ) -> tuple[Mapping[str, object], ...]:
         providers = {
-            "conversation.turn.v1": ("defaultspack.conversation", "complete"),
-            "defaults.dashboard.v1": ("defaultspack.dashboard", "read"),
+            "conversation.turn.v1": (("defaultspack.conversation", "complete"),),
+            "defaults.dashboard.v1": (("defaultspack.dashboard", "read"),),
         }
         return tuple(
             {
