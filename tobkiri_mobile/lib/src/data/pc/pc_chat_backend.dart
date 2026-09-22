@@ -238,13 +238,10 @@ class PcConversationBackend implements ConversationBackend {
   Future<void> stop(String conversationId) async {
     _checkReady();
     final uri = _uri('/api/mobile/v1/conversations/$conversationId/stop');
-    try {
-      await _http
-          .post(uri, headers: _headers)
-          .timeout(const Duration(seconds: 10));
-    } catch (_) {
-      // ignore stop errors
-    }
+    final response = await _http
+        .post(uri, headers: _headers)
+        .timeout(const Duration(seconds: 10));
+    _checkResponse(response);
   }
 
   ChatEvent? _parseSseEvent(

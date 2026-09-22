@@ -24,6 +24,7 @@ import 'chat_drawer.dart';
 import 'defaultspack_action_icon.dart';
 import 'chat_models.dart';
 import 'chat_store.dart';
+import 'tool_activity_archive.dart';
 import 'composer_bar.dart';
 import 'model_selection_screen.dart';
 import 'message_view.dart';
@@ -81,6 +82,7 @@ class _ChatScreenState extends State<ChatScreen>
   bool _pcUltraYoloMode = false;
   final Map<String, String> _assistantMessageByRunId = {};
   final Map<String, List<ChatEvent>> _activityByAssistantMessageId = {};
+  final _pcToolActivityArchive = ToolActivityArchive();
   Future<void> _activityPersistChain = Future<void>.value();
   MobileNotificationSettings _notificationSettings =
       MobileNotificationSettings.defaults;
@@ -355,7 +357,9 @@ class _ChatScreenState extends State<ChatScreen>
             deviceId: space.deviceId,
           ),
         );
-        final snapshot = await backend.getConversation(locator);
+        final snapshot = await _restorePcToolActivities(
+          await backend.getConversation(locator),
+        );
         if (!mounted) return;
         setState(() => _activePcSnapshot = snapshot);
         await _loadPcConversations();
@@ -388,7 +392,9 @@ class _ChatScreenState extends State<ChatScreen>
     }
     try {
       final locator = ConversationLocator.pc(id, deviceId: space.deviceId);
-      final snapshot = await backend.getConversation(locator);
+      final snapshot = await _restorePcToolActivities(
+        await backend.getConversation(locator),
+      );
       if (!mounted) return;
       setState(() => _activePcSnapshot = snapshot);
       _scrollToBottom(animate: false);
@@ -719,7 +725,10 @@ class _ChatScreenState extends State<ChatScreen>
         _scrollToBottom(animate: false);
       }
       try {
-        final refreshed = await backend.getConversation(locator);
+        await _activityPersistChain.catchError((Object _) {});
+        final refreshed = await _restorePcToolActivities(
+          await backend.getConversation(locator),
+        );
         if (mounted) setState(() => _activePcSnapshot = refreshed);
         await _loadPcConversations();
       } catch (_) {
@@ -1095,7 +1104,32 @@ class _ChatScreenState extends State<ChatScreen>
       _activityPersistChain = _activityPersistChain
           .catchError((Object _) {})
           .then((_) => widget.store.persist());
+    } else {
+      final snapshot = _activePcSnapshot;
+      if (snapshot == null) return;
+      _activityPersistChain = _activityPersistChain
+          .catchError((Object _) {})
+          .then(
+            (_) => _pcToolActivityArchive.save(
+              snapshot.locator,
+              snapshot.conversation.messages,
+            ),
+          );
     }
+  }
+
+  Future<ConversationSnapshot> _restorePcToolActivities(
+    ConversationSnapshot snapshot,
+  ) async {
+    try {
+      await _pcToolActivityArchive.restore(
+        snapshot.locator,
+        snapshot.conversation.messages,
+      );
+    } catch (_) {
+      // PC conversation content remains usable when the local archive is absent.
+    }
+    return snapshot;
   }
 
   void _removePendingPcPlaceholders() {
@@ -1121,17 +1155,18 @@ class _ChatScreenState extends State<ChatScreen>
       if (locator != null) {
         stopFuture = _router.backendFor(locator).stop(locator.conversationId);
       }
-      setState(() => _streaming = false);
     } else {
       final id = widget.store.active?.id;
       if (id != null) {
         stopFuture = _router.local.stop(id);
       }
-      setState(() => _streaming = false);
     }
     if (stopFuture != null) {
       unawaited(stopFuture.then((_) {
-        if (mounted) _markRunningTools('cancelled');
+        if (mounted) {
+          _markRunningTools('cancelled');
+          setState(() => _streaming = false);
+        }
       }).catchError((Object _) {
         if (mounted) {
           _markRunningTools(

@@ -30,6 +30,13 @@ String? safeToolActivityText(String? value, {int maxLength = 1600}) {
   );
   safe = safe.replaceAllMapped(
     RegExp(
+      r'''["'](api[_-]?key|authorization|password|secret|token)["']\s*:\s*(?:"[^"]*"|'[^']*'|[^\s,;}]+)''',
+      caseSensitive: false,
+    ),
+    (match) => '${match.group(1)}=[redacted]',
+  );
+  safe = safe.replaceAllMapped(
+    RegExp(
       r'\b(api[_-]?key|authorization|password|secret|token)\b\s*[:=]\s*[^\s,;]+',
       caseSensitive: false,
     ),

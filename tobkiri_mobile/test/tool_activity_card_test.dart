@@ -248,4 +248,15 @@ void main() {
     expect(safe, isNot(contains('command')));
     expect(safe, isNot(contains('api_key')));
   });
+
+  test('safe activity text redacts JSON-formatted credentials', () {
+    final safe = safeToolActivityText(
+      '{"token":"top-secret","api_key":"sk-secretvalue"}',
+    );
+
+    expect(safe, contains('token=[redacted]'));
+    expect(safe, contains('api_key=[redacted]'));
+    expect(safe, isNot(contains('top-secret')));
+    expect(safe, isNot(contains('sk-secretvalue')));
+  });
 }

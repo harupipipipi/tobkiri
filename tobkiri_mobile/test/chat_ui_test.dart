@@ -63,10 +63,12 @@ class _FakeActivityBackend extends LocalConversationBackend {
     required super.store,
     required super.configStore,
     this.toolCount = 1,
+    this.stopFails = false,
   }) : _store = store;
 
   final ChatStore _store;
   final int toolCount;
+  final bool stopFails;
   final started = Completer<void>();
   final releaseTool = Completer<void>();
   final releaseFinal = Completer<void>();
@@ -115,6 +117,15 @@ class _FakeActivityBackend extends LocalConversationBackend {
       message: '考えています',
       phase: 'thinking',
     );
+    yield ToolCallEvent(
+      locator: locator,
+      runId: runId,
+      toolId: 'tool-todo-0',
+      toolName: 'todo',
+      status: 'running',
+      arguments: const {'action': 'add'},
+      summary: 'Write UI activity test',
+    );
 
     await releaseTool.future.timeout(const Duration(seconds: 2));
     for (var index = 0; index < toolCount; index += 1) {
@@ -147,6 +158,11 @@ class _FakeActivityBackend extends LocalConversationBackend {
       error: false,
     );
     yield ChatRunCompleted(locator: locator, runId: runId);
+  }
+
+  @override
+  Future<void> stop(String conversationId) async {
+    if (stopFails) throw StateError('stop rejected');
   }
 }
 
@@ -427,6 +443,58 @@ void main() {
     backend.releaseFinal.complete();
     await tester.pumpAndSettle();
     expect(find.text('Write UI activity test 1'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a rejected stop keeps the stream active and reports failure',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    final store = ChatStore(storage: _FakeChatStorage());
+    final fakeStorage = _FakeSecureStorage();
+    final configStore = ApiConfigStore(storage: fakeStorage);
+    await configStore.saveApi(const ApiConfig(
+      baseUrl: 'http://127.0.0.1:8765/v1',
+      apiKey: 'sk-test',
+      model: 'gpt-test',
+    ));
+    final backend = _FakeActivityBackend(
+      store: store,
+      configStore: configStore,
+      stopFails: true,
+    );
+    await tester.pumpWidget(wrap(ChatScreen(
+      store: store,
+      configStore: configStore,
+      deviceStore: MobileDeviceStore(storage: fakeStorage),
+      localBackend: backend,
+    )));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '停止を試す');
+    await tester.tap(find.ancestor(
+      of: find.byIcon(Icons.arrow_upward_rounded),
+      matching: find.bySubtype<IconButton>(),
+    ));
+    await tester.runAsync(
+      () => backend.started.future.timeout(const Duration(seconds: 2)),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('タスク更新'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('タスク更新を停止'));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pump();
+
+    expect(find.text('失敗'), findsOneWidget);
+    expect(find.byIcon(Icons.stop_rounded), findsOneWidget);
+
+    backend.releaseTool.complete();
+    backend.releaseFinal.complete();
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 

@@ -138,6 +138,21 @@ void main() {
       expect(locator.deviceId, 'mobile-abc');
     });
 
+    test('stop propagates a rejected cancellation request', () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/mobile/v1/conversations/c1/stop');
+        return http.Response('cancellation unavailable', 503);
+      });
+      final backend = PcConversationBackend(
+        connection: _pc,
+        client: client,
+      );
+
+      await expectLater(backend.stop('c1'), throwsStateError);
+      backend.close();
+    });
+
     test('sendMessage streams SSE events', () async {
       final sseChunks = [
         'data: {"type":"delta","delta":"Hello","content":""}\n\n',
