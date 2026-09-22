@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import stat
+from types import SimpleNamespace
 
 import pytest
 
@@ -61,6 +62,46 @@ def test_source_manifest_write_is_lf_only_and_idempotent(
     assert first.endswith(b"\n")
     assert b"\r\n" not in first
     assert not (manifest.stat().st_mode & stat.S_IWUSR)
+
+
+@pytest.mark.parametrize("platform_name", ["posix", "nt"])
+def test_failed_manifest_replace_preserves_original_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform_name: str
+) -> None:
+    """A failed atomic replacement leaves the existing manifest sealed."""
+    manifest = tmp_path / generator_source_manifest.SOURCE_MANIFEST_FILENAME
+    manifest.write_bytes(b"original manifest\n")
+    manifest.chmod(0o444)
+    original_mode = stat.S_IMODE(manifest.stat().st_mode)
+    monkeypatch.setattr(
+        generator_source_manifest,
+        "build_source_manifest",
+        lambda _root: {"schema": "fixture", "roots": [], "files": []},
+    )
+
+    def reject_replace(source: Path, target: Path) -> None:
+        assert target == manifest
+        assert source.exists()
+        if platform_name == "posix":
+            assert stat.S_IMODE(target.stat().st_mode) == original_mode
+        raise PermissionError("replacement denied")
+
+    monkeypatch.setattr(
+        generator_source_manifest,
+        "os",
+        SimpleNamespace(
+            name=platform_name,
+            fsync=generator_source_manifest.os.fsync,
+            replace=reject_replace,
+        ),
+    )
+
+    with pytest.raises(PermissionError, match="replacement denied"):
+        generator_source_manifest.write_source_manifest(tmp_path)
+
+    assert manifest.read_bytes() == b"original manifest\n"
+    assert stat.S_IMODE(manifest.stat().st_mode) == original_mode
+    assert list(tmp_path.iterdir()) == [manifest]
 
 
 def _provenance_bytes(manifest_digest: str, fields: list[tuple[str, object]]) -> bytes:
