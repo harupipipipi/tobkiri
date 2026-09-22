@@ -8,6 +8,8 @@ import http.client
 import json
 import os
 from pathlib import Path
+import stat
+from types import SimpleNamespace
 from urllib.parse import quote
 
 import pytest
@@ -20,6 +22,7 @@ from core_runtime.host_contract import (
     host_contract_value,
     validate_host_contract,
 )
+from core_runtime import host_contract as host_contract_module
 from core_runtime.pack_api_server import PackAPIServer
 from core_runtime.panel_auth import (
     get_panel_auth_manager,
@@ -186,6 +189,46 @@ def _write_private_contract(path: Path, payload: dict[str, object]) -> None:
 
     path.write_text(json.dumps(payload), encoding="utf-8")
     path.chmod(0o600)
+
+
+def test_windows_host_contract_metadata_uses_link_evidence_not_posix_mode_bits() -> None:
+    """Synthetic Windows mode bits must not disable every desktop bootstrap."""
+
+    directory = SimpleNamespace(
+        st_mode=stat.S_IFDIR | 0o777,
+        st_file_attributes=0,
+        st_nlink=1,
+    )
+    regular_file = SimpleNamespace(
+        st_mode=stat.S_IFREG | 0o666,
+        st_file_attributes=0,
+        st_nlink=1,
+    )
+
+    assert host_contract_module._host_contract_metadata_is_private(
+        directory,
+        expect_directory=True,
+        platform="nt",
+    )
+    assert host_contract_module._host_contract_metadata_is_private(
+        regular_file,
+        expect_directory=False,
+        platform="nt",
+    )
+
+    regular_file.st_file_attributes = 0x00000400
+    assert not host_contract_module._host_contract_metadata_is_private(
+        regular_file,
+        expect_directory=False,
+        platform="nt",
+    )
+    regular_file.st_file_attributes = 0
+    regular_file.st_nlink = 2
+    assert not host_contract_module._host_contract_metadata_is_private(
+        regular_file,
+        expect_directory=False,
+        platform="nt",
+    )
 
 
 def _health_challenge(port: int, challenge: str) -> dict[str, object]:

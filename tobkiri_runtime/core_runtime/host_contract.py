@@ -146,13 +146,19 @@ def _load_contract_file(
         if path.absolute() != expected.absolute() or path.is_symlink():
             return None
         root_metadata = user_data_root.stat()
-        if not stat.S_ISDIR(root_metadata.st_mode) or root_metadata.st_mode & 0o077:
+        if not _host_contract_metadata_is_private(
+            root_metadata,
+            expect_directory=True,
+        ):
             return None
         metadata = path.stat()
-        if not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o077:
+        if not _host_contract_metadata_is_private(
+            metadata,
+            expect_directory=False,
+        ):
             return None
         getuid = getattr(os, "geteuid", None)
-        if callable(getuid) and (
+        if os.name != "nt" and callable(getuid) and (
             root_metadata.st_uid != getuid() or metadata.st_uid != getuid()
         ):
             return None
@@ -166,6 +172,40 @@ def _load_contract_file(
         )
     except HostContractError:
         return None
+
+
+def _host_contract_metadata_is_private(
+    metadata: os.stat_result,
+    *,
+    expect_directory: bool,
+    platform: str | None = None,
+) -> bool:
+    """Validate portable type/link evidence before reading a Host contract.
+
+    POSIX permission bits are meaningful only on POSIX.  CPython reports
+    synthetic ``0777``/``0666`` modes for ordinary Windows directories and
+    files, so applying the POSIX group/other mask there rejects every valid
+    Launcher contract.  Windows privacy is established by the Launcher's
+    protected owner/System DACL; this reader independently rejects reparse
+    points and multiply linked files before consuming the fixed path.
+    """
+
+    if expect_directory:
+        if not stat.S_ISDIR(metadata.st_mode):
+            return False
+    elif not stat.S_ISREG(metadata.st_mode):
+        return False
+
+    current_platform = os.name if platform is None else platform
+    if current_platform == "nt":
+        attributes = int(getattr(metadata, "st_file_attributes", 0))
+        reparse_point = int(
+            getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x00000400)
+        )
+        if attributes & reparse_point:
+            return False
+        return expect_directory or int(getattr(metadata, "st_nlink", 1)) == 1
+    return metadata.st_mode & 0o077 == 0
 
 
 def validate_host_contract(
