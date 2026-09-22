@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "aa658c27dcf18622de6c5c8a7a59a3a4c60a724b237207aeb504f1e3938c79ac",
+    "digest": "bc987c9fc082df9aa2648d336c71af41e26ccacbfb43933f20d2d17fc8a35ec9",
     "entries": [
       {
         "path": "index.html",
@@ -215,8 +215,8 @@
       },
       {
         "path": "src/ambient/ambientApprovalBoundary.test.ts",
-        "size": 25141,
-        "sha256": "c2cecc49a63d11077b9896de915cbe424852d762b71f7a71669fb39f4583d679"
+        "size": 25145,
+        "sha256": "ddbacd6fe1aa6ca3d0a390c1ad2f64665421997395e1ea4f706060f3c8c5c92a"
       },
       {
         "path": "src/ambient/ambientConversationCompletion.ts",
