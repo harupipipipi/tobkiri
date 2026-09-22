@@ -6,6 +6,7 @@ import copy
 from typing import Any, Mapping
 
 from tobkiri_protocol.ids import validate_canonical_id
+from tobkiri_protocol.profile_scope import normalize_requested_scope_template
 from tobkiri_protocol.validation import validate_document
 
 from .profile_catalog_v4 import (
@@ -88,10 +89,14 @@ def build_profile_composition(
     ] + [copy.deepcopy(row) for row in source["packs"] if row["role"] == "application"]
     # Retain only requests whose caller and provider remain in the new closure.
     # Required dependencies are derived from signed manifests, not client input.
-    closure = {source["base"]["pack_id"], source["shell"]["pack_id"]}
-    pending = [row["pack_id"] for row in successor["packs"]] + list(closure)
+    closure: set[str] = set()
+    pending = [row["pack_id"] for row in successor["packs"]] + [
+        source["base"]["pack_id"], source["shell"]["pack_id"]
+    ]
     while pending:
         pack_id = pending.pop()
+        if pack_id in closure:
+            continue
         manifest = catalog.packs.get(pack_id)
         if manifest is None:
             raise ValueError("Profile Pack dependency is unavailable")
@@ -99,8 +104,6 @@ def build_profile_composition(
             if dependency not in closure:
                 pending.append(dependency)
         closure.add(pack_id)
-        # Mark dependencies before another branch can enqueue the same cycle.
-        closure.update(manifest["requirements"]["pack_dependencies"])
     functions = {
         function["id"]
         for pack_id in closure
@@ -116,9 +119,30 @@ def build_profile_composition(
         catalog, {**catalog.profiles, profile_id: successor}
     )
     additions = tuple(sorted(set(pack_ids) - set(previous)))
-    successor["requested_edges"].extend(
-        runtime.dynamic_profile_edges(updated_catalog, profile_id, additions)
-    )
+    for requested in runtime.dynamic_profile_edges(updated_catalog, profile_id, additions):
+        edge = dict(requested)
+        if source["profile_api_version"] == "io.tobkiri.profile.v5":
+            contracts = [
+                contract
+                for pack_id in closure
+                for contract in catalog.packs[pack_id]["contracts"]
+                if contract["contract_id"] == edge["contract_id"]
+                and edge["operation_id"] in contract["operations"]
+                and any(
+                    function["id"] == edge["target_provider_id"]
+                    and function["contract_revision_digest"] == contract["revision_digest"]
+                    for function in catalog.packs[pack_id]["functions"]
+                )
+            ]
+            if len(contracts) != 1:
+                raise ValueError("Profile Pack operation binding is ambiguous")
+            edge["requested_scope_template"] = normalize_requested_scope_template(
+                edge["requested_scope_template"],
+                contract_id=edge["contract_id"],
+                operation_id=edge["operation_id"],
+                semantics_digest=contracts[0]["revision_digest"],
+            )
+        successor["requested_edges"].append(edge)
     successor.update({
         "state": "needs_resolution",
         "catalog_revision": None,
