@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -14,6 +16,18 @@ from .validation import validate_document
 
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _BUNDLE_SCHEMA = "io.tobkiri.defaultspack-bundle-lock.v1"
+_MAX_CACHED_DOCUMENT_BYTES = 64 * 1024
+
+
+@lru_cache(maxsize=512)
+def _validated_document(raw: bytes, kind: str) -> dict[str, Any]:
+    """Memoize only pure validation of bounded, exact serialized documents.
+
+    Paths, bundle membership, digests, and authority are checked by callers
+    on every load. The cache owns its result; callers must copy it before use.
+    """
+
+    return validate_document(raw, kind)
 
 
 class DefaultProfileV4Error(RuntimeError):
@@ -106,7 +120,11 @@ class BundledCatalog:
                     f"({actual_digest} != {expected_digest})"
                 )
             try:
-                document = validate_document(raw, kind)
+                document = (
+                    copy.deepcopy(_validated_document(raw, kind))
+                    if len(raw) <= _MAX_CACHED_DOCUMENT_BYTES
+                    else validate_document(raw, kind)
+                )
             except SchemaValidationError as exc:
                 raise BundleIntegrityError(f"invalid {kind} document {relative}: {exc}") from exc
             if kind in {"base", "shell"}:

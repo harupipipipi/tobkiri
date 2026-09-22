@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "2d96c178ac9ca1cf488fbc4e773f5b702194ae70a0ad2b0445c99222e684dc72",
+    "digest": "f17e6e438509c93650e5f29e368ae7ca77589944a6d0ab0f75f8f8653d841024",
     "entries": [
       {
         "path": "index.html",
@@ -450,8 +450,8 @@
       },
       {
         "path": "src/components/TobkiriLoadingScreen.test.tsx",
-        "size": 4703,
-        "sha256": "4c6efde70cf6b104e62f35b48710f04ef9c81e3d5934dadff3d3f79a1491a24f"
+        "size": 4769,
+        "sha256": "43f8a19efc7359c6f68ca0426f51f660c6655b0972d89ab6b60e187963cdf8d0"
       },
       {
         "path": "src/components/TobkiriLoadingScreen.tsx",
