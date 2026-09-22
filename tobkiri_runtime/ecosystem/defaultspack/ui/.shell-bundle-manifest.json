@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "17bb84766ff7f41d40b766c679a0a316013ace6d5f9a3f67fafdc6a7e501c4ed",
+    "digest": "314f1daa3ad375ae0fc4d50fda2bfdf433a3c2ad18fc246fec95a268af64fa27",
     "entries": [
       {
         "path": "index.html",
@@ -380,13 +380,13 @@
       },
       {
         "path": "src/components/HistoryBoard.test.ts",
-        "size": 14905,
-        "sha256": "e84652f758da5a37eb7e3a6253ad4edfac23429184bfe74acb6bcb4dff674eaa"
+        "size": 15452,
+        "sha256": "bd314034edb9d57d8cdd7f0df1cc6fa7e316912e6f0a10f47ee15b1cb3fcffa0"
       },
       {
         "path": "src/components/HistoryBoard.tsx",
-        "size": 106974,
-        "sha256": "121a9a24224a7a1d03c46f1b74d304577b018216fc3763c7e9d58fc2da1d1061"
+        "size": 107255,
+        "sha256": "1debe29f457d63184dfae24b5ce085b5667e69582d947d096adb1b083612c430"
       },
       {
         "path": "src/components/MobilePairingApproval.tsx",
@@ -1861,7 +1861,7 @@
     ]
   },
   "bundle": {
-    "digest": "e7ad74edf605d240d56f195de3d7880be151eebb670d337cdac8ced69e295521",
+    "digest": "6d77b78c75d4af7cbd149b80c44ccd08051f76be4630f9d188eb24cd112edccb",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1875,8 +1875,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2218830,
-        "sha256": "fba884c857d920f61276c8a5841481c57ce13ec5e1ddd73c528f93db3783eed0"
+        "size": 2218876,
+        "sha256": "21515e86be031c4ab999fbbeb931da88a5024fd69d85172ab3a079262337036c"
       },
       {
         "path": "shell-rolldown-runtime.js",
