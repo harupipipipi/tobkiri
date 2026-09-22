@@ -733,6 +733,8 @@ def test_resume_deadline_bounds_claim_store_contention() -> None:
                 presentation_owner_session_id="presenter-session",
                 broker=fixture.broker,
                 dispatch_grace_seconds=0.01,
+                wall_clock=lambda: 100.0,
+                monotonic_clock=lambda: 10.0,
             )
         elapsed = time.monotonic() - started
         assert store_entered.is_set()
@@ -775,6 +777,8 @@ def test_owner_resume_deadline_bounds_real_authority_store_guard(
                 presentation_owner_session_id="presenter-session",
                 broker=fixture.broker,
                 dispatch_grace_seconds=0.01,
+                wall_clock=lambda: 100.0,
+                monotonic_clock=lambda: 10.0,
             )
         assert time.monotonic() - started < 0.15
 
@@ -929,6 +933,8 @@ def test_foreign_or_replayed_resume_cannot_settle_an_owned_live_dispatch() -> No
             presentation_owner_session_id="presenter-session",
             broker=fixture.broker,
             dispatch_grace_seconds=0.05,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: 10.0,
         )
         assert first.state is PendingEffectState.DISPATCHED
         assert provider_entered.is_set()
