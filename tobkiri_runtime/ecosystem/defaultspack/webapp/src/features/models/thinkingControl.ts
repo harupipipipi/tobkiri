@@ -30,6 +30,16 @@ export function thinkingControlCandidates(profile?: ModelProfile | null): string
   return (contract.input_schema.values ?? []).map(String).filter(Boolean);
 }
 
+export function profileThinkingControlDefault(
+  profile?: ModelProfile | null,
+): string | null {
+  if (thinkingControlForProfile(profile).source !== "profile") return null;
+  const value = profile?.default_thinking_level;
+  if (value === null || value === undefined) return null;
+  const raw = String(value).trim();
+  return raw && thinkingControlInputError(profile, raw) === null ? raw : null;
+}
+
 export function thinkingControlInputError(
   profile: ModelProfile | null | undefined,
   value: string,

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import type { ModelProfile } from "../../lib/api";
 import {
   normalizeThinkingControlInput,
+  profileThinkingControlDefault,
   thinkingControlCandidates,
   thinkingControlInputError,
   thinkingControlMode,
@@ -50,6 +51,11 @@ describe("profile-driven thinking control", () => {
     assert.equal(normalizeThinkingControlInput(numericProfile, "1.5k"), 1_500);
     assert.equal(thinkingControlInputError(numericProfile, "32.5k"), "Maximum: 32000");
     assert.match(thinkingControlInputError(numericProfile, "high") ?? "", /optional k/);
+    assert.equal(profileThinkingControlDefault(numericProfile), null);
+    assert.equal(profileThinkingControlDefault({
+      ...numericProfile,
+      default_thinking_level: 1_500,
+    }), "1500");
   });
 
   it("sources enum candidates only from the selected profile", () => {

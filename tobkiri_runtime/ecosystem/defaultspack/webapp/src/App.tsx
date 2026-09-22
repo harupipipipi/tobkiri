@@ -70,6 +70,7 @@ import {
 } from "./features/models";
 import {
   normalizeThinkingControlInput,
+  profileThinkingControlDefault,
   thinkingControlCandidates,
   thinkingControlForProfile,
   thinkingControlInputError,
@@ -2889,15 +2890,26 @@ export function ChatApp() {
   const favoriteProfiles = favoriteModelProfiles(settingsValues.models?.favorite_profiles, selectableModelProfiles, preferredModel);
   const thinkingLevels = (settingsValues.models?.thinking_level_by_profile ?? {}) as Record<string, unknown>;
   const thinkingControls = (settingsValues.models?.thinking_control_by_profile ?? {}) as Record<string, unknown>;
-  const activeThinkingControl = thinkingControls[profileKey(activeProfile, preferredModel)];
+  const activeProfileKey = profileKey(activeProfile, preferredModel);
+  const activeThinkingControl = thinkingControls[activeProfileKey];
+  const activeThinkingValue = typeof activeThinkingControl === "object" && activeThinkingControl !== null
+    ? (activeThinkingControl as Record<string, unknown>).raw
+    : thinkingLevels[activeProfileKey];
+  const profileDrivenThinking = thinkingControlForProfile(activeProfile).source === "profile";
+  const validActiveThinkingValue = activeThinkingValue === null || activeThinkingValue === undefined
+    ? null
+    : thinkingControlInputError(activeProfile, String(activeThinkingValue)) === null
+      ? activeThinkingValue
+      : null;
+  const profileDefaultThinkingValue = profileThinkingControlDefault(activeProfile);
   const selectedThinkingLevel = String(
-    (typeof activeThinkingControl === "object" && activeThinkingControl !== null
-      ? (activeThinkingControl as Record<string, unknown>).raw
-      : undefined)
-    ?? thinkingLevels[profileKey(activeProfile, preferredModel)]
-    ?? settingsValues.models?.thinking_level
-    ?? activeProfile?.default_thinking_level
-    ?? "medium",
+    validActiveThinkingValue
+    ?? (profileDrivenThinking
+      ? profileDefaultThinkingValue
+      : settingsValues.models?.thinking_level
+        ?? activeProfile?.default_thinking_level
+        ?? "medium")
+    ?? "",
   );
   const deepthinkEnabled = parseCommandBoolean(settingsValues.models?.deepthink_enabled, false);
   const commandStateRevisionsRef = useRef<Record<string, number>>({});
@@ -4801,7 +4813,7 @@ export function ChatApp() {
 
   const handleThinkingLevelChange = (level: string | null) => {
     const key = profileKey(activeProfile, preferredModel);
-    const raw = level ?? "medium";
+    const raw = level ?? (profileDrivenThinking ? "" : "medium");
     const validationError = thinkingControlInputError(activeProfile, raw);
     if (validationError) {
       setError(validationError);
@@ -7055,7 +7067,9 @@ export function ChatApp() {
       favoriteProfiles={favoriteProfiles}
       modelProfiles={selectableModelProfiles}
       modelSelectorSchema={modelSelectorSchema}
-      thinkingLevel={profileSupportsThinking(activeProfile) ? selectedThinkingLevel : null}
+      thinkingLevel={profileSupportsThinking(activeProfile) && selectedThinkingLevel
+        ? selectedThinkingLevel
+        : null}
       contextUsage={contextUsage}
       inlineExtensions={composerExtensions}
       belowExtensions={[]}

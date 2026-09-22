@@ -1556,7 +1556,7 @@ export type ModelProfile = {
   supports_fast?: boolean;
   thinking_levels?: string[];
   thinking_control?: ThinkingControlContract;
-  default_thinking_level?: string | null;
+  default_thinking_level?: string | number | null;
   speed_tier?: string;
   quality_tier?: string;
   knowledge_level?: number;

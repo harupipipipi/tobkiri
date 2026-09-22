@@ -166,6 +166,26 @@ def test_service_revalidates_client_stored_normalized_value(
     assert effective["control"]["normalized"] == 1_500
 
 
+def test_profile_without_a_valid_default_omits_thinking_parameters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = ModelRuntimeSettingsService(tmp_path)
+    profile = {
+        "profile_id": "example/numeric",
+        "qualified_model_id": "example/numeric",
+        "provider_id": "example",
+        "model_id": "numeric",
+        "supports_thinking": False,
+        "thinking_control": NUMERIC_CONTRACT,
+    }
+    monkeypatch.setattr(service, "_list_profile_catalog", lambda **_kwargs: [profile])
+
+    assert service.get_effective_thinking_level("example/numeric")["level"] is None
+    assert service.apply_thinking_control(
+        "example/numeric", {"temperature": 0.2, "thinking_level": None}
+    ) == {"temperature": 0.2}
+
+
 def test_legacy_profiles_remain_enum_compatible(tmp_path: Path) -> None:
     service = ModelRuntimeSettingsService(tmp_path)
 

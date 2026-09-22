@@ -364,6 +364,15 @@ class ModelRuntimeSettingsService:
                 level = by_profile.get(profile_id)
                 if self._normalize_level(level) == level:
                     return {"level": level, "scope": "profile", "profile_id": profile_id}
+            profile_default = self._profile_thinking_default(profile_id)
+            if profile_default is not None:
+                return {
+                    "level": profile_default,
+                    "scope": "profile",
+                    "profile_id": profile_id,
+                }
+            if self.get_thinking_control(profile_id).get("source") == "profile":
+                return {"level": None, "scope": "profile", "profile_id": profile_id}
         return {"level": self._normalize_level(settings.get("thinking_level")), "scope": "global"}
 
     def get_thinking_control(self, profile_id: str | None = None) -> dict[str, Any]:
@@ -407,6 +416,9 @@ class ModelRuntimeSettingsService:
         if raw_value in VALID_THINKING_LEVELS and not has_stored_control:
             return result
         contract = self.get_thinking_control(profile_id)
+        if contract.get("source") == "profile" and not raw_value:
+            result.pop("thinking_level", None)
+            return result
         if contract.get("source") != "profile" or "thinking_level" not in result:
             return result
         serialized = self.serialize_thinking_control(
@@ -991,6 +1003,23 @@ class ModelRuntimeSettingsService:
             if requested in identifiers:
                 return profile
         return None
+
+    def _profile_thinking_default(self, profile_id: str) -> Any | None:
+        """Return a valid profile-owned default without falling back to legacy state."""
+        profile = self._thinking_profile(profile_id)
+        if not isinstance(profile, dict):
+            return None
+        contract = normalize_thinking_control(profile)
+        if contract.get("source") != "profile":
+            return None
+        candidate = profile.get("default_thinking_level")
+        if candidate is None:
+            thinking = profile.get("thinking")
+            candidate = thinking.get("default_level") if isinstance(thinking, dict) else None
+        if candidate is None:
+            return None
+        validation = validate_thinking_control(contract, candidate)
+        return validation["normalized"] if validation.get("valid") else None
 
     @staticmethod
     def _control_from_map(value: Any, key: str) -> dict[str, Any] | None:
