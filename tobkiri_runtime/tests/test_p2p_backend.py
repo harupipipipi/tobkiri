@@ -172,6 +172,22 @@ def test_pairing_start_still_available_for_mobile_pairing_when_disabled(monkeypa
     assert result["data"]["pairing"]["status"] == "pending"
 
 
+def test_identity_routes_cannot_create_or_rotate_state_when_p2p_is_disabled(monkeypatch, tmp_path):
+    monkeypatch.delenv("RUMI_DEFAULTSPACK_P2P_ENABLED", raising=False)
+
+    from blocks.p2p.identity import run as identity_run  # noqa: E402
+
+    for payload in (
+        {"store_path": str(tmp_path)},
+        {"store_path": str(tmp_path), "rotate": True},
+    ):
+        result = identity_run(payload, {})
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "P2P_DISABLED"
+
+    assert not (tmp_path / "identity.json").exists()
+
+
 def test_identity_persists_with_store_path_override(monkeypatch, tmp_path):
     monkeypatch.setenv("RUMI_DEFAULTSPACK_P2P_STORE_PATH", str(tmp_path))
 
@@ -187,11 +203,12 @@ def test_identity_persists_with_store_path_override(monkeypatch, tmp_path):
 def test_identity_rotate_changes_node_id_and_fingerprint_and_persists(tmp_path):
     from blocks.p2p.identity import run as identity_run  # noqa: E402
 
-    first = identity_run({"store_path": str(tmp_path), "label": "local"}, {})["data"]["identity"]
-    before_rotate = identity_run({"store_path": str(tmp_path)}, {})["data"]["identity"]
+    enabled_context = {"p2p": {"enabled": True}}
+    first = identity_run({"store_path": str(tmp_path), "label": "local"}, enabled_context)["data"]["identity"]
+    before_rotate = identity_run({"store_path": str(tmp_path)}, enabled_context)["data"]["identity"]
 
-    rotated = identity_run({"store_path": str(tmp_path), "rotate": True}, {})["data"]["identity"]
-    after_rotate = identity_run({"store_path": str(tmp_path)}, {})["data"]["identity"]
+    rotated = identity_run({"store_path": str(tmp_path), "rotate": True}, enabled_context)["data"]["identity"]
+    after_rotate = identity_run({"store_path": str(tmp_path)}, enabled_context)["data"]["identity"]
     persisted = load_or_create_identity(store_path=tmp_path)
 
     assert before_rotate["node_id"] == first["node_id"]
