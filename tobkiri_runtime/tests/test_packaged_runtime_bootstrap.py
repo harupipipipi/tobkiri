@@ -177,6 +177,14 @@ def test_kernel_bootstrap_publishes_and_reuses_desktop_api_token(
 
     user_data = tmp_path / "user_data"
     token_cache = tmp_path / ".desktop_api_token"
+    real_mkstemp = runtime_bootstrap.tempfile.mkstemp
+
+    def tracked_mkstemp(*args, **kwargs):
+        if kwargs.get("prefix") == ".desktop_api_token.":
+            assert Path(kwargs["dir"]) == user_data
+        return real_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_bootstrap.tempfile, "mkstemp", tracked_mkstemp)
     monkeypatch.setenv("RUMI_USER_DATA", str(user_data))
     monkeypatch.setattr(runtime_bootstrap, "active_profile_exists", lambda: False)
     monkeypatch.setattr(runtime_bootstrap, "resolve_runtime_port", lambda: 8765)
@@ -210,6 +218,7 @@ def test_kernel_bootstrap_publishes_and_reuses_desktop_api_token(
         assert restarted_token == first_token
         assert token_cache.read_text(encoding="utf-8") == restarted_token
         assert not tuple(tmp_path.glob(".desktop_api_token.*.tmp"))
+        assert not tuple(user_data.glob(".desktop_api_token.*.tmp"))
     finally:
         second_kernel.shutdown()
 

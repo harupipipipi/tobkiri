@@ -55,8 +55,13 @@ def _persist_desktop_api_token_cache(user_data: Path, api_token: str) -> Path:
 
     destination = user_data.parent / ".desktop_api_token"
     destination.parent.mkdir(parents=True, exist_ok=True)
+    user_data.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
-        dir=str(destination.parent),
+        # The Launcher protects user_data before starting the Kernel.  Stage
+        # here so Windows grants the creating user enough authority to replace
+        # the inherited DACL, then preserve that DACL while atomically moving
+        # the file to its canonical sibling path on the same volume.
+        dir=str(user_data),
         prefix=f"{destination.name}.",
         suffix=".tmp",
     )
