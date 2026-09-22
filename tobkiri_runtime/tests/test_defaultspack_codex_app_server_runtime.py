@@ -85,6 +85,7 @@ def _runtime(tmp_path: Path, *, trusted: bool = True, enabled: bool = True):
         },
         workspace_resolver=WorkspaceResolver(store),
         state_path=tmp_path / "sessions.json",
+        background_polling=False,
     )
     return runtime, client, calls, root
 

@@ -50,6 +50,9 @@ class _RuntimeBinding:
     models: list[dict[str, Any]] = field(default_factory=list)
     active_turn_id: str = ""
     lock: threading.RLock = field(default_factory=threading.RLock)
+    stop_event: threading.Event = field(default_factory=threading.Event)
+    poll_thread: threading.Thread | None = None
+    runtime_error: str = ""
 
 
 def _state_path() -> Path:
@@ -91,11 +94,13 @@ class CodexAppServerRuntime:
         config_loader: Callable[[], dict[str, Any]] = load_codex_app_server_config,
         workspace_resolver: WorkspaceResolver | None = None,
         state_path: Path | None = None,
+        background_polling: bool = True,
     ) -> None:
         self._backend_factory = backend_factory
         self._config_loader = config_loader
         self._workspace_resolver = workspace_resolver or WorkspaceResolver()
         self._state_path = state_path or _state_path()
+        self._background_polling = bool(background_polling)
         self._bindings: dict[str, _RuntimeBinding] = {}
         self._lock = threading.RLock()
 
@@ -221,9 +226,11 @@ class CodexAppServerRuntime:
                 existing
                 and existing.workspace_root == resolution.root_path
                 and existing.config_digest == digest
+                and not existing.stop_event.is_set()
             ):
                 return existing
             if existing:
+                existing.stop_event.set()
                 existing.client.close()
                 self._bindings.pop(workspace_id, None)
 
@@ -259,21 +266,44 @@ class CodexAppServerRuntime:
         with self._lock:
             self._bindings[workspace_id] = binding
         self._save_binding(binding)
+        if self._background_polling:
+            binding.poll_thread = threading.Thread(
+                target=self._poll_events,
+                args=(binding,),
+                name=f"codex-app-server-{workspace_id}",
+                daemon=True,
+            )
+            binding.poll_thread.start()
         return binding
+
+    @staticmethod
+    def _poll_events(binding: _RuntimeBinding) -> None:
+        """Continuously dispatch events and Authority requests off the HTTP thread."""
+
+        while not binding.stop_event.is_set():
+            try:
+                with binding.lock:
+                    binding.client.poll(0.25)
+            except RequestTimeout:
+                continue
+            except Exception as exc:
+                binding.runtime_error = str(exc)
+                binding.stop_event.set()
+                return
 
     def status(self, workspace_id: str, *, drain_events: bool = True) -> dict[str, Any]:
         binding = self._connect(workspace_id)
-        with binding.lock:
-            if drain_events:
+        if drain_events and not self._background_polling:
+            with binding.lock:
                 for _ in range(100):
                     try:
                         binding.client.poll(0.001)
                     except RequestTimeout:
                         break
-            turn = binding.client.turn_status.get(binding.active_turn_id, {})
-            if str(turn.get("status") or "") in _TERMINAL_TURN_STATES:
-                binding.active_turn_id = ""
-            return self._snapshot(binding)
+        turn = binding.client.turn_status.get(binding.active_turn_id, {})
+        if str(turn.get("status") or "") in _TERMINAL_TURN_STATES:
+            binding.active_turn_id = ""
+        return self._snapshot(binding)
 
     def start_turn(
         self, workspace_id: str, text: str, *, model: str = "", effort: str = ""
@@ -316,7 +346,8 @@ class CodexAppServerRuntime:
         turn = binding.client.turn_status.get(binding.active_turn_id, {})
         return {
             "configured": True,
-            "connected": True,
+            "connected": not binding.stop_event.is_set(),
+            "error": binding.runtime_error,
             "workspace_id": binding.workspace_id,
             "thread_id": binding.session.thread_id,
             "session_id": binding.session.session_id,
