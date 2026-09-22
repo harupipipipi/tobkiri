@@ -236,9 +236,14 @@ class PanelAuthManager:
                 return None
             if code_info.get("binding") != binding:
                 return None
-            presenter_mark = code_info.get("presenter_request_id")
+            raw_presenter_mark = code_info.get("presenter_request_id")
+            presenter_mark = (
+                raw_presenter_mark
+                if isinstance(raw_presenter_mark, str)
+                else ""
+            )
             presenter_grant = None
-            if isinstance(presenter_mark, str) and presenter_mark:
+            if presenter_mark:
                 # A code dedicated to one presenter grant fails closed: the
                 # exchange must name that exact request, the grant must still
                 # be live, bound to this code, and issued under the current

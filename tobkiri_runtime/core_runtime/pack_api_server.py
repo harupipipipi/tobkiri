@@ -2460,15 +2460,27 @@ location.replace({target_literal})}})
             return
         mount = self._match_web_mount(path)
         if mount is not None:
+            bootstrap_target = self._mount_bootstrap_target(path, mount)
+            kept_query = (
+                self._bootstrap_query_without_code()
+                if mount.get("auth_bootstrap", False)
+                else None
+            )
+            # A code-bearing navigation is an authentication transition even
+            # when this reused webview still carries a valid cookie.  Exchange
+            # the new code before static admission so an approval window can
+            # move from request A's confined session to request B's confined
+            # session.  Only exact bootstrap targets reach the exchange page.
+            if bootstrap_target is not None and kept_query is not None:
+                self._serve_mount_bootstrap_page(bootstrap_target, mount)
+                return
             if mount["auth_required"] and not self._check_auth("GET", path):
-                bootstrap_target = self._mount_bootstrap_target(path, mount)
                 if mount.get("auth_bootstrap", False) and bootstrap_target is not None:
                     self._serve_mount_bootstrap_page(bootstrap_target, mount)
                 else:
                     self._send_response(APIResponse(False, error="Unauthorized"), 401)
                 return
             if mount.get("auth_bootstrap", False):
-                kept_query = self._bootstrap_query_without_code()
                 if kept_query is not None:
                     cleaned = f"{path}?{kept_query}" if kept_query else path
                     self.send_response(302)
