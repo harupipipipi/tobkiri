@@ -7,6 +7,7 @@ import 'chat_models.dart';
 
 const _kConversationsKey = 'rumi_chat.conversations.v1';
 const _kActiveConversationKey = 'rumi_chat.active_id.v1';
+const _kConversationMutationKey = 'rumi_chat.conversation_mutation.v1';
 
 abstract class ChatKeyValueStorage {
   Future<String?> read(String key);
@@ -43,6 +44,35 @@ class ConversationDeletionResult {
   final String? nextActiveId;
 }
 
+class _ConversationStorageSnapshot {
+  const _ConversationStorageSnapshot({
+    required this.conversations,
+    required this.activeId,
+  });
+
+  final String? conversations;
+  final String? activeId;
+
+  Map<String, dynamic> toJson({required String state}) => {
+    'version': 1,
+    'state': state,
+    'conversations': conversations,
+    'activeId': activeId,
+  };
+
+  static _ConversationStorageSnapshot? fromJson(Object? value) {
+    if (value is! Map<String, dynamic> || value['version'] != 1) return null;
+    final conversations = value['conversations'];
+    final activeId = value['activeId'];
+    if (conversations != null && conversations is! String) return null;
+    if (activeId != null && activeId is! String) return null;
+    return _ConversationStorageSnapshot(
+      conversations: conversations as String?,
+      activeId: activeId as String?,
+    );
+  }
+}
+
 class ChatStore {
   ChatStore({ChatKeyValueStorage? storage})
       : _storage = storage ?? PlatformChatStorage();
@@ -69,6 +99,7 @@ class ChatStore {
       : _firstWhere(conversations, (c) => c.id == _activeId);
 
   Future<void> load() async {
+    await _recoverConversationMutation();
     String? raw;
     try {
       raw = await _storage.read(_kConversationsKey);
@@ -113,6 +144,74 @@ class ChatStore {
       await _persistChecked();
     } catch (_) {
       // Keep the in-memory conversation usable even if platform storage fails.
+    }
+  }
+
+  Future<_ConversationStorageSnapshot> _storageSnapshot() async {
+    return _ConversationStorageSnapshot(
+      conversations: await _storage.read(_kConversationsKey),
+      activeId: await _storage.read(_kActiveConversationKey),
+    );
+  }
+
+  Future<void> _restoreStorageSnapshot(
+    _ConversationStorageSnapshot snapshot,
+  ) async {
+    if (snapshot.conversations == null) {
+      await _storage.delete(_kConversationsKey);
+    } else {
+      await _storage.write(_kConversationsKey, snapshot.conversations!);
+    }
+    if (snapshot.activeId == null) {
+      await _storage.delete(_kActiveConversationKey);
+    } else {
+      await _storage.write(_kActiveConversationKey, snapshot.activeId!);
+    }
+  }
+
+  Future<void> _recoverConversationMutation() async {
+    try {
+      final raw = await _storage.read(_kConversationMutationKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final snapshot = _ConversationStorageSnapshot.fromJson(
+        Map<String, dynamic>.from(decoded),
+      );
+      if (snapshot == null) return;
+      if (decoded['state'] != 'committed') {
+        await _restoreStorageSnapshot(snapshot);
+      }
+      await _storage.delete(_kConversationMutationKey);
+    } catch (_) {
+      // Preserve the journal for a later recovery attempt.
+    }
+  }
+
+  Future<void> _persistConversationMutation() async {
+    final snapshot = await _storageSnapshot();
+    await _storage.write(
+      _kConversationMutationKey,
+      jsonEncode(snapshot.toJson(state: 'preparing')),
+    );
+    try {
+      await _persistChecked();
+      await _storage.write(
+        _kConversationMutationKey,
+        jsonEncode(snapshot.toJson(state: 'committed')),
+      );
+    } catch (_) {
+      try {
+        await _restoreStorageSnapshot(snapshot);
+      } catch (_) {
+        // The preparing journal restores the pre-mutation state on next load.
+      }
+      rethrow;
+    }
+    try {
+      await _storage.delete(_kConversationMutationKey);
+    } catch (_) {
+      // A committed journal is harmless and will be cleaned up on the next load.
     }
   }
 
@@ -175,7 +274,7 @@ class ChatStore {
     }
 
     try {
-      await _persistChecked();
+      await _persistConversationMutation();
     } catch (_) {
       if (replacement != null) {
         _conversations =
@@ -222,7 +321,7 @@ class ChatStore {
     _activeId = conversation.id;
 
     try {
-      await _persistChecked();
+      await _persistConversationMutation();
     } catch (_) {
       conversation.deletedAt = previousDeletedAt;
       conversation.deletedReplacementId = replacementId;

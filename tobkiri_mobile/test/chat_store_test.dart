@@ -48,6 +48,26 @@ class _FailingWriteChatStorage extends _MemoryChatStorage {
   }
 }
 
+class _PartialWriteChatStorage extends _MemoryChatStorage {
+  bool failActiveWriteOnce = false;
+  int _conversationFailuresAfterActiveFailure = 0;
+
+  @override
+  Future<void> write(String key, String value) async {
+    if (key == 'rumi_chat.active_id.v1' && failActiveWriteOnce) {
+      failActiveWriteOnce = false;
+      _conversationFailuresAfterActiveFailure = 2;
+      throw StateError('active write failed');
+    }
+    if (key == 'rumi_chat.conversations.v1' &&
+        _conversationFailuresAfterActiveFailure > 0) {
+      _conversationFailuresAfterActiveFailure -= 1;
+      throw StateError('conversation write failed');
+    }
+    await super.write(key, value);
+  }
+}
+
 void main() {
   test('load ignores storage failures and keeps in-memory chat usable',
       () async {
@@ -163,6 +183,29 @@ void main() {
     expect(reloaded.conversations.single.id, conversation.id);
     expect(reloaded.active?.id, conversation.id);
   });
+
+  test(
+    'delete recovers on restart after partial write and rollback failures',
+    () async {
+      final storage = _PartialWriteChatStorage();
+      final store = ChatStore(storage: storage);
+      final conversation = await store.createAndPersist();
+      storage.failActiveWriteOnce = true;
+
+      await expectLater(store.delete(conversation.id), throwsStateError);
+
+      expect(store.conversations.single.id, conversation.id);
+      expect(store.active?.id, conversation.id);
+      expect(storage.values['rumi_chat.conversation_mutation.v1'], isNotNull);
+
+      final restarted = ChatStore(storage: storage);
+      await restarted.load();
+      expect(restarted.conversations.single.id, conversation.id);
+      expect(restarted.deletedConversations, isEmpty);
+      expect(restarted.active?.id, conversation.id);
+      expect(storage.values['rumi_chat.conversation_mutation.v1'], isNull);
+    },
+  );
 
   test('recently deleted conversations survive restart and remain restorable',
       () async {
