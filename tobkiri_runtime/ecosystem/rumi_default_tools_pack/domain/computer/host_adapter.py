@@ -134,7 +134,14 @@ class ComputerSeatHostAdapter:
             method = getattr(self._service, action)
             result = method(legacy_target, **dict(args or {}))
         delivered = bool(result.get("delivered", result.get("executed", False)))
-        effect_observed = bool(result.get("effect_observed", False))
+        # ``ComputerSeatService`` predates the host contract and reports
+        # driver verification through ``confidence``. Preserve that evidence
+        # when normalizing the legacy result so a verified delivery is not
+        # incorrectly downgraded to an unobserved effect. An explicit
+        # postcondition remains a separate, stricter result state.
+        effect_observed = bool(result.get("effect_observed", False)) or (
+            delivered and str(result.get("confidence") or "").lower() == "verified"
+        )
         postcondition_verified = bool(result.get("postcondition_verified", False))
         return ComputerHostActionResult(
             transport=str(result.get("transport") or result.get("driver") or "none"),

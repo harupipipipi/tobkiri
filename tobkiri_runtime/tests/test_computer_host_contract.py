@@ -158,6 +158,8 @@ def test_computer_seat_adapter_preserves_surface_binding() -> None:
     assert observation.observation_revision == "rev-2"
     assert action.transport == "fake_driver"
     assert action.delivered is True
+    assert action.effect_observed is True
+    assert action.postcondition_verified is False
     assert action.surface_id == "window:7"
     assert action.observation_revision == "rev-2"
 
