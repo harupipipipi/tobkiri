@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -254,9 +256,7 @@ def test_unavailable_reviewer_can_recover_on_safe_action_retry(tmp_path):
     assert recovered.reviewer_run_id == "recovered-review-run"
 
 
-def test_reviewer_store_reclaims_a_crashed_process_run(monkeypatch, tmp_path):
-    from domain.agent import review_gate_consumer
-
+def test_reviewer_store_preserves_live_owner_then_reclaims_expired_run(tmp_path):
     request_authority = _Authority(approved=False)
     gate = enforce_finalization_review(
         FinalizationAction.COMMIT,
@@ -268,23 +268,45 @@ def test_reviewer_store_reclaims_a_crashed_process_run(monkeypatch, tmp_path):
     )
     assert gate is not None
     request = request_authority.requests[0]
-    consumer = AutomaticAuthorityReviewConsumer(
-        tmp_path / "reviews.sqlite3",
-        runner=lambda _request: {
+    calls: list[str] = []
+
+    def run_reviewer(_request):
+        calls.append("reviewed")
+        return {
             "verdict": "approved",
             "reviewer_run_id": "restart-review-run",
             "reviewer_model": "local/reviewer",
-        },
+        }
+
+    consumer = AutomaticAuthorityReviewConsumer(
+        tmp_path / "reviews.sqlite3",
+        runner=run_reviewer,
+        owner_id="new-process",
     )
     consumer._connection.execute(
         "INSERT INTO profile_review_results"
-        "(binding_digest, request_json, state, owner_id) VALUES (?, ?, ?, ?)",
-        (request.binding_digest, "{}", "running", "crashed-process"),
+        "(binding_digest, request_json, state, owner_id, lease_expires_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (
+            request.binding_digest,
+            "{}",
+            "running",
+            "live-process",
+            time.time() + 60,
+        ),
     )
-    monkeypatch.setattr(review_gate_consumer, "_PROCESS_OWNER_ID", "new-process")
+
+    still_running = consumer.consume_review(request)
+    consumer._connection.execute(
+        "UPDATE profile_review_results SET lease_expires_at = 0 "
+        "WHERE binding_digest = ?",
+        (request.binding_digest,),
+    )
 
     recovered = consumer.consume_review(request)
 
+    assert still_running is None
+    assert calls == ["reviewed"]
     assert recovered is not None
     assert recovered.verdict is ReviewVerdict.APPROVED
     row = consumer._connection.execute(
@@ -293,6 +315,65 @@ def test_reviewer_store_reclaims_a_crashed_process_run(monkeypatch, tmp_path):
         (request.binding_digest,),
     ).fetchone()
     assert dict(row) == {"state": "consumed", "owner_id": "new-process"}
+
+
+def test_two_live_consumers_do_not_steal_an_active_reviewer_lease(
+    monkeypatch,
+    tmp_path,
+):
+    from domain.agent import review_gate_consumer
+
+    request_authority = _Authority(approved=False)
+    gate = enforce_finalization_review(
+        FinalizationAction.DELIVERY,
+        {"text_sha256": "c" * 64},
+        _context(AgentExecutionMode.FUSION_AGENT),
+        plan_store=_PlanStore(_profile()),
+        authority=request_authority,
+        run_store=_RunStore(),
+    )
+    assert gate is not None
+    request = request_authority.requests[0]
+    started = threading.Event()
+    release = threading.Event()
+    results: list[AuthorityReviewResult | None] = []
+
+    def slow_reviewer(_request):
+        started.set()
+        assert release.wait(timeout=2)
+        return {
+            "verdict": "approved",
+            "reviewer_run_id": "live-review-run",
+            "reviewer_model": "local/reviewer",
+        }
+
+    monkeypatch.setattr(review_gate_consumer, "_LEASE_SECONDS", 0.12)
+    monkeypatch.setattr(review_gate_consumer, "_HEARTBEAT_SECONDS", 0.02)
+    first = AutomaticAuthorityReviewConsumer(
+        tmp_path / "reviews.sqlite3",
+        runner=slow_reviewer,
+        owner_id="host-a",
+    )
+    second_calls: list[str] = []
+    second = AutomaticAuthorityReviewConsumer(
+        tmp_path / "reviews.sqlite3",
+        runner=lambda _request: second_calls.append("duplicate") or {},
+        owner_id="host-b",
+    )
+    worker = threading.Thread(
+        target=lambda: results.append(first.consume_review(request)),
+    )
+    worker.start()
+    assert started.wait(timeout=1)
+    time.sleep(0.18)
+
+    competing = second.consume_review(request)
+    release.set()
+    worker.join(timeout=2)
+
+    assert competing is None
+    assert second_calls == []
+    assert len(results) == 1 and results[0] is not None
 
 
 def test_actual_reviewer_engine_keeps_tools_empty(monkeypatch):

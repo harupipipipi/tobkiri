@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -20,6 +21,8 @@ from core_runtime.runtime_state import sqlite_wal_connection
 
 ReviewRunner = Callable[[ReviewGateRequest], Mapping[str, Any]]
 _PROCESS_OWNER_ID = uuid.uuid4().hex
+_LEASE_SECONDS = 30.0
+_HEARTBEAT_SECONDS = 5.0
 
 
 def _default_store_path() -> Path:
@@ -39,9 +42,11 @@ class AutomaticAuthorityReviewConsumer:
         db_path: str | Path | None = None,
         *,
         runner: ReviewRunner | None = None,
+        owner_id: str | None = None,
     ) -> None:
         self.db_path = Path(db_path) if db_path else _default_store_path()
         self._runner = runner or _run_reviewer_profile
+        self._owner_id = owner_id or f"{_PROCESS_OWNER_ID}:{uuid.uuid4().hex}"
         self._local = threading.local()
         self._migrate_lock = threading.RLock()
         _ = self._connection
@@ -60,6 +65,7 @@ class AutomaticAuthorityReviewConsumer:
                       result_json TEXT,
                       state TEXT NOT NULL,
                       owner_id TEXT NOT NULL DEFAULT '',
+                      lease_expires_at REAL NOT NULL DEFAULT 0,
                       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                       consumed_at TEXT
                     );
@@ -76,6 +82,11 @@ class AutomaticAuthorityReviewConsumer:
                         "ALTER TABLE profile_review_results "
                         "ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''"
                     )
+                if "lease_expires_at" not in columns:
+                    connection.execute(
+                        "ALTER TABLE profile_review_results "
+                        "ADD COLUMN lease_expires_at REAL NOT NULL DEFAULT 0"
+                    )
             self._local.connection = connection
         return connection
 
@@ -87,34 +98,43 @@ class AutomaticAuthorityReviewConsumer:
 
         connection = self._connection
         row = connection.execute(
-            "SELECT state, owner_id FROM profile_review_results "
+            "SELECT state, owner_id, lease_expires_at "
+            "FROM profile_review_results "
             "WHERE binding_digest = ?",
             (request.binding_digest,),
         ).fetchone()
-        if (
-            row is not None
-            and row["state"] == "running"
-            and row["owner_id"] == _PROCESS_OWNER_ID
-        ):
+        now = time.time()
+        if row is not None and row["state"] == "running" and float(
+            row["lease_expires_at"] or 0
+        ) > now:
             return None
         if row is not None:
             connection.execute(
                 "DELETE FROM profile_review_results WHERE binding_digest = ? "
-                "AND (state != 'running' OR owner_id != ?)",
-                (request.binding_digest, _PROCESS_OWNER_ID),
+                "AND (state != 'running' OR lease_expires_at <= ?)",
+                (request.binding_digest, now),
             )
         inserted = connection.execute(
             "INSERT OR IGNORE INTO profile_review_results"
             "(binding_digest, request_json, result_json, state, owner_id, "
-            "consumed_at) VALUES (?, ?, NULL, 'running', ?, NULL)",
+            "lease_expires_at, consumed_at) "
+            "VALUES (?, ?, NULL, 'running', ?, ?, NULL)",
             (
                 request.binding_digest,
                 json.dumps(request.to_dict(), sort_keys=True, ensure_ascii=False),
-                _PROCESS_OWNER_ID,
+                self._owner_id,
+                now + _LEASE_SECONDS,
             ),
         )
         if inserted.rowcount != 1:
             return None
+        heartbeat_stop = threading.Event()
+        heartbeat = threading.Thread(
+            target=self._heartbeat,
+            args=(request.binding_digest, heartbeat_stop),
+            daemon=True,
+        )
+        heartbeat.start()
         try:
             output = self._runner(request)
             result = _result_from_runner(request, output)
@@ -123,9 +143,12 @@ class AutomaticAuthorityReviewConsumer:
                 connection.execute(
                     "DELETE FROM profile_review_results WHERE binding_digest = ? "
                     "AND state = 'running' AND owner_id = ?",
-                    (request.binding_digest, _PROCESS_OWNER_ID),
+                    (request.binding_digest, self._owner_id),
                 )
             raise RuntimeError("configured reviewer profile is unavailable") from exc
+        finally:
+            heartbeat_stop.set()
+            heartbeat.join(timeout=1)
         with connection:
             updated = connection.execute(
                 "UPDATE profile_review_results SET result_json = ?, "
@@ -134,12 +157,31 @@ class AutomaticAuthorityReviewConsumer:
                 (
                     json.dumps(result.to_dict(), sort_keys=True, ensure_ascii=False),
                     request.binding_digest,
-                    _PROCESS_OWNER_ID,
+                    self._owner_id,
                 ),
             )
         if updated.rowcount != 1:
             return None
         return result
+
+    def _heartbeat(self, binding_digest: str, stopped: threading.Event) -> None:
+        connection = sqlite_wal_connection(self.db_path)
+        try:
+            while not stopped.wait(_HEARTBEAT_SECONDS):
+                updated = connection.execute(
+                    "UPDATE profile_review_results SET lease_expires_at = ? "
+                    "WHERE binding_digest = ? AND state = 'running' "
+                    "AND owner_id = ?",
+                    (
+                        time.time() + _LEASE_SECONDS,
+                        binding_digest,
+                        self._owner_id,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    return
+        finally:
+            connection.close()
 
 
 def _run_reviewer_profile(request: ReviewGateRequest) -> Mapping[str, Any]:
