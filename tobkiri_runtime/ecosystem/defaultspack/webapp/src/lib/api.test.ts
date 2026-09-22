@@ -2689,3 +2689,66 @@ test("company task deletion uses the scoped DELETE route", async () => {
     method: "DELETE",
   });
 });
+
+test("OpenAI-compatible connection API saves, selects, and removes safe definitions", async () => {
+  const requests: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push({
+      url: String(input),
+      method: String(init?.method ?? "GET"),
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: { selected_connection_id: "local", connections: [] },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await api.saveOpenAICompatibleConnection({
+      connection: {
+        connection_id: "local",
+        label: "Local server",
+        base_url: "http://127.0.0.1:8080/v1",
+        default_model: "model-a",
+        auth_mode: "bearer",
+      },
+      api_key: "test-token",
+      select: true,
+    });
+    await api.selectOpenAICompatibleConnection("local");
+    await api.deleteOpenAICompatibleConnection("local");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(requests, [
+    {
+      url: "/api/connections/openai-compatible",
+      method: "POST",
+      body: {
+        action: "save",
+        connection: {
+          connection_id: "local",
+          label: "Local server",
+          base_url: "http://127.0.0.1:8080/v1",
+          default_model: "model-a",
+          auth_mode: "bearer",
+        },
+        api_key: "test-token",
+        select: true,
+      },
+    },
+    {
+      url: "/api/connections/openai-compatible",
+      method: "POST",
+      body: { action: "select", connection_id: "local" },
+    },
+    {
+      url: "/api/connections/openai-compatible",
+      method: "POST",
+      body: { action: "delete", connection_id: "local" },
+    },
+  ]);
+});

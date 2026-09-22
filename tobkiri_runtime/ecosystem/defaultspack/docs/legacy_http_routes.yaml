@@ -3086,6 +3086,20 @@ legacy_routes:
   owner: connections
   reason: tracked compatibility fallback during HTTP function migration
   remove_after: v2.4
+- method: GET
+  pattern: /api/connections/openai-compatible
+  legacy_block_module: blocks.connections.openai_compatible
+  replacement_function_id: ''
+  owner: connections
+  reason: tracked compatibility fallback during HTTP function migration
+  remove_after: v2.4
+- method: POST
+  pattern: /api/connections/openai-compatible
+  legacy_block_module: blocks.connections.openai_compatible
+  replacement_function_id: ''
+  owner: connections
+  reason: tracked compatibility fallback during HTTP function migration
+  remove_after: v2.4
 - method: POST
   pattern: /api/connections/import
   legacy_block_module: blocks.connections.import_bundle

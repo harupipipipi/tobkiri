@@ -1537,6 +1537,7 @@ _SENSITIVE_INTEGRATION_PATHS = {
 _SENSITIVE_INTEGRATION_METHOD_PATHS = {
     "/api/ai/provider-key": {"POST"},
     "/api/connections/codex": {"POST"},
+    "/api/connections/openai-compatible": {"POST"},
     "/api/connections/import": {"POST"},
     "/api/ambient/events": {"POST"},
     "/api/ambient/monitor/start": {"POST"},
@@ -1559,6 +1560,7 @@ _LOCAL_UI_APPROVAL_METHOD_PATHS = {
     "/api/ai/provider-key": {"POST"},
     "/api/agent/subagent": {"POST"},
     "/api/connections/codex": {"POST"},
+    "/api/connections/openai-compatible": {"POST"},
     "/api/connections/import": {"POST"},
     "/api/ambient/events": {"POST"},
     "/api/ambient/monitor/start": {"POST"},

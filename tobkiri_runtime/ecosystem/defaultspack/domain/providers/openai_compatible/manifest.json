@@ -1,0 +1,42 @@
+{
+  "id": "openai_compatible",
+  "provider_id": "openai_compatible",
+  "category": "providers",
+  "kind": "llm_provider",
+  "version": "2",
+  "status": "stable",
+  "display_name": "OpenAI Compatible Connections",
+  "description": "User-defined OpenAI-compatible endpoints with isolated connection inventory.",
+  "entrypoints": {"adapter": "../ai_client/providers/generic_openai_compatible_provider.py"},
+  "security": {"credential_required": false, "secret_storage": "environment_reference_only"},
+  "provider_metadata": {
+    "display_name": "OpenAI Compatible",
+    "kind": "custom",
+    "env_vars": ["OPENAI_COMPATIBLE_API_KEY"],
+    "base_url_envs": ["OPENAI_COMPATIBLE_BASE_URL"],
+    "catalog_only": false,
+    "supports_invoke": true,
+    "default_model": "",
+    "default_base_url": "connection://openai-compatible",
+    "default_model_for": {},
+    "catalog_features": ["openai_compatible", "manual_inventory", "remote_model_discovery", "multiple_connections"]
+  },
+  "provider_manifest": {
+    "id": "openai_compatible",
+    "category": "llm_provider",
+    "version": "2",
+    "display_name": "OpenAI Compatible Connections",
+    "enabled": true,
+    "priority": 180,
+    "adapter": "python_entrypoint",
+    "entrypoint": "domain.ai_client.providers.generic_openai_compatible_provider:GenericOpenAICompatibleProvider",
+    "default_base_url": "connection://openai-compatible",
+    "credential_required": false,
+    "catalog_only": false,
+    "supports_invoke": true,
+    "config": {"model_sync": "connection_defined", "connection_store": "openai_compatible_connections.json"}
+  },
+  "aliases": {"provider_ids": ["openai_compatible", "openai-compatible"]},
+  "source_pack_id": "defaultspack",
+  "catalog_features": ["openai_compatible", "manual_inventory", "remote_model_discovery", "multiple_connections"]
+}

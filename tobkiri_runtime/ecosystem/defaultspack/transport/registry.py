@@ -2169,6 +2169,17 @@ _FALLBACK_HTTP_ROUTE_SPECS = [
     HttpRouteSpec("POST", "/api/dev/replay", block_module="blocks.dev.replay"),
     HttpRouteSpec("GET", "/api/connections/codex", block_module="blocks.connections.codex"),
     HttpRouteSpec("POST", "/api/connections/codex", block_module="blocks.connections.codex", sensitive=True),
+    HttpRouteSpec(
+        "GET",
+        "/api/connections/openai-compatible",
+        block_module="blocks.connections.openai_compatible",
+    ),
+    HttpRouteSpec(
+        "POST",
+        "/api/connections/openai-compatible",
+        block_module="blocks.connections.openai_compatible",
+        sensitive=True,
+    ),
     HttpRouteSpec("POST", "/api/connections/import", block_module="blocks.connections.import_bundle", sensitive=True),
     HttpRouteSpec("GET", "/api/ai/provider-key", block_module="blocks.ai.provider_key"),
     HttpRouteSpec("POST", "/api/ai/provider-key", block_module="blocks.ai.provider_key"),
