@@ -82,7 +82,7 @@ def test_shell_manifest_rejects_source_and_bundle_drift(tmp_path: Path) -> None:
     assert "source/bundle drift" in bundle_drift.stderr
 
 
-def test_shell_manifest_normalizes_source_newlines_but_not_bundle_bytes(
+def test_shell_manifest_normalizes_text_newlines_across_source_and_bundle(
     tmp_path: Path,
 ) -> None:
     webapp_root, ui_dir = _minimal_bundle(tmp_path)
@@ -108,13 +108,15 @@ def test_shell_manifest_normalizes_source_newlines_but_not_bundle_bytes(
     assert crlf_result.returncode == 0, crlf_result.stderr
     crlf_manifest = json.loads(crlf_result.stdout)
 
-    assert crlf_manifest["source"] == lf_manifest["source"]
-
     (ui_dir / "shell-app.js").write_bytes(b"shell-app.js\r\n")
-    changed_bundle_result = _run_node(
+    (ui_dir / "shell.html").write_bytes(
+        b"<script src='/static/shell-app.js'></script>\r\n"
+    )
+    portable_bundle_result = _run_node(
         build_expression, webapp_root=webapp_root, ui_dir=ui_dir
     )
-    assert changed_bundle_result.returncode == 0, changed_bundle_result.stderr
-    changed_bundle = json.loads(changed_bundle_result.stdout)
+    assert portable_bundle_result.returncode == 0, portable_bundle_result.stderr
+    portable_bundle_manifest = json.loads(portable_bundle_result.stdout)
 
-    assert changed_bundle["bundle"] != lf_manifest["bundle"]
+    assert crlf_manifest["source"] == lf_manifest["source"]
+    assert portable_bundle_manifest["bundle"] == lf_manifest["bundle"]

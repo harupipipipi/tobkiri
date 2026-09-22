@@ -55,7 +55,7 @@ function relativeFiles(root, relativePaths) {
   return [...files].sort();
 }
 
-function sourcePayload(filePath) {
+function portableTextPayload(filePath) {
   const payload = fs.readFileSync(filePath);
   if (!PORTABLE_SOURCE_TEXT_EXTENSIONS.has(path.extname(filePath).toLowerCase())) {
     return payload;
@@ -89,7 +89,7 @@ function sourceSnapshot(webappRoot) {
   return snapshot(
     webappRoot,
     [...new Set([...recursiveFiles, ...relativeFiles(webappRoot, SOURCE_FILES)])],
-    sourcePayload,
+    portableTextPayload,
   );
 }
 
@@ -102,7 +102,7 @@ function bundleSnapshot(uiDir) {
   if (!fs.existsSync(shellHtml)) {
     throw new Error(`shell bundle entry is missing: ${shellHtml}`);
   }
-  return snapshot(uiDir, [...generated, shellHtml]);
+  return snapshot(uiDir, [...generated, shellHtml], portableTextPayload);
 }
 
 export function buildShellBundleManifest({ webappRoot, uiDir }) {

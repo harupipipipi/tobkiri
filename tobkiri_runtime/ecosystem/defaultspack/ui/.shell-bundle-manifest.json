@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "336e9847b4f6e8911b080b5da2413e54fa5f835b943fe2a1eddb33454dc5487e",
+    "digest": "aa658c27dcf18622de6c5c8a7a59a3a4c60a724b237207aeb504f1e3938c79ac",
     "entries": [
       {
         "path": "index.html",
@@ -100,8 +100,8 @@
       },
       {
         "path": "scripts/shell-bundle-manifest.mjs",
-        "size": 4259,
-        "sha256": "13ca72b9dc50efa2050ab494649300acd93101f7146eafd77b8d6f2b958b7a7b"
+        "size": 4292,
+        "sha256": "5fc38fc2893fcdcad5277d2f604d6b19d426eadb466abc249d8a0b130dda0732"
       },
       {
         "path": "scripts/sync-host-permission-registry.mjs",
@@ -1931,7 +1931,7 @@
     ]
   },
   "bundle": {
-    "digest": "8d9194b9a883cf005d8f8dff02692ddb151e3770910a8ad93e9c1016c5a192a2",
+    "digest": "7ee08a431ccbb560311bc85fd0bf16df196c67ef5b3cf8e797bc7741a95c143d",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1960,8 +1960,8 @@
       },
       {
         "path": "shell.html",
-        "size": 2108,
-        "sha256": "dd431219c63901a4b3f3a1945b3547b3c12892f35703b8b67e6d997baa4f9b5e"
+        "size": 2055,
+        "sha256": "818fdd2381f16aa51cfbc03c8b9686b13a1b437da6a753d27fb3967f5dadfeab"
       }
     ]
   }
