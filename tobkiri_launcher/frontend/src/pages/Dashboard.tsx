@@ -528,7 +528,7 @@ export function Dashboard() {
               </div>
             )}
             {registry && visibleProfiles.length > 0 && (
-              <div className="grid min-w-0 items-start gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))'}} data-testid="profile-grid">
+              <div className="grid min-w-0 items-stretch gap-4" style={{gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 240px), 1fr))'}} data-testid="profile-grid">
                 {visibleProfiles.map((entry) => {
                   const active = isActiveExecutionProfile(registry, entry);
                   const profileView = buildNamedProfileView(entry, {activeSnapshotReady: active && activeProfileReady, activeDefinitionRevision: registry.active_profile_definition_revision});
@@ -576,6 +576,9 @@ export function Dashboard() {
                 })}
               </div>
             )}
+            {registry && visibleProfiles.length > 0 && !desktopShellAvailable ? (
+              <p className="mt-3 text-xs text-text-muted">Launch is available in Tobkiri Launcher.</p>
+            ) : null}
           </div>
         </section>
 

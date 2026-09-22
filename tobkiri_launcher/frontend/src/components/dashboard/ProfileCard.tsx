@@ -192,7 +192,7 @@ export function ProfileCard({
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-col p-4">
+      <div className="flex min-w-0 flex-1 flex-col p-4">
         <Link
           className="min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
           to={browseHref}
@@ -239,7 +239,7 @@ export function ProfileCard({
           </form>
         )}
 
-        <div className="flex min-w-0 flex-col gap-3 pt-3">
+        <div className="mt-auto flex min-w-0 flex-col gap-3 pt-3">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <Link
               aria-label={`Edit Packs for ${displayName}`}
@@ -264,7 +264,7 @@ export function ProfileCard({
               )}
               <Button
                 aria-label={`Launch ${displayName}`}
-                aria-describedby={profileErrorDiagnostic ? `profile-${profile.profile_id}-error` : undefined}
+                aria-describedby={profileErrorDiagnostic ? `profile-${profile.profile_id}-error` : launchBlockedReason ? `profile-${profile.profile_id}-launch-note` : undefined}
                 className={profileErrorDiagnostic ? 'disabled:opacity-100 disabled:text-text-muted' : undefined}
                 disabled={launchDisabled}
                 loading={isBusy && actionType === 'launch'}
@@ -288,7 +288,7 @@ export function ProfileCard({
               )}
             </div>
           </div>
-          {launchBlockedReason && !profileErrorDiagnostic ? <p className="text-xs text-text-muted">{launchBlockedReason}</p> : null}
+          {launchBlockedReason && !profileErrorDiagnostic ? <span className="sr-only" id={`profile-${profile.profile_id}-launch-note`}>{launchBlockedReason}</span> : null}
         </div>
       </div>
     </Card>
