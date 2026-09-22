@@ -295,7 +295,11 @@ class TestExistingFlagsNotBroken(unittest.TestCase):
         """--headless フラグが Kernel 起動後に早期リターンする。"""
         mock_kernel_instance = MagicMock()
 
+        # This verifies the default headless path.  Isolate it from a prior
+        # test's process-wide mode so an unrelated permissive request cannot
+        # turn this compatibility test into a permissive-mode guard test.
         with patch("sys.argv", ["app.py", "--headless"]), \
+             patch.dict(os.environ, {"RUMI_SECURITY_MODE": "strict"}, clear=False), \
              patch("core_runtime.Kernel", return_value=mock_kernel_instance, create=True), \
              patch("core_runtime.lang.L", side_effect=lambda k, **kw: k), \
              patch("core_runtime.lang.load_system_lang"):

@@ -1,11 +1,13 @@
 
-```markdown
-# rumiai_defaults
+# defaultspack
 
 ## Canonical implementation
 
-For this repository, the canonical defaultspack implementation is
+For Tobkiri, the canonical defaultspack implementation is
 `rumi_ai_1_10/ecosystem/defaultspack/`.
+
+`rumi_ai_1_10/` is an intentional compatibility directory name on this branch;
+new public-facing documentation and product references use **Tobkiri**.
 
 The older `ecosystem/defaults/` package and the separate
 `harupipipipi/rumiai_defaults` repository are treated as compatibility or
@@ -26,9 +28,9 @@ defaultspack is local-first by default:
 - Cloudflare, Supabase, login, account creation, and user management are out of
   scope for defaultspack local operation protection.
 
-rumiai のデフォルトパック。
+Tobkiri runtime の標準パックです。
 
-rumiai 本体はドメイン知識を持たない汎用カーネルである。defaults は rumiai ecosystem に「AI サービスとして動作するための全ての仕組み」を提供する。チャット、エージェント、ツール、プロンプト、AI クライアント、コーディング支援、マルチモーダル処理、フロントエンド通信の全てが defaults の handler と domain コードによって動作する。
+runtime 本体はドメイン知識を持たない汎用カーネルです。defaultspack は ecosystem に「AI サービスとして動作するための全ての仕組み」を提供します。チャット、エージェント、ツール、プロンプト、AI クライアント、コーディング支援、マルチモーダル処理、フロントエンド通信は、defaultspack の handler と domain コードで動作します。
 
 ただし defaults が提供するのは「仕組み」だけである。具体的な UI、ツール定義、エージェント定義、プロンプト、テーマ、レイアウトは全て user_data 側に配置される。defaults はそれらを「置ける場所」と「動かす仕組み」を提供する。
 
@@ -869,5 +871,4 @@ defaults 単体で以下と同等以上のユーザー体験を提供する:
 - **MCP** — 外部ツール連携、プロトコル対応
 - **VS Code Extension** — defaults の handler を呼び出す Pack で実現可能
 
-これらは全て defaults の handler + user_data のコンテンツ（Asset、tool、agent、prompt）の組み合わせで実現される。
-```
+これらは全て defaultspack の handler + user_data のコンテンツ（Asset、tool、agent、prompt）の組み合わせで実現される。

@@ -132,5 +132,7 @@ jobs:
             rumi_viewer/src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
             rumi_viewer/src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
             rumi_viewer/src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
-          draft: false
+          # Tags create a reviewable draft. A maintainer must publish it after
+          # verifying the artifacts and release notes.
+          draft: true
           generate_release_notes: true

@@ -126,6 +126,6 @@ class TestProductionGuard:
         assert exc.value.code == 1
 
     def test_no_permissive_normal_startup(self):
-        """--permissive なし -> 通常起動 (production でもガード不発)"""
+        """permissive 要求なしなら production でも通常起動する。"""
         _run_main("--headless",
-                  env={"RUMI_ENVIRONMENT": "production"})
+                  env={"RUMI_ENVIRONMENT": "production", "RUMI_SECURITY_MODE": None})

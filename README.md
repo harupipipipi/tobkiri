@@ -1,8 +1,15 @@
-# Rumi AI
+# Tobkiri
 
-Rumi AI is a modular AI runtime and tooling workspace.
+Tobkiri is a modular AI runtime and tooling workspace. `master` is the public,
+stable entry point; current development is on
+[`soon`](https://github.com/harupipipipi/tobkiri/tree/soon).
 
-The repository keeps the runtime implementation under `rumi_ai_1_10/`, while `rumi_ai/` provides a version-stable Python entrypoint. The canonical control panel frontend source lives in `rumi_viewer/frontend`; the kernel serves its built artifact at `/panel/`.
+> **Compatibility note**: the `rumi_ai_1_10/` directory and `python -m rumi_ai`
+> entry point are retained on this branch for runtime compatibility. They are
+> internal legacy identifiers, not the Tobkiri product name.
+
+The canonical control panel frontend source lives in `rumi_viewer/frontend`; the
+kernel serves its built artifact at `/panel/`.
 
 ## Read This When...
 
@@ -24,8 +31,8 @@ The repository keeps the runtime implementation under `rumi_ai_1_10/`, while `ru
 
 ## Repository Layout
 
-- `rumi_ai_1_10/`: kernel/runtime/API/backend source tree
-- `rumi_ai/`: version-stable Python entrypoint package
+- `rumi_ai_1_10/`: compatibility-named kernel/runtime/API/backend source tree
+- `rumi_ai/`: compatibility Python entrypoint package
 - `pack-shell/`: desktop pack launcher
 - `rumi_viewer/`: desktop shell and control panel frontend source
 - `rumi_ai_1_10/ecosystem/rumi_mobile/`: Flutter iOS/Android app for trusted-LAN defaultspack access
@@ -36,7 +43,7 @@ The repository keeps the runtime implementation under `rumi_ai_1_10/`, while `ru
 ### Prerequisites
 
 - Python 3.10+
-- Node.js 18+
+- Node.js 20.19.x または 22.12+（Node 22 推奨）
 - npm
 - uv (`rumi_viewer` を触る場合)
 - Rust / Cargo (`rumi_viewer` を触る場合)
@@ -45,8 +52,8 @@ The repository keeps the runtime implementation under `rumi_ai_1_10/`, while `ru
 ### Clone and install
 
 ```bash
-git clone https://github.com/harupipipipi/rumiai.git
-cd rumiai
+git clone https://github.com/harupipipipi/tobkiri.git
+cd tobkiri
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -56,7 +63,7 @@ pip install -r rumi_ai_1_10/requirements-dev.txt
 pip install -e ./rumi_ai_1_10
 
 cd rumi_viewer/frontend
-npm install
+npm ci
 cd ../..
 ```
 
@@ -139,8 +146,8 @@ python -m rumi_ai migrate-hmac
 
 ## Components
 
-- `rumi_ai`: stable CLI and module entrypoint
-- `rumi_ai_1_10`: kernel, runtime, API, backend, and docs
+- `rumi_ai`: compatibility CLI and module entrypoint
+- `rumi_ai_1_10`: compatibility-named kernel, runtime, API, backend, and docs
 - `pack-shell`: launches desktop packs and brokers token/bootstrap flow
 - `rumi_viewer`: viewer-side application shell and canonical panel frontend source
 - `rumi_ai_1_10/ecosystem/rumi_mobile`: mobile remote client for the bearer-auth Kernel Pack API
