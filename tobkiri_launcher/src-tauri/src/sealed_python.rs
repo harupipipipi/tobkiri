@@ -2356,6 +2356,8 @@ fn read_attestation_file(path: &Path) -> Result<Vec<u8>> {
     if !same_attestation_identity(&before, &opened) {
         bail!("[PYTHON_SEALED_ATTESTATION_INVALID] attestation changed while opened");
     }
+    #[cfg(windows)]
+    let opened_file_identity = windows_file_identity(&file)?;
     let mut bytes = Vec::with_capacity(opened.len() as usize);
     (&mut file)
         .take(MAX_ATTESTATION_BYTES.saturating_add(1))
@@ -2371,6 +2373,10 @@ fn read_attestation_file(path: &Path) -> Result<Vec<u8>> {
     {
         bail!("[PYTHON_SEALED_ATTESTATION_INVALID] attestation changed after read");
     }
+    #[cfg(windows)]
+    verify_windows_path_identity(path, &file, &opened_file_identity).context(
+        "[PYTHON_SEALED_ATTESTATION_INVALID] attestation file identity changed after read",
+    )?;
     Ok(bytes)
 }
 
@@ -2390,12 +2396,58 @@ fn same_attestation_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool 
 #[cfg(windows)]
 fn same_attestation_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt;
-    left.volume_serial_number() == right.volume_serial_number()
-        && left.file_index() == right.file_index()
-        && left.number_of_links() == right.number_of_links()
-        && left.file_size() == right.file_size()
+    left.file_size() == right.file_size()
         && left.last_write_time() == right.last_write_time()
         && left.file_attributes() == right.file_attributes()
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct WindowsFileIdentity {
+    volume_serial_number: u32,
+    file_index: u64,
+    number_of_links: u32,
+}
+
+#[cfg(windows)]
+fn windows_file_identity(file: &File) -> Result<WindowsFileIdentity> {
+    use std::mem::MaybeUninit;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+    };
+
+    let mut information = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::zeroed();
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), information.as_mut_ptr()) } == 0 {
+        return Err(std::io::Error::last_os_error()).context("inspect sealed file identity");
+    }
+    let information = unsafe { information.assume_init() };
+    Ok(WindowsFileIdentity {
+        volume_serial_number: information.dwVolumeSerialNumber,
+        file_index: (u64::from(information.nFileIndexHigh) << 32)
+            | u64::from(information.nFileIndexLow),
+        number_of_links: information.nNumberOfLinks,
+    })
+}
+
+#[cfg(windows)]
+fn verify_windows_path_identity(
+    path: &Path,
+    opened_file: &File,
+    expected: &WindowsFileIdentity,
+) -> Result<()> {
+    if expected.number_of_links != 1 || windows_file_identity(opened_file)? != *expected {
+        bail!("sealed file handle identity changed");
+    }
+    let reopened = open_regular(path)?;
+    let metadata = reopened.metadata()?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || windows_file_identity(&reopened)? != *expected
+    {
+        bail!("sealed file path identity changed");
+    }
+    Ok(())
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -2668,6 +2720,8 @@ fn read_bounded_regular(path: &Path, limit: u64) -> Result<Vec<u8>> {
     if !same_attestation_identity(&before, &opened) {
         bail!("sealed file changed while opened {}", path.display());
     }
+    #[cfg(windows)]
+    let opened_file_identity = windows_file_identity(&file)?;
     let mut bytes = Vec::with_capacity(opened.len() as usize);
     (&mut file)
         .take(limit.saturating_add(1))
@@ -2680,6 +2734,13 @@ fn read_bounded_regular(path: &Path, limit: u64) -> Result<Vec<u8>> {
     {
         bail!("sealed file changed while reading {}", path.display());
     }
+    #[cfg(windows)]
+    verify_windows_path_identity(path, &file, &opened_file_identity).with_context(|| {
+        format!(
+            "sealed file identity changed while reading {}",
+            path.display()
+        )
+    })?;
     Ok(bytes)
 }
 
@@ -4392,11 +4453,19 @@ mod tests {
         let (root, mut manifest) = materialized_environment();
         #[cfg(unix)]
         make_test_tree_writable(&root);
+        #[cfg(not(windows))]
         let import_files = [
             "app/ecosystem/defaultspack/__init__.py",
             "runtime/lib/python3.13/os.py",
             "runtime/lib/python3.13/lib-dynload/_ssl.so",
             "venv/lib/python3.13/site-packages/fixture.py",
+        ];
+        #[cfg(windows)]
+        let import_files = [
+            "app/ecosystem/defaultspack/__init__.py",
+            "runtime/Lib/os.py",
+            "runtime/DLLs/_ssl.pyd",
+            "venv/Lib/site-packages/fixture.py",
         ];
         for relative in import_files {
             let path = root.join(relative);
@@ -4442,11 +4511,28 @@ mod tests {
                 .unwrap()
                 .to_string_lossy()
                 .into_owned(),
+            #[cfg(not(windows))]
             sys_path: [
                 "app",
                 "runtime/lib/python3.13",
                 "runtime/lib/python3.13/lib-dynload",
                 "venv/lib/python3.13/site-packages",
+            ]
+            .into_iter()
+            .map(|relative| {
+                fs::canonicalize(root.join(relative))
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect(),
+            #[cfg(windows)]
+            sys_path: [
+                "app",
+                "runtime",
+                "runtime/Lib",
+                "runtime/DLLs",
+                "venv/Lib/site-packages",
             ]
             .into_iter()
             .map(|relative| {
