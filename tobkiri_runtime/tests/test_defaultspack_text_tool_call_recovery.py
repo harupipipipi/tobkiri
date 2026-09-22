@@ -16,7 +16,7 @@ def _parse(text: str, connected: set[str] | None = None):
 
     return _text_tool_call_blocks(
         {"content": [{"type": "text", "text": text}]},
-        connected or {"rumi_api"},
+        {"rumi_api"} if connected is None else connected,
     )
 
 
@@ -58,6 +58,15 @@ def test_text_tool_parameters_decode_json_and_html_entities():
 def test_unknown_tool_name_remains_plain_assistant_text():
     assert _parse(
         "<tool_call><function=not_connected><parameter=action>list_routes</parameter></function></tool_call>"
+    ) == []
+
+
+def test_empty_connected_tool_allowlist_does_not_recover_a_tool() -> None:
+    """An explicitly empty selection must never inherit the fixture default."""
+    assert _parse(
+        "<tool_call><function=rumi_api><parameter=action>list_routes</parameter>"
+        "</function></tool_call>",
+        connected=set(),
     ) == []
 
 
