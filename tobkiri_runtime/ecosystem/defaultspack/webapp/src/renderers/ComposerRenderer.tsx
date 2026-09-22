@@ -156,7 +156,11 @@ export function isComposerImeEvent(event: {
 }
 
 export function isComputerControlToolId(toolId: string): boolean {
-  return toolId === "computer_use" || toolId === "browser_computer";
+  return (
+    toolId === "computer_use"
+    || toolId === "browser_computer"
+    || toolId === "browser_use"
+  );
 }
 
 const THINKING_LABELS: Record<string, string> = {

@@ -1763,7 +1763,7 @@ test("composer suppresses duplicate submissions without blocking a changed draft
 });
 test("browser-only tools do not claim computer control in the composer", () => {
   assert.equal(isComputerControlToolId("browser_companion"), false);
-  assert.equal(isComputerControlToolId("browser_use"), false);
+  assert.equal(isComputerControlToolId("browser_use"), true);
   assert.equal(isComputerControlToolId("computer_use"), true);
   assert.equal(isComputerControlToolId("browser_computer"), true);
 
