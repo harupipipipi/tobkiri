@@ -19,6 +19,7 @@ from core_runtime.runtime_state import sqlite_wal_connection
 
 
 ReviewRunner = Callable[[ReviewGateRequest], Mapping[str, Any]]
+_PROCESS_OWNER_ID = uuid.uuid4().hex
 
 
 def _default_store_path() -> Path:
@@ -58,11 +59,23 @@ class AutomaticAuthorityReviewConsumer:
                       request_json TEXT NOT NULL,
                       result_json TEXT,
                       state TEXT NOT NULL,
+                      owner_id TEXT NOT NULL DEFAULT '',
                       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                       consumed_at TEXT
                     );
                     """
                 )
+                columns = {
+                    str(row["name"])
+                    for row in connection.execute(
+                        "PRAGMA table_info(profile_review_results)"
+                    ).fetchall()
+                }
+                if "owner_id" not in columns:
+                    connection.execute(
+                        "ALTER TABLE profile_review_results "
+                        "ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''"
+                    )
             self._local.connection = connection
         return connection
 
@@ -74,33 +87,30 @@ class AutomaticAuthorityReviewConsumer:
 
         connection = self._connection
         row = connection.execute(
-            "SELECT state, result_json FROM profile_review_results "
+            "SELECT state, owner_id FROM profile_review_results "
             "WHERE binding_digest = ?",
             (request.binding_digest,),
         ).fetchone()
-        if row is not None and row["state"] == "ready":
-            connection.execute(
-                "UPDATE profile_review_results SET state = 'consumed', "
-                "consumed_at = CURRENT_TIMESTAMP WHERE binding_digest = ? "
-                "AND state = 'ready'",
-                (request.binding_digest,),
-            )
-            return _result_from_dict(json.loads(str(row["result_json"])))
-        if row is not None and row["state"] == "running":
+        if (
+            row is not None
+            and row["state"] == "running"
+            and row["owner_id"] == _PROCESS_OWNER_ID
+        ):
             return None
         if row is not None:
             connection.execute(
                 "DELETE FROM profile_review_results WHERE binding_digest = ? "
-                "AND state = 'consumed'",
-                (request.binding_digest,),
+                "AND (state != 'running' OR owner_id != ?)",
+                (request.binding_digest, _PROCESS_OWNER_ID),
             )
         inserted = connection.execute(
             "INSERT OR IGNORE INTO profile_review_results"
-            "(binding_digest, request_json, result_json, state, consumed_at) "
-            "VALUES (?, ?, NULL, 'running', NULL)",
+            "(binding_digest, request_json, result_json, state, owner_id, "
+            "consumed_at) VALUES (?, ?, NULL, 'running', ?, NULL)",
             (
                 request.binding_digest,
                 json.dumps(request.to_dict(), sort_keys=True, ensure_ascii=False),
+                _PROCESS_OWNER_ID,
             ),
         )
         if inserted.rowcount != 1:
@@ -112,20 +122,23 @@ class AutomaticAuthorityReviewConsumer:
             with connection:
                 connection.execute(
                     "DELETE FROM profile_review_results WHERE binding_digest = ? "
-                    "AND state = 'running'",
-                    (request.binding_digest,),
+                    "AND state = 'running' AND owner_id = ?",
+                    (request.binding_digest, _PROCESS_OWNER_ID),
                 )
             raise RuntimeError("configured reviewer profile is unavailable") from exc
         with connection:
-            connection.execute(
+            updated = connection.execute(
                 "UPDATE profile_review_results SET result_json = ?, "
                 "state = 'consumed', consumed_at = CURRENT_TIMESTAMP "
-                "WHERE binding_digest = ? AND state = 'running'",
+                "WHERE binding_digest = ? AND state = 'running' AND owner_id = ?",
                 (
                     json.dumps(result.to_dict(), sort_keys=True, ensure_ascii=False),
                     request.binding_digest,
+                    _PROCESS_OWNER_ID,
                 ),
             )
+        if updated.rowcount != 1:
+            return None
         return result
 
 
@@ -214,24 +227,6 @@ def _result_from_runner(
         security_concerns=_strings(output.get("security_concerns")),
         residual_risk=str(output.get("residual_risk") or "")[:4000],
         reviewed_artifacts=(request.context.artifact_digest,),
-    )
-
-
-def _result_from_dict(payload: Mapping[str, Any]) -> AuthorityReviewResult:
-    return AuthorityReviewResult(
-        authority_record_id=str(payload["authority_record_id"]),
-        binding_digest=str(payload["binding_digest"]),
-        review_id=str(payload["review_id"]),
-        reviewer_profile=str(payload["reviewer_profile"]),
-        reviewer_principal_id=str(payload["reviewer_principal_id"]),
-        reviewer_run_id=str(payload["reviewer_run_id"]),
-        reviewer_model=str(payload["reviewer_model"]),
-        verdict=ReviewVerdict(str(payload["verdict"])),
-        findings=_strings(payload.get("findings")),
-        missing_tests=_strings(payload.get("missing_tests")),
-        security_concerns=_strings(payload.get("security_concerns")),
-        residual_risk=str(payload.get("residual_risk") or ""),
-        reviewed_artifacts=_strings(payload.get("reviewed_artifacts")),
     )
 
 
