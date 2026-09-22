@@ -328,6 +328,9 @@ class OpenAIProvider(BaseProvider):
         return self.parse_response(raw)
 
     def stream(self, model, messages, tools, params):
+        # The compiler registry imports this provider during initialization.
+        from ..provider_compiler.reasoning import reasoning_text_from_delta
+
         params = self._translate_params(params)
         params = self._translate_model_params(model, params)
         body = {"model": model, "messages": self.build_request(messages)}
@@ -349,7 +352,7 @@ class OpenAIProvider(BaseProvider):
                     text = delta.get("content")
                     if text:
                         yield {"type": "content_delta", "delta": {"type": "text", "text": text}}
-                    reasoning_text = delta.get("reasoning_content") or delta.get("reasoning") or delta.get("thinking")
+                    reasoning_text = reasoning_text_from_delta(delta)
                     if reasoning_text:
                         yield {"type": "reasoning_delta", "delta": {"type": "text", "text": str(reasoning_text)}}
                     yield from self._stream_tool_call_events(delta, tool_call_state)

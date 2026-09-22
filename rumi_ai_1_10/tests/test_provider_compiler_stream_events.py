@@ -22,6 +22,19 @@ def test_openai_chat_stream_parser_emits_text_reasoning_and_end():
     assert [event.type for event in events] == ["content_delta", "reasoning_delta", "stream_end"]
 
 
+def test_openai_chat_stream_parser_maps_trace_to_reasoning_delta():
+    from domain.ai_client.provider_compiler.base import CompiledProviderRequest
+    from domain.ai_client.provider_compiler.openai_chat import OpenAIChatCompiler
+
+    events = OpenAIChatCompiler().parse_stream_chunk(
+        {"choices": [{"delta": {"trace": "model trace"}}]},
+        CompiledProviderRequest(api_family="openai_chat", provider_id="openai", model="m", path=""),
+    )
+
+    assert [event.type for event in events] == ["reasoning_delta"]
+    assert events[0].delta == {"type": "text", "text": "model trace"}
+
+
 def test_google_native_stream_parser_emits_tool_events():
     from domain.ai_client.provider_compiler.base import CompiledProviderRequest
     from domain.ai_client.provider_compiler.google_native import GoogleNativeCompiler
