@@ -117,3 +117,9 @@ The composition editor requires the matching Host endpoints:
 editor reports the unavailable catalog instead of presenting a working selector.
 The registry also publishes `active_profile_definition_revision` so newly saved
 changes are not mistaken for the configuration that is currently running.
+
+Activation waits for the Host to publish its next runtime capture. Desktop
+Launcher renews the panel session through its native bridge when that capture
+changes. A browser-only preview cannot mint that credential: if its session
+expires, reopen the panel through Launcher. The UI preserves unresolved request
+identities and explains reconnection instead of replaying an uncertain write.

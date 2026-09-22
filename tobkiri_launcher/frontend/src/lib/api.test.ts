@@ -1331,3 +1331,15 @@ test('all generated map bindings use the exact method/path and reject ambiguous 
     /unsupported/i,
   );
 });
+
+
+test('a browser-only expired session explains reconnection without replaying the write', async () => {
+  delete (window as Window & {__TAURI__?: unknown}).__TAURI__;
+  let writes = 0;
+  fetchHandler = async () => {
+    writes += 1;
+    return new Response(JSON.stringify({success: false, data: null, error: 'Unauthorized'}), {status: 401});
+  };
+  await assert.rejects(apiFetch('/api/v4/profiles/update', {method: 'POST', body: '{}'}), /Reopen this panel from Tobkiri Launcher/);
+  assert.equal(writes, 1);
+});

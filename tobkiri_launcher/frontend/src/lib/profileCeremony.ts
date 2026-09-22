@@ -131,7 +131,12 @@ export interface ProfileCeremonyTransport {
 
 const canonicalTransport: ProfileCeremonyTransport = {
   write: <T>(target: RuntimeSurfaceTarget, payload: Record<string, unknown>, requestId?: string) => (
-    fetchFrontendContractOperation<T>(target.method, target.logical_target, payload, {requestId})
+    fetchFrontendContractOperation<T>(target.method, target.logical_target, payload, {
+      requestId,
+      // Activation publishes a fresh runtime capture after the durable commit.
+      // Keep its response alive while that bounded Host transition completes.
+      ...(target.operation_id === 'profile.change.activate' ? {timeoutMs: 60_000} : {}),
+    })
   ),
 };
 

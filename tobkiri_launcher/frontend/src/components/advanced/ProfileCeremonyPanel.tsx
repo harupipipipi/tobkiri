@@ -42,6 +42,7 @@ import {
   type MutationJournalRecord,
 } from '@/src/lib/mutationJournal';
 import type {Pack} from '@/src/store';
+import {PanelSessionUnavailableError} from '@/src/lib/apiTransport';
 import {reconcileMutationStatus} from '@/src/lib/operationStatus';
 import {recordClientDiagnostic} from '@/src/lib/clientDiagnostics';
 
@@ -380,6 +381,7 @@ export function ProfileCeremonyPanel({
           isCurrent: () => requestIsCurrent(operation.request, operation.bindingKey),
         });
       } catch (error) {
+        if (error instanceof PanelSessionUnavailableError) setFailure({code: 'FAILED', message: error.message});
         recordClientDiagnostic({
           code: 'profile.ceremony.reconciliation_failed',
           operation: 'profile.ceremony.hydrate',
@@ -461,6 +463,7 @@ export function ProfileCeremonyPanel({
           setCeremonyState('error');
         }
       } catch (error) {
+        if (error instanceof PanelSessionUnavailableError) setFailure({code: 'FAILED', message: error.message});
         recordClientDiagnostic({
           code: 'profile.ceremony.reconciliation_failed',
           operation: 'profile.ceremony.unknown_result',
@@ -519,7 +522,8 @@ export function ProfileCeremonyPanel({
           setCeremonyState('error');
         }
         return reconciled;
-      } catch {
+      } catch (error) {
+        if (error instanceof PanelSessionUnavailableError) setFailure({code: 'FAILED', message: error.message});
         return null;
       }
     };
@@ -669,13 +673,17 @@ export function ProfileCeremonyPanel({
     }
   };
 
-  const actionLabel = ceremonyState === 'resolved'
+  const busyLabels: Partial<Record<CeremonyState, string>> = {
+    resolving: 'Resolving…', reviewing: 'Reviewing…',
+    approving: 'Requesting approval…', activating: 'Activating…', active: 'Profile active',
+  };
+  const actionLabel = busyLabels[ceremonyState] ?? (ceremonyState === 'resolved'
     ? 'Review exact candidate'
     : ceremonyState === 'reviewed'
       ? 'Request Kernel approval'
       : ceremonyState === 'approved'
         ? 'Activate approved Profile'
-        : 'Resolve candidate';
+        : 'Resolve candidate');
   const action = ceremonyState === 'resolved' ? review : ceremonyState === 'reviewed' ? approve : ceremonyState === 'approved' ? activate : resolve;
 
   return (
