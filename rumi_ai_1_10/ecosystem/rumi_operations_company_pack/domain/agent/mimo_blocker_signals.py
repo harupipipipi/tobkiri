@@ -25,9 +25,15 @@ def sync_mimo_blocker_signals(
 ) -> list[dict[str, Any]]:
     """Collect MiMo runtime blocker evidence and mirror it into Company Workspace."""
 
-    signals = collect_mimo_blocker_signals(state, company_id=company_id, profile_id=profile_id)
     runtime_store = CompanyRuntimeStore()
     active_tasks = _active_signal_tasks_by_key(runtime_store, company_id)
+    try:
+        signals = collect_mimo_blocker_signals(
+            state, company_id=company_id, profile_id=profile_id
+        )
+    except Exception:
+        # Missing observations cannot prove that previously blocked work recovered.
+        return [_unobserved_signal(task) for task in active_tasks.values()]
     current_keys = {str(signal.get("signal_key") or "") for signal in signals if signal.get("signal_key")}
     synced: list[dict[str, Any]] = []
 
@@ -119,11 +125,8 @@ def _scheduler_failure_signals(
         schedule_id = str(schedule_id or "").strip()
         if not schedule_id:
             continue
-        try:
-            schedule = scheduler.get_schedule(schedule_id)
-            history = scheduler.get_history(schedule_id, limit=1, offset=0)
-        except Exception:
-            continue
+        schedule = scheduler.get_schedule(schedule_id)
+        history = scheduler.get_history(schedule_id, limit=1, offset=0)
         entries = history.get("entries") if isinstance(history, dict) else []
         latest = entries[0] if isinstance(entries, list) and entries and isinstance(entries[0], dict) else None
         if latest is None:
@@ -238,16 +241,13 @@ def _child_subagent_conversations(store: ChatStore, parent: dict[str, Any]) -> l
         if isinstance(child, dict) and str(child.get("conversation_kind") or "") == "subagent":
             seen.add(str(child.get("id") or child_id))
             children.append(child)
-    try:
-        listed, _ = store.list_conversations(
-            limit=500,
-            offset=0,
-            conversation_kind="subagent",
-            group_id=parent.get("group_id"),
-            include_messages=True,
-        )
-    except Exception:
-        listed = []
+    listed, _ = store.list_conversations(
+        limit=500,
+        offset=0,
+        conversation_kind="subagent",
+        group_id=parent.get("group_id"),
+        include_messages=True,
+    )
     for child in listed:
         if not isinstance(child, dict):
             continue
@@ -390,6 +390,25 @@ def _active_signal_tasks_by_key(runtime_store: CompanyRuntimeStore, company_id: 
         if signal_key and signal_key not in by_key:
             by_key[signal_key] = task
     return by_key
+
+
+def _unobserved_signal(task: dict[str, Any]) -> dict[str, Any]:
+    metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+    return {
+        "signal_key": metadata.get("signal_key"),
+        "signal_type": metadata.get("signal_type"),
+        "severity": metadata.get("severity", "blocker"),
+        "title": task.get("title"),
+        "description": str(task.get("description") or "")
+        + "\n\nCurrent status is unavailable; this prior blocker is retained.",
+        "target_agent_ids": list(task.get("target_agent_ids") or []),
+        "evidence": metadata.get("evidence", {}),
+        "detected_at": metadata.get("detected_at"),
+        "task_id": task.get("id") or task.get("task_id"),
+        "message_id": task.get("message_id"),
+        "thread_id": task.get("thread_id"),
+        "observation_status": "unavailable",
+    }
 
 
 def _resolve_absent_signal_tasks(runtime_store: CompanyRuntimeStore, company_id: str, current_keys: set[str]) -> None:
