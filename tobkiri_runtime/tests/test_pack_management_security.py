@@ -4,20 +4,10 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-
-class _Approval:
-    def __init__(self, approved: bool, reason: str = "not_found"):
-        self.approved = approved
-        self.reason = reason
-
-    def is_pack_approved_and_verified(self, pack_id: str):
-        return self.approved, None if self.approved else self.reason
 
 
 def _write_staging_meta(tmp_path, staging_id, detected_pack_ids, changed_paths=None):
@@ -33,198 +23,73 @@ def _write_staging_meta(tmp_path, staging_id, detected_pack_ids, changed_paths=N
     return meta
 
 
-def test_api_routes_skip_unapproved_pack():
+def test_dynamic_api_route_loader_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    pack_info = SimpleNamespace(
-        ecosystem={
-            "api_routes": [
-                {"method": "GET", "path": "/api/evil", "function_id": "run"},
-            ],
-        },
-    )
-    registry = SimpleNamespace(packs={"evil_pack": pack_info})
-    old_manager = PackAPIHandler.approval_manager
-    PackAPIHandler.approval_manager = _Approval(False)
-    try:
-        count = PackAPIHandler.load_api_routes(registry)
-    finally:
-        PackAPIHandler.approval_manager = old_manager
-
-    assert count == 0
-    assert ("GET", "/api/evil") not in PackAPIHandler._api_route_exact
+    assert not hasattr(PackAPIHandler, "load_api_routes")
+    assert not hasattr(PackAPIHandler, "_api_route_exact")
 
 
-def test_api_route_dispatch_rechecks_pack_approval():
+def test_dynamic_api_route_dispatch_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    PackAPIHandler._api_route_exact = {
-        ("POST", "/api/evil"): {
-            "pack_id": "evil_pack",
-            "handler": "",
-            "function_id": "run",
-            "pass_body": True,
-            "response_mode": "result",
-            "args": {},
-            "path_param_map": {},
-        }
-    }
-    PackAPIHandler._api_route_patterns = []
-    handler = PackAPIHandler.__new__(PackAPIHandler)
-    sent = []
-    handler._send_response = lambda response, status=200: sent.append((response, status))
-
-    with patch.object(
-        PackAPIHandler,
-        "_is_pack_approved_for_runtime_routes",
-        return_value=False,
-    ):
-        assert handler._dispatch_api_route("POST", "/api/evil", {"x": 1}) is True
-
-    assert sent[0][1] == 403
+    assert not hasattr(PackAPIHandler, "_dispatch_api_route")
+    assert not hasattr(PackAPIHandler, "_is_pack_approved_for_runtime_routes")
 
 
-def test_stale_web_mount_stops_matching_after_pack_revoked():
+def test_dynamic_web_mount_state_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    approval = _Approval(True)
-    old_manager = PackAPIHandler.approval_manager
-    old_mounts = list(PackAPIHandler._web_mounts)
-    PackAPIHandler.approval_manager = approval
-    PackAPIHandler._web_mounts = [
-        {
-            "path_prefix": "/stale",
-            "web_root": Path("/tmp/stale-pack/web"),
-            "spa_fallback": False,
-            "auth_required": False,
-            "pack_id": "stale_pack",
-        }
-    ]
-    try:
-        handler = object.__new__(PackAPIHandler)
-        assert handler._match_web_mount("/stale/index.html") is not None
-
-        approval.approved = False
-        approval.reason = "not_approved"
-
-        assert handler._match_web_mount("/stale/index.html") is None
-    finally:
-        PackAPIHandler.approval_manager = old_manager
-        PackAPIHandler._web_mounts = old_mounts
+    assert not hasattr(PackAPIHandler, "_web_mounts")
+    assert not hasattr(PackAPIHandler, "load_web_mounts")
 
 
-def test_stale_web_mount_direct_serve_rechecks_hash_state():
+def test_static_mounts_are_finite_first_party_roots():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    approval = _Approval(False, reason="hash_mismatch")
-    old_manager = PackAPIHandler.approval_manager
-    PackAPIHandler.approval_manager = approval
-    try:
-        handler = object.__new__(PackAPIHandler)
-        sent = []
-        handler._send_response = lambda response, status=200: sent.append((status, response))
-
-        handler._serve_static_file(
-            "/stale/index.html",
-            {
-                "path_prefix": "/stale",
-                "web_root": Path("/tmp/stale-pack/web"),
-                "spa_fallback": False,
-                "auth_required": False,
-                "pack_id": "stale_pack",
-            },
-        )
-
-        assert sent[0][0] == 403
-    finally:
-        PackAPIHandler.approval_manager = old_manager
+    handler = object.__new__(PackAPIHandler)
+    assert handler._match_web_mount("/stale/index.html") is None
+    assert {
+        mount["path_prefix"] for mount in handler._fixed_web_mounts()
+    } == {"/panel", "/setup"}
 
 
-def test_stale_pre_auth_entry_stops_skipping_auth_after_revoke():
+def test_dynamic_pre_auth_table_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    approval = _Approval(True)
-    old_manager = PackAPIHandler.approval_manager
-    old_table = list(PackAPIHandler._pre_auth_table)
-    PackAPIHandler.approval_manager = approval
-    PackAPIHandler._pre_auth_table = [
-        {
-            "method": "GET",
-            "path_prefix": "/api/stale",
-            "pack_id": "stale_pack",
-        }
-    ]
-    try:
-        handler = object.__new__(PackAPIHandler)
-        assert handler._is_pre_auth_route("GET", "/api/stale/status") is True
-
-        approval.approved = False
-        approval.reason = "not_approved"
-
-        assert handler._is_pre_auth_route("GET", "/api/stale/status") is False
-    finally:
-        PackAPIHandler.approval_manager = old_manager
-        PackAPIHandler._pre_auth_table = old_table
+    assert not hasattr(PackAPIHandler, "_pre_auth_table")
+    assert not hasattr(PackAPIHandler, "load_pre_auth_routes")
 
 
-def test_stale_pre_auth_entry_stops_skipping_auth_after_hash_change():
+def test_legacy_pre_auth_matcher_is_physically_absent():
     from core_runtime.pack_api_server import PackAPIHandler
 
-    approval = _Approval(False, reason="hash_mismatch")
-    old_manager = PackAPIHandler.approval_manager
-    old_table = list(PackAPIHandler._pre_auth_table)
-    PackAPIHandler.approval_manager = approval
-    PackAPIHandler._pre_auth_table = [
-        {
-            "method": "POST",
-            "path": "/api/stale/complete",
-            "pack_id": "stale_pack",
-        }
-    ]
-    try:
-        handler = object.__new__(PackAPIHandler)
-
-        assert handler._is_pre_auth_route("POST", "/api/stale/complete") is False
-    finally:
-        PackAPIHandler.approval_manager = old_manager
-        PackAPIHandler._pre_auth_table = old_table
+    assert not hasattr(PackAPIHandler, "_is_pre_auth_route")
+    assert PackAPIHandler._retired_api_path("/api/packs/scan") is True
 
 
 def test_function_registry_trusts_manifest_entrypoint_file(tmp_path):
-    from core_runtime.function_registry import FunctionRegistry
-
-    func_dir = tmp_path / "func"
-    func_dir.mkdir()
-    (func_dir / "main.py").write_text("def run(ctx, args): return {'wrong': True}\n", encoding="utf-8")
-    trusted = func_dir / "trusted.py"
-    trusted.write_text("def run(ctx, args): return {'ok': True}\n", encoding="utf-8")
-
-    registry = FunctionRegistry()
-    assert registry.register(
-        pack_id="pack",
-        function_id="fn",
-        manifest={"entrypoint": "trusted.py:run"},
-        function_dir=func_dir,
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
     )
-    entry = registry.get("pack:fn")
-    assert entry is not None
-    assert Path(entry.main_py_path).resolve() == trusted.resolve()
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
+
+    assert_retired_module_absent("core_runtime.function_registry")
+    assert_profile_resolver_requires_authority_snapshot()
+    assert_payload_mutations_denied(harness(tmp_path))
 
 
 def test_function_registry_rejects_escaping_entrypoint(tmp_path):
-    from core_runtime.function_registry import FunctionRegistry
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
+    )
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
 
-    func_dir = tmp_path / "func"
-    func_dir.mkdir()
-    (tmp_path / "evil.py").write_text("def run(ctx, args): return {}\n", encoding="utf-8")
-
-    with pytest.raises(ValueError):
-        FunctionRegistry().register(
-            pack_id="pack",
-            function_id="fn",
-            manifest={"entrypoint": "../evil.py:run"},
-            function_dir=func_dir,
-        )
+    assert_retired_module_absent("core_runtime.function_registry")
+    assert_profile_resolver_requires_authority_snapshot()
+    assert_payload_mutations_denied(harness(tmp_path))
 
 
 def test_staging_helpers_reject_path_like_ids(tmp_path):
@@ -597,17 +462,12 @@ def test_extension_approval_applies_staging(monkeypatch, tmp_path):
     assert calls[-1] == ("apply", "a" * 16, "replace", "reviewer")
 
 
-def test_defaultspack_management_routes_are_fallback_http_routes():
-    from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
+def test_defaultspack_management_requires_captured_operation():
+    from tests.v4_batch_support import assert_route_cutover
 
-    routes = {
-        (spec.method, spec.pattern): spec.function_name
-        for spec in canonical_http_route_specs(include_always_available=False)
-    }
-
-    assert routes[("GET", "/api/defaultspack/modules")] == "defaultspack:management_list_modules"
-    assert routes[("GET", "/api/defaultspack/pack-requests")] == "defaultspack:pack_request_list"
-    assert (
-        routes[("GET", "/api/defaultspack/migration/status")]
-        == "defaultspack:management_get_migration_status"
+    assert_route_cutover(
+        "GET",
+        "/api/defaultspack/modules",
+        "tobkiri.pack-management.v1",
+        "defaultspack.pack-management.list-modules",
     )

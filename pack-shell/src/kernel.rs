@@ -157,3 +157,40 @@ impl Drop for KernelProcess {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::KernelProcess;
+
+    #[test]
+    fn is_running_is_false_before_start() {
+        let mut kernel = KernelProcess::new("unused".to_string());
+
+        assert!(!kernel.is_running());
+    }
+
+    #[test]
+    fn start_rejects_empty_kernel_command() {
+        let mut kernel = KernelProcess::new("   ".to_string());
+
+        let error = kernel
+            .start(8765)
+            .expect_err("empty commands must be rejected");
+
+        assert!(error.to_string().contains("kernel_cmd is empty"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn start_and_stop_tracks_owned_kernel_process() {
+        let mut kernel =
+            KernelProcess::new("sh -c 'trap \"exit 0\" TERM; while :; do :; done'".to_string());
+
+        kernel.start(4321).expect("test kernel should start");
+        assert!(kernel.is_running());
+
+        kernel.stop().expect("test kernel should stop");
+
+        assert!(!kernel.is_running());
+    }
+}

@@ -99,9 +99,16 @@ def _pack_root() -> Path:
 
 
 def _secrets_dir(pack_root: Path | None = None) -> Path:
-    override = os.environ.get("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
-    if override:
-        return Path(override)
+    if pack_root is None:
+        # This is a routing override only; the value is a directory path and
+        # never contains credential material.  Secret values remain broker
+        # backed and are never read from the process environment.
+        configured_override = os.getenv("RUMI_DEFAULTSPACK_SECRETS_DIR", "").strip()
+        if configured_override:
+            return Path(configured_override).expanduser()
+        configured_user_data = os.getenv("RUMI_USER_DATA", "").strip()
+        if configured_user_data:
+            return Path(configured_user_data).expanduser() / "secrets"
     return (pack_root or _pack_root()) / "user_data" / "secrets"
 
 
@@ -405,9 +412,6 @@ def provider_secret_keys(provider_id: str) -> List[str]:
 
 
 def _read_secret_value(key: str, caller_id: str, *, pack_root: Path | None = None) -> str:
-    value = os.environ.get(key, "").strip()
-    if value:
-        return value
     return str(
         _get_store(pack_root)._internal_read_value(
             key,
@@ -418,43 +422,30 @@ def _read_secret_value(key: str, caller_id: str, *, pack_root: Path | None = Non
 
 
 def _refresh_provider_env(provider_id: str, *, pack_root: Path | None = None) -> bool:
+    """Invalidate provider instances after a broker-backed update.
+
+    Credentials are intentionally not copied into ``os.environ``.  The old
+    name is retained as a compatibility hook for callers that refresh the
+    provider registry after saving a connection.
+    """
+
     provider_id = str(provider_id or "").strip()
-    keys = provider_secret_keys(provider_id)
-    for key in keys:
-        os.environ.pop(key, None)
-
-    configured = False
-    for key in keys:
-        value = _read_secret_value(key, f"defaultspack.ai_client:{provider_id}:legacy", pack_root=pack_root)
-        if value:
-            os.environ[key] = value
-            configured = True
-
-    if not configured:
-        canonical_key = provider_secret_key(provider_id)
-        for api_key in provider_named_api_keys(provider_id, pack_root=pack_root):
-            value = _read_secret_value(
-                str(api_key.get("key", "")),
-                f"defaultspack.ai_client:{provider_id}:{api_key.get('api_id')}",
-                pack_root=pack_root,
-            )
-            if value and canonical_key:
-                os.environ[canonical_key] = value
-                configured = True
-                break
+    configured = provider_has_api_key(provider_id, pack_root=pack_root)
     _reset_ai_client()
     return configured
 
 
 def provider_has_api_key(provider_id: str, *, pack_root: Path | None = None) -> bool:
+    provider_id = str(provider_id or "").strip()
     keys = provider_secret_keys(provider_id)
+    if provider_id != "xiaomi-token-plan-sgp":
+        # The unqualified MiMo key belongs only to the explicitly selected
+        # SGP token-plan connection; it must not enable another region.
+        keys = [key for key in keys if key != "MIMO_API_KEY"]
     for key in keys:
-        if os.environ.get(key, "").strip():
-            return True
         secret_path = _secrets_dir(pack_root) / f"{key}.json"
         if secret_path.exists() and _get_store(pack_root).has_secret(key):
             return True
-    provider_id = str(provider_id or "").strip()
     for item in provider_named_api_keys(provider_id, pack_root=pack_root):
         if item.get("configured"):
             return True
@@ -531,7 +522,6 @@ def set_provider_api_key(
             )
             if not deleted.success:
                 return {"success": False, "provider_id": provider_id, "error": deleted.error}
-        os.environ.pop(key, None)
         metadata = _read_api_metadata(pack_root)
         metadata[key] = _metadata_patch(
             provider_id=provider_id,
@@ -575,7 +565,6 @@ def set_provider_api_key(
             actor="defaultspack",
             reason=f"clear {provider_id} api key",
         )
-        os.environ.pop(key, None)
         if result.success:
             if named:
                 metadata = _read_api_metadata(pack_root)
@@ -619,12 +608,6 @@ def set_provider_api_key(
                 credential_mode=resolved_credential_mode,
             )
             _write_api_metadata(metadata, pack_root)
-        if not named:
-            os.environ[key] = cleaned
-        elif resolved_kind == _KIND_LLM and not os.environ.get(provider_secret_key(provider_id), "").strip():
-            canonical_key = provider_secret_key(provider_id)
-            if canonical_key:
-                os.environ[canonical_key] = cleaned
         _reset_ai_client()
     return {
         "success": bool(result.success),
@@ -740,7 +723,6 @@ def rename_provider_api_key(
         reason=f"rename {provider_id} api key",
     )
     if deleted.success:
-        os.environ.pop(old_key, None)
         metadata = _read_api_metadata(pack_root)
         metadata.pop(old_key, None)
         metadata[new_key] = _metadata_patch(
@@ -770,36 +752,16 @@ def rename_provider_api_key(
 
 
 def load_provider_api_keys_into_env(*, pack_root: Path | None = None) -> dict[str, bool]:
-    loaded: dict[str, bool] = {}
-    for provider_id, keys in PROVIDER_SECRET_KEYS.items():
-        configured = False
-        for key in keys:
-            if os.environ.get(key, "").strip():
-                configured = True
-                continue
-            if not (_secrets_dir(pack_root) / f"{key}.json").exists():
-                continue
-            store = _get_store(pack_root)
-            value = store._internal_read_value(
-                key,
-                caller_id=f"defaultspack.ai_client:{provider_id}",
-            )
-            if value:
-                os.environ[key] = value
-                configured = True
-        if not configured:
-            canonical_key = provider_secret_key(provider_id)
-            for api_key in provider_named_api_keys(provider_id, pack_root=pack_root):
-                value = _get_store(pack_root)._internal_read_value(
-                    str(api_key.get("key", "")),
-                    caller_id=f"defaultspack.ai_client:{provider_id}:{api_key.get('api_id')}",
-                )
-                if value and canonical_key:
-                    os.environ[canonical_key] = value
-                    configured = True
-                    break
-        loaded[provider_id] = configured
-    return loaded
+    """Return provider configuration status without mutating process globals.
+
+    The historic function name remains for API compatibility.  It is now a
+    pure status query; host/provider contracts carry material explicitly.
+    """
+
+    return {
+        provider_id: provider_has_api_key(provider_id, pack_root=pack_root)
+        for provider_id in PROVIDER_SECRET_KEYS
+    }
 
 
 def provider_named_api_keys(provider_id: str = "", *, pack_root: Path | None = None) -> list[dict[str, Any]]:
@@ -872,9 +834,6 @@ def read_provider_api_key(provider_id: str, api_id: str, *, pack_root: Path | No
     if value:
         return value
     for legacy_key in provider_secret_keys(provider_id):
-        value = os.environ.get(legacy_key, "").strip()
-        if value:
-            return value
         value = _get_store(pack_root)._internal_read_value(
             legacy_key,
             caller_id=f"defaultspack.ai_client:{provider_id}:legacy",

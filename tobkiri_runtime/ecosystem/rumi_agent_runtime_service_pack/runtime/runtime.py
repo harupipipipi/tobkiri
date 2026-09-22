@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import threading
 import time
 import uuid
@@ -21,6 +22,8 @@ AI_GENERATE = "rumi.service.ai.generate.v1"
 TOOL_INVOKE = "rumi.service.tool.invoke.v1"
 SERVICE_PACK_ID = "rumi_agent_runtime_service_pack"
 STATE_PACK_ID = "rumi_agent_state_store_pack"
+_EPHEMERAL_TOOL_PAYLOADS: dict[str, tuple[float, dict[str, Any]]] = {}
+_EPHEMERAL_TTL_SECONDS = 10 * 60
 
 
 class AgentRuntime:
@@ -118,13 +121,20 @@ class AgentRuntime:
                 list(arguments.get("prior_tool_results") or []),
             )
             if outcome["status"] == "waiting":
+                payload_receipt = _stash_ephemeral_tool_payload(
+                    {
+                        "pending_tool_intents": outcome["pending_tool_intents"],
+                        "tool_results": outcome["tool_results"],
+                    }
+                )
                 waiting = self._transition(
                     run_id,
                     "waiting",
                     int(outcome["step"]),
                     {
-                        "pending_tool_intents": outcome["pending_tool_intents"],
-                        "tool_results": outcome["tool_results"],
+                        "tool_payload_receipt": payload_receipt,
+                        "pending_count": len(outcome["pending_tool_intents"]),
+                        "tool_result_count": len(outcome["tool_results"]),
                     },
                 )["run"]
                 turn = self._turn_transition(
@@ -150,7 +160,11 @@ class AgentRuntime:
                         "content": outcome["content"],
                         "metadata": {
                             "agent_run_id": run_id,
-                            "tool_results": outcome["tool_results"],
+                            "tool_result_receipts": [
+                                _hashed_receipt(item)
+                                for item in outcome["tool_results"]
+                            ],
+                            "tool_result_count": len(outcome["tool_results"]),
                         },
                     },
                 },
@@ -163,18 +177,49 @@ class AgentRuntime:
                     "result_reference": {
                         "conversation_id": conversation["id"],
                         "message_id": appended["message"]["id"],
-                    }
+                    },
+                    "terminal_projection": {
+                        "turn_id": turn["id"],
+                        "status": "completed",
+                    },
                 },
             )["run"]
-            turn = self._turn_transition(
-                turn,
-                "completed",
-                {"result_reference": completed["result_reference"]},
-            )
+            reconciliation_required = False
+            try:
+                turn = self._turn_transition(
+                    turn,
+                    "completed",
+                    {"result_reference": completed["result_reference"]},
+                )
+                completed = self._state_action(
+                    "run.reconcile",
+                    {
+                        "run_id": run_id,
+                        "projection_receipt": _hashed_receipt(
+                            {
+                                "turn_id": turn["id"],
+                                "status": turn["status"],
+                                "result_reference": completed[
+                                    "result_reference"
+                                ],
+                            }
+                        ),
+                    },
+                )["run"]
+            except Exception:
+                # Agent State is the terminal authority. Turn state is a
+                # projection and is reconciled without rewriting the terminal
+                # run/event pair.
+                reconciliation_required = True
+            else:
+                reconciliation_required = bool(
+                    completed.get("reconciliation_required")
+                )
             return {
                 "status": "completed",
                 "run": completed,
                 "turn": turn,
+                "reconciliation_required": reconciliation_required,
                 "message": appended["message"],
                 "tool_results": outcome["tool_results"],
             }
@@ -314,10 +359,7 @@ class AgentRuntime:
             if isinstance(approval, Mapping)
             else {"approval_token": str(approval or "")}
         )
-        return self.client.invoke(
-            TOOL_INVOKE,
-            "invoke",
-            {
+        tool_payload = {
                 "tool_id": str(intent.get("operation") or ""),
                 "tool_call_id": str(intent.get("intent_id") or uuid.uuid4()),
                 "caller_id": f"agent:{run['id']}",
@@ -325,8 +367,28 @@ class AgentRuntime:
                 "deadline": time.time() + 60,
                 "approval_token": approval.get("approval_token"),
                 "approval_request_id": approval.get("approval_request_id"),
+            }
+        executor_token = secrets.token_urlsafe(32)
+        effect_receipt = _hashed_receipt(tool_payload)
+        self._state_action(
+            "run.effect.begin",
+            {
+                "run_id": run["id"],
+                "executor_token": executor_token,
+                "effect_receipt": effect_receipt,
             },
         )
+        try:
+            return self.client.invoke(TOOL_INVOKE, "invoke", tool_payload)
+        finally:
+            self._state_action(
+                "run.effect.end",
+                {
+                    "run_id": run["id"],
+                    "executor_token": executor_token,
+                    "effect_receipt": effect_receipt,
+                },
+            )
 
     def _cancel(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         result = self._state_action(
@@ -334,6 +396,13 @@ class AgentRuntime:
             {"run_id": arguments["run_id"], "reason": arguments["reason"]},
         )
         run = result["run"]
+        if result.get("too_late"):
+            return {
+                "status": "too_late",
+                "cancel_requested": True,
+                "effect_committing": True,
+                **result,
+            }
         turn = self._turn_get(str(run.get("turn_id") or ""))
         if turn and turn["status"] not in {"completed", "failed", "cancelled"}:
             self._turn_transition(turn, "cancelled", {"reason": arguments["reason"]})
@@ -357,6 +426,9 @@ class AgentRuntime:
         )
         details = waiting.get("details") if isinstance(waiting, Mapping) else {}
         details = details if isinstance(details, Mapping) else {}
+        ephemeral = _load_ephemeral_tool_payload(
+            str(details.get("tool_payload_receipt") or "")
+        )
         return {
             "run_id": run["id"],
             "idempotency_key": run["idempotency_key"],
@@ -366,8 +438,10 @@ class AgentRuntime:
             "turn_id": run["turn_id"],
             "parent_run_id": run["parent_run_id"],
             "tool_approvals": dict(arguments["tool_approvals"]),
-            "pending_tool_intents": list(details.get("pending_tool_intents") or []),
-            "prior_tool_results": list(details.get("tool_results") or []),
+            "pending_tool_intents": list(
+                ephemeral.get("pending_tool_intents") or []
+            ),
+            "prior_tool_results": list(ephemeral.get("tool_results") or []),
         }
 
     def _steer(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -796,6 +870,36 @@ def _bounded(value: Any) -> Any:
     return json.loads(encoded)
 
 
+def _hashed_receipt(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _stash_ephemeral_tool_payload(value: Mapping[str, Any]) -> str:
+    now = time.time()
+    for key, (expires_at, _) in list(_EPHEMERAL_TOOL_PAYLOADS.items()):
+        if expires_at <= now:
+            _EPHEMERAL_TOOL_PAYLOADS.pop(key, None)
+    receipt = _hashed_receipt(secrets.token_urlsafe(32))
+    _EPHEMERAL_TOOL_PAYLOADS[receipt] = (
+        now + _EPHEMERAL_TTL_SECONDS,
+        json.loads(json.dumps(dict(value), ensure_ascii=False, default=str)),
+    )
+    return receipt
+
+
+def _load_ephemeral_tool_payload(receipt: str) -> dict[str, Any]:
+    record = _EPHEMERAL_TOOL_PAYLOADS.pop(str(receipt or ""), None)
+    if record is None or record[0] <= time.time():
+        raise RuntimeError("ephemeral tool payload expired; resume fails closed")
+    return record[1]
+
+
 def _short(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
-

@@ -1,17 +1,245 @@
 {
-  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.terminal_session","version":"1.0.0","kind":"service","display_name":"Rumi Terminal Session","description":"Bounded observable and receipt-controlled terminal sessions."},
-  "contracts":{"provides":[
-    {"id":"rumi.resource.terminal.session.v1","version":"1.0.0","provider_instance_id":"terminal-session.observe","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_terminal_session_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["terminal.session.observe"]},
-    {"id":"rumi.action.terminal.session.v1","version":"1.0.0","provider_instance_id":"terminal-session.control","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_terminal_session_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["terminal.session.control"]}
-  ],"requires":[{"id":"rumi.service.shell.inspect.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.resource.workspace.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
-  "entrypoints":[
-    {"id":"terminal-observe","contract_id":"rumi.resource.terminal.session.v1","loader":"python","module":"ecosystem.rumi_terminal_session_pack.runtime.sessions","symbol":"create_terminal_resource","artifact_hash":"sha256:b3ea30abdbce708741ae2ee646b8c2820542ade3731e734c1f6877765609e3c6"},
-    {"id":"terminal-control","contract_id":"rumi.action.terminal.session.v1","loader":"python","module":"ecosystem.rumi_terminal_session_pack.runtime.sessions","symbol":"create_terminal_control","artifact_hash":"sha256:b3ea30abdbce708741ae2ee646b8c2820542ade3731e734c1f6877765609e3c6"}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.terminal.session.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_terminal_session_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "terminal-session.observe",
+        "required_capabilities": [
+          "terminal.session.observe"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.terminal.session.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_terminal_session_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "terminal-session.control",
+        "required_capabilities": [
+          "terminal.session.control"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.shell.inspect.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:4363d9f58c34afaf7a3ca8117f81f2fc986ea9c80f71d6429454118d2c35269f",
+      "contract_id": "rumi.resource.terminal.session.v1",
+      "id": "terminal-observe",
+      "loader": "python",
+      "module": "ecosystem.rumi_terminal_session_pack.runtime.sessions",
+      "symbol": "create_terminal_resource"
+    },
+    {
+      "artifact_hash": "sha256:4363d9f58c34afaf7a3ca8117f81f2fc986ea9c80f71d6429454118d2c35269f",
+      "contract_id": "rumi.action.terminal.session.v1",
+      "id": "terminal-control",
+      "loader": "python",
+      "module": "ecosystem.rumi_terminal_session_pack.runtime.sessions",
+      "symbol": "create_terminal_control"
+    }
   ],
-  "resources":[],"storage":[{"namespace":"rumi.terminal.sessions.ephemeral","schema_version":"1.0.0","authoritative":true,"retention":"bounded process lifetime","export_import":false}],
-  "permissions":[{"capability":"terminal.session.observe","access":"observe","approval_required":false},{"capability":"terminal.session.control","access":"control","approval_required":true},{"capability":"shell.inspect","access":"inspect","approval_required":false},{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:b3ea30abdbce708741ae2ee646b8c2820542ade3731e734c1f6877765609e3c6","build_identity":"rumi-terminal-session-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.coding.terminal.stream","defaultspack.blocks.coding.terminal_stream"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Cancel all active sessions and select the pinned prior adapter."},
-  "extensions":{"rumi.terminal_session.boundary":{"observe_control_split":true,"control_receipt":"required_per_operation","max_sessions":32,"output_bytes_per_stream":131072,"persistence":false,"clean_shutdown":true}}
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+        "rumi_shell_policy_pack": ">=1.0.0,<2.0.0",
+        "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.terminal.session.v1",
+            "rumi.resource.terminal.session.v1"
+          ],
+          "requires": [
+            "rumi.resource.workspace.v1",
+            "rumi.service.host.authorize.v1",
+            "rumi.service.shell.inspect.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+          "rumi_shell_policy_pack": ">=1.0.0,<2.0.0",
+          "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Bounded observable and receipt-controlled terminal sessions.",
+        "display_name": "Rumi Terminal Session",
+        "host_execution": true,
+        "metadata": {
+          "authority_split": [
+            "observe",
+            "control"
+          ],
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:3cdcc4ddee72a21de63c97cd823638d040cad4912fefaec802d233939991a289",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:fc5d8a706c178869e1093e1423415b3d160b7bfb44bc7458ad1a886985b55f96"
+          },
+          "control_receipt_required": true,
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "tool_or_ui_registry_imports": false
+        },
+        "pack_id": "rumi_terminal_session_pack",
+        "pack_identity": "rumi:ecosystem/rumi_terminal_session_pack",
+        "provenance": {
+          "build_identity": "rumi_terminal_session_pack:1.0.0",
+          "content_hash": "sha256:4363d9f58c34afaf7a3ca8117f81f2fc986ea9c80f71d6429454118d2c35269f",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume",
+          "shell.inspect",
+          "terminal.session.control",
+          "terminal.session.observe",
+          "workspace.metadata.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_terminal_session_pack"
+    },
+    "rumi.terminal_session.boundary": {
+      "clean_shutdown": true,
+      "control_receipt": "required_per_operation",
+      "max_sessions": 32,
+      "observe_control_split": true,
+      "output_bytes_per_stream": 131072,
+      "persistence": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_terminal_session_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:fc5d8a706c178869e1093e1423415b3d160b7bfb44bc7458ad1a886985b55f96"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.coding.terminal.stream",
+      "defaultspack.blocks.coding.terminal_stream"
+    ],
+    "removal_wave": 10,
+    "rollback": "Cancel all active sessions and select the pinned prior adapter.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Bounded observable and receipt-controlled terminal sessions.",
+    "display_name": "Rumi Terminal Session",
+    "id": "rumi.terminal_session",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "observe",
+      "approval_required": false,
+      "capability": "terminal.session.observe"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "terminal.session.control"
+    },
+    {
+      "access": "inspect",
+      "approval_required": false,
+      "capability": "shell.inspect"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "workspace.metadata.read"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_terminal_session_pack:1.0.0",
+    "content_hash": "sha256:4363d9f58c34afaf7a3ca8117f81f2fc986ea9c80f71d6429454118d2c35269f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.terminal.sessions.ephemeral",
+      "retention": "bounded process lifetime",
+      "schema_version": "1.0.0"
+    }
+  ]
 }
-

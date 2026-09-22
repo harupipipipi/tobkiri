@@ -28,6 +28,10 @@ from ecosystem.rumi_tool_result_pack.runtime.normalizer import (
 from ecosystem.rumi_tool_validation_pack.runtime.validator import (
     create_validate_operation,
 )
+from core_runtime.global_contract_dispatch import GlobalContractUnavailable
+from ecosystem.defaultspack.domain.tool.catalog_contract_client import (
+    ContractToolCatalog,
+)
 
 
 def _definition(tool_id: str = "sample.read") -> dict:
@@ -242,6 +246,32 @@ class _McpClient:
         return {"unexpected": [args, kwargs]}
 
 
+def test_legacy_projection_entrypoints_fail_closed_without_owner_access():
+    from ecosystem.rumi_default_tool_projection_pack.runtime import projection
+
+    class Client:
+        def invoke(self, *args, **kwargs):
+            raise AssertionError((args, kwargs))
+
+    for factory in (
+        projection.create_source_operation,
+        projection.create_local_operation,
+    ):
+        invoke = factory(Client())
+        with pytest.raises(
+            projection.LegacyToolProjectionRetired,
+            match="legacy default-tool projection is retired",
+        ):
+            invoke(
+                "invoke",
+                {
+                    "_contract_consumer_pack_id": "rumi_tool_local_executor_pack",
+                    "approved": True,
+                    "authorization": {"authorized": True, "consumed": True},
+                },
+            )
+
+
 def test_mcp_executor_rejects_missing_namespace_before_gateway_call() -> None:
     execute = create_mcp_execute_operation(_McpClient())
     with pytest.raises(ValueError, match="descriptor"):
@@ -285,3 +315,17 @@ def test_broker_source_has_no_concrete_tool_or_service_branches() -> None:
     )
     assert all(value not in broker for value in forbidden)
 
+
+def test_contract_catalog_does_not_fallback_to_legacy_registry(monkeypatch) -> None:
+    def unavailable(*_args, **_kwargs):
+        raise GlobalContractUnavailable("inactive v4 profile")
+
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.domain.tool.catalog_contract_client._invoke",
+        unavailable,
+    )
+    catalog = ContractToolCatalog()
+
+    assert catalog.list_tools() == []
+    assert catalog.get("legacy-only-tool") is None
+    assert catalog.get_schema("legacy-only-tool") == {}

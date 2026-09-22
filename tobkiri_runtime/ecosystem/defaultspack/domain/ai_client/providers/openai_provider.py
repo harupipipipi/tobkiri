@@ -13,6 +13,7 @@ import base64
 import ssl
 
 from ..base_provider import BaseProvider
+from ..api_key_store import read_provider_api_key
 
 
 class OpenAIProvider(BaseProvider):
@@ -22,16 +23,17 @@ class OpenAIProvider(BaseProvider):
 
     # Never seed availability from a release snapshot. /models is scoped to
     # the API key and is the only authority for what this account may use.
-    KNOWN_MODELS = []
-    _MODEL_INVENTORY_CACHE = {}
+    KNOWN_MODELS: list[dict[str, object]] = []
+    _MODEL_INVENTORY_CACHE: dict[str, tuple[float, list[dict[str, object]]]] = {}
     _MODEL_INVENTORY_CACHE_TTL_SECONDS = 300
 
-    def __init__(self):
-        self._api_key = os.environ.get("OPENAI_API_KEY", "")
+    def __init__(self, api_key: str | None = None):
+        self._api_key = str(api_key or read_provider_api_key("openai", "legacy") or "").strip()
         # Provider discovery must not disappear merely because a minimal host
         # environment lacks Windows certificate-location variables.  Requests
         # still use urllib's verified default context when this construction is
         # deferred; no insecure TLS fallback is introduced.
+        self._ssl_ctx: ssl.SSLContext | None
         try:
             self._ssl_ctx = ssl.create_default_context()
         except ssl.SSLError:
@@ -147,7 +149,7 @@ class OpenAIProvider(BaseProvider):
         now = time.monotonic()
         if cached and cached[0] > now:
             return [dict(model) for model in cached[1]]
-        models = []
+        models: list[dict[str, object]] = []
         for raw in self._fetch_live_models():
             model = self._live_model_record(raw)
             if model and all(item["model_id"] != model["model_id"] for item in models):
@@ -229,17 +231,75 @@ class OpenAIProvider(BaseProvider):
 
     # ── build_request / parse_response ──────────────────────────────────
 
+    @staticmethod
+    def _openai_tool_call(raw):
+        if not isinstance(raw, dict):
+            return None
+        function = raw.get("function")
+        if raw.get("type") == "function" and isinstance(function, dict):
+            return raw
+        function = function if isinstance(function, dict) else {}
+        name = str(raw.get("name") or raw.get("tool_name") or function.get("name") or "")
+        if not name:
+            return None
+        arguments = (
+            raw.get("input")
+            if "input" in raw
+            else raw.get("args", function.get("arguments", {}))
+        )
+        if not isinstance(arguments, str):
+            arguments = json.dumps(
+                arguments,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        return {
+            "id": str(raw.get("id") or raw.get("tool_call_id") or ""),
+            "type": "function",
+            "function": {"name": name, "arguments": arguments},
+        }
+
     def build_request(self, messages):
         """StandardMessage → OpenAI 形式。OpenAI はほぼそのまま。"""
         converted = []
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
+            if role == "assistant" and isinstance(content, list):
+                standard_tool_calls = []
+                text_parts = []
+                for block in content:
+                    if not isinstance(block, dict):
+                        continue
+                    if block.get("type") == "text":
+                        text_parts.append(str(block.get("text") or ""))
+                        continue
+                    if block.get("type") != "tool_use":
+                        continue
+                    tool_call = OpenAIProvider._openai_tool_call(block)
+                    if tool_call:
+                        standard_tool_calls.append(tool_call)
+                if standard_tool_calls:
+                    entry = {
+                        "role": "assistant",
+                        "content": "".join(text_parts),
+                        "tool_calls": standard_tool_calls,
+                    }
+                    reasoning_content = self._message_reasoning_content(msg)
+                    if reasoning_content:
+                        entry["reasoning_content"] = reasoning_content
+                    converted.append(entry)
+                    continue
             if role == "assistant" and msg.get("tool_calls"):
+                tool_calls = [
+                    normalized
+                    for raw in msg.get("tool_calls", [])
+                    if (normalized := OpenAIProvider._openai_tool_call(raw)) is not None
+                ]
                 entry = {
                     "role": "assistant",
                     "content": content if isinstance(content, str) else "",
-                    "tool_calls": msg.get("tool_calls", []),
+                    "tool_calls": tool_calls,
                 }
                 reasoning_content = self._message_reasoning_content(msg)
                 if reasoning_content:
@@ -331,7 +391,7 @@ class OpenAIProvider(BaseProvider):
                         "input": tc.get("function", {}).get("arguments", "{}"),
                     }
                 )
-        metadata = {}
+        metadata: dict[str, object] = {}
         if reasoning_content:
             metadata["reasoning_content"] = reasoning_content
             metadata["thinking"] = {"transcript": reasoning_content}
@@ -361,9 +421,14 @@ class OpenAIProvider(BaseProvider):
     def _request_timeout(params):
         raw = dict(params or {})
         value = raw.get("request_timeout", raw.get("timeout", 120))
-        try:
+        if isinstance(value, bool):
             timeout = float(value)
-        except (TypeError, ValueError):
+        elif isinstance(value, (int, float, str)):
+            try:
+                timeout = float(value)
+            except (TypeError, ValueError):
+                timeout = 120.0
+        else:
             timeout = 120.0
         return max(2.0, min(timeout, 120.0))
 
@@ -410,8 +475,11 @@ class OpenAIProvider(BaseProvider):
             )
             if tool_call.get("id"):
                 current["id"] = str(tool_call.get("id"))
-            function_delta = (
-                tool_call.get("function") if isinstance(tool_call.get("function"), dict) else {}
+            function_delta_value = tool_call.get("function")
+            function_delta: dict[str, object] = (
+                {str(key): value for key, value in function_delta_value.items()}
+                if isinstance(function_delta_value, dict)
+                else {}
             )
             if function_delta.get("name"):
                 current["name"] = str(function_delta.get("name"))
@@ -453,7 +521,7 @@ class OpenAIProvider(BaseProvider):
         resp = self._request_stream(
             "/chat/completions", body, **self._request_timeout_kwargs(params)
         )
-        tool_call_state = {}
+        tool_call_state: dict[str, dict[str, object]] = {}
         try:
             for payload in self._parse_sse_lines(resp):
                 try:

@@ -1,3 +1,7 @@
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -90,7 +94,7 @@ test("frontend follows the shared Unicode mention boundary fixtures", () => {
 });
 
 test("composer endpoint actions are limited to safe local non-approval APIs", () => {
-  assert.equal(isSafeLocalEndpoint("/api/coding/git/status"), true);
+  assert.equal(isSafeLocalEndpoint(routeKey("api/coding/git/status")), true);
   assert.equal(isSafeLocalEndpoint("//evil.example/api"), false);
   assert.equal(isSafeLocalEndpoint("https://evil.example/api"), false);
   assert.equal(isSafeLocalEndpoint("/not-api/status"), false);
@@ -98,7 +102,7 @@ test("composer endpoint actions are limited to safe local non-approval APIs", ()
   assert.equal(
     canExecuteComposerEndpointAction({
       type: "call_endpoint",
-      endpoint: "/api/coding/git/status",
+      endpoint: routeKey("api/coding/git/status"),
       requires_approval: false,
     }),
     true,
@@ -106,7 +110,7 @@ test("composer endpoint actions are limited to safe local non-approval APIs", ()
   assert.equal(
     canExecuteComposerEndpointAction({
       type: "call_endpoint",
-      endpoint: "/api/coding/files/write",
+      endpoint: routeKey("api/coding/files/write"),
       requires_approval: true,
     }),
     false,
@@ -114,7 +118,7 @@ test("composer endpoint actions are limited to safe local non-approval APIs", ()
   assert.equal(
     canExecuteComposerEndpointAction({
       type: "call_endpoint",
-      endpoint: "/api/ui/settings",
+      endpoint: routeKey("api/ui/settings"),
       method: "PUT",
       requires_approval: false,
     }),
@@ -135,7 +139,7 @@ test("composer widget drops rebuild actions from trusted catalog items", () => {
         composer_icon: "git",
         composer_action: {
           type: "call_endpoint",
-          endpoint: "/api/coding/git/status",
+          endpoint: routeKey("api/coding/git/status"),
           method: "GET",
           result_surface: "preview",
           requires_approval: false,
@@ -152,7 +156,7 @@ test("composer widget drops rebuild actions from trusted catalog items", () => {
     widgetKind: "button",
     action: {
       type: "call_endpoint",
-      endpoint: "/api/ui/settings",
+      endpoint: routeKey("api/ui/settings"),
       method: "PUT",
       payload: { values: { yolo_mode: true } },
       requires_approval: false,

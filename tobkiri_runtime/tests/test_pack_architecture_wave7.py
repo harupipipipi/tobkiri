@@ -8,6 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from backend_core.ecosystem.spec.schema.validator import validate_ecosystem
+from scripts.quality.legacy_manifest_v3 import load_manifest
+from core_runtime.pack_artifact_integrity import verify_declared_artifacts
 from ecosystem.rumi_context_runtime_pack.runtime.materializer import (
     ContextMaterializer,
 )
@@ -18,8 +21,6 @@ from ecosystem.rumi_conversation_store_pack.runtime.store import (
 from ecosystem.rumi_knowledge_store_pack.runtime.store import KnowledgeStore
 from ecosystem.rumi_memory_store_pack.runtime.store import MemoryStore
 from ecosystem.rumi_turn_runtime_pack.runtime.turns import TurnConflict, TurnRuntime
-from core_runtime.global_contracts.manifest import load_manifest
-from core_runtime.pack_artifact_integrity import verify_declared_artifacts
 
 
 def test_conversation_store_contract_artifacts_are_activatable() -> None:
@@ -33,6 +34,8 @@ def test_conversation_store_contract_artifacts_are_activatable() -> None:
     ecosystem_manifest = json.loads(
         (pack_root / "ecosystem.json").read_text(encoding="utf-8")
     )
+    assert validate_ecosystem(ecosystem_manifest, raise_on_error=False) == []
+    assert ecosystem_manifest["vocabulary"]["types"] == ["service"]
     integrity_ok, diagnostics = verify_declared_artifacts(
         pack_root,
         ecosystem_manifest,

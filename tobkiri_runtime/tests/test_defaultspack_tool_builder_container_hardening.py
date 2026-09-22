@@ -23,6 +23,23 @@ SAFE_BUILTINS = {
 }
 
 
+def _assert_removed_defaults_module(pack: str, relative_path: str) -> bool:
+    """Migrate the removed ``defaults`` copy to the Pack v4 boundary contract."""
+    if pack != "defaults":
+        return False
+
+    from tempfile import TemporaryDirectory
+
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+    from tests.v4_batch_support import assert_payload_mutations_denied, harness
+
+    assert not (ROOT / "ecosystem" / pack / relative_path).exists()
+    assert_profile_resolver_requires_authority_snapshot()
+    with TemporaryDirectory() as root:
+        assert_payload_mutations_denied(harness(Path(root)))
+    return True
+
+
 def _load_pack_module(pack: str, relative_path: str):
     path = ROOT / "ecosystem" / pack / relative_path
     module_name = "_rumi_{}_{}".format(
@@ -73,6 +90,8 @@ def _assert_safe_template(code: str):
 
 @pytest.mark.parametrize("pack", PACKS)
 def test_builder_fallback_template_validates_schema_then_fails_closed(pack):
+    if _assert_removed_defaults_module(pack, "domain/tool/builder.py"):
+        return
     builder = _load_pack_module(pack, "domain/tool/builder.py")
     schema = {
         "type": "object",
@@ -108,6 +127,8 @@ def test_builder_fallback_template_validates_schema_then_fails_closed(pack):
 
 @pytest.mark.parametrize("pack", PACKS)
 def test_builder_ai_unavailable_returns_safe_template(monkeypatch, pack):
+    if _assert_removed_defaults_module(pack, "domain/tool/builder.py"):
+        return
     builder = _load_pack_module(pack, "domain/tool/builder.py")
 
     class StubOnlyAIClient:
@@ -131,6 +152,8 @@ def test_builder_ai_unavailable_returns_safe_template(monkeypatch, pack):
 
 @pytest.mark.parametrize("pack", PACKS)
 def test_builder_invalid_ai_output_returns_safe_template(monkeypatch, pack):
+    if _assert_removed_defaults_module(pack, "domain/tool/builder.py"):
+        return
     builder = _load_pack_module(pack, "domain/tool/builder.py")
 
     class InvalidAIClient:
@@ -160,6 +183,8 @@ def test_builder_invalid_ai_output_returns_safe_template(monkeypatch, pack):
 
 @pytest.mark.parametrize("pack", PACKS)
 def test_builder_valid_fenced_ai_output_is_used(monkeypatch, pack):
+    if _assert_removed_defaults_module(pack, "domain/tool/builder.py"):
+        return
     builder = _load_pack_module(pack, "domain/tool/builder.py")
     handler_code = (
         "def handler(arguments, context):\n"
@@ -201,6 +226,8 @@ def test_builder_valid_fenced_ai_output_is_used(monkeypatch, pack):
 )
 @pytest.mark.parametrize("pack", PACKS)
 def test_builder_rejects_ai_output_without_exact_handler(monkeypatch, pack, content):
+    if _assert_removed_defaults_module(pack, "domain/tool/builder.py"):
+        return
     code = _generate_ai_code(monkeypatch, pack, content)
 
     assert code != content.strip()
@@ -209,6 +236,8 @@ def test_builder_rejects_ai_output_without_exact_handler(monkeypatch, pack, cont
 
 @pytest.mark.parametrize("pack", PACKS)
 def test_builder_rejects_ai_output_with_top_level_side_effects(monkeypatch, pack):
+    if _assert_removed_defaults_module(pack, "domain/tool/builder.py"):
+        return
     content = (
         "raise RuntimeError('top-level code must not run')\n"
         "def handler(arguments, context):\n"
@@ -244,6 +273,8 @@ def test_builder_rejects_ai_output_with_top_level_side_effects(monkeypatch, pack
 )
 @pytest.mark.parametrize("pack", PACKS)
 def test_builder_rejects_ai_output_with_annotations(monkeypatch, pack, content):
+    if _assert_removed_defaults_module(pack, "domain/tool/builder.py"):
+        return
     code = _generate_ai_code(monkeypatch, pack, content)
 
     assert code != content.strip()
@@ -260,6 +291,8 @@ def test_builder_rejects_ai_output_with_annotations(monkeypatch, pack, content):
 )
 @pytest.mark.parametrize("pack", PACKS)
 def test_builder_rejects_ai_output_with_compile_invalid_body(monkeypatch, pack, content):
+    if _assert_removed_defaults_module(pack, "domain/tool/builder.py"):
+        return
     code = _generate_ai_code(monkeypatch, pack, content)
 
     assert code != content.strip()
@@ -268,6 +301,8 @@ def test_builder_rejects_ai_output_with_compile_invalid_body(monkeypatch, pack, 
 
 @pytest.mark.parametrize("pack", PACKS)
 def test_container_create_fails_closed_when_docker_unavailable(monkeypatch, pack):
+    if _assert_removed_defaults_module(pack, "domain/tool/container_manager.py"):
+        return
     manager = _load_pack_module(pack, "domain/tool/container_manager.py")
     manager._containers.clear()
     monkeypatch.setattr(manager, "_docker_available", False)
@@ -281,6 +316,8 @@ def test_container_create_fails_closed_when_docker_unavailable(monkeypatch, pack
 
 @pytest.mark.parametrize("pack", PACKS)
 def test_container_legacy_local_stub_never_executes_on_host(monkeypatch, pack):
+    if _assert_removed_defaults_module(pack, "domain/tool/container_manager.py"):
+        return
     manager = _load_pack_module(pack, "domain/tool/container_manager.py")
     manager._containers.clear()
     info = manager.ContainerInfo("legacy-local", "demo", "ubuntu:22.04", "running-local", {})

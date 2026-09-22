@@ -1,1 +1,28 @@
-tobkiri_runtime/ecosystem/rumi_model_catalog_pack/** text eol=lf
+# Keep repository text byte-stable across Git clients and core.autocrlf values.
+* text=auto eol=lf
+
+# Formal source verification compares every tracked worktree byte with its Git
+# blob. Command scripts remain valid with LF and must not materialize a second,
+# platform-dependent representation.
+*.bat text eol=lf
+*.cmd text eol=lf
+
+# These pre-existing documentation blobs contain mixed line endings. Preserve
+# them byte-for-byte until a dedicated documentation normalization change.
+tobkiri_runtime/docs/architecture.md -text
+tobkiri_runtime/docs/operations.md -text
+tobkiri_runtime/docs/pack-development-guide.md -text
+
+# Binary assets must never pass through text conversion.
+*.gif binary
+*.icns binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.pdf binary
+*.png binary
+*.ttf binary
+*.wasm binary
+*.woff binary
+*.woff2 binary
+*.zip binary

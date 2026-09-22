@@ -280,7 +280,7 @@ def _materialize_context(conversation_id, user_text, system_prompt):
     conversation = ChatStore().get_conversation(str(conversation_id or ""))
     if conversation is None:
         raise KeyError("conversation is unknown")
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     plan = active_resolved_profile()
     if registry is None or plan is None:
         raise RuntimeError("global context runtime is unavailable")

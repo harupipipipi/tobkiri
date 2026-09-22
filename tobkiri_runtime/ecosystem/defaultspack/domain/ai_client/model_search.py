@@ -8,10 +8,15 @@ from domain.ai_client.audio_capability import metadata_supports_audio_input
 from domain.ai_client.model_groups import normalize_model_groups
 
 
-def search_models(filters: dict[str, Any] | None = None, *, profiles: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def search_models(
+    filters: dict[str, Any] | None = None,
+    *,
+    profiles: list[dict[str, Any]] | None = None,
+    settings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     filters = dict(filters or {})
     if profiles is None:
-        profiles = _profile_catalog()
+        profiles = _profile_catalog(settings=settings)
     query = str(filters.get("query") or "").strip().casefold()
     type_filter = _as_set(filters.get("type") or filters.get("model_type"))
     if not type_filter:
@@ -70,19 +75,27 @@ def search_models(filters: dict[str, Any] | None = None, *, profiles: list[dict[
     }
 
 
-def get_model_capabilities(profile_id: str, *, profiles: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+def get_model_capabilities(
+    profile_id: str,
+    *,
+    profiles: list[dict[str, Any]] | None = None,
+    settings: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     needle = str(profile_id or "").strip()
     if not needle:
         return None
     try:
         from domain.ai_client.model_pack_store import ModelPackStore
 
-        if ModelPackStore.is_model_pack_ref(needle):
-            settings = None
+        if ModelPackStore.is_model_pack_ref(needle) and isinstance(settings, dict):
             pack = ModelPackStore(settings).get(needle)
             if pack is not None:
                 member_caps = [
-                    get_model_capabilities(member.model, profiles=profiles)
+                    get_model_capabilities(
+                        member.model,
+                        profiles=profiles,
+                        settings=settings,
+                    )
                     for member in pack.members
                     if member.model and member.model != needle
                 ]
@@ -113,7 +126,9 @@ def get_model_capabilities(profile_id: str, *, profiles: list[dict[str, Any]] | 
                 }
     except Exception:
         pass
-    for profile in profiles if profiles is not None else _profile_catalog():
+    for profile in (
+        profiles if profiles is not None else _profile_catalog(settings=settings)
+    ):
         if not isinstance(profile, dict):
             continue
         aliases = {
@@ -126,7 +141,27 @@ def get_model_capabilities(profile_id: str, *, profiles: list[dict[str, Any]] | 
     return None
 
 
-def recommend_model(request: dict[str, Any] | None = None, *, profiles: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def get_profile_catalog(
+    *,
+    settings: dict[str, Any] | None = None,
+    registry_profiles: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Return the resolved model profile catalog for one runtime operation.
+
+    When ``registry_profiles`` is supplied the captured model-profile snapshot
+    replaces the ambient contract read, which a verified Provider invocation
+    cannot reach; the selected catalog fallback still supplies models that
+    have no saved profile, matching the ambient degradation path.
+    """
+    return _profile_catalog(settings=settings, registry_profiles=registry_profiles)
+
+
+def recommend_model(
+    request: dict[str, Any] | None = None,
+    *,
+    profiles: list[dict[str, Any]] | None = None,
+    settings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     request = dict(request or {})
     filters = {
         "query": request.get("query", ""),
@@ -137,7 +172,7 @@ def recommend_model(request: dict[str, Any] | None = None, *, profiles: list[dic
         "provider_id": request.get("provider_id", ""),
         "max_results": request.get("max_results", 10),
     }
-    result = search_models(filters, profiles=profiles)
+    result = search_models(filters, profiles=profiles, settings=settings)
     selected = result["models"][0] if result["models"] else None
     return {
         "selected_model": selected,
@@ -209,7 +244,13 @@ def _capability_dict(value: Any) -> dict[str, bool]:
     return {}
 
 
-def _profile_catalog() -> list[dict[str, Any]]:
+def _profile_catalog(
+    *,
+    settings: dict[str, Any] | None = None,
+    registry_profiles: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    if registry_profiles is not None:
+        return _captured_profile_catalog(registry_profiles, settings=settings)
     profiles: list[dict[str, Any]] = []
     try:
         from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_profile_catalog
@@ -231,14 +272,121 @@ def _profile_catalog() -> list[dict[str, Any]]:
         profiles.extend(_openrouter_chat_reasoning_profiles(list_model_catalog("openrouter")))
     except Exception:
         pass
-    try:
-        from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
-
-        service = ModelRuntimeSettingsService()
-        profiles.extend(service.runtime_defined_profiles(service.get_settings()))
-    except Exception:
-        pass
+    if isinstance(settings, dict):
+        profiles.extend(_runtime_defined_profiles(settings))
     return _dedupe_profiles(profiles)
+
+
+def _captured_profile_catalog(
+    registry_profiles: list[dict[str, Any]],
+    *,
+    settings: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Assemble the picker catalog from a contract-captured registry snapshot.
+
+    A verified Provider invocation cannot use the ambient dispatch session,
+    so the captured registry snapshot arrives through the declared nested
+    edge.  The bundled catalog contribution uses the same selected-Pack
+    fallback ``list_model_catalog`` already degrades to when global contract
+    dispatch is unavailable.
+    """
+    try:
+        from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
+            _merge_model_profiles,
+            _selected_catalog_fallback,
+        )
+    except ModuleNotFoundError:
+        from backend.ai_client.provider_catalog import (
+            _merge_model_profiles,
+            _selected_catalog_fallback,
+        )
+    try:
+        catalog_models = _selected_catalog_fallback("")
+    except Exception:
+        catalog_models = []
+    try:
+        openrouter_models = _selected_catalog_fallback("openrouter")
+    except Exception:
+        openrouter_models = []
+    profiles = _merge_model_profiles(
+        _normalize_registry_profiles(registry_profiles),
+        catalog_models,
+    )
+    profiles.extend(_embedding_profiles_from_models(catalog_models))
+    profiles.extend(_openrouter_chat_reasoning_profiles(openrouter_models))
+    if isinstance(settings, dict):
+        profiles.extend(_runtime_defined_profiles(settings))
+    return _dedupe_profiles(profiles)
+
+
+def _normalize_registry_profiles(
+    registry_profiles: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project raw model-registry records into searchable profile fields.
+
+    The captured model-profile contract returns registry records keyed by
+    ``model_profile_id``; the picker projection keys on ``profile_id`` and
+    ``qualified_model_id``.  Provider routing comes only from the stored
+    connection reference, and a stored credential handle is what makes a
+    saved profile configured.
+    """
+    normalized: list[dict[str, Any]] = []
+    for raw in registry_profiles:
+        if not isinstance(raw, dict) or raw.get("enabled") is False:
+            continue
+        record = dict(raw)
+        identifier = str(
+            record.get("model_profile_id")
+            or record.get("profile_id")
+            or record.get("qualified_model_id")
+            or ""
+        ).strip()
+        if not identifier:
+            continue
+        record.setdefault("profile_id", identifier)
+        record.setdefault("qualified_model_id", identifier)
+        provider_id = str(
+            record.get("provider_id") or record.get("provider") or ""
+        ).strip()
+        if not provider_id:
+            metadata = (
+                record.get("metadata")
+                if isinstance(record.get("metadata"), dict)
+                else {}
+            )
+            requirements = (
+                record.get("requirements")
+                if isinstance(record.get("requirements"), dict)
+                else {}
+            )
+            provider_id = str(
+                metadata.get("provider_connection_id")
+                or requirements.get("preferred_provider_instance_id")
+                or ""
+            ).strip()
+            if provider_id:
+                record["provider_id"] = provider_id
+                record["provider"] = provider_id
+        if record.get("credential_handle"):
+            record.setdefault("configured", True)
+            availability = (
+                dict(record.get("availability"))
+                if isinstance(record.get("availability"), dict)
+                else {}
+            )
+            availability.setdefault("status", "configured")
+            record["availability"] = availability
+        normalized.append(record)
+    return normalized
+
+
+def _runtime_defined_profiles(settings: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return settings-defined profiles without touching the owner store."""
+
+    from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
+
+    service = ModelRuntimeSettingsService()
+    return service.runtime_defined_profiles(settings)
 
 
 def _dedupe_profiles(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:

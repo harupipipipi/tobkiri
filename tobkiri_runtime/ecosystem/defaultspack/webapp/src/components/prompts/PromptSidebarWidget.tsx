@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { PromptUsageSegment, PromptUsageSummary } from "../../lib/api";
 import { cn } from "../../lib/cn";
+import { ErrorNotice } from "../ErrorNotice";
 import { allPromptUsageSegments, promptSegmentKindLabel, promptSegmentTitle, sourceLine, tokenText, tokenizerLabel, tokenizerNeedsWarning, tokenizerWarningText } from "./promptSegmentView";
 
 type PromptSidebarWidgetProps = {
@@ -180,9 +181,12 @@ export function PromptSidebarWidget({
           </div>
         </div>
         {error && (
-          <div className="mt-2 rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1.5 text-[11px] leading-5 text-amber-100">
-            {error}
-          </div>
+          <ErrorNotice
+            className="mt-2 px-2 py-1.5 text-[11px] leading-5"
+            copyLabel="プロンプト概要エラーをコピー"
+            message={error}
+            severity="warning"
+          />
         )}
         {onToggleChatPromptUsage && (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-zinc-800/80 bg-black/20 px-2.5 py-2">

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import sqlite3
 import threading
@@ -88,7 +87,15 @@ class AgentRunStore:
         return conn
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
-        run_migrations(conn, [(1, self._migration_1), (2, self._migration_2)], table_name="agent_runtime_migrations")
+        run_migrations(
+            conn,
+            [
+                (1, self._migration_1),
+                (2, self._migration_2),
+                (3, self._migration_3),
+            ],
+            table_name="agent_runtime_migrations",
+        )
 
     @staticmethod
     def _migration_1(conn: sqlite3.Connection) -> None:
@@ -218,6 +225,37 @@ class AgentRunStore:
             """
         )
 
+    @staticmethod
+    def _migration_3(conn: sqlite3.Connection) -> None:
+        columns = {
+            str(row["name"])
+            for row in conn.execute("PRAGMA table_info(agent_runs)").fetchall()
+        }
+        additions = {
+            "root_scope_id": "TEXT",
+            "agent_kind": "TEXT DEFAULT 'subagent'",
+            "runtime_kind": "TEXT DEFAULT 'agent_run'",
+            "subagent_role": "TEXT",
+            "placement_id": "TEXT",
+            "placement_revision": "TEXT",
+            "placement_map_id": "TEXT",
+            "effective_plan_hash": "TEXT",
+            "protocol_membership_json": "TEXT DEFAULT '[]'",
+        }
+        for name, sql_type in additions.items():
+            if name not in columns:
+                conn.execute(
+                    f"ALTER TABLE agent_runs ADD COLUMN {name} {sql_type}"
+                )
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_placement
+              ON agent_runs(placement_map_id, placement_id, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_runs_root_scope
+              ON agent_runs(root_scope_id, updated_at);
+            """
+        )
+
     def upsert_run(self, run: AgentRun) -> None:
         now = utc_now()
         created_at = run.created_at or now
@@ -230,9 +268,15 @@ class AgentRunStore:
                   system_prompt_id, system_prompt_hash, runtime_profile_key,
                   runtime_profile_json, capability_graph_json, created_at, updated_at,
                   started_at, completed_at, parent_run_id, root_run_id,
+                  root_scope_id, agent_kind, runtime_kind, subagent_role,
+                  placement_id, placement_revision, placement_map_id,
+                  effective_plan_hash, protocol_membership_json,
                   current_transcript_id, compaction_count, heartbeat_at, error,
                   result_json, execution_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 ON CONFLICT(run_id) DO UPDATE SET
                   session_key=excluded.session_key,
                   conversation_id=excluded.conversation_id,
@@ -250,6 +294,15 @@ class AgentRunStore:
                   completed_at=excluded.completed_at,
                   parent_run_id=excluded.parent_run_id,
                   root_run_id=excluded.root_run_id,
+                  root_scope_id=excluded.root_scope_id,
+                  agent_kind=excluded.agent_kind,
+                  runtime_kind=excluded.runtime_kind,
+                  subagent_role=excluded.subagent_role,
+                  placement_id=excluded.placement_id,
+                  placement_revision=excluded.placement_revision,
+                  placement_map_id=excluded.placement_map_id,
+                  effective_plan_hash=excluded.effective_plan_hash,
+                  protocol_membership_json=excluded.protocol_membership_json,
                   current_transcript_id=excluded.current_transcript_id,
                   compaction_count=excluded.compaction_count,
                   heartbeat_at=excluded.heartbeat_at,
@@ -276,6 +329,15 @@ class AgentRunStore:
                     run.completed_at,
                     run.parent_run_id,
                     run.root_run_id or run.run_id,
+                    run.root_scope_id or run.root_run_id or run.run_id,
+                    run.agent_kind,
+                    run.runtime_kind,
+                    run.subagent_role,
+                    run.placement_id,
+                    run.placement_revision,
+                    run.placement_map_id,
+                    run.effective_plan_hash,
+                    json_dumps(run.protocol_membership_json),
                     run.current_transcript_id,
                     run.compaction_count,
                     run.heartbeat_at,
@@ -290,8 +352,15 @@ class AgentRunStore:
         if row is None:
             return None
         data = dict(row)
-        for key in ("runtime_profile_json", "capability_graph_json", "result_json", "execution_json"):
-            data[key] = json_loads(data.get(key), {} if key.endswith("_json") else None)
+        for key in (
+            "runtime_profile_json",
+            "capability_graph_json",
+            "result_json",
+            "execution_json",
+            "protocol_membership_json",
+        ):
+            fallback: Any = [] if key == "protocol_membership_json" else {}
+            data[key] = json_loads(data.get(key), fallback)
         return data
 
     def list_runs(self, *, status: str | None = None, run_ids: Iterable[str] | str | None = None, limit: int = 100) -> list[dict[str, Any]]:
@@ -456,7 +525,6 @@ class AgentRunStore:
             for message in messages:
                 role = str(message.get("role") or "")
                 tool_name = message.get("name") or message.get("tool_name")
-                content = message.get("content")
                 token_estimate = estimate_tokens(message)
                 self.conn.execute(
                     """
@@ -673,6 +741,21 @@ class AgentRunStore:
             updated_at=str(getattr(execution, "updated_at", "") or utc_now()),
             started_at=str(getattr(execution, "created_at", "") or utc_now()),
             completed_at=utc_now() if completed else None,
+            parent_run_id=context.get("parent_run_id"),
+            root_run_id=context.get("root_run_id"),
+            root_scope_id=context.get("root_scope_id"),
+            agent_kind=str(context.get("agent_kind") or "subagent"),
+            runtime_kind=str(context.get("runtime_kind") or "agent_run"),
+            subagent_role=context.get("subagent_role"),
+            placement_id=context.get("placement_id"),
+            placement_revision=context.get("placement_revision"),
+            placement_map_id=context.get("placement_map_id"),
+            effective_plan_hash=context.get("effective_plan_hash"),
+            protocol_membership_json=list(
+                context.get("protocol_membership")
+                if isinstance(context.get("protocol_membership"), list)
+                else []
+            ),
             current_transcript_id=transcript_id or context.get("transcript_id") or f"tr_{run_id}",
             heartbeat_at=utc_now() if status == "running" else None,
             error=getattr(execution, "error", None),

@@ -5,5 +5,5 @@ from typing import Final
 SCHEMA_IDS: Final[dict[str, str]] = {
     "command_protocol_v1_schema_json": 'https://tobkiri.local/schemas/command-protocol-v1.schema.json',
     "global_contract_types_schema_json": 'https://schemas.rumi.local/global-contract-types.v1.schema.json',
-    "pack_manifest_v3_schema_json": 'https://schemas.rumi.local/rumi.pack.v3/pack_manifest_v3.schema.json',
+    "pack_manifest_v4_schema_json": 'https://schemas.tobkiri.local/io.tobkiri/pack-manifest.v4.schema.json',
 }

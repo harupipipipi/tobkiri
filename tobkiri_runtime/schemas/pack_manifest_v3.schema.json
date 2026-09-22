@@ -147,12 +147,22 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "contract_id", "loader", "artifact_hash"],
+      "allOf": [
+        {
+          "if": {"required": ["activation_mode"]},
+          "then": {"properties": {"loader": {"const": "python"}}}
+        }
+      ],
       "properties": {
         "id": {"type": "string"},
         "contract_id": {"$ref": "#/$defs/contractId"},
         "loader": {"enum": ["python", "wasm", "process", "http", "ui_module"]},
         "module": {"type": "string", "description": "Metadata only; discovery must not import it."},
         "symbol": {"type": "string"},
+        "activation_mode": {
+          "enum": ["construction_pure", "context_manager"],
+          "description": "Python activation lifecycle. Omitted preserves the verified construction-pure factory contract."
+        },
         "artifact_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
       }
     },

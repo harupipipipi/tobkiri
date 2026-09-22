@@ -23,7 +23,12 @@ class ProviderRegistryService:
         if not profile_id:
             raise ValueError("profile_id is required")
         registry = ProviderRegistry(profile_id, user_data_root=self.user_data_root)
-        if operation in {"list", "get"}:
+        if operation in {
+            "list",
+            "get",
+            "rumi_provider_registry_pack.provider-registry-resource.generate",
+            "rumi_provider_registry_pack.provider-registry-resource.stream",
+        }:
             return registry.snapshot()
         if operation == "health":
             return registry.health()
@@ -49,4 +54,3 @@ class ProviderRegistryService:
         if operation == "migration.rollback":
             return registry.rollback_migration(str(data.get("migration_id") or ""))
         raise ValueError(f"unknown provider registry operation: {operation}")
-

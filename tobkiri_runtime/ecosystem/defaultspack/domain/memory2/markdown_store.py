@@ -8,6 +8,8 @@ from typing import Any, Mapping
 
 from domain.memory.store import MemoryStore
 
+from .sqlite_store import default_memory_dir
+
 
 class MarkdownMemoryStore:
     """Finite compatibility facade; Markdown files are no longer owner state."""
@@ -18,7 +20,7 @@ class MarkdownMemoryStore:
             DeprecationWarning,
             stacklevel=2,
         )
-        self.root = Path("compatibility") / "memory-owner-contract"
+        self.root = default_memory_dir()
         self.memory = MemoryStore()
 
     def append_memory(

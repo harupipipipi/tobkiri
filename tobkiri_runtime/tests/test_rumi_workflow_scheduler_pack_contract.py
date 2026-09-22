@@ -88,14 +88,14 @@ def test_workflow_scheduler_setup_metadata_is_discoverable_and_not_all_ok() -> N
     assert setup["conflicts_with"] == []
     assert setup["overlap_policy"]["defaultspack_scheduler"] == "route_hint_only_do_not_override"
     assert setup["overlap_policy"]["app_automation_tool"] == "delegate_execution_when_available"
-    assert setup["defaultspack_promotion"]["eligible"] is False
+    assert setup["base_pack_promotion"]["eligible"] is False
 
     candidate = candidates[PACK_ID]
     assert candidate.pack_identity == f"rumi:ecosystem/{PACK_ID}"
     assert candidate.all_ok_eligible is False
     assert candidate.depends_on == [{"pack_id": "defaultspack", "version": ">=2.0.0"}]
     assert candidate.marketplace["id"] == "rumi.workflow_scheduler_pack"
-    assert candidate.defaultspack_promotion["eligible"] is False
+    assert candidate.base_pack_promotion["eligible"] is False
 
     issues = selector.validate_candidates(
         installed_packs={"defaultspack": {"version": "2.0.0"}},

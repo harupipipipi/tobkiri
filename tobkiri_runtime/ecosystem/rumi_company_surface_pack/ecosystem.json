@@ -1,2 +1,71 @@
-{"pack_id":"rumi_company_surface_pack","pack_identity":"rumi:ecosystem/rumi_company_surface_pack","display_name":"Rumi Company Surface Pack","version":"1.0.0","description":"Removable Company content and isolated read-only UI projection.","dependencies":{"rumi_company_state_store_pack":">=1.0.0,<2.0.0","rumi_company_coordinator_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.resource.company.v1","rumi.resource.company.runtime.v1"],"provides":["rumi.ui.route.module.v1"]},"required_secrets":[],"required_capabilities":["company.state.read","company.runtime.observe"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":false,"resources":[{"id":"frontend/contributions/companies.json","kind":"ui.contribution","content_hash":"sha256:0ddf0a96221188243f2352fe5852d51b16b02859378e1565288c031a5e930c70"}],"provenance":{"content_hash":"sha256:e1ca7e330a87383d2f27a1df7ce646f160c6c8eab069999b9e1367641068d3c7","build_identity":"rumi-company-surface-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":false,"executable_code":true,"isolated_ui":true,"owner_surfaces":["companies_route","companies_content"],"integrity":{"artifact_manifest":"artifact-manifest.json"}}}
-
+{
+  "connectivity": {
+    "provides": [],
+    "requires": [
+      "rumi.resource.company.runtime.v1",
+      "rumi.resource.company.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_company_coordinator_pack": ">=1.0.0,<2.0.0",
+    "rumi_company_state_store_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Removable Company content and isolated read-only UI projection.",
+  "display_name": "Rumi Company Surface",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:e4c7fb37db73e45fbb895aca518c07726613fce725e8995580ed7d2f59a66f75",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:6a358ebb0dd6ac49eb037642ed4af915df729a2e3df877e4b4d214bdabcdf023"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:6a358ebb0dd6ac49eb037642ed4af915df729a2e3df877e4b4d214bdabcdf023"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "isolated_ui": true,
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "companies_route",
+      "companies_content"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_company_surface_pack",
+  "pack_identity": "rumi:ecosystem/rumi_company_surface_pack",
+  "provenance": {
+    "build_identity": "rumi_company_surface_pack:1.0.0",
+    "content_hash": "sha256:ba4fb3edf25a1860e9e633c961594c8051304ecea55fa3ad35695c81117184f3",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "company.runtime.observe",
+    "company.state.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "frontend/contributions/companies.json"
+  ],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

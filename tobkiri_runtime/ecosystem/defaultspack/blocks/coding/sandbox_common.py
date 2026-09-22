@@ -6,6 +6,7 @@ from typing import Any, Callable, Mapping
 
 from blocks._common import error, ok
 from blocks.coding._approval import approval_required
+from blocks.coding._workspace import canonical_mutation_guard
 from domain.coding.contract_adapter import (
     SANDBOX_CONTROL,
     SANDBOX_OBSERVE,
@@ -79,6 +80,7 @@ def run_sandbox_control(
             input_data=args,
             context=dict(context) if isinstance(context, Mapping) else None,
             selected_workspace_id=scope["workspace_id"],
+            mutation_guard=canonical_mutation_guard,
         )
         denied = _authorization_response(
             authorization,
@@ -143,6 +145,7 @@ def _sandbox_scope(
         input_data=input_data,
         context=dict(context) if isinstance(context, Mapping) else None,
         selected_workspace_id=workspace_id,
+        mutation_guard=canonical_mutation_guard,
     )
     denied = _authorization_response(
         authorization,

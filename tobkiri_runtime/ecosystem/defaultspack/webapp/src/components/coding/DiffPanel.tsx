@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { CodingDiffResponse, CodingGitStatus } from "../../lib/api";
 import { codingResources } from "../../features/coding/resources/codingResources";
+import { ErrorNotice } from "../ErrorNotice";
 
 function collectFiles(status: CodingGitStatus | null): string[] {
   if (!status) return [];
@@ -72,7 +73,13 @@ export function DiffPanel({
         </button>
       </div>
 
-      {error && <p role="alert" className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] text-red-200">{error}</p>}
+      {error && (
+        <ErrorNotice
+          className="mb-2 px-2 py-1 text-[11px]"
+          copyLabel="差分のエラーをコピー"
+          message={error}
+        />
+      )}
       {refreshedAt && (
         <p role="status" className="mb-2 text-[10px] text-zinc-600">
           Refreshed {new Date(refreshedAt).toLocaleTimeString()}

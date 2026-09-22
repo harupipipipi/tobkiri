@@ -176,6 +176,9 @@ def test_secret_values_are_redacted_before_sqlite_persistence(tmp_path: Path):
     assert repository.get_plan("plan_test")["plan"]["diagnostics"][0][
         "authorization"
     ] == "[REDACTED]"
+    assert repository.get_plan("plan_test")["plan"]["diagnostics"][0][
+        "message"
+    ] == "[REDACTED]"
 
 
 def test_policy_generation_is_monotonic_even_when_settings_return_to_a(tmp_path: Path):
