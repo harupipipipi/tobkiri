@@ -699,7 +699,12 @@ export function CompanyWorkspacePanel({
         [actionKey]: { phase: "committed", operationId, message: "Saved", updatedAt: Date.now() },
       }));
       await loadCompany(activeCompanyId);
-      return { operationId, phase: "committed", value, revision: resourceRevision };
+      return {
+        operationId,
+        phase: "committed",
+        value,
+        revision: resourceRevisionRef.current,
+      };
     } catch (error) {
       const normalized = safeCompanyMutationError(error);
       setActionStates((current) => ({
