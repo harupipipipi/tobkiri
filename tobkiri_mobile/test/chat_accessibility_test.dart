@@ -185,7 +185,9 @@ void main() {
       id: 'actions',
       role: ChatRole.assistant,
       content:
-          '詳しくは https://example.com/docs を確認。 [unsafe](javascript:alert(1))',
+          '詳しくは https://example.com/docs を確認。 '
+          'https://user:password@example.com/private '
+          '[unsafe](javascript:alert(1))',
     );
     await tester.pumpWidget(
       _app(
@@ -207,6 +209,14 @@ void main() {
     );
     expect(find.byKey(const ValueKey('message-link:javascript:alert(1)')),
         findsNothing);
+    expect(
+      find.byKey(
+        const ValueKey(
+          'message-link:https://user:password@example.com/private',
+        ),
+      ),
+      findsNothing,
+    );
     await tester.tap(link);
     expect(opened, Uri.parse('https://example.com/docs'));
 

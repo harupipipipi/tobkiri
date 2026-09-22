@@ -368,4 +368,7 @@ List<Uri> _extractSafeLinks(String value) {
 }
 
 bool _isSafeLink(Uri uri) =>
-    uri.hasAuthority && (uri.scheme == 'https' || uri.scheme == 'http');
+    uri.hasAuthority &&
+    uri.host.isNotEmpty &&
+    uri.userInfo.isEmpty &&
+    (uri.scheme == 'https' || uri.scheme == 'http');
