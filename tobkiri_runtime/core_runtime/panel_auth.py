@@ -65,8 +65,10 @@ class PanelAuthManager:
         self._lock = threading.Lock()
         self._active_codes: Dict[str, Dict[str, Any]] = {}
         self._active_sessions: Dict[str, Dict[str, Any]] = {}
-        # request_id -> owner journal recorded while the verified presentation
-        # owner opens the dedicated Launcher approval window.
+        # request_id -> owner journal + binding recorded while the verified
+        # presentation owner opens the dedicated Launcher approval window.
+        # Each grant is bound to exactly one issued one-time code and is
+        # consumed by that code's exchange.
         self._presenter_grants: Dict[str, Dict[str, Any]] = {}
 
     @staticmethod
@@ -124,18 +126,48 @@ class PanelAuthManager:
             hashlib.sha256,
         ).hexdigest()
 
-    def issue_login_code(self, binding: PanelAuthBinding) -> Dict[str, Any]:
+    def issue_login_code(
+        self,
+        binding: PanelAuthBinding,
+        *,
+        presenter_request_id: str = "",
+    ) -> Dict[str, Any]:
+        """Issue one one-time code, dedicated to a pending grant when asked.
+
+        ``presenter_request_id`` is only honoured when a live, unbound
+        presenter grant for that exact request exists under the same authn
+        binding: the grant then binds to this code's hash so no other code
+        can claim it.  In every other case the issued code is an ordinary
+        login code — a client-supplied request id never by itself marks a
+        code or lifts a grant.
+        """
+
         now = time.time()
         code = self._generate_secret_token()
         code_hash = self._hash_value(code)
         expires_at = now + self._code_ttl_seconds
         with self._lock:
             self._cleanup_locked(now)
-            self._active_codes[code_hash] = {
+            code_info: Dict[str, Any] = {
                 "issued_at": now,
                 "expires_at": expires_at,
                 "binding": binding,
             }
+            if (
+                isinstance(presenter_request_id, str)
+                and _PRESENTER_REQUEST_ID.fullmatch(presenter_request_id)
+                is not None
+            ):
+                grant = self._presenter_grants.get(presenter_request_id)
+                if (
+                    grant is not None
+                    and grant.get("expires_at", 0.0) > now
+                    and grant.get("code_hash") is None
+                    and grant.get("binding") == binding
+                ):
+                    grant["code_hash"] = code_hash
+                    code_info["presenter_request_id"] = presenter_request_id
+            self._active_codes[code_hash] = code_info
         return {
             "code": code,
             "expires_in": self._code_ttl_seconds,
@@ -145,6 +177,7 @@ class PanelAuthManager:
         self,
         request_id: str,
         journal_session: str,
+        binding: PanelAuthBinding,
     ) -> None:
         """Bind one approval-window exchange to the verified owner session.
 
@@ -156,6 +189,12 @@ class PanelAuthManager:
         separate cookie store and mints a fresh session through the one-time
         ``?code=`` exchange, so the grant lets that exact exchange resolve to
         the same presentation-owner session the request is bound to.
+
+        The grant is bound to the owner journal, the exact ``request_id``,
+        and the authn binding current when the owner opened the window.  It
+        is claimed by the first ``issue_login_code`` that names the request —
+        the Launcher's approval-window bootstrap — and is consumed by that
+        one code's exchange.
         """
 
         if (
@@ -165,6 +204,7 @@ class PanelAuthManager:
             or not journal_session
             or len(journal_session) > 512
             or "." in journal_session
+            or not isinstance(binding, PanelAuthBinding)
         ):
             raise ValueError("approval presenter grant is invalid")
         now = time.time()
@@ -172,6 +212,8 @@ class PanelAuthManager:
             self._cleanup_locked(now)
             self._presenter_grants[request_id] = {
                 "journal_session": journal_session,
+                "binding": binding,
+                "code_hash": None,
                 "expires_at": now + self._code_ttl_seconds,
             }
 
@@ -194,6 +236,23 @@ class PanelAuthManager:
                 return None
             if code_info.get("binding") != binding:
                 return None
+            presenter_mark = code_info.get("presenter_request_id")
+            presenter_grant = None
+            if isinstance(presenter_mark, str) and presenter_mark:
+                # A code dedicated to one presenter grant fails closed: the
+                # exchange must name that exact request, the grant must still
+                # be live, bound to this code, and issued under the current
+                # authn binding.  Any mismatch denies without consuming the
+                # code so a bounded retry can still succeed.
+                presenter_grant = self._presenter_grants.get(presenter_mark)
+                if (
+                    presenter_request_id != presenter_mark
+                    or presenter_grant is None
+                    or presenter_grant.get("expires_at", 0.0) <= now
+                    or presenter_grant.get("code_hash") != code_hash
+                    or presenter_grant.get("binding") != binding
+                ):
+                    return None
             del self._active_codes[code_hash]
 
             session_id = self._generate_secret_token()
@@ -203,22 +262,20 @@ class PanelAuthManager:
             previous_hash = self._hash_value(previous_session)
             previous = self._active_sessions.get(previous_hash)
             previous_binding = previous.get("binding") if previous else None
-            presenter_grant = (
-                self._presenter_grants.get(presenter_request_id)
-                if isinstance(presenter_request_id, str) and presenter_request_id
-                else None
-            )
             # A fresh desktop code authorizes the new capture. The still-live
             # HttpOnly cookie only carries journal ownership across a Profile
-            # revision; it cannot authorize the new capture by itself.  An
-            # unexpired presenter grant additionally lets the dedicated
-            # approval window's exchange resolve to the verified owner journal.
+            # revision; it cannot authorize the new capture by itself.  A
+            # presenter-bound code additionally lets the dedicated approval
+            # window's exchange resolve to the verified owner journal; the
+            # grant is consumed here so it can never mint a second session.
+            # An unmarked code never grafts a presenter grant, so a foreign
+            # ``request_id`` claim simply mints an ordinary session.
             journal_session = session_hash
-            if (
-                presenter_grant is not None
-                and presenter_grant.get("expires_at", 0.0) > now
-            ):
+            request_scope = ""
+            if presenter_grant is not None:
+                del self._presenter_grants[presenter_mark]
                 journal_session = str(presenter_grant["journal_session"])
+                request_scope = presenter_mark
             elif (
                 previous is not None
                 and isinstance(previous_binding, PanelAuthBinding)
@@ -226,6 +283,9 @@ class PanelAuthManager:
                 and previous_binding.security_epoch == binding.security_epoch
             ):
                 journal_session = previous.get("journal_session", previous_hash)
+                # A request-scoped session keeps its confinement across a
+                # reauthorization instead of silently widening to the owner.
+                request_scope = str(previous.get("request_scope") or "")
                 del self._active_sessions[previous_hash]
             self._active_sessions[session_hash] = {
                 "journal_session": journal_session,
@@ -233,6 +293,7 @@ class PanelAuthManager:
                 "issued_at": now,
                 "expires_at": expires_at,
                 "binding": binding,
+                "request_scope": request_scope,
             }
         return {
             "session_id": session_id,
@@ -262,6 +323,7 @@ class PanelAuthManager:
                 "session_id": session_info.get("journal_session", session_hash),
                 "csrf_token": session_info["csrf_token"],
                 "expires_in": self._session_ttl_seconds,
+                "request_scope": str(session_info.get("request_scope") or ""),
             }
 
     def revoke_session(self, session_id: str) -> None:

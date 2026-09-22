@@ -564,11 +564,12 @@ fn authority_approval_bootstrap_window_url(
     // the initial navigation, so it cannot open this surface.
     let bootstrap_secret = load_or_create_panel_bootstrap_secret(config)
         .map_err(|error| format!("failed to load panel bootstrap secret: {error:#}"))?;
-    let code =
-        request_panel_bootstrap_code_with_retry(active_defaultspack_http_port(), &bootstrap_secret)
-            .map_err(|error| {
-                format!("failed to issue authority approval bootstrap code: {error:#}")
-            })?;
+    let code = request_panel_presenter_code_with_retry(
+        active_defaultspack_http_port(),
+        &bootstrap_secret,
+        request_id,
+    )
+    .map_err(|error| format!("failed to issue authority approval bootstrap code: {error:#}"))?;
     dock_registration::add_defaultspack_bootstrap_code(url, &code)
         .map_err(|error| format!("failed to attach authority approval bootstrap code: {error:#}"))
 }
@@ -2179,12 +2180,13 @@ fn secure_panel_bootstrap_secret_file(path: &std::path::Path) -> AnyResult<fs::F
 }
 
 fn request_panel_bootstrap_code(port: u16, bootstrap_secret: &str) -> AnyResult<String> {
-    request_panel_bootstrap_code_with_timeout(port, bootstrap_secret, Duration::from_secs(10))
+    request_panel_bootstrap_code_with_timeout(port, bootstrap_secret, None, Duration::from_secs(10))
 }
 
 fn request_panel_bootstrap_code_with_timeout(
     port: u16,
     bootstrap_secret: &str,
+    presenter_request_id: Option<&str>,
     timeout: Duration,
 ) -> AnyResult<String> {
     let client = reqwest::blocking::Client::builder()
@@ -2192,11 +2194,17 @@ fn request_panel_bootstrap_code_with_timeout(
         .build()
         .context("failed to build bootstrap HTTP client")?;
     let url = format!("http://127.0.0.1:{port}/api/panel/auth/bootstrap");
-    let response = client
+    let request = client
         .post(url)
-        .header("X-Rumi-Desktop-Bootstrap", bootstrap_secret)
-        .send()
-        .context("panel bootstrap request failed")?;
+        .header("X-Rumi-Desktop-Bootstrap", bootstrap_secret);
+    // The dedicated approval window names the request its code is for so the
+    // Host can bind that one code to the pending presenter grant.  Naming a
+    // request never creates a grant; it only selects a live one.
+    let request = match presenter_request_id {
+        Some(request_id) => request.json(&serde_json::json!({ "request_id": request_id })),
+        None => request,
+    };
+    let response = request.send().context("panel bootstrap request failed")?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -2223,6 +2231,22 @@ fn request_panel_bootstrap_code_with_timeout(
 }
 
 fn request_panel_bootstrap_code_with_retry(port: u16, bootstrap_secret: &str) -> AnyResult<String> {
+    request_panel_bootstrap_code_with_retry_for(port, bootstrap_secret, None)
+}
+
+fn request_panel_presenter_code_with_retry(
+    port: u16,
+    bootstrap_secret: &str,
+    request_id: &str,
+) -> AnyResult<String> {
+    request_panel_bootstrap_code_with_retry_for(port, bootstrap_secret, Some(request_id))
+}
+
+fn request_panel_bootstrap_code_with_retry_for(
+    port: u16,
+    bootstrap_secret: &str,
+    presenter_request_id: Option<&str>,
+) -> AnyResult<String> {
     // A committed activation can replace the Kernel between health and this
     // request. Fast connection refusals must not exhaust the recovery budget
     // before the replacement finishes its verified cold capture.
@@ -2236,6 +2260,7 @@ fn request_panel_bootstrap_code_with_retry(port: u16, bootstrap_secret: &str) ->
         match request_panel_bootstrap_code_with_timeout(
             port,
             bootstrap_secret,
+            presenter_request_id,
             remaining.min(Duration::from_secs(10)),
         ) {
             Ok(code) => return Ok(code),

@@ -846,13 +846,18 @@ def test_authority_approval_window_session_presents_the_verified_owner(
         return prepared["data"]
 
     def presenter_session(request_id: str) -> tuple[str, str]:
-        """Mint the dedicated approval window's one-time-code session."""
+        """Mint the dedicated approval window's one-time-code session.
+
+        Mirrors the Launcher flow: the bootstrap code is requested for the
+        exact request so it binds that request's pending presenter grant,
+        then the mounted window exchange presents the same request id.
+        """
 
         status, bootstrap, _ = _request(
             server,
             "POST",
             "/api/panel/auth/bootstrap",
-            body={},
+            body={"request_id": request_id},
             headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
         )
         assert status == 200, bootstrap
@@ -1040,6 +1045,288 @@ def test_authority_approval_window_session_presents_the_verified_owner(
         headers=second_headers,
     )
     assert status in {401, 403, 409}, replayed
+
+
+def test_authority_approval_window_grant_is_single_use_and_request_scoped(
+    production_server,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The presenter grant is bound to one dedicated code and one request.
+
+    Regression coverage for the insufficiently-bound approval presenter
+    grant.  The window session must not reach a sibling approval owned by
+    the same journal (A opened, B stays denied), an ordinary bootstrap code
+    must never graft the owner journal by naming the request id, the grant
+    must be consumed by the bound exchange, and the minted session must be
+    refused for every non-approval operation.
+    """
+
+    from ecosystem.defaultspack.domain.host_bridge.viewer_broker_client import (
+        ViewerBrokerClient,
+    )
+
+    server, _session, _authority = production_server
+    opened: list[str] = []
+    monkeypatch.setattr(ViewerBrokerClient, "available", lambda _self: True)
+
+    def fake_open(self: ViewerBrokerClient, request_id: str) -> dict[str, object]:
+        opened.append(str(request_id))
+        return {"ok": True, "request_id": request_id}
+
+    monkeypatch.setattr(
+        ViewerBrokerClient, "open_authority_approval_window", fake_open
+    )
+
+    cookie, csrf, origin = _authenticate(server)
+    shell_headers = {"Cookie": cookie, "Origin": origin, "X-Rumi-CSRF": csrf}
+
+    def post(
+        path: str,
+        body: Mapping[str, object],
+        *,
+        headers: Mapping[str, str] = shell_headers,
+    ) -> tuple[int, dict[str, object]]:
+        status, payload, _ = _request(
+            server,
+            "POST",
+            _contract("POST", path),
+            body=body,
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        return status, payload
+
+    def get(
+        path: str,
+        *,
+        headers: Mapping[str, str] = shell_headers,
+    ) -> tuple[int, dict[str, object]]:
+        status, payload, _ = _request(
+            server,
+            "GET",
+            _contract("GET", path),
+            headers={**headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+        )
+        return status, payload
+
+    def prepare_effect(connection_name: str) -> dict[str, object]:
+        status, prepared = post(
+            "/api/ai/provider-key",
+            {
+                "phase": "prepare",
+                "effect_kind": "provider_configure",
+                "correlation_id": str(uuid.uuid4()),
+                "request": {
+                    "connection_name": connection_name,
+                    "protocol": "openai-compatible",
+                    "endpoint": "https://provider.example/v1",
+                    "key_value": "approval-window-secret",
+                },
+            },
+        )
+        assert status == 200, prepared
+        return prepared["data"]
+
+    def bootstrap_code(request_id: str | None) -> str:
+        body = {} if request_id is None else {"request_id": request_id}
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body=body,
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, bootstrap
+        return str(bootstrap["data"]["code"])
+
+    def exchange_session(
+        code: str,
+        request_id: str | None,
+    ) -> tuple[str, str]:
+        body = {"code": code}
+        if request_id is not None:
+            body["request_id"] = request_id
+        status, exchange, exchange_headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body=body,
+            headers={"Origin": origin},
+        )
+        assert status == 200, exchange
+        session_cookie = next(
+            value
+            for key, value in exchange_headers
+            if key.lower() == "set-cookie"
+        ).split(";", 1)[0]
+        return session_cookie, str(exchange["data"]["csrf_token"])
+
+    first = prepare_effect("presenter-scope-a")
+    second = prepare_effect("presenter-scope-b")
+    approval_a = str(first["approval_request_id"])
+    approval_b = str(second["approval_request_id"])
+    assert approval_a != approval_b
+
+    # The verified owner opens only A's window; B's window is never opened.
+    status, opened_result = post(
+        "/api/authority/approval-window",
+        {"request_id": approval_a},
+    )
+    assert status == 200, opened_result
+    assert opened == [approval_a]
+
+    window_cookie, window_csrf = exchange_session(
+        bootstrap_code(approval_a), approval_a
+    )
+    window_headers = {
+        "Cookie": window_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": window_csrf,
+    }
+    binding = server.handler_class._current_panel_auth_binding()
+    owner_session = server._panel_auth_manager.verify_session(
+        cookie.split("=", 1)[1], binding
+    )
+    window_session = server._panel_auth_manager.verify_session(
+        window_cookie.split("=", 1)[1], binding
+    )
+    assert owner_session is not None and window_session is not None
+    assert window_session["session_id"] == owner_session["session_id"]
+    assert window_session["request_scope"] == approval_a
+    assert owner_session["request_scope"] == ""
+
+    status, view_a = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_a},
+        headers=window_headers,
+    )
+    assert status == 200, view_a
+    assert view_a["data"]["request_id"] == approval_a
+
+    # Weakness 1: the same window session must not reach sibling request B
+    # even though B shares the grafted owner journal.
+    status, denied_b = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_b},
+        headers=window_headers,
+    )
+    assert status == 403, denied_b
+
+    # The scope fences every normal-session operation as well: the approval
+    # list projection, the window-open operation, and unrelated routes.
+    status, denied_list = get(
+        "/api/interactive-approval/v1/list",
+        headers=window_headers,
+    )
+    assert status == 403, denied_list
+    status, denied_open = post(
+        "/api/authority/approval-window",
+        {"request_id": approval_a},
+        headers=window_headers,
+    )
+    assert denied_open["success"] is False
+    assert status in {401, 403}, denied_open
+    status, denied_normal, _ = _request(
+        server,
+        "GET",
+        "/api/v4/profiles",
+        headers={"Cookie": window_cookie, "Origin": origin},
+    )
+    assert status == 401, denied_normal
+    # The scoped session still loads static shell mounts — they serve only
+    # fixed assets and exercise no authority, so the approval window keeps
+    # rendering its own surface.  This fixture binds the default mounts, so
+    # /panel stands in for the production /approval mount.
+    mount_connection = http.client.HTTPConnection(
+        "127.0.0.1", server.port, timeout=10
+    )
+    mount_connection.request(
+        "GET",
+        "/panel/",
+        headers={"Cookie": window_cookie, "Origin": origin},
+    )
+    mount_response = mount_connection.getresponse()
+    mount_status = mount_response.status
+    mount_response.read()
+    mount_connection.close()
+    assert mount_status == 200
+
+    # Weakness 2: an ordinary bootstrap code that merely names the granted
+    # request id at exchange must not graft the owner journal.
+    foreign_cookie, foreign_csrf = exchange_session(
+        bootstrap_code(None), approval_a
+    )
+    foreign_headers = {
+        "Cookie": foreign_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": foreign_csrf,
+    }
+    foreign_session = server._panel_auth_manager.verify_session(
+        foreign_cookie.split("=", 1)[1], binding
+    )
+    assert foreign_session is not None
+    assert foreign_session["session_id"] != owner_session["session_id"]
+    assert foreign_session["request_scope"] == ""
+    status, denied_foreign = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_a},
+        headers=foreign_headers,
+    )
+    assert status in {401, 403}, denied_foreign
+
+    # Weakness 3: the grant is consumed by the bound exchange, so a second
+    # presenter-named bootstrap only mints an ordinary code and session.
+    replay_cookie, replay_csrf = exchange_session(
+        bootstrap_code(approval_a), approval_a
+    )
+    replay_headers = {
+        "Cookie": replay_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": replay_csrf,
+    }
+    replayed = server._panel_auth_manager.verify_session(
+        replay_cookie.split("=", 1)[1], binding
+    )
+    assert replayed is not None
+    assert replayed["session_id"] != owner_session["session_id"]
+    status, denied_replay = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_a},
+        headers=replay_headers,
+    )
+    assert status in {401, 403}, denied_replay
+
+    # An expired grant fails closed at both bind and exchange time.
+    third = prepare_effect("presenter-scope-expired")
+    approval_c = str(third["approval_request_id"])
+    status, opened_c = post(
+        "/api/authority/approval-window",
+        {"request_id": approval_c},
+    )
+    assert status == 200, opened_c
+    grant = server._panel_auth_manager._presenter_grants[approval_c]
+    grant["expires_at"] = 0
+    expired_cookie, expired_csrf = exchange_session(
+        bootstrap_code(approval_c), approval_c
+    )
+    expired_headers = {
+        "Cookie": expired_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": expired_csrf,
+    }
+    status, denied_expired = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_c},
+        headers=expired_headers,
+    )
+    assert status in {401, 403}, denied_expired
+
+    # The real window session keeps working on its own request throughout.
+    status, still_ok = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_a},
+        headers=window_headers,
+    )
+    assert status == 200, still_ok
 
 
 def test_desktop_restore_capture_binds_real_approval_window_delegate(

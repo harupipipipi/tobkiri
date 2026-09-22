@@ -471,9 +471,13 @@ def test_approval_presenter_grant_binds_window_session_to_owner_journal() -> Non
     assert owner_session is not None
     owner_journal = str(owner_session["session_id"])
 
-    manager.record_approval_presenter_grant("req-presenter", owner_journal)
+    manager.record_approval_presenter_grant("req-presenter", owner_journal, binding)
     window = manager.exchange_code(
-        str(manager.issue_login_code(binding)["code"]),
+        str(
+            manager.issue_login_code(
+                binding, presenter_request_id="req-presenter"
+            )["code"]
+        ),
         binding,
         presenter_request_id="req-presenter",
     )
@@ -483,8 +487,114 @@ def test_approval_presenter_grant_binds_window_session_to_owner_journal() -> Non
     assert resolved is not None
     assert resolved["session_id"] == owner_journal
     assert resolved["csrf_token"] != owner["csrf_token"]
+    assert resolved["request_scope"] == "req-presenter"
     # The granted exchange must not consume the owner's own session.
+    assert owner_session is not None
+    assert owner_session["request_scope"] == ""
     assert manager.verify_session(str(owner["session_id"]), binding) is not None
+
+
+def test_approval_presenter_grant_is_bound_to_one_dedicated_code() -> None:
+    """Only the code minted for the grant can claim it, exactly once."""
+
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    binding = _binding(activation_id="activation:presenter", security_epoch=7)
+    owner = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]), binding
+    )
+    assert owner is not None
+    owner_session = manager.verify_session(str(owner["session_id"]), binding)
+    assert owner_session is not None
+    owner_journal = str(owner_session["session_id"])
+
+    manager.record_approval_presenter_grant("req-presenter", owner_journal, binding)
+
+    # A different normal bootstrap code cannot pull the grant by naming the
+    # request id: it simply mints an ordinary independent session.
+    foreign = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]),
+        binding,
+        presenter_request_id="req-presenter",
+    )
+    assert foreign is not None
+    foreign_session = manager.verify_session(str(foreign["session_id"]), binding)
+    assert foreign_session is not None
+    assert foreign_session["session_id"] != owner_journal
+    assert foreign_session["request_scope"] == ""
+    assert manager._presenter_grants["req-presenter"]["code_hash"] is None
+
+    # The dedicated code minted for the grant consumes it on exchange.
+    dedicated = str(
+        manager.issue_login_code(binding, presenter_request_id="req-presenter")[
+            "code"
+        ]
+    )
+    assert manager._presenter_grants["req-presenter"]["code_hash"] == (
+        manager._hash_value(dedicated)
+    )
+    window = manager.exchange_code(
+        dedicated, binding, presenter_request_id="req-presenter"
+    )
+    assert window is not None
+    resolved = manager.verify_session(str(window["session_id"]), binding)
+    assert resolved is not None
+    assert resolved["session_id"] == owner_journal
+    assert resolved["request_scope"] == "req-presenter"
+    assert "req-presenter" not in manager._presenter_grants
+
+    # A second presenter-named code cannot replay the consumed grant: it is
+    # issued as an ordinary code and its exchange keeps a separate journal.
+    replay_code = str(
+        manager.issue_login_code(binding, presenter_request_id="req-presenter")[
+            "code"
+        ]
+    )
+    replay = manager.exchange_code(
+        replay_code, binding, presenter_request_id="req-presenter"
+    )
+    assert replay is not None
+    replayed = manager.verify_session(str(replay["session_id"]), binding)
+    assert replayed is not None
+    assert replayed["session_id"] != owner_journal
+    assert replayed["request_scope"] == ""
+
+
+def test_approval_presenter_dedicated_code_fails_closed_on_mismatch() -> None:
+    """A dedicated code denies rather than degrade to an unscoped session."""
+
+    manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    binding = _binding(activation_id="activation:presenter", security_epoch=7)
+    owner = manager.exchange_code(
+        str(manager.issue_login_code(binding)["code"]), binding
+    )
+    assert owner is not None
+    owner_session = manager.verify_session(str(owner["session_id"]), binding)
+    assert owner_session is not None
+    owner_journal = str(owner_session["session_id"])
+
+    manager.record_approval_presenter_grant("req-presenter", owner_journal, binding)
+    dedicated = str(
+        manager.issue_login_code(binding, presenter_request_id="req-presenter")[
+            "code"
+        ]
+    )
+    # The dedicated code must name its exact request at exchange.
+    assert manager.exchange_code(dedicated, binding) is None
+    assert (
+        manager.exchange_code(
+            dedicated, binding, presenter_request_id="req-other"
+        )
+        is None
+    )
+    # A failed presenter exchange does not burn the dedicated code.
+    window = manager.exchange_code(
+        dedicated, binding, presenter_request_id="req-presenter"
+    )
+    assert window is not None
+    resolved = manager.verify_session(str(window["session_id"]), binding)
+    assert resolved is not None
+    assert resolved["session_id"] == owner_journal
+    assert resolved["request_scope"] == "req-presenter"
 
 
 def test_approval_presenter_grant_stays_scoped_and_bounded() -> None:
@@ -502,36 +612,49 @@ def test_approval_presenter_grant_stays_scoped_and_bounded() -> None:
         owner_journal = str(owner_session["session_id"])
 
         if case == "other-request":
-            manager.record_approval_presenter_grant("req-other", owner_journal)
+            manager.record_approval_presenter_grant(
+                "req-other", owner_journal, binding
+            )
         elif case == "expired":
-            manager.record_approval_presenter_grant("req-target", owner_journal)
+            manager.record_approval_presenter_grant(
+                "req-target", owner_journal, binding
+            )
             manager._presenter_grants["req-target"]["expires_at"] = 0
         exchanged = manager.exchange_code(
-            str(manager.issue_login_code(binding)["code"]),
+            str(
+                manager.issue_login_code(
+                    binding, presenter_request_id="req-target"
+                )["code"]
+            ),
             binding,
             presenter_request_id="req-target",
         )
+        # In every case the bootstrap-time grant bind fails closed: an absent
+        # grant, a grant for another request, or an expired grant leaves the
+        # code unmarked and the exchange mints an ordinary session.
         assert exchanged is not None, case
         resolved = manager.verify_session(str(exchanged["session_id"]), binding)
         assert resolved is not None
         assert resolved["session_id"] != owner_journal, case
+        assert resolved["request_scope"] == "", case
 
 
 def test_approval_presenter_grant_rejects_malformed_bindings() -> None:
     """Grant recording accepts only request-id-shaped keys and raw journals."""
 
     manager = PanelAuthManager(bootstrap_secret="desktop-bootstrap")
+    binding = _binding(activation_id="activation:presenter", security_epoch=7)
     for request_id in ("", "has space", "has/slash", "x" * 161):
         with pytest.raises(ValueError, match="presenter grant"):
-            manager.record_approval_presenter_grant(request_id, "journal")
+            manager.record_approval_presenter_grant(request_id, "journal", binding)
     for journal in ("", "owner.session", "x" * 513):
         with pytest.raises(ValueError, match="presenter grant"):
-            manager.record_approval_presenter_grant("req-ok", journal)
+            manager.record_approval_presenter_grant("req-ok", journal, binding)
     assert manager._presenter_grants == {}
 
 
 def test_http_exchange_passes_the_presenter_request_id() -> None:
-    """The real HTTP exchange path forwards the mounted request id."""
+    """The real HTTP bootstrap dedicates the code the window exchange uses."""
 
     binding = _binding(activation_id="activation:presenter", security_epoch=7)
     current = [binding]
@@ -549,18 +672,29 @@ def test_http_exchange_passes_the_presenter_request_id() -> None:
     )
     server.start()
     try:
+        origin = f"http://127.0.0.1:{server.port}"
         manager.record_approval_presenter_grant(
-            "req-presenter", str(owner_session["session_id"])
+            "req-presenter", str(owner_session["session_id"]), binding
         )
+        # The Launcher's approval-window bootstrap names the request so the
+        # issued code is dedicated to that grant.
+        status, bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={"request_id": "req-presenter"},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, bootstrap
         status, response, headers = _request(
             server,
             "POST",
             "/api/panel/auth/exchange",
             body={
-                "code": manager.issue_login_code(binding)["code"],
+                "code": bootstrap["data"]["code"],
                 "request_id": "req-presenter",
             },
-            headers={"Origin": f"http://127.0.0.1:{server.port}"},
+            headers={"Origin": origin},
         )
         assert status == 200, response
         cookie = next(
@@ -571,5 +705,39 @@ def test_http_exchange_passes_the_presenter_request_id() -> None:
         )
         assert window is not None
         assert window["session_id"] == owner_session["session_id"]
+        assert window["request_scope"] == "req-presenter"
+        # The grant was consumed by the dedicated code's exchange.
+        assert manager._presenter_grants == {}
+
+        # A bootstrap exchange that only names the request id at exchange —
+        # without the dedicated code — mints an ordinary session instead.
+        status, foreign_bootstrap, _ = _request(
+            server,
+            "POST",
+            "/api/panel/auth/bootstrap",
+            body={},
+            headers={"X-Rumi-Desktop-Bootstrap": "desktop-bootstrap"},
+        )
+        assert status == 200, foreign_bootstrap
+        status, foreign_response, foreign_headers = _request(
+            server,
+            "POST",
+            "/api/panel/auth/exchange",
+            body={
+                "code": foreign_bootstrap["data"]["code"],
+                "request_id": "req-presenter",
+            },
+            headers={"Origin": origin},
+        )
+        assert status == 200, foreign_response
+        foreign_cookie = next(
+            value for key, value in foreign_headers if key.lower() == "set-cookie"
+        )
+        foreign = manager.verify_session(
+            foreign_cookie.split(";", 1)[0].split("=", 1)[1], binding
+        )
+        assert foreign is not None
+        assert foreign["session_id"] != owner_session["session_id"]
+        assert foreign["request_scope"] == ""
     finally:
         server.stop()
