@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from core_runtime.operating_profile import (
     AgentExecutionMode,
     AuthorityReviewConsumer,
     FinalizationAction,
+    OperatingProfile,
     OperatingProfilePlanStore,
     ReviewGateDecision,
     ReviewGateContext,
@@ -75,6 +76,7 @@ def enforce_finalization_review(
     if not profile_id:
         return None
     store = plan_store or OperatingProfilePlanStore()
+    profile: OperatingProfile | Mapping[str, Any] | None
     try:
         profile = store.load_active_profile(profile_id)
     except (OSError, TypeError, ValueError):
@@ -99,7 +101,11 @@ def enforce_finalization_review(
     if not run_id or not conversation_id or not actor_principal_id:
         return None
 
-    profile_payload = profile.to_dict() if hasattr(profile, "to_dict") else dict(profile)
+    profile_payload = (
+        profile.to_dict()
+        if isinstance(profile, OperatingProfile)
+        else dict(profile)
+    )
     artifact_payload = dict(artifact)
     artifact_digest = stable_sha256(artifact_payload)
     artifact_revision = _artifact_revision(artifact_payload, artifact_digest)
@@ -134,7 +140,7 @@ def _authority_review_consumer() -> AuthorityReviewConsumer:
     except Exception:
         candidate = None
     if callable(getattr(candidate, "consume_review", None)):
-        return candidate
+        return cast(AuthorityReviewConsumer, candidate)
     return _MissingAuthorityReviewConsumer()
 
 
