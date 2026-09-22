@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { createVoiceRecognitionSession, type SpeechRecognitionLike, type VoiceRecognitionSession } from "../lib/voiceRecognitionSession";
 
 import type {
   AttachedFile,
@@ -97,25 +98,6 @@ type ComposerChromeWidgetSpec = {
 
 type ComposerReferenceDescriptor = ComposerEntityReference & {
   label: string;
-};
-
-type SpeechRecognitionEventLike = {
-  resultIndex: number;
-  results: ArrayLike<{
-    isFinal?: boolean;
-    0?: { transcript?: string };
-  }>;
-};
-
-type SpeechRecognitionLike = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onend: (() => void) | null;
-  onerror?: ((event: { error?: string; message?: string }) => void) | null;
-  start: () => void;
-  stop: () => void;
 };
 
 const COMPOSER_CHROME_WIDTHS = {
@@ -1639,7 +1621,8 @@ export function ComposerRenderer({
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const recognitionRef = useRef<VoiceRecognitionSession | null>(null);
+  useEffect(() => () => recognitionRef.current?.dispose(), []);
   const chromeWidgetNodeMapRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const submitPointerHandledRef = useRef(false);
   const lastModelPickerRequestIdRef = useRef(modelPickerRequestId);
@@ -2313,8 +2296,6 @@ export function ComposerRenderer({
     if (!voiceInputEnabled || !templateAllowsVoiceInput || isGenerating) return;
     if (isVoiceListening) {
       recognitionRef.current?.stop();
-      setIsVoiceListening(false);
-      setVoiceInputStatusMessage("音声入力を停止しました。");
       return;
     }
     const recognitionCtor = (window as unknown as {
@@ -2325,51 +2306,29 @@ export function ComposerRenderer({
       setVoiceInputStatusMessage("このブラウザでは音声入力を利用できません。テキスト入力を使ってください。");
       return;
     }
-    const recognition = new recognitionCtor();
-    recognition.lang = "ja-JP";
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    let finalTranscript = "";
-    recognition.onresult = (event: SpeechRecognitionEventLike) => {
-      let interim = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const text = result?.[0]?.transcript ?? "";
-        if (result?.isFinal) finalTranscript += text;
-        else interim += text;
-      }
-      const transcript = `${finalTranscript}${interim}`.trim();
-      if (!transcript) return;
-      const prefix = voiceInputUseAi ? "文字起こしして: " : "";
-      const base = input.trimEnd();
-      onInputChange(`${base}${base ? "\n" : ""}${prefix}${transcript}`);
-    };
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      setIsVoiceListening(false);
-      setVoiceInputStatusMessage((current) => current === "音声入力を聞き取り中です。もう一度押すと停止します。" ? "音声入力を終了しました。" : current);
-      window.setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
-    };
-    recognition.onerror = (event) => {
-      recognitionRef.current = null;
-      setIsVoiceListening(false);
-      const error = String(event?.error || event?.message || "").toLowerCase();
-      setVoiceInputStatusMessage(
-        error.includes("not-allowed") || error.includes("permission")
-          ? "マイク権限を確認してください。許可後にもう一度音声入力を押してください。"
-          : "音声入力を開始できませんでした。テキスト入力を使ってください。",
-      );
-    };
-    recognitionRef.current = recognition;
-    setIsVoiceListening(true);
-    setVoiceInputStatusMessage("音声入力を聞き取り中です。もう一度押すと停止します。");
-    try {
-      recognition.start();
-    } catch {
-      recognitionRef.current = null;
-      setIsVoiceListening(false);
-      setVoiceInputStatusMessage("音声入力を開始できませんでした。テキスト入力を使ってください。");
-    }
+    recognitionRef.current?.dispose();
+    const session = createVoiceRecognitionSession(recognitionCtor, {
+      onTranscript: (transcript) => {
+        const prefix = voiceInputUseAi ? "文字起こしして: " : "";
+        const base = input.trimEnd();
+        onInputChange(`${base}${base ? "\n" : ""}${prefix}${transcript}`);
+      },
+      onState: (state) => {
+        setIsVoiceListening(state === "listening");
+        setVoiceInputStatusMessage({
+          listening: "音声入力を聞き取り中です。もう一度押すと停止します。",
+          stopped: "音声入力を停止しました。",
+          ended: "音声入力を終了しました。",
+          "permission-denied": "マイク権限を確認してください。許可後にもう一度音声入力を押してください。",
+          failed: "音声入力を開始できませんでした。テキスト入力を使ってください。",
+        }[state]);
+      },
+      onEnd: () => {
+        window.setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
+      },
+    });
+    recognitionRef.current = session;
+    session.start();
   }, [input, isGenerating, isVoiceListening, onInputChange, templateAllowsVoiceInput, voiceInputEnabled, voiceInputUseAi]);
 
   const handleKeyDown = useCallback(
