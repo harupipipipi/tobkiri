@@ -2793,6 +2793,8 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   const now = new Date();
   const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-09`;
   const nextDayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-10`;
+  const rangeStartKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-12`;
+  const rangeEndKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-14`;
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const nextMonthKey = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
   const dayLabel = `${now.getFullYear()}年${now.getMonth() + 1}月9日`;
@@ -2825,8 +2827,8 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("Design review edited")).toBeVisible();
 
-  const rangeStart = page.getByTestId(`${"calendar-day"}-${dayKey.replace("-09", "-12")}`);
-  const rangeEnd = page.getByTestId(`${"calendar-day"}-${dayKey.replace("-09", "-14")}`);
+  const rangeStart = page.getByTestId(`calendar-day-${rangeStartKey}`);
+  const rangeEnd = page.getByTestId(`calendar-day-${rangeEndKey}`);
   const startBox = await rangeStart.boundingBox();
   const endBox = await rangeEnd.boundingBox();
   expect(startBox).not.toBeNull();
