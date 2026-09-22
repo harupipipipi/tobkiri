@@ -13,4 +13,6 @@ Git operations:
 - add, commit, restore, stash require confirmation metadata.
 - push requires network approval and audit.
 
-Output is summarized for UI while raw output remains available in run history.
+Raw stdout and stderr are available only in the active in-memory terminal panel
+session. They are not restored from browser storage or a durable run-history
+store; clearing, closing, changing workspaces, or reloading discards them.

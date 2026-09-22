@@ -1,0 +1,69 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.shell.execute.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.host.authorize.v1",
+      "rumi.service.shell.inspect.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_shell_policy_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Receipt-gated workspace-jailed bounded command execution.",
+  "display_name": "Rumi Shell Execute",
+  "host_execution": true,
+  "metadata": {
+    "authority": "execute",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:afc4be167b207b364b6f7b5907264bb735def147c56aab45613657d8d4e97116",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:41b3ff1f31e189c5f690e1f5633cbe85a1b249c1cc870a5cf884c9b79b1a2223"
+    },
+    "manifest_authority": "v4-authoritative",
+    "policy_owner": "rumi_shell_policy_pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "receipt_required": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_shell_execute_pack",
+  "pack_identity": "rumi:ecosystem/rumi_shell_execute_pack",
+  "provenance": {
+    "build_identity": "rumi_shell_execute_pack:1.0.0",
+    "content_hash": "sha256:be5f4ef07602eff90de1cfde2e04db7fe98acb2827c17b7f3136292940582145",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "host.authority.consume",
+    "shell.execute",
+    "shell.inspect",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -108,7 +108,9 @@ class RunSealService:
 
     @classmethod
     def default(cls) -> "RunSealService":
-        env_secret = str(os.environ.get("RUMI_RUN_SEAL_SECRET") or "").strip()
+        from core_runtime.host_contract import host_contract_value
+
+        env_secret = host_contract_value("run_seal_secret")
         if env_secret:
             key = env_secret.encode("utf-8")
         else:

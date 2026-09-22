@@ -24,11 +24,20 @@ from __future__ import annotations
 
 import functools
 import math
+import sys
 import threading
 import time
 from collections import deque
 from contextlib import contextmanager
-from typing import Any, Callable, Deque, Dict, Generator, List, Optional
+from typing import Any, Callable, Dict, Generator, List, Optional
+
+
+_this_module = sys.modules.get(__name__)
+if _this_module is not None:
+    if __name__.startswith("tobkiri_runtime."):
+        sys.modules.setdefault(__name__.removeprefix("tobkiri_runtime."), _this_module)
+    else:
+        sys.modules.setdefault(f"tobkiri_runtime.{__name__}", _this_module)
 
 
 # ============================================================

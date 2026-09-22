@@ -10,5 +10,5 @@ None.
 
 - `defaultspack` owns approvals, grants, provider keys, active pack selection, scheduler routes, and MCP registry actions.
 - Installed connector plugins own Slack, Gmail, Google Drive, GitHub, Notion, and similar transport execution.
-- `rumi_local_agent_pack` can consume normalized connector handoffs when a reusable local agent preset is the best owner.
+- The `tobkiri.profile-content.local-agent.v1` Profile projection can consume normalized connector handoffs when reusable local-agent content is the best fit; it is Profile content, not an installable Pack or authority owner.
 - This pack owns connector scope review cards, channel handoff envelopes, and inbound prompt-risk classification.

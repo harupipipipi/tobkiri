@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 from domain.input.envelope import RumiInputEnvelope
 from domain.input.submit import submit_input
 
@@ -16,6 +18,7 @@ def dispatch_external_message(
     model: str | None = None,
     metadata: Dict[str, Any] | None = None,
     context: Dict[str, Any] | None = None,
+    settings_owner: SettingsOwnerPort | None = None,
 ) -> Dict[str, Any]:
     external_metadata = metadata if isinstance(metadata, dict) else {}
     envelope = RumiInputEnvelope(
@@ -35,7 +38,11 @@ def dispatch_external_message(
         },
         metadata=external_metadata,
     )
-    return submit_input(envelope, context or {})
+    return submit_input(
+        envelope,
+        context or {},
+        **({"settings_owner": settings_owner} if settings_owner is not None else {}),
+    )
 
 
 def extract_assistant_text(message: Dict[str, Any]) -> str:

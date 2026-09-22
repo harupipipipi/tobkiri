@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:75d152b61e2d43806d1687d0f4df311b75b2aefb7de18d0d30f131d721acdaf9",
+  "pack_id": "rumi_connector_company_adapter_pack",
+  "source_identity": "sha256:64d95a6b924fe40904bf6e97a328f646edd7a4e2314aae8d1d3850dbe1cff208",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-pack-v4",
+      "execution_domain_profile": "sandbox.default.v1",
+      "execution_kind": "pack_vm",
+      "function_id": "rumi_connector_company_adapter_pack.connector-route.company",
+      "implementation_digest": "sha256:585a6c6e0f2ed28c4d478eb4eaf39df73cbe3e4df9d2f7eb5196058bfc816a6d",
+      "implementation_path": "runtime/adapter.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.action.connector.route.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "read",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_connector_company_adapter_pack.connector-company-route",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:ba5b6299d1bcf1847d0a5f2a3ff10dc1c19182414afd0555df74295f4306a9ec",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_connector_company_adapter_pack.connector-route.company.python"
+    }
+  ]
+}

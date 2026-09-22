@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/provenance.v2.schema.json",
+  "title": "Tobkiri content-bound normative provenance v2",
+  "$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/provenanceV2"
+}

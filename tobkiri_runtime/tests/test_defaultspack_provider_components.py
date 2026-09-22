@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
@@ -11,12 +13,15 @@ MODEL_CATALOG_ROOT = ROOT / "ecosystem" / "rumi_model_catalog_pack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
+pytestmark = pytest.mark.usefixtures("provider_model_catalog_selected")
+
 from domain.ai_client.providers import (  # noqa: E402
     detect_available_providers,
     get_all_known_models,
     get_provider_catalog_map,
 )
 from domain.ai_client.providers.component_metadata import (  # noqa: E402
+    _safe_catalog_file,
     model_manifests_from_provider_components,
     provider_component_metadata_map,
     provider_manifests_from_components,
@@ -38,7 +43,12 @@ OPENGATEWAY_MODELS = {
 
 
 def test_provider_components_include_gitlawb_and_common_provider_aliases():
-    registry = DomainComponentRegistry(build_domain_component_roots(DEFAULTSPACK_ROOT))
+    registry = DomainComponentRegistry(
+        [
+            *build_domain_component_roots(DEFAULTSPACK_ROOT),
+            MODEL_CATALOG_ROOT / "catalog",
+        ]
+    )
 
     assert registry.get("providers", "gitlawb-opengateway").id == "gitlawb-opengateway"
     assert registry.get("providers", "gemini").id == "google"
@@ -141,14 +151,34 @@ def test_untrusted_provider_component_manifest_is_not_promoted_or_imported(tmp_p
     try:
         get_domain_component_registry(force_reload=True)
 
-        metadata = provider_component_metadata_map()["evil_validation"]
+        metadata = provider_component_metadata_map()
         manifests = provider_manifests_from_components()
         available = detect_available_providers()
 
-        assert metadata["provider_manifest"] == {}
+        assert "evil_validation" not in metadata
         assert "evil_validation" not in manifests
         assert "evil_validation" not in available
         assert not (tmp_path / "sentinel.txt").exists()
     finally:
         monkeypatch.delenv("RUMI_DEFAULTSPACK_DOMAIN_COMPONENT_ROOTS", raising=False)
         get_domain_component_registry(force_reload=True)
+
+
+def test_model_catalog_file_loader_rejects_escape_and_symlink_paths(tmp_path):
+    pack_root = tmp_path / "rumi_model_catalog_pack"
+    catalog_root = pack_root / "catalog"
+    catalog_root.mkdir(parents=True)
+    inside = catalog_root / "models.json"
+    inside.write_text("{}", encoding="utf-8")
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+
+    assert _safe_catalog_file(inside, root=pack_root) == inside
+    assert _safe_catalog_file(catalog_root / ".." / ".." / "outside.json", root=pack_root) is None
+
+    link = catalog_root / "linked.json"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks are unavailable on this filesystem")
+    assert _safe_catalog_file(link, root=pack_root) is None
