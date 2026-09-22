@@ -219,6 +219,50 @@ void main() {
     expect(find.text('このモデルを選択'), findsOneWidget);
   });
 
+  testWidgets('directly selected active model remains visible and selected',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(393, 852));
+    const savedProvider = MobileProviderConfig(
+      providerId: 'openai',
+      displayName: 'OpenAI',
+      label: 'Work OpenAI',
+      apiKey: 'sk-openai',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5.4',
+    );
+    const activeConfig = ApiConfig(
+      providerId: 'openai',
+      label: 'Work OpenAI',
+      apiKey: 'sk-openai',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'org/verified-custom-model',
+    );
+    final options = mobileProviderOptionsWithActiveModel(
+      const [savedProvider],
+      activeConfig,
+    );
+
+    expect(
+      options.map((provider) => provider.model),
+      contains(activeConfig.model),
+    );
+
+    await tester.pumpWidget(wrap(ModelSelectionScreen.local(
+      providers: options,
+      activeModelId: activeConfig.model,
+      activeProviderId: activeConfig.providerId,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('org/verified-custom-model'), findsOneWidget);
+    final semantics = tester.widget<Semantics>(
+      find.byKey(
+        const ValueKey('model-option-openai:org/verified-custom-model'),
+      ),
+    );
+    expect(semantics.properties.selected, isTrue);
+  });
+
   testWidgets('long model names remain usable with large text', (tester) async {
     await tester.binding.setSurfaceSize(const Size(393, 852));
     const longModel =

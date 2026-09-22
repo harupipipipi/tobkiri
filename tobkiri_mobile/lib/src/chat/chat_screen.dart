@@ -1186,22 +1186,32 @@ class _ChatScreenState extends State<ChatScreen>
       }
       return;
     }
+    final currentConfig = await widget.configStore.loadApi();
     final providers = (await widget.configStore.loadProviderConfigs())
         .where((provider) => provider.isConfigured)
         .toList();
-    final selectableProviders = _mobileProvidersForSelection(providers);
     if (!mounted) return;
+    setState(() => _apiConfig = currentConfig);
+    final selectableProviders = _mobileProvidersForSelection(
+      providers,
+      activeConfig: currentConfig,
+    );
     final selected = await Navigator.of(context).push<ModelSelectionResult>(
       MaterialPageRoute(
         builder: (_) => ModelSelectionScreen.local(
           providers: selectableProviders,
-          activeModelId: _activeModelId(),
-          activeProviderId: _apiConfig?.providerId ?? '',
+          activeModelId: currentConfig.model,
+          activeProviderId: currentConfig.providerId,
           onRefreshMobileProviders: () async {
+            final refreshedConfig = await widget.configStore.loadApi();
             final refreshed = (await widget.configStore.loadProviderConfigs())
                 .where((provider) => provider.isConfigured)
                 .toList();
-            return _mobileProvidersForSelection(refreshed);
+            if (mounted) setState(() => _apiConfig = refreshedConfig);
+            return _mobileProvidersForSelection(
+              refreshed,
+              activeConfig: refreshedConfig,
+            );
           },
         ),
       ),
@@ -1214,7 +1224,7 @@ class _ChatScreenState extends State<ChatScreen>
         return;
       case ModelSelectionKind.localModel:
         final model = selected.localModel?.trim();
-        final current = _apiConfig ?? await widget.configStore.loadApi();
+        final current = await widget.configStore.loadApi();
         if (selected.localProviderId != current.providerId) {
           _showSnack('プロバイダー設定が変わりました。モデルを選び直してください');
           return;
@@ -1250,18 +1260,22 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   List<MobileProviderConfig> _mobileProvidersForSelection(
-    List<MobileProviderConfig> providers,
+    List<MobileProviderConfig> providers, {
+    ApiConfig? activeConfig,
+  }
   ) {
-    final favorites = providers
+    final active = activeConfig ?? _apiConfig ?? ApiConfig.defaults;
+    final options = mobileProviderOptionsWithActiveModel(providers, active);
+    final favorites = options
         .where(
           (provider) => _modelFavorites.any(
             (favorite) => favorite.matchesMobileProvider(provider),
           ),
         )
         .toList();
-    final activeProviderId = _apiConfig?.providerId ?? '';
-    final activeModelId = _apiConfig?.model ?? '';
-    for (final provider in providers) {
+    final activeProviderId = active.providerId;
+    final activeModelId = active.model;
+    for (final provider in options) {
       if (provider.providerId == activeProviderId &&
           provider.model == activeModelId &&
           !favorites.contains(provider)) {
@@ -1269,11 +1283,11 @@ class _ChatScreenState extends State<ChatScreen>
         break;
       }
     }
-    return favorites.isNotEmpty ? favorites : providers;
+    return favorites.isNotEmpty ? favorites : options;
   }
 
   Future<void> _setLocalModel(String model) async {
-    final current = _apiConfig ?? await widget.configStore.loadApi();
+    final current = await widget.configStore.loadApi();
     final next = current.copyWith(model: model.trim());
     await widget.configStore.saveApi(next);
     if (!mounted) return;
@@ -1282,7 +1296,7 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Future<void> _setLocalProvider(MobileProviderConfig provider) async {
-    final current = _apiConfig ?? await widget.configStore.loadApi();
+    final current = await widget.configStore.loadApi();
     final next = provider.toApiConfig(
       systemPrompt: current.systemPrompt,
       temperature: current.temperature,
@@ -1300,7 +1314,6 @@ class _ChatScreenState extends State<ChatScreen>
       _promptPcConfigure();
       return;
     }
-    setState(() => _selectedPcModel = profileId);
     final client = PcCatalogClient();
     try {
       final result = await client.executeCommand(

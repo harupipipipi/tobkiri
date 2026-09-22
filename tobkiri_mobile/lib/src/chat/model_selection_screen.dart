@@ -46,6 +46,59 @@ class ModelSelectionResult {
 typedef PcProfileRefresh = Future<List<ProfileEntry>> Function();
 typedef MobileProviderRefresh = Future<List<MobileProviderConfig>> Function();
 
+/// Includes the currently active direct API configuration in picker choices.
+///
+/// A user may enter a model ID directly, which changes the active API record
+/// without changing the provider's saved default model. Keeping that active
+/// value in the picker makes the selected state truthful after reopening it.
+List<MobileProviderConfig> mobileProviderOptionsWithActiveModel(
+  List<MobileProviderConfig> providers,
+  ApiConfig activeConfig,
+) {
+  final activeProviderId = activeConfig.providerId.trim();
+  final activeModel = activeConfig.model.trim();
+  if (!activeConfig.isConfigured ||
+      activeProviderId.isEmpty ||
+      activeModel.isEmpty ||
+      providers.any(
+        (provider) =>
+            provider.providerId == activeProviderId &&
+            provider.model == activeModel,
+      )) {
+    return List<MobileProviderConfig>.of(providers);
+  }
+
+  MobileProviderConfig? savedProvider;
+  for (final provider in providers) {
+    if (provider.providerId == activeProviderId) {
+      savedProvider = provider;
+      break;
+    }
+  }
+  final activeProvider = (savedProvider ??
+          MobileProviderConfig(
+            providerId: activeProviderId,
+            displayName: activeConfig.label.trim().isEmpty
+                ? activeProviderId
+                : activeConfig.label.trim(),
+            label: activeConfig.label,
+            apiKey: activeConfig.apiKey,
+            baseUrl: activeConfig.baseUrl,
+            model: activeModel,
+            apiCompatibility: activeConfig.apiCompatibility,
+          ))
+      .copyWith(
+        label: activeConfig.label.trim().isEmpty
+            ? savedProvider?.label
+            : activeConfig.label.trim(),
+        apiKey: activeConfig.apiKey,
+        baseUrl: activeConfig.baseUrl,
+        model: activeModel,
+        apiCompatibility: activeConfig.apiCompatibility,
+      );
+  return [...providers, activeProvider];
+}
+
 class ModelSelectionScreen extends StatefulWidget {
   const ModelSelectionScreen.pc({
     super.key,
@@ -425,6 +478,12 @@ class _ModelSelectionScreenState extends State<ModelSelectionScreen> {
   }
 
   MobileProviderConfig? _activeProvider() {
+    for (final provider in _providers) {
+      if (provider.providerId == widget.activeProviderId &&
+          provider.model == widget.activeModelId) {
+        return provider;
+      }
+    }
     for (final provider in _providers) {
       if (provider.providerId == widget.activeProviderId) return provider;
     }
