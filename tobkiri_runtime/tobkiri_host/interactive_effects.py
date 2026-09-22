@@ -440,12 +440,16 @@ class PendingEffectController:
         presentation_owner_session_id: str,
         broker: RequestBroker,
         dispatch_grace_seconds: float | None = None,
+        wall_clock: Callable[[], float] = time.time,
+        monotonic_clock: Callable[[], float] = time.monotonic,
     ) -> PendingEffectStatus:
         """Resume only when the authenticated presentation owner still matches."""
         return self.resume(
             effect_id,
             broker,
             dispatch_grace_seconds=dispatch_grace_seconds,
+            wall_clock=wall_clock,
+            monotonic_clock=monotonic_clock,
             presentation_owner=(
                 presentation_owner_principal_id,
                 presentation_owner_session_id,
