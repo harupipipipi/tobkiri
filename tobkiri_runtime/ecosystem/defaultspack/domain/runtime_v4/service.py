@@ -1796,6 +1796,9 @@ class ActivationStore:
                 self._verify_selected_artifact(
                     active.resolved.profile,
                     allow_verified_successor_reconfirmation=True,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
                 )
             except BaseException as error:
                 flight.error = error
@@ -1821,6 +1824,9 @@ class ActivationStore:
             self._verify_selected_artifact(
                 active.resolved.profile,
                 allow_verified_successor_reconfirmation=True,
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
             )
 
     def reconcile_active(
@@ -2236,6 +2242,8 @@ class ActivationStore:
         self,
         profile: Mapping[str, Any],
         definition: Mapping[str, Any],
+        *,
+        deadline_monotonic: float | None = None,
     ) -> bool:
         """Return whether the catalog has one verified successor for this Shell.
 
@@ -2288,7 +2296,11 @@ class ActivationStore:
         ):
             return False
         try:
-            verify_platform_artifact(self._catalog.artifact_root, successor)
+            verify_platform_artifact(
+                self._catalog.artifact_root,
+                successor,
+                deadline_monotonic=deadline_monotonic,
+            )
         except ProtocolError as exc:
             raise ProfileResolutionDenied(
                 f"verified successor Shell artifact rejected: {exc}"
@@ -2300,6 +2312,7 @@ class ActivationStore:
         profile: Mapping[str, Any],
         *,
         allow_verified_successor_reconfirmation: bool = False,
+        deadline_monotonic: float | None = None,
     ) -> None:
         """Reverify the exact selected Shell/Application bytes when catalogued."""
 
@@ -2341,7 +2354,9 @@ class ActivationStore:
         if (
             not exact_current_binding
             and allow_verified_successor_reconfirmation
-            and self._verified_shell_successor_is_available(profile, definition)
+            and self._verified_shell_successor_is_available(
+                profile, definition, deadline_monotonic=deadline_monotonic
+            )
         ):
             raise ProfileReconfirmationRequired(
                 "active Profile Shell artifact identity was superseded by the "
@@ -2350,7 +2365,11 @@ class ActivationStore:
         if not exact_current_binding or self._catalog.artifact_root is None:
             raise ProfileResolutionDenied("active Profile Shell artifact is unavailable")
         try:
-            verify_platform_artifact(self._catalog.artifact_root, variants[0])
+            verify_platform_artifact(
+                self._catalog.artifact_root,
+                variants[0],
+                deadline_monotonic=deadline_monotonic,
+            )
         except ProtocolError as exc:
             raise ProfileResolutionDenied(f"active Profile Shell artifact rejected: {exc}") from exc
 

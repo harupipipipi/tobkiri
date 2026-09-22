@@ -238,8 +238,8 @@
     {
       "path": "ecosystem/defaultspack/domain/runtime_v4/service.py",
       "type": "regular-file",
-      "size": 109310,
-      "sha256": "6100796c67e5e5ba249e8026993d8803bade69611b2cde5a1cbe52306ea15e8a",
+      "size": 109962,
+      "sha256": "37b0169fbe0235a0fda831443aa3d8c9357270ef19f952f90fa7047e74b51bbe",
       "executable": false
     },
     {
@@ -3647,8 +3647,8 @@
     {
       "path": "tobkiri_protocol/platform_artifact.py",
       "type": "regular-file",
-      "size": 8611,
-      "sha256": "e52050130574521145aa6320bd7def2f4075118c27fc1a6ee1cd94a85edbf331",
+      "size": 9528,
+      "sha256": "c55797250942fe23a48a971860ea5b55d722abb3fad1ecc83ebdce1ffe7a80c8",
       "executable": false
     },
     {

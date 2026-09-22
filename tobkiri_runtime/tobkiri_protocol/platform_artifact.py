@@ -7,24 +7,32 @@ import os
 import plistlib
 import stat
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
 from .errors import ProtocolError
 
 
-def artifact_digest(path: Path) -> str:
-    """Return the canonical v1 artifact-tree digest used by release packaging."""
+def artifact_digest(path: Path, *, deadline_monotonic: float | None = None) -> str:
+    """Return the canonical v1 artifact-tree digest used by release packaging.
+
+    When ``deadline_monotonic`` is provided, streaming aborts with
+    ``ProtocolError`` once ``time.monotonic()`` reaches it so request-path
+    verification fails closed instead of pinning a caller on an unbounded hash.
+    """
 
     digest = hashlib.sha256()
 
     def visit(current: Path, relative: tuple[str, ...]) -> None:
+        if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+            raise ProtocolError("packaged artifact verification deadline exceeded")
         if current.is_symlink():
             raise ProtocolError("packaged artifact tree contains a symlink")
         if current.is_file():
             digest.update("/".join(relative).encode("utf-8"))
             digest.update(b"\0")
-            _stable_update_digest(current, digest)
+            _stable_update_digest(current, digest, deadline_monotonic)
             return
         if not current.is_dir():
             raise ProtocolError("packaged artifact entry is unavailable")
@@ -46,7 +54,9 @@ def _identity(value: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
-def _stable_update_digest(path: Path, digest: Any) -> int:
+def _stable_update_digest(
+    path: Path, digest: Any, deadline_monotonic: float | None = None
+) -> int:
     """Stream one regular file into a digest while preserving TOCTOU checks."""
     try:
         descriptor = os.open(
@@ -58,6 +68,13 @@ def _stable_update_digest(path: Path, digest: Any) -> int:
                 raise ProtocolError("packaged artifact member is not a regular file")
             size = 0
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                if (
+                    deadline_monotonic is not None
+                    and time.monotonic() >= deadline_monotonic
+                ):
+                    raise ProtocolError(
+                        "packaged artifact verification deadline exceeded"
+                    )
                 digest.update(chunk)
                 size += len(chunk)
             after = os.fstat(handle.fileno())
@@ -108,6 +125,7 @@ def verify_platform_artifact(
     variant: Mapping[str, Any],
     *,
     require_macos_code_signature: bool = False,
+    deadline_monotonic: float | None = None,
 ) -> Path:
     """Verify path, digest, entrypoint, architecture, and macOS bundle identity."""
 
@@ -129,7 +147,7 @@ def verify_platform_artifact(
     hexadecimal = expected.removeprefix("sha256:")
     if len(set(hexadecimal)) <= 1:
         raise ProtocolError("packaged artifact uses a sentinel digest")
-    if artifact_digest(artifact) != expected:
+    if artifact_digest(artifact, deadline_monotonic=deadline_monotonic) != expected:
         raise ProtocolError("packaged artifact digest does not match selected bytes")
     entrypoint = root / Path(str(variant["entrypoint"]))
     try:
@@ -139,7 +157,7 @@ def verify_platform_artifact(
     if entrypoint.is_symlink() or not entrypoint.is_file():
         raise ProtocolError("packaged artifact entrypoint is not a regular file")
     entrypoint_hasher = hashlib.sha256()
-    _stable_update_digest(entrypoint, entrypoint_hasher)
+    _stable_update_digest(entrypoint, entrypoint_hasher, deadline_monotonic)
     entrypoint_digest = "sha256:" + entrypoint_hasher.hexdigest()
     if entrypoint_digest != variant.get("entrypoint_digest"):
         raise ProtocolError("packaged artifact entrypoint digest does not match")

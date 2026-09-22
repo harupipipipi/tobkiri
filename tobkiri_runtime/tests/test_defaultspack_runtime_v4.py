@@ -1659,6 +1659,45 @@ def test_concurrent_artifact_verification_error_is_not_shared(
     assert runtime_service._ARTIFACT_VERIFICATION_FLIGHTS == {}
 
 
+def test_coalesced_artifact_verification_bounds_leader_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The flight leader hashes under the same deadline scale as its waiters."""
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    authority = _authority(tmp_path / "authority.sqlite3")
+    store = ActivationStore(
+        tmp_path / "state",
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        lock_timeout_seconds=0.05,
+    )
+    store.activate(
+        _resolve(),
+        activation_id="activation:defaults-bounded-verification",
+        created_at="2026-08-10T00:00:00Z",
+    )
+    observed: list[float | None] = []
+
+    def capture_deadline(
+        _profile: object,
+        *,
+        deadline_monotonic: float | None = None,
+        **_kwargs: object,
+    ) -> None:
+        observed.append(deadline_monotonic)
+
+    monkeypatch.setattr(store, "_verify_selected_artifact", capture_deadline)
+    before = store._monotonic_clock()
+    store.load_active_snapshot()
+    authority.close()
+    assert len(observed) == 1
+    assert observed[0] is not None
+    assert before < observed[0] <= before + store._lock_timeout_seconds + 0.5
+
+
 def test_windows_activation_lock_adapter_uses_nonblocking_retry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
