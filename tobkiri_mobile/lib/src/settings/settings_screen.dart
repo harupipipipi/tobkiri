@@ -39,6 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       MobileNotificationSettings.defaults;
   List<PairedDevice> _pairedDevices = [];
   DeviceIdentity? _deviceIdentity;
+  DeviceIdentityStorageException? _identityError;
   bool _loading = true;
   bool _saving = false;
 
@@ -94,7 +95,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           await widget.configStore.loadNotificationSettings();
       final paired = await widget.deviceStore.loadPairedDevice();
       final pairedDevices = await widget.deviceStore.loadPairedDevices();
-      final identity = await widget.deviceStore.loadOrCreateIdentity();
+      DeviceIdentity? identity;
+      DeviceIdentityStorageException? identityError;
+      try {
+        identity = await widget.deviceStore.loadOrCreateIdentity();
+      } on DeviceIdentityStorageException catch (error) {
+        identityError = error;
+      } catch (_) {
+        identityError = const DeviceIdentityStorageException(
+          DeviceIdentityStorageState.lockedOrUnavailable,
+          '端末IDの保護ストレージを確認できません。ロックを解除して再試行してください。',
+        );
+      }
       if (!mounted) return;
       setState(() {
         _config = api;
@@ -107,6 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _pc = paired.toPcConnection();
         }
         _deviceIdentity = identity;
+        _identityError = identityError;
         _syncControllers();
         _loading = false;
       });
@@ -121,8 +134,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _notificationSettings = MobileNotificationSettings.defaults;
         _pairedDevices = const [];
         _deviceIdentity = null;
+        _identityError = null;
         _syncControllers();
         _loading = false;
+      });
+    }
+  }
+
+  Future<void> _retryDeviceIdentity() async {
+    try {
+      final identity = await widget.deviceStore.loadOrCreateIdentity();
+      if (!mounted) return;
+      setState(() {
+        _deviceIdentity = identity;
+        _identityError = null;
+      });
+      _toast('端末IDを確認しました');
+    } on DeviceIdentityStorageException catch (error) {
+      if (!mounted) return;
+      setState(() => _identityError = error);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _identityError = const DeviceIdentityStorageException(
+          DeviceIdentityStorageState.lockedOrUnavailable,
+          '端末IDの保護ストレージを確認できません。ロックを解除して再試行してください。',
+        );
       });
     }
   }
@@ -300,7 +337,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final identity = _deviceIdentity;
     if (identity == null) {
-      _toast('デバイスIDが利用できません');
+      _toast(_identityError?.message ?? '端末IDが利用できません');
       return;
     }
 
@@ -1193,6 +1230,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               const SizedBox(height: 12),
+              if (_identityError != null) ...[
+                _IdentityRecoveryCard(
+                  message: _identityError!.message,
+                  onRetry: _retryDeviceIdentity,
+                ),
+                const SizedBox(height: 12),
+              ],
               if (_pairedDevices.isNotEmpty) ...[
                 for (final device in _pairedDevices) ...[
                   _PairedDeviceCard(
@@ -1406,6 +1450,57 @@ List<ModelFavoriteConfig> _sortModelFavorites(
         .compareTo(b.effectiveLabel.toLowerCase());
   });
   return list;
+}
+
+class _IdentityRecoveryCard extends StatelessWidget {
+  const _IdentityRecoveryCard({
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      label: '端末IDを確認できません。$message',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: scheme.errorContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '端末IDを確認できません',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: scheme.onErrorContainer,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(message, style: TextStyle(color: scheme.onErrorContainer)),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('再試行'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: scheme.onErrorContainer,
+                minimumSize: const Size(48, 48),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _UnfocusOnTapOutside extends StatelessWidget {
