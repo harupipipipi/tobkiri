@@ -1271,13 +1271,24 @@ class MimoCodingCompanyRuntime:
 
     @staticmethod
     def _company_runtime_sync_keys(runtime_store: Any) -> set[str]:
-        messages, _total = runtime_store.list_messages(COMPANY_ID, channel_id="ops-company", limit=500, offset=0)
         keys: set[str] = set()
-        for message in messages:
-            metadata = message.get("metadata") if isinstance(message.get("metadata"), dict) else {}
-            sync_key = str(metadata.get("sync_key") or "").strip()
-            if sync_key:
-                keys.add(sync_key)
+        offset = 0
+        while True:
+            messages, total = runtime_store.list_messages(
+                COMPANY_ID, channel_id="ops-company", limit=500, offset=offset
+            )
+            for message in messages:
+                metadata = (
+                    message.get("metadata")
+                    if isinstance(message.get("metadata"), dict)
+                    else {}
+                )
+                sync_key = str(metadata.get("sync_key") or "").strip()
+                if sync_key:
+                    keys.add(sync_key)
+            offset += len(messages)
+            if not messages or offset >= total:
+                break
         return keys
 
     def _subagent_reply_gaps(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -1325,8 +1336,10 @@ class MimoCodingCompanyRuntime:
                     }
                 )
             return {"checked_ids": checked_ids, "unanswered": unanswered}
-        except Exception:
-            return {"checked_ids": [], "unanswered": []}
+        except Exception as exc:
+            raise RuntimeError(
+                "Subagent conversation status is unavailable; retry the status check."
+            ) from exc
 
     @staticmethod
     def _is_user_only_subagent_conversation(messages: list[Any]) -> bool:
