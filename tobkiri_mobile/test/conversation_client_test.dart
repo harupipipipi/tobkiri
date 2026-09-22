@@ -76,11 +76,14 @@ void main() {
     );
   });
 
-  test('secure connection store restores the prior verified connection on a failed save', () async {
+  test(
+      'secure connection store restores the prior verified connection on a failed save',
+      () async {
     final secrets = _MemorySecrets();
     final store = SecureConversationConnectionStore(storage: secrets);
     await store.saveVerified(const [_connection]);
-    final previous = secrets.values[SecureConversationConnectionStore.storageKey];
+    final previous =
+        secrets.values[SecureConversationConnectionStore.storageKey];
 
     final loaded = await store.load();
     expect(loaded, hasLength(1));
