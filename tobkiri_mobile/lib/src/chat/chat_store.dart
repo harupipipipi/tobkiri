@@ -54,11 +54,11 @@ class _ConversationStorageSnapshot {
   final String? activeId;
 
   Map<String, dynamic> toJson({required String state}) => {
-    'version': 1,
-    'state': state,
-    'conversations': conversations,
-    'activeId': activeId,
-  };
+        'version': 1,
+        'state': state,
+        'conversations': conversations,
+        'activeId': activeId,
+      };
 
   static _ConversationStorageSnapshot? fromJson(Object? value) {
     if (value is! Map<String, dynamic> || value['version'] != 1) return null;
