@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import threading
 import time
 import uuid
@@ -655,6 +656,143 @@ def test_resume_returns_live_state_while_provider_still_runs() -> None:
     assert invocations["count"] == 1
 
 
+def test_resume_deadline_does_not_reenter_contended_store_after_dispatch() -> None:
+    """The response deadline stays bounded while the durable worker continues."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    provider_entered = threading.Event()
+    provider_release = threading.Event()
+    original_get = persistence.get_host_pending_effect
+
+    def contended_get(effect_id: str) -> tuple[int, Mapping[str, Any]] | None:
+        if provider_entered.is_set():
+            provider_release.wait(timeout=0.5)
+        return original_get(effect_id)
+
+    persistence.get_host_pending_effect = contended_get  # type: ignore[method-assign]
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+
+        def invoke(envelope: Any) -> Any:
+            provider_entered.set()
+            provider_release.wait(timeout=5.0)
+            return fixture.backend.outcome
+
+        fixture.backend.invoke = invoke
+        started = time.monotonic()
+        status = controller.resume(
+            pending.effect_id,
+            fixture.broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: 10.0,
+            dispatch_grace_seconds=0.01,
+        )
+        elapsed = time.monotonic() - started
+        assert status.state is PendingEffectState.DISPATCHED
+        assert elapsed < 0.15
+        provider_release.set()
+        settled = _await_state(
+            controller, pending.effect_id, PendingEffectState.SUCCEEDED
+        )
+    finally:
+        provider_release.set()
+        fixture.broker.close()
+
+    assert settled.state is PendingEffectState.SUCCEEDED
+
+
+def test_resume_deadline_bounds_claim_store_contention() -> None:
+    """A blocked claim cannot extend the synchronous resume response budget."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    store_release = threading.Event()
+    store_entered = threading.Event()
+    original_get = persistence.get_host_pending_effect
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+
+        def contended_get(effect_id: str) -> tuple[int, Mapping[str, Any]] | None:
+            store_entered.set()
+            store_release.wait(timeout=5.0)
+            return original_get(effect_id)
+
+        persistence.get_host_pending_effect = contended_get  # type: ignore[method-assign]
+        started = time.monotonic()
+        with pytest.raises(PendingEffectError, match="unavailable"):
+            controller.resume_for_presentation(
+                effect_id=pending.effect_id,
+                presentation_owner_principal_id="authority:presenter",
+                presentation_owner_session_id="presenter-session",
+                broker=fixture.broker,
+                dispatch_grace_seconds=0.01,
+            )
+        elapsed = time.monotonic() - started
+        assert store_entered.is_set()
+        assert elapsed < 0.15
+
+        store_release.set()
+        settled = _await_state(
+            controller, pending.effect_id, PendingEffectState.SUCCEEDED
+        )
+    finally:
+        store_release.set()
+        fixture.broker.close()
+
+    assert settled.state is PendingEffectState.SUCCEEDED
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX flock contention")
+def test_owner_resume_deadline_bounds_real_authority_store_guard(
+    tmp_path: Any,
+) -> None:
+    """A real AuthorityStore flock holder cannot outlive the response grace."""
+
+    import fcntl
+
+    fixture = make_broker()
+    harness = _Harness(tmp_path)
+    approvals = _Approvals()
+    controller = _controller(harness.store, approvals)
+    guard = open(harness.store._guard_path, "r+b")
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+        fcntl.flock(guard.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        started = time.monotonic()
+        with pytest.raises(PendingEffectError, match="unavailable"):
+            controller.resume_for_presentation(
+                effect_id=pending.effect_id,
+                presentation_owner_principal_id="authority:presenter",
+                presentation_owner_session_id="presenter-session",
+                broker=fixture.broker,
+                dispatch_grace_seconds=0.01,
+            )
+        assert time.monotonic() - started < 0.15
+
+        fcntl.flock(guard.fileno(), fcntl.LOCK_UN)
+        settled = _await_state(
+            controller, pending.effect_id, PendingEffectState.SUCCEEDED
+        )
+    finally:
+        try:
+            fcntl.flock(guard.fileno(), fcntl.LOCK_UN)
+        finally:
+            guard.close()
+            harness.store.close()
+            fixture.broker.close()
+
+    assert settled.state is PendingEffectState.SUCCEEDED
+
+
 def test_resume_failure_after_grace_settles_ambiguous_asynchronously() -> None:
     """A Provider error after the caller returned still lands as ambiguous."""
 
@@ -764,6 +902,71 @@ def test_resume_replay_never_dispatches_twice() -> None:
     assert settled.state is PendingEffectState.SUCCEEDED
     assert replayed.state is PendingEffectState.SUCCEEDED
     assert invocations["count"] == 1
+
+
+def test_foreign_or_replayed_resume_cannot_settle_an_owned_live_dispatch() -> None:
+    """Only the worker that won the claim may settle its dispatch failures."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    provider_entered = threading.Event()
+    provider_release = threading.Event()
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+
+        def invoke(envelope: Any) -> Any:
+            provider_entered.set()
+            provider_release.wait(timeout=5.0)
+            return fixture.backend.outcome
+
+        fixture.backend.invoke = invoke
+        first = controller.resume_for_presentation(
+            effect_id=pending.effect_id,
+            presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session",
+            broker=fixture.broker,
+            dispatch_grace_seconds=0.05,
+        )
+        assert first.state is PendingEffectState.DISPATCHED
+        assert provider_entered.is_set()
+
+        with pytest.raises(PendingEffectError, match="unavailable"):
+            controller.resume_for_presentation(
+                effect_id=pending.effect_id,
+                presentation_owner_principal_id="authority:foreign",
+                presentation_owner_session_id="presenter-session",
+                broker=fixture.broker,
+                dispatch_grace_seconds=0.05,
+            )
+        replayed = controller.resume_for_presentation(
+            effect_id=pending.effect_id,
+            presentation_owner_principal_id="authority:presenter",
+            presentation_owner_session_id="presenter-session",
+            broker=fixture.broker,
+            dispatch_grace_seconds=0.05,
+        )
+        assert replayed.state is PendingEffectState.DISPATCHED
+        with pytest.raises(PendingEffectError, match="unavailable"):
+            controller.resume(
+                pending.effect_id,
+                fixture.broker,
+                dispatch_grace_seconds=0.05,
+            )
+        assert controller.status(pending.effect_id).state is PendingEffectState.DISPATCHED
+
+        provider_release.set()
+        settled = _await_state(
+            controller, pending.effect_id, PendingEffectState.SUCCEEDED
+        )
+    finally:
+        provider_release.set()
+        fixture.broker.close()
+
+    assert settled.state is PendingEffectState.SUCCEEDED
+    assert fixture.backend.invocations == 1
 
 
 def test_denied_approval_cancels_resume_without_dispatch() -> None:

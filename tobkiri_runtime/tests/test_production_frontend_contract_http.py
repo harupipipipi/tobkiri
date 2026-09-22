@@ -1141,16 +1141,20 @@ def test_authority_approval_window_grant_is_single_use_and_request_scoped(
     def exchange_session(
         code: str,
         request_id: str | None,
+        previous_cookie: str = "",
     ) -> tuple[str, str]:
         body = {"code": code}
         if request_id is not None:
             body["request_id"] = request_id
+        request_headers = {"Origin": origin}
+        if previous_cookie:
+            request_headers["Cookie"] = previous_cookie
         status, exchange, exchange_headers = _request(
             server,
             "POST",
             "/api/panel/auth/exchange",
             body=body,
-            headers={"Origin": origin},
+            headers=request_headers,
         )
         assert status == 200, exchange
         session_cookie = next(
@@ -1210,6 +1214,53 @@ def test_authority_approval_window_grant_is_single_use_and_request_scoped(
         headers=window_headers,
     )
     assert status == 403, denied_b
+
+    # The Launcher reuses its approval webview. Opening B therefore navigates
+    # with A's still-valid scoped cookie; the code-bearing mount must exchange
+    # B's dedicated code instead of stripping it as if authentication were
+    # already complete.
+    status, opened_b = post(
+        "/api/authority/approval-window",
+        {"request_id": approval_b},
+    )
+    assert status == 200, opened_b
+    assert opened == [approval_a, approval_b]
+    code_b = bootstrap_code(approval_b)
+    retarget = http.client.HTTPConnection(
+        "127.0.0.1", server.port, timeout=10
+    )
+    retarget.request(
+        "GET",
+        f"/panel/?request_id={approval_b}&code={code_b}",
+        headers={"Cookie": window_cookie},
+    )
+    retarget_response = retarget.getresponse()
+    retarget_document = retarget_response.read().decode("utf-8")
+    retarget.close()
+    assert retarget_response.status == 200
+    assert "/api/panel/auth/exchange" in retarget_document
+    assert code_b not in retarget_document
+    retarget_cookie, retarget_csrf = exchange_session(
+        code_b, approval_b, window_cookie
+    )
+    retarget_headers = {
+        "Cookie": retarget_cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": retarget_csrf,
+    }
+    status, view_b = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_b},
+        headers=retarget_headers,
+    )
+    assert status == 200, view_b
+    assert view_b["data"]["request_id"] == approval_b
+    status, denied_a = post(
+        "/api/interactive-approval/v1/get",
+        {"request_id": approval_a},
+        headers=retarget_headers,
+    )
+    assert status == 403, denied_a
 
     # The scope fences every normal-session operation as well: the approval
     # list projection, the window-open operation, and unrelated routes.

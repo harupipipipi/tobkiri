@@ -13,6 +13,7 @@ import importlib
 import errno
 import os
 import re
+import stat
 import threading
 import time
 from contextlib import contextmanager
@@ -158,6 +159,14 @@ class _ArtifactVerificationFlight:
     complete: threading.Event
     error: BaseException | None = None
     waiters: int = 0
+
+
+@dataclass(frozen=True)
+class _ArtifactTreeIdentity:
+    """Cheap identity snapshot for bytes verified outside the activation lock."""
+
+    artifact_path: Path
+    entries: tuple[tuple[str, tuple[int, int, int, int, int, int, int]], ...]
 
 
 _ARTIFACT_VERIFICATION_FLIGHTS_LOCK = threading.Lock()
@@ -1260,8 +1269,21 @@ class ActivationStore:
                 # commit below still fails closed: reservation fencing, the
                 # journaled writes, and the pointer publish all follow these
                 # exact verifications.
+                artifact_identity = self._capture_selected_artifact_identity(
+                    profile,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
                 self._verify_selected_artifact(
                     profile,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
+                self._require_selected_artifact_identity(
+                    profile,
+                    artifact_identity,
                     deadline_monotonic=(
                         self._monotonic_clock() + self._lock_timeout_seconds
                     ),
@@ -1282,6 +1304,7 @@ class ActivationStore:
                         expected_predecessor_activation_id=(
                             expected_predecessor_activation_id
                         ),
+                        verified_artifact_identity=artifact_identity,
                     )
             except _PendingRepublishRequired as pending:
                 self._republish_pending(pending.republish)
@@ -1295,6 +1318,7 @@ class ActivationStore:
         expected_predecessor_profile_revision: str | None,
         expected_predecessor_plan_digest: str | None,
         expected_predecessor_activation_id: str | None,
+        verified_artifact_identity: _ArtifactTreeIdentity | None = None,
     ) -> Mapping[str, Any]:
         """Run one activation while holding the profile's process lock.
 
@@ -1445,6 +1469,13 @@ class ActivationStore:
                 ),
             )
             self._fault("before_authority_commit")
+            self._require_selected_artifact_identity(
+                profile,
+                verified_artifact_identity,
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
+            )
             self._authority.transition_activation(
                 reservation_id,
                 expected_state=state,
@@ -1458,6 +1489,13 @@ class ActivationStore:
                 plan=plan,
                 profile=profile,
                 fencing_token=fencing_token,
+            )
+            self._require_selected_artifact_identity(
+                profile,
+                verified_artifact_identity,
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
             )
             self._write_state(
                 "active.json",
@@ -1598,8 +1636,21 @@ class ActivationStore:
         can never overwrite a newer commit or a moved journal.
         """
 
+        artifact_identity = self._capture_selected_artifact_identity(
+            republish.profile,
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
+        )
         self._verify_selected_artifact(
             republish.profile,
+            deadline_monotonic=(
+                self._monotonic_clock() + self._lock_timeout_seconds
+            ),
+        )
+        self._require_selected_artifact_identity(
+            republish.profile,
+            artifact_identity,
             deadline_monotonic=(
                 self._monotonic_clock() + self._lock_timeout_seconds
             ),
@@ -1627,6 +1678,13 @@ class ActivationStore:
                 plan=envelope["plan"],
                 profile=envelope["profile"],
                 fencing_token=republish.fencing_token,
+            )
+            self._require_selected_artifact_identity(
+                envelope["profile"],
+                artifact_identity,
+                deadline_monotonic=(
+                    self._monotonic_clock() + self._lock_timeout_seconds
+                ),
             )
             self._write_state(
                 "active.json",
@@ -1992,8 +2050,21 @@ class ActivationStore:
                     raise ProfileResolutionDenied(
                         "activation confirmation was replayed"
                     )
+                artifact_identity = self._capture_selected_artifact_identity(
+                    profile,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
                 self._verify_selected_artifact(
                     profile,
+                    deadline_monotonic=(
+                        self._monotonic_clock() + self._lock_timeout_seconds
+                    ),
+                )
+                self._require_selected_artifact_identity(
+                    profile,
+                    artifact_identity,
                     deadline_monotonic=(
                         self._monotonic_clock() + self._lock_timeout_seconds
                     ),
@@ -2013,6 +2084,7 @@ class ActivationStore:
                         expected_predecessor_profile_revision=None,
                         expected_predecessor_plan_digest=None,
                         expected_predecessor_activation_id=None,
+                        verified_artifact_identity=artifact_identity,
                     )
             except _PendingRepublishRequired as pending:
                 self._republish_pending(pending.republish)
@@ -2453,6 +2525,144 @@ class ActivationStore:
                 f"verified successor Shell artifact rejected: {exc}"
             ) from exc
         return True
+
+    def _capture_selected_artifact_identity(
+        self,
+        profile: Mapping[str, Any],
+        *,
+        deadline_monotonic: float | None = None,
+    ) -> _ArtifactTreeIdentity | None:
+        """Capture every selected artifact member without hashing its bytes.
+
+        The digest check stays outside the process lock.  This identity is the
+        cheap publication fence: parent directories and every child are bound
+        by inode, type, size, link count, and change timestamps so an in-place
+        overwrite is not hidden by an unchanged directory mtime.
+        """
+
+        if self._catalog is None:
+            return None
+        shell = profile.get("shell")
+        if not isinstance(shell, Mapping):
+            raise ProfileResolutionDenied("active Profile Shell binding is unavailable")
+        definition = self._catalog.shells.get(str(shell.get("provider_id")))
+        if not isinstance(definition, Mapping):
+            raise ProfileResolutionDenied(
+                "active Profile Shell definition is unavailable"
+            )
+        variants = [
+            item
+            for item in definition["launch"]["variants"]
+            if item["platform"] == shell.get("platform")
+            and item["architecture"] == shell.get("architecture")
+            and item["entrypoint_digest"] == shell.get("executable_artifact_digest")
+        ]
+        if len(variants) != 1 or self._catalog.artifact_root is None:
+            raise ProfileResolutionDenied(
+                "active Profile Shell artifact is unavailable"
+            )
+        relative = Path(str(variants[0]["relative_path"]))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ProfileResolutionDenied(
+                "active Profile Shell artifact is unavailable"
+            )
+
+        root = self._catalog.artifact_root
+        artifact = root / relative
+        entries: list[tuple[str, tuple[int, int, int, int, int, int, int]]] = []
+
+        def check_deadline() -> None:
+            if (
+                deadline_monotonic is not None
+                and self._monotonic_clock() >= deadline_monotonic
+            ):
+                raise ActivationLockTimeout(
+                    "artifact identity verification deadline exceeded"
+                )
+
+        def record(label: str, path: Path) -> os.stat_result:
+            check_deadline()
+            try:
+                value = path.lstat()
+            except OSError as exc:
+                raise ProfileResolutionDenied(
+                    "active Profile Shell artifact identity is unavailable"
+                ) from exc
+            if stat.S_ISLNK(value.st_mode):
+                raise ProfileResolutionDenied(
+                    "active Profile Shell artifact identity contains a symlink"
+                )
+            entries.append(
+                (
+                    label,
+                    (
+                        value.st_dev,
+                        value.st_ino,
+                        value.st_mode,
+                        value.st_size,
+                        value.st_nlink,
+                        value.st_mtime_ns,
+                        value.st_ctime_ns,
+                    ),
+                )
+            )
+            return value
+
+        root_stat = record("@root", root)
+        if not stat.S_ISDIR(root_stat.st_mode):
+            raise ProfileResolutionDenied(
+                "active Profile Shell artifact root is unavailable"
+            )
+        current = root
+        for index, part in enumerate(relative.parts[:-1]):
+            current /= part
+            parent_stat = record(f"@parent:{index}:{part}", current)
+            if not stat.S_ISDIR(parent_stat.st_mode):
+                raise ProfileResolutionDenied(
+                    "active Profile Shell artifact parent is unavailable"
+                )
+
+        def visit(path: Path, member: tuple[str, ...]) -> None:
+            label = "/".join(member) or "."
+            value = record(label, path)
+            if stat.S_ISREG(value.st_mode):
+                return
+            if not stat.S_ISDIR(value.st_mode):
+                raise ProfileResolutionDenied(
+                    "active Profile Shell artifact member is unavailable"
+                )
+            try:
+                children = sorted(path.iterdir(), key=lambda child: child.name)
+            except OSError as exc:
+                raise ProfileResolutionDenied(
+                    "active Profile Shell artifact identity is unavailable"
+                ) from exc
+            for child in children:
+                visit(child, (*member, child.name))
+
+        visit(artifact, ())
+        return _ArtifactTreeIdentity(
+            artifact_path=artifact,
+            entries=tuple(entries),
+        )
+
+    def _require_selected_artifact_identity(
+        self,
+        profile: Mapping[str, Any],
+        expected: _ArtifactTreeIdentity | None,
+        *,
+        deadline_monotonic: float | None = None,
+    ) -> None:
+        """Reject publication when verified artifact bytes could have moved."""
+
+        actual = self._capture_selected_artifact_identity(
+            profile,
+            deadline_monotonic=deadline_monotonic,
+        )
+        if actual != expected:
+            raise ProfileResolutionDenied(
+                "active Profile Shell artifact changed after verification"
+            )
 
     def _verify_selected_artifact(
         self,
