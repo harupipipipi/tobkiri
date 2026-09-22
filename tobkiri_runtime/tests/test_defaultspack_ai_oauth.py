@@ -29,6 +29,36 @@ class TestDefaultspackAiOauth(unittest.TestCase):
         }
         """
 
+    def test_connection_manifest_edit_invalidates_cached_registry(self):
+        from domain.ai_client.oauth_store import _connection_provider
+
+        source_manifest = (
+            DEFAULTSPACK_ROOT
+            / "config"
+            / "settings_control_center"
+            / "providers"
+            / "google.connection.json"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            provider_dir = (
+                Path(tmpdir)
+                / "config"
+                / "settings_control_center"
+                / "providers"
+            )
+            provider_dir.mkdir(parents=True)
+            manifest_path = provider_dir / "google.connection.json"
+            manifest = json.loads(source_manifest.read_text(encoding="utf-8"))
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            first = _connection_provider("google", pack_root=Path(tmpdir))
+            manifest["display_name"] = {"en": "Updated Google"}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            refreshed = _connection_provider("google", pack_root=Path(tmpdir))
+
+        self.assertEqual(first.display_name["en"], "Google")
+        self.assertEqual(refreshed.display_name["en"], "Updated Google")
+
     def test_google_oauth_status_tracks_client_and_connection(self):
         from domain.ai_client.oauth_store import (
             disconnect_provider_oauth,

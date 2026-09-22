@@ -128,11 +128,38 @@ def _connection_manifest_root(pack_root: Path | None = None) -> Path:
     return _pack_root() / "config" / "settings_control_center" / "providers"
 
 
+def _connection_manifest_cache_key(
+    root: Path,
+) -> tuple[str, tuple[tuple[str, int, int], ...]]:
+    """Return the manifest revision that controls an OAuth registry cache."""
+
+    try:
+        resolved = root.resolve()
+    except OSError:
+        resolved = root
+    try:
+        manifests = tuple(
+            (
+                str(path.relative_to(resolved)),
+                path.stat().st_mtime_ns,
+                path.stat().st_size,
+            )
+            for path in sorted(resolved.rglob("*.connection.json"))
+            if path.is_file()
+        )
+    except OSError:
+        manifests = ()
+    return str(resolved), manifests
+
+
 @lru_cache(maxsize=16)
-def _cached_connection_registry(root_value: str, root_mtime_ns: int):
+def _cached_connection_registry(
+    root_value: str,
+    manifest_revision: tuple[tuple[str, int, int], ...],
+):
     from core_runtime.connections.registry import ConnectionsRegistry
 
-    del root_mtime_ns
+    del manifest_revision
     registry = ConnectionsRegistry()
     root = Path(root_value)
     if root.exists():
@@ -142,13 +169,8 @@ def _cached_connection_registry(root_value: str, root_mtime_ns: int):
 
 def _connection_registry(pack_root: Path | None = None):
     root = _connection_manifest_root(pack_root)
-    try:
-        resolved = root.resolve()
-        root_mtime_ns = resolved.stat().st_mtime_ns
-    except OSError:
-        resolved = root
-        root_mtime_ns = 0
-    return _cached_connection_registry(str(resolved), root_mtime_ns)
+    root_value, manifest_revision = _connection_manifest_cache_key(root)
+    return _cached_connection_registry(root_value, manifest_revision)
 
 
 def _connection_provider(provider_id: str, *, pack_root: Path | None = None):
