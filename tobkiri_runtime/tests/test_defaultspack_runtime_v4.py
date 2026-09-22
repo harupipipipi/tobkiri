@@ -1853,13 +1853,13 @@ def test_activation_commit_artifact_hash_runs_outside_process_lock(
     finally:
         release_verification.set()
         worker.join(timeout=10)
-        authority.close()
     assert not worker.is_alive()
     assert errors == []
     assert (
         reader.load_active_snapshot().activation["activation_id"]
         == "activation:defaults-hash-second"
     )
+    authority.close()
 
 
 def test_pending_republish_artifact_hash_runs_outside_process_lock(
@@ -1927,7 +1927,6 @@ def test_pending_republish_artifact_hash_runs_outside_process_lock(
     finally:
         release_verification.set()
         worker.join(timeout=10)
-        authority.close()
     assert not worker.is_alive()
     assert errors == []
     assert not (state / "pending.json").exists()
@@ -1935,6 +1934,7 @@ def test_pending_republish_artifact_hash_runs_outside_process_lock(
         healer.load_active_snapshot().activation["activation_id"]
         == "activation:defaults-republish"
     )
+    authority.close()
 
 
 def test_pending_republish_skips_superseded_or_tampered_journal(
