@@ -840,3 +840,70 @@ def test_resume_after_effect_expiry_fails_closed_before_dispatch() -> None:
 
     assert status.state is PendingEffectState.STALE
     assert fixture.backend.invocations == 0
+
+
+def test_resume_gate_overrun_never_dispatches_and_settles_stale() -> None:
+    """A slow final Broker gate settles the claim stale, never ambiguous."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    clock = [10.0]
+    recheck = fixture.authority.recheck_effect_boundary
+
+    def slow_recheck(context_arg, target, lease) -> None:
+        clock[0] += 1.0
+        recheck(context_arg, target, lease)
+
+    fixture.authority.recheck_effect_boundary = slow_recheck
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+        status = controller.resume(
+            pending.effect_id,
+            fixture.broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: clock[0],
+            dispatch_grace_seconds=0.2,
+        )
+    finally:
+        fixture.broker.close()
+
+    assert status.state is PendingEffectState.STALE
+    assert fixture.backend.invocations == 0
+    assert "audit_dispatched" not in fixture.events
+
+
+def test_resume_marker_overrun_never_invokes_and_settles_ambiguous() -> None:
+    """A dispatch marker which overruns expiry stays honestly ambiguous."""
+
+    fixture = make_broker()
+    persistence = _MemoryPendingEffects()
+    approvals = _Approvals()
+    controller = _controller(persistence, approvals)
+    clock = [10.0]
+    mark_dispatched = fixture.audit.mark_dispatched
+
+    def slow_mark(reservation) -> None:
+        mark_dispatched(reservation)
+        clock[0] += 1.0
+
+    fixture.audit.mark_dispatched = slow_mark
+    try:
+        pending, _prepared = _prepare(controller, fixture.broker)
+        approvals.approve(pending.approval_request_id)
+        status = controller.resume(
+            pending.effect_id,
+            fixture.broker,
+            wall_clock=lambda: 100.0,
+            monotonic_clock=lambda: clock[0],
+            dispatch_grace_seconds=0.2,
+        )
+    finally:
+        fixture.broker.close()
+
+    assert status.state is PendingEffectState.AMBIGUOUS
+    assert fixture.backend.invocations == 0
+    assert "audit_dispatched" in fixture.events
+    assert "provider_invoked" not in fixture.events

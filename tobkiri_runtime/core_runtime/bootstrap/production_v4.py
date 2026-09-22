@@ -114,7 +114,11 @@ from ..pack_control_v4 import (
     capture_pack_control_session,
     capture_valid_pack_approval,
 )
-from ..panel_auth import PanelAuthManager, get_panel_auth_manager
+from ..panel_auth import (
+    PanelAuthBinding,
+    PanelAuthManager,
+    get_panel_auth_manager,
+)
 from ..external_pack_catalog_v4 import resolve_admitted_pack_roots
 from ..credential_transport import (
     AuthorizedEnvelopeCredentialTransport,
@@ -1648,6 +1652,13 @@ def capture_production_dispatch(
         manager.record_approval_presenter_grant(
             command.request_id,
             owner_session[: -len(session_suffix)],
+            PanelAuthBinding(
+                profile_id=str(context.profile_id),
+                profile_revision=str(context.profile_revision),
+                activation_id=str(context.activation_id),
+                plan_digest=str(context.plan_digest),
+                security_epoch=int(context.security_epoch),
+            ),
         )
 
     authority_approval_window = AuthorityApprovalWindowController(

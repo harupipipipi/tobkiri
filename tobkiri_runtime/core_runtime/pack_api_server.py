@@ -74,6 +74,19 @@ _ASSERT_CURRENT_RETRY_BUDGET_SECONDS = 45.0
 _ASSERT_CURRENT_RETRY_DELAY_SECONDS = 0.05
 _ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS = 0.5
 
+# A presenter-scoped session minted by the approval window's dedicated code
+# exchange may only present the one interactive approval request it was
+# issued for.  Contract dispatch performs the exact request-id check; this
+# fixed allowlist fences the session away from every other operation.
+_PRESENTER_SCOPED_CONTRACT_ID = "tobkiri.service.interactive-approval.v1"
+_PRESENTER_SCOPED_OPERATIONS = frozenset(
+    {
+        "interactive_approval.get",
+        "interactive_approval.approve",
+        "interactive_approval.deny",
+    }
+)
+
 
 def _is_activation_lock_timeout(error: BaseException) -> bool:
     """Classify a bounded cross-process activation-lock wait when resolvable."""
@@ -930,7 +943,31 @@ class PackAPIHandler(
                 session_id,
                 session_ttl_seconds=self._panel_session_ttl_seconds(panel_session),
             )
+        request_scope = (
+            panel_session.get("request_scope") if panel_session else None
+        )
+        if (
+            isinstance(request_scope, str)
+            and request_scope
+            and not self._presenter_scope_request_allowed(method, path)
+        ):
+            return False
         return True
+
+    def _presenter_scope_request_allowed(self, method: str, path: str) -> bool:
+        """Confine a presenter-scoped session to its approval surface.
+
+        Static mounts stay readable so the dedicated approval window can
+        render its own shell.  Contract requests pass through here and are
+        pinned to the exact approval operation and request id at dispatch;
+        every other authenticated route denies.
+        """
+
+        if is_contract_route_path(path):
+            return True
+        return (
+            method.upper() == "GET" and self._match_web_mount(path) is not None
+        )
 
     @staticmethod
     def _redact_log_value(value: object) -> str:
@@ -1106,6 +1143,8 @@ class PackAPIHandler(
         raw_session_id = panel_session.get("session_id") if panel_session else None
         session_id: str | None = raw_session_id if isinstance(raw_session_id, str) else None
         session_ttl_seconds = self._panel_session_ttl_seconds(panel_session)
+        raw_scope = panel_session.get("request_scope") if panel_session else None
+        request_scope = raw_scope if isinstance(raw_scope, str) else ""
         request_id = self.headers.get("X-Tobkiri-Request-ID", "").strip().lower()
         replay_guard = self._contract_replay_guard
         if (
@@ -1188,6 +1227,26 @@ class PackAPIHandler(
                     error="Contract payload contains unknown fields",
                 ),
                 400,
+            )
+            return True
+        if request_scope and (
+            target.contract_id != _PRESENTER_SCOPED_CONTRACT_ID
+            or target.operation_id not in _PRESENTER_SCOPED_OPERATIONS
+            or payload.get("request_id") != request_scope
+        ):
+            # A presenter-scoped session may present only the one interactive
+            # approval request its grant was issued for; every other
+            # operation and every other request id denies.
+            self._send_response(
+                APIResponse(
+                    False,
+                    data={
+                        "state": "contract_dispatch_denied",
+                        "code": "session_request_scope",
+                    },
+                    error="Panel session is scoped to one approval request",
+                ),
+                403,
             )
             return True
         try:
@@ -1967,7 +2026,16 @@ class PackAPIHandler(
             self._discard_request_body()
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
-        self._discard_request_body()
+        body = self._parse_object_body()
+        if body is None:
+            return
+        # The approval-window bootstrap names the request it is for so the
+        # issued code can be dedicated to that request's pending presenter
+        # grant.  The value only selects a live grant; it never creates one.
+        presenter_request = body.get("request_id")
+        presenter_request_id = (
+            presenter_request.strip() if isinstance(presenter_request, str) else ""
+        )
         binding = self._current_panel_auth_binding()
         if binding is None:
             # Only the authenticated Launcher may trigger this recovery. It
@@ -1986,7 +2054,15 @@ class PackAPIHandler(
                     )
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
-        self._send_response(APIResponse(True, data=manager.issue_login_code(binding)))
+        self._send_response(
+            APIResponse(
+                True,
+                data=manager.issue_login_code(
+                    binding,
+                    presenter_request_id=presenter_request_id,
+                ),
+            )
+        )
 
     def _handle_panel_exchange(self, body: Mapping[str, object]) -> None:
         manager = self._panel_auth_manager
