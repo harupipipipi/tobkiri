@@ -9,6 +9,16 @@ export type BackendConnectionCopy = {
   actionLabel: string;
 };
 
+/**
+ * Whether a connection state must prevent a new request from leaving the
+ * composer. The composer remains editable so the user's draft is retained.
+ */
+export function blocksNewSendsForConnection(
+  state: BackendConnectionState,
+): boolean {
+  return state === "offline";
+}
+
 export function backendConnectionStateAfterHealthCheck(
   succeeded: boolean,
   lastHealthyAt: number | null,

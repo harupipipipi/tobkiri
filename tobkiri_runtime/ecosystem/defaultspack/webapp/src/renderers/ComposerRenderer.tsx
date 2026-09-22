@@ -2608,6 +2608,8 @@ export function ComposerRenderer({
   placeholder,
   isNewConversation = false,
   isGenerating,
+  sendBlocked = false,
+  sendBlockedReason = "",
   selectedProfile,
   favoriteProfiles,
   modelProfiles = [],
@@ -4178,16 +4180,21 @@ export function ComposerRenderer({
           tabIndex={chromeButtonTabIndex}
           aria-label={isGenerating
             ? (input.trim() ? "追加指示を送る" : "生成を停止")
-            : pendingMentionAttachmentPaths.length > 0
+            : sendBlocked
+              ? sendBlockedReason
+              : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "メッセージを送信"}
           disabled={!isGenerating && (
-            pendingMentionAttachmentPaths.length > 0
+            sendBlocked
+            || pendingMentionAttachmentPaths.length > 0
             || (!input.trim() && attachedFiles.length === 0)
           )}
           title={isGenerating
             ? (input.trim() ? "追加指示を送る" : "停止")
-            : pendingMentionAttachmentPaths.length > 0
+            : sendBlocked
+              ? sendBlockedReason
+              : pendingMentionAttachmentPaths.length > 0
               ? "ファイルを読み込み中"
               : "送信"}
           className={`rumi-send-button flex flex-shrink-0 items-center justify-center rounded-full transition-all duration-150 disabled:cursor-not-allowed ${
@@ -4197,7 +4204,7 @@ export function ComposerRenderer({
               ? input.trim()
                 ? "bg-zinc-100 text-zinc-950 hover:bg-white"
                 : "bg-zinc-100 text-zinc-900 hover:bg-white"
-              : pendingMentionAttachmentPaths.length > 0 || (!input.trim() && attachedFiles.length === 0)
+              : sendBlocked || pendingMentionAttachmentPaths.length > 0 || (!input.trim() && attachedFiles.length === 0)
                 ? "bg-white/[0.06] text-zinc-500"
                 : "bg-zinc-100 text-zinc-950 shadow-[0_6px_18px_rgba(0,0,0,0.28)] hover:bg-white"
           }`}

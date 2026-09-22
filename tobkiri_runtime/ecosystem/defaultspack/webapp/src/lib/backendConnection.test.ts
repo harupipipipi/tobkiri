@@ -4,8 +4,15 @@ import test from "node:test";
 import {
   backendConnectionCopy,
   backendConnectionStateAfterHealthCheck,
+  blocksNewSendsForConnection,
   formatLastHealthyLabel,
 } from "./backendConnection";
+
+test("only offline protection blocks a new send while preserving the draft", () => {
+  assert.equal(blocksNewSendsForConnection("online"), false);
+  assert.equal(blocksNewSendsForConnection("degraded"), false);
+  assert.equal(blocksNewSendsForConnection("offline"), true);
+});
 
 test("connection health transitions online to degraded, offline, and recovered", () => {
   const lastHealthyAt = Date.UTC(2026, 7, 24, 3, 4);

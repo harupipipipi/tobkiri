@@ -1578,6 +1578,40 @@ test("new and existing conversation composers keep square attachments inside the
   assert.equal((existingConversationHtml.match(/h-24 w-24/g) ?? []).length, 2);
 });
 
+test("composer keeps a draft but disables new sends while the backend is offline", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "接続が戻るまで残す下書き",
+      placeholder: "メッセージを入力...",
+      isGenerating: false,
+      sendBlocked: true,
+      sendBlockedReason:
+        "接続が回復するまで新しい送信はできません。入力内容はそのまま残ります。",
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /接続が戻るまで残す下書き/);
+  const sendButton = html.match(
+    /<button[^>]*接続が回復するまで新しい送信はできません。入力内容はそのまま残ります。[^>]*>/,
+  )?.[0] ?? "";
+  assert.match(sendButton, /disabled=""/);
+});
+
 test("composer attachment region stays mounted and collapsed when empty for animated removal", () => {
   const html = renderToStaticMarkup(
     createElement(ComposerRenderer, {

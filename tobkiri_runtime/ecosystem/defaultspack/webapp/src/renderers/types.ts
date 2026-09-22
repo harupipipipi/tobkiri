@@ -187,6 +187,8 @@ export type ComposerRendererProps = {
   placeholder: string;
   isNewConversation?: boolean;
   isGenerating: boolean;
+  sendBlocked?: boolean;
+  sendBlockedReason?: string;
   selectedProfile: ModelProfile | null;
   favoriteProfiles: ModelProfile[];
   modelProfiles?: ModelProfile[];

@@ -82,6 +82,7 @@ import { pendingBrowserApproval, pendingRuntimeApproval, staleRuntimeApproval, t
 import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewModel } from "./lib/approvalPresentation";
 import {
   backendConnectionStateAfterHealthCheck,
+  blocksNewSendsForConnection,
   type BackendConnectionState,
 } from "./lib/backendConnection";
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
@@ -121,7 +122,7 @@ import { conversationMatchesSpotlightFilter, conversationToSearchResult, type Sp
 import { boundedDurationLabel } from "./lib/duration";
 import { openAuthorityApprovalWindow, openFingerRecordingWindow } from "./lib/desktopApproval";
 import { fetchDesktopSystemInfo, type DesktopSystemInfo } from "./lib/desktopSystemInfo";
-import { normalizeLocale } from "./lib/i18n";
+import { normalizeLocale, t } from "./lib/i18n";
 import { shortcutLabel, shortcutSpecMatchesEvent } from "./lib/keyboardShortcuts";
 import { PENDING_CHAT_REQUEST_TTL_MS, savedTurnProgressNotice, savedTurnProgressState, savedTurnSnapshotState, savedTurnSnapshotNotice, savedTurnTerminalNotice, updateSavedTurnNotice, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
 import { PENDING_CHAT_REQUEST_TTL_MS, activePendingChatOperation, shouldClearPendingAfterConversationRefresh, shouldForgetPendingAfterPollError, type PendingChatRequest } from "./lib/pendingChat";
@@ -2765,6 +2766,8 @@ export function ChatApp() {
   const activePromptProfileId = String(activeConversation?.metadata?.profile_id ?? activePromptUsage?.profile_id ?? "").trim() || undefined;
   const placeholder = String(settingsValues.general?.composer_placeholder ?? "メッセージを入力...");
   const locale = normalizeLocale(settingsValues.general?.language);
+  const newSendsBlockedByConnection = blocksNewSendsForConnection(backendConnectionState);
+  const newSendBlockedMessage = t(locale, "connection.offline.sendBlocked");
   const activePendingRequest = activeConversationId
     ? pendingRequests[activeConversationId]
     : null;
@@ -6508,6 +6511,10 @@ export function ChatApp() {
       setError("This imported conversation is read-only. Import a continue copy to send messages.");
       return;
     }
+    if (newSendsBlockedByConnection) {
+      setError(newSendBlockedMessage);
+      return;
+    }
     if (pendingMentionAttachmentRequestsRef.current.size > 0) {
       setError("workspace file の読み込みが終わるまでお待ちください。");
       return;
@@ -6861,6 +6868,10 @@ export function ChatApp() {
   const handleRetryLastFailedSubmission = () => {
     const retry = retryableSubmission;
     if (!retry || isGenerating) return;
+    if (newSendsBlockedByConnection) {
+      setError(newSendBlockedMessage);
+      return;
+    }
     setError(null);
     setRetryableSubmission(null);
     void handleSubmit(undefined, {
@@ -7017,6 +7028,8 @@ export function ChatApp() {
       placeholder={isCentered ? getNewConversationPlaceholder() : placeholder}
       isNewConversation={isCentered}
       isGenerating={isGenerating || isConversationPending}
+      sendBlocked={newSendsBlockedByConnection}
+      sendBlockedReason={newSendBlockedMessage}
       selectedProfile={activeProfile}
       favoriteProfiles={favoriteProfiles}
       modelProfiles={selectableModelProfiles}
