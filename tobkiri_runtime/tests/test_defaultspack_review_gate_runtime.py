@@ -214,6 +214,45 @@ def test_production_consumer_runs_configured_profile_and_consumes_once(tmp_path)
     assert calls == [request.binding_digest, request.binding_digest]
 
 
+def test_unavailable_reviewer_can_recover_on_safe_action_retry(tmp_path):
+    request_authority = _Authority(approved=False)
+    first_gate = enforce_finalization_review(
+        FinalizationAction.DELIVERY,
+        {"provider": "slack", "text_sha256": "b" * 64},
+        _context(AgentExecutionMode.FUSION_AGENT),
+        plan_store=_PlanStore(_profile()),
+        authority=request_authority,
+        run_store=_RunStore(),
+    )
+    assert first_gate is not None
+    request = request_authority.requests[0]
+    attempts = 0
+
+    def flaky_reviewer(_request):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("model connection missing")
+        return {
+            "verdict": "approved",
+            "reviewer_run_id": "recovered-review-run",
+            "reviewer_model": "local/reviewer",
+        }
+
+    consumer = AutomaticAuthorityReviewConsumer(
+        tmp_path / "reviews.sqlite3",
+        runner=flaky_reviewer,
+    )
+
+    with pytest.raises(RuntimeError, match="configured reviewer profile"):
+        consumer.consume_review(request)
+    recovered = consumer.consume_review(request)
+
+    assert recovered is not None
+    assert recovered.verdict is ReviewVerdict.APPROVED
+    assert recovered.reviewer_run_id == "recovered-review-run"
+
+
 def test_runtime_reloads_activated_review_settings_after_restart(tmp_path):
     manager = ProfileWorkspaceManager(tmp_path)
     first_store = OperatingProfilePlanStore(manager)
