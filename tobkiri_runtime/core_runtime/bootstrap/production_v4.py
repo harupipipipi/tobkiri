@@ -110,6 +110,7 @@ from ..pack_catalog_backend_v4 import (
 )
 from ..pack_control_v4 import (
     CONTROL_PRESENTATION_CONTRACT,
+    MOBILE_PAIRING_CONTRACT,
     PACK_CONTROL_CONTRACT,
     RuntimeSurfaceFactory,
     capture_pack_control_session,

@@ -445,10 +445,10 @@ test("mobile pairing review methods use authoritative encoded routes and explici
     await api.rejectMobilePairing("pair/id", "pairing cancelled by desktop reviewer");
   } finally { globalThis.fetch = originalFetch; }
   assert.deepEqual(requests, [
-    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/status"), method: "GET", body: undefined },
-    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/review"), method: "GET", body: undefined },
-    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/approve"), method: "POST", body: { claim_hash: "hash", scopes: ["chat.read"] } },
-    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/reject"), method: "POST", body: { reason: "pairing cancelled by desktop reviewer" } },
+    { url: routeKey("api/mobile/v1/pairings/status?pairing_id=pair%2Fid"), method: "GET", body: undefined },
+    { url: routeKey("api/mobile/v1/pairings/review?pairing_id=pair%2Fid"), method: "GET", body: undefined },
+    { url: routeKey("api/mobile/v1/pairings/approve"), method: "POST", body: { pairing_id: "pair/id", claim_hash: "hash", scopes: ["chat.read"] } },
+    { url: routeKey("api/mobile/v1/pairings/reject"), method: "POST", body: { pairing_id: "pair/id", reason: "pairing cancelled by desktop reviewer" } },
   ]);
 });
 
@@ -3771,7 +3771,7 @@ test("mobile pairing review and approve helpers use admin review contract", asyn
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
-    const data = String(input).endsWith("/review")
+    const data = String(input).includes("pairings%2Freview")
       ? {
           pairing: { pairing_id: "pair-1", status: "claimed", expires_at: 123 },
           claim: {
@@ -3797,14 +3797,14 @@ test("mobile pairing review and approve helpers use admin review contract", asyn
 
   assert.deepEqual(seen, [
     {
-      input: `/api/contracts/defaultspack/${encodeURIComponent("GET /api/mobile/v1/pairings/pair-1/review")}`,
+      input: `/api/contracts/defaultspack/${encodeURIComponent("GET /api/mobile/v1/pairings/review?pairing_id=pair-1")}`,
       method: "GET",
       body: undefined,
     },
     {
-      input: `/api/contracts/defaultspack/${encodeURIComponent("POST /api/mobile/v1/pairings/pair-1/approve")}`,
+      input: `/api/contracts/defaultspack/${encodeURIComponent("POST /api/mobile/v1/pairings/approve")}`,
       method: "POST",
-      body: { claim_hash: "sha256:abc", scopes: ["chat.read"] },
+      body: { pairing_id: "pair-1", claim_hash: "sha256:abc", scopes: ["chat.read"] },
     },
   ]);
 });

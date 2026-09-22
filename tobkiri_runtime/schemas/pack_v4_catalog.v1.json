@@ -18175,6 +18175,8 @@
         "pack.install",
         "pack.status.read",
         "control.presentation",
+        "mobile.pairing.approve",
+        "mobile.pairing.review",
         "profile.reload",
         "runtime.restart"
       ],
@@ -18758,6 +18760,98 @@
                   "type": "object"
                 }
               ]
+            }
+          },
+          "security": "sensitive",
+          "version": "1.0.0"
+        },
+        {
+          "cardinality": "one",
+          "contract_id": "tobkiri.host.mobile-pairing.v4",
+          "failure": "fail_closed",
+          "isolation": "in_process",
+          "lifecycle": {
+            "deprecated": false,
+            "introduced": "1.0.0"
+          },
+          "operations": [
+            {
+              "entrypoint_id": "pairing.approve",
+              "id": "pairing.approve",
+              "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7"
+            },
+            {
+              "entrypoint_id": "pairing.reject",
+              "id": "pairing.reject",
+              "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7"
+            },
+            {
+              "entrypoint_id": "pairing.review.read",
+              "id": "pairing.review.read",
+              "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7"
+            },
+            {
+              "entrypoint_id": "pairing.status.read",
+              "id": "pairing.status.read",
+              "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7"
+            }
+          ],
+          "owner": "tobkiri_host_pack_control",
+          "provider_id": "tobkiri.host.mobile-pairing",
+          "required_capabilities": [
+            "mobile.pairing.approve",
+            "mobile.pairing.review"
+          ],
+          "schemas": {
+            "error": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "type": "object"
+            },
+            "input": {
+              "additionalProperties": false,
+              "properties": {
+                "claim_hash": {
+                  "pattern": "^sha256:[0-9a-f]{64}$",
+                  "type": "string"
+                },
+                "pairing_id": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                "scopes": {
+                  "items": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 32,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "pairing_id"
+              ],
+              "type": "object"
+            },
+            "output": {
+              "type": "object"
             }
           },
           "security": "sensitive",

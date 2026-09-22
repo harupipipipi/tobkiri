@@ -477,6 +477,11 @@ class CapturedPackControlSession:
             packvm_readiness_reader=packvm_readiness_reader,
             bundle_root=bundle_root,
         )
+        self._mobile_pairing = MobilePairingServiceV4(
+            profile_id=binding.profile_id,
+            profile_revision=binding.profile_revision,
+            plan_digest=binding.plan_digest,
+        )
 
     @classmethod
     def capture(
@@ -509,6 +514,16 @@ class CapturedPackControlSession:
                     "provider_id": "tobkiri.host.control-presentation",
                     "contract_id": CONTROL_PRESENTATION_CONTRACT,
                     "operations": sorted(CONTROL_PRESENTATION_OPERATIONS),
+                    "profile_id": self.profile_id,
+                    "plan_digest": self.plan_digest,
+                },
+            )
+        if contract_id == MOBILE_PAIRING_CONTRACT:
+            return (
+                {
+                    "provider_id": "tobkiri.host.mobile-pairing",
+                    "contract_id": MOBILE_PAIRING_CONTRACT,
+                    "operations": sorted(MOBILE_PAIRING_OPERATIONS),
                     "profile_id": self.profile_id,
                     "plan_digest": self.plan_digest,
                 },
@@ -558,6 +573,9 @@ class CapturedPackControlSession:
         if contract_id == CONTROL_PRESENTATION_CONTRACT:
             with profile_capture_scope():
                 return self._invoke_control_presentation(operation_id, payload)
+        if contract_id == MOBILE_PAIRING_CONTRACT:
+            with profile_capture_scope():
+                return self._invoke_mobile_pairing(operation_id, payload)
         if contract_id != PACK_CONTROL_CONTRACT:
             raise PackControlUnapproved("contract is absent from the captured Host session")
         if operation_id not in PACK_CONTROL_OPERATIONS:
@@ -628,6 +646,32 @@ class CapturedPackControlSession:
                     request_kernel_restart()
                     return {"restart_requested": True, **self._binding_payload()}
         raise PackControlUnapproved("qualified operation is unavailable")
+
+    def _invoke_mobile_pairing(
+        self,
+        operation_id: str,
+        payload: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Run one profile-bound desktop pairing decision through the Broker."""
+
+        if operation_id not in MOBILE_PAIRING_OPERATIONS:
+            raise PackControlUnapproved("mobile pairing operation is not declared")
+        arguments = dict(payload)
+        _required(arguments.pop("_session_id", None), "session binding")
+        self._reject_identity_override(arguments)
+        if "approved" in arguments or "approval_token" in arguments:
+            raise PackControlUnapproved("client approval assertions are not trusted")
+        from .bootstrap.profile_capture import invalidate_profile_capture_scope
+
+        if operation_id in {"pairing.approve", "pairing.reject"}:
+            # Pairing decisions write a device/token record.  Re-capture at
+            # the final effect boundary so a panel cannot apply a decision
+            # after the selected Profile has changed.
+            invalidate_profile_capture_scope()
+        current_binding, _active = self._capture_current_binding()
+        with self._lock:
+            self._require_captured_binding(current_binding)
+            return self._mobile_pairing.invoke(operation_id, arguments)
 
     def _invoke_control_presentation(
         self,

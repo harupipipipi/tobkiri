@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time
 import uuid
+from base64 import urlsafe_b64encode
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from dataclasses import replace
@@ -4487,6 +4488,125 @@ def test_active_profile_registry_http_does_not_repeat_catalog_preparation(
     assert payload["data"]["active_profile_id"] == "defaults"
     assert payload["data"]["active_profile_revision"]
     assert catalog_calls == [None]
+
+
+def test_mobile_pairing_contract_routes_reach_the_captured_broker(
+    production_server,
+) -> None:
+    """Exercise each desktop pairing route through the real Pack API server."""
+
+    from ecosystem.defaultspack.domain.p2p.pairing import PairingManager
+    from ecosystem.defaultspack.domain.p2p.settings import P2PSettings
+
+    server, _session, authority = production_server
+    manager = PairingManager(P2PSettings.from_env().store_path)
+    pairing = manager.start_pairing(capabilities=["chat.read", "chat.write"])
+    claimed = manager.claim_pairing(
+        pairing.pairing_id,
+        code=pairing.code,
+        device_id="mobile-real-server",
+        device_label="Real server phone",
+        device_encryption_public_key=_mobile_encryption_public_key(),
+        requested_capabilities=["chat.read", "chat.write"],
+    )
+    assert claimed["ok"] is True
+
+    cookie, csrf, origin = _authenticate(server)
+    read_headers = {
+        "Cookie": cookie,
+        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+    }
+    status, status_payload, _ = _request(
+        server,
+        "GET",
+        _contract("GET", f"/api/mobile/v1/pairings/status?pairing_id={pairing.pairing_id}"),
+        headers=read_headers,
+    )
+    assert status == 200, status_payload
+    assert status_payload["data"]["pairing_id"] == pairing.pairing_id
+    assert status_payload["data"]["status"] == "claimed"
+
+    status, review_payload, _ = _request(
+        server,
+        "GET",
+        _contract("GET", f"/api/mobile/v1/pairings/review?pairing_id={pairing.pairing_id}"),
+        headers={**read_headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, review_payload
+    claim_hash = review_payload["data"]["claim_hash"]
+    assert isinstance(claim_hash, str)
+
+    status, csrf_rejected, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/mobile/v1/pairings/approve"),
+        body={
+            "pairing_id": pairing.pairing_id,
+            "claim_hash": claim_hash,
+            "scopes": ["chat.read", "chat.write"],
+        },
+        headers={
+            "Cookie": cookie,
+            "Origin": origin,
+            "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+        },
+    )
+    assert status == 401, csrf_rejected
+    authoritative = manager.get_pairing(pairing.pairing_id)
+    assert authoritative is not None
+    assert authoritative.status == "claimed"
+
+    mutation_headers = {
+        "Cookie": cookie,
+        "Origin": origin,
+        "X-Rumi-CSRF": csrf,
+        "X-Tobkiri-Request-ID": str(uuid.uuid4()),
+    }
+    status, approved_payload, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/mobile/v1/pairings/approve"),
+        body={
+            "pairing_id": pairing.pairing_id,
+            "claim_hash": claim_hash,
+            "scopes": ["chat.read", "chat.write"],
+        },
+        headers=mutation_headers,
+    )
+    assert status == 200, approved_payload
+    assert approved_payload["data"]["pairing"]["status"] == "approved"
+    assert approved_payload["data"]["profile_id"] == "defaults"
+    assert "dtk_" not in json.dumps(approved_payload, sort_keys=True)
+
+    rejected_pairing = manager.start_pairing(capabilities=["chat.read"])
+    rejected_claim = manager.claim_pairing(
+        rejected_pairing.pairing_id,
+        code=rejected_pairing.code,
+        device_id="mobile-rejected-server",
+        device_encryption_public_key=_mobile_encryption_public_key(),
+        requested_capabilities=["chat.read"],
+    )
+    assert rejected_claim["ok"] is True
+    status, rejected_payload, _ = _request(
+        server,
+        "POST",
+        _contract("POST", "/api/mobile/v1/pairings/reject"),
+        body={"pairing_id": rejected_pairing.pairing_id, "reason": "operator rejected"},
+        headers={**mutation_headers, "X-Tobkiri-Request-ID": str(uuid.uuid4())},
+    )
+    assert status == 200, rejected_payload
+    assert rejected_payload["data"]["pairing"]["status"] == "rejected"
+
+    mobile_events = [
+        event
+        for event in authority.audit_events()
+        if event["event_state"] in {"reserved", "dispatched", "committed"}
+    ]
+    assert [event["event_state"] for event in mobile_events[-12:]] == [
+        state
+        for _operation in range(4)
+        for state in ("reserved", "dispatched", "committed")
+    ]
 
 
 def test_home_and_pack_workflow_use_only_real_broker_contracts(

@@ -13,6 +13,7 @@ from tobkiri_host.models import ExecutionKind, OpaqueAuthorityRef, RuntimeEviden
 
 from .pack_control_v4 import (
     CONTROL_PRESENTATION_CONTRACT,
+    MOBILE_PAIRING_CONTRACT,
     PACK_CONTROL_CONTRACT,
     CapturedPackCatalogReader,
     CapturedPackControlSession,
@@ -140,7 +141,11 @@ class PackControlBackendV4:
         if (
             not reservation_id
             or binding.operation.contract_id
-            not in {PACK_CONTROL_CONTRACT, CONTROL_PRESENTATION_CONTRACT}
+            not in {
+                PACK_CONTROL_CONTRACT,
+                CONTROL_PRESENTATION_CONTRACT,
+                MOBILE_PAIRING_CONTRACT,
+            }
             or expected is None
             or expected[0] != binding.principal_ref.value
             or expected[1] != binding.function.implementation_digest
@@ -171,7 +176,12 @@ class PackControlBackendV4:
             raise PackControlDenied("Pack control Provider envelope is invalid")
         expected = self._targets.get((request.contract_id, request.operation_id))
         if (
-            request.contract_id not in {PACK_CONTROL_CONTRACT, CONTROL_PRESENTATION_CONTRACT}
+            request.contract_id
+            not in {
+                PACK_CONTROL_CONTRACT,
+                CONTROL_PRESENTATION_CONTRACT,
+                MOBILE_PAIRING_CONTRACT,
+            }
             or expected is None
             or request.target_principal.value != expected[0]
             or request.target_domain.value != expected[2]

@@ -47,8 +47,8 @@
     {
       "path": "ecosystem/defaultspack/defaultspack/frontend_contract_map.v4.json",
       "type": "regular-file",
-      "size": 14157,
-      "sha256": "d216b97849485033b226f28b9eee0989f6db232034bb87f634b1818f792182d4",
+      "size": 16194,
+      "sha256": "cb2f657d38e67477b04201b4fbba51a4461d6b7f3d7dce176745ff3b27e24ec6",
       "executable": false
     },
     {
@@ -97,7 +97,7 @@
       "path": "ecosystem/defaultspack/v4/bundle.lock.json",
       "type": "regular-file",
       "size": 26526,
-      "sha256": "63f56fe0c2a85aa4471c8e60e5cb04324e243f201bdf36c6b72846d27a28e4b8",
+      "sha256": "fb957ea7151e7a3affd6ae033d771229a661df437841bcdf60f496f5b484d8b9",
       "executable": false
     },
     {
@@ -110,8 +110,8 @@
     {
       "path": "ecosystem/defaultspack/v4/defaults.profile.v4.json",
       "type": "regular-file",
-      "size": 42539,
-      "sha256": "daa56478ec45f5c03f5fad5c7684577b10832b6ab022db212051a61502f779cc",
+      "size": 45886,
+      "sha256": "5b8902f23fd4cacbf5f02416a7d13c2551b405555a27217f942079b126f21eef",
       "executable": false
     },
     {
@@ -986,7 +986,7 @@
       "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
       "type": "regular-file",
       "size": 3909,
-      "sha256": "0360b3f058c634dd3cc98af35dfc1fa1f642bbd5a4468791b066ef0263eec4fd",
+      "sha256": "e7d6234f37d737f1c8f6466caba5c96b7e7f4f17856ee022e10ec84ffc33c261",
       "executable": false
     },
     {
@@ -1006,15 +1006,15 @@
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri-host-pack-control.pack.v4.json",
       "type": "regular-file",
-      "size": 19079,
-      "sha256": "bb598b3ab2837e494aaa2fa7b2922efb9ac03720cdc0ea327dc532ae310cb085",
+      "size": 21933,
+      "sha256": "efef76f36941576cdad71d2a18660fff57004fde74d184384f2b4889fb086127",
       "executable": false
     },
     {
       "path": "ecosystem/defaultspack/v4/packs/tobkiri_host_pack_control.executables.v4.json",
       "type": "regular-file",
-      "size": 135044,
-      "sha256": "d065c92d016976b37cbcc1f34d15aef88ac0e36c6276d1ce825ce9b8e6a7917a",
+      "size": 142652,
+      "sha256": "77c65b7bbffcd893b7d9e26aece400336a932b3551be207aa4736c162fcb1361",
       "executable": false
     },
     {

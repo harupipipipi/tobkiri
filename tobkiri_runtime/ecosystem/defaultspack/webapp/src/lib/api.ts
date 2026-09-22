@@ -5556,29 +5556,33 @@ export const api = {
 
   getMobilePairingStatus(pairingId: string) {
     return request<MobilePairingStatus>(
-      defaultspackContractRoute(`api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/status`),
+      withQuery(defaultspackContractRoute("api/mobile/v1/pairings/status"), {
+        pairing_id: pairingId,
+      }),
       { cache: "no-store" },
     );
   },
 
   getMobilePairingReview(pairingId: string) {
     return request<MobilePairingReview>(
-      defaultspackContractRoute(`api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/review`),
+      withQuery(defaultspackContractRoute("api/mobile/v1/pairings/review"), {
+        pairing_id: pairingId,
+      }),
       { cache: "no-store" },
     );
   },
 
   approveMobilePairing(pairingId: string, payload: MobilePairingApprovePayload) {
     return request<{ pairing?: MobilePairingStatus }>(
-      defaultspackContractRoute(`api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/approve`),
-      { method: "POST", body: JSON.stringify(payload) },
+      defaultspackContractRoute("api/mobile/v1/pairings/approve"),
+      { method: "POST", body: JSON.stringify({ pairing_id: pairingId, ...payload }) },
     );
   },
 
   rejectMobilePairing(pairingId: string, reason?: string) {
     return request<{ pairing?: MobilePairingStatus }>(
-      defaultspackContractRoute(`api/mobile/v1/pairings/${encodeURIComponent(pairingId)}/reject`),
-      { method: "POST", body: JSON.stringify({ reason }) },
+      defaultspackContractRoute("api/mobile/v1/pairings/reject"),
+      { method: "POST", body: JSON.stringify({ pairing_id: pairingId, reason }) },
     );
   },
 

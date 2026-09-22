@@ -274,7 +274,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:8f1b98e5e5a1dcd37f6011741dc25430ca83b1a8675d511f9413186abeaeab1a",
+            "digest": "sha256:11efaed2ccbc3d373a03c447e9387c2ccb9df16d4dea3665e7fa6cfc89209e83",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -285,7 +285,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:8f1b98e5e5a1dcd37f6011741dc25430ca83b1a8675d511f9413186abeaeab1a",
+        "source_digest": "sha256:11efaed2ccbc3d373a03c447e9387c2ccb9df16d4dea3665e7fa6cfc89209e83",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_host_pack_control"
       },
@@ -365,7 +365,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "profile.change.activate",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -379,7 +379,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "profile.change.approve",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -393,7 +393,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "profile.change.resolve",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -407,7 +407,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "profile.change.review",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -421,7 +421,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "profile.catalog.read",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -435,7 +435,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "operation.status.read",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -449,7 +449,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "profile.read",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -463,7 +463,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "settings.read",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -477,7 +477,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "topology.contracts.read",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -491,7 +491,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "topology.operations.read",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -505,7 +505,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "topology.packs.read",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         },
         {
@@ -519,7 +519,7 @@
           },
           "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
           "operation_id": "topology.principals.read",
-          "output_schema_digest": "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422",
+          "output_schema_digest": "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce",
           "scope_semantics": "host_broker"
         }
       ],
@@ -527,7 +527,7 @@
       "provenance": {
         "evidence": [
           {
-            "digest": "sha256:8f1b98e5e5a1dcd37f6011741dc25430ca83b1a8675d511f9413186abeaeab1a",
+            "digest": "sha256:11efaed2ccbc3d373a03c447e9387c2ccb9df16d4dea3665e7fa6cfc89209e83",
             "path": "schemas/pack_v4_catalog.v1.json",
             "rule_id": "canonical-pack-v4-source-record"
           }
@@ -538,7 +538,7 @@
         "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
         "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
         "schema": "io.tobkiri.provenance.v1",
-        "source_digest": "sha256:8f1b98e5e5a1dcd37f6011741dc25430ca83b1a8675d511f9413186abeaeab1a",
+        "source_digest": "sha256:11efaed2ccbc3d373a03c447e9387c2ccb9df16d4dea3665e7fa6cfc89209e83",
         "source_kind": "migration",
         "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_host_pack_control"
       },
@@ -556,28 +556,9 @@
         ],
         "security": "sensitive"
       },
-      "revision_digest": "sha256:ca12906e82d80fd6fc34d32a5ec1218b2c453bf8c88a7b82380f3e22983130cc",
+      "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
       "schema_catalog": {
-        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
-          "type": "object"
-        },
-        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
-          "additionalProperties": false,
-          "properties": {
-            "code": {
-              "type": "string"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "type": "object"
-        },
-        "sha256:e416c536a7f1fb37a226d090435d5394528e7708b6c02142bd1d031a33991422": {
+        "sha256:7d4260dcb8b43058a8c307d78b423b6312abc89db5ab01f03bf729f16c6ee7ce": {
           "oneOf": [
             {
               "additionalProperties": false,
@@ -824,108 +805,182 @@
                 "state"
               ],
               "type": "object"
-            },
-            {
-              "additionalProperties": false,
-              "properties": {
-                "contract_id": {
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "created_at": {
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "operation_id": {
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "operation_status_api_version": {
-                  "const": "io.tobkiri.control-operation-status.v1"
-                },
-                "record_refs": {
-                  "items": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "digest": {
-                        "pattern": "^sha256:[0-9a-f]{64}$",
-                        "type": "string"
-                      },
-                      "id": {
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "kind": {
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "id"
-                    ],
-                    "type": "object"
-                  },
-                  "type": "array"
-                },
-                "request_digest": {
-                  "pattern": "^sha256:[0-9a-f]{64}$",
-                  "type": "string"
-                },
-                "request_id": {
-                  "minLength": 1,
-                  "type": "string"
-                },
-                "result": {
-                  "type": [
-                    "object",
-                    "null"
-                  ]
-                },
-                "result_digest": {
-                  "pattern": "^sha256:[0-9a-f]{64}$",
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "safe_error_code": {
-                  "minLength": 1,
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "state": {
-                  "enum": [
-                    "pending",
-                    "succeeded",
-                    "failed",
-                    "indeterminate"
-                  ]
-                },
-                "updated_at": {
-                  "minimum": 0,
-                  "type": "number"
-                }
-              },
-              "required": [
-                "operation_status_api_version",
-                "request_id",
-                "operation_id",
-                "contract_id",
-                "request_digest",
-                "state",
-                "result",
-                "result_digest",
-                "record_refs",
-                "safe_error_code",
-                "created_at",
-                "updated_at"
-              ],
-              "type": "object"
             }
           ]
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.host.mobile-pairing.v4",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:mobile.pairing.approve",
+            "capability:mobile.pairing.review",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:3f6f5c17b43f7466d878e14d2ebdbee1cf2864f5153fa161ed1c3f6e8aad7de2",
+          "operation_id": "pairing.approve",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:mobile.pairing.approve",
+            "capability:mobile.pairing.review",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:3f6f5c17b43f7466d878e14d2ebdbee1cf2864f5153fa161ed1c3f6e8aad7de2",
+          "operation_id": "pairing.reject",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:mobile.pairing.approve",
+            "capability:mobile.pairing.review",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:3f6f5c17b43f7466d878e14d2ebdbee1cf2864f5153fa161ed1c3f6e8aad7de2",
+          "operation_id": "pairing.review.read",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        },
+        {
+          "effect_ceiling": [
+            "capability:mobile.pairing.approve",
+            "capability:mobile.pairing.review",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:3f6f5c17b43f7466d878e14d2ebdbee1cf2864f5153fa161ed1c3f6e8aad7de2",
+          "operation_id": "pairing.status.read",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "tobkiri_host_pack_control",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:11efaed2ccbc3d373a03c447e9387c2ccb9df16d4dea3665e7fa6cfc89209e83",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:11efaed2ccbc3d373a03c447e9387c2ccb9df16d4dea3665e7fa6cfc89209e83",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_host_pack_control"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "in_process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "tobkiri.host.mobile-pairing",
+        "required_capabilities": [
+          "mobile.pairing.approve",
+          "mobile.pairing.review"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:0de3d2e4a5473d697c713265e55deffd2d35157a916f9bbee5db753e6ac59fd8",
+      "schema_catalog": {
+        "sha256:3f6f5c17b43f7466d878e14d2ebdbee1cf2864f5153fa161ed1c3f6e8aad7de2": {
+          "additionalProperties": false,
+          "properties": {
+            "claim_hash": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "pairing_id": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "reason": {
+              "maxLength": 512,
+              "type": "string"
+            },
+            "scopes": {
+              "items": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 32,
+              "type": "array"
+            }
+          },
+          "required": [
+            "pairing_id"
+          ],
+          "type": "object"
+        },
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        },
+        "sha256:d2c0d03b1db2ba4a62bc179015423a9ac6a3fdcb9ddb903b830e8768da8fdb44": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
         }
       },
       "status": "accepted",
@@ -933,5 +988,5 @@
     }
   ],
   "pack_id": "tobkiri_host_pack_control",
-  "source_identity": "sha256:8f1b98e5e5a1dcd37f6011741dc25430ca83b1a8675d511f9413186abeaeab1a"
+  "source_identity": "sha256:11efaed2ccbc3d373a03c447e9387c2ccb9df16d4dea3665e7fa6cfc89209e83"
 }

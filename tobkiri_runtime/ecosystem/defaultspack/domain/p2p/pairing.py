@@ -20,6 +20,7 @@ from .settings import P2PSettings, default_store_path
 PAIRING_PENDING = "pending"
 PAIRING_ACCEPTED = "accepted"
 PAIRING_CLAIMED = "claimed"
+PAIRING_APPROVAL_PREPARED = "approval_prepared"
 PAIRING_APPROVED = "approved"
 PAIRING_REJECTED = "rejected"
 PAIRING_EXPIRED = "expired"
@@ -68,6 +69,30 @@ def _new_pickup_secret() -> str:
 def _scope_not_allowed(requested: list[str], allowed: list[str]) -> list[str]:
     allowed_set = set(allowed)
     return sorted(scope for scope in requested if scope not in allowed_set)
+
+
+def _approval_error(code: str) -> dict[str, Any]:
+    return {"ok": False, "code": code}
+
+
+def _mobile_approval_binding(
+    session: "PairingSession",
+    *,
+    claim_hash: str,
+    scopes: list[str],
+    profile_id: str,
+    profile_revision: str,
+    plan_digest: str,
+) -> dict[str, Any]:
+    return {
+        "claim_hash": str(claim_hash or "").strip(),
+        "scopes": list(scopes),
+        "profile_id": str(profile_id or "").strip(),
+        "profile_revision": str(profile_revision or "").strip(),
+        "plan_digest": str(plan_digest or "").strip(),
+        "pairing_id": session.pairing_id,
+        "device_id": session.claimed_device_id,
+    }
 
 
 def _stable_claim_payload(session: "PairingSession") -> dict[str, Any]:
@@ -147,6 +172,7 @@ class PairingSession:
     token_pickup_consumed_at: int = 0
     token_delivery_envelope: dict[str, Any] = field(default_factory=dict)
     token_delivery_created_at: int = 0
+    approval_transaction: dict[str, Any] = field(default_factory=dict)
     token_pickup_secret: str = field(default="", repr=False, compare=False)
 
     @classmethod
@@ -177,6 +203,9 @@ class PairingSession:
             if isinstance(value.get("token_delivery_envelope"), dict)
             else {},
             token_delivery_created_at=int(value.get("token_delivery_created_at") or 0),
+            approval_transaction=dict(value.get("approval_transaction") or {})
+            if isinstance(value.get("approval_transaction"), dict)
+            else {},
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -206,6 +235,7 @@ class PairingSession:
             "token_pickup_consumed_at": int(self.token_pickup_consumed_at),
             "token_delivery_ready": bool(self.token_delivery_envelope),
             "token_delivery_created_at": int(self.token_delivery_created_at),
+            "approval_pending": bool(self.approval_transaction),
         }
 
     def public_dict(self) -> dict[str, Any]:
@@ -292,6 +322,7 @@ class PairingSession:
             "token_delivery_envelope": dict(self.token_delivery_envelope),
             "token_delivery_ready": bool(self.token_delivery_envelope),
             "token_delivery_created_at": int(self.token_delivery_created_at),
+            "approval_transaction": dict(self.approval_transaction),
         }
 
     def expired(self, now: int | None = None) -> bool:
@@ -539,6 +570,292 @@ class PairingManager:
                 "device_encryption_public_key": session.claimed_device_encryption_public_key,
                 "scopes": resolved_scopes,
             }
+
+    def prepare_mobile_approval(
+        self,
+        pairing_id: str,
+        *,
+        claim_hash: str,
+        scopes: list[str],
+        profile_id: str,
+        profile_revision: str,
+        plan_digest: str,
+    ) -> dict[str, Any]:
+        """Durably prepare one device-token issuance without authorizing it yet.
+
+        The pairing file is the durable transaction coordinator.  A device
+        record remains staged until this coordinator commits encrypted delivery
+        and the final pairing state in one atomic replacement.
+        """
+
+        with self._file_lock():
+            self._data = self._load()
+            sessions = self._sessions()
+            session = sessions.get(str(pairing_id or "").strip())
+            if session is None:
+                return _approval_error("PAIRING_NOT_FOUND")
+            requested = _string_list(scopes)
+            binding = _mobile_approval_binding(
+                session,
+                claim_hash=claim_hash,
+                scopes=requested,
+                profile_id=profile_id,
+                profile_revision=profile_revision,
+                plan_digest=plan_digest,
+            )
+            if session.status == PAIRING_APPROVED:
+                return {
+                    "ok": True,
+                    "state": "approved",
+                    "pairing": session.admin_dict(),
+                }
+            if session.status == PAIRING_APPROVAL_PREPARED:
+                transaction = dict(session.approval_transaction)
+                if transaction.get("binding") != binding:
+                    return _approval_error("PAIRING_APPROVAL_IN_PROGRESS")
+                return {
+                    "ok": True,
+                    "state": str(transaction.get("state") or "prepared"),
+                    "transaction_id": str(transaction.get("transaction_id") or ""),
+                    "pairing": session.admin_dict(),
+                }
+            if session.status != PAIRING_CLAIMED:
+                return _approval_error("PAIRING_NOT_CLAIMED")
+            if session.expired():
+                session.status = PAIRING_EXPIRED
+                session.reason = "expired"
+                self._replace(session)
+                return _approval_error("PAIRING_EXPIRED")
+            expected_claim_hash = session.claim_hash()
+            if not hmac.compare_digest(str(claim_hash or "").strip(), expected_claim_hash):
+                return _approval_error("PAIRING_CLAIM_CHANGED")
+            allowed = list(
+                session.claimed_capabilities
+                or session.capabilities
+                or _DEFAULT_MOBILE_SCOPES
+            )
+            if _scope_not_allowed(requested, allowed):
+                return _approval_error("SCOPE_NOT_ALLOWED")
+            resolved_scopes = requested or allowed
+            binding["scopes"] = resolved_scopes
+            transaction_id = "pat_" + secrets.token_urlsafe(18)
+            session.status = PAIRING_APPROVAL_PREPARED
+            session.approval_transaction = {
+                "transaction_id": transaction_id,
+                "state": "prepared",
+                "binding": binding,
+                "device_id": session.claimed_device_id,
+                "created_at": _now_ms(),
+            }
+            self._replace(session)
+            return {
+                "ok": True,
+                "state": "prepared",
+                "transaction_id": transaction_id,
+                "pairing": session.admin_dict(),
+            }
+
+    def mobile_approval_state(self, pairing_id: str) -> dict[str, Any]:
+        """Return private recovery state for a staged mobile approval."""
+
+        with self._file_lock():
+            self._data = self._load()
+            sessions = self._sessions()
+            session = sessions.get(str(pairing_id or "").strip())
+            if session is None:
+                return _approval_error("PAIRING_NOT_FOUND")
+            if (
+                session.status == PAIRING_APPROVAL_PREPARED
+                and session.expired()
+            ):
+                session.status = PAIRING_EXPIRED
+                session.reason = "expired"
+                self._replace(session)
+            return {
+                "ok": True,
+                "pairing": session.admin_dict(),
+                "transaction": dict(session.approval_transaction),
+            }
+
+    def stage_mobile_approval_device(
+        self,
+        pairing_id: str,
+        *,
+        transaction_id: str,
+    ) -> dict[str, Any]:
+        """Record that the exact transaction owns a staged device record."""
+
+        return self._update_mobile_approval_transaction(
+            pairing_id,
+            transaction_id=transaction_id,
+            state="device_staged",
+        )
+
+    def stage_mobile_approval_delivery(
+        self,
+        pairing_id: str,
+        *,
+        transaction_id: str,
+        envelope: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Persist encrypted delivery before terminal pairing commit."""
+
+        if not isinstance(envelope, dict) or not envelope:
+            return _approval_error("INVALID_INPUT")
+        return self._update_mobile_approval_transaction(
+            pairing_id,
+            transaction_id=transaction_id,
+            state="delivery_staged",
+            envelope=dict(envelope),
+        )
+
+    def commit_mobile_approval(
+        self,
+        pairing_id: str,
+        *,
+        transaction_id: str,
+    ) -> dict[str, Any]:
+        """Atomically publish delivery and the terminal pairing decision."""
+
+        with self._file_lock():
+            self._data = self._load()
+            sessions = self._sessions()
+            session = sessions.get(str(pairing_id or "").strip())
+            if session is None:
+                return _approval_error("PAIRING_NOT_FOUND")
+            transaction = dict(session.approval_transaction)
+            if (
+                session.status != PAIRING_APPROVAL_PREPARED
+                or not hmac.compare_digest(
+                    str(transaction.get("transaction_id") or ""),
+                    str(transaction_id or ""),
+                )
+                or transaction.get("state") != "delivery_staged"
+            ):
+                return _approval_error("PAIRING_APPROVAL_STATE_INVALID")
+            envelope = transaction.get("envelope")
+            binding = transaction.get("binding")
+            if not isinstance(envelope, dict) or not envelope or not isinstance(binding, dict):
+                return _approval_error("PAIRING_APPROVAL_STATE_INVALID")
+            if session.expired():
+                session.status = PAIRING_EXPIRED
+                session.reason = "expired"
+                self._replace(session)
+                return _approval_error("PAIRING_EXPIRED")
+            session.status = PAIRING_APPROVED
+            session.accepted_at = _now_ms()
+            session.peer_id = session.claimed_device_id
+            session.peer_label = session.claimed_device_label
+            session.capabilities = list(binding.get("scopes") or ())
+            session.token_delivery_envelope = dict(envelope)
+            session.token_delivery_created_at = _now_ms()
+            session.token_pickup_consumed_at = 0
+            transaction.pop("envelope", None)
+            transaction["state"] = "device_activation_pending"
+            session.approval_transaction = transaction
+            self._replace(session)
+            return {"ok": True, "pairing": session.admin_dict()}
+
+    def mark_mobile_device_activated(
+        self,
+        pairing_id: str,
+        *,
+        transaction_id: str,
+    ) -> dict[str, Any]:
+        """Finish a pairing only after its staged device becomes active."""
+
+        with self._file_lock():
+            self._data = self._load()
+            sessions = self._sessions()
+            session = sessions.get(str(pairing_id or "").strip())
+            if session is None:
+                return _approval_error("PAIRING_NOT_FOUND")
+            transaction = dict(session.approval_transaction)
+            if (
+                session.status != PAIRING_APPROVED
+                or not hmac.compare_digest(
+                    str(transaction.get("transaction_id") or ""),
+                    str(transaction_id or ""),
+                )
+                or transaction.get("state") != "device_activation_pending"
+            ):
+                return _approval_error("PAIRING_APPROVAL_STATE_INVALID")
+            session.approval_transaction = {}
+            self._replace(session)
+            return {"ok": True, "pairing": session.admin_dict()}
+
+    def abort_mobile_approval(
+        self,
+        pairing_id: str,
+        *,
+        transaction_id: str,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        """Return a nonterminal pairing to claimed after durable cleanup."""
+
+        with self._file_lock():
+            self._data = self._load()
+            sessions = self._sessions()
+            session = sessions.get(str(pairing_id or "").strip())
+            if session is None:
+                return _approval_error("PAIRING_NOT_FOUND")
+            transaction = dict(session.approval_transaction)
+            if not hmac.compare_digest(
+                str(transaction.get("transaction_id") or ""),
+                str(transaction_id or ""),
+            ):
+                return _approval_error("PAIRING_APPROVAL_STATE_INVALID")
+            if session.status not in {
+                PAIRING_APPROVAL_PREPARED,
+                PAIRING_APPROVED,
+                PAIRING_EXPIRED,
+            }:
+                return _approval_error("PAIRING_APPROVAL_STATE_INVALID")
+            if session.status != PAIRING_EXPIRED:
+                session.status = PAIRING_CLAIMED
+                session.accepted_at = 0
+                session.peer_id = ""
+                session.peer_label = ""
+                session.capabilities = list(
+                    session.claimed_capabilities or session.capabilities
+                )
+                session.reason = str(reason or "approval recovery")
+            session.token_delivery_envelope = {}
+            session.token_delivery_created_at = 0
+            session.token_pickup_consumed_at = 0
+            session.approval_transaction = {}
+            self._replace(session)
+            return {"ok": True, "pairing": session.admin_dict()}
+
+    def _update_mobile_approval_transaction(
+        self,
+        pairing_id: str,
+        *,
+        transaction_id: str,
+        state: str,
+        envelope: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with self._file_lock():
+            self._data = self._load()
+            sessions = self._sessions()
+            session = sessions.get(str(pairing_id or "").strip())
+            if session is None:
+                return _approval_error("PAIRING_NOT_FOUND")
+            transaction = dict(session.approval_transaction)
+            if (
+                session.status != PAIRING_APPROVAL_PREPARED
+                or not hmac.compare_digest(
+                    str(transaction.get("transaction_id") or ""),
+                    str(transaction_id or ""),
+                )
+            ):
+                return _approval_error("PAIRING_APPROVAL_STATE_INVALID")
+            transaction["state"] = state
+            if envelope is not None:
+                transaction["envelope"] = dict(envelope)
+            session.approval_transaction = transaction
+            self._replace(session)
+            return {"ok": True, "pairing": session.admin_dict()}
 
     def store_token_delivery(
         self,

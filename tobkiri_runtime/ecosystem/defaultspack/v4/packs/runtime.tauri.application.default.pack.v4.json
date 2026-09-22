@@ -31,7 +31,7 @@
   "artifacts": [
     {
       "path": "defaultspack/frontend_contract_map.v4.json",
-      "digest": "sha256:c4ed961160a56ea5d7ca5b6526473892f750a5f5819dd5c2e3df4753a9954249",
+      "digest": "sha256:cb2f657d38e67477b04201b4fbba51a4461d6b7f3d7dce176745ff3b27e24ec6",
       "kind": "asset",
       "platform": "all"
     }
@@ -40,26 +40,26 @@
     "schema": "io.tobkiri.provenance.v2",
     "source_kind": "generated",
     "source_path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
-    "source_digest": "sha256:525c45ac3dacd58d4da558b225f0509354e18bd334e74b42af04ce608972ac71",
+    "source_digest": "sha256:ef4437e0dd3cc59d86aa5231103869e8446955068a3adcae6adb61f3bbe84ce1",
     "repository_commit": "working-tree",
     "repository_commit_trusted": false,
-    "content_root_digest": "sha256:dcfbbc06cec28bb63d2c9b44a7ce8c73a68ac0047a766eaa314cdb7a7caa0156",
+    "content_root_digest": "sha256:04fe67d443f4e219eba4ade386431dee751328f93ebf33576047ab4de3122c5e",
     "generator": "defaultspack-v4-core",
     "generator_version": "2.0.0",
     "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
-    "generator_digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85",
-    "input_inventory_digest": "sha256:a34d732508bb080b3c4ae345a93cf257054044d269357b9f161489d42e52ce84",
+    "generator_digest": "sha256:0c8f25260f31f9c84413e7da7bd4a1c373c9047b334055122751679721d35f2d",
+    "input_inventory_digest": "sha256:44c813278df2e31d4e6161bc15548579d42f2d315d8957e5595957f3f67aabf7",
     "normative": true,
     "evidence": [
       {
         "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
         "rule_id": "normative-generator-bytes",
-        "digest": "sha256:4303ad9df98db2fdc01cfd1fe30c4e03f4bfa279342e49f7ed656d6d49af7a85"
+        "digest": "sha256:0c8f25260f31f9c84413e7da7bd4a1c373c9047b334055122751679721d35f2d"
       },
       {
         "path": "ecosystem/defaultspack/v4/packs/runtime.tauri.application.default.pack.v4.json",
         "rule_id": "normative-input-bytes",
-        "digest": "sha256:525c45ac3dacd58d4da558b225f0509354e18bd334e74b42af04ce608972ac71"
+        "digest": "sha256:ef4437e0dd3cc59d86aa5231103869e8446955068a3adcae6adb61f3bbe84ce1"
       }
     ]
   },
@@ -103,8 +103,8 @@
     }
   ],
   "integrity": {
-    "source_identity": "sha256:ff2ba81a7ec5deb1945b76f2360dcb7602d37744ef57b69a3371fcf04a26cc59",
-    "artifact_set_digest": "sha256:9adcb540490efca4affec792898ed9046a990b44a2fd0736aacd4d120edeaad0",
+    "source_identity": "sha256:d8dd0871ed12fd526a53e84e0a62df049b30cab8fdb89dcdcdefe824815528e8",
+    "artifact_set_digest": "sha256:4f0f30839eb92a974bee58a01eca856511a68e41b6f79946af9a348a0290f104",
     "contract_catalog_digest": "sha256:0df46117366f419dbad8685b74340a655d45e46e71fc5a0c1eb30c9fce00f614"
   }
 }

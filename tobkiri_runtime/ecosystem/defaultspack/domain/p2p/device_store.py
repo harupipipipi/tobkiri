@@ -19,6 +19,7 @@ from .json_store import file_lock, load_json_object, save_json_object
 from .settings import default_store_path
 
 DEVICE_ACTIVE = "active"
+DEVICE_STAGED = "staged"
 DEVICE_REVOKED = "revoked"
 
 DEFAULT_SCOPES = [
@@ -204,6 +205,7 @@ class DeviceStore:
         scopes: list[str] | None = None,
         pairing_id: str = "",
         profile_id: str = "default",
+        activate: bool = True,
     ) -> tuple[DeviceRecord, str, str]:
         """Create or refresh split device tokens.
 
@@ -236,7 +238,7 @@ class DeviceStore:
                 scopes=resolved_scopes,
                 approval_token_hash=_hash_token(approval_plaintext) if approval_plaintext else "",
                 approval_scopes=approval_scopes,
-                status=DEVICE_ACTIVE,
+                status=DEVICE_ACTIVE if activate else DEVICE_STAGED,
                 pairing_id=pairing_id,
                 confirmation_code=code,
                 created_at=devices[clean_id].created_at if clean_id in devices else now,
@@ -245,6 +247,34 @@ class DeviceStore:
             devices[clean_id] = device
             self._save_devices(devices)
         return device, plaintext, approval_plaintext
+
+    def activate_staged_device(
+        self,
+        device_id: str,
+        *,
+        pairing_id: str,
+        profile_id: str,
+    ) -> DeviceRecord | None:
+        """Activate only the exact device record staged by a pairing commit."""
+
+        clean_id = str(device_id or "").strip()
+        with self._file_lock():
+            self._data = self._load()
+            devices = self._devices()
+            device = devices.get(clean_id)
+            if (
+                device is None
+                or device.status not in {DEVICE_STAGED, DEVICE_ACTIVE}
+                or device.pairing_id != str(pairing_id or "").strip()
+                or device.profile_id != str(profile_id or "").strip()
+            ):
+                return None
+            if device.status == DEVICE_STAGED:
+                device.status = DEVICE_ACTIVE
+                device.updated_at = _now_ms()
+                devices[clean_id] = device
+                self._save_devices(devices)
+            return device
 
     def issue_token(
         self,
