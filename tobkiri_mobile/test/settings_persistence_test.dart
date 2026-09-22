@@ -117,6 +117,28 @@ void main() {
     expect((await store.loadPc())?.token, _originalPc.token);
   });
 
+  test('strict PC persistence restores the previous connection on failure',
+      () async {
+    final storage = _FailingSecureStorage();
+    final store = ApiConfigStore(storage: storage);
+    await store.savePc(_originalPc);
+    storage.operationCount = 0;
+    storage.failOperations.add(1);
+
+    await expectLater(
+      store.savePcOrRollback(_nextPc),
+      throwsA(
+        isA<SettingsPersistenceException>().having(
+          (error) => error.reconciled,
+          'reconciled',
+          isTrue,
+        ),
+      ),
+    );
+
+    expect((await store.loadPc())?.token, _originalPc.token);
+  });
+
   test('strict notification persistence reports storage failure', () async {
     final storage = _FailingSecureStorage()..failOperations.add(1);
     final store = ApiConfigStore(storage: storage);

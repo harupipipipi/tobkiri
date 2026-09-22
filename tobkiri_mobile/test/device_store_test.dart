@@ -28,6 +28,38 @@ class _FakeSecureStorage implements SecureKeyValueStorage {
   }
 }
 
+class _FailingSecureStorage implements SecureKeyValueStorage {
+  final Map<String, String> _values = {};
+  final Set<int> failOperations = {};
+  int operationCount = 0;
+
+  @override
+  Future<String?> read(String key) async => _values[key];
+
+  @override
+  Future<void> write(String key, String? value) async {
+    _beginOperation();
+    if (value == null) {
+      _values.remove(key);
+    } else {
+      _values[key] = value;
+    }
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    _beginOperation();
+    _values.remove(key);
+  }
+
+  void _beginOperation() {
+    operationCount += 1;
+    if (failOperations.remove(operationCount)) {
+      throw StateError('injected secure storage failure');
+    }
+  }
+}
+
 const _validDevice = PairedDevice(
   deviceId: 'mobile-1',
   deviceToken: 'dtk-test',
@@ -220,6 +252,41 @@ void main() {
     final remaining = await store.loadPairedDevices();
     expect(remaining, hasLength(1));
     expect(remaining.single.pcLabel, 'Studio Mac');
+  });
+
+  test('strict paired device replacement rolls back both saved records',
+      () async {
+    final storage = _FailingSecureStorage();
+    final store = MobileDeviceStore(storage: storage);
+    final secondPc = PairedDevice(
+      deviceId: _validDevice.deviceId,
+      deviceToken: 'dtk-second',
+      label: _validDevice.label,
+      scopes: _validDevice.scopes,
+      pcBaseUrl: 'http://192.168.11.26:8765',
+      pcLabel: 'Studio Mac',
+      pairingId: 'pair-2',
+    );
+    await store.savePairedDevice(_validDevice);
+    storage.operationCount = 0;
+    storage.failOperations.add(2);
+
+    await expectLater(
+      store.savePairedDeviceOrThrow(secondPc),
+      throwsA(
+        isA<SettingsPersistenceException>().having(
+          (error) => error.reconciled,
+          'reconciled',
+          isTrue,
+        ),
+      ),
+    );
+
+    final state = await store.loadPairedDeviceStateOrThrow();
+    expect(state.activeDevice?.connectionId, _validDevice.connectionId);
+    expect(state.devices.map((device) => device.connectionId), [
+      _validDevice.connectionId,
+    ]);
   });
 
   test('migrates legacy pc connection into paired devices once', () async {

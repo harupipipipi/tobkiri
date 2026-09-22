@@ -151,6 +151,36 @@ class PairedDevice {
   }
 }
 
+class PairedDeviceState {
+  const PairedDeviceState({
+    required this.activeDevice,
+    required this.devices,
+  });
+
+  final PairedDevice? activeDevice;
+  final List<PairedDevice> devices;
+
+  PairedDeviceState withActiveDevice(PairedDevice device) {
+    final nextDevices = [...devices]
+      ..removeWhere(
+        (candidate) => candidate.connectionId == device.connectionId,
+      )
+      ..add(device);
+    return PairedDeviceState(activeDevice: device, devices: nextDevices);
+  }
+
+  PairedDeviceState withoutDevice(String connectionId) {
+    final nextDevices = [
+      for (final device in devices)
+        if (device.connectionId != connectionId) device,
+    ];
+    final active = activeDevice?.connectionId == connectionId
+        ? (nextDevices.isEmpty ? null : nextDevices.first)
+        : activeDevice;
+    return PairedDeviceState(activeDevice: active, devices: nextDevices);
+  }
+}
+
 class _EncryptionKeyPair {
   const _EncryptionKeyPair({
     required this.publicKey,
@@ -530,6 +560,132 @@ class MobileDeviceStore {
       }
     } catch (_) {
       // ignore secure storage failures
+    }
+  }
+
+  Future<PairedDeviceState> loadPairedDeviceStateOrThrow() async {
+    try {
+      final active = _decodePairedDevice(await _storage.read(_pairedKey));
+      final devices = _decodePairedDevices(
+        await _storage.read(_pairedListKey),
+      );
+      final nextDevices = [...devices];
+      if (active != null &&
+          !nextDevices.any(
+            (candidate) => candidate.connectionId == active.connectionId,
+          )) {
+        nextDevices.add(active);
+      }
+      return PairedDeviceState(activeDevice: active, devices: nextDevices);
+    } catch (_) {
+      throw const SettingsPersistenceException(
+        area: 'paired device settings',
+        reconciled: true,
+      );
+    }
+  }
+
+  Future<void> savePairedDeviceOrThrow(PairedDevice? device) async {
+    final current = await loadPairedDeviceStateOrThrow();
+    final next = device == null || !device.isConfigured
+        ? PairedDeviceState(activeDevice: null, devices: current.devices)
+        : current.withActiveDevice(device);
+    await replacePairedDeviceStateOrThrow(next);
+  }
+
+  Future<void> removePairedDeviceOrThrow(String connectionId) async {
+    final current = await loadPairedDeviceStateOrThrow();
+    await replacePairedDeviceStateOrThrow(current.withoutDevice(connectionId));
+  }
+
+  Future<void> replacePairedDeviceStateOrThrow(PairedDeviceState state) async {
+    late final String? previousActive;
+    late final String? previousDevices;
+    try {
+      previousActive = await _storage.read(_pairedKey);
+      previousDevices = await _storage.read(_pairedListKey);
+    } catch (_) {
+      throw const SettingsPersistenceException(
+        area: 'paired device settings',
+        reconciled: true,
+      );
+    }
+
+    final active = state.activeDevice?.isConfigured == true
+        ? state.activeDevice
+        : null;
+    final devices = <PairedDevice>[];
+    for (final candidate in state.devices) {
+      if (!candidate.isConfigured ||
+          devices.any(
+            (existing) => existing.connectionId == candidate.connectionId,
+          )) {
+        continue;
+      }
+      devices.add(candidate);
+    }
+    if (active != null) {
+      devices.removeWhere(
+        (candidate) => candidate.connectionId == active.connectionId,
+      );
+      devices.add(active);
+    }
+
+    try {
+      await _writeRawPairedValue(
+        _pairedKey,
+        active == null ? null : jsonEncode(active.toJson()),
+      );
+      await _writeRawPairedValue(
+        _pairedListKey,
+        jsonEncode(devices.map((device) => device.toJson()).toList()),
+      );
+    } catch (_) {
+      final activeReconciled = await _tryRestorePairedValue(
+        _pairedKey,
+        previousActive,
+      );
+      final devicesReconciled = await _tryRestorePairedValue(
+        _pairedListKey,
+        previousDevices,
+      );
+      throw SettingsPersistenceException(
+        area: 'paired device settings',
+        reconciled: activeReconciled && devicesReconciled,
+      );
+    }
+  }
+
+  PairedDevice? _decodePairedDevice(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final device = PairedDevice.fromJson(
+      jsonDecode(raw) as Map<String, dynamic>,
+    );
+    return device.isConfigured ? device : null;
+  }
+
+  List<PairedDevice> _decodePairedDevices(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return [];
+    return (jsonDecode(raw) as List)
+        .map((value) => PairedDevice.fromJson(value as Map<String, dynamic>))
+        .where((device) => device.isConfigured)
+        .toList();
+  }
+
+  Future<void> _writeRawPairedValue(String key, String? value) async {
+    if (value == null) {
+      await _storage.delete(key);
+      return;
+    }
+    await _storage.write(key, value);
+  }
+
+  Future<bool> _tryRestorePairedValue(String key, String? value) async {
+    try {
+      await _writeRawPairedValue(key, value);
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

@@ -549,13 +549,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             pairingId: pairingId,
           );
-          await widget.deviceStore.savePairedDevice(device);
           final newPc = PcConnection(
             baseUrl: pc.baseUrl,
             token: token,
             approvalToken: approvalToken,
           );
-          await widget.configStore.savePcOrThrow(newPc);
+          final pairedState =
+              await widget.deviceStore.loadPairedDeviceStateOrThrow();
+          await _persistPairedDeviceState(
+            pairedState.withActiveDevice(device),
+            newPc,
+          );
           if (tokenResp.hasTokenDeliveryEnvelope) {
             try {
               await client.ackTokenDelivery(
@@ -606,8 +610,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _apiFeedback = null;
     });
     try {
-      await widget.deviceStore.savePairedDevice(device);
-      await widget.configStore.savePcOrThrow(pc);
+      final pairedState =
+          await widget.deviceStore.loadPairedDeviceStateOrThrow();
+      await _persistPairedDeviceState(
+        pairedState.withActiveDevice(device),
+        pc,
+      );
       if (!mounted) return;
       setState(() {
         _pc = pc;
@@ -641,19 +649,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _apiFeedback = null;
     });
     try {
-      await widget.deviceStore.removePairedDevice(device.connectionId);
-      final devices = await widget.deviceStore.loadPairedDevices();
+      final pairedState =
+          await widget.deviceStore.loadPairedDeviceStateOrThrow();
+      final nextPairedState = pairedState.withoutDevice(device.connectionId);
+      final devices = nextPairedState.devices;
       final removingActive =
-          _pc?.baseUrl == device.pcBaseUrl && _pc?.token == device.deviceToken;
+          pairedState.activeDevice?.connectionId == device.connectionId;
       PcConnection? nextPc = _pc;
-      PairedDevice? nextDevice;
+      PairedDevice? nextDevice = pairedState.activeDevice;
       if (removingActive) {
-        nextDevice = devices.isNotEmpty ? devices.first : null;
+        nextDevice = nextPairedState.activeDevice;
         nextPc = nextDevice?.toPcConnection();
-        await widget.configStore.savePcOrThrow(nextPc);
-        if (nextDevice != null) {
-          await widget.deviceStore.savePairedDevice(nextDevice);
-        }
+        await _persistPairedDeviceState(nextPairedState, nextPc);
+      } else {
+        await widget.deviceStore.replacePairedDeviceStateOrThrow(
+          nextPairedState,
+        );
       }
       if (!mounted) return;
       setState(() {
@@ -683,6 +694,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _persistPairedDeviceState(
+    PairedDeviceState nextState,
+    PcConnection? nextPc,
+  ) async {
+    final previousState =
+        await widget.deviceStore.loadPairedDeviceStateOrThrow();
+    await widget.deviceStore.replacePairedDeviceStateOrThrow(nextState);
+    try {
+      await widget.configStore.savePcOrRollback(nextPc);
+    } on SettingsPersistenceException catch (error) {
+      try {
+        await widget.deviceStore.replacePairedDeviceStateOrThrow(
+          previousState,
+        );
+      } on SettingsPersistenceException catch (restoreError) {
+        throw SettingsPersistenceException(
+          area: 'PC connection',
+          reconciled: error.reconciled && restoreError.reconciled,
+        );
+      }
+      throw error;
     }
   }
 

@@ -826,6 +826,27 @@ class ApiConfigStore {
     }
   }
 
+  Future<void> savePcOrRollback(PcConnection? pc) async {
+    late final String? previousPc;
+    try {
+      previousPc = await _storage.read(_pcKey);
+    } catch (_) {
+      throw const SettingsPersistenceException(
+        area: 'PC connection',
+        reconciled: true,
+      );
+    }
+    try {
+      await _writePcValue(pc);
+    } catch (_) {
+      final reconciled = await _tryRestoreRawValue(_pcKey, previousPc);
+      throw SettingsPersistenceException(
+        area: 'PC connection',
+        reconciled: reconciled,
+      );
+    }
+  }
+
   Future<MobileNotificationSettings> loadNotificationSettings() async {
     try {
       final raw = await _storage.read(_notificationKey);
