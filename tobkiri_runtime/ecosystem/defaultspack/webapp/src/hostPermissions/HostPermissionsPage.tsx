@@ -318,12 +318,12 @@ export function HostPermissionsTable({
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left text-sm">
           <caption className="sr-only">
-            Rumi approval, operating-system permission, risk, stream allowance, required functions, and settings action for each host permission.
+            Tobkiri approval, operating-system permission, risk, stream allowance, required functions, and settings action for each host permission.
           </caption>
           <thead className="bg-zinc-900/50 text-[11px] font-semibold text-zinc-500 max-lg:sr-only">
             <tr>
               <th scope="col" className="px-3 py-2">Permission</th>
-              <th scope="col" className="px-3 py-2">Rumi approval</th>
+              <th scope="col" className="px-3 py-2">Tobkiri approval</th>
               <th scope="col" className="px-3 py-2">OS permission</th>
               <th scope="col" className="px-3 py-2">Risk</th>
               <th scope="col" className="px-3 py-2">Stream</th>

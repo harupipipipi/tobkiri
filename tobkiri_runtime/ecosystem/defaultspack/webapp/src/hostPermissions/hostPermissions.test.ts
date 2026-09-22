@@ -171,7 +171,7 @@ describe("host permissions", () => {
     assert.match(html, /scope="col"/);
     assert.match(html, /scope="row"/);
     assert.match(html, /Overall status: Missing/);
-    assert.match(html, /Rumi approval/);
+    assert.match(html, /Tobkiri approval/);
     assert.match(html, /OS permission/);
     assert.match(html, /Source: Tobkiri Launcher/);
     assert.match(html, /aria-label="Open macOS System Settings for Screen Capture"/);
@@ -191,7 +191,7 @@ describe("host permissions", () => {
 
     assert.match(html, /aria-busy="true"/);
     assert.match(html, /<dl/);
-    assert.match(html, /Rumi approvals/);
+    assert.match(html, /Tobkiri approvals/);
     assert.match(html, />Loading</);
   });
 
