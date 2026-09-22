@@ -6,7 +6,7 @@ import test from 'node:test';
 import {MemoryRouter} from 'react-router';
 
 import {useAppStore} from '@/src/store';
-import {Profile} from './Profile';
+import {Account} from './Account';
 
 function createDom(): {dom: JSDOM; container: HTMLElement; root: Root} {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
@@ -21,7 +21,7 @@ function createDom(): {dom: JSDOM; container: HTMLElement; root: Root} {
   return {dom, container, root: createRoot(container)};
 }
 
-test('Profile localizes its descriptor and primary Launcher-profile controls in Japanese', async () => {
+test('Account localizes its descriptor and primary Launcher-profile controls in Japanese', async () => {
   const previousState = useAppStore.getState();
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
@@ -37,19 +37,20 @@ test('Profile localizes its descriptor and primary Launcher-profile controls in 
     });
     await act(async () => {
       root.render(
-        <MemoryRouter initialEntries={['/profile']}>
-          <Profile />
+        <MemoryRouter initialEntries={['/account']}>
+          <Account />
         </MemoryRouter>,
       );
     });
     const html = container.innerHTML;
 
-    assert.match(html, /<h1[^>]*>プロファイル<\/h1>/);
-    assert.match(html, /個人プロファイル/);
+    assert.match(html, /<h1[^>]*>個人プロフィール<\/h1>/);
+    assert.match(html, /個人プロフィール/);
     assert.match(html, /このデバイス/);
     assert.match(html, /aria-label="アバターを選択"/);
     assert.match(html, /職種または役割/);
-    assert.match(html, /ランタイム証跡/);
+    assert.doesNotMatch(html, /ランタイム証跡/);
+    assert.doesNotMatch(html, /Pack closure/);
   } finally {
     act(() => root.unmount());
     dom.window.close();

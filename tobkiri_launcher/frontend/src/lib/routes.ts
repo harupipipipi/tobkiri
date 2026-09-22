@@ -3,6 +3,7 @@ export const panelRoutes = {
   setup: '/setup',
   packs: '/packs',
   profile: '/profile',
+  account: '/account',
   settings: '/settings',
   profileWiring: '/profile-graph',
   profileFiles: '/profile-workspace',
@@ -39,6 +40,7 @@ export const panelRouteMeta: Record<PanelRouteKey, PanelRouteMeta> = {
   setup: { path: panelRoutes.setup, titleKey: 'nav.setup' },
   packs: { path: panelRoutes.packs, titleKey: 'nav.packs', navKey: 'nav.packs' },
   profile: { path: panelRoutes.profile, titleKey: 'nav.profile', navKey: 'nav.profile' },
+  account: { path: panelRoutes.account, titleKey: 'nav.account', navKey: 'nav.account' },
   settings: { path: panelRoutes.settings, titleKey: 'nav.settings', navKey: 'nav.settings' },
   profileWiring: {
     path: panelRoutes.profileWiring,
@@ -70,7 +72,7 @@ const primaryViewerNavGroups = [
   {
     id: 'preferences',
     labelKey: 'nav.group.preferences',
-    routes: ['profile', 'settings'] satisfies PanelRouteKey[],
+    routes: ['account', 'settings'] satisfies PanelRouteKey[],
   },
 ] as const;
 
@@ -108,6 +110,9 @@ export function panelRouteTitleKey(pathname: string): string {
 
 /** Match stable panel routes without treating Profile Files/Wiring as Profile. */
 export function isPanelRouteActive(pathname: string, routePath: string): boolean {
+  if (routePath === panelRoutes.home) {
+    return pathname === routePath || pathname === panelRoutes.profile;
+  }
   if (routePath === panelRoutes.packs) {
     return pathname === routePath || pathname.startsWith(`${routePath}/`);
   }

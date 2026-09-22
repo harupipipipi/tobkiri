@@ -1,3 +1,5 @@
+import {parseProfileCompositionInput, type ProfileCompositionInput} from './profileComposition';
+
 /** Host-owned v4 Named Profile registry contract and request validation. */
 
 export const PROFILE_REGISTRY_API_VERSION = 'io.tobkiri.profile-registry.v4' as const;
@@ -34,6 +36,7 @@ export interface CreateNamedProfileInput {
 }
 
 export interface UpdateNamedProfileInput {
+  composition?: ProfileCompositionInput;
   profile_id: string;
   display_name: string;
   expected_profile_revision: string;
@@ -274,6 +277,7 @@ export function validateNamedProfileMutation(
       : action === 'duplicate'
         ? ['display_name', 'expected_profile_revision', 'expected_store_generation', 'new_profile_id', 'profile_id']
         : ['expected_profile_revision', 'expected_store_generation', 'profile_id'];
+  if (action === 'update' && Object.hasOwn(record, 'composition')) expectedKeys.push('composition');
   const actualKeys = Object.keys(record).sort();
   const sortedExpected = [...expectedKeys].sort();
   if (actualKeys.length !== sortedExpected.length || actualKeys.some((key, index) => key !== sortedExpected[index])) {
@@ -292,7 +296,9 @@ export function validateNamedProfileMutation(
   }
   const revision = requiredRevision(record.expected_profile_revision);
   if (action === 'update') {
-    return {...common, display_name: requiredDisplayName(record.display_name), expected_profile_revision: revision};
+    return {...common, display_name: requiredDisplayName(record.display_name), expected_profile_revision: revision,
+      ...(Object.hasOwn(record, 'composition') ? {composition: parseProfileCompositionInput(record.composition)} : {}),
+    };
   }
   if (action === 'duplicate') {
     return {

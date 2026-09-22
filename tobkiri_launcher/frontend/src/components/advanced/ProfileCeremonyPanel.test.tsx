@@ -276,7 +276,7 @@ test('Profile closure candidates come from the authoritative catalog and execute
         />,
       );
     });
-    assert.match(container.textContent ?? '', /Authoritative Pack closure/);
+    assert.match(container.textContent ?? '', /Saved configuration/);
     await act(async () => { buttonContaining(container, 'Add Pack · New Pack').click(); });
     await act(async () => { buttonContaining(container, 'Resolve candidate').click(); });
     await act(async () => { buttonContaining(container, 'Review exact candidate').click(); });

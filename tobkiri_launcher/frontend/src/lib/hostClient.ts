@@ -1,3 +1,4 @@
+import {parseProfileCompositionCatalog, type ProfileCompositionCatalog} from './profileComposition';
 import type {
   ApiPackVMConsent, ApiPackVMDoctor, ApiPackVMOperation, ApiPackVMProvisioningPlan,
   HealthResponseData, RuntimeStatus,
@@ -29,6 +30,7 @@ const EXACT_HOST_API_ROUTES = [
   {method: 'POST', path: '/api/setup/packs/install?include_source_additions=true'},
   {method: 'POST', path: '/api/setup/runtime/reconcile'},
   {method: 'GET', path: '/api/v4/profiles'},
+  {method: 'GET', path: '/api/v4/profiles/catalog'},
   {method: 'POST', path: '/api/v4/profiles/create'},
   {method: 'POST', path: '/api/v4/profiles/update'},
   {method: 'POST', path: '/api/v4/profiles/duplicate'},
@@ -198,6 +200,10 @@ export const hostApiFetch = createApiClient((path, method) => {
 
 export function fetchNamedProfiles(): Promise<NamedProfileRegistry> {
   return hostApiFetch<unknown>('/api/v4/profiles', {cache: 'no-store'}).then(parseNamedProfileRegistry);
+}
+
+export function fetchProfileCompositionCatalog(): Promise<ProfileCompositionCatalog> {
+  return hostApiFetch<unknown>('/api/v4/profiles/catalog', {cache: 'no-store'}).then(parseProfileCompositionCatalog);
 }
 
 function mutateNamedProfile(

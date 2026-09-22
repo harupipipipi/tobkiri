@@ -1,3 +1,4 @@
+import {ProfilePackEditor} from '@/src/components/profile/ProfilePackEditor';
 import {useCallback, useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {Link} from 'react-router';
 import {CheckCircle2, CircleAlert, Database, FileKey2, MessageSquare, PackageCheck, Plus, RefreshCw, Search, ShieldCheck} from 'lucide-react';
@@ -209,6 +210,25 @@ function ProfileDefinitionDetails({
         ) : null}
       </section>
 
+          <section className="scroll-mt-6 rounded-lg border border-border bg-bg-card p-4" id="profile-closure">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="flex items-center gap-2 text-sm font-semibold text-text-main"><PackageCheck className="h-4 w-4" aria-hidden="true" />Authoritative Pack closure</h4>
+              <Badge variant="outline">{entry.pack_closure.length} exact rows</Badge>
+            </div>
+            <div className="mt-3 flex flex-col gap-2">
+              {entry.pack_closure.map((pack) => (
+                <div key={pack.pack_id} className="grid gap-2 rounded-md border border-border/70 px-3 py-2 text-xs sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)] sm:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-text-main">{pack.pack_id}</p>
+                    <p className="truncate text-text-muted">role: {pack.role} · version: {pack.version}</p>
+                  </div>
+                  <span className="font-mono text-text-muted">{pack.artifact_digest}</span>
+                  <span className="break-all font-mono text-text-muted">{pack.artifact_ref}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
       <details className="rounded-lg border border-border bg-bg-main px-4 py-4" data-testid="profile-technical-details">
         <summary className="cursor-pointer text-sm font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]">
           {t('profile_catalog.technical_details')}
@@ -244,24 +264,6 @@ function ProfileDefinitionDetails({
               ) : <p className="text-sm text-text-muted">No application binding was published.</p>}
             </BindingCard>
           </div>
-          <section className="scroll-mt-6 rounded-lg border border-border bg-bg-card p-4" id="profile-closure">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h4 className="flex items-center gap-2 text-sm font-semibold text-text-main"><PackageCheck className="h-4 w-4" aria-hidden="true" />Authoritative Pack closure</h4>
-              <Badge variant="outline">{entry.pack_closure.length} exact rows</Badge>
-            </div>
-            <div className="mt-3 flex flex-col gap-2">
-              {entry.pack_closure.map((pack) => (
-                <div key={pack.pack_id} className="grid gap-2 rounded-md border border-border/70 px-3 py-2 text-xs sm:grid-cols-[minmax(0,1.2fr)_8rem_minmax(0,1.5fr)] sm:items-center">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium text-text-main">{pack.pack_id}</p>
-                    <p className="truncate text-text-muted">role: {pack.role} · version: {pack.version}</p>
-                  </div>
-                  <span className="font-mono text-text-muted">{pack.artifact_digest}</span>
-                  <span className="break-all font-mono text-text-muted">{pack.artifact_ref}</span>
-                </div>
-              ))}
-            </div>
-          </section>
           <OptionalConversationCapability
             entry={entry}
             catalog={catalog}
@@ -293,6 +295,7 @@ export function ProfileCatalogSelector({
   initialSelectedProfileId,
   onSelectedProfileId,
   runtimeVerified = true,
+  compact = false,
 }: {
   profileSurface: RuntimeSurfaceState<unknown>;
   catalogSurface: RuntimeSurfaceState<RuntimeProfileCatalogProjection>;
@@ -305,6 +308,7 @@ export function ProfileCatalogSelector({
   onSelectedProfileId?: (profileId: string) => void;
   /** Runtime/effect ceremony access, independent from catalog browsing. */
   runtimeVerified?: boolean;
+  compact?: boolean;
 }) {
   const t = useT();
   const frontendCatalog = useAppStore((state) => state.frontendCatalog);
@@ -312,6 +316,7 @@ export function ProfileCatalogSelector({
   const frontendCatalogError = useAppStore((state) => state.frontendCatalogError);
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
   const [ceremonyBusy, setCeremonyBusy] = useState(false);
+  const [editingPacks, setEditingPacks] = useState(false);
   const [query, setQuery] = useState('');
   const previousPackFingerprint = useRef<string | null>(null);
   const previousInitialSelectedProfileId = useRef<string | null | undefined>(undefined);
@@ -354,11 +359,8 @@ export function ProfileCatalogSelector({
     setSelectedProfileId((current) => (
       initialSelectionChanged
       && initialSelectedProfileId
-      && catalogProjection.profiles.some((entry) => entry.profile_id === initialSelectedProfileId)
         ? initialSelectedProfileId
-        : current && catalogProjection.profiles.some((entry) => entry.profile_id === current)
-          ? current
-          : catalogProjection.active_profile_id
+        : current ?? initialSelectedProfileId ?? catalogProjection.active_profile_id
     ));
   }, [catalogProjection, initialSelectedProfileId]);
 
@@ -373,7 +375,11 @@ export function ProfileCatalogSelector({
     void catalogSurface.refresh(true);
   }, [catalogSurface.refresh, packFingerprint, packsLoading]);
 
-  const selectedEntry = catalogProjection?.profiles.find((entry) => entry.profile_id === selectedProfileId) ?? null;
+  // An explicit URL must never briefly render or mutate another Profile.
+  const effectiveSelectedId = previousInitialSelectedProfileId.current !== initialSelectedProfileId
+    ? initialSelectedProfileId
+    : selectedProfileId;
+  const selectedEntry = catalogProjection?.profiles.find((entry) => entry.profile_id === effectiveSelectedId) ?? null;
   const filteredProfiles = useMemo(
     () => catalogProjection?.profiles.filter((entry) => profileMatchesQuery(entry, query)) ?? [],
     [catalogProjection, query],
@@ -396,7 +402,7 @@ export function ProfileCatalogSelector({
 
   return (
     <>
-      <Card>
+      {!compact || !selectedEntry ? <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-4 w-4" aria-hidden="true" />{t('profile_catalog.title')}</CardTitle>
@@ -480,7 +486,7 @@ export function ProfileCatalogSelector({
               </div>
               <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label={t('profile_catalog.select_group')}>
                 {filteredProfiles.map((entry) => {
-                  const selected = selectedProfileId === entry.profile_id;
+                  const selected = effectiveSelectedId === entry.profile_id;
                   const unavailableLabel = entry.available ? '' : t('profile_catalog.unavailable_suffix');
                   return (
                     <button
@@ -493,7 +499,7 @@ export function ProfileCatalogSelector({
                         availability: unavailableLabel,
                       })}
                       aria-pressed={selected}
-                      disabled={!entry.available || catalogSurface.stale || ceremonyBusy}
+                      disabled={catalogSurface.stale || ceremonyBusy || editingPacks}
                       onClick={() => {
                         setSelectedProfileId(entry.profile_id);
                         onSelectedProfileId?.(entry.profile_id);
@@ -524,8 +530,13 @@ export function ProfileCatalogSelector({
             </>
           ) : null}
         </CardContent>
-      </Card>
+      </Card> : null}
 
+      {!showLoading && !showFailure && effectiveSelectedId && !selectedEntry ? (
+        <p role="alert" className="border border-border p-4 text-sm text-text-main">
+          Profile “{effectiveSelectedId}” is not in the current catalog. Select a Profile from the list.
+        </p>
+      ) : null}
       {selectedEntry ? (
         <>
           <Card>
@@ -534,6 +545,13 @@ export function ProfileCatalogSelector({
               <CardDescription>{t('profile_catalog.configure_description')}</CardDescription>
             </CardHeader>
             <CardContent>
+              <ProfilePackEditor
+                key={selectedEntry.profile_id}
+                entry={selectedEntry}
+                locked={!runtimeVerified || ceremonyBusy || catalogSurface.stale || catalogSurface.status !== 'ready'}
+                onEditingChange={setEditingPacks}
+                onSaved={() => catalogSurface.refresh(true)}
+              />
               <ProfileDefinitionDetails
                 entry={selectedEntry}
                 catalog={frontendCatalog}
@@ -547,7 +565,7 @@ export function ProfileCatalogSelector({
           </Card>
         </>
       ) : null}
-      {selectedEntry && catalogProjection && runtimeVerified ? (
+      {selectedEntry && catalogProjection && runtimeVerified && !editingPacks ? (
           <ProfileCeremonyPanel
             surface={profileSurface}
             packs={packs}
@@ -562,6 +580,8 @@ export function ProfileCatalogSelector({
           }}
           catalogSurface={catalogSurface}
         />
+      ) : editingPacks ? (
+        <p className="text-sm text-text-muted">Save or discard the Pack changes before reviewing this Profile for activation.</p>
       ) : selectedEntry && catalogProjection ? (
         <Card>
           <CardHeader>

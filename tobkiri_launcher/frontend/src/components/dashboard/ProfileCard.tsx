@@ -1,6 +1,5 @@
 import type {FormEvent} from 'react';
 import {
-  AlertCircle,
   CheckCircle2,
   Copy,
   Edit2,
@@ -8,6 +7,7 @@ import {
   Package,
   Rocket,
   Trash2,
+  XCircle,
 } from 'lucide-react';
 import {Link} from 'react-router';
 
@@ -98,7 +98,7 @@ export function ProfileCard({
     <Card
       aria-labelledby={`profile-${profile.profile_id}-title`}
       className={cn(
-        'group relative flex h-full min-w-0 w-full flex-col overflow-hidden transition-shadow duration-[var(--transition-base)] hover:shadow-[var(--shadow-md)]',
+        'group relative flex min-w-0 w-full flex-col overflow-hidden transition-shadow duration-[var(--transition-base)] hover:shadow-[var(--shadow-md)]',
         isActive && 'ring-1 ring-accent/30',
         isBrowsing && 'border-accent/50',
       )}
@@ -108,7 +108,7 @@ export function ProfileCard({
       <div className="relative aspect-[16/9] shrink-0 border-b border-border">
         <ProfileCover profileId={profile.profile_id} />
         {isActive && (
-          <span className="absolute left-3 top-3 inline-flex max-w-[calc(100%-4rem)] items-center gap-1.5 rounded-full border border-accent/40 bg-bg-main/90 px-2 py-1 text-xs font-medium text-accent">
+          <span className="absolute left-3 top-3 inline-flex max-w-[calc(100%-4rem)] items-center gap-1.5 rounded-md border border-accent/40 bg-bg-main/90 px-2 py-1 text-xs font-medium text-accent">
             <CheckCircle2 aria-hidden="true" className="h-3 w-3 shrink-0" />
             <span className="truncate">Active execution</span>
           </span>
@@ -125,15 +125,18 @@ export function ProfileCard({
             </PopoverTrigger>
             <PopoverContent align="right" className="w-48">
               <div className="flex flex-col gap-0.5 py-1">
+                <Link className={actionButtonClass()} role="menuitem" to={`${browseHref}#profile-packs`} aria-label={`Edit Packs for ${displayName}`}>
+                  <Package aria-hidden="true" className="h-3.5 w-3.5" /> Edit Packs
+                </Link>
                 <button
                   className={actionButtonClass()}
                   disabled={mutationDisabled}
                   onClick={() => onEdit(profile)}
                   role="menuitem"
-                  title={mutationsAvailable ? `Edit ${displayName}` : 'Profile catalog verification is unavailable'}
+                  title={mutationsAvailable ? `Rename ${displayName}` : 'Profile catalog verification is unavailable'}
                   type="button"
                 >
-                  <Edit2 aria-hidden="true" className="h-3.5 w-3.5" /> Edit
+                  <Edit2 aria-hidden="true" className="h-3.5 w-3.5" /> Rename
                 </button>
                 {isActive ? (
                   <button
@@ -191,17 +194,17 @@ export function ProfileCard({
         </div>
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col p-4">
+      <div className="flex min-w-0 flex-col p-4">
         <Link
           className="min-w-0 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
           to={browseHref}
           title={displayName}
         >
-          <h3 className="line-clamp-2 min-h-10 break-words text-sm font-semibold leading-5 text-text-main" id={`profile-${profile.profile_id}-title`}>
+          <h3 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-text-main" id={`profile-${profile.profile_id}-title`}>
             {displayName}
           </h3>
         </Link>
-        <p className="mt-1 line-clamp-2 min-h-10 break-words text-xs leading-5 text-text-muted">
+        <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-text-muted">
           {typeof profile.profile.description === 'string' && profile.profile.description.trim()
             ? profile.profile.description
             : 'Browse this Profile’s composition and review it before activation.'}
@@ -212,28 +215,9 @@ export function ProfileCard({
           <span aria-hidden="true">·</span>
           <span className="truncate" title={profileView.basePackId ?? undefined}>{profileView.basePackId ?? 'Base Pack unavailable'}</span>
         </p>
-        {(isBrowsing || profileView.status !== 'ready') && (
-          <div className="my-3 flex min-w-0 flex-wrap content-start gap-1.5">
-            {isBrowsing && <Badge variant="default">Selected browsing</Badge>}
-            {profileView.status !== 'ready' && (
-              <div
-                aria-label={profileErrorDiagnostic ?? undefined}
-                className="flex w-full items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/8 p-2.5 text-xs text-destructive"
-                role="alert"
-              >
-                <AlertCircle aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span className="min-w-0 flex-1 line-clamp-2">
-                  <span className="font-medium">{profileView.statusLabel}.</span>{' '}
-                  {profileView.statusDescription}
-                </span>
-                {profileErrorDiagnostic ? (
-                  <CopyErrorButton
-                    label={`Copy ${displayName} Profile error`}
-                    text={profileErrorDiagnostic}
-                  />
-                ) : null}
-              </div>
-            )}
+        {isBrowsing && (
+          <div className="mt-3">
+            <Badge variant="default">Selected browsing</Badge>
           </div>
         )}
 
@@ -259,7 +243,7 @@ export function ProfileCard({
           </form>
         )}
 
-        <div className="mt-auto flex min-w-0 flex-col gap-3 pt-3">
+        <div className="flex min-w-0 flex-col gap-3 pt-3">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <Link
               aria-label={`Browse and review ${displayName}`}
@@ -276,20 +260,37 @@ export function ProfileCard({
               <Package aria-hidden="true" className="h-3.5 w-3.5" /> Pack closure
             </Link>
           </div>
-          <div className="flex min-w-0 items-center justify-between gap-2 border-t border-border pt-3">
-            {profileView.status === 'ready' ? <Badge variant="success">Ready</Badge> : <span className="text-xs text-text-muted">Needs review</span>}
-            <Button
-              aria-label={`Launch ${displayName}`}
-              disabled={launchDisabled}
-              loading={isBusy && actionType === 'launch'}
-              onClick={() => onLaunch(profile)}
-              size="sm"
-              title={launchBlockedReason ?? `Launch ${displayName}`}
-              type="button"
-            >
-              <Rocket aria-hidden="true" className="h-3.5 w-3.5" />
-              {isBusy && actionType === 'launch' ? 'Launching…' : 'Launch'}
-            </Button>
+          <div className={cn('flex min-w-0 items-center gap-2 border-t border-border pt-3', profileErrorDiagnostic ? 'justify-end' : 'justify-between')}>
+            {profileView.status === 'ready' && <Badge variant="success">Ready</Badge>}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {profileErrorDiagnostic && (
+                <span className="sr-only" id={`profile-${profile.profile_id}-error`}>{profileErrorDiagnostic}</span>
+              )}
+              <Button
+                aria-label={`Launch ${displayName}`}
+                aria-describedby={profileErrorDiagnostic ? `profile-${profile.profile_id}-error` : undefined}
+                className={profileErrorDiagnostic ? 'disabled:opacity-100 disabled:text-text-muted' : undefined}
+                disabled={launchDisabled}
+                loading={isBusy && actionType === 'launch'}
+                onClick={() => onLaunch(profile)}
+                size="sm"
+                title={profileErrorDiagnostic ?? launchBlockedReason ?? `Launch ${displayName}`}
+                type="button"
+                variant={profileErrorDiagnostic ? 'outline' : 'default'}
+              >
+                {profileErrorDiagnostic
+                  ? <XCircle aria-hidden="true" className="h-3.5 w-3.5 text-destructive" data-launch-error />
+                  : <Rocket aria-hidden="true" className="h-3.5 w-3.5" />}
+                {isBusy && actionType === 'launch' ? 'Launching…' : 'Launch'}
+              </Button>
+              {profileErrorDiagnostic && (
+                <CopyErrorButton
+                  label={`Copy error details for ${displayName}`}
+                  visibleLabel="Copy error"
+                  text={profileErrorDiagnostic}
+                />
+              )}
+            </div>
           </div>
         </div>
       </div>

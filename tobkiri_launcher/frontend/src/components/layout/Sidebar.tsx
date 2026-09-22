@@ -36,6 +36,7 @@ const routeIcons: Record<PanelRouteKey, LucideIcon> = {
   setup: Home,
   packs: Folder,
   profile: UserRound,
+  account: UserRound,
   settings: Settings,
   profileWiring: Share2,
   profileFiles: FolderOpen,
@@ -247,7 +248,7 @@ export function Sidebar() {
                 <p className="text-xs text-text-muted">Launcher-local profile</p>
               </div>
               <nav className="flex flex-col gap-1 p-1" aria-label="Profile and settings">
-                {(['profile', 'settings'] as const).map((route) => {
+                {(['account', 'settings'] as const).map((route) => {
                   const meta = panelRouteMeta[route];
                   const Icon = routeIcons[route];
                   const isActive = location.pathname === meta.path;

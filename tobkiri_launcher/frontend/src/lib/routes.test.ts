@@ -37,7 +37,7 @@ test('viewer navigation keeps preferences separate and feature-gates one Devtool
   const defaultRoutes = new Set<string>(defaultGroups.flatMap((group) => group.routes));
   assert.ok(navRoutes.has('packs'));
   for (const route of [
-    'profile',
+    'account',
     'settings',
     'profileWiring',
     'profileFiles',
@@ -92,6 +92,7 @@ test('stable advanced panel paths map to rebuilt v4 surfaces', () => {
     'setup',
     'packs',
     'profile',
+    'account',
     'settings',
     'profileWiring',
     'profileFiles',
@@ -130,4 +131,10 @@ test('stable route activity does not confuse Profile with Profile Wiring or Prof
   assert.equal(isPanelRouteActive('/profile-graph', panelRoutes.profile), false);
   assert.equal(isPanelRouteActive('/profile-workspace', panelRoutes.profile), false);
   assert.equal(isPanelRouteActive('/packs/provider-pack', panelRoutes.packs), true);
+});
+
+test('execution Profile navigation belongs to Home, separate from personal settings', () => {
+  assert.equal(isPanelRouteActive('/profile', panelRoutes.home), true);
+  assert.equal(isPanelRouteActive('/account', panelRoutes.home), false);
+  assert.equal(isPanelRouteActive('/account', panelRoutes.profile), false);
 });

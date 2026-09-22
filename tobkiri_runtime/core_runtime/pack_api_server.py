@@ -2182,7 +2182,13 @@ location.replace({target_literal})}})
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
         try:
-            self._send_mapping_result(self._profile_registry_payload())
+            if path == "/api/v4/profiles/catalog":
+                from .bootstrap.profile_capture import host_profile_catalog
+                from .profile_composition_v4 import project_composition_catalog
+
+                self._send_mapping_result(project_composition_catalog(host_profile_catalog()))
+            else:
+                self._send_mapping_result(self._profile_registry_payload())
         except Exception:
             logger.exception("Named Profile registry read failed")
             self._send_mapping_result(
@@ -2211,6 +2217,7 @@ location.replace({target_literal})}})
                 {
                     "profile_id",
                     "display_name",
+                    "composition",
                     "expected_profile_revision",
                     "expected_store_generation",
                 }
@@ -2265,12 +2272,30 @@ location.replace({target_literal})}})
                     expected_store_generation=expected_generation,
                 )
             elif action == "update":
-                changed = store.update_profile(
-                    profile_id,
-                    patch={"display_name": display_name or profile_id},
-                    expected_profile_revision=expected_revision,
-                    expected_store_generation=expected_generation,
-                )
+                if "composition" in body:
+                    from .bootstrap.profile_capture import host_profile_catalog
+                    from .profile_composition_v4 import build_profile_composition
+
+                    if type(generation) is not int or generation < 0 or not expected_revision:
+                        raise ValueError("Profile composition requires exact revision fences")
+                    successor = build_profile_composition(
+                        host_profile_catalog(), profile_id, expected_revision,
+                        body["composition"],
+                    )
+                    changed = store.update_profile(
+                        profile_id,
+                        profile=successor,
+                        display_name=display_name,
+                        expected_profile_revision=expected_revision,
+                        expected_store_generation=expected_generation,
+                    )
+                else:
+                    changed = store.update_profile(
+                        profile_id,
+                        patch={"display_name": display_name or profile_id},
+                        expected_profile_revision=expected_revision,
+                        expected_store_generation=expected_generation,
+                    )
             elif action == "duplicate":
                 changed = store.duplicate_profile(
                     profile_id,
@@ -2373,7 +2398,7 @@ location.replace({target_literal})}})
         if path == "/api/setup/migration/status":
             self._send_mapping_result(self._setup_get_migration_status())
             return
-        if path == "/api/v4/profiles":
+        if path in {"/api/v4/profiles", "/api/v4/profiles/catalog"}:
             from .bootstrap.profile_capture import profile_capture_scope
 
             # Authentication and the registry projection both fence the same

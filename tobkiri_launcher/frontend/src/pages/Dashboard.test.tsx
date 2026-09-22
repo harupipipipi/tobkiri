@@ -12,6 +12,7 @@ import {
 } from './Dashboard';
 import type {NamedProfileRegistry} from '@/src/lib/api';
 import {DialogContainer} from '@/src/components/ui/DialogContainer';
+import {ToastContainer} from '@/src/components/ui/ToastContainer';
 import {useAppStore} from '@/src/store';
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
@@ -200,6 +201,74 @@ test('copyTextToClipboard returns false when the clipboard is unavailable', asyn
   assert.equal(success, false);
 });
 
+test('Home only reads Profiles, retries failures, and recovers without manual refresh', async (context) => {
+  const previous = Object.getOwnPropertyDescriptors(globalThis);
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createDashboardDom();
+  let requests = 0;
+  let failing = true;
+  const notices: string[] = [];
+  try {
+    context.mock.timers.enable({apis: ['setTimeout']});
+    globalThis.fetch = (async (input, init) => {
+      assert.equal(new URL(String(input), 'http://localhost').pathname, '/api/v4/profiles');
+      assert.equal(init?.method ?? 'GET', 'GET');
+      requests += 1;
+      return failing
+        ? new Response(JSON.stringify({success: false, error: 'Catalog temporarily unavailable'}), {
+          status: 503, headers: {'Content-Type': 'application/json'},
+        })
+        : jsonResponse(profileRegistry());
+    }) as typeof fetch;
+    useAppStore.setState({
+      runtimeReady: true,
+      hostCatalogVerified: true,
+      profileCeremonyAvailable: true,
+      defaultsBootstrapRequired: false,
+      toasts: [],
+      addToast: (message, type) => {
+        notices.push(message);
+        previousState.addToast(message, type);
+      },
+    });
+    await act(async () => root.render(<MemoryRouter><Dashboard /><ToastContainer /></MemoryRouter>));
+    assert.equal(requests, 1);
+    assert.equal(notices.length, 1);
+    assert.match(container.querySelector('[role="alert"]')?.textContent ?? '', /Catalog temporarily unavailable/);
+    assert.equal(container.querySelector('button[aria-label="Refresh Home and Profiles"]'), null);
+    assert.ok(![...container.querySelectorAll('button')].some((button) => button.textContent === 'Retry'));
+    assert.ok(buttonByLabel(container, 'Add Profile').disabled);
+
+    await act(async () => context.mock.timers.tick(3_000));
+    assert.equal(container.querySelector('[role="alert"]'), null, 'Notice leaves after three seconds');
+    await act(async () => context.mock.timers.tick(2_000));
+    assert.equal(requests, 2, 'Read is retried automatically');
+    assert.equal(notices.length, 1, 'The same failure does not repeat its notification');
+
+    failing = false;
+    await act(async () => context.mock.timers.tick(10_000));
+    assert.equal(requests, 3);
+    assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
+    assert.equal(container.querySelectorAll('[data-profile-card]').length, 2);
+    assert.equal(container.querySelector('[role="alert"]'), null);
+
+    failing = true;
+    await act(async () => context.mock.timers.tick(30_000));
+    assert.equal(notices.length, 2, 'A new failure after recovery is announced');
+    assert.equal(container.querySelectorAll('[data-profile-card]').length, 2, 'Last accepted cards stay visible');
+    assert.ok(buttonByLabel(container, 'Add Profile').disabled, 'Stale catalog cannot authorize writes');
+  } finally {
+    await act(async () => root.unmount());
+    context.mock.timers.reset();
+    dom.window.close();
+    for (const key of ['fetch', 'window', 'document', 'navigator', 'localStorage', 'sessionStorage', 'IS_REACT_ACT_ENVIRONMENT']) {
+      if (previous[key]) Object.defineProperty(globalThis, key, previous[key]);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+    useAppStore.setState(previousState, true);
+  }
+});
+
 test('duplicate Profile IDs are deterministic and never privilege Defaults', () => {
   assert.equal(nextDuplicateProfileId('work-a', ['defaults', 'work-a']), 'work-a-copy');
   assert.equal(
@@ -269,10 +338,7 @@ test('Home keeps the Profile catalog visible while gating ceremony in unresolved
         assert.match(container.textContent ?? '', /Profiles/, scenario.name);
         assert.match(container.textContent ?? '', /Defaults Profile/, scenario.name);
         assert.match(container.textContent ?? '', /Research Profile/, scenario.name);
-        const summary = container.querySelector('[aria-label="Workspace summary"]');
-        assert.ok(summary);
-        assert.match(summary.textContent ?? '', /Not verified/, scenario.name);
-        assert.doesNotMatch(summary.textContent ?? '', /Stopped|Running/, scenario.name);
+        assert.equal(container.querySelector('[aria-label="Workspace summary"]'), null);
         assert.ok(container.querySelector('input[aria-label="Search Profiles"]'));
 
         const addProfile = [...container.querySelectorAll('button')].find(
@@ -297,7 +363,7 @@ test('Home keeps the Profile catalog visible while gating ceremony in unresolved
         );
 
         await act(async () => { buttonByLabel(container, 'Open actions for Defaults Profile').click(); });
-        assert.ok(menuItemByText('Edit'));
+        assert.ok(menuItemByText('Rename'));
         assert.ok(menuItemByText('Active'));
         assert.ok(menuItemByText('Duplicate'));
         const defaultsDelete = menuItemByText('Delete') as HTMLButtonElement;
@@ -693,7 +759,7 @@ test('Home keeps a verified catalog writable after a rejected Profile mutation',
         buttonByLabel(container, 'Open actions for Research Profile').click();
       });
       await act(async () => {
-        menuItemByText('Edit').click();
+        menuItemByText('Rename').click();
       });
 
       const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="Display name for research"]');
@@ -779,7 +845,7 @@ test('Home blocks reentrant Profile mutations and releases only the matching bus
       });
       await settle();
       await act(async () => { buttonByLabel(container, 'Open actions for Research Profile').click(); });
-      await act(async () => { menuItemByText('Edit').click(); });
+      await act(async () => { menuItemByText('Rename').click(); });
 
       const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="Display name for research"]');
       assert.ok(nameInput);

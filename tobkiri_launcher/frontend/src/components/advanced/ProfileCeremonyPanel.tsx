@@ -72,7 +72,6 @@ function profileOperationId(step: unknown): string {
 
 export function ProfileCeremonyPanel({
   surface,
-  packs,
   loadPacks,
   client = defaultProfileCeremonyClient,
   onActivated,
@@ -93,7 +92,6 @@ export function ProfileCeremonyPanel({
   catalogSurface: RuntimeSurfaceState<RuntimeProfileCatalogProjection>;
   onBusyChange?: (busy: boolean) => void;
 }) {
-  const [selectedPackIds, setSelectedPackIds] = useState<string[]>([]);
   const [ceremonyState, setCeremonyState] = useState<CeremonyState>('idle');
   const [candidate, setCandidate] = useState<ProfileResolveResult | null>(null);
   const [reviewed, setReviewed] = useState<ProfileReviewResult | null>(null);
@@ -109,6 +107,7 @@ export function ProfileCeremonyPanel({
     [authoritativeSelection.entry],
   );
 
+  const selectedPackIds = authoritativePackIds ?? [];
   const catalogProjection = catalogSurface.data?.data ?? null;
   const catalogEntry = authoritativeSelection.entry;
   const catalogBindingStable = Boolean(
@@ -124,21 +123,6 @@ export function ProfileCeremonyPanel({
     )),
   );
   const selectedPackKey = selectedPackIds.slice().sort().join(',');
-  const catalogPackRows = selectedPackIds.map((id) => packs.find((pack) => pack.id === id) ?? null);
-  const catalogMissingPackIds = catalogPackRows.flatMap((pack, index) => pack ? [] : [selectedPackIds[index] ?? '']);
-  const catalogIncompatiblePackIds = catalogPackRows.flatMap((pack, index) => {
-    if (!pack) return [];
-    const closureEntry = catalogEntry?.pack_closure.find((item) => item.pack_id === pack.id);
-    const expectedArtifactDigest = closureEntry?.artifact_digest ?? pack.artifactDigest;
-    if (
-      pack.artifactDigest !== expectedArtifactDigest
-      || !pack.installed
-      || !pack.approved
-      || !pack.enabled
-    ) return [selectedPackIds[index] ?? pack.id];
-    return [];
-  });
-
   useEffect(() => {
     requestVersion.current += 1;
     busyRef.current = false;
@@ -150,10 +134,6 @@ export function ProfileCeremonyPanel({
     setFailure(null);
     setUnknownMutation(null);
   }, [catalogEntry.profile_id, catalogEntry.definition.digest, authoritativeSelection.catalogDigest, authoritativeSelection.bundleLockDigest]);
-
-  useEffect(() => {
-    setSelectedPackIds(authoritativePackIds ?? []);
-  }, [catalogEntry.profile_id, catalogEntry.definition.digest, authoritativePackIds]);
 
   useEffect(() => {
     const busy = ['resolving', 'reviewing', 'approving', 'activating'].includes(ceremonyState);
@@ -217,9 +197,7 @@ export function ProfileCeremonyPanel({
   const catalogSelectionAvailable = Boolean(
     catalogEntry.available
     && selectedPackIds.length > 0
-    && catalogBindingStable
-    && catalogMissingPackIds.length === 0
-    && catalogIncompatiblePackIds.length === 0,
+    && catalogBindingStable,
   );
   const unavailableProfileHeading = 'This Profile is unavailable in the verified catalog.';
   const unavailableProfileDiagnosticText = [
@@ -301,26 +279,6 @@ export function ProfileCeremonyPanel({
 
   const finishStep = (request: number): void => {
     if (requestVersion.current === request) busyRef.current = false;
-  };
-
-  const resetCeremony = () => {
-    requestVersion.current += 1;
-    busyRef.current = false;
-    setCeremonyState('idle');
-    setCandidate(null);
-    setReviewed(null);
-    setApproval(null);
-    setCeremonySnapshot(null);
-    setFailure(null);
-    setUnknownMutation(null);
-  };
-
-  const selectPack = (pack: Pack) => {
-    if (!pack.installed || !pack.approved || !pack.enabled || pack.required || ceremonyIsBusy) return;
-    if (ceremonyState !== 'idle') resetCeremony();
-    setSelectedPackIds((current) => current.includes(pack.id)
-      ? current.filter((id) => id !== pack.id)
-      : [...current, pack.id]);
   };
 
   const failClosed = (error: unknown) => {
@@ -724,10 +682,10 @@ export function ProfileCeremonyPanel({
     <Card id="profile-ceremony">
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2"><LockKeyhole className="h-4 w-4" aria-hidden="true" />Runtime Profile change ceremony</CardTitle>
+          <CardTitle className="flex items-center gap-2"><LockKeyhole className="h-4 w-4" aria-hidden="true" />Activate Profile</CardTitle>
           <Badge variant={isRuntimeReady ? 'warning' : 'secondary'}>{isRuntimeReady ? 'digest-bound' : 'locked'}</Badge>
         </div>
-        <CardDescription>The selected Profile is an authoritative definition. Inspect its exact closure and diff before each one-shot server-bound step. No client approval flag is accepted.</CardDescription>
+        <CardDescription>Check the saved configuration and its requested permissions before activation.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         <div className="grid gap-2 sm:grid-cols-4" aria-label="Profile change steps">
@@ -746,87 +704,17 @@ export function ProfileCeremonyPanel({
           })}
         </div>
 
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-semibold text-text-main">Authoritative Pack closure editor</h3>
-              <p className="mt-1 text-xs text-text-muted">
-                Stage a content-addressed successor closure for {catalogEntry.display_name}. Base, Shell, Application, and dependency bindings stay authoritative; optional Pack additions and removals are reviewed under the same Profile identity.
-              </p>
+        <div className="border border-border p-4">
+          <h3 className="text-sm font-semibold text-text-main">Saved configuration · {catalogEntry.display_name}</h3>
+          <p className="mt-1 text-sm text-text-muted">{selectedPackIds.length} selected Packs. Review the changes and permissions before making this the active Profile.</p>
+          {!catalogBindingStable ? <p role="status" className="mt-3 text-sm text-text-muted">Refreshing the saved Profile definition…</p> : null}
+          {!catalogEntry.available ? (
+            <div className="mt-3 flex items-start gap-2 text-sm text-destructive" role="alert">
+              <CircleAlert className="h-4 w-4 shrink-0" aria-hidden="true" data-error-icon="profile-ceremony-unavailable" />
+              <div className="min-w-0 flex-1"><p>{unavailableProfileHeading}</p><ul>{catalogEntry.diagnostics.map((diagnostic) => <li key={`${diagnostic.code}:${diagnostic.subject}`}>{diagnostic.code}: {diagnostic.subject}</li>)}</ul></div>
+              <CopyErrorButton label="Copy unavailable Profile diagnostics" text={unavailableProfileDiagnosticText} />
             </div>
-            <Badge variant={selectedPackKey === (authoritativePackIds ?? []).slice().sort().join(',') ? 'outline' : 'warning'}>
-              {selectedPackKey === (authoritativePackIds ?? []).slice().sort().join(',') ? 'Current closure' : 'Successor staged'}
-            </Badge>
-          </div>
-          <div className="mt-3 rounded-lg border border-border bg-bg-main p-4">
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <div><dt className="text-xs text-text-muted">Selected Profile</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{catalogEntry.profile_id}</dd></div>
-              <div><dt className="text-xs text-text-muted">Definition digest</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{catalogEntry.definition.digest}</dd></div>
-              <div><dt className="text-xs text-text-muted">Profile catalog digest</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{authoritativeSelection.catalogDigest}</dd></div>
-              <div><dt className="text-xs text-text-muted">Bundle lock digest</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{authoritativeSelection.bundleLockDigest}</dd></div>
-            </dl>
-            <div className="mt-4" role="group" aria-label={`Edit Pack closure for ${catalogEntry.display_name}`}>
-              <p className="text-xs font-medium text-text-main">Add Pack or remove an optional Pack</p>
-              {packs.length === 0 ? (
-                <p className="mt-3 rounded-lg border border-dashed border-border px-4 py-4 text-sm text-text-muted" role="status">No Pack catalog entries are available for this Profile closure.</p>
-              ) : (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {packs.map((pack) => {
-                    const selected = selectedPackIds.includes(pack.id);
-                    const eligible = pack.installed && pack.approved && pack.enabled && !pack.required;
-                    const reason = pack.required
-                      ? 'Required baseline'
-                      : !pack.installed
-                        ? 'Install required'
-                        : !pack.approved
-                          ? 'Authority approval required'
-                          : !pack.enabled
-                            ? 'Enable before adding'
-                            : null;
-                    return (
-                      <button
-                        aria-label={`${selected ? 'Remove' : 'Add'} Pack ${pack.name} ${selected ? 'from' : 'to'} ${catalogEntry.display_name} closure`}
-                        aria-pressed={selected}
-                        className="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-bg-card px-3 py-2 text-left transition-colors hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)] disabled:pointer-events-none disabled:opacity-60"
-                        disabled={!eligible || ceremonyIsBusy}
-                        key={pack.id}
-                        onClick={() => selectPack(pack)}
-                        type="button"
-                      >
-                        <span className={selected ? 'flex size-5 shrink-0 items-center justify-center rounded border border-accent bg-accent text-accent-fg' : 'size-5 shrink-0 rounded border border-border'} aria-hidden="true">
-                          {selected ? <CheckCircle2 className="h-4 w-4" /> : null}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-text-main">{selected ? 'Remove' : 'Add'} Pack · {pack.name}</span>
-                          <span className="block truncate text-xs text-text-muted">{pack.id} · {pack.enabled ? 'enabled' : 'disabled'} · {pack.approved ? 'approved' : 'not approved'} · {pack.installed ? 'installed' : 'not installed'}</span>
-                        </span>
-                        {reason ? <span className="max-w-32 text-right text-xs text-text-muted">{reason}</span> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            {catalogMissingPackIds.length > 0 ? (
-              <p className="mt-3 text-sm text-amber-700 dark:text-amber-300" role="alert">The current Pack catalog does not contain the exact requested entries: {catalogMissingPackIds.join(', ')}.</p>
-            ) : null}
-            {catalogIncompatiblePackIds.length > 0 ? (
-              <p className="mt-3 text-sm text-amber-700 dark:text-amber-300" role="alert">One or more requested Packs are not installed, approved, enabled, or digest-matched. Refresh the Pack catalog or complete its separate lifecycle before continuing.</p>
-            ) : null}
-            {!catalogBindingStable ? (
-              <div className="mt-3 flex items-start gap-2 text-sm text-amber-700 dark:text-amber-300" role="alert"><p className="min-w-0 flex-1">The authoritative Profile catalog is loading, stale, or no longer matches this selection. Ceremony actions are locked until it refreshes.</p></div>
-            ) : null}
-            {!catalogEntry.available ? (
-              <div className="mt-3 flex items-start gap-2 text-sm text-destructive" role="alert">
-                <CircleAlert aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" data-error-icon="profile-ceremony-unavailable" />
-                <div className="min-w-0 flex-1">
-                <p>{unavailableProfileHeading}</p>
-                <ul className="mt-1 list-disc pl-5">{catalogEntry.diagnostics.map((diagnostic) => <li key={`${diagnostic.code}:${diagnostic.subject}`}>{diagnostic.code}: {diagnostic.subject}</li>)}</ul>
-                </div>
-                <CopyErrorButton label="Copy unavailable Profile diagnostics" text={unavailableProfileDiagnosticText} />
-              </div>
-            ) : null}
-          </div>
+          ) : null}
         </div>
 
         {failure ? (

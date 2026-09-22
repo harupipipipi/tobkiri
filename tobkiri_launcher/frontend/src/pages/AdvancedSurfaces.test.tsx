@@ -1,3 +1,4 @@
+import {Profile} from './Profile';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {renderToStaticMarkup} from 'react-dom/server';
@@ -8,7 +9,6 @@ import {ApiMap} from './ApiMap';
 import {Flow} from './Flow';
 import {Graph} from './Graph';
 import {NodeManager} from './NodeManager';
-import {Profile} from './Profile';
 import {ProfileFiles} from './ProfileFiles';
 import {ProfileWiring} from './ProfileWiring';
 import {Settings} from './Settings';
@@ -16,7 +16,6 @@ import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
 import {useAppStore} from '@/src/store';
 
 const routePages = [
-  ['profile', Profile],
   ['settings', Settings],
   ['profileWiring', ProfileWiring],
   ['profileFiles', ProfileFiles],

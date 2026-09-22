@@ -10,7 +10,7 @@ export function ToastContainer() {
 
   return (
     <div
-      className={cn("fixed bottom-4 right-4 flex flex-col gap-2", viewerLayers.toast)}
+      className={cn("pointer-events-none fixed inset-x-4 top-4 mx-auto flex w-auto max-w-xl flex-col gap-2", viewerLayers.toast)}
       aria-live="polite"
       aria-atomic="false"
       role="status"
@@ -19,7 +19,7 @@ export function ToastContainer() {
         <div
           key={toast.id}
           className={cn(
-            "flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium shadow-[var(--shadow-lg)]",
+            "toast-notice pointer-events-auto flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium shadow-[var(--shadow-lg)]",
             toast.type === 'success'
               ? 'border-success/35 bg-bg-card text-success'
               : 'border-destructive/35 bg-bg-card text-destructive'

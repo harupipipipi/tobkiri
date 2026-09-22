@@ -36,6 +36,7 @@ import {
   LazyPacks,
   LazyNodeManager,
   LazyProfile,
+  LazyAccount,
   LazyProfileFiles,
   LazyProfileWiring,
   LazySettings,
@@ -528,6 +529,7 @@ export function RouteTree({
           <Route path={panelRoutes.packs.slice(1)} element={gateRuntimeRoute(<LazyPacks />)} />
           <Route path={`${panelRoutes.packs.slice(1)}/:id`} element={gateRuntimeRoute(<LazyPackDetail />)} />
           <Route path={panelRoutes.profile.slice(1)} element={<LazyProfile />} />
+          <Route path={panelRoutes.account.slice(1)} element={<LazyAccount />} />
           <Route path={panelRoutes.settings.slice(1)} element={<LazySettings />} />
           <Route path={panelRoutes.profileWiring.slice(1)} element={gateDevtoolsRoute(<LazyProfileWiring />)} />
           <Route path={panelRoutes.profileFiles.slice(1)} element={gateDevtoolsRoute(<LazyProfileFiles />)} />

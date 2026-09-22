@@ -241,15 +241,19 @@ function createDom(): {dom: JSDOM; container: HTMLElement; root: Root} {
   return {dom, container, root: createRoot(container)};
 }
 
+let previousFetch: typeof fetch;
 let previousLocalStorage: unknown;
 let previousSessionStorage: unknown;
 
 beforeEach(() => {
+  previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('Pack editor backend unavailable in catalog-only tests'); };
   previousLocalStorage = (globalThis as typeof globalThis & {localStorage?: unknown}).localStorage;
   previousSessionStorage = (globalThis as typeof globalThis & {sessionStorage?: unknown}).sessionStorage;
 });
 
 afterEach(() => {
+  globalThis.fetch = previousFetch;
   Object.defineProperties(globalThis, {
     localStorage: {value: previousLocalStorage, configurable: true},
     sessionStorage: {value: previousSessionStorage, configurable: true},
