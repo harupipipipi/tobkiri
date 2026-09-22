@@ -740,6 +740,17 @@ export function ChangeReviewPanel({ workspaceId }: { workspaceId?: string | null
             </div>
           )}
           </div>
+          {detailTabs
+            .filter((tab) => tab !== detailTab)
+            .map((tab) => (
+              <div
+                key={tab}
+                id={detailPanelId(tab)}
+                role="tabpanel"
+                aria-labelledby={detailTabId(tab)}
+                hidden
+              />
+            ))}
         </div>
       </div>
     </section>

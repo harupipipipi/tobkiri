@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "8244d678e466b1fc364161df746ed45a851492b09a2be29928bdf50ad7db289b",
+    "digest": "627c5977422820e03ef4ac90c35d5f010926f7b5f73b1376c6f0b0cef7a3dd35",
     "entries": [
       {
         "path": "index.html",
@@ -515,18 +515,18 @@
       },
       {
         "path": "src/components/coding/ChangeReviewPanel.tsx",
-        "size": 39202,
-        "sha256": "bfd21a5783117e2319e2870b145bd0f7a21fba3c013c507086ce3ab4559a674c"
+        "size": 39524,
+        "sha256": "1badba3c4b89daa34eea7a8dd72eda085246f66844075b508658f6c4bcd7a654"
       },
       {
         "path": "src/components/coding/CheckpointPanel.tsx",
-        "size": 14169,
-        "sha256": "f221f2fe22e677930768039464fdbcb2a7f8814ce2b4ec596846e490748e76ee"
+        "size": 14903,
+        "sha256": "7310ef65309e6a7f97e07c29d3f5d8aaa21c8e44521fc654acd48dff87fa0c95"
       },
       {
         "path": "src/components/coding/CodingCockpit.test.tsx",
-        "size": 7288,
-        "sha256": "e472e085570cb3ffd5647f5b2e6a55f16de8c84173910579f0f41b63064e0868"
+        "size": 7999,
+        "sha256": "ada22c210c73280cd79d8209ab36e39a875b1664752c880be9b08ad24cde9d6d"
       },
       {
         "path": "src/components/coding/CodingCockpit.tsx",
@@ -1856,7 +1856,7 @@
     ]
   },
   "bundle": {
-    "digest": "89033ea1978db6dcda08c8fcc2dfffb68a7b6273bf3a7bb1c2a6a2ab806ee1a8",
+    "digest": "b7fd15b35ad089ef2d09c24768fc953a656efef6edb0cb46f48f27a391ae2de7",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1870,8 +1870,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2214169,
-        "sha256": "091940b83bdc7c2acc018065178ef85b613d2298f664c55c6abdd8f50d0b34b7"
+        "size": 2214559,
+        "sha256": "a0529711f59ce3e966b89106ff4354041589af452746ce101961ddce2068fdc3"
       },
       {
         "path": "shell-rolldown-runtime.js",

@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { CheckpointPanel } from "./CheckpointPanel";
 import { ChangeReviewChecksTab } from "./ChangeReviewChecksTab";
+import { ChangeReviewPanel } from "./ChangeReviewPanel";
 import { CodingCockpit } from "./CodingCockpit";
 import { DiffPanel } from "./DiffPanel";
 import { TERMINAL_HISTORY_POLICY, TerminalPanel } from "./TerminalPanel";
@@ -180,6 +181,14 @@ test("coding cockpit renders workspace and sidecar sections", () => {
   assert.match(html, /role="tabpanel"/);
   assert.match(html, /role="list" aria-label="open reviews"/);
   assert.match(html, /role="tablist" aria-label="Review details"/);
+});
+
+test("review detail tabs keep a panel target for every tab", () => {
+  const html = renderToStaticMarkup(createElement(ChangeReviewPanel));
+
+  for (const tab of ["summary", "files", "checks", "review"]) {
+    assert.match(html, new RegExp(`id="change-review-[^"]+-panel-${tab}"`));
+  }
 });
 
 test("horizontal cockpit tabs follow APG arrow, Home, and End behavior", () => {

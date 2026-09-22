@@ -62,6 +62,8 @@ export function CheckpointPanel({
     workspaceId: string | null;
   } | null>(null);
   const handledApprovalKeys = useRef<Set<string>>(new Set());
+  const restoreTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreDialogRef = useRef<HTMLDivElement>(null);
 
   const applyCheckpoints = useCallback((next: CodingCheckpoint[]) => {
     setCheckpoints(next);
@@ -161,6 +163,20 @@ export function CheckpointPanel({
     setMessage(null);
     setPendingRestoreId(selectedSnapshotId);
   };
+
+  const cancelRestore = () => {
+    setPendingRestoreId(null);
+    const restoreFocus = () => restoreTriggerRef.current?.focus();
+    if (globalThis.requestAnimationFrame) {
+      globalThis.requestAnimationFrame(restoreFocus);
+    } else {
+      restoreFocus();
+    }
+  };
+
+  useEffect(() => {
+    if (pendingRestoreId) restoreDialogRef.current?.focus();
+  }, [pendingRestoreId]);
 
   const restoreCheckpoint = async () => {
     if (!pendingRestoreId) return;
@@ -305,6 +321,7 @@ export function CheckpointPanel({
           {checkpoints.length === 0 && <option value="">no checkpoints</option>}
         </select>
         <button
+          ref={restoreTriggerRef}
           type="button"
           disabled={busy || !selectedSnapshotId}
           onClick={requestRestore}
@@ -318,9 +335,16 @@ export function CheckpointPanel({
 
       {pendingRestoreId && (
         <div
+          ref={restoreDialogRef}
           role="alertdialog"
           aria-labelledby={restoreTitleId}
           aria-describedby={restoreDescriptionId}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            cancelRestore();
+          }}
           className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2"
         >
           <p id={restoreTitleId} className="text-[11px] font-semibold text-amber-100">
@@ -333,7 +357,7 @@ export function CheckpointPanel({
             <button
               type="button"
               disabled={busy}
-              onClick={() => setPendingRestoreId(null)}
+              onClick={cancelRestore}
               className="rounded border border-zinc-700 px-2 py-1 text-[10px] text-zinc-300 disabled:opacity-40"
             >
               Cancel
