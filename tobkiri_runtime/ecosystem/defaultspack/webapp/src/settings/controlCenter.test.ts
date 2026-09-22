@@ -57,6 +57,33 @@ test("Japanese settings use task-oriented copy while preserving technical search
   assert.match(settingsFieldSearchText(semanticField!), /embedding/);
 });
 
+test("Japanese model reasoning help distinguishes thinking level from DeepThink", () => {
+  const expectedThinkingHelp = "現在有効なモデル／プロファイルで、1回の応答ごとの推論の深さを指定します。DeepThinkのレビューループ（deepthink_enabled）を有効にしたり、セクション上限（deepthink_max_sections）を変更したりはしません。";
+  const expectedDeepThinkHelp = "長時間の複数ステップのレビューフローを有効にします。反復回数（deepthink_max_review_iterations）とセクション上限（deepthink_max_sections）は、モデルの推論の深さ（thinking_level）とは独立しています。";
+  const sections = buildControlCenterSections([
+    {
+      id: "models",
+      label: "Models",
+      fields: [
+        { id: "thinking_level", label: "Thinking level", type: "select" },
+        { id: "deepthink_enabled", label: "DeepThink enabled", type: "boolean" },
+      ],
+    },
+  ] as SettingsSection[], "ja");
+
+  const modelFields = sections.find((section) => section.id === "models_api")?.fields ?? [];
+  const thinkingLevel = modelFields.find((field) => field.id === "thinking_level");
+  const deepThinkEnabled = modelFields.find((field) => field.id === "deepthink_enabled");
+
+  assert.equal(thinkingLevel?.help, expectedThinkingHelp);
+  assert.equal(deepThinkEnabled?.help, expectedDeepThinkHelp);
+  assert.match(thinkingLevel?.help ?? "", /deepthink_enabled/);
+  assert.match(thinkingLevel?.help ?? "", /deepthink_max_sections/);
+  assert.match(deepThinkEnabled?.help ?? "", /deepthink_max_review_iterations/);
+  assert.match(deepThinkEnabled?.help ?? "", /deepthink_max_sections/);
+  assert.match(deepThinkEnabled?.help ?? "", /thinking_level/);
+});
+
 test("Japanese placement and provenance labels never expose raw registry copy", () => {
   assert.equal(localizedSettingsSourceLabel("general", "General", "ja"), "表示と操作");
   assert.equal(localizedSettingsSourceLabel("unknown_extension", "Internal Vector Registry", "ja"), "拡張機能の設定");

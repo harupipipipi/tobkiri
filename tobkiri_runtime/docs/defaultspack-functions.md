@@ -50,6 +50,8 @@ Model runtime settings are owned by `ModelRuntimeSettingsService`. The main entr
 
 When chat or AI completion params do not include `thinking_level`, defaultspack resolves the effective level server-side from conversation, profile, then global settings.
 
+`thinking_level` controls the per-response reasoning depth for the active model/profile. It does not enable or change the DeepThink review loop or its section budget. `deepthink_enabled` enables the longer multi-step review flow; `deepthink_max_review_iterations` and `deepthink_max_sections` limit that flow independently and are not `thinking_level`.
+
 ## Model Capabilities And Routing
 
 The model catalog now exposes capability metadata used by profile-aware routing:

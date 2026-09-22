@@ -274,8 +274,14 @@ const JA_FIELD_COPY: Record<string, LocalizedFieldCopy> = {
   "*.preferred_model_group": { label: "モデルグループ" },
   "*.auto_route_within_group": { label: "用途に合わせてグループ内で自動選択" },
   "*.model_api_routes": { label: "モデルごとのAPI接続" },
-  "*.thinking_level": { label: "考える深さ" },
-  "*.deepthink_enabled": { label: "長時間の深い検討を使う" },
+  "*.thinking_level": {
+    label: "考える深さ",
+    help: "現在有効なモデル／プロファイルで、1回の応答ごとの推論の深さを指定します。DeepThinkのレビューループ（deepthink_enabled）を有効にしたり、セクション上限（deepthink_max_sections）を変更したりはしません。",
+  },
+  "*.deepthink_enabled": {
+    label: "長時間の深い検討を使う",
+    help: "長時間の複数ステップのレビューフローを有効にします。反復回数（deepthink_max_review_iterations）とセクション上限（deepthink_max_sections）は、モデルの推論の深さ（thinking_level）とは独立しています。",
+  },
   "*.handoff": { label: "クラウド・別端末へ引き継ぐ" },
   "*.api_keys": { label: "APIキーとトークン" },
   "*.mention_policy": { label: "メンションの扱い" },
