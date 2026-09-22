@@ -241,6 +241,7 @@ def test_rebase_or_semantic_output_change_invalidates_review(tmp_path: Path) -> 
     assert invalidated["promotion_state"] == "candidate"
     assert invalidated["status"] == "unverified"
     assert invalidated["handoff"]["overall"] == "UNVERIFIED"
+    assert invalidated["handoff"]["handoff_digest"] != complete["handoff"]["handoff_digest"]
 
 
 def test_changed_predecessor_handoff_invalidates_dependent_review(tmp_path: Path) -> None:
@@ -265,10 +266,18 @@ def test_changed_predecessor_handoff_invalidates_dependent_review(tmp_path: Path
         "task-upstream",
         {"commit_sha": SHA_C, "tree_sha": SHA_A, "ordered_parents": [SHA_B], "clean": True},
     )
-    reconciled = ledger.reconcile_dependencies("task-dependent")
-    assert reconciled["promotion_state"] == "candidate"
-    assert reconciled["status"] == "unverified"
-    assert reconciled["handoff"]["overall"] == "UNVERIFIED"
+    with pytest.raises(WorktreeContractError) as error:
+        ledger.promote(
+            "task-dependent",
+            "stable",
+            exact_output_digest=dependent["handoff"]["output_digest"],
+        )
+    assert error.value.code == "PREDECESSOR_EVIDENCE_CHANGED"
+    invalidated = ledger.get("task-dependent")
+    assert invalidated["promotion_state"] == "candidate"
+    assert invalidated["status"] == "unverified"
+    assert invalidated["handoff"]["overall"] == "UNVERIFIED"
+    assert invalidated["handoff"]["handoff_digest"] != dependent["handoff"]["handoff_digest"]
 
 
 def test_partial_or_dirty_completion_can_never_claim_pass(tmp_path: Path) -> None:

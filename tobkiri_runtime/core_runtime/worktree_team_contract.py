@@ -387,21 +387,43 @@ class WorktreeTeamLedger:
         state = str(state).strip().lower()
         if state not in PROMOTION_STATES:
             raise WorktreeContractError("PROMOTION_INVALID", "Unknown evidence promotion state")
+        dependency_changed = False
         with self._transaction() as connection:
             record = self._record_for_update(connection, task_id)
-            packet = record.get("handoff")
-            if not packet or packet["overall"] != "PASS":
-                raise WorktreeContractError("PROMOTION_NOT_READY", "Only a complete PASS handoff can be promoted")
-            if exact_output_digest != packet["output_digest"]:
-                raise WorktreeContractError("OUTPUT_CHANGED", "Promotion is not bound to the exact reviewed output")
-            current = PROMOTION_STATES.index(record["promotion_state"])
-            requested = PROMOTION_STATES.index(state)
-            if requested > current + 1:
-                raise WorktreeContractError("PROMOTION_ORDER_INVALID", "Evidence states cannot be skipped")
-            record["promotion_state"] = state
-            self._save_record(connection, task_id, record)
-            self._event(connection, task_id, "task.promoted", {"state": state, "output_digest": exact_output_digest})
-            return deepcopy(record)
+            dependency_changed = self._invalidate_changed_dependencies(
+                connection, task_id, record
+            )
+            if not dependency_changed:
+                packet = record.get("handoff")
+                if not packet or packet["overall"] != "PASS":
+                    raise WorktreeContractError(
+                        "PROMOTION_NOT_READY", "Only a complete PASS handoff can be promoted"
+                    )
+                if exact_output_digest != packet["output_digest"]:
+                    raise WorktreeContractError(
+                        "OUTPUT_CHANGED", "Promotion is not bound to the exact reviewed output"
+                    )
+                current = PROMOTION_STATES.index(record["promotion_state"])
+                requested = PROMOTION_STATES.index(state)
+                if requested > current + 1:
+                    raise WorktreeContractError(
+                        "PROMOTION_ORDER_INVALID", "Evidence states cannot be skipped"
+                    )
+                record["promotion_state"] = state
+                self._save_record(connection, task_id, record)
+                self._event(
+                    connection,
+                    task_id,
+                    "task.promoted",
+                    {"state": state, "output_digest": exact_output_digest},
+                )
+                result = deepcopy(record)
+        if dependency_changed:
+            raise WorktreeContractError(
+                "PREDECESSOR_EVIDENCE_CHANGED",
+                "Promotion requires a fresh review after predecessor evidence changes",
+            )
+        return result
 
     def invalidate_review(self, task_id: str, output: Mapping[str, Any]) -> dict[str, Any]:
         normalized = _normalize_provenance(output, require_clean=False)
@@ -424,23 +446,7 @@ class WorktreeTeamLedger:
 
         with self._transaction() as connection:
             record = self._record_for_update(connection, task_id)
-            expected = record.get("predecessor_evidence") or {}
-            current: dict[str, str] = {}
-            for predecessor in record["manifest"]["required_predecessor_pass"]:
-                row = connection.execute(
-                    "SELECT record_json FROM worktree_tasks WHERE task_id = ?", (predecessor,)
-                ).fetchone()
-                predecessor_record = json.loads(row[0]) if row else {}
-                handoff = predecessor_record.get("handoff") or {}
-                current[predecessor] = str(handoff.get("handoff_digest") or "missing")
-            if current != expected:
-                record["promotion_state"] = "candidate"
-                record["status"] = "unverified"
-                if record.get("handoff"):
-                    record["handoff"]["overall"] = "UNVERIFIED"
-                record["dependency_change"] = {"expected": expected, "current": current}
-                self._save_record(connection, task_id, record)
-                self._event(connection, task_id, "review.invalidated_by_dependency", record["dependency_change"])
+            self._invalidate_changed_dependencies(connection, task_id, record)
             return deepcopy(record)
 
     def release(self, task_id: str, *, clean_boundary: bool) -> dict[str, Any]:
@@ -589,6 +595,38 @@ class WorktreeTeamLedger:
                 )
             evidence[predecessor] = str((json.loads(row[0]).get("handoff") or {})["handoff_digest"])
         return evidence
+
+    def _invalidate_changed_dependencies(
+        self,
+        connection: sqlite3.Connection,
+        task_id: str,
+        record: dict[str, Any],
+    ) -> bool:
+        """Persist invalidation when required predecessor evidence no longer matches."""
+
+        expected = record.get("predecessor_evidence") or {}
+        current: dict[str, str] = {}
+        for predecessor in record["manifest"]["required_predecessor_pass"]:
+            row = connection.execute(
+                "SELECT record_json FROM worktree_tasks WHERE task_id = ?", (predecessor,)
+            ).fetchone()
+            predecessor_record = json.loads(row[0]) if row else {}
+            handoff = predecessor_record.get("handoff") or {}
+            current[predecessor] = str(handoff.get("handoff_digest") or "missing")
+        if current == expected:
+            return False
+        record["promotion_state"] = "candidate"
+        record["status"] = "unverified"
+        packet = record.get("handoff")
+        if packet:
+            packet["overall"] = "UNVERIFIED"
+            packet["handoff_digest"] = _digest(
+                {key: value for key, value in packet.items() if key != "handoff_digest"}
+            )
+        record["dependency_change"] = {"expected": expected, "current": current}
+        self._save_record(connection, task_id, record)
+        self._event(connection, task_id, "review.invalidated_by_dependency", record["dependency_change"])
+        return True
 
     def _ownership_conflicts(
         self, connection: sqlite3.Connection, ownership: Mapping[str, Any]
