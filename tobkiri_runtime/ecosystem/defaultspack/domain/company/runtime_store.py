@@ -407,6 +407,34 @@ class CompanyRuntimeStore:
         task_ids: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Add a company message and return the stored record."""
+
+        message, _inserted = self.add_message_once(
+            company_id,
+            channel_id=channel_id,
+            sender_id=sender_id,
+            content=content,
+            thread_id=thread_id,
+            mentions=mentions,
+            task_ids=task_ids,
+            metadata=metadata,
+        )
+        return message
+
+    def add_message_once(
+        self,
+        company_id: str,
+        *,
+        channel_id: str = DEFAULT_CHANNEL_ID,
+        sender_id: str,
+        content: str,
+        thread_id: str | None = None,
+        mentions: list[str] | None = None,
+        task_ids: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        """Add a message and report whether this call won stable-ID insertion."""
+
         metadata_dict = metadata or {}
         message_id = _stable_sync_id("msg_sync_", metadata_dict) or gen_id("msg_")
         resolved_thread_id = thread_id or _stable_sync_id("thread_sync_", metadata_dict)
@@ -421,7 +449,7 @@ class CompanyRuntimeStore:
         tid = str(thread["thread_id"])
         now = utc_now()
         with self.conn:
-            self.conn.execute(
+            insert = self.conn.execute(
                 """
                 INSERT OR IGNORE INTO company_messages(
                   message_id, company_id, channel_id, thread_id, sender_id, content,
@@ -450,7 +478,11 @@ class CompanyRuntimeStore:
                 """,
                 (message_id, now, tid),
             )
-        return self.get_message(message_id) or {"message_id": message_id, "id": message_id}
+        message = self.get_message(message_id) or {
+            "message_id": message_id,
+            "id": message_id,
+        }
+        return message, insert.rowcount == 1
 
     def get_message(self, message_id: str) -> dict[str, Any] | None:
         row = self.conn.execute("SELECT * FROM company_messages WHERE message_id = ?", (str(message_id),)).fetchone()

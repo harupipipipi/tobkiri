@@ -340,6 +340,9 @@ class SubagentTeamService:
     def send_message(self, company_id: str, data: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any] | None:
         if self.company_store.get_company(company_id) is None:
             return None
+        sender_id = self._effective_actor_id(
+            company_id, data, context=context, fallback="user"
+        )
         supplied_client_message_id = data.get("client_message_id")
         client_message_id = _client_message_id(supplied_client_message_id)
         if supplied_client_message_id is not None and not client_message_id:
@@ -371,6 +374,7 @@ class SubagentTeamService:
                 if (
                     requested_content != original_content
                     or requested_channel != str(existing.get("channel_id") or "")
+                    or sender_id != str(existing.get("sender_id") or "")
                 ):
                     return _deny(
                         "client_message_id was already used for a different message",
@@ -388,7 +392,6 @@ class SubagentTeamService:
                     context=context or {},
                 )
         message = normalize_message_request(data)
-        sender_id = self._effective_actor_id(company_id, data, context=context, fallback="user")
         message["sender_id"] = sender_id
         rich = evaluate_rich_payload({**data, "content": message["content"]})
         target_agent_ids = self._resolve_target_agent_ids(

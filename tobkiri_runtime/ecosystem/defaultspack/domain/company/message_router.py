@@ -64,6 +64,19 @@ class CompanyMessageRouter:
         if sync_key:
             existing = self.runtime_store.get_message_by_sync_key(company_id, sync_key)
             if existing is not None:
+                if (
+                    str(existing.get("content") or "") != str(content)
+                    or str(existing.get("channel_id") or "") != str(channel_id)
+                    or str(existing.get("sender_id") or "") != str(sender_id)
+                ):
+                    return {
+                        "allowed": False,
+                        "denied": True,
+                        "code": "IDEMPOTENCY_CONFLICT",
+                        "reason": (
+                            "sync key was already used for a different message"
+                        ),
+                    }
                 task_ids = [str(item) for item in existing.get("task_ids") or []]
                 return {
                     "message": existing,
@@ -95,7 +108,7 @@ class CompanyMessageRouter:
             "unresolved": fallback_mentions,
         }
         mentions = list(resolution.get("mentions") or [])
-        message = self.runtime_store.add_message(
+        message, inserted = self.runtime_store.add_message_once(
             company_id,
             channel_id=channel_id,
             sender_id=sender_id,
@@ -104,6 +117,35 @@ class CompanyMessageRouter:
             mentions=mentions,
             metadata=metadata or {},
         )
+        if sync_key and not inserted:
+            if (
+                str(message.get("content") or "") != str(content)
+                or str(message.get("channel_id") or "") != str(channel_id)
+                or str(message.get("sender_id") or "") != str(sender_id)
+            ):
+                return {
+                    "allowed": False,
+                    "denied": True,
+                    "code": "IDEMPOTENCY_CONFLICT",
+                    "reason": "sync key was already used for a different message",
+                }
+            task_ids = [str(item) for item in message.get("task_ids") or []]
+            return {
+                "message": message,
+                "task": self.runtime_store.get_task(
+                    task_ids[0], company_id=company_id
+                )
+                if task_ids
+                else None,
+                "tasks": [
+                    self.runtime_store.get_task(task_id, company_id=company_id)
+                    for task_id in task_ids
+                ],
+                "routes": [],
+                "resolution": {"idempotent_replay": True},
+                "idempotent_replay": True,
+                "deprecation": None,
+            }
         explicit_targets = [str(item) for item in (target_agent_ids or []) if str(item).strip()]
         target_ids = _dedupe([*list(resolution.get("resolved_agent_ids") or []), *explicit_targets])
         routes: list[dict[str, Any]] = []

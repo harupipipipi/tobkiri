@@ -826,6 +826,15 @@ def test_message_send_is_idempotent_and_exposes_delivery_status(tmp_path, monkey
     assert unauthorized["denied"] is True
     assert unauthorized["code"] == "CHANNEL_MEMBERSHIP_REQUIRED"
 
+    replay_as_another_actor = service.send_message(
+        company["id"],
+        payload,
+        context={"actor_id": "outside-agent"},
+    )
+    assert replay_as_another_actor["denied"] is True
+    assert replay_as_another_actor["code"] == "IDEMPOTENCY_CONFLICT"
+    assert not isinstance(replay_as_another_actor.get("message"), dict)
+
     conflict = service.send_message(
         company["id"],
         {**payload, "content": "changed after the first acceptance"},
@@ -864,6 +873,50 @@ def test_message_send_ignores_client_supplied_sync_key(tmp_path, monkeypatch):
     assert first is not None and second is not None
     assert first["message"]["id"] != second["message"]["id"]
     assert total == 2
+
+
+def test_router_stable_insert_closes_check_then_insert_race(tmp_path, monkeypatch):
+    _configure_temp_runtime(tmp_path, monkeypatch)
+    store, runtime_store, company = _create_workspace()
+
+    from domain.company.message_router import CompanyMessageRouter
+
+    router = CompanyMessageRouter(
+        company_store=store,
+        runtime_store=runtime_store,
+    )
+    monkeypatch.setattr(runtime_store, "get_message_by_sync_key", lambda *_: None)
+    metadata = {"sync_key": "subagent-team:company:concurrent-client-id"}
+
+    first = router.post_message(
+        company["id"],
+        content="same request",
+        sender_id="user",
+        channel_id="ops-company",
+        metadata=metadata,
+    )
+    replay = router.post_message(
+        company["id"],
+        content="same request",
+        sender_id="user",
+        channel_id="ops-company",
+        metadata=metadata,
+    )
+    conflict = router.post_message(
+        company["id"],
+        content="different request",
+        sender_id="user",
+        channel_id="ops-company",
+        metadata=metadata,
+    )
+    _messages, total = runtime_store.list_messages(company["id"], limit=20)
+
+    assert first is not None and replay is not None and conflict is not None
+    assert replay["idempotent_replay"] is True
+    assert replay["message"]["id"] == first["message"]["id"]
+    assert conflict["denied"] is True
+    assert conflict["code"] == "IDEMPOTENCY_CONFLICT"
+    assert total == 1
 
 
 def test_message_status_reports_missing_without_creating_side_effects(tmp_path, monkeypatch):
