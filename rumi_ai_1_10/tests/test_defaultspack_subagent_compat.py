@@ -301,6 +301,53 @@ def test_agent_run_subagent_delegate_policy_error_is_structured(monkeypatch):
     assert details["delegation_error"]["code"] == "SUBAGENT_PERMISSION_DENIED"
 
 
+def test_agent_run_subagent_hides_untrusted_delegation_error_fields(monkeypatch):
+    def fake_subagent_compat(*args, **kwargs):
+        return {
+            "status": "error",
+            "code": "SUBAGENT_TIMEOUT",
+            "error": "backend failed with api_key=not-for-users",
+            "raw_response": {"authorization": "Bearer not-for-users"},
+            "delegation_error": {
+                "category": "timeout",
+                "code": "SUBAGENT_TIMEOUT",
+                "message": "backend failed with api_key=not-for-users",
+                "details": {
+                    "route": "agent.delegate",
+                    "target_agent_id": "coding_engineer",
+                    "authorization": "Bearer not-for-users",
+                },
+            },
+        }
+
+    monkeypatch.setattr(
+        "blocks.agent.run_subagent.run_subagent_compat", fake_subagent_compat
+    )
+
+    result = run_subagent_block(
+        {"role_id": "delegate", "payload": {"task": "delegate this"}}, {}
+    )
+
+    rendered = str(result)
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "SUBAGENT_TIMEOUT"
+    assert result["error"]["details"]["delegation_error"] == {
+        "type": "subagent_delegation_error",
+        "category": "timeout",
+        "code": "SUBAGENT_TIMEOUT",
+        "details": {
+            "route": "agent.delegate",
+            "target_agent_id": "coding_engineer",
+        },
+        "actionable_hint": (
+            "Increase the subagent timeout or reduce the delegated task scope; "
+            "the child run did not return in time."
+        ),
+    }
+    assert "not-for-users" not in rendered
+    assert "authorization" not in rendered
+
+
 def test_tool_selector_no_longer_depends_on_special_subagent_only_path(monkeypatch):
     seen: dict[str, object] = {}
 
