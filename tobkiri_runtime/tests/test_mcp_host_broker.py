@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -32,6 +33,25 @@ _GATEWAY = "rumi_mcp_gateway_pack.mcp-gateway.call"
 _EXECUTOR = "rumi_tool_mcp_executor_pack.tool-executor.mcp"
 _EXECUTE = "rumi_tool_mcp_executor_pack.tool-mcp-execute"
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="staged child fixture requires POSIX")
+
+
+def _await_effect_state(invoke, effect_id, expected, *, timeout=30.0):
+    """Observe one already-resumed effect until it reaches a terminal state."""
+
+    deadline = time.monotonic() + timeout
+    while True:
+        status = invoke(
+            _EFFECT,
+            "interactive_effect.manage",
+            {"phase": "status", "effect_id": effect_id},
+        )
+        if status["state"] == expected:
+            return status
+        assert status["state"] in {"claimed", "dispatched"}, status
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            pytest.fail(f"effect did not reach {expected}: {status}")
+        time.sleep(min(0.05, remaining))
 
 
 class _McpGatewayBackend(_ShellPolicyPackVmBackend):
@@ -198,7 +218,11 @@ def test_real_broker_approves_one_owned_mcp_start_and_rejects_foreign_resume(
             ),
         },
     )
-    assert invoke(_EFFECT, "interactive_effect.manage", resume)["state"] == "succeeded"
+    resumed = invoke(_EFFECT, "interactive_effect.manage", resume)
+    assert resumed["state"] in {"claimed", "dispatched", "succeeded"}
+    if resumed["state"] != "succeeded":
+        resumed = _await_effect_state(invoke, pending["effect_id"], "succeeded")
+    assert resumed["state"] == "succeeded"
     connections = invoke(CONTRACT_ID, LIST, {})["connections"]
     assert len(connections) == 1 and connections[0]["status"] == "connected"
     assert invoke(CONTRACT_ID, LIST, {}, owner="foreign-session") == {"connections": []}
