@@ -119,13 +119,16 @@ def ensure_within_workspace(
 
 
 def server_approval_granted(context: dict[str, Any] | None, action_id: str) -> bool:
-    context = context if isinstance(context, dict) else {}
-    approvals = context.get("server_approvals")
-    if isinstance(approvals, dict) and bool(approvals.get(action_id)):
-        return True
-    return bool(
-        context.get("_server_side_approved") and context.get("_approved_action_id") == action_id
-    )
+    """Reject mapping-shaped approval claims at the compatibility boundary.
+
+    A plain ``dict`` has no provenance, even when its keys suggest that it was
+    prepared on the server.  The App Server client uses its Authority bridge
+    while handling an approval request; this legacy preflight cannot settle a
+    high-risk action from caller-provided context.
+    """
+
+    del context, action_id
+    return False
 
 
 def require_server_approval(
@@ -787,6 +790,8 @@ class CodexAppServerClient:
         }
         permission_profile = session.profile.get("permissions")
         if isinstance(permission_profile, str) and permission_profile:
+            if not self.experimental_api:
+                raise ProtocolError("permission profiles require experimentalApi")
             params["permissions"] = permission_profile
         else:
             params["sandboxPolicy"] = {

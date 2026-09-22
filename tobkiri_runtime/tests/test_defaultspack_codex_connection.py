@@ -797,9 +797,13 @@ def test_codex_app_server_protocol_errors_do_not_reflect_server_details():
 
 def test_frontend_registry_drops_client_supplied_codex_secret_payloads():
     from domain.frontend.registry import FrontendRegistry
+    from ecosystem.tobkiri_ui_settings_pack.runtime.store import FrontendSettingsStore
 
     with tempfile.TemporaryDirectory() as tmpdir:
         pack_root = Path(tmpdir)
+        settings_owner = FrontendSettingsStore(
+            pack_root / "user_data" / "shared" / "frontend_settings.json"
+        )
         token = _fresh_token()
         env = {
             "RUMI_DEFAULTSPACK_SECRETS_DIR": str(pack_root / "user_data" / "secrets"),
@@ -807,7 +811,9 @@ def test_frontend_registry_drops_client_supplied_codex_secret_payloads():
             "CODEX_ACCESS_TOKEN": "",
         }
         with patch.dict(os.environ, env, clear=False):
-            values = FrontendRegistry(pack_root=pack_root).update_settings(
+            values = FrontendRegistry(
+                pack_root=pack_root, settings_owner=settings_owner
+            ).update_settings(
                 {
                     "accounts_connections": {
                         "providers": {

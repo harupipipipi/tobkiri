@@ -105,13 +105,14 @@ def test_codex_app_server_workspace_boundary_and_server_approval(tmp_path):
             client_supplied_approved=True,
         )
 
-    backend.validate_action(
-        session,
-        "file.write",
-        target_path=inside,
-        context={"server_approvals": {"file.write": True}},
-        client_supplied_approved=False,
-    )
+    with pytest.raises(ServerApprovalRequiredError):
+        backend.validate_action(
+            session,
+            "file.write",
+            target_path=inside,
+            context={"server_approvals": {"file.write": True}},
+            client_supplied_approved=False,
+        )
 
     with pytest.raises(WorkspaceBoundaryError):
         backend.validate_action(
@@ -404,6 +405,23 @@ def test_permission_profiles_require_experimental_api(tmp_path):
     client, _transport = _initialized_client()
     with pytest.raises(ProtocolError, match="experimentalApi"):
         client._thread_config(tmp_path, permissions="workspace-write")
+
+
+def test_turn_permission_profile_requires_experimental_api(tmp_path):
+    from blocks.coding.codex_app_server import CodingSession, ProtocolError
+
+    client, transport = _initialized_client()
+    session = CodingSession(
+        "session-1",
+        str(tmp_path),
+        thread_id="thread-1",
+        profile={"permissions": "workspace-write"},
+    )
+
+    with pytest.raises(ProtocolError, match="experimentalApi"):
+        client.start_turn(session, "make a change")
+
+    assert not any(message.get("method") == "turn/start" for message in transport.sent)
 
 
 def test_required_configured_mcp_server_must_be_present(tmp_path):
