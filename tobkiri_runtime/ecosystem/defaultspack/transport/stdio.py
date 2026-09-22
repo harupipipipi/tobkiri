@@ -1,9 +1,7 @@
 import importlib
 import json
-import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from blocks._common import error, ok, timestamp
 from bridge.block_adapter import invoke_block

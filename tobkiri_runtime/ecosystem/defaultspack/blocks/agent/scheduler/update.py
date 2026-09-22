@@ -11,10 +11,7 @@ input_data:
     task            : dict  (optional) — partial or full task update
 """
 
-import sys
-import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 from domain.agent.scheduler import Scheduler

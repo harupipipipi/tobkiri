@@ -40,6 +40,7 @@ from core_runtime.panel_auth import PanelAuthManager
 from ecosystem.defaultspack.defaultspack.http_surface_presentation import (
     DefaultspackHTTPPresentation,
 )
+from ecosystem.defaultspack.domain.runtime_v4 import ActivationLockTimeout
 from tobkiri_host.errors import BackendUnavailableError, ProviderExecutionError
 from tobkiri_protocol.canonical import canonical_digest
 
@@ -209,6 +210,157 @@ def test_runtime_startup_readiness_fails_closed_for_presentation_requirement(
     assert dispatch.invocations == 0
     assert dispatch.approvals == 0
     assert dispatch.provisions == 0
+
+
+class _TransientLockDispatch(_StartupReadinessDispatch):
+    """Fail capture freshness with bounded activation-lock collisions."""
+
+    def __init__(self, *, timeouts: int = 0) -> None:
+        super().__init__()
+        self.timeouts = timeouts
+        self.profile_id = "defaults"
+        self.profile_revision = "sha256:" + "1" * 64
+        self.activation_id = "activation:test-pack-api"
+        self.plan_digest = "sha256:" + "2" * 64
+        self.security_epoch = 1
+
+    def assert_current(self) -> None:
+        self.current_checks += 1
+        if self.current_checks <= self.timeouts:
+            raise ActivationLockTimeout("activation process lock deadline exceeded")
+
+    def provider_metadata(
+        self, contract_id: str
+    ) -> tuple[Mapping[str, object], ...]:
+        providers = {
+            "conversation.turn.v1": (("defaultspack.conversation", "complete"),),
+            "defaults.dashboard.v1": (("defaultspack.dashboard", "read"),),
+        }
+        return tuple(
+            {
+                "provider_id": provider_id,
+                "operation_id": operation_id,
+                "profile_id": self.profile_id,
+                "profile_revision": self.profile_revision,
+                "activation_id": self.activation_id,
+                "plan_digest": self.plan_digest,
+            }
+            for provider_id, operation_id in providers.get(contract_id, ())
+        )
+
+
+def _install_lock_timeout_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the runtime port's timeout classifier at the real error type."""
+
+    from core_runtime import profile_runtime_port
+
+    class _Runtime:
+        @staticmethod
+        def is_activation_lock_timeout(error: BaseException) -> bool:
+            return isinstance(error, ActivationLockTimeout)
+
+    monkeypatch.setattr(profile_runtime_port, "_PROFILE_RUNTIME", _Runtime())
+
+
+def test_startup_assert_current_retries_transient_activation_lock_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A writer's bounded hold must not kill the surface before it serves."""
+
+    import core_runtime.pack_api_server as pack_api_server
+
+    _install_lock_timeout_classifier(monkeypatch)
+    monkeypatch.setattr(pack_api_server, "_ASSERT_CURRENT_RETRY_DELAY_SECONDS", 0.001)
+    monkeypatch.setattr(
+        pack_api_server, "_ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS", 0.002
+    )
+    dispatch = _TransientLockDispatch(timeouts=2)
+    server = PackAPIServer(port=0, dispatch_session=dispatch)  # type: ignore[arg-type]
+
+    server._assert_session_current(dispatch)
+
+    assert dispatch.current_checks == 3
+
+
+def test_startup_assert_current_does_not_retry_denials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-timeout capture failure must stay fail-closed immediately."""
+
+    _install_lock_timeout_classifier(monkeypatch)
+    dispatch = _TransientLockDispatch()
+
+    def denied() -> None:
+        dispatch.current_checks += 1
+        raise RuntimeError("captured Profile activation is stale")
+
+    monkeypatch.setattr(dispatch, "assert_current", denied)
+    server = PackAPIServer(port=0, dispatch_session=dispatch)  # type: ignore[arg-type]
+
+    with pytest.raises(RuntimeError, match="captured Profile activation is stale"):
+        server._assert_session_current(dispatch)
+
+    assert dispatch.current_checks == 1
+
+
+def test_startup_assert_current_retry_budget_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A permanently contended activation lock still fails inside the budget."""
+
+    import core_runtime.pack_api_server as pack_api_server
+
+    _install_lock_timeout_classifier(monkeypatch)
+    monkeypatch.setattr(pack_api_server, "_ASSERT_CURRENT_RETRY_BUDGET_SECONDS", 0.03)
+    monkeypatch.setattr(pack_api_server, "_ASSERT_CURRENT_RETRY_DELAY_SECONDS", 0.005)
+    monkeypatch.setattr(
+        pack_api_server, "_ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS", 0.01
+    )
+    dispatch = _StartupReadinessDispatch()
+
+    def always_locked() -> None:
+        dispatch.current_checks += 1
+        raise ActivationLockTimeout("activation process lock deadline exceeded")
+
+    monkeypatch.setattr(dispatch, "assert_current", always_locked)
+    server = PackAPIServer(port=0, dispatch_session=dispatch)  # type: ignore[arg-type]
+
+    started = time.monotonic()
+    with pytest.raises(ActivationLockTimeout, match="deadline exceeded"):
+        server._assert_session_current(dispatch)
+
+    assert dispatch.current_checks >= 2
+    assert time.monotonic() - started < 5
+
+
+def test_validate_contract_capture_retries_transient_lock_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Startup capture validation retries a bounded writer hold end to end."""
+
+    import core_runtime.pack_api_server as pack_api_server
+
+    _install_lock_timeout_classifier(monkeypatch)
+    monkeypatch.setattr(pack_api_server, "_ASSERT_CURRENT_RETRY_DELAY_SECONDS", 0.001)
+    monkeypatch.setattr(
+        pack_api_server, "_ASSERT_CURRENT_RETRY_DELAY_MAX_SECONDS", 0.002
+    )
+    monkeypatch.setattr(
+        pack_api_server,
+        "capture_host_contract",
+        lambda **kwargs: {"contract": "captured"},
+    )
+    dispatch = _TransientLockDispatch(timeouts=1)
+    server = PackAPIServer(
+        port=0,
+        dispatch_session=dispatch,  # type: ignore[arg-type]
+        application_presentation=DefaultspackHTTPPresentation(),
+    )
+
+    snapshot = server._validate_contract_capture(dispatch, _startup_readiness_routes())
+
+    assert snapshot == {"contract": "captured"}
+    assert dispatch.current_checks == 2
 
 
 def test_active_profile_registry_store_reuses_only_a_current_capture(

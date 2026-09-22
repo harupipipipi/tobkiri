@@ -1,10 +1,7 @@
 """Thread-safe instruction queue for runtime instruction injection."""
 
-import sys
-import os
 import threading
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id, timestamp
 

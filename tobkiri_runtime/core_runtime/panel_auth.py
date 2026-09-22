@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import re
 import secrets
 import threading
 import time
@@ -29,6 +30,11 @@ class PanelAuthBinding:
     activation_id: str
     plan_digest: str
     security_epoch: int
+
+
+# The approval-presenter grant key is the interactive request id the Launcher
+# approval window presents; it must stay within the Bridge's request-id shape.
+_PRESENTER_REQUEST_ID = re.compile(r"[A-Za-z0-9_-]{1,160}")
 
 
 class PanelAuthManager:
@@ -59,6 +65,9 @@ class PanelAuthManager:
         self._lock = threading.Lock()
         self._active_codes: Dict[str, Dict[str, Any]] = {}
         self._active_sessions: Dict[str, Dict[str, Any]] = {}
+        # request_id -> owner journal recorded while the verified presentation
+        # owner opens the dedicated Launcher approval window.
+        self._presenter_grants: Dict[str, Dict[str, Any]] = {}
 
     @staticmethod
     def _generate_secret_token() -> str:
@@ -84,6 +93,14 @@ class PanelAuthManager:
         ]
         for session_hash in expired_sessions:
             del self._active_sessions[session_hash]
+
+        expired_grants = [
+            request_id
+            for request_id, info in self._presenter_grants.items()
+            if info.get("expires_at", 0.0) <= now
+        ]
+        for request_id in expired_grants:
+            del self._presenter_grants[request_id]
 
     def validate_bootstrap_secret(self, candidate: str) -> bool:
         if not self._bootstrap_secret or not candidate:
@@ -124,12 +141,47 @@ class PanelAuthManager:
             "expires_in": self._code_ttl_seconds,
         }
 
+    def record_approval_presenter_grant(
+        self,
+        request_id: str,
+        journal_session: str,
+    ) -> None:
+        """Bind one approval-window exchange to the verified owner session.
+
+        The Host records this grant only after the interactive-approval port
+        proves that the caller invoking ``authority_approval.open`` already is
+        the request's presentation owner.  The grant therefore can only alias
+        the caller's own journal; it never derives authority from a
+        client-supplied owner identity.  The dedicated approval window holds a
+        separate cookie store and mints a fresh session through the one-time
+        ``?code=`` exchange, so the grant lets that exact exchange resolve to
+        the same presentation-owner session the request is bound to.
+        """
+
+        if (
+            not isinstance(request_id, str)
+            or _PRESENTER_REQUEST_ID.fullmatch(request_id) is None
+            or not isinstance(journal_session, str)
+            or not journal_session
+            or len(journal_session) > 512
+            or "." in journal_session
+        ):
+            raise ValueError("approval presenter grant is invalid")
+        now = time.time()
+        with self._lock:
+            self._cleanup_locked(now)
+            self._presenter_grants[request_id] = {
+                "journal_session": journal_session,
+                "expires_at": now + self._code_ttl_seconds,
+            }
+
     def exchange_code(
         self,
         code: str,
         binding: PanelAuthBinding,
         *,
         previous_session: str = "",
+        presenter_request_id: str = "",
     ) -> Optional[Dict[str, Any]]:
         if not code:
             return None
@@ -151,11 +203,23 @@ class PanelAuthManager:
             previous_hash = self._hash_value(previous_session)
             previous = self._active_sessions.get(previous_hash)
             previous_binding = previous.get("binding") if previous else None
+            presenter_grant = (
+                self._presenter_grants.get(presenter_request_id)
+                if isinstance(presenter_request_id, str) and presenter_request_id
+                else None
+            )
             # A fresh desktop code authorizes the new capture. The still-live
             # HttpOnly cookie only carries journal ownership across a Profile
-            # revision; it cannot authorize the new capture by itself.
+            # revision; it cannot authorize the new capture by itself.  An
+            # unexpired presenter grant additionally lets the dedicated
+            # approval window's exchange resolve to the verified owner journal.
             journal_session = session_hash
             if (
+                presenter_grant is not None
+                and presenter_grant.get("expires_at", 0.0) > now
+            ):
+                journal_session = str(presenter_grant["journal_session"])
+            elif (
                 previous is not None
                 and isinstance(previous_binding, PanelAuthBinding)
                 and previous_binding.profile_id == binding.profile_id
