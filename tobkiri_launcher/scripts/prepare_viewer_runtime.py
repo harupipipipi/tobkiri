@@ -13,6 +13,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Mapping, Sequence
@@ -279,6 +280,179 @@ def sign_development_macos_app(application: Path) -> None:
     )
 
 
+def _snapshot_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    """Return the fields that must remain stable while an artifact is copied."""
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_nlink,
+    )
+
+
+def _named_descriptor_identity(
+    metadata: os.stat_result,
+) -> tuple[int, int, int, int, int, int]:
+    """Compare a named path with a descriptor across Windows mode synthesis."""
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        stat.S_IFMT(metadata.st_mode),
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_nlink,
+    )
+
+
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    """Recognize POSIX links and Windows reparse points without following them."""
+    return stat.S_ISLNK(metadata.st_mode) or bool(
+        getattr(metadata, "st_file_attributes", 0) & 0x0400
+    )
+
+
+def _snapshot_development_shell_file(source: Path, destination: Path) -> None:
+    """Copy one Cargo output through a stable no-follow source descriptor."""
+    try:
+        before = source.lstat()
+    except OSError as exc:
+        raise RuntimeError(f"Development Shell file is unavailable: {source}") from exc
+    if _is_link_or_reparse(before) or not stat.S_ISREG(before.st_mode):
+        raise RuntimeError(f"Development Shell file must be regular: {source}")
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(source, flags)
+    except OSError as exc:
+        raise RuntimeError(f"Development Shell file could not be opened: {source}") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            _is_link_or_reparse(opened)
+            or not stat.S_ISREG(opened.st_mode)
+            or _named_descriptor_identity(before) != _named_descriptor_identity(opened)
+        ):
+            raise RuntimeError(f"Development Shell file changed before staging: {source}")
+        size = 0
+        with os.fdopen(descriptor, "rb", closefd=False) as input_handle:
+            with destination.open("xb") as output_handle:
+                for chunk in iter(lambda: input_handle.read(1024 * 1024), b""):
+                    output_handle.write(chunk)
+                    size += len(chunk)
+                output_handle.flush()
+                os.fsync(output_handle.fileno())
+                copied = os.fstat(output_handle.fileno())
+                if (
+                    not stat.S_ISREG(copied.st_mode)
+                    or copied.st_nlink != 1
+                    or copied.st_size != size
+                ):
+                    raise RuntimeError(
+                        f"Detached development Shell file is unsafe: {destination}"
+                    )
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+
+    try:
+        named_after = source.lstat()
+    except OSError as exc:
+        raise RuntimeError(f"Development Shell file changed while staging: {source}") from exc
+    if (
+        _is_link_or_reparse(named_after)
+        or _snapshot_identity(opened) != _snapshot_identity(after)
+        or _snapshot_identity(before) != _snapshot_identity(named_after)
+        or _named_descriptor_identity(after) != _named_descriptor_identity(named_after)
+        or size != after.st_size
+    ):
+        raise RuntimeError(f"Development Shell file changed while staging: {source}")
+    destination.chmod(stat.S_IMODE(after.st_mode))
+
+
+def _snapshot_development_shell_entry(source: Path, destination: Path) -> None:
+    """Create a detached, symlink-free snapshot of one file or directory tree."""
+    try:
+        before = source.lstat()
+    except OSError as exc:
+        raise RuntimeError(f"Development Shell artifact is unavailable: {source}") from exc
+    if _is_link_or_reparse(before):
+        raise RuntimeError(f"Development Shell artifact may not contain links: {source}")
+    if stat.S_ISREG(before.st_mode):
+        _snapshot_development_shell_file(source, destination)
+        return
+    if not stat.S_ISDIR(before.st_mode):
+        raise RuntimeError(f"Development Shell artifact entry is unsupported: {source}")
+
+    destination.mkdir(exist_ok=False)
+    for child in sorted(source.iterdir(), key=lambda item: item.name):
+        _snapshot_development_shell_entry(child, destination / child.name)
+    try:
+        after = source.lstat()
+    except OSError as exc:
+        raise RuntimeError(f"Development Shell directory changed while staging: {source}") from exc
+    if _is_link_or_reparse(after) or _snapshot_identity(before) != _snapshot_identity(after):
+        raise RuntimeError(f"Development Shell directory changed while staging: {source}")
+    destination.chmod(stat.S_IMODE(after.st_mode))
+
+
+def _validate_detached_development_shell(path: Path) -> None:
+    """Require every published snapshot file to have one ordinary directory entry."""
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise RuntimeError(f"Detached development Shell is unavailable: {path}") from exc
+    if _is_link_or_reparse(metadata):
+        raise RuntimeError(f"Detached development Shell may not contain links: {path}")
+    if stat.S_ISREG(metadata.st_mode):
+        if metadata.st_nlink != 1:
+            raise RuntimeError(f"Detached development Shell file is hard-linked: {path}")
+        return
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise RuntimeError(f"Detached development Shell entry is unsupported: {path}")
+    for child in sorted(path.iterdir(), key=lambda item: item.name):
+        _validate_detached_development_shell(child)
+
+
+def stage_development_shell_artifact(source: Path, destination: Path) -> Path:
+    """Atomically publish an independent snapshot for launch and packaging.
+
+    Cargo may expose its Windows executable through multiple hard links.  That is
+    valid for a compiler output, but it is not an immutable packaging input.  Copy
+    through stable source descriptors into an unpredictable private tree so the
+    strict Defaults generator can continue to reject all linked inputs.
+    """
+    if destination.exists() or destination.is_symlink():
+        raise RuntimeError(f"Development Shell staging destination exists: {destination}")
+    try:
+        parent = destination.parent.lstat()
+    except OSError as exc:
+        raise RuntimeError(
+            f"Development Shell staging directory is unavailable: {destination.parent}"
+        ) from exc
+    if _is_link_or_reparse(parent) or not stat.S_ISDIR(parent.st_mode):
+        raise RuntimeError(f"Development Shell staging directory is unsafe: {destination.parent}")
+
+    temporary_root = Path(
+        tempfile.mkdtemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
+    )
+    temporary = temporary_root / "artifact"
+    published = False
+    try:
+        _snapshot_development_shell_entry(source, temporary)
+        _validate_detached_development_shell(temporary)
+        os.replace(temporary, destination)
+        published = True
+        _validate_detached_development_shell(destination)
+    finally:
+        if temporary_root.exists():
+            shutil.rmtree(temporary_root)
+    if not published:
+        raise RuntimeError(f"Development Shell snapshot was not published: {destination}")
+    return destination
+
+
 def prepare_dev_pack_shell(repo_root: Path, target: str) -> Path:
     """Build and stage the verified checkout Pack Shell."""
     manifest = repo_root / "pack-shell" / "Cargo.toml"
@@ -291,7 +465,9 @@ def prepare_dev_pack_shell(repo_root: Path, target: str) -> Path:
     if not binary.is_file():
         raise RuntimeError(f"Development pack-shell was not produced: {binary}")
     digest_path = binary.with_name(f"{binary.name}.sha256")
-    digest_path.write_text(hashlib.sha256(binary.read_bytes()).hexdigest() + "\n", encoding="ascii")
+    digest_path.write_bytes(
+        (hashlib.sha256(binary.read_bytes()).hexdigest() + "\n").encode("ascii")
+    )
     bundled_root = repo_root / "tobkiri_runtime" / "bundled"
     bundled_root.mkdir(parents=True, exist_ok=True)
     copy_dev_uv(binary, bundled_root / binary_name)
@@ -348,16 +524,14 @@ def prepare_dev_defaults(repo_root: Path, target: str) -> Path:
     # location there so a debug Launcher can verify the exact bytes it will
     # launch without weakening packaged release bindings.
     dev_shell_root = runtime_root / "bundled" / "dev-shell"
-    if dev_shell_root.exists():
-        if dev_shell_root.is_symlink() or not dev_shell_root.is_dir():
+    if dev_shell_root.exists() or dev_shell_root.is_symlink():
+        metadata = dev_shell_root.lstat()
+        if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
             raise RuntimeError(f"Unsafe development Shell output: {dev_shell_root}")
         shutil.rmtree(dev_shell_root)
     dev_shell_root.mkdir(parents=True)
     staged_shell = dev_shell_root / str(spec["relative_path"])
-    if artifact.is_dir():
-        shutil.copytree(artifact, staged_shell)
-    else:
-        shutil.copy2(artifact, staged_shell)
+    stage_development_shell_artifact(artifact, staged_shell)
 
     output_root = launcher_root / "src-tauri" / "target" / "dev-defaults"
     if output_root.exists():
@@ -400,7 +574,7 @@ def prepare_dev_defaults(repo_root: Path, target: str) -> Path:
             [
                 python, "-I", "-B", "-c", ISOLATED_MODULE_CODE,
                 runtime_root, "scripts.generate_packaged_defaultspack_v4_bundle",
-                "--source-artifact", artifact,
+                "--source-artifact", staged_shell,
                 "--bundle-root", bundle_root,
                 "--artifact-root", artifact_root,
                 "--relative-path", str(spec["relative_path"]),
