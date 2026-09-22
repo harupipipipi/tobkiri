@@ -32,24 +32,12 @@ class AzureAIFoundryProvider(BaseProvider):
         self._connection = self._configured_connection()
         self._api_key = self._configured_api_key(self._connection)
         self._base_url = str(self._connection.get("base_url") or "").strip().rstrip("/")
-        self._api_version = str(
-            os.environ.get("AZURE_AI_FOUNDRY_API_VERSION", self.DEFAULT_API_VERSION)
-            or self.DEFAULT_API_VERSION
-        ).strip()
-        self._inference_api_version = str(
-            os.environ.get(
-                "AZURE_AI_FOUNDRY_INFERENCE_API_VERSION",
-                self.DEFAULT_INFERENCE_API_VERSION,
-            )
-            or self.DEFAULT_INFERENCE_API_VERSION
-        ).strip()
+        self._api_version = str(self.DEFAULT_API_VERSION).strip()
+        self._inference_api_version = str(self.DEFAULT_INFERENCE_API_VERSION).strip()
         self._ssl_ctx = ssl.create_default_context()
 
     @classmethod
     def _configured_connection(cls) -> Dict[str, Any]:
-        configured = str(os.environ.get("AZURE_AI_FOUNDRY_ENDPOINT") or "").strip()
-        if configured:
-            return {"base_url": configured}
         for connection in provider_named_api_keys(cls.provider_id):
             if connection.get("configured") and str(connection.get("base_url") or "").strip():
                 return dict(connection)
@@ -57,9 +45,6 @@ class AzureAIFoundryProvider(BaseProvider):
 
     @classmethod
     def _configured_api_key(cls, connection: Dict[str, Any]) -> str:
-        direct = str(os.environ.get("AZURE_AI_FOUNDRY_API_KEY") or "").strip()
-        if direct:
-            return direct
         api_id = str(connection.get("api_id") or "").strip()
         return str(read_provider_api_key(cls.provider_id, api_id) or "").strip() if api_id else ""
 

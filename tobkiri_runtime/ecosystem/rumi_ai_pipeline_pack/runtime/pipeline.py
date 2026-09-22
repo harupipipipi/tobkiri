@@ -5,6 +5,12 @@ from __future__ import annotations
 from typing import Any, Callable, Mapping
 
 from core_runtime.global_contract_dispatch import GlobalContractInvocationError
+from core_runtime.host_provider_backend_v4 import (
+    CapturedHostProviderV4,
+    HostProviderCaptureContextV4,
+    HostProviderContributionV4,
+    HostProviderInvocationContextV4,
+)
 
 _RETRYABLE = {"provider_unavailable", "quota", "invalid_response"}
 _REQUIREMENT_KEYS = {
@@ -30,7 +36,12 @@ def create_prepare_operation(
     del client
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        if name not in {"prepare", "normalize"}:
+        if name not in {
+            "prepare",
+            "normalize",
+            "rumi_ai_pipeline_pack.ai-request-prepare.generate",
+            "rumi_ai_pipeline_pack.ai-request-prepare.stream",
+        }:
             raise ValueError(f"unknown AI pipeline operation: {name}")
         decision_time = _number(payload.get("decision_time"))
         if decision_time is None:
@@ -86,7 +97,12 @@ def create_failover_operation(
     del client
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        if name not in {"decide", "allow"}:
+        if name not in {
+            "decide",
+            "allow",
+            "rumi_ai_pipeline_pack.ai-failover-decide.generate",
+            "rumi_ai_pipeline_pack.ai-failover-decide.stream",
+        }:
             raise ValueError(f"unknown AI failover operation: {name}")
         error_code = str(payload.get("error_code") or "")
         attempt = max(1, int(payload.get("attempt") or 1))
@@ -121,3 +137,97 @@ def _number(value: Any) -> float | None:
         return float(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+_PACK_ID = "rumi_ai_pipeline_pack"
+_PIPELINE_OPERATIONS: dict[
+    str,
+    tuple[str, Callable[[Any], Callable[[str, Mapping[str, Any]], dict[str, Any]]]],
+] = {
+    "rumi_ai_pipeline_pack.ai-pipeline.prepare": (
+        "prepare",
+        create_prepare_operation,
+    ),
+    "rumi_ai_pipeline_pack.ai-pipeline.failover": (
+        "decide",
+        create_failover_operation,
+    ),
+}
+
+
+class AIPipelineHostFactoryV4:
+    """Bind one manifest-selected pipeline function to Host broker dispatch."""
+
+    def __init__(self, function_id: str) -> None:
+        if function_id not in _PIPELINE_OPERATIONS:
+            raise ValueError("AI pipeline function is not registered")
+        self.function_id = function_id
+
+    def capture(
+        self,
+        context: HostProviderCaptureContextV4,
+    ) -> CapturedHostProviderV4:
+        """Capture only bindings that resolve to this exact pipeline function."""
+
+        if not context.provider_bindings or any(
+            binding.function.function_id != self.function_id
+            for binding in context.provider_bindings
+        ):
+            raise PermissionError("AI pipeline bindings are incomplete")
+        operation_name, operation_factory = _PIPELINE_OPERATIONS[self.function_id]
+
+        def invoke(
+            _operation_id: str,
+            payload: Mapping[str, Any],
+            invocation: HostProviderInvocationContextV4,
+        ) -> Mapping[str, Any]:
+            # This function has no manifest requested contract edges. Still
+            # obtain the invocation-bound client so it cannot acquire ambient
+            # Host capabilities if the pure operation grows in the future.
+            client = invocation.contract_client(
+                allowed_contract_ids=frozenset(),
+                consumer_pack_id=_PACK_ID,
+            )
+            return operation_factory(client)(operation_name, payload)
+
+        contributions = _contributions(context, invoke)
+        return CapturedHostProviderV4(tuple(contributions), lambda: None)
+
+
+def _contributions(
+    context: HostProviderCaptureContextV4,
+    invoke: Callable[
+        [str, Mapping[str, Any], HostProviderInvocationContextV4], Mapping[str, Any]
+    ],
+) -> list[HostProviderContributionV4]:
+    """Project verified bindings into exact Host Provider contributions."""
+
+    contributions: list[HostProviderContributionV4] = []
+    for binding in context.provider_bindings:
+        key = (
+            binding.operation.contract_id,
+            binding.operation.operation_id,
+            binding.principal_ref.value,
+        )
+        domain_id = context.domain_ids.get(key)
+        if domain_id is None:
+            raise PermissionError("AI pipeline domain binding is unavailable")
+        contributions.append(
+            HostProviderContributionV4(
+                contract_id=binding.operation.contract_id,
+                contract_version=binding.operation.contract_version,
+                operation_id=binding.operation.operation_id,
+                principal_id=binding.principal_ref.value,
+                artifact_digest=binding.artifact.digest,
+                implementation_digest=binding.function.implementation_digest,
+                domain_id=domain_id,
+                invoke=invoke,
+            )
+        )
+    return contributions
+
+
+HOST_PROVIDER_FACTORY = {
+    function_id: AIPipelineHostFactoryV4(function_id)
+    for function_id in _PIPELINE_OPERATIONS
+}

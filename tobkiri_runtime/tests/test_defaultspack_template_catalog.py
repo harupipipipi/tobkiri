@@ -39,7 +39,10 @@ def test_template_projector_builds_stable_catalog_metadata():
     assert "rumi.composer.default" in template_ids
     assert "rumi.external_io.default" in template_ids
     assert "rumi.backend.prompt_compaction.default" in template_ids
-    assert "rumi.prompt_workspace.default" in template_ids
+    # Prompt Workspace is owned by the optional Prompt Studio pack. The
+    # defaultspack catalog must not synthesize that surface when its owner is
+    # not selected.
+    assert "rumi.prompt_workspace.default" not in template_ids
     assert "rumi.ambient_trigger.default" in template_ids
 
     assert _field_types(catalog["settings_sections"]) >= {
@@ -63,8 +66,9 @@ def test_template_projector_builds_stable_catalog_metadata():
     )
     assert any(item.get("service_id") == "prompt_compactor" for item in catalog["backend_services"])
     assert any(
-        item.get("method") == "POST" and item.get("path") == "/api/prompts/compact"
-        for item in catalog["api_routes"]
+        item.get("action_id") == "compact_prompt"
+        and item.get("route_path") == "/api/prompts/compact"
+        for item in catalog["actions"]
     )
     assert any(
         item.get("service_id") == "ambient_trigger_router"
@@ -109,13 +113,15 @@ def test_model_selector_schema_is_projected_to_every_model_and_provider_field():
         field
         for section in catalog["settings_sections"]
         for field in section.get("fields", [])
-        if field.get("type") in {"model_select", "provider_select"}
+        if field.get("type") in {"model_select", "provider_select", "model_api_routes"}
     ]
 
     assert selector_fields
     selector_schema = selector_fields[0]["selector_schema"]
     assert selector_schema["version"] == 1
     assert selector_schema["layout"]["provider_confirm_key"] == "Tab"
+    assert selector_schema["layout"]["show_search"] is True
+    assert selector_schema["layout"]["trigger_height_px"] == 44
     assert selector_schema["filters"]["exclude_model_ids"] == []
     assert all(field["selector_schema"] == selector_schema for field in selector_fields)
 
@@ -143,6 +149,14 @@ def test_template_catalog_projects_composer_surface_pieces():
     context_policy = next(
         item for item in catalog["context_policies"] if item.get("id") == "materialize_txt"
     )
+    general_section = next(
+        section for section in catalog["settings_sections"] if section["id"] == "general"
+    )
+    manual_mode_field = next(
+        field
+        for field in general_section["fields"]
+        if field.get("id") == "manual_runtime_mode_selection"
+    )
 
     assert command["execution"] == {
         "type": "pack_block",
@@ -159,8 +173,18 @@ def test_template_catalog_projects_composer_surface_pieces():
     assert shell_renderer["component"] == "Composer"
     assert shell_renderer["regions"] == ["composer"]
     assert context_policy["mode"] == "materialize_txt"
+    assert manual_mode_field["default"] is False
+    assert manual_mode_field["advanced"] is True
+    assert manual_mode_field["control_center_section"] == "advanced"
 
-    projected = [command, composer_input, shell_region, shell_renderer, context_policy]
+    projected = [
+        command,
+        composer_input,
+        shell_region,
+        shell_renderer,
+        context_policy,
+        manual_mode_field,
+    ]
     assert {item["template_id"] for item in projected} == {"rumi.composer.default"}
     assert {item["trust_level"] for item in projected} == {"builtin"}
     assert all(item["projected_id"].startswith("rumi.composer.default:") for item in projected)
@@ -223,57 +247,28 @@ def test_template_catalog_projects_external_io_and_prompt_compaction_bundles():
     assert token_source["route_path"] == "/api/context/token-estimate"
     assert compact_action["route_path"] == "/api/context/compact"
 
-def test_template_catalog_projects_prompt_workspace_bundle():
+def test_template_catalog_does_not_synthesize_unselected_prompt_workspace_bundle():
     catalog = build_template_catalog(defaultspack_root=DEFAULTSPACK_ROOT)
 
-    prompt_studio_component = next(
-        item for item in catalog["component_bindings"] if item.get("part_id") == "prompt_studio"
-    )
-    command_center_component = next(
-        item
+    assert "rumi.prompt_workspace.default" not in {
+        template["id"] for template in catalog["templates"]
+    }
+    assert not any(
+        item.get("part_id") in {"prompt_studio", "prompt_command_center"}
         for item in catalog["component_bindings"]
-        if item.get("part_id") == "prompt_command_center"
     )
-    sidebar_item = next(
-        item for item in catalog["sidebar_items"] if item.get("id") == "prompt_workspace_sidebar"
+    assert not any(
+        item.get("id") == "prompt_workspace_sidebar"
+        for item in catalog["sidebar_items"]
     )
-    shell_region = next(
-        item for item in catalog["shell_regions"] if item.get("id") == "prompt_command_center"
-    )
-    editor_source = next(
-        item
+    assert not any(
+        item.get("data_source") in {"prompt_editor_load", "prompt_workspace_index"}
         for item in catalog["data_sources"]
-        if item.get("data_source") == "prompt_editor_load"
     )
-    index_source = next(
-        item
-        for item in catalog["data_sources"]
-        if item.get("data_source") == "prompt_workspace_index"
+    assert not any(
+        item.get("action_id") == "prompt_editor_save"
+        for item in catalog["actions"]
     )
-    save_action = next(
-        item for item in catalog["actions"] if item.get("action_id") == "prompt_editor_save"
-    )
-    compact_api_route = next(
-        item for item in catalog["api_routes"] if item.get("path") == "/api/prompts/compact"
-    )
-
-    assert prompt_studio_component["component"] == "PromptStudio"
-    assert command_center_component["component"] == "PromptCommandCenter"
-    assert sidebar_item["route"] == "/prompts"
-    assert shell_region["renderer"] == "prompt_command_center"
-    assert editor_source["route_path"] == "/api/prompts/editor"
-    assert index_source["route_path"] == "/api/prompts"
-    assert save_action["default_args"] == {"action": "save"}
-    assert compact_api_route["owner_template"] == "rumi.backend.prompt_compaction.default"
-    assert {
-        prompt_studio_component["template_id"],
-        command_center_component["template_id"],
-        sidebar_item["template_id"],
-        shell_region["template_id"],
-        editor_source["template_id"],
-        index_source["template_id"],
-        save_action["template_id"],
-    } == {"rumi.prompt_workspace.default"}
 
 
 def test_template_catalog_projects_ambient_ai_input_and_tool_policy():

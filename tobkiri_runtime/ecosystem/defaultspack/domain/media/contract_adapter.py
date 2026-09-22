@@ -24,7 +24,7 @@ def invoke_media_contract(
 ) -> dict[str, Any]:
     """Invoke one selected owner without direct host or file access."""
 
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     plan = active_resolved_profile()
     if registry is None or plan is None:
         raise RuntimeError("global media owner is unavailable")

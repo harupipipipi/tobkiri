@@ -28,7 +28,7 @@ review_checklist:
   - id: no_credentials_or_network
     question: Pack has no credentials, no required network, and no executable code.
     blocking: true
-  - id: defaultspack_promotion_false
+  - id: base_pack_promotion_false
     question: Promotion remains false until evidence is accepted.
     blocking: true
   - id: asset_index_complete

@@ -23,7 +23,9 @@ _SECRET_KEY = re.compile(
 )
 _SECRET_VALUE = re.compile(
     r"(?:Bearer\s+\S+|Basic\s+\S+|"
-    r"(?:sk|rk|ghp|github_pat|xox[baprs]|ya29)[-_][A-Za-z0-9._-]{8,})",
+    r"(?:sk|rk|ghp|github_pat|xox[baprs]|ya29)[-_][A-Za-z0-9._-]{8,}|"
+    r"(?:authorization|cookie|password|passwd|secret|token|api[_-]?key|"
+    r"private[_-]?key|credential|session(?:[_-]?id)?)\s*[:=]\s*\S+)",
     re.IGNORECASE,
 )
 _OWNER_FIELDS = ("principal_id", "workspace_id", "conversation_id", "profile_id")

@@ -7,8 +7,10 @@ import warnings
 from typing import Any, Mapping
 
 from core_runtime.di_container import get_container
-from core_runtime.global_contract_dispatch import invoke_global_contract
-from core_runtime.resolved_profile_scope import persisted_resolved_profile
+from core_runtime.global_contract_dispatch import (
+    captured_profile_id,
+    invoke_global_contract,
+)
 
 TURN_RESOURCE = "rumi.resource.turn.v1"
 TURN_ACTION = "rumi.action.turn.lifecycle.v1"
@@ -325,16 +327,12 @@ def _legacy_item(
 
 
 def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
-    # HTTP request workers do not inherit the startup thread's ContextVar.
-    # Recover the verified persisted plan just like global contract dispatch
-    # does, otherwise every normal chat turn fails before reaching its model.
-    plan = persisted_resolved_profile()
-    if registry is None or plan is None:
+    registry = get_container().get_or_none("v4_dispatch_session")
+    if registry is None:
         raise RuntimeError("global turn runtime is unavailable")
     return invoke_global_contract(
         registry,
         contract_id,
         operation,
-        {"profile_id": plan.profile_id, **dict(payload)},
+        {"profile_id": captured_profile_id(registry), **dict(payload)},
     )

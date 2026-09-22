@@ -7,8 +7,10 @@ import warnings
 from typing import Any, Mapping
 
 from core_runtime.di_container import get_container
-from core_runtime.global_contract_dispatch import invoke_global_contract
-from core_runtime.resolved_profile_scope import active_resolved_profile
+from core_runtime.global_contract_dispatch import (
+    captured_profile_id,
+    invoke_global_contract,
+)
 
 RESOURCE = "rumi.resource.memory.v1"
 MANAGE = "rumi.action.memory.manage.v1"
@@ -66,11 +68,7 @@ class MemoryStore:
             "source": "legacy_memory_facade",
             "metadata": metadata,
         }
-        result = _invoke(
-            MANAGE,
-            "put",
-            {"item": item, "expected_revision": self._revision()},
-        )
+        result = self._put_with_retry(item)
         return dict(result.get("item") or {})
 
     def recall(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
@@ -121,11 +119,7 @@ class MemoryStore:
                 item[key] = updates[key]
         if isinstance(updates.get("metadata"), Mapping):
             item["metadata"] = dict(updates["metadata"])
-        result = _invoke(
-            MANAGE,
-            "put",
-            {"item": item, "expected_revision": self._revision()},
-        )
+        result = self._put_with_retry(item)
         return dict(result.get("item") or {})
 
     def clear(self) -> None:
@@ -152,20 +146,12 @@ class MemoryStore:
             "source": "legacy_memory_facade",
             "metadata": {"key": key},
         }
-        result = _invoke(
-            MANAGE,
-            "put",
-            {"item": item, "expected_revision": self._revision()},
-        )
+        result = self._put_with_retry(item)
         return dict(result.get("item") or {})
 
     def put_record(self, item: Mapping[str, Any]) -> dict[str, Any]:
         """Upsert a finite compatibility record while retaining its ID."""
-        result = _invoke(
-            MANAGE,
-            "put",
-            {"item": dict(item), "expected_revision": self._revision()},
-        )
+        result = self._put_with_retry(dict(item))
         return dict(result.get("item") or {})
 
     def list_records(self) -> list[dict[str, Any]]:
@@ -180,15 +166,34 @@ class MemoryStore:
         snapshot = _invoke(RESOURCE, "snapshot", {})
         return int(snapshot.get("revision") or 0)
 
+    def _put_with_retry(self, item: Mapping[str, Any]) -> Any:
+        """Retry only stale optimistic revisions from concurrent callers.
+
+        The owner remains responsible for atomicity and conflict detection.
+        This facade may have to re-read its revision between two threads; it
+        retries that one expected conflict without masking owner unavailability
+        or any other policy/error response.
+        """
+        for attempt in range(8):
+            try:
+                return _invoke(
+                    MANAGE,
+                    "put",
+                    {"item": dict(item), "expected_revision": self._revision()},
+                )
+            except RuntimeError as exc:
+                if str(exc) != "memory store revision is stale" or attempt == 7:
+                    raise
+        raise RuntimeError("memory owner write retry limit reached")
+
 
 def _invoke(contract_id: str, operation: str, payload: Mapping[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
-    plan = active_resolved_profile()
-    if registry is None or plan is None:
+    registry = get_container().get_or_none("v4_dispatch_session")
+    if registry is None:
         raise RuntimeError("global memory owner is unavailable")
     return invoke_global_contract(
         registry,
         contract_id,
         operation,
-        {"profile_id": plan.profile_id, **dict(payload)},
+        {"profile_id": captured_profile_id(registry), **dict(payload)},
     )

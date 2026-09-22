@@ -1,2 +1,66 @@
-{"pack_id":"rumi_file_mutation_pack","pack_identity":"rumi:ecosystem/rumi_file_mutation_pack","display_name":"Rumi File Mutation Pack","version":"1.0.0","description":"Receipt-gated workspace-jailed atomic file mutations.","dependencies":{"rumi_workspace_mount_pack":">=1.0.0,<2.0.0","rumi_host_authority_bridge_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.resource.workspace.v1","rumi.service.host.authorize.v1"],"provides":["rumi.service.file.mutate.v1"]},"required_secrets":[],"required_capabilities":["file.mutate","workspace.metadata.read","host.authority.consume"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":true,"resources":[],"provenance":{"content_hash":"sha256:eb699858cac86f4f2715981fe91f76c005200990427d9843ba6952a902292074","build_identity":"rumi-file-mutation-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authority":"mutate","inspect":false,"tool_or_ui_registry_imports":false,"receipt_required":true}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.file.mutate.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Receipt-gated workspace-jailed atomic file mutations.",
+  "display_name": "Rumi File Mutation",
+  "host_execution": true,
+  "metadata": {
+    "authority": "mutate",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3631adb05772eebedc69cd7bf697a20da88c6d4a5d739b3553e6a8cd1015c4dc",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:b93e5b05bcbf92ec7c3c1bbac385b1d8a0f150579a3616898d9847c681b625df"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:b93e5b05bcbf92ec7c3c1bbac385b1d8a0f150579a3616898d9847c681b625df"
+    },
+    "inspect": false,
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "receipt_required": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_file_mutation_pack",
+  "pack_identity": "rumi:ecosystem/rumi_file_mutation_pack",
+  "provenance": {
+    "build_identity": "rumi_file_mutation_pack:1.0.0",
+    "content_hash": "sha256:738c06d2712518cd7a32769eb9a2eaf967eecdf5607a907d1a397f5ff131c100",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "file.mutate",
+    "host.authority.consume",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

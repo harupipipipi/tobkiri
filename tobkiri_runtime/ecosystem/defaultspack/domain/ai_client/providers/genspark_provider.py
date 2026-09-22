@@ -1,7 +1,4 @@
-import sys
 import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import json
 import urllib.request
@@ -11,6 +8,7 @@ import ssl
 from typing import Any, Dict, List
 
 from domain.ai_client.base_provider import BaseProvider
+from domain.ai_client.api_key_store import read_provider_api_key
 
 
 class GensparkProvider(BaseProvider):
@@ -46,8 +44,8 @@ class GensparkProvider(BaseProvider):
     # Account inventory is fetched from the OpenAI-compatible endpoint.
     KNOWN_MODELS: List[Dict[str, Any]] = []
 
-    def __init__(self):
-        self._api_key = self._resolve_api_key()
+    def __init__(self, api_key: str | None = None):
+        self._api_key = str(api_key or self._resolve_api_key() or "").strip()
         self._base_url = self._resolve_base_url()
         self._ssl_ctx = ssl.create_default_context()
 
@@ -60,7 +58,7 @@ class GensparkProvider(BaseProvider):
         2. ~/.genspark_llm.yaml の openai.api_key
         3. OPENAI_API_KEY 環境変数（OpenAI 互換エンドポイントで共用する場合）
         """
-        key = os.environ.get("GENSPARK_API_KEY", "")
+        key = read_provider_api_key("genspark", "legacy") or ""
         if key:
             return key
         try:
@@ -75,7 +73,7 @@ class GensparkProvider(BaseProvider):
                     return key
         except Exception:
             pass
-        return os.environ.get("OPENAI_API_KEY", "")
+        return read_provider_api_key("openai", "legacy") or ""
 
     def _resolve_base_url(self):
         """

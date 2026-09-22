@@ -1,9 +1,9 @@
 {
-  "version": "rumi.pack-artifacts.v1",
   "artifacts": [
     {
       "path": "runtime/selector.py",
       "sha256": "sha256:516b412da107fce6cf847c124a1c6605e10be25d877a15a53d1eb12d669fce3c"
     }
-  ]
+  ],
+  "version": "rumi.pack-artifacts.v1"
 }

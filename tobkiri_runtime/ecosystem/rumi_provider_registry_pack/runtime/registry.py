@@ -7,6 +7,7 @@ import json
 import os
 import re
 import time
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Any, Mapping
@@ -201,6 +202,10 @@ class ProviderRegistry:
             raise ValueError("provider registry profile binding is invalid")
         if not isinstance(value.get("providers"), dict):
             raise ValueError("provider registry store is invalid")
+        for record in value["providers"].values():
+            if not isinstance(record, Mapping):
+                raise ValueError("provider registry record is invalid")
+            _provider_endpoint(record.get("endpoint"), record.get("credential_handle"))
         return value
 
     def _write(self, state: Mapping[str, Any]) -> None:
@@ -224,9 +229,8 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
         ("credential:", "opaque:")
     ):
         raise ValueError("provider credential must be an opaque handle")
-    endpoint = value.get("endpoint")
-    if endpoint is not None and not str(endpoint).startswith(("http://", "https://")):
-        raise ValueError("provider endpoint must be HTTP(S)")
+    endpoint_text = _provider_endpoint(value.get("endpoint"), credential_handle)
+
     health = value.get("health_evidence")
     health = health if isinstance(health, Mapping) else {}
     return {
@@ -234,7 +238,7 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
         "adapter_id": adapter_id,
         "display_name": str(value.get("display_name") or provider_instance_id)[:200],
         "credential_handle": credential_handle,
-        "endpoint": str(endpoint) if endpoint is not None else None,
+        "endpoint": endpoint_text,
         "enabled": bool(value.get("enabled", True)),
         "data_residency": str(value.get("data_residency") or "unknown")[:100],
         "health_evidence": {
@@ -244,6 +248,23 @@ def _provider_record(value: Mapping[str, Any]) -> dict[str, Any]:
         },
         "metadata": _safe_metadata(value.get("metadata")),
     }
+
+
+def _provider_endpoint(endpoint: Any, credential_handle: Any) -> str | None:
+    """Validate one provider endpoint, requiring TLS whenever credentials exist."""
+    endpoint_text = str(endpoint) if endpoint is not None else None
+    if endpoint_text is not None:
+        parsed_endpoint = urllib.parse.urlsplit(endpoint_text)
+        if (
+            parsed_endpoint.scheme not in {"http", "https"}
+            or not parsed_endpoint.hostname
+            or parsed_endpoint.username is not None
+            or parsed_endpoint.password is not None
+        ):
+            raise ValueError("provider endpoint must be a canonical HTTP(S) URL")
+        if credential_handle is not None and parsed_endpoint.scheme != "https":
+            raise ValueError("credentialed provider endpoint requires HTTPS")
+    return endpoint_text
 
 
 def _safe_metadata(value: Any) -> dict[str, Any]:
@@ -289,4 +310,3 @@ def _atomic_json(path: Path, value: Any) -> None:
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-

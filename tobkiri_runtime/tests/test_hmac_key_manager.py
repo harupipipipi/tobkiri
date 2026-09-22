@@ -9,6 +9,7 @@ HMACKeyManager のユニットテスト (Wave4-B 改善推奨2)
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
@@ -61,11 +62,26 @@ sys.modules.setdefault(f"{_PKG}.pack_api_server", _dummy_pack_api)
 from tobkiri_runtime.core_runtime.hmac_key_manager import (  # noqa: E402
     HMACKeyManager,
     HMACKey,
+    SigningKeyError,
     generate_or_load_signing_key,
     compute_data_hmac,
     verify_data_hmac,
     DEFAULT_GRACE_PERIOD_SECONDS,
 )
+from tobkiri_runtime.core_runtime import hmac_key_manager as hmac_key_manager_module  # noqa: E402
+
+
+def _write_owner_key(
+    path: Path,
+    value: str,
+    mode: int = 0o600,
+    *,
+    secure_windows: bool = True,
+) -> None:
+    path.write_text(value, encoding="utf-8")
+    path.chmod(mode)
+    if os.name == "nt" and secure_windows:
+        hmac_key_manager_module._secure_windows_signing_key(path)
 
 
 # ======================================================================
@@ -87,35 +103,33 @@ class TestGenerateOrLoadSigningKey:
         """既存の鍵ファイルからロードされること"""
         key_path = tmp_path / "signing.key"
         stored_key = "a" * 64  # 十分な長さ
-        key_path.write_text(stored_key, encoding="utf-8")
+        _write_owner_key(key_path, stored_key)
         result = generate_or_load_signing_key(key_path)
         assert result == stored_key.encode("utf-8")
 
-    def test_short_key_regenerated(self, tmp_path):
-        """鍵長が不十分なファイルからは再生成されること"""
+    def test_short_key_rejected(self, tmp_path):
+        """Weak existing material is rejected without silent rotation."""
         key_path = tmp_path / "signing.key"
-        key_path.write_text("short", encoding="utf-8")  # 5文字 < 32
-        result = generate_or_load_signing_key(key_path)
-        assert len(result) >= 32
-        # ファイルが上書きされていること
-        new_content = key_path.read_text(encoding="utf-8").strip()
-        assert len(new_content) >= 32
-        assert new_content != "short"
+        _write_owner_key(key_path, "short")
+        with pytest.raises(SigningKeyError, match="weak"):
+            generate_or_load_signing_key(key_path)
+        assert key_path.read_text(encoding="utf-8") == "short"
 
     def test_env_var_takes_priority(self, tmp_path, monkeypatch):
-        """環境変数が指定されている場合、それが優先されること"""
+        """Ambient environment injection cannot override Host-owned material."""
         key_path = tmp_path / "signing.key"
-        key_path.write_text("file_key_" + "x" * 40, encoding="utf-8")
+        file_key = "file_key_" + "x" * 40
+        _write_owner_key(key_path, file_key)
         env_key = "env_key_" + "y" * 40
         monkeypatch.setenv("TEST_SIGNING_KEY", env_key)
         result = generate_or_load_signing_key(key_path, env_var="TEST_SIGNING_KEY")
-        assert result == env_key.encode("utf-8")
+        assert result == file_key.encode("utf-8")
 
     def test_env_var_too_short_falls_through(self, tmp_path, monkeypatch):
         """環境変数の鍵長が不十分な場合、ファイルにフォールスルーすること"""
         key_path = tmp_path / "signing.key"
         stored_key = "b" * 64
-        key_path.write_text(stored_key, encoding="utf-8")
+        _write_owner_key(key_path, stored_key)
         monkeypatch.setenv("TEST_SIGNING_KEY", "short")
         result = generate_or_load_signing_key(key_path, env_var="TEST_SIGNING_KEY")
         assert result == stored_key.encode("utf-8")
@@ -124,7 +138,7 @@ class TestGenerateOrLoadSigningKey:
         """環境変数が未設定の場合、ファイルにフォールスルーすること"""
         key_path = tmp_path / "signing.key"
         stored_key = "c" * 64
-        key_path.write_text(stored_key, encoding="utf-8")
+        _write_owner_key(key_path, stored_key)
         result = generate_or_load_signing_key(key_path, env_var="NONEXISTENT_VAR")
         assert result == stored_key.encode("utf-8")
 
@@ -143,12 +157,180 @@ class TestGenerateOrLoadSigningKey:
         assert isinstance(result, bytes)
         assert key_path.exists()
 
-    def test_empty_file_regenerated(self, tmp_path):
-        """空ファイルからは再生成されること"""
+    def test_empty_file_rejected(self, tmp_path):
+        """Empty existing material fails closed."""
         key_path = tmp_path / "signing.key"
-        key_path.write_text("", encoding="utf-8")
-        result = generate_or_load_signing_key(key_path)
-        assert len(result) >= 32
+        _write_owner_key(key_path, "")
+        with pytest.raises(SigningKeyError, match="weak"):
+            generate_or_load_signing_key(key_path)
+
+    def test_symlink_key_rejected(self, tmp_path):
+        outside = tmp_path / "outside.key"
+        _write_owner_key(outside, "s" * 64)
+        key_path = tmp_path / "signing.key"
+        key_path.symlink_to(outside)
+        with pytest.raises(SigningKeyError, match="symlinked"):
+            generate_or_load_signing_key(key_path)
+
+    def test_world_readable_key_rejected(self, tmp_path):
+        key_path = tmp_path / "signing.key"
+        _write_owner_key(
+            key_path,
+            "w" * 64,
+            mode=0o644,
+            secure_windows=False,
+        )
+        expected = "Windows ACL" if os.name == "nt" else "0600"
+        with pytest.raises(SigningKeyError, match=expected):
+            generate_or_load_signing_key(key_path)
+
+    def test_restart_loads_same_owner_key(self, tmp_path):
+        key_path = tmp_path / "signing.key"
+        first = generate_or_load_signing_key(key_path)
+        second = generate_or_load_signing_key(key_path)
+        assert second == first
+
+    def test_windows_generation_hardens_acl_without_fchmod(
+        self, tmp_path, monkeypatch
+    ):
+        """Windows key creation must use an ACL, not a Unix-only descriptor call."""
+        key_path = tmp_path / "signing.key"
+        secured: list[Path] = []
+        verified: list[Path] = []
+
+        monkeypatch.setattr(hmac_key_manager_module.os, "name", "nt")
+        monkeypatch.delattr(hmac_key_manager_module.os, "fchmod", raising=False)
+        monkeypatch.setattr(
+            hmac_key_manager_module,
+            "_secure_windows_signing_key",
+            secured.append,
+        )
+        monkeypatch.setattr(
+            hmac_key_manager_module,
+            "_verify_windows_signing_key_acl",
+            verified.append,
+        )
+
+        first = generate_or_load_signing_key(key_path)
+        second = generate_or_load_signing_key(key_path)
+
+        assert second == first
+        assert len(secured) == 2
+        assert secured[-1] == key_path
+        assert verified == [key_path]
+
+    def test_windows_acl_script_removes_inheritance_and_verifies_one_sid(
+        self, tmp_path, monkeypatch
+    ):
+        """Windows ACL hardening must be explicit and checked after mutation."""
+        calls: list[tuple[list[str], dict[str, object]]] = []
+
+        def _run(argv: list[str], **kwargs: object) -> None:
+            calls.append((argv, kwargs))
+
+        key_path = tmp_path / "signing.key"
+        monkeypatch.setattr(hmac_key_manager_module.os, "name", "nt")
+        monkeypatch.setenv(
+            hmac_key_manager_module._WINDOWS_SIGNING_KEY_ACL_TARGET_ENV,
+            "untrusted-parent-value",
+        )
+        monkeypatch.setattr(hmac_key_manager_module.subprocess, "run", _run)
+        hmac_key_manager_module._secure_windows_signing_key(key_path)
+
+        assert len(calls) == 1
+        argv, kwargs = calls[0]
+        assert argv[:5] == [
+            "powershell.exe",
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+        ]
+        assert str(tmp_path) not in argv[-1]
+        assert "FileSecurity]::new()" in argv[-1]
+        assert "SetAccessRuleProtection($true, $false)" in argv[-1]
+        assert "$rules.Count -ne 1" in argv[-1]
+        assert "$rule.IsInherited" in argv[-1]
+        assert "[Console]::In.ReadToEnd()" not in argv[-1]
+        assert "$env:TOBKIRI_SIGNING_KEY_ACL_TARGET_B64" in argv[-1]
+        environment = kwargs.pop("env")
+        assert environment[
+            hmac_key_manager_module._WINDOWS_SIGNING_KEY_ACL_TARGET_ENV
+        ] == base64.b64encode(str(key_path).encode("utf-8")).decode("ascii")
+        assert kwargs == {
+            "check": True,
+            "capture_output": True,
+            "text": True,
+            "timeout": hmac_key_manager_module._WINDOWS_SIGNING_KEY_ACL_TIMEOUT_SECONDS,
+        }
+
+    @pytest.mark.parametrize(
+        ("harden", "expected_message"),
+        (
+            (True, "could not be secured"),
+            (False, "is unsafe"),
+        ),
+    )
+    def test_windows_acl_timeout_fails_closed(
+        self, tmp_path, monkeypatch, harden, expected_message
+    ):
+        """A bounded Windows ACL timeout must never permit an unsafe key."""
+        key_path = tmp_path / "signing.key"
+
+        def _run(argv: list[str], **kwargs: object) -> None:
+            assert kwargs["timeout"] == (
+                hmac_key_manager_module._WINDOWS_SIGNING_KEY_ACL_TIMEOUT_SECONDS
+            )
+            raise hmac_key_manager_module.subprocess.TimeoutExpired(argv, 60)
+
+        monkeypatch.setattr(hmac_key_manager_module.subprocess, "run", _run)
+
+        with pytest.raises(SigningKeyError, match=expected_message):
+            hmac_key_manager_module._run_windows_signing_key_acl(key_path, harden=harden)
+
+    @pytest.mark.parametrize(
+        "filename",
+        (
+            "署名鍵_日本語_e\u0301_é_🙂.key",
+            " leading-whitespace.key",
+            "trailing-whitespace.key ",
+            "\tleading-control.key",
+            "trailing-control.key\r\n",
+        ),
+    )
+    def test_windows_acl_path_transport_preserves_exact_code_points(
+        self, tmp_path, monkeypatch, filename
+    ):
+        """Harden and verify must receive the same unnormalized Unicode path."""
+        calls: list[tuple[list[str], dict[str, object]]] = []
+
+        def _run(argv: list[str], **kwargs: object) -> None:
+            calls.append((argv, kwargs))
+
+        key_path = tmp_path / filename
+        expected_path = str(key_path)
+        expected_code_points = tuple(map(ord, expected_path))
+        monkeypatch.setattr(hmac_key_manager_module.subprocess, "run", _run)
+
+        hmac_key_manager_module._secure_windows_signing_key(key_path)
+        hmac_key_manager_module._verify_windows_signing_key_acl(key_path)
+
+        assert len(calls) == 2
+        assert "input" not in calls[0][1]
+        assert "input" not in calls[1][1]
+        target_env = hmac_key_manager_module._WINDOWS_SIGNING_KEY_ACL_TARGET_ENV
+        assert calls[0][1]["env"][target_env] == calls[1][1]["env"][target_env]
+        for argv, kwargs in calls:
+            command = argv[-1]
+            assert expected_path not in command
+            assert ".Trim()" not in command
+            assert "[Console]::In.ReadToEnd()" not in command
+            assert "[Convert]::FromBase64String($encodedTarget)" in command
+            assert "[System.Text.UTF8Encoding]::new($false, $true)" in command
+            payload = kwargs["env"][target_env]
+            assert isinstance(payload, str)
+            decoded_path = base64.b64decode(payload, validate=True).decode("utf-8")
+            assert tuple(map(ord, decoded_path)) == expected_code_points
 
 
 # ======================================================================
@@ -339,7 +521,7 @@ class TestHMACKeyManagerInit:
         assert bak_path.exists()
 
     def test_env_rotate_trigger(self, tmp_path, monkeypatch):
-        """RUMI_HMAC_ROTATE=true で起動時にローテーションされること"""
+        """Ambient rotation injection is ignored; explicit rotate remains required."""
         keys_path = str(tmp_path / "hmac_keys.json")
         mgr1 = HMACKeyManager(keys_path=keys_path)
         key1 = mgr1.get_active_key()
@@ -347,9 +529,8 @@ class TestHMACKeyManagerInit:
         monkeypatch.setenv("RUMI_HMAC_ROTATE", "true")
         mgr2 = HMACKeyManager(keys_path=keys_path)
         key2 = mgr2.get_active_key()
-        assert key1 != key2
-        # 環境変数がクリアされること
-        assert os.environ.get("RUMI_HMAC_ROTATE") is None
+        assert key1 == key2
+        assert os.environ.get("RUMI_HMAC_ROTATE") == "true"
 
     def test_grace_period_custom(self, tmp_path):
         """カスタムグレースピリオドが設定されること"""

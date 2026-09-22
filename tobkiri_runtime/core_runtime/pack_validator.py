@@ -25,6 +25,7 @@ from .paths import (
     discover_pack_locations,
     get_pack_flow_dirs,
 )
+from .pack_boundary import finite_children, finite_files
 
 logger = logging.getLogger(__name__)
 
@@ -456,7 +457,9 @@ def _check_ctx_references(
 
     for flow_dir in flow_dirs:
         try:
-            flow_files = sorted(flow_dir.rglob("*"))
+            flow_files = finite_files(
+                flow_dir, (".json", ".yaml", ".yml"), recursive=True
+            )
         except OSError:
             continue
 
@@ -510,15 +513,10 @@ def _validate_functions(
         return warnings, errors
 
     try:
-        func_dirs = sorted(
-            (
-                d
-                for d in functions_dir.iterdir()
-                if d.is_dir()
-                and not d.name.startswith(".")
-                and not d.name.startswith("__")
-            ),
-            key=lambda d: d.name,
+        func_dirs = tuple(
+            d
+            for d in finite_children(functions_dir, directories_only=True)
+            if not d.name.startswith(".") and not d.name.startswith("__")
         )
     except OSError:
         return warnings, errors

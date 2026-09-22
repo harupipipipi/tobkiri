@@ -66,7 +66,8 @@ class EffectPolicyEngine:
                 profile_policy=profile_policy,
                 effect_class=effect_class,
             )
-            if full_access and hard_minimum == "auto":
+            if full_access and _full_access_may_auto(tool, effect_class):
+                hard_minimum = "auto"
                 requested, source = "auto", "full_access"
             mode = _more_restrictive(requested, hard_minimum)
             decisions.append(
@@ -93,6 +94,25 @@ def _hard_minimum(tool: dict[str, Any], effect_class: str) -> str:
     if effect_class in {"delete", "credential"}:
         return "confirm"
     return "confirm" if effect_class in _WRITE_EFFECTS else "auto"
+
+
+def _full_access_may_auto(
+    tool: dict[str, Any],
+    effect_class: str,
+) -> bool:
+    """Allow trusted ordinary effects while preserving hard safety gates."""
+
+    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    if not bool(tool.get("trusted") or metadata.get("trusted")):
+        return False
+    risk_value = tool.get("risk")
+    if isinstance(risk_value, dict):
+        risk = str(risk_value.get("level") or "").lower()
+    else:
+        risk = str(risk_value or metadata.get("risk") or "").lower()
+    if risk in {"high", "critical"}:
+        return False
+    return effect_class not in {"delete", "credential"}
 
 
 def _requested_mode(

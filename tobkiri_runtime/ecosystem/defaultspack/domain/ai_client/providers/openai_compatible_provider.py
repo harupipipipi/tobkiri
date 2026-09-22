@@ -9,7 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from ..model_metadata_schema import (
     context_window_value,
@@ -52,7 +52,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
         *,
         provider_id: str = "",
         display_name: str = "",
-        api_key_env: str = "",
+        api_key_env: str | Sequence[str] | set[str] = "",
         base_url_env: str = "",
         default_base_url: str = "",
         credential_required: bool = True,
@@ -99,21 +99,120 @@ class OpenAICompatibleProvider(OpenAIProvider):
         except (TypeError, ValueError):
             self._remote_model_cache_ttl_seconds = 21600
 
-        env_api_key = ""
-        for env_name in self._api_key_envs:
-            env_api_key = str(os.environ.get(env_name, "") or "").strip()
-            if env_api_key:
-                break
-        env_base_url = os.environ.get(self._base_url_env, "") if self._base_url_env else ""
-
-        self._api_key = str(api_key or env_api_key or "").strip()
-        resolved_base_url = str(base_url or env_base_url or self._default_base_url or "").strip()
+        self._api_key = str(api_key or "").strip()
+        resolved_base_url = str(base_url or self._default_base_url or "").strip()
         self._base_url = resolved_base_url.rstrip("/") if resolved_base_url else ""
         self.BASE_URL = self._base_url
         seed_models = known_models
         if seed_models is None:
             seed_models = self.list_curated_models()
         self.KNOWN_MODELS = self._normalize_known_models(seed_models or [])
+
+    def stream(self, model, messages, tools, params):
+        """Recover a tool call when a compatible stream omits its payload."""
+
+        pending_end: dict[str, Any] | None = None
+        saw_tool_call = False
+        for event in super().stream(model, messages, tools, params):
+            if not isinstance(event, dict):
+                yield event
+                continue
+            event_type = str(event.get("type") or "")
+            if event_type == "stream_end":
+                pending_end = dict(event)
+                continue
+            if event_type == "tool_call_start":
+                saw_tool_call = True
+            yield event
+
+        pending_end = pending_end or {
+            "type": "stream_end",
+            "finish_reason": "stop",
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+            },
+        }
+        if (
+            pending_end.get("finish_reason") == "tool_calls"
+            and not saw_tool_call
+        ):
+            recovered_raw = self.complete(model, messages, tools, params)
+            recovered: dict[str, object] = (
+                {str(key): value for key, value in recovered_raw.items()}
+                if isinstance(recovered_raw, dict)
+                else {}
+            )
+            recovered_usage_value = recovered.get("usage")
+            recovered_usage: dict[str, object] = (
+                {str(key): value for key, value in recovered_usage_value.items()}
+                if isinstance(recovered_usage_value, dict)
+                else {}
+            )
+            stream_usage_value = pending_end.get("usage")
+            stream_usage: dict[str, object] = (
+                {str(key): value for key, value in stream_usage_value.items()}
+                if isinstance(stream_usage_value, dict)
+                else {}
+            )
+            pending_end["usage"] = {
+                key: self._usage_int(stream_usage.get(key))
+                + self._usage_int(recovered_usage.get(key))
+                for key in (
+                    "input_tokens",
+                    "output_tokens",
+                    "total_tokens",
+                )
+            }
+            content_value = recovered.get("content")
+            content = content_value if isinstance(content_value, list) else []
+            for item in content:
+                if (
+                    not isinstance(item, dict)
+                    or item.get("type") != "tool_use"
+                ):
+                    continue
+                call_id = str(item.get("id") or "tool_call_recovered")
+                name = str(item.get("name") or "")
+                arguments = item.get("input")
+                yield {
+                    "type": "tool_call_start",
+                    "id": call_id,
+                    "name": name,
+                }
+                if arguments not in (None, ""):
+                    yield {
+                        "type": "tool_call_delta",
+                        "id": call_id,
+                        "name": name,
+                        "arguments_chunk": (
+                            arguments
+                            if isinstance(arguments, str)
+                            else json.dumps(
+                                arguments,
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            )
+                        ),
+                    }
+
+                yield {
+                    "type": "tool_call_end",
+                    "id": call_id,
+                    "name": name,
+                }
+        yield pending_end
+
+    @staticmethod
+    def _usage_int(value: object) -> int:
+        """Normalize a provider usage counter without trusting its payload type."""
+        if isinstance(value, (bool, int, float, str)):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return 0
+        return 0
 
     @classmethod
     def profile_dir(cls):
@@ -132,6 +231,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
         cls,
         manifest: Dict[str, Any],
         *,
+        api_key: str = "",
         model_manifests: Optional[List[Dict[str, Any]]] = None,
         allow_declared_models: bool = True,
     ) -> "OpenAICompatibleProvider":
@@ -193,6 +293,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
         return cls(
             provider_id=provider_id,
             display_name=str(manifest.get("display_name", provider_id)),
+            api_key=api_key,
             api_key_env=manifest.get("api_key_env", ""),
             base_url_env=str(manifest.get("base_url_env", "")),
             default_base_url=str(manifest.get("default_base_url", "https://api.openai.com/v1")),
@@ -300,7 +401,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
         if not qualified_model_id:
             qualified_model_id = f"{self.provider_id}/{model_id}"
         display_name = str(raw.get("display_name") or raw.get("name") or model_id)
-        normalized = {
+        normalized: Dict[str, object] = {
             "id": qualified_model_id,
             "model_id": model_id,
             "provider_id": self.provider_id,
@@ -324,6 +425,13 @@ class OpenAICompatibleProvider(OpenAIProvider):
             normalized["request_features"] = normalize_request_features(raw["request_features"])
         if isinstance(raw.get("thinking"), dict):
             normalized["thinking"] = dict(raw["thinking"])
+            thinking = raw["thinking"]
+            if "supports_thinking" not in normalized:
+                normalized["supports_thinking"] = bool(thinking.get("supported"))
+            if isinstance(thinking.get("levels"), list):
+                normalized["thinking_levels"] = list(thinking.get("levels") or [])
+            if "default_level" in thinking:
+                normalized["default_thinking_level"] = thinking.get("default_level")
         for key in (
             "context_window",
             "max_context",
@@ -410,9 +518,10 @@ class OpenAICompatibleProvider(OpenAIProvider):
         capability_map = self._capability_map(model_entry)
         if "thinking" in capability_map:
             return bool(capability_map.get("thinking"))
-        thinking = (
-            model_entry.get("thinking")
-            if isinstance(model_entry, dict) and isinstance(model_entry.get("thinking"), dict)
+        thinking_value = model_entry.get("thinking")
+        thinking: Dict[str, object] = (
+            {str(key): value for key, value in thinking_value.items()}
+            if isinstance(thinking_value, dict)
             else {}
         )
         if "supported" in thinking:
@@ -700,11 +809,24 @@ class OpenAICompatibleProvider(OpenAIProvider):
         if not isinstance(payload, dict):
             return raw_models, ""
         models = raw_models
-        pagination = (
-            payload.get("pagination") if isinstance(payload.get("pagination"), dict) else {}
+        pagination_value = payload.get("pagination")
+        pagination: Dict[str, object] = (
+            {str(key): value for key, value in pagination_value.items()}
+            if isinstance(pagination_value, dict)
+            else {}
         )
-        links = payload.get("links") if isinstance(payload.get("links"), dict) else {}
-        page = payload.get("page") if isinstance(payload.get("page"), dict) else {}
+        links_value = payload.get("links")
+        links: Dict[str, object] = (
+            {str(key): value for key, value in links_value.items()}
+            if isinstance(links_value, dict)
+            else {}
+        )
+        page_value = payload.get("page")
+        page: Dict[str, object] = (
+            {str(key): value for key, value in page_value.items()}
+            if isinstance(page_value, dict)
+            else {}
+        )
         configured_field = str(self._remote_model_pagination.get("next_cursor_field") or "").strip()
         candidates = [
             payload.get(configured_field) if configured_field else None,
@@ -819,7 +941,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
             value = raw.get(key)
             if value not in (None, ""):
                 metadata[f"remote_{key}"] = value
-        model = {
+        model: Dict[str, object] = {
             "id": qualified_model_id,
             "model_id": model_id,
             "provider_id": self.provider_id,

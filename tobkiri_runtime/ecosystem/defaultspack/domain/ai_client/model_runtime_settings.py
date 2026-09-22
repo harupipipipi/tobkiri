@@ -4,6 +4,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from tobkiri_protocol.settings_state import SettingsOwnerPort
 
 from domain.ai_client.api_key_store import (
     provider_api_metadata,
@@ -22,9 +23,11 @@ from domain.ai_client.rumi_process import (
     ensure_default_rumi_model_pack,
     resolve_rumi_base_model,
 )
+from domain.frontend_settings_client import update_settings_document, update_settings_state
 from domain.frontend_settings_store import (
     FrontendSettingsStore,
     defaultspack_frontend_settings_path,
+    settings_state_revision,
 )
 
 
@@ -41,17 +44,19 @@ CEREBRAS_REASONING_MODELS = {"gpt-oss-120b", "zai-glm-4.7"}
 MODEL_SLOT_MAIN = "main"
 MODEL_SLOT_LIGHTWEIGHT = "lightweight"
 
-
 class ModelRuntimeSettingsService:
     """Owns model runtime settings persisted in frontend_settings.json."""
 
-    def __init__(self, pack_root: Path | None = None) -> None:
+    def __init__(self, pack_root: Path | None = None, *, settings_owner: SettingsOwnerPort | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        self._settings_path = defaultspack_frontend_settings_path(self._pack_root)
-        self._settings_store = FrontendSettingsStore(self._settings_path)
+        self._settings_path = defaultspack_frontend_settings_path(pack_root)
+        self._settings_store = FrontendSettingsStore(self._settings_path, owner=settings_owner)
 
     def get_settings(self) -> dict[str, Any]:
-        return self.refresh_models_settings(self._read_all().get("models", {}))
+        """Resolve current owner values, without inferring freshness from files."""
+        resolved = self._read_all().get("models", {})
+        resolved = resolved if isinstance(resolved, dict) else self.default_model_settings()
+        return deepcopy(resolved)
 
     def update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -68,7 +73,7 @@ class ModelRuntimeSettingsService:
             all_settings["models"] = dict(result)
             return all_settings
 
-        self._settings_store.update(merge)
+        update_settings_document(self._settings_store, merge)
         return result
 
     def get_preferred_model(self) -> str:
@@ -221,11 +226,12 @@ class ModelRuntimeSettingsService:
         }
 
     def get_deepthink_enabled(self) -> dict[str, Any]:
-        settings = self.get_settings()
+        snapshot = self._read_all()
+        settings = snapshot["models"]
         return {
             "enabled": bool(settings.get("deepthink_enabled", DEFAULT_DEEPTHINK_ENABLED)),
             "state_ref": DEEPTHINK_STATE_REF,
-            "revision": self._settings_store.state_revision(DEEPTHINK_STATE_REF),
+            "revision": settings_state_revision(snapshot, DEEPTHINK_STATE_REF),
             "warning": "DeepThinkが有効なタスクには数時間かかる可能性があります。",
         }
 
@@ -269,7 +275,8 @@ class ModelRuntimeSettingsService:
             sort_keys=True,
             separators=(",", ":"),
         )
-        updated = self._settings_store.mutate_state(
+        updated = update_settings_state(
+            self._settings_store,
             DEEPTHINK_STATE_REF,
             mutate,
             expected_revision=expected_revision,
@@ -338,7 +345,7 @@ class ModelRuntimeSettingsService:
             else:
                 result["provider_params"] = {}
             return result
-        if provider in {"openai", "openai_compatible", "openrouter"}:
+        if provider in {"openai", "openai_compatible", "openrouter", "nvidia"}:
             effort = "high" if normalized == "xhigh" else normalized
             if effort != "none":
                 result["provider_params"] = {"reasoning_effort": effort}
@@ -354,7 +361,7 @@ class ModelRuntimeSettingsService:
                 result["provider_params"] = {"reasoning_effort": effort}
             else:
                 result["provider_params"] = {}
-            result["level"] = effort if normalized == "xhigh" else normalized
+            result["level"] = normalized
         elif provider == "anthropic":
             result["provider_params"] = {"thinking_level": normalized}
         elif provider == "google":
@@ -467,7 +474,11 @@ class ModelRuntimeSettingsService:
 
             provider_map = detect_available_providers()
             available_providers.update(str(name or "").strip() for name in provider_map.keys() if str(name or "").strip())
-            for model in get_all_known_models():
+            # Rumi base-model resolution only needs models from providers that
+            # are actually available in this runtime.  Asking the catalog for
+            # every manifest here makes a routine model-pack lookup walk every
+            # unconfigured provider and repeatedly re-hash its metadata.
+            for model in get_all_known_models(active_provider_ids=available_providers):
                 if not isinstance(model, dict):
                     continue
                 if not self._is_real_chat_profile(model):

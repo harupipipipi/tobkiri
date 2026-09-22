@@ -24,32 +24,24 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        manifestPlaceholders = [
-            usesCleartextTraffic: "false"
-        ]
     }
 
     buildTypes {
         debug {
-            manifestPlaceholders = [
-                usesCleartextTraffic: "true"
-            ]
         }
         profile {
             initWith debug
-            manifestPlaceholders = [
-                usesCleartextTraffic: "true"
-            ]
         }
         release {
             signingConfig = signingConfigs.debug
-            manifestPlaceholders = [
-                usesCleartextTraffic: "false"
-            ]
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation "com.google.mlkit:text-recognition:16.0.1"
 }

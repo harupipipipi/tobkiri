@@ -7,6 +7,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from tobkiri_protocol.settings_state import SettingsOwnerPort
+
 CATEGORIES = {"chat", "model", "mode", "coding", "tools", "settings", "debug"}
 VISIBILITIES = {"default", "advanced", "hidden"}
 MODES = {"chat", "coding", "agent"}
@@ -50,8 +52,12 @@ def error(message: str, code: str = "ERROR", **extra: Any) -> dict[str, Any]:
 class SlashCommandRegistry:
     """Manifest-driven slash command registry for defaultspack UI commands."""
 
-    def __init__(self, pack_root: Path | None = None) -> None:
+    def __init__(
+        self, pack_root: Path | None = None, *,
+        settings_owner: SettingsOwnerPort | None = None,
+    ) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
+        self._settings_owner = settings_owner
 
     def list_commands(self) -> list[dict[str, Any]]:
         commands, _manifest_errors = self._commands_with_errors()
@@ -216,7 +222,9 @@ class SlashCommandRegistry:
         try:
             from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
-            service = ModelRuntimeSettingsService(self._pack_root)
+            service = ModelRuntimeSettingsService(
+                self._pack_root, settings_owner=self._settings_owner,
+            )
             resolution = service.resolve_model_candidates(query)
             exact = resolution.get("exact") if isinstance(resolution, dict) else None
             candidates = resolution.get("candidates", []) if isinstance(resolution, dict) else []
@@ -385,7 +393,15 @@ class SlashCommandRegistry:
                 block_input[forwarded] = value
 
         try:
-            result = runner(block_input, dict(context or {}))
+            # Only this known settings consumer receives the in-process port.
+            # Arbitrary manifest-selected blocks retain their two-argument ABI.
+            if module_path == "blocks.ai.fast_command":
+                result = runner(
+                    block_input, dict(context or {}),
+                    settings_owner=self._settings_owner,
+                )
+            else:
+                result = runner(block_input, dict(context or {}))
         except Exception as exc:
             return error(f"pack_block execution failed: {exc}", "EXECUTION_FAILED")
         if isinstance(result, dict) and result.get("status") == "ok":
@@ -416,7 +432,9 @@ class SlashCommandRegistry:
         try:
             from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
 
-            service = ModelRuntimeSettingsService(self._pack_root)
+            service = ModelRuntimeSettingsService(
+                self._pack_root, settings_owner=self._settings_owner,
+            )
             if function_id == "ai_get_preferred_model":
                 return {"profile_id": service.get_preferred_model()}
             if function_id == "ai_set_preferred_model":

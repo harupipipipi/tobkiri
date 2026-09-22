@@ -22,7 +22,7 @@ test("chat structured content owns horizontal scrolling", () => {
 
 test("application shell owns the viewport while panes own scrolling", () => {
   assert.match(indexCss, /html,\s*body,\s*#root\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);
-  assert.match(indexCss, /body\s*\{[^}]*overflow:\s*hidden;/s);
+  assert.match(indexCss, /body\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/s);
   assert.match(indexCss, /\.rumi-app-shell\s*\{[^}]*height:\s*100dvh;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s);
   assert.match(
     indexCss,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -13,6 +12,7 @@ from ..api_key_store import (
     load_provider_api_keys_into_env,
     provider_has_api_key,
     provider_named_api_keys,
+    provider_secret_keys,
     read_provider_api_key,
 )
 from ..provider_program import (
@@ -318,7 +318,9 @@ _CURATED_PROVIDER_METADATA: Dict[str, Dict[str, Any]] = {
         "base_url_envs": ["LMSTUDIO_BASE_URL"],
         "catalog_only": True,
         "supports_invoke": False,
-        "default_model": "deepseek-r1",
+        # LM Studio reports the installed model inventory through its native
+        # management API.  A checked-in default would be a stale placeholder.
+        "default_model": "",
         "default_base_url": "http://127.0.0.1:1234/v1",
         "capabilities": ["chat", "embedding", "local", "openai_compatible"],
     },
@@ -812,8 +814,11 @@ def _provider_manifest_map() -> Dict[str, Dict[str, Any]]:
     # a documentation table.  It supersedes legacy extension manifests that
     # still carry default-model or fixed-allowlist snapshots, so an API key
     # always enables the connected endpoint's complete /models inventory.
-    for provider_id, spec in OPENAI_COMPATIBLE_PROVIDER_SPECS.items():
-        manifests[provider_id] = _openai_compatible_spec_manifest(spec)
+    for raw_provider_id, raw_spec in OPENAI_COMPATIBLE_PROVIDER_SPECS.items():
+        provider_id = str(raw_provider_id).strip()
+        if not provider_id or not isinstance(raw_spec, dict):
+            continue
+        manifests[provider_id] = _openai_compatible_spec_manifest(dict(raw_spec))
     for provider_id, manifest in local_openai_runtime_manifests().items():
         # Local runtime endpoints report the exact models currently loaded by
         # that server.  Do not let an older extension manifest replace this
@@ -1212,21 +1217,11 @@ def _provider_manifest_map() -> Dict[str, Dict[str, Any]]:
     # saved definitions exactly like extension manifests so they are discoverable
     # by the provider/model catalog and not merely shown as inert API-key rows.
     for provider_id, manifest in _custom_openai_provider_manifests().items():
-        existing = manifests.get(provider_id, {})
-        existing_config = existing.get("config") if isinstance(existing.get("config"), dict) else {}
         # A saved endpoint is an explicit user choice.  It must override both
         # a program placeholder and a built-in OpenAI-compatible default so
         # account/project/proxy-specific model inventories are fetched from
         # the endpoint the user actually configured.
-        if manifest.get("default_base_url") and (
-            existing_config.get("provider_program")
-            or str(existing.get("adapter") or "")
-            in {
-                "openai_compatible",
-                "connection_required",
-                "catalog_only",
-            }
-        ):
+        if manifest.get("default_base_url"):
             manifests[provider_id] = manifest
         else:
             manifests.setdefault(provider_id, manifest)
@@ -1310,10 +1305,6 @@ def _custom_openai_provider_manifests() -> Dict[str, Dict[str, Any]]:
             },
         }
     return manifests
-
-
-def _truthy_env(env_name: str) -> bool:
-    return bool(str(os.environ.get(env_name, "") or "").strip())
 
 
 def _manifest_env_list(*values: Any) -> List[str]:
@@ -1445,7 +1436,8 @@ def _subscription_plans(manifest: Dict[str, Any], curated: Dict[str, Any]) -> Li
         if plans:
             return plans
 
-    token_plan = str(config.get("token_plan") or curated.get("token_plan") or "").strip()
+    token_plan_value = config.get("token_plan") or curated.get("token_plan")
+    token_plan = token_plan_value.strip() if isinstance(token_plan_value, str) else ""
     if not token_plan:
         return []
 
@@ -1472,12 +1464,23 @@ def _subscription_plans(manifest: Dict[str, Any], curated: Dict[str, Any]) -> Li
 
 
 def _merge_provider_entry(
-    provider_id: str, manifest: Optional[Dict[str, Any]] = None
+    provider_id: str,
+    manifest: Optional[Dict[str, Any]] = None,
+    *,
+    component_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     manifest = dict(manifest or {})
     manifest_was_present = bool(manifest)
-    component_metadata = dict(provider_component_metadata_map().get(provider_id, {}))
-    curated = {**dict(_CURATED_PROVIDER_METADATA.get(provider_id, {})), **component_metadata}
+    metadata_map = (
+        component_metadata
+        if component_metadata is not None
+        else provider_component_metadata_map()
+    )
+    component_metadata_entry = dict(metadata_map.get(provider_id, {}))
+    curated = {
+        **dict(_CURATED_PROVIDER_METADATA.get(provider_id, {})),
+        **component_metadata_entry,
+    }
     component_provider_manifest = curated.pop("provider_manifest", {})
     if isinstance(component_provider_manifest, dict):
         manifest = {**component_provider_manifest, **manifest}
@@ -1542,13 +1545,6 @@ def _provider_is_configured(entry: Dict[str, Any]) -> tuple[bool, Optional[str]]
         return True, "browser_oauth"
     if provider_id and provider_has_api_key(provider_id):
         return True, "defaultspack_secret"
-    for env_name in entry.get("env_vars", []):
-        if _truthy_env(env_name):
-            return True, env_name
-    if not credential_required:
-        for env_name in entry.get("base_url_envs", []):
-            if _truthy_env(env_name):
-                return True, env_name
     if not credential_required and default_base_url.startswith("local://"):
         return True, "builtin_local_provider"
     if entry.get("kind") == "local" and default_base_url:
@@ -1573,9 +1569,14 @@ def _provider_status(entry: Dict[str, Any], active: bool, configured: bool) -> s
 def get_provider_catalog(active_provider_ids=None):
     active_ids = set(active_provider_ids or [])
     manifests = _provider_manifest_map()
+    component_metadata = provider_component_metadata_map()
     provider_ids = set(manifests.keys()) | set(_CURATED_PROVIDER_METADATA.keys()) | active_ids
     entries = [
-        _merge_provider_entry(provider_id, manifests.get(provider_id))
+        _merge_provider_entry(
+            provider_id,
+            manifests.get(provider_id),
+            component_metadata=component_metadata,
+        )
         for provider_id in provider_ids
     ]
     entries.sort(key=lambda item: (int(item.get("priority", 100)), item["provider_id"]))
@@ -1685,13 +1686,13 @@ def _load_models_for_provider(entry: Dict[str, Any]) -> List[Dict[str, Any]]:
             seen[key] = item
             models.append(item)
 
-    # External provider inventories must never fall back to a checked-in
-    # release list (including extension/pack model manifests): it is
-    # necessarily incomplete and can expose retired or unauthorized models.
-    # Only the two internal pseudo-providers have no remote catalog by design.
+    # ``get_all_known_models`` is the declarative catalog surface.  External
+    # provider runtime inventories remain live-only in their provider adapters;
+    # this surface may still expose repository-owned metadata for discovery,
+    # routing, and capability inspection.
+    _append(model_manifests_from_provider_components(provider_id))
     if provider_id in {"stub", "rumi"}:
         _append(_load_model_manifests(provider_id))
-        _append(model_manifests_from_provider_components(provider_id))
         _append(_load_known_models_from_entry(str(entry.get("entrypoint", ""))))
         _append(_CURATED_PROVIDER_MODELS.get(provider_id, []))
     return models
@@ -1716,7 +1717,7 @@ def _normalize_model_token(value: Any) -> str:
 
 
 def _annotate_model_collisions(models):
-    counts = {}
+    counts: Dict[str, int] = {}
     for item in models:
         key = _normalize_model_token(item.get("model_id"))
         counts[key] = counts.get(key, 0) + 1
@@ -1751,7 +1752,21 @@ def _annotate_model_collisions(models):
 
 def get_all_known_models(provider_id=None, active_provider_ids=None):
     catalog_map = get_provider_catalog_map(active_provider_ids=active_provider_ids)
-    provider_ids = [provider_id] if provider_id else list(catalog_map.keys())
+    if provider_id:
+        provider_ids = [provider_id]
+    elif active_provider_ids is not None:
+        active_ids = {
+            str(item).strip()
+            for item in active_provider_ids
+            if str(item or "").strip()
+        }
+        provider_ids = [
+            current_provider_id
+            for current_provider_id in catalog_map
+            if current_provider_id in active_ids
+        ]
+    else:
+        provider_ids = list(catalog_map.keys())
     models = []
 
     for current_provider_id in provider_ids:
@@ -1968,13 +1983,13 @@ def build_profile_catalog(active_provider_ids=None, custom_profiles=None):
 
 def _load_legacy_providers() -> Dict[str, Any]:
     available = {}
-    for env_vars, provider_id, module_path, class_name in _LEGACY_PROVIDER_REGISTRY:
-        if not any(_truthy_env(env_var) for env_var in env_vars):
+    for _env_vars, provider_id, module_path, class_name in _LEGACY_PROVIDER_REGISTRY:
+        if not provider_has_api_key(provider_id):
             continue
         try:
             module = importlib.import_module(module_path)
             provider_cls = getattr(module, class_name)
-            available[provider_id] = provider_cls()
+            available[provider_id] = provider_cls(api_key=_manifest_credential(provider_id))
         except Exception:
             continue
     return available
@@ -1994,21 +2009,30 @@ def _credentials_ready(manifest: Dict[str, Any], provider_id: str) -> bool:
         manifest.get("base_url_env"),
         _CURATED_PROVIDER_METADATA.get(provider_id, {}).get("base_url_envs", []),
     )
-    if any(_truthy_env(name) for name in api_envs):
-        return True
+    # The unqualified Xiaomi key is an explicit SGP token-plan opt-in.  It
+    # must not implicitly enable the global account inventory or another
+    # region, whose endpoint and trust record are independently selected.
+    if "MIMO_API_KEY" in api_envs and provider_id != "xiaomi-token-plan-sgp":
+        # A regional provider may advertise the shared legacy name for
+        # compatibility, but only its own credential key may enable it.
+        direct_keys = set(provider_secret_keys(provider_id)) - {"MIMO_API_KEY"}
+        if not direct_keys:
+            return False
     if provider_has_oauth_connection(provider_id):
         return True
     if provider_has_api_key(provider_id):
         return True
     if not credential_required:
-        if any(_truthy_env(name) for name in base_url_envs):
-            return True
         return not base_url_envs or bool(str(manifest.get("default_base_url", "")).strip())
     return False
 
 
 def _cloud_runtime_enabled() -> bool:
-    return str(os.environ.get("RUMI_DEFAULTSPACK_ENABLE_CLOUD_PROVIDERS", "")).strip().lower() in {
+    # Cloud execution is a profile/host decision.  An ambient process flag
+    # must never grant authority or make a missing credential appear ready.
+    from core_runtime.host_contract import host_contract_value
+
+    return host_contract_value("cloud_providers_enabled").lower() in {
         "1",
         "true",
         "yes",
@@ -2016,7 +2040,9 @@ def _cloud_runtime_enabled() -> bool:
     }
 
 
-def _instantiate_manifest_provider(manifest: Dict[str, Any]):
+def _instantiate_manifest_provider(
+    manifest: Dict[str, Any], *, injected_api_key: str = ""
+):
     provider_id = str(manifest.get("id", "")).strip()
     if not provider_id or provider_id == "rumi":
         return None
@@ -2024,7 +2050,8 @@ def _instantiate_manifest_provider(manifest: Dict[str, Any]):
     adapter = str(manifest.get("adapter", "")).strip()
     entrypoint = str(manifest.get("entrypoint", "")).strip()
     if adapter == "openai_compatible":
-        config = manifest.get("config") if isinstance(manifest.get("config"), dict) else {}
+        config_value = manifest.get("config")
+        config = dict(config_value) if isinstance(config_value, dict) else {}
         if config.get("custom_openai_compatible"):
             api_id = str(config.get("api_id") or "").strip()
             if not api_id:
@@ -2054,6 +2081,7 @@ def _instantiate_manifest_provider(manifest: Dict[str, Any]):
         program_provider = provider_id in provider_program_manifests()
         return provider_cls.from_manifest(
             manifest,
+            api_key=str(injected_api_key or _manifest_credential(provider_id) or ""),
             # The provider program forbids static inventory snapshots: its
             # authenticated /models response is the sole runtime source.
             # Independently installed custom extensions may still explicitly
@@ -2063,8 +2091,27 @@ def _instantiate_manifest_provider(manifest: Dict[str, Any]):
         )
     if entrypoint:
         provider_cls = _import_provider_entrypoint(entrypoint)
+        if provider_id.startswith("xiaomi-token-plan-"):
+            return provider_cls(api_key=str(injected_api_key or "").strip())
         return provider_cls()
     return None
+
+
+def _manifest_credential(provider_id: str) -> str:
+    """Resolve a selected connection without consulting process globals."""
+
+    value = read_provider_api_key(provider_id, "legacy")
+    if value:
+        return str(value).strip()
+    for connection in provider_named_api_keys(provider_id):
+        if not connection.get("configured"):
+            continue
+        api_id = str(connection.get("api_id") or "").strip()
+        if api_id:
+            value = read_provider_api_key(provider_id, api_id)
+            if value:
+                return str(value).strip()
+    return ""
 
 
 def _import_provider_entrypoint(entrypoint: str):
@@ -2088,7 +2135,13 @@ def detect_available_providers():
         if not _credentials_ready(manifest, provider_id):
             continue
         try:
-            provider = _instantiate_manifest_provider(manifest)
+            injected_api_key = ""
+            if provider_id.startswith("xiaomi-token-plan-"):
+                injected_api_key = read_provider_api_key(provider_id, "legacy") or ""
+            provider = _instantiate_manifest_provider(
+                manifest,
+                injected_api_key=injected_api_key,
+            )
         except Exception:
             provider = None
         if provider is not None:

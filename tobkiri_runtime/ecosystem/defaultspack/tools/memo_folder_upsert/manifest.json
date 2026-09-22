@@ -1,0 +1,49 @@
+{
+  "id": "memo_folder_upsert",
+  "category": "tool",
+  "description": "Create or update a durable local memo folder.",
+  "source_pack_id": "defaultspack",
+  "config": {
+    "tool_id": "memo_folder_upsert",
+    "name": "memo_folder_upsert",
+    "summary": "Create or update a Memory2 memo folder.",
+    "tool_category": "memory",
+    "action_type": "write",
+    "write_action": true,
+    "requires_approval": false,
+    "tags": [
+      "memory",
+      "memo",
+      "folder"
+    ],
+    "execution": {
+      "type": "handler",
+      "handler": "blocks.memory.memo_folders:tool_upsert_folder"
+    },
+    "schema": {
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "folder_id": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    }
+  }
+}

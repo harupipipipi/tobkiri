@@ -6,6 +6,8 @@ selects the global owners; this module only preserves legacy response fields.
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any, Dict, List
 
 from core_runtime.di_container import get_container
@@ -40,6 +42,39 @@ _LIVE_INVENTORY_SOURCES = {
     "last_known_good_inventory",
 }
 
+_RUNTIME_INVENTORY_CACHE_TTL_SECONDS = 5.0
+_runtime_inventory_cache_lock = threading.RLock()
+_runtime_inventory_cache: dict[
+    str, tuple[float, Any, tuple[tuple[str, int], ...], list[Dict[str, Any]]]
+] = {}
+_runtime_inventory_state = threading.local()
+
+
+def _runtime_provider_fingerprint(client: Any) -> tuple[tuple[str, int], ...]:
+    providers = getattr(client, "_providers", None)
+    if not isinstance(providers, dict):
+        return ()
+    return tuple(
+        sorted(
+            (str(provider_id), id(provider))
+            for provider_id, provider in providers.items()
+        )
+    )
+
+
+def _clear_runtime_inventory_cache() -> None:
+    """Clear the short-lived runtime inventory cache after provider changes."""
+    with _runtime_inventory_cache_lock:
+        _runtime_inventory_cache.clear()
+
+
+def _active_runtime_inventory_providers() -> set[str]:
+    active = getattr(_runtime_inventory_state, "active_providers", None)
+    if active is None:
+        active = set()
+        _runtime_inventory_state.active_providers = active
+    return active
+
 
 def _runtime_client():
     """Return the live provider client without coupling module import to startup."""
@@ -49,7 +84,7 @@ def _runtime_client():
 
 
 def _invoke(contract_id: str, operation: str, payload: Dict[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     if registry is None:
         raise GlobalContractUnavailable("interface registry is unavailable")
     return invoke_global_contract(registry, contract_id, operation, payload)
@@ -169,10 +204,47 @@ def _merge_runtime_inventory(
     catalog entries, and runtime metadata wins for duplicate model ids.
     """
     normalized_provider = str(provider or "").strip()
-    try:
-        runtime_models = _runtime_client().list_models(provider=normalized_provider or None)
-    except Exception:
+    active_providers = _active_runtime_inventory_providers()
+    if active_providers:
+        # A runtime provider may consult the legacy catalog while discovering
+        # its own (or another provider's) models.  Do not recurse into the
+        # fallback construction from inside that discovery call.
         runtime_models = []
+    else:
+        active_providers.add(normalized_provider)
+        try:
+            client = _runtime_client()
+            fingerprint = _runtime_provider_fingerprint(client)
+            now = time.monotonic()
+            with _runtime_inventory_cache_lock:
+                cached = _runtime_inventory_cache.get(normalized_provider)
+            if (
+                cached is not None
+                and cached[0] > now
+                and cached[1] is client
+                and cached[2] == fingerprint
+            ):
+                runtime_models = [dict(model) for model in cached[3]]
+            else:
+                runtime_models = client.list_models(
+                    provider=normalized_provider or None
+                )
+                runtime_models = [
+                    dict(model)
+                    for model in runtime_models
+                    if isinstance(model, dict)
+                ]
+                with _runtime_inventory_cache_lock:
+                    _runtime_inventory_cache[normalized_provider] = (
+                        now + _RUNTIME_INVENTORY_CACHE_TTL_SECONDS,
+                        client,
+                        fingerprint,
+                        [dict(model) for model in runtime_models],
+                    )
+        except Exception:
+            runtime_models = []
+        finally:
+            active_providers.discard(normalized_provider)
     runtime_models = [dict(model) for model in runtime_models if isinstance(model, dict)]
 
     providers_with_live_inventory = {
@@ -250,11 +322,8 @@ def _merge_selected_openrouter_inventory(
         if not approved:
             return models
 
-        from ecosystem.rumi_model_catalog_pack.runtime.catalog import (
-            create_model_catalog_operation,
-        )
-
-        result = create_model_catalog_operation(None)(
+        result = _invoke(
+            _MODEL_CATALOG_CONTRACT,
             "list",
             {"provider_id": "openrouter"},
         )

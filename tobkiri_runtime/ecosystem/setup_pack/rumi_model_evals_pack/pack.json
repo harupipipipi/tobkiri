@@ -26,7 +26,7 @@
       "Provider keys are runtime-only requirements and must not appear in pack files."
     ]
   },
-  "defaultspack_promotion": {
+  "base_pack_promotion": {
     "eligible": false,
     "reason": "Domain-specific evaluation policy pack; promotion decisions are advisory gates for defaultspack maintainers.",
     "gates": [

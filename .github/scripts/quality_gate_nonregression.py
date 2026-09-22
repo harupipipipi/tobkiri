@@ -74,6 +74,23 @@ def _remove_base_worktree(path: Path) -> None:
     shutil.rmtree(path.parent, ignore_errors=True)
 
 
+def _resolve_base_package_dir(base_worktree: Path, package_dir: str) -> Path:
+    requested = base_worktree / package_dir
+    if requested.is_dir():
+        return requested
+    legacy_names = {
+        "tobkiri_runtime": "rumi_ai_1_10",
+    }
+    legacy_name = legacy_names.get(package_dir)
+    if legacy_name:
+        legacy = base_worktree / legacy_name
+        if legacy.is_dir():
+            return legacy
+    raise RuntimeError(
+        f"package directory {package_dir!r} is absent from the base ref"
+    )
+
+
 def _check_non_regression(name: str, base_count: int, head_count: int) -> bool:
     print(f"{name}: base={base_count} head={head_count}")
     if head_count > base_count:
@@ -97,7 +114,7 @@ def main() -> int:
 
     base_worktree = _add_base_worktree(repo_root, args.base_ref)
     try:
-        base_package_dir = base_worktree / args.package_dir
+        base_package_dir = _resolve_base_package_dir(base_worktree, args.package_dir)
         base_ruff, _ = _ruff_count(base_package_dir, ruff_targets)
         head_ruff, _ = _ruff_count(package_dir, ruff_targets)
         base_mypy, _ = _mypy_count(base_package_dir, mypy_targets)

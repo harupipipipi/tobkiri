@@ -259,6 +259,10 @@ class OpenRouterProvider(OpenAICompatibleProvider):
         provider_model_id = self._provider_model_id(model_ref)
         supported: set[str] = set()
         invocation_models: List[Dict[str, Any]] = []
+        # Explicit inventories are used by callers that already performed
+        # their own catalog selection. The default provider inventory remains
+        # empty and still requires live or last-known-good discovery below.
+        invocation_models.extend(self._normalize_remote_models(self.KNOWN_MODELS))
         cache = self._load_remote_model_cache()
         if cache:
             invocation_models.extend(self._normalize_remote_models(cache.get("models")))

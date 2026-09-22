@@ -18,6 +18,8 @@ from ecosystem.rumi_ai_gateway_pack.runtime.gateway import (
     STREAM_PROVIDER_CONTRACT,
     TOOL_BRIDGE_CONTRACT,
     USAGE_CONTRACT,
+    RouteRequirement,
+    _append_explicit_live_model,
     create_generate_operation,
     create_stream_operation,
 )
@@ -203,6 +205,90 @@ def test_gateway_forwards_startup_profile_to_provider_adapter() -> None:
         item for item in client.calls if item[0] == GENERATE_PROVIDER_CONTRACT
     )
     assert provider_call[3]["profile_id"] == "defaults-profile"
+
+
+def test_gateway_resolves_immutable_model_provider_pricing_binding() -> None:
+    client = FakeContractClient()
+
+    result = create_generate_operation(client)(
+        "resolve",
+        {
+            "requirements": {
+                "modalities": ["text", "image"],
+                "preferred_model_id": "model-a",
+                "preferred_provider_instance_id": "adapter-a",
+            }
+        },
+    )
+
+    assert result == {
+        "status": "ok",
+        "model_id": "model-a",
+        "provider_instance_id": "adapter-a",
+        "catalog_provider_instance_id": "catalog-main",
+        "catalog_revision": "catalog-r1",
+        "pricing_revision": "catalog-r1",
+        "pricing": {
+            "input": 1.0,
+            "output": 2.0,
+            "currency": "USD",
+        },
+    }
+    assert not any(
+        contract_id == GENERATE_PROVIDER_CONTRACT
+        for contract_id, _, _, _ in client.calls
+    )
+
+
+def test_gateway_projects_trusted_profile_pricing_to_explicit_live_model() -> None:
+    catalog_models: list[dict[str, Any]] = []
+
+    _append_explicit_live_model(
+        catalog_models,
+        RouteRequirement(
+            modalities=frozenset({"text"}),
+            capabilities=frozenset({"structured_output"}),
+            tool_calling=False,
+            thinking=False,
+            minimum_context=0,
+            request_surface="subagent",
+            data_residency=None,
+            maximum_cost=1.0,
+            preferred_model_id="opencode-zen/mimo-v2.5-free",
+            preferred_provider_id=None,
+            preferred_provider_instance_id=None,
+            health_max_age=60.0,
+        ),
+        explicit_pricing={
+            "input": 0.0,
+            "output": 0.0,
+            "currency": "USD",
+            "revision": "pricing-r1",
+        },
+    )
+
+    assert catalog_models == [
+        {
+            "model_id": "opencode-zen/mimo-v2.5-free",
+            "provider_model_id": "mimo-v2.5-free",
+            "provider_id": "opencode-zen",
+            "execution_provider_instance_id": (
+                "provider.compatibility.generate"
+            ),
+            "health_provider_instance_id": "provider.opencode-zen",
+            "catalog_revision": "pricing-r1",
+            "input_cost": 0.0,
+            "output_cost": 0.0,
+            "currency": "USD",
+            "capabilities": ["structured_output"],
+            "modalities": ["text"],
+            "context_length": 0,
+            "priority": 0,
+            "available": True,
+            "request_surfaces": ["subagent"],
+            "data_residency": "unknown",
+        }
+    ]
 
 
 def test_failover_requires_explicit_replay_safe_request() -> None:

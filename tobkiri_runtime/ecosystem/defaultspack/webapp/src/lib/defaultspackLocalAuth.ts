@@ -30,6 +30,7 @@ type TauriInternals = {
 
 let session: LocalAuthSession | null = null;
 let initialization: Promise<void> | null = null;
+let nativeExchangeUnavailable = false;
 
 function browserOrigin(): string {
   try {
@@ -197,9 +198,20 @@ async function redeemExchange(value: unknown): Promise<void> {
 }
 
 async function nativeExchange(): Promise<unknown> {
+  if (nativeExchangeUnavailable) return null;
   const internals = (globalThis as typeof globalThis & { __TAURI_INTERNALS__?: TauriInternals }).__TAURI_INTERNALS__;
   if (typeof internals?.invoke !== "function") return null;
-  return internals.invoke("defaultspack_local_auth_exchange");
+  try {
+    return await internals.invoke("defaultspack_local_auth_exchange");
+  } catch {
+    // The verified Profile Shell is a separate minimal Tauri process. It has
+    // already exchanged its one-time bootstrap code for an HttpOnly panel
+    // cookie and intentionally exposes no Launcher commands. Auxiliary
+    // Launcher-owned windows do expose this command and use the scoped
+    // in-memory handoff below.
+    nativeExchangeUnavailable = true;
+    return null;
+  }
 }
 
 async function childExchange(): Promise<unknown> {
@@ -299,6 +311,7 @@ export function applyDefaultspackLocalAuthHeaders(headers: Headers): void {
 export function resetDefaultspackLocalAuthForTests(): void {
   session = null;
   initialization = null;
+  nativeExchangeUnavailable = false;
 }
 
 cleanupLegacyDefaultspackLocalAuth();

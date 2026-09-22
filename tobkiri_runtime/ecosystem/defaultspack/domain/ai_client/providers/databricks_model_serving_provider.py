@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 
 from ..api_key_store import provider_named_api_keys
 from ..base_provider import BaseProvider
+from ..api_key_store import read_provider_api_key
 
 
 class DatabricksModelServingProvider(BaseProvider):
@@ -23,8 +24,8 @@ class DatabricksModelServingProvider(BaseProvider):
     _MODEL_INVENTORY_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
     _MODEL_INVENTORY_CACHE_TTL_SECONDS = 300
 
-    def __init__(self):
-        self._api_key = str(os.environ.get("DATABRICKS_TOKEN", "") or "").strip()
+    def __init__(self, api_key: str | None = None):
+        self._api_key = str(api_key or read_provider_api_key("databricks-model-serving", "legacy") or "").strip()
         self._base_url = self._configured_base_url()
         self._ssl_ctx = ssl.create_default_context()
 

@@ -1,26 +1,210 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {"id": "rumi.media_capture_host_service", "version": "1.0.0", "kind": "service", "display_name": "Rumi Media Capture Host Service", "description": "Bounded private-media capture and audio output requests."},
   "contracts": {
     "provides": [
-      {"id": "rumi.action.media.capture.v1", "version": "1.0.0", "provider_instance_id": "media.capture", "cardinality": "one", "security": "critical", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_media_capture_host_service_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["media.capture"]},
-      {"id": "rumi.action.media.output.v1", "version": "1.0.0", "provider_instance_id": "media.output", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_media_capture_host_service_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "process", "required_capabilities": ["media.output"]}
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.media.capture.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_media_capture_host_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "media.capture",
+        "required_capabilities": [
+          "media.capture"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.media.output.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_media_capture_host_service_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "media.output",
+        "required_capabilities": [
+          "media.output"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
     ],
-    "requires": [{"id": "rumi.service.host.authorize.v1", "version": ">=1.0.0,<2.0.0", "cardinality": "one", "failure": "fail_closed"}]
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
   },
   "entrypoints": [
-    {"id": "media-capture", "contract_id": "rumi.action.media.capture.v1", "loader": "python", "module": "ecosystem.rumi_media_capture_host_service_pack.runtime.service", "symbol": "create_media_capture", "artifact_hash": "sha256:7a627ab9a07468bcbe3adcf67c53f7e8c7413f35126229c9753a2d7ac0c93a1b"},
-    {"id": "media-output", "contract_id": "rumi.action.media.output.v1", "loader": "python", "module": "ecosystem.rumi_media_capture_host_service_pack.runtime.service", "symbol": "create_media_output", "artifact_hash": "sha256:7a627ab9a07468bcbe3adcf67c53f7e8c7413f35126229c9753a2d7ac0c93a1b"}
+    {
+      "artifact_hash": "sha256:2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01",
+      "contract_id": "rumi.action.media.capture.v1",
+      "id": "media-capture",
+      "loader": "python",
+      "module": "ecosystem.rumi_media_capture_host_service_pack.runtime.service",
+      "symbol": "create_media_capture"
+    },
+    {
+      "artifact_hash": "sha256:2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01",
+      "contract_id": "rumi.action.media.output.v1",
+      "id": "media-output",
+      "loader": "python",
+      "module": "ecosystem.rumi_media_capture_host_service_pack.runtime.service",
+      "symbol": "create_media_output"
+    }
   ],
-  "resources": [],
-  "storage": [],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.media.capture.v1",
+            "rumi.action.media.output.v1"
+          ],
+          "requires": [
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Bounded private-media capture and audio output requests.",
+        "display_name": "Rumi Media Capture Host Service",
+        "host_execution": false,
+        "metadata": {
+          "authority_split": [
+            "capture",
+            "output"
+          ],
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:39fa29b151ee0a15d1cfa796503c5126821da1b448c462734da71c5d53f9ebb3",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:4331551bed04acdcffdb1a5a5469acc55bbcbc04fb8105567e4d3006c11d0571"
+          },
+          "executor_owner": "rumi_viewer_host_broker",
+          "network_send": false,
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "raw_media_persistence": false,
+          "tool_or_ui_registry_imports": false
+        },
+        "pack_id": "rumi_media_capture_host_service_pack",
+        "pack_identity": "rumi:ecosystem/rumi_media_capture_host_service_pack",
+        "provenance": {
+          "build_identity": "rumi_media_capture_host_service_pack:1.0.0",
+          "content_hash": "sha256:2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume",
+          "media.capture",
+          "media.output"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_media_capture_host_service_pack"
+    },
+    "rumi.media_capture.boundary": {
+      "authority": "core_runtime.authority",
+      "capture_output_split": true,
+      "client_approval_material": "forbidden",
+      "executor": "rumi_viewer_host_broker",
+      "max_duration_ms": 300000,
+      "network_send": false,
+      "raw_media_persistence": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_media_capture_host_service_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:4331551bed04acdcffdb1a5a5469acc55bbcbc04fb8105567e4d3006c11d0571"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.media.processor.take_screenshot",
+      "rumi_host_capabilities_pack"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior adapter without enabling duplicate device capture.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Bounded private-media capture and audio output requests.",
+    "display_name": "Rumi Media Capture Host Service",
+    "id": "rumi.media_capture_host_service",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
   "permissions": [
-    {"capability": "media.capture", "access": "control", "approval_required": true},
-    {"capability": "media.output", "access": "control", "approval_required": true},
-    {"capability": "host.authority.consume", "access": "control", "approval_required": false}
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "media.capture"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "media.output"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
   ],
-  "provenance": {"content_hash": "sha256:7a627ab9a07468bcbe3adcf67c53f7e8c7413f35126229c9753a2d7ac0c93a1b", "build_identity": "rumi-media-capture-host-service-pack:1.0.0", "trust_class": "local", "signature": null},
-  "migration": {"from": ["defaultspack.domain.media.processor.take_screenshot", "rumi_host_capabilities_pack"], "compatibility_aliases": ["defaults.media.screenshot"], "compatibility_projection": "one_way_contract_adapter", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Select the pinned prior adapter without enabling duplicate device capture."},
-  "extensions": {"rumi.media_capture.boundary": {"capture_output_split": true, "authority": "core_runtime.authority", "executor": "rumi_viewer_host_broker", "raw_media_persistence": false, "network_send": false, "max_duration_ms": 300000, "client_approval_material": "forbidden"}}
+  "provenance": {
+    "build_identity": "rumi_media_capture_host_service_pack:1.0.0",
+    "content_hash": "sha256:2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }
-
