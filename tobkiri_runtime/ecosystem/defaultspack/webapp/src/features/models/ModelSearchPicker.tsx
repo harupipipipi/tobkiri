@@ -296,7 +296,7 @@ export function ModelSearchPicker({
       )).filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0);
       const triggerIndex = candidates.indexOf(trigger);
       const target = triggerIndex >= 0 ? candidates[triggerIndex + (backward ? -1 : 1)] : null;
-      (target ?? trigger).focus();
+      target?.focus();
     }, 0);
   }
 
