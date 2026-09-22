@@ -564,11 +564,12 @@ fn authority_approval_bootstrap_window_url(
     // the initial navigation, so it cannot open this surface.
     let bootstrap_secret = load_or_create_panel_bootstrap_secret(config)
         .map_err(|error| format!("failed to load panel bootstrap secret: {error:#}"))?;
-    let code =
-        request_panel_bootstrap_code_with_retry(active_defaultspack_http_port(), &bootstrap_secret)
-            .map_err(|error| {
-                format!("failed to issue authority approval bootstrap code: {error:#}")
-            })?;
+    let code = request_panel_presenter_code_with_retry(
+        active_defaultspack_http_port(),
+        &bootstrap_secret,
+        request_id,
+    )
+    .map_err(|error| format!("failed to issue authority approval bootstrap code: {error:#}"))?;
     dock_registration::add_defaultspack_bootstrap_code(url, &code)
         .map_err(|error| format!("failed to attach authority approval bootstrap code: {error:#}"))
 }
@@ -2179,12 +2180,13 @@ fn secure_panel_bootstrap_secret_file(path: &std::path::Path) -> AnyResult<fs::F
 }
 
 fn request_panel_bootstrap_code(port: u16, bootstrap_secret: &str) -> AnyResult<String> {
-    request_panel_bootstrap_code_with_timeout(port, bootstrap_secret, Duration::from_secs(10))
+    request_panel_bootstrap_code_with_timeout(port, bootstrap_secret, None, Duration::from_secs(10))
 }
 
 fn request_panel_bootstrap_code_with_timeout(
     port: u16,
     bootstrap_secret: &str,
+    presenter_request_id: Option<&str>,
     timeout: Duration,
 ) -> AnyResult<String> {
     let client = reqwest::blocking::Client::builder()
@@ -2192,11 +2194,17 @@ fn request_panel_bootstrap_code_with_timeout(
         .build()
         .context("failed to build bootstrap HTTP client")?;
     let url = format!("http://127.0.0.1:{port}/api/panel/auth/bootstrap");
-    let response = client
+    let request = client
         .post(url)
-        .header("X-Rumi-Desktop-Bootstrap", bootstrap_secret)
-        .send()
-        .context("panel bootstrap request failed")?;
+        .header("X-Rumi-Desktop-Bootstrap", bootstrap_secret);
+    // The dedicated approval window names the request its code is for so the
+    // Host can bind that one code to the pending presenter grant.  Naming a
+    // request never creates a grant; it only selects a live one.
+    let request = match presenter_request_id {
+        Some(request_id) => request.json(&serde_json::json!({ "request_id": request_id })),
+        None => request,
+    };
+    let response = request.send().context("panel bootstrap request failed")?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -2223,6 +2231,22 @@ fn request_panel_bootstrap_code_with_timeout(
 }
 
 fn request_panel_bootstrap_code_with_retry(port: u16, bootstrap_secret: &str) -> AnyResult<String> {
+    request_panel_bootstrap_code_with_retry_for(port, bootstrap_secret, None)
+}
+
+fn request_panel_presenter_code_with_retry(
+    port: u16,
+    bootstrap_secret: &str,
+    request_id: &str,
+) -> AnyResult<String> {
+    request_panel_bootstrap_code_with_retry_for(port, bootstrap_secret, Some(request_id))
+}
+
+fn request_panel_bootstrap_code_with_retry_for(
+    port: u16,
+    bootstrap_secret: &str,
+    presenter_request_id: Option<&str>,
+) -> AnyResult<String> {
     // A committed activation can replace the Kernel between health and this
     // request. Fast connection refusals must not exhaust the recovery budget
     // before the replacement finishes its verified cold capture.
@@ -2236,6 +2260,7 @@ fn request_panel_bootstrap_code_with_retry(port: u16, bootstrap_secret: &str) ->
         match request_panel_bootstrap_code_with_timeout(
             port,
             bootstrap_secret,
+            presenter_request_id,
             remaining.min(Duration::from_secs(10)),
         ) {
             Ok(code) => return Ok(code),
@@ -3278,7 +3303,6 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             8765,
         ])));
     let allowed_navigation_ports_for_plugin = Arc::clone(&allowed_navigation_ports);
-    let allowed_navigation_ports_for_setup = Arc::clone(&allowed_navigation_ports);
 
     #[cfg(debug_assertions)]
     let builder = if let Some(policy) = debug_parallel_instance.as_ref() {
@@ -3302,8 +3326,15 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
         }));
 
     record_startup_stage(&startup_stage, "builder_configured");
-    let setup_startup_stage = Arc::clone(&startup_stage);
     let build_startup_stage = Arc::clone(&startup_stage);
+    let setup_context = LauncherSetupContext {
+        app_identifier,
+        startup_stage: Arc::clone(&startup_stage),
+        allowed_navigation_ports: Arc::clone(&allowed_navigation_ports),
+        debug_writable_roots,
+        #[cfg(debug_assertions)]
+        debug_parallel_instance,
+    };
 
     let app = builder
         .plugin(tauri_plugin_dialog::init())
@@ -3327,230 +3358,16 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
                 .build(),
         )
         .setup(move |app| {
-            record_startup_stage(&setup_startup_stage, "setup_entered");
-            std::env::set_var("TOBKIRI_LAUNCHER_APP_IDENTIFIER", &app_identifier);
-            record_startup_stage(&setup_startup_stage, "resolving_app_paths");
-            let resource_dir = match app.path().resource_dir() {
-                Ok(resource_dir) => resource_dir,
-                Err(error) => bundled_resource_dir_fallback().ok_or_else(|| {
-                    anyhow!("failed to resolve resource_dir: {error}")
-                })?,
-            };
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .context("failed to resolve app_data_dir")?;
-            let app_data_dir =
-                ci_e2e_app_data::resolve_app_data_dir_from_env(&app_identifier, &app_data_dir)?;
-            record_startup_stage(&setup_startup_stage, "building_config");
-            let mut config = AppConfig::detect_for_tauri(resource_dir, app_data_dir)
-                .context("failed to build AppConfig")?;
-            if let Some((supervisor_root, user_data_root)) = debug_writable_roots.as_ref() {
-                config.isolate_writable_state(supervisor_root, user_data_root.clone());
+            // Tauri runs this hook inside the event loop's `Ready` callback
+            // and turns a returned `Err` into `panic!("Failed to setup app")`.
+            // That callback cannot unwind across the macOS runtime FFI
+            // boundary, so a setup `Err` aborts the process (SIGABRT) before
+            // the `.build()` error handling below ever runs. Keep the hook
+            // infallible: surface recoverable init failures and exit cleanly
+            // instead of returning `Err`.
+            if let Err(error) = launcher_setup(app, &setup_context) {
+                exit_after_setup_failure(&setup_context, &error);
             }
-
-            record_startup_stage(&setup_startup_stage, "creating_state_directories");
-            std::fs::create_dir_all(&config.log_dir).ok();
-            std::fs::create_dir_all(&config.user_data_dir).ok();
-            std::fs::create_dir_all(config.host_broker_dir()).ok();
-
-            let progress = SetupProgress(Arc::new(Mutex::new(
-                "Initializing...".to_string(),
-            )));
-            let progress_arc = progress.0.clone();
-            app.manage(progress);
-            let shutdown_flag = Arc::new(AtomicBool::new(false));
-            app.manage(ShutdownState(Arc::clone(&shutdown_flag)));
-
-            record_startup_stage(&setup_startup_stage, "loading_panel_bootstrap_secret");
-            let panel_bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
-                .context("failed to load persisted panel bootstrap secret")?;
-            let debug_approval = Arc::new(DebugApprovalManager::new(
-                config.log_dir.join("debug-approval-audit.jsonl"),
-            ));
-            record_startup_stage(&setup_startup_stage, "starting_host_broker");
-            let host_broker = HostBrokerRuntime::start(
-                &config,
-                Arc::clone(&debug_approval),
-                app.handle().clone(),
-            )
-            .context("failed to start Viewer host broker")?;
-            let broker_attestation = host_broker.attestation_identity();
-            record_startup_stage(&setup_startup_stage, "host_broker_running");
-            app.manage(host_broker.clone());
-            app.manage(broker_attestation.clone());
-            app.manage(Arc::clone(&debug_approval));
-            #[cfg(debug_assertions)]
-            if let Some(policy) = debug_parallel_instance.as_ref() {
-                // A complete debug policy binds every run to an exact reserved
-                // kernel port.  Do not scan/reuse another Viewer's kernel.
-                config.kernel_port = policy.kernel_port;
-            } else {
-                config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
-            }
-            set_allowed_navigation_ports(
-                &allowed_navigation_ports_for_setup,
-                navigation_ports_with_tauri_dev_server(vec![
-                    config.kernel_port,
-                    #[cfg(debug_assertions)]
-                    debug_parallel_instance
-                        .as_ref()
-                        .map(|policy| policy.defaultspack_http_port)
-                        .unwrap_or(DEFAULTSPACK_RESERVED_PORT),
-                    #[cfg(not(debug_assertions))]
-                    DEFAULTSPACK_RESERVED_PORT,
-                ]),
-            );
-            app.manage(AllowedNavigationPorts(Arc::clone(
-                &allowed_navigation_ports_for_setup,
-            )));
-            let km = Arc::new(Mutex::new(KernelManager::new(
-                &config,
-                panel_bootstrap_secret.clone(),
-            )));
-            let km_for_thread = km.clone();
-            let km_for_monitor = km.clone();
-            app.manage(km);
-
-            let defaultspack_manager = Arc::new(DefaultspackManager::new(
-                config.clone(),
-                Arc::clone(&shutdown_flag),
-                broker_attestation,
-                Arc::clone(&debug_approval),
-            ));
-            let defaultspack_manager_for_monitor = Arc::clone(&defaultspack_manager);
-            app.manage(defaultspack_manager);
-
-            #[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
-            if let Some(socket_path) = maybe_start_packvm_acceptance_adapter(
-                &app_identifier,
-                &config,
-                &panel_bootstrap_secret,
-            )? {
-                info!(
-                    "PackVM acceptance adapter is waiting for an explicit QA request at {}",
-                    socket_path.display()
-                );
-            }
-            app.manage(config.clone());
-
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.show();
-            }
-
-            let handle = app.handle().clone();
-            let monitor_handle = app.handle().clone();
-            let port = config.kernel_port;
-
-            #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
-            maybe_spawn_authority_approval_smoke_window(app.handle().clone());
-
-            spawn_kernel_exit_monitor(
-                monitor_handle,
-                config.clone(),
-                km_for_monitor,
-                Arc::clone(&app.state::<ShutdownState>().inner().0),
-                panel_bootstrap_secret.clone(),
-            );
-            DefaultspackManager::spawn_exit_monitor(defaultspack_manager_for_monitor);
-
-            std::thread::spawn(move || {
-                // --- Fast path: existing authenticated kernel ---
-                update_setup_progress(
-                    Some(&handle),
-                    &progress_arc,
-                    "Checking for existing session...",
-                );
-                if let Ok(true) =
-                    health_check::check_authenticated_health(port, &panel_bootstrap_secret)
-                {
-                    info!("Existing authenticated kernel detected on port {port}, attempting fast-path bootstrap...");
-                    match request_panel_bootstrap_code_with_retry(port, &panel_bootstrap_secret) {
-                        Ok(panel_code) => {
-                            update_setup_progress(Some(&handle), &progress_arc, "Ready");
-                            if let Some(win) = handle.get_webview_window("main") {
-                                if let Err(e) =
-                                    navigate_and_show_window_to_panel_session(
-                                        &win,
-                                        port,
-                                        &panel_code,
-                                    )
-                                {
-                                    error!("Failed to navigate to panel: {e}");
-                                }
-                            }
-                            prepare_defaultspack_guardian_in_background(
-                                handle.clone(),
-                                config.clone(),
-                                panel_bootstrap_secret.clone(),
-                            );
-                            // Delayed background update check.
-                            run_delayed_update_check();
-                            return;
-                        }
-                        Err(e) => {
-                            info!("Fast-path bootstrap failed: {e}, falling back to normal startup");
-                        }
-                    }
-                }
-
-                // --- Normal startup sequence ---
-                update_setup_progress(Some(&handle), &progress_arc, "Checking Python environment...");
-                if let Err(e) = python_env::ensure_python_env_with_progress(&config, |message| {
-                    update_setup_progress(Some(&handle), &progress_arc, message);
-                }) {
-                    let msg = startup_failure_message("Python setup", &e, &config);
-                    error!("{msg}");
-                    update_setup_progress(Some(&handle), &progress_arc, &msg);
-                    return;
-                }
-
-                let panel_code = match start_kernel_and_bootstrap(
-                    &handle,
-                    &km_for_thread,
-                    port,
-                    &panel_bootstrap_secret,
-                    &progress_arc,
-                ) {
-                    Ok(code) => code,
-                    Err(e) => {
-                        let msg = startup_failure_message("Tobkiri Launcher startup", &e, &config);
-                        error!("{msg}");
-                        update_setup_progress(Some(&handle), &progress_arc, &msg);
-                        return;
-                    }
-                };
-
-                update_setup_progress(Some(&handle), &progress_arc, "Ready");
-
-                if let Some(win) = handle.get_webview_window("main") {
-                    if let Err(e) = navigate_and_show_window_to_panel_session(
-                        &win,
-                        port,
-                        &panel_code,
-                    ) {
-                        error!("Failed to navigate to panel: {e}");
-                    }
-                }
-
-                prepare_defaultspack_guardian_in_background(
-                    handle.clone(),
-                    config.clone(),
-                    panel_bootstrap_secret.clone(),
-                );
-
-                // Delayed background update check.
-                run_delayed_update_check();
-            });
-
-            record_startup_stage(&setup_startup_stage, "setting_up_tray");
-            tray::setup_tray(app)?;
-            record_startup_stage(&setup_startup_stage, "setup_complete");
-
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -3654,6 +3471,255 @@ fn run_launcher(context: tauri::Context<tauri::Wry>) {
             let _ = (app_handle, event);
         }
     });
+}
+
+/// Inputs captured by the launcher `setup` hook.
+///
+/// The fallible setup body lives in [`launcher_setup`] so recoverable init
+/// failures can be surfaced and turned into a clean nonzero exit; the Tauri
+/// hook itself must never return `Err` (see [`exit_after_setup_failure`]).
+struct LauncherSetupContext {
+    app_identifier: String,
+    startup_stage: Arc<Mutex<&'static str>>,
+    allowed_navigation_ports: Arc<Mutex<Vec<u16>>>,
+    debug_writable_roots: Option<(PathBuf, PathBuf)>,
+    #[cfg(debug_assertions)]
+    debug_parallel_instance: Option<DebugParallelInstancePolicy>,
+}
+
+/// Surfaces a [`launcher_setup`] failure and exits the process nonzero.
+///
+/// `std::process::exit` performs no unwinding, so calling it inside the
+/// event-loop `Ready` callback is safe — unlike returning `Err`, which Tauri
+/// turns into a panic that aborts across the macOS FFI boundary.
+fn exit_after_setup_failure(ctx: &LauncherSetupContext, error: &anyhow::Error) -> ! {
+    error!(
+        "Viewer startup failed at stage={}: {error:#}; exiting nonzero",
+        startup_stage_name(&ctx.startup_stage)
+    );
+    eprintln!("Tobkiri Launcher could not start: {error:#}");
+    std::process::exit(1);
+}
+
+/// Runs the fallible portion of the launcher `setup` hook.
+///
+/// Every `Err` is recoverable startup failure (paths, config, host broker
+/// bind, tray); the caller surfaces it and exits cleanly instead of letting
+/// it unwind through Tauri's event-loop callback.
+fn launcher_setup(app: &mut tauri::App, ctx: &LauncherSetupContext) -> AnyResult<()> {
+    record_startup_stage(&ctx.startup_stage, "setup_entered");
+    std::env::set_var("TOBKIRI_LAUNCHER_APP_IDENTIFIER", &ctx.app_identifier);
+    record_startup_stage(&ctx.startup_stage, "resolving_app_paths");
+    let resource_dir = match app.path().resource_dir() {
+        Ok(resource_dir) => resource_dir,
+        Err(error) => bundled_resource_dir_fallback()
+            .ok_or_else(|| anyhow!("failed to resolve resource_dir: {error}"))?,
+    };
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .context("failed to resolve app_data_dir")?;
+    let app_data_dir =
+        ci_e2e_app_data::resolve_app_data_dir_from_env(&ctx.app_identifier, &app_data_dir)?;
+    record_startup_stage(&ctx.startup_stage, "building_config");
+    let mut config = AppConfig::detect_for_tauri(resource_dir, app_data_dir)
+        .context("failed to build AppConfig")?;
+    if let Some((supervisor_root, user_data_root)) = ctx.debug_writable_roots.as_ref() {
+        config.isolate_writable_state(supervisor_root, user_data_root.clone());
+    }
+
+    record_startup_stage(&ctx.startup_stage, "creating_state_directories");
+    std::fs::create_dir_all(&config.log_dir).ok();
+    std::fs::create_dir_all(&config.user_data_dir).ok();
+    std::fs::create_dir_all(config.host_broker_dir()).ok();
+
+    let progress = SetupProgress(Arc::new(Mutex::new("Initializing...".to_string())));
+    let progress_arc = progress.0.clone();
+    app.manage(progress);
+    let shutdown_flag = Arc::new(AtomicBool::new(false));
+    app.manage(ShutdownState(Arc::clone(&shutdown_flag)));
+
+    record_startup_stage(&ctx.startup_stage, "loading_panel_bootstrap_secret");
+    let panel_bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
+        .context("failed to load persisted panel bootstrap secret")?;
+    let debug_approval = Arc::new(DebugApprovalManager::new(
+        config.log_dir.join("debug-approval-audit.jsonl"),
+    ));
+    record_startup_stage(&ctx.startup_stage, "starting_host_broker");
+    let host_broker =
+        HostBrokerRuntime::start(&config, Arc::clone(&debug_approval), app.handle().clone())
+            .context("failed to start Viewer host broker")?;
+    let broker_attestation = host_broker.attestation_identity();
+    record_startup_stage(&ctx.startup_stage, "host_broker_running");
+    app.manage(host_broker.clone());
+    app.manage(broker_attestation.clone());
+    app.manage(Arc::clone(&debug_approval));
+    #[cfg(debug_assertions)]
+    if let Some(policy) = ctx.debug_parallel_instance.as_ref() {
+        // A complete debug policy binds every run to an exact reserved
+        // kernel port.  Do not scan/reuse another Viewer's kernel.
+        config.kernel_port = policy.kernel_port;
+    } else {
+        config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
+    }
+    set_allowed_navigation_ports(
+        &ctx.allowed_navigation_ports,
+        navigation_ports_with_tauri_dev_server(vec![
+            config.kernel_port,
+            #[cfg(debug_assertions)]
+            ctx.debug_parallel_instance
+                .as_ref()
+                .map(|policy| policy.defaultspack_http_port)
+                .unwrap_or(DEFAULTSPACK_RESERVED_PORT),
+            #[cfg(not(debug_assertions))]
+            DEFAULTSPACK_RESERVED_PORT,
+        ]),
+    );
+    app.manage(AllowedNavigationPorts(Arc::clone(
+        &ctx.allowed_navigation_ports,
+    )));
+    let km = Arc::new(Mutex::new(KernelManager::new(
+        &config,
+        panel_bootstrap_secret.clone(),
+    )));
+    let km_for_thread = km.clone();
+    let km_for_monitor = km.clone();
+    app.manage(km);
+
+    let defaultspack_manager = Arc::new(DefaultspackManager::new(
+        config.clone(),
+        Arc::clone(&shutdown_flag),
+        broker_attestation,
+        Arc::clone(&debug_approval),
+    ));
+    let defaultspack_manager_for_monitor = Arc::clone(&defaultspack_manager);
+    app.manage(defaultspack_manager);
+
+    #[cfg(all(unix, any(debug_assertions, tobkiri_ci_e2e_artifact)))]
+    if let Some(socket_path) = maybe_start_packvm_acceptance_adapter(
+        &ctx.app_identifier,
+        &config,
+        &panel_bootstrap_secret,
+    )? {
+        info!(
+            "PackVM acceptance adapter is waiting for an explicit QA request at {}",
+            socket_path.display()
+        );
+    }
+    app.manage(config.clone());
+
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.show();
+    }
+
+    let handle = app.handle().clone();
+    let monitor_handle = app.handle().clone();
+    let port = config.kernel_port;
+
+    #[cfg(any(debug_assertions, tobkiri_ci_e2e_artifact))]
+    maybe_spawn_authority_approval_smoke_window(app.handle().clone());
+
+    spawn_kernel_exit_monitor(
+        monitor_handle,
+        config.clone(),
+        km_for_monitor,
+        Arc::clone(&app.state::<ShutdownState>().inner().0),
+        panel_bootstrap_secret.clone(),
+    );
+    DefaultspackManager::spawn_exit_monitor(defaultspack_manager_for_monitor);
+
+    std::thread::spawn(move || {
+        // --- Fast path: existing authenticated kernel ---
+        update_setup_progress(
+            Some(&handle),
+            &progress_arc,
+            "Checking for existing session...",
+        );
+        if let Ok(true) = health_check::check_authenticated_health(port, &panel_bootstrap_secret) {
+            info!("Existing authenticated kernel detected on port {port}, attempting fast-path bootstrap...");
+            match request_panel_bootstrap_code_with_retry(port, &panel_bootstrap_secret) {
+                Ok(panel_code) => {
+                    update_setup_progress(Some(&handle), &progress_arc, "Ready");
+                    if let Some(win) = handle.get_webview_window("main") {
+                        if let Err(e) =
+                            navigate_and_show_window_to_panel_session(&win, port, &panel_code)
+                        {
+                            error!("Failed to navigate to panel: {e}");
+                        }
+                    }
+                    prepare_defaultspack_guardian_in_background(
+                        handle.clone(),
+                        config.clone(),
+                        panel_bootstrap_secret.clone(),
+                    );
+                    // Delayed background update check.
+                    run_delayed_update_check();
+                    return;
+                }
+                Err(e) => {
+                    info!("Fast-path bootstrap failed: {e}, falling back to normal startup");
+                }
+            }
+        }
+
+        // --- Normal startup sequence ---
+        update_setup_progress(
+            Some(&handle),
+            &progress_arc,
+            "Checking Python environment...",
+        );
+        if let Err(e) = python_env::ensure_python_env_with_progress(&config, |message| {
+            update_setup_progress(Some(&handle), &progress_arc, message);
+        }) {
+            let msg = startup_failure_message("Python setup", &e, &config);
+            error!("{msg}");
+            update_setup_progress(Some(&handle), &progress_arc, &msg);
+            return;
+        }
+
+        let panel_code = match start_kernel_and_bootstrap(
+            &handle,
+            &km_for_thread,
+            port,
+            &panel_bootstrap_secret,
+            &progress_arc,
+        ) {
+            Ok(code) => code,
+            Err(e) => {
+                let msg = startup_failure_message("Tobkiri Launcher startup", &e, &config);
+                error!("{msg}");
+                update_setup_progress(Some(&handle), &progress_arc, &msg);
+                return;
+            }
+        };
+
+        update_setup_progress(Some(&handle), &progress_arc, "Ready");
+
+        if let Some(win) = handle.get_webview_window("main") {
+            if let Err(e) = navigate_and_show_window_to_panel_session(&win, port, &panel_code) {
+                error!("Failed to navigate to panel: {e}");
+            }
+        }
+
+        prepare_defaultspack_guardian_in_background(
+            handle.clone(),
+            config.clone(),
+            panel_bootstrap_secret.clone(),
+        );
+
+        // Delayed background update check.
+        run_delayed_update_check();
+    });
+
+    record_startup_stage(&ctx.startup_stage, "setting_up_tray");
+    tray::setup_tray(app).map_err(|error| anyhow!("failed to set up system tray: {error}"))?;
+    record_startup_stage(&ctx.startup_stage, "setup_complete");
+
+    Ok(())
 }
 
 #[cfg(test)]

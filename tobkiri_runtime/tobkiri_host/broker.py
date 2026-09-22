@@ -847,18 +847,32 @@ class RequestBroker:
         future: Future[object] | None = None
         proof = nested_cancellation_proof
         child_id: int | None = None
+        provider_entry_claimed = threading.Event()
         try:
             self._authority.recheck_effect_boundary(
                 envelope.context,
                 envelope.target_principal,
                 envelope.lease,
             )
+            # The final authority recheck may consume the remaining request
+            # budget.  Prove the request is still live before the durable
+            # dispatch markers so an expired or cancelled request terminates
+            # unexecuted instead of running a provider side effect past its
+            # deadline and reporting false ambiguity.
+            if envelope.cancellation_requested.is_set():
+                raise RequestCancellationRequestedError("request cancellation was requested")
+            if monotonic_clock() >= deadline:
+                raise TimeoutError("request deadline expired before provider dispatch")
             if audit_reservation is not None:
                 self._audit.mark_dispatched(audit_reservation)
             if before_dispatch is not None:
                 before_dispatch()
+            # The dispatch markers themselves may consume the remaining
+            # budget; never submit a work item whose deadline already passed.
             if envelope.cancellation_requested.is_set():
                 raise RequestCancellationRequestedError("request cancellation was requested")
+            if monotonic_clock() >= deadline:
+                raise TimeoutError("request deadline expired before provider dispatch")
             if proof is not None:
                 try:
                     child_id = proof.reserve_child(envelope)
@@ -887,20 +901,54 @@ class RequestBroker:
                     WindowsWHPXBackend,
                     LinuxFirecrackerBackend,
                 )
+                provider_call: Callable[..., object]
+                provider_arguments: tuple[object, ...]
                 if type(backend) in platform_backend_types:
                     platform_backend = cast(ProductionIsolationBackend, backend)
-                    future = self._executor.submit(
-                        operation_context.run,
-                        platform_backend.invoke_with_nested_cancellation_proof,
-                        envelope,
-                        proof,
+                    provider_call = (
+                        platform_backend.invoke_with_nested_cancellation_proof
                     )
+                    provider_arguments = (envelope, proof)
                 else:
-                    future = self._executor.submit(
-                        operation_context.run,
-                        backend.invoke,
-                        envelope,
-                    )
+                    provider_call = backend.invoke
+                    provider_arguments = (envelope,)
+
+                def invoke_with_entry_gate() -> object:
+                    """Recheck cancellation and the deadline at provider entry.
+
+                    A queued or delayed worker must not turn budget overrun in
+                    earlier gates into a real external side effect.  The
+                    dispatching thread publishes
+                    ``envelope.cancellation_requested`` before reading
+                    ``provider_entry_claimed``, while this worker claims before
+                    its second check, so a worker which starts or stalls past
+                    the deadline can never slip a provider call past an
+                    already-published unexecuted termination.
+                    """
+
+                    if envelope.cancellation_requested.is_set():
+                        raise RequestCancellationRequestedError(
+                            "request cancellation was requested"
+                        )
+                    if monotonic_clock() >= deadline:
+                        raise TimeoutError(
+                            "request deadline expired before provider entry"
+                        )
+                    provider_entry_claimed.set()
+                    if envelope.cancellation_requested.is_set():
+                        raise RequestCancellationRequestedError(
+                            "request cancellation was requested"
+                        )
+                    if monotonic_clock() >= deadline:
+                        raise TimeoutError(
+                            "request deadline expired before provider entry"
+                        )
+                    return provider_call(*provider_arguments)
+
+                future = self._executor.submit(
+                    operation_context.run,
+                    invoke_with_entry_gate,
+                )
             except Exception:
                 if proof is not None and child_id is not None:
                     proof.abandon_child(child_id)
@@ -987,8 +1035,17 @@ class RequestBroker:
                             proof.record_backend_cancellation(child_id, future)
             except Exception as cancel_exc:
                 cancellation_error = cancel_exc
+            # ``provider_entry_claimed`` is set inside the executor gate
+            # between its two deadline/cancellation checks, immediately
+            # before provider entry.  ``cancellation_requested`` is published
+            # above before the flag is read, and the gate re-checks it after
+            # claiming, so an unset flag proves ``backend.invoke`` was never
+            # and will never be entered: queued-cancelled and gate-rejected
+            # requests terminate unexecuted instead of reporting a false
+            # ambiguity.
             ambiguous = (
                 future is not None
+                and provider_entry_claimed.is_set()
                 and binding.operation.effect_class is EffectClass.EXTERNAL_EFFECT
             )
             self._record_audit_failure(audit_reservation, ambiguous=ambiguous)

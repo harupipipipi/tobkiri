@@ -343,8 +343,22 @@ fn configured_broker_port() -> Result<u16> {
 }
 
 fn bind_listener(port: u16) -> Result<TcpListener> {
-    TcpListener::bind((DEFAULT_HOST, port)).with_context(|| {
-        format!("failed to bind Viewer host broker listener at {DEFAULT_HOST}:{port}")
+    TcpListener::bind((DEFAULT_HOST, port)).map_err(|error| {
+        if error.kind() == io::ErrorKind::AddrInUse {
+            // A conflicting port owner is unknown to us: report it and tell the
+            // operator how to retry instead of treating the bind failure as an
+            // unrecoverable crash. The port owner is never killed.
+            anyhow!(error).context(format!(
+                "Viewer host broker port {port} is already in use on {DEFAULT_HOST}. \
+                     Quit the other Tobkiri Launcher instance or the program using port \
+                     {port} — or set {BROKER_PORT_ENV} to a free port — then relaunch \
+                     Tobkiri Launcher"
+            ))
+        } else {
+            anyhow!(error).context(format!(
+                "failed to bind Viewer host broker listener at {DEFAULT_HOST}:{port}"
+            ))
+        }
     })
 }
 
@@ -2883,6 +2897,39 @@ mod tests {
             );
         }
         std::env::remove_var(BROKER_PORT_ENV);
+    }
+
+    #[test]
+    fn bind_listener_reports_port_conflict_with_retry_guidance() {
+        let blocker = TcpListener::bind((DEFAULT_HOST, 0))
+            .expect("test listener should bind an ephemeral port");
+        let port = blocker
+            .local_addr()
+            .expect("bound listener should have a local address")
+            .port();
+
+        // The conflict must surface as a normal error — never a panic — so the
+        // launcher setup path can report it and exit cleanly.
+        let error = bind_listener(port).expect_err("an occupied port must fail to bind");
+
+        let message = format!("{error:#}");
+        assert!(
+            message.contains(&port.to_string()),
+            "conflict error must name the occupied port: {message}"
+        );
+        assert!(
+            message.contains("already in use"),
+            "conflict error must describe the failure: {message}"
+        );
+        assert!(
+            message.contains(BROKER_PORT_ENV),
+            "conflict error must carry retry guidance: {message}"
+        );
+        assert!(
+            !message.contains("failed to bind Viewer host broker listener"),
+            "conflict error must not use the generic bind context: {message}"
+        );
+        drop(blocker);
     }
 
     #[test]

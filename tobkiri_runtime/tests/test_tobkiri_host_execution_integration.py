@@ -564,6 +564,172 @@ def test_queued_read_timeout_never_enters_backend_and_later_request_recovers() -
     assert fixture.audit.failures == [("provider_failed", False)]
 
 
+def test_slow_effect_boundary_recheck_never_dispatches_expired_request() -> None:
+    """A final gate which overruns the deadline cannot create a side effect."""
+
+    fixture = make_broker(timeout_ms=25)
+    recheck = fixture.authority.recheck_effect_boundary
+
+    def slow_recheck(context_arg, target, lease) -> None:
+        time.sleep(0.08)
+        recheck(context_arg, target, lease)
+
+    fixture.authority.recheck_effect_boundary = slow_recheck
+    try:
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(frame(25), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.invocations == 0
+    assert "provider_invoked" not in fixture.events
+    assert "audit_dispatched" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.authority.fenced == ["request-1"]
+    assert fixture.admission.released
+
+
+def test_dispatch_marker_delay_past_deadline_never_enters_provider() -> None:
+    """An executed-marker which overruns the deadline still cannot dispatch."""
+
+    fixture = make_broker(timeout_ms=25)
+    marks: list[str] = []
+
+    def slow_marker() -> None:
+        time.sleep(0.08)
+        marks.append("executed_marker")
+
+    try:
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(
+                frame(25),
+                context(),
+                effect_scope={},
+                before_dispatch=slow_marker,
+            )
+    finally:
+        fixture.broker.close()
+    assert marks == ["executed_marker"]
+    assert "audit_dispatched" in fixture.events
+    assert fixture.backend.invocations == 0
+    assert "provider_invoked" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.authority.fenced == ["request-1"]
+
+
+def test_executor_entry_past_deadline_never_invokes_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker which reaches the provider gate after expiry cannot invoke."""
+
+    fixture = make_broker(timeout_ms=25)
+    real_submit = fixture.broker._executor.submit
+
+    def delayed_submit(function, *arguments):
+        time.sleep(0.08)
+        return real_submit(function, *arguments)
+
+    monkeypatch.setattr(fixture.broker._executor, "submit", delayed_submit)
+    try:
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(frame(25), context(), effect_scope={})
+    finally:
+        fixture.broker.close()
+    assert "audit_dispatched" in fixture.events
+    assert fixture.backend.invocations == 0
+    assert "provider_invoked" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.authority.fenced == ["request-1"]
+    assert fixture.admission.released
+
+
+def test_cancellation_after_effect_recheck_never_dispatches() -> None:
+    """A cancel observed after the final gate terminates unexecuted."""
+
+    cancelled = Event()
+    fixture = make_broker(timeout_ms=1000)
+    recheck = fixture.authority.recheck_effect_boundary
+
+    def cancelling_recheck(context_arg, target, lease) -> None:
+        cancelled.set()
+        recheck(context_arg, target, lease)
+
+    fixture.authority.recheck_effect_boundary = cancelling_recheck
+    try:
+        with pytest.raises(RequestCancellationRequestedError):
+            fixture.broker.invoke(
+                frame(),
+                context(),
+                effect_scope={},
+                parent_cancellation=cancelled,
+            )
+    finally:
+        fixture.broker.close()
+    assert fixture.backend.invocations == 0
+    assert "provider_invoked" not in fixture.events
+    assert "audit_dispatched" not in fixture.events
+    assert fixture.audit.failures == [("provider_failed", False)]
+    assert fixture.authority.fenced == ["request-1"]
+
+
+def test_queued_external_timeout_is_unexecuted_not_ambiguous() -> None:
+    """A queued external work item cancelled before start never executed."""
+
+    first_entered = Event()
+    release_first = Event()
+
+    class SaturatedBackend(FakeBackend):
+        def invoke(self, request: RequestEnvelope) -> ProviderOutcome:
+            self.invocations += 1
+            self.events.append(f"provider_invoked:{request.context.request_id}")
+            if request.context.request_id == "request-1":
+                first_entered.set()
+                assert release_first.wait(timeout=10)
+            return self.outcome
+
+    fixture = make_broker(
+        effect=EffectClass.EXTERNAL_EFFECT,
+        timeout_ms=1000,
+        backend=SaturatedBackend([]),
+        max_workers=1,
+    )
+    first_result: list[Mapping[str, Any]] = []
+    first_error: list[BaseException] = []
+
+    def invoke_first() -> None:
+        try:
+            first_result.append(
+                fixture.broker.invoke(frame(1000), context(), effect_scope={})
+            )
+        except BaseException as exc:
+            first_error.append(exc)
+
+    first_thread = Thread(target=invoke_first)
+    first_thread.start()
+    try:
+        assert first_entered.wait(timeout=2)
+        with pytest.raises(RequestTimedOutError):
+            fixture.broker.invoke(
+                replace(frame(20), idempotency_key="notification:request-2"),
+                replace(context(), request_id="request-2", trace_id="trace-2"),
+                effect_scope={},
+            )
+        assert fixture.backend.cancelled == []
+        assert fixture.backend.invocations == 1
+
+        release_first.set()
+        first_thread.join(timeout=2)
+        assert not first_thread.is_alive()
+        assert first_error == []
+        assert first_result == [{"delivered": True}]
+    finally:
+        release_first.set()
+        first_thread.join(timeout=2)
+        fixture.broker.close()
+
+    assert fixture.authority.fenced == ["request-2"]
+    assert fixture.audit.failures == [("provider_failed", False)]
+
+
 @pytest.mark.parametrize("effect", [EffectClass.READ, EffectClass.EXTERNAL_EFFECT])
 @pytest.mark.parametrize("cancel_fails", [False, True])
 def test_parent_cancellation_targets_inner_request_without_claiming_termination(

@@ -8,11 +8,22 @@ loads then raises ``SealedBootstrapError`` and surfaces to the caller as
 regresses.  Modules must therefore import cleanly without mutating
 ``sys.path``; every root they need is already attested into the sealed
 environment (``app`` and ``app/ecosystem/defaultspack``).
+
+Each verification runs in a child interpreter (``sys.executable -B`` on this
+file, dispatched by scenario name through ``__main__``).  Purging and
+re-importing defaultspack modules inside the pytest process would leak fresh
+module/class objects into ``sys.modules`` and break identity assertions in
+unrelated tests (e.g. ``import_entrypoint`` results compared with ``is``
+against module-level imports).  The child installs the frozen ``sys.path``
+guard before importing, so every module — including transitive dependencies —
+executes under the guard exactly as it would in the sealed runtime.
 """
 
 from __future__ import annotations
 
 import importlib
+import os
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -49,17 +60,6 @@ class _FrozenSysPath(list):
     __delitem__ = _blocked
     __iadd__ = _blocked
     __imul__ = _blocked
-
-
-@pytest.fixture()
-def frozen_sys_path():
-    """Install the frozen sys.path guard for one test, then restore it."""
-    original = sys.path
-    sys.path = _FrozenSysPath(original)
-    try:
-        yield sys.path
-    finally:
-        sys.path = original
 
 
 def _purge(prefixes: tuple[str, ...]) -> None:
@@ -108,8 +108,12 @@ _SEALED_IMPORTABLE_MODULES = (
 )
 
 
-def test_block_adapter_import_prep_is_sealed_safe(frozen_sys_path) -> None:
-    """invoke_block's sys.path surgery must be a no-op under the frozen path."""
+# ---------------------------------------------------------------------------
+# Frozen-path scenarios (executed only inside the child interpreter).
+# ---------------------------------------------------------------------------
+
+
+def _scenario_block_adapter_import_prep_is_sealed_safe() -> None:
     _purge(("ecosystem.defaultspack.bridge", "bridge", "blocks.ui.catalog"))
     from ecosystem.defaultspack.bridge.block_adapter import invoke_block
 
@@ -124,11 +128,9 @@ def test_block_adapter_import_prep_is_sealed_safe(frozen_sys_path) -> None:
     assert result == {"ok": True, "input": {"a": 1}}
 
 
-@pytest.mark.parametrize("module_name", _SEALED_IMPORTABLE_MODULES)
-def test_pack_module_imports_without_sys_path_mutation(
-    frozen_sys_path, module_name: str
+def _scenario_pack_module_imports_without_sys_path_mutation(
+    module_name: str,
 ) -> None:
-    """Each module must import under the sealed frozen sys.path guard."""
     _purge(
         (
             "ecosystem.defaultspack.domain",
@@ -148,10 +150,7 @@ def test_pack_module_imports_without_sys_path_mutation(
     importlib.import_module(module_name)
 
 
-def test_model_search_dispatch_chain_imports_under_frozen_path(
-    frozen_sys_path,
-) -> None:
-    """The exact sealed crash chain: provider_catalog → registry → providers."""
+def _scenario_model_search_dispatch_chain_imports_under_frozen_path() -> None:
     _purge(
         (
             "ecosystem.defaultspack.domain.ai_client",
@@ -167,8 +166,7 @@ def test_model_search_dispatch_chain_imports_under_frozen_path(
     assert callable(get_provider_catalog)
 
 
-def test_openai_provider_public_surface(frozen_sys_path) -> None:
-    """The provider module keeps its contract after the sys.path removal."""
+def _scenario_openai_provider_public_surface() -> None:
     _purge(("ecosystem.defaultspack.domain.ai_client", "domain.ai_client"))
     from ecosystem.defaultspack.domain.ai_client.base_provider import (
         BaseProvider,
@@ -199,8 +197,7 @@ def test_openai_provider_public_surface(frozen_sys_path) -> None:
     assert parsed["usage"]["total_tokens"] == 3
 
 
-def test_stub_provider_remains_invocable(frozen_sys_path) -> None:
-    """The local-first stub provider still answers without credentials."""
+def _scenario_stub_provider_remains_invocable() -> None:
     _purge(("ecosystem.defaultspack.domain.ai_client", "domain.ai_client"))
     from ecosystem.defaultspack.domain.ai_client.providers.stub_provider import (
         StubProvider,
@@ -216,3 +213,104 @@ def test_stub_provider_remains_invocable(frozen_sys_path) -> None:
         )
     )
     assert stream[-1]["type"] == "stream_end"
+
+
+# Keyed by the pytest test name that drives each scenario so the child
+# invocation stays self-describing in output and process listings.
+_SCENARIOS = {
+    "test_block_adapter_import_prep_is_sealed_safe": (
+        _scenario_block_adapter_import_prep_is_sealed_safe
+    ),
+    "test_pack_module_imports_without_sys_path_mutation": (
+        _scenario_pack_module_imports_without_sys_path_mutation
+    ),
+    "test_model_search_dispatch_chain_imports_under_frozen_path": (
+        _scenario_model_search_dispatch_chain_imports_under_frozen_path
+    ),
+    "test_openai_provider_public_surface": (
+        _scenario_openai_provider_public_surface
+    ),
+    "test_stub_provider_remains_invocable": (
+        _scenario_stub_provider_remains_invocable
+    ),
+}
+
+
+def _run_frozen_scenario(*argv: str) -> subprocess.CompletedProcess:
+    """Re-run this file as ``__main__`` in a clean interpreter.
+
+    The child installs the frozen ``sys.path`` guard and executes the named
+    scenario, so the pytest process's ``sys.modules`` and class identities
+    are never disturbed.
+    """
+    env = dict(os.environ)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    try:
+        return subprocess.run(
+            [sys.executable, "-B", str(Path(__file__).resolve()), *argv],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            env=env,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(
+            f"frozen sys.path scenario {argv[0]!r} timed out"
+        ) from exc
+
+
+def _assert_frozen_scenario(*argv: str) -> None:
+    """Assert a frozen-path scenario passes in the child interpreter."""
+    result = _run_frozen_scenario(*argv)
+    assert result.returncode == 0, (
+        f"frozen sys.path scenario {argv[0]!r} failed "
+        f"(exit {result.returncode})\n"
+        f"--- stdout ---\n{result.stdout}\n"
+        f"--- stderr ---\n{result.stderr}"
+    )
+
+
+def _main(argv: list[str]) -> int:
+    """Child-interpreter entry point: freeze sys.path, run one scenario."""
+    if not argv or argv[0] not in _SCENARIOS:
+        names = ", ".join(sorted(_SCENARIOS))
+        print(f"usage: {Path(__file__).name} <scenario> [args]; one of: {names}", file=sys.stderr)
+        return 2
+    sys.path = _FrozenSysPath(sys.path)
+    _SCENARIOS[argv[0]](*argv[1:])
+    return 0
+
+
+def test_block_adapter_import_prep_is_sealed_safe() -> None:
+    """invoke_block's sys.path surgery must be a no-op under the frozen path."""
+    _assert_frozen_scenario("test_block_adapter_import_prep_is_sealed_safe")
+
+
+@pytest.mark.parametrize("module_name", _SEALED_IMPORTABLE_MODULES)
+def test_pack_module_imports_without_sys_path_mutation(module_name: str) -> None:
+    """Each module must import under the sealed frozen sys.path guard."""
+    _assert_frozen_scenario(
+        "test_pack_module_imports_without_sys_path_mutation", module_name
+    )
+
+
+def test_model_search_dispatch_chain_imports_under_frozen_path() -> None:
+    """The exact sealed crash chain: provider_catalog → registry → providers."""
+    _assert_frozen_scenario(
+        "test_model_search_dispatch_chain_imports_under_frozen_path"
+    )
+
+
+def test_openai_provider_public_surface() -> None:
+    """The provider module keeps its contract after the sys.path removal."""
+    _assert_frozen_scenario("test_openai_provider_public_surface")
+
+
+def test_stub_provider_remains_invocable() -> None:
+    """The local-first stub provider still answers without credentials."""
+    _assert_frozen_scenario("test_stub_provider_remains_invocable")
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv[1:]))
