@@ -85,6 +85,7 @@ export function scanAttachmentSecurity(
   const extension = basename.includes(".") ? basename.split(".").pop()?.toLowerCase() ?? "" : "";
   const mime = String(file.type ?? "").toLowerCase();
   const hasBinaryContent = /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(content);
+  const hasUnscannedDataUrl = file.content == null && Boolean(file.dataUrl);
   if (
     (mime.startsWith("text/") && BINARY_EXTENSIONS.has(extension))
     || (BINARY_MIME.test(mime) && TEXT_EXTENSIONS.has(extension))
@@ -93,6 +94,16 @@ export function scanAttachmentSecurity(
     findings.push({
       id: findingId("mime_mismatch", -1, -1),
       kind: "mime_mismatch",
+      severity: "review",
+      line: null,
+      start: null,
+      end: null,
+    });
+  }
+  if (hasUnscannedDataUrl) {
+    findings.push({
+      id: findingId("data_url_unscanned", -1, -1),
+      kind: "data_url_unscanned",
       severity: "review",
       line: null,
       start: null,

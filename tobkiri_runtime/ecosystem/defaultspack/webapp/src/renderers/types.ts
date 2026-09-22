@@ -364,7 +364,7 @@ export type AttachedFile = {
 
 export type AttachmentSecurityFinding = {
   id: string;
-  kind: "high_risk_file" | "mime_mismatch" | "private_key" | "authorization_header" | "cookie" | "connection_string" | "aws_access_key" | "provider_token" | "named_secret" | "high_entropy_candidate" | "custom_pattern";
+  kind: "high_risk_file" | "mime_mismatch" | "data_url_unscanned" | "private_key" | "authorization_header" | "cookie" | "connection_string" | "aws_access_key" | "provider_token" | "named_secret" | "high_entropy_candidate" | "custom_pattern";
   severity: "review" | "high";
   line: number | null;
   start: number | null;

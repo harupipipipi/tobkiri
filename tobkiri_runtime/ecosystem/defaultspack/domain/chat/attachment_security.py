@@ -163,6 +163,9 @@ def attachment_requires_review(
 ) -> bool:
     name = str(attachment.get("name") or "")
     content = str(attachment.get("content") or "")
+    has_unscanned_data_url = (
+        attachment.get("content") is None and bool(attachment.get("dataUrl"))
+    )
     basename = re.split(r"[\\/]", name)[-1]
     extension = basename.rsplit(".", 1)[-1].lower() if "." in basename else ""
     mime = str(attachment.get("type") or "").lower()
@@ -172,6 +175,7 @@ def attachment_requires_review(
         or bool(attachment.get("truncated"))
         or (mime.startswith("text/") and extension in _BINARY_EXTENSIONS)
         or (_BINARY_MIME.search(mime) is not None and extension in _TEXT_EXTENSIONS)
+        or has_unscanned_data_url
     ):
         return True
     return _content_requires_review(content, custom_patterns or [])

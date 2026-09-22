@@ -95,6 +95,29 @@ def test_server_review_fingerprint_binds_data_url_payload():
         validate_attachment_security_reviews([attachment])
 
 
+def test_server_requires_explicit_review_for_unscanned_data_url_payload():
+    attachment = {
+        "name": "notes.txt",
+        "size": 18,
+        "type": "text/plain",
+        "dataUrl": "data:text/plain;base64,c2VjcmV0LXZhbHVl",
+        "truncated": False,
+    }
+    assert attachment_requires_review(attachment) is True
+    with pytest.raises(ValueError, match="requires explicit review"):
+        validate_attachment_security_reviews([attachment])
+
+    attachment["securityReview"] = {
+        "version": 1,
+        "status": "approved",
+        "fingerprint": _attachment_fingerprint(attachment),
+        "scannedCharacters": 0,
+        "truncated": False,
+        "findings": [],
+    }
+    validate_attachment_security_reviews([attachment])
+
+
 def test_server_requires_review_for_truncated_content_even_without_a_match():
     with pytest.raises(ValueError, match="requires explicit review"):
         validate_attachment_security_reviews(

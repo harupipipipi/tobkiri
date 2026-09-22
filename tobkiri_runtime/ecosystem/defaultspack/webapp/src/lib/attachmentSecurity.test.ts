@@ -158,6 +158,20 @@ test("fingerprint changes when reviewed metadata or a data URL changes", () => {
   }
 });
 
+test("unscanned data URLs require explicit review before dispatch", () => {
+  const review = scanAttachmentSecurity({
+    name: "notes.txt",
+    size: 18,
+    type: "text/plain",
+    dataUrl: "data:text/plain;base64,c2VjcmV0LXZhbHVl",
+    truncated: false,
+  });
+
+  assert.equal(review.status, "required");
+  assert.ok(review.findings.some((finding) => finding.kind === "data_url_unscanned"));
+  assert.equal(review.scannedCharacters, 0);
+});
+
 test("matches bounded user-configured literal patterns without exposing their values in findings", () => {
   const customValue = "internal-customer-marker";
   const review = scanAttachmentSecurity(
