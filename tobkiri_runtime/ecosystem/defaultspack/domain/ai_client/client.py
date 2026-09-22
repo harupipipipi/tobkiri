@@ -5,11 +5,8 @@ from tobkiri_protocol.settings_state import SettingsOwnerPort
 import json
 import os
 import re
-import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Protocol
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.ai_client.model_pack_router import select_model_pack
 from domain.ai_client.model_pack import ModelPack

@@ -10,8 +10,6 @@ input_data:
     priority: str (optional, default "normal") — "normal" or "urgent"
 """
 
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import ok, error
 from blocks.agent._state import get_engine, get_instruction_queue

@@ -11,11 +11,8 @@ tool定義（名前、説明、パラメータスキーマ、実行ロジック�
 import ast
 import json
 import re
-import sys
-import os
 import threading
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.tool.registry import ToolRegistry
 from domain.ai_client.client import AIClient

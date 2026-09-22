@@ -1,9 +1,5 @@
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from _common import error, ok
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from blocks._common import error, ok
 
 from domain.frontend.command_protocol import CommandProtocolRegistry
 from tobkiri_protocol.settings_state import SettingsOwnerPort

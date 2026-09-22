@@ -9,6 +9,7 @@ no method returns a provider payload, UI token, Grant, receipt, or lease.
 from __future__ import annotations
 
 import json
+import math
 import secrets
 import threading
 import time
@@ -38,6 +39,14 @@ from .ports import (
 
 class PendingEffectError(RuntimeError):
     """Fail-closed public error for unavailable PendingEffect state."""
+
+
+# How long ``resume`` may synchronously wait for Provider completion before
+# returning the live in-flight state.  The wait exists only to settle fast
+# Providers in one round trip; it must stay well below the smallest contract
+# dispatch deadline (30s) so an outer request can never be silently outlived
+# by the resumed operation it released.
+_RESUME_DISPATCH_GRACE_SECONDS = 5.0
 
 
 def _validate_correlation_id(value: str) -> None:
@@ -233,6 +242,7 @@ class PendingEffectController:
             [RequestContext, str, str], ContextManager[None]
         ] | None = None,
         clock: Callable[[], float] = time.time,
+        dispatch_grace_seconds: float = _RESUME_DISPATCH_GRACE_SECONDS,
     ) -> None:
         self._persistence = persistence
         self._approvals = approvals
@@ -241,6 +251,13 @@ class PendingEffectController:
             raise PendingEffectError("pending effect is unavailable")
         self._coordinator_publisher_lineage = coordinator_publisher_lineage
         self._presentation_owner_scope = presentation_owner_scope
+        if (
+            type(dispatch_grace_seconds) not in (int, float)
+            or not math.isfinite(dispatch_grace_seconds)
+            or dispatch_grace_seconds < 0
+        ):
+            raise PendingEffectError("pending effect is unavailable")
+        self._dispatch_grace_seconds = float(dispatch_grace_seconds)
         self._clock = clock
 
     def prepare(
@@ -422,6 +439,7 @@ class PendingEffectController:
         presentation_owner_principal_id: str,
         presentation_owner_session_id: str,
         broker: RequestBroker,
+        dispatch_grace_seconds: float | None = None,
     ) -> PendingEffectStatus:
         """Resume only when the authenticated presentation owner still matches."""
 
@@ -433,7 +451,11 @@ class PendingEffectController:
         observed = self.observe_approval(effect_id)
         if observed.state is not PendingEffectState.APPROVED:
             return observed
-        return self.resume(effect_id, broker)
+        return self.resume(
+            effect_id,
+            broker,
+            dispatch_grace_seconds=dispatch_grace_seconds,
+        )
 
     def cancel_for_presentation(
         self,
@@ -526,75 +548,105 @@ class PendingEffectController:
         *,
         wall_clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
+        dispatch_grace_seconds: float | None = None,
     ) -> PendingEffectStatus:
-        """Execute one claimed effect without exposing its payload or outcome.
+        """Claim one approved effect, dispatch it, and boundedly await it.
 
-        Broker invokes ``before_dispatch`` only after its final authority
-        recheck and audit dispatch marker, immediately before it submits work
-        to the provider backend.  Consequently every error after that hook is
-        conservatively ambiguous and cannot be retried by this controller.
+        The owner check, CAS claim, and durable DISPATCHED marker stay
+        synchronous inside the caller's request.  The Provider invocation
+        itself runs on a detached worker against its own already-durable
+        ``execute_not_after_wall`` deadline, so the caller never blocks past
+        ``dispatch_grace_seconds`` waiting on Provider latency or nested Host
+        work.  Broker invokes ``before_dispatch`` only after its final
+        authority recheck and audit dispatch marker, immediately before it
+        submits work to the provider backend; every error after that hook is
+        conservatively ambiguous and is never retried by this controller.
+
+        The returned status is the live durable state.  A fast Provider
+        settles before the grace expires and the caller sees the terminal
+        state directly; a slower Provider returns CLAIMED or DISPATCHED and
+        the detached worker still records SUCCEEDED, STALE, or AMBIGUOUS
+        afterwards.  A caller-side timeout therefore cannot silently mark an
+        approved operation as executed or abandon its durable settlement.
         """
 
+        grace = (
+            self._dispatch_grace_seconds
+            if dispatch_grace_seconds is None
+            else dispatch_grace_seconds
+        )
+        if (
+            type(grace) not in (int, float)
+            or not math.isfinite(grace)
+            or grace < 0
+        ):
+            raise PendingEffectError("pending effect is unavailable")
         self.claim(effect_id)
-        revision, record = self._load(effect_id)
+        _revision, record = self._load(effect_id)
         if record.state is not PendingEffectState.CLAIMED:
             raise PendingEffectError("pending effect is unavailable")
 
         def mark_dispatched() -> None:
             self.mark_dispatched(effect_id)
 
-        try:
-            # Restore identity only from the encrypted, claimed Host record.
-            # This scope supplies no Grant and never changes Broker authority.
-            owner_scope = (
-                self._presentation_owner_scope(
-                    record.context,
-                    record.presentation_owner_principal_id,
-                    record.presentation_owner_session_id,
-                )
-                if self._presentation_owner_scope is not None
-                else nullcontext()
-            )
-            with owner_scope:
-                outcome = broker.invoke_prepared(
-                    record.prepared,
-                    record.context,
-                    _thaw_json(record.effect_scope),
-                    execute_not_after_wall=record.expires_at,
-                    wall_clock=wall_clock,
-                    monotonic_clock=monotonic_clock,
-                    before_dispatch=mark_dispatched,
-                )
-        except Exception as exc:
+        done = threading.Event()
+
+        def execute() -> None:
             try:
-                current_revision, current = self._load(effect_id)
-                if current.state is PendingEffectState.DISPATCHED:
-                    return self._transition(
-                        effect_id,
-                        current_revision,
-                        current,
-                        PendingEffectState.AMBIGUOUS,
+                try:
+                    # Restore identity only from the encrypted, claimed Host
+                    # record.  This scope supplies no Grant and never changes
+                    # Broker authority.
+                    owner_scope = (
+                        self._presentation_owner_scope(
+                            record.context,
+                            record.presentation_owner_principal_id,
+                            record.presentation_owner_session_id,
+                        )
+                        if self._presentation_owner_scope is not None
+                        else nullcontext()
                     )
-                if current.state is PendingEffectState.CLAIMED:
-                    return self._transition(
+                    with owner_scope:
+                        outcome = broker.invoke_prepared(
+                            record.prepared,
+                            record.context,
+                            _thaw_json(record.effect_scope),
+                            execute_not_after_wall=record.expires_at,
+                            wall_clock=wall_clock,
+                            monotonic_clock=monotonic_clock,
+                            before_dispatch=mark_dispatched,
+                        )
+                except Exception:
+                    self._settle_dispatch_failure(effect_id)
+                    return
+                if not isinstance(outcome, Mapping):
+                    self._settle_dispatch_failure(effect_id)
+                    return
+                try:
+                    self.finish(
                         effect_id,
-                        current_revision,
-                        current,
-                        PendingEffectState.STALE,
+                        succeeded=True,
+                        outcome_digest=authority_digest(dict(outcome)),
                     )
-            except PendingEffectError:
-                pass
-            raise PendingEffectError("pending effect is unavailable") from exc
-        if not isinstance(outcome, Mapping):
-            raise PendingEffectError("pending effect is unavailable")
-        revision, record = self._load(effect_id)
-        if record.state is not PendingEffectState.DISPATCHED:
-            raise PendingEffectError("pending effect is unavailable")
-        return self.finish(
-            effect_id,
-            succeeded=True,
-            outcome_digest=authority_digest(dict(outcome)),
+                except PendingEffectError:
+                    pass
+            finally:
+                done.set()
+
+        worker = threading.Thread(
+            target=execute,
+            name=f"pending-effect-resume-{effect_id}",
+            daemon=True,
         )
+        try:
+            worker.start()
+        except Exception as exc:
+            # Never leave a claimed effect hanging on a thread that could not
+            # start; CLAIMED fails closed to STALE before any dispatch.
+            self._settle_dispatch_failure(effect_id)
+            raise PendingEffectError("pending effect is unavailable") from exc
+        done.wait(grace)
+        return self.status(effect_id)
 
     def mark_dispatched(self, effect_id: str) -> PendingEffectStatus:
         """Durably mark the exact instant before a future provider boundary."""
@@ -787,6 +839,33 @@ class PendingEffectController:
 
         try:
             self._transition(effect_id, revision, record, state)
+        except PendingEffectError:
+            pass
+
+    def _settle_dispatch_failure(self, effect_id: str) -> None:
+        """Fail closed after a dispatch-path error without retrying the work.
+
+        A pre-dispatch failure leaves the claim stale; anything after the
+        durable dispatch marker is conservatively ambiguous.  Terminal or
+        concurrently settled records are left untouched.
+        """
+
+        try:
+            revision, record = self._load(effect_id)
+            if record.state is PendingEffectState.DISPATCHED:
+                self._transition(
+                    effect_id,
+                    revision,
+                    record,
+                    PendingEffectState.AMBIGUOUS,
+                )
+            elif record.state is PendingEffectState.CLAIMED:
+                self._transition(
+                    effect_id,
+                    revision,
+                    record,
+                    PendingEffectState.STALE,
+                )
         except PendingEffectError:
             pass
 

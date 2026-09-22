@@ -10,8 +10,6 @@ Supports three schedule types:
 No external dependencies. Pure stdlib.
 """
 
-import sys
-import os
 import hashlib
 import json
 import threading
@@ -24,7 +22,6 @@ from datetime import datetime, timezone, timedelta
 
 from tobkiri_protocol.settings_state import SettingsOwnerPort
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import gen_id, timestamp
 from domain.agent.schedule_store import (

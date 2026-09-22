@@ -1,5 +1,4 @@
-import sys, os; sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..")); from _common import ok, error, gen_id, timestamp
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from blocks._common import ok, error, gen_id, timestamp
 from domain.tool.registry import ToolRegistry
 
 
