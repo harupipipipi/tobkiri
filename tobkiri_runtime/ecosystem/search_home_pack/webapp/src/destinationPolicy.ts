@@ -46,8 +46,10 @@ function hostIsUnsafeLocalTarget(hostname: string): boolean {
       (a === 100 && b >= 64 && b <= 127) ||
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 0) ||
-      (a === 192 && b === 168) ||
+      // TEST-NET ranges are non-global just like the backend's
+      // ipaddress.is_global policy. Keep this explicit browser policy in
+      // lockstep because the final navigation is a separate trust boundary.
+      (a === 192 && (b === 0 || b === 2 || b === 168)) ||
       (a === 198 && (b === 18 || b === 19)) ||
       (a === 198 && b === 51) ||
       (a === 203 && b === 0) ||

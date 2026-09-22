@@ -55,7 +55,10 @@
       const [a, b] = octets;
       return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) ||
         (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) ||
-        (a === 192 && (b === 0 || b === 168)) || (a === 198 && (b === 18 || b === 19 || b === 51)) ||
+        // Keep the extension's final-navigation guard aligned with the
+        // Search Home/backend non-global address policy.
+        (a === 192 && (b === 0 || b === 2 || b === 168)) ||
+        (a === 198 && (b === 18 || b === 19 || b === 51)) ||
         (a === 203 && b === 0) || a >= 224;
     }
     if (!host.includes(":")) return false;
