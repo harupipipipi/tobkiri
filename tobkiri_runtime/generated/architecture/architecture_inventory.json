@@ -18411,8 +18411,8 @@
     ]
   },
   "repository": {
-    "commit": "7ea7aa58b831dee1cb1cf60d9cd5fda211b72f2b",
-    "tree_digest": "16ce41d9286cd0d6452b78f7d0b4fa5184687e56279859cad18f3680f23247fc"
+    "commit": "4bc638095ba49411487929fef05be8c65feea760",
+    "tree_digest": "0212c5b68bfb81f2659f45f28e2ad13fd5f59d3f340a5afcf482458f446ca161"
   },
   "scanner_version": "io.tobkiri.architecture.scanner.v1",
   "schema": "io.tobkiri.architecture.inventory.v1"
