@@ -54,6 +54,15 @@ const settingsModalFieldRendererRegistry = createSettingsFieldRendererRegistry([
   },
 ]);
 
+type OpenAICompatibleConnection = {
+  connection_id: string;
+  label: string;
+  base_url: string;
+  auth_mode: string;
+  selected: boolean;
+  credential_configured: boolean;
+};
+
 function formatReadonlyValue(value: unknown, fallback: unknown): string {
   const resolved = value ?? fallback ?? "";
   if (typeof resolved === "boolean") return resolved ? "保存済み" : "未設定";
@@ -3128,6 +3137,16 @@ export function SettingsModalRenderer({
   const [connectionMessages, setConnectionMessages] = useState<Record<string, { tone: "success" | "error"; text: string }>>({});
   const [connectionScopeModes, setConnectionScopeModes] = useState<Record<string, string>>({});
   const [connectionCredentialDrafts, setConnectionCredentialDrafts] = useState<Record<string, string>>({});
+  const [openAICompatibleConnections, setOpenAICompatibleConnections] = useState<OpenAICompatibleConnection[]>([]);
+  const [openAICompatibleDraft, setOpenAICompatibleDraft] = useState({
+    connectionId: "",
+    label: "",
+    baseUrl: "",
+    modelId: "",
+    authMode: "bearer",
+    apiKey: "",
+    username: "",
+  });
   const [codexAppServerDraft, setCodexAppServerDraft] = useState<CodexAppServerConfig>({
     transport: "off",
     enabled: false,
@@ -3237,6 +3256,46 @@ export function SettingsModalRenderer({
       });
     };
   }, [isOpen]);
+  const loadOpenAICompatibleConnections = async () => {
+    try {
+      const result = await settingsApiResources.getOpenAICompatibleConnections();
+      setOpenAICompatibleConnections(result.connections);
+    } catch {
+      setConnectionMessages((current) => ({
+        ...current,
+        openai_compatible: {
+          tone: "error",
+          text: localizedCopy(
+            "Could not load OpenAI-compatible connection status.",
+            "OpenAI互換接続の状態を読み込めませんでした。",
+          ),
+        },
+      }));
+    }
+  };
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void settingsApiResources.getOpenAICompatibleConnections()
+      .then((result) => {
+        if (!cancelled) setOpenAICompatibleConnections(result.connections);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setConnectionMessages((current) => ({
+          ...current,
+          openai_compatible: {
+            tone: "error",
+            text: isJapanese
+              ? "OpenAI互換接続の状態を読み込めませんでした。"
+              : "Could not load OpenAI-compatible connection status.",
+          },
+        }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isJapanese, isOpen]);
   useEffect(() => {
     if (!isOpen) return;
     const focusableSelector = [
@@ -3342,6 +3401,93 @@ export function SettingsModalRenderer({
     onSettingChange("apis", "api_keys", providerId === "codex"
       ? { action: "oauth_refresh" }
       : { action: "oauth_refresh", provider_id: providerId, active_diagnostics: activeDiagnostics });
+  };
+  const saveOpenAICompatibleConnection = async () => {
+    try {
+      setConnectionBusy("openai_compatible:save");
+      const result = await settingsApiResources.saveOpenAICompatibleConnection({
+        connection: {
+          connection_id: openAICompatibleDraft.connectionId,
+          label: openAICompatibleDraft.label,
+          base_url: openAICompatibleDraft.baseUrl,
+          auth_mode: openAICompatibleDraft.authMode,
+          manual_models: openAICompatibleDraft.modelId ? [openAICompatibleDraft.modelId] : [],
+          model_list: { enabled: false },
+        },
+        api_key: openAICompatibleDraft.apiKey,
+        username: openAICompatibleDraft.username,
+        select: true,
+      });
+      setOpenAICompatibleConnections(result.connections as OpenAICompatibleConnection[]);
+      setOpenAICompatibleDraft((current) => ({
+        ...current,
+        connectionId: "",
+        label: "",
+        baseUrl: "",
+        modelId: "",
+        apiKey: "",
+        username: "",
+      }));
+      setConnectionMessages((current) => ({
+        ...current,
+        openai_compatible: {
+          tone: "success",
+          text: localizedCopy(
+            "Connection saved and selected for runtime use.",
+            "接続を保存し、実行時に使用する接続として選択しました。",
+          ),
+        },
+      }));
+    } catch {
+      setConnectionMessages((current) => ({
+        ...current,
+        openai_compatible: {
+          tone: "error",
+          text: localizedCopy(
+            "Could not save this connection. Check the endpoint and credential.",
+            "接続を保存できませんでした。エンドポイントと認証情報を確認してください。",
+          ),
+        },
+      }));
+    } finally {
+      setConnectionBusy("");
+    }
+  };
+  const selectOpenAICompatibleConnection = async (connectionId: string) => {
+    try {
+      setConnectionBusy(`openai_compatible:select:${connectionId}`);
+      const result = await settingsApiResources.selectOpenAICompatibleConnection(connectionId);
+      setOpenAICompatibleConnections(result.connections as OpenAICompatibleConnection[]);
+      setConnectionMessages((current) => ({
+        ...current,
+        openai_compatible: { tone: "success", text: localizedCopy("Runtime connection selected.", "実行時に使用する接続を選択しました。") },
+      }));
+    } catch {
+      setConnectionMessages((current) => ({
+        ...current,
+        openai_compatible: { tone: "error", text: localizedCopy("Could not select this connection.", "この接続を選択できませんでした。") },
+      }));
+    } finally {
+      setConnectionBusy("");
+    }
+  };
+  const deleteOpenAICompatibleConnection = async (connectionId: string) => {
+    try {
+      setConnectionBusy(`openai_compatible:delete:${connectionId}`);
+      const result = await settingsApiResources.deleteOpenAICompatibleConnection(connectionId);
+      setOpenAICompatibleConnections(result.connections as OpenAICompatibleConnection[]);
+      setConnectionMessages((current) => ({
+        ...current,
+        openai_compatible: { tone: "success", text: localizedCopy("Connection and its stored credential were removed.", "接続と保存済みの認証情報を削除しました。") },
+      }));
+    } catch {
+      setConnectionMessages((current) => ({
+        ...current,
+        openai_compatible: { tone: "error", text: localizedCopy("Could not remove this connection.", "この接続を削除できませんでした。") },
+      }));
+    } finally {
+      setConnectionBusy("");
+    }
   };
   const selectedConnectionScopeMode = (card: AccountConnectionPreludeCard): AccountConnectionScopeModeOption | undefined => {
     const selectedId = connectionScopeModes[card.providerId] || card.scopeMode || card.scopeModes[0]?.id || "";
@@ -3952,6 +4098,96 @@ export function SettingsModalRenderer({
               );
             })}
           </div>
+
+          <section className="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4" aria-labelledby="openai-compatible-connections-title">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 id="openai-compatible-connections-title" className="text-sm font-semibold text-violet-50">
+                  {localizedCopy("OpenAI-compatible endpoints", "OpenAI互換エンドポイント")}
+                </h3>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-violet-100/70">
+                  {localizedCopy(
+                    "Add separate endpoints, save each API key only in local secret storage, then select the endpoint used by the model runtime.",
+                    "エンドポイントごとに接続を追加し、APIキーはこの端末の秘密情報ストレージだけに保存して、モデル実行時に使う接続を選択します。",
+                  )}
+                </p>
+              </div>
+              <span className="rounded-full border border-violet-300/20 px-2 py-0.5 text-[10px] text-violet-100">
+                {localizedCopy("Secrets are never shown again", "秘密情報は再表示しません")}
+              </span>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <label className="text-xs text-zinc-300">
+                {localizedCopy("Connection ID", "接続ID")}
+                <input value={openAICompatibleDraft.connectionId} onChange={(event) => setOpenAICompatibleDraft((current) => ({ ...current, connectionId: event.target.value }))} placeholder="local-gateway" autoComplete="off" className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-400" />
+              </label>
+              <label className="text-xs text-zinc-300">
+                {localizedCopy("Label", "表示名")}
+                <input value={openAICompatibleDraft.label} onChange={(event) => setOpenAICompatibleDraft((current) => ({ ...current, label: event.target.value }))} placeholder={localizedCopy("Local gateway", "ローカルゲートウェイ")} autoComplete="off" className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-400" />
+              </label>
+              <label className="text-xs text-zinc-300 md:col-span-2">
+                {localizedCopy("Endpoint URL", "エンドポイントURL")}
+                <input value={openAICompatibleDraft.baseUrl} onChange={(event) => setOpenAICompatibleDraft((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.example.com/v1" inputMode="url" autoComplete="url" className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-400" />
+                <span className="mt-1 block text-[10px] leading-4 text-zinc-500">{localizedCopy("URLs cannot contain credentials, query strings, or fragments.", "URLには認証情報、クエリ文字列、フラグメントを含められません。")}</span>
+              </label>
+              <label className="text-xs text-zinc-300">
+                {localizedCopy("Model ID (optional)", "モデルID（任意）")}
+                <input value={openAICompatibleDraft.modelId} onChange={(event) => setOpenAICompatibleDraft((current) => ({ ...current, modelId: event.target.value }))} placeholder="model-name" autoComplete="off" className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-400" />
+              </label>
+              <label className="text-xs text-zinc-300">
+                {localizedCopy("Authentication", "認証方式")}
+                <select value={openAICompatibleDraft.authMode} onChange={(event) => setOpenAICompatibleDraft((current) => ({ ...current, authMode: event.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none focus:border-violet-400">
+                  <option value="bearer">Bearer token</option>
+                  <option value="api_key_header">API key header</option>
+                  <option value="basic">Basic authentication</option>
+                  <option value="none">No authentication</option>
+                </select>
+              </label>
+              {openAICompatibleDraft.authMode === "basic" && (
+                <label className="text-xs text-zinc-300 md:col-span-2">
+                  {localizedCopy("Username", "ユーザー名")}
+                  <input value={openAICompatibleDraft.username} onChange={(event) => setOpenAICompatibleDraft((current) => ({ ...current, username: event.target.value }))} autoComplete="username" className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-400" />
+                </label>
+              )}
+              {openAICompatibleDraft.authMode !== "none" && (
+                <label className="text-xs text-zinc-300 md:col-span-2">
+                  {localizedCopy("API key", "APIキー")}
+                  <input value={openAICompatibleDraft.apiKey} onChange={(event) => setOpenAICompatibleDraft((current) => ({ ...current, apiKey: event.target.value }))} type="password" autoComplete="new-password" placeholder={localizedCopy("Saved only in local secret storage", "この端末の秘密情報ストレージにのみ保存") } className="mt-1 h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-violet-400" />
+                </label>
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button type="button" disabled={connectionBusy === "openai_compatible:save" || !openAICompatibleDraft.baseUrl.trim()} onClick={() => void saveOpenAICompatibleConnection()} className="rounded-lg border border-violet-400/50 bg-violet-500/15 px-3 py-2 text-xs text-violet-50 transition-colors hover:border-violet-300 disabled:cursor-not-allowed disabled:border-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600">
+                {connectionBusy === "openai_compatible:save" ? localizedCopy("Saving...", "保存中...") : localizedCopy("Save and select", "保存して選択")}
+              </button>
+              <button type="button" onClick={() => void loadOpenAICompatibleConnections()} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100">
+                {localizedCopy("Refresh", "更新")}
+              </button>
+            </div>
+            <div className="mt-4 space-y-2" aria-label={localizedCopy("Saved OpenAI-compatible endpoints", "保存済みのOpenAI互換エンドポイント") }>
+              {openAICompatibleConnections.length === 0 ? (
+                <p className="rounded-lg border border-zinc-800 bg-black/20 px-3 py-2 text-xs text-zinc-500">{localizedCopy("No endpoint is saved yet.", "保存済みのエンドポイントはありません。")}</p>
+              ) : openAICompatibleConnections.map((connection) => (
+                <div key={connection.connection_id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-black/20 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-zinc-100">
+                      <span>{connection.label || connection.connection_id}</span>
+                      {connection.selected && <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] text-emerald-100">{localizedCopy("Selected", "選択中")}</span>}
+                      <span className="rounded-full border border-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400">{connection.credential_configured || connection.auth_mode === "none" ? localizedCopy("Ready", "準備済み") : localizedCopy("Credential needed", "認証情報が必要")}</span>
+                    </div>
+                    <p className="mt-1 break-all text-[11px] text-zinc-500">{connection.base_url}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" disabled={connection.selected || connectionBusy === `openai_compatible:select:${connection.connection_id}`} onClick={() => void selectOpenAICompatibleConnection(connection.connection_id)} className="rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-200 hover:border-violet-400 disabled:cursor-not-allowed disabled:text-zinc-600">{localizedCopy("Use", "使用")}</button>
+                    <button type="button" disabled={connectionBusy === `openai_compatible:delete:${connection.connection_id}`} onClick={() => void deleteOpenAICompatibleConnection(connection.connection_id)} className="rounded-md border border-rose-500/35 px-2 py-1 text-[11px] text-rose-200 hover:border-rose-400 disabled:cursor-not-allowed disabled:text-zinc-600">{localizedCopy("Remove", "削除")}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {connectionMessages.openai_compatible && (
+              <p role="status" className={cn("mt-3 rounded-lg border px-3 py-2 text-[11px] leading-5", connectionMessages.openai_compatible.tone === "success" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-rose-500/25 bg-rose-500/10 text-rose-200")}>{connectionMessages.openai_compatible.text}</p>
+            )}
+          </section>
 
           <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4">
             <div className="text-sm font-medium text-sky-100">{localizedCopy("Open-source / official app", "オープンソース版・公式アプリ")}</div>

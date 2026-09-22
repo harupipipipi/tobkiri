@@ -39,6 +39,22 @@ export const settingsApiResources = {
     return api.importConnectionBundle(credentialBundle, providerId);
   },
 
+  getOpenAICompatibleConnections() {
+    return api.getOpenAICompatibleConnections();
+  },
+
+  saveOpenAICompatibleConnection(payload: Parameters<typeof api.saveOpenAICompatibleConnection>[0]) {
+    return api.saveOpenAICompatibleConnection(payload);
+  },
+
+  selectOpenAICompatibleConnection(connectionId: string) {
+    return api.selectOpenAICompatibleConnection(connectionId);
+  },
+
+  deleteOpenAICompatibleConnection(connectionId: string) {
+    return api.deleteOpenAICompatibleConnection(connectionId);
+  },
+
   runProviderOAuthDiagnostics(providerId: string) {
     return api.runProviderOAuthDiagnostics(providerId);
   },

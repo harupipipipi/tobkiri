@@ -3173,6 +3173,55 @@ export const api = {
     });
   },
 
+  getOpenAICompatibleConnections() {
+    return request<{
+      selected_connection_id: string;
+      connections: Array<{
+        connection_id: string;
+        label: string;
+        base_url: string;
+        auth_mode: string;
+        selected: boolean;
+        credential_configured: boolean;
+      }>;
+    }>("/api/connections/openai-compatible", { cache: "no-store" });
+  },
+
+  saveOpenAICompatibleConnection(payload: {
+    connection: Record<string, unknown>;
+    api_key?: string;
+    username?: string;
+    select?: boolean;
+  }) {
+    return request<{
+      selected_connection_id: string;
+      connections: Array<Record<string, unknown>>;
+    }>("/api/connections/openai-compatible", {
+      method: "POST",
+      body: JSON.stringify({ action: "save", ...payload }),
+    });
+  },
+
+  selectOpenAICompatibleConnection(connectionId: string) {
+    return request<{ selected_connection_id: string; connections: Array<Record<string, unknown>> }>(
+      "/api/connections/openai-compatible",
+      {
+        method: "POST",
+        body: JSON.stringify({ action: "select", connection_id: connectionId }),
+      },
+    );
+  },
+
+  deleteOpenAICompatibleConnection(connectionId: string) {
+    return request<{ selected_connection_id: string; connections: Array<Record<string, unknown>> }>(
+      "/api/connections/openai-compatible",
+      {
+        method: "POST",
+        body: JSON.stringify({ action: "delete", connection_id: connectionId }),
+      },
+    );
+  },
+
   startProviderOAuth(providerId: string, options: { scopeMode?: string; services?: string[] } = {}) {
     return request<{ provider_id: string; authorize_url: string; redirect_uri: string; scope_mode?: string; services?: string[]; scopes: string[] }>("/api/ai/oauth", {
       method: "POST",

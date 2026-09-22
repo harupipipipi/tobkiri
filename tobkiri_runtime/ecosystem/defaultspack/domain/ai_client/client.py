@@ -66,6 +66,7 @@ class AIClient:
         self._profiles = {}
         self._register_default_provider()
         self._auto_register_providers()
+        self._register_selected_openai_compatible_connection()
         self._auto_register_rumi()
 
     def _register_default_provider(self):
@@ -108,6 +109,29 @@ class AIClient:
                 self._providers["rumi"] = rumi
         except Exception:
             pass
+
+    def _register_selected_openai_compatible_connection(self):
+        """Bind the selected persisted endpoint through the generic provider."""
+        try:
+            from domain.ai_client.openai_compatible_connections import (
+                selected_connection,
+            )
+            from domain.ai_client.providers.generic_openai_compatible_provider import (
+                GenericOpenAICompatibleProvider,
+            )
+
+            connection = selected_connection()
+            if connection is not None:
+                self._providers["openai_compatible"] = (
+                    GenericOpenAICompatibleProvider(connection)
+                )
+        except Exception:
+            pass
+
+    def refresh_openai_compatible_connections(self):
+        """Reload the selected saved connection after a Settings mutation."""
+        self._providers.pop("openai_compatible", None)
+        self._register_selected_openai_compatible_connection()
 
     def register_provider(self, name, provider):
         """プロバイダーを動的に登録する。"""
@@ -300,6 +324,21 @@ class AIClient:
         """model文字列("provider/model" or "profile_name")から解決する。"""
         if "/" in model_str:
             provider_name, model_name = model_str.split("/", 1)
+            if provider_name == "openai_compatible" and ":" in model_name:
+                connection_id, raw_model_name = model_name.split(":", 1)
+                try:
+                    from domain.ai_client.openai_compatible_connections import (
+                        get_connection,
+                    )
+                    from domain.ai_client.providers.generic_openai_compatible_provider import (
+                        GenericOpenAICompatibleProvider,
+                    )
+
+                    connection = get_connection(connection_id)
+                    if connection is not None and raw_model_name:
+                        return GenericOpenAICompatibleProvider(connection), raw_model_name
+                except Exception:
+                    pass
         else:
             profile = self._profiles.get(model_str)
             if profile:

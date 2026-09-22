@@ -57,6 +57,18 @@ def run(context):
         ("GET", "/api/ui/provider-health", _lazy("blocks.ui.provider_health"), {}),
         ("GET", "/api/connections/codex", _lazy("blocks.connections.codex"), {}),
         ("POST", "/api/connections/codex", _lazy("blocks.connections.codex"), {}),
+        (
+            "GET",
+            "/api/connections/openai-compatible",
+            _lazy("blocks.connections.openai_compatible"),
+            {},
+        ),
+        (
+            "POST",
+            "/api/connections/openai-compatible",
+            _lazy("blocks.connections.openai_compatible"),
+            {},
+        ),
         ("GET", "/api/ui/commands", _lazy("blocks.ui.commands"), {}),
         ("POST", "/api/ui/commands/execute", _lazy("blocks.ui.commands"), {}),
         ("POST", "/api/ui/clipboard", _lazy("blocks.ui.clipboard"), {}),

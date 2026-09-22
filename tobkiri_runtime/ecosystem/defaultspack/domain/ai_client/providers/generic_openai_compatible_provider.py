@@ -18,7 +18,12 @@ class GenericOpenAICompatibleProvider(OpenAICompatibleProvider):
     provider_name = "openai_compatible"
     display_name = "OpenAI Compatible"
 
-    def __init__(self, connection: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        connection: dict[str, Any] | None = None,
+        *,
+        pack_root: Path | None = None,
+    ) -> None:
         connection = connection or {
             "connection_id": "default",
             "label": "OpenAI Compatible",
@@ -30,7 +35,7 @@ class GenericOpenAICompatibleProvider(OpenAICompatibleProvider):
         }
         self.connection = dict(connection)
         self.connection_id = str(connection.get("connection_id") or "default")
-        secret, username = resolve_connection_secret(connection)
+        secret, username = resolve_connection_secret(connection, pack_root=pack_root)
         self._auth_mode = str(connection.get("auth_mode") or "none")
         self._auth_header = str(connection.get("auth_header") or "X-API-Key")
         self._basic_username = username

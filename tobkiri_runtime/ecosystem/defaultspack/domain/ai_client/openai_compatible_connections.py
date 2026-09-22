@@ -7,11 +7,14 @@ from pathlib import Path
 import re
 import tempfile
 from typing import Any
+import urllib.parse
 import uuid
 
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _AUTH_MODES = {"none", "bearer", "api_key_header", "basic"}
+_CREDENTIAL_PROVIDER_ID = "openai_compatible"
+_CREDENTIAL_MATERIAL_TYPE = "connection_auth"
 
 
 def connections_path(pack_root: Path | None = None) -> Path:
@@ -27,6 +30,31 @@ def list_connections(*, pack_root: Path | None = None) -> list[dict[str, Any]]:
 def get_connection(connection_id: str, *, pack_root: Path | None = None) -> dict[str, Any] | None:
     value = _read(pack_root).get(_normalize_id(connection_id))
     return deepcopy(value) if value else None
+
+
+def selected_connection_id(*, pack_root: Path | None = None) -> str:
+    """Return the persisted active connection ID, if it still exists."""
+    records = _read(pack_root)
+    selected = _read_selected_connection_id(pack_root)
+    if selected in records:
+        return selected
+    return next(iter(sorted(records)), "")
+
+
+def selected_connection(*, pack_root: Path | None = None) -> dict[str, Any] | None:
+    """Return the active safe connection definition, if configured."""
+    connection_id = selected_connection_id(pack_root=pack_root)
+    return get_connection(connection_id, pack_root=pack_root) if connection_id else None
+
+
+def select_connection(connection_id: str, *, pack_root: Path | None = None) -> dict[str, Any]:
+    """Select one existing connection for the generic provider runtime."""
+    normalized = _normalize_id(connection_id)
+    records = _read(pack_root)
+    if normalized not in records:
+        raise KeyError("OpenAI-compatible connection is unknown")
+    _write(records, pack_root, selected_connection_id=normalized)
+    return deepcopy(records[normalized])
 
 
 def save_connection(definition: dict[str, Any], *, pack_root: Path | None = None) -> dict[str, Any]:
@@ -73,19 +101,113 @@ def save_connection(definition: dict[str, Any], *, pack_root: Path | None = None
         raise ValueError("Connection definitions must not contain secret values or headers")
     records = _read(pack_root)
     records[connection_id] = record
-    _write(records, pack_root)
+    selected = _read_selected_connection_id(pack_root)
+    _write(
+        records,
+        pack_root,
+        selected_connection_id=selected if selected in records else connection_id,
+    )
     return deepcopy(record)
 
 
 def delete_connection(connection_id: str, *, pack_root: Path | None = None) -> bool:
     records = _read(pack_root)
-    removed = records.pop(_normalize_id(connection_id), None) is not None
+    normalized = _normalize_id(connection_id)
+    removed = records.pop(normalized, None) is not None
     if removed:
-        _write(records, pack_root)
+        selected = _read_selected_connection_id(pack_root)
+        _write(
+            records,
+            pack_root,
+            selected_connection_id=selected if selected in records else next(iter(sorted(records)), ""),
+        )
+        delete_connection_auth(normalized, pack_root=pack_root)
     return removed
 
 
-def resolve_connection_secret(connection: dict[str, Any]) -> tuple[str, str]:
+def save_connection_auth(
+    connection_id: str,
+    api_key: str,
+    *,
+    username: str = "",
+    pack_root: Path | None = None,
+) -> dict[str, str]:
+    """Save one connection's credential in the existing secret store."""
+    normalized = _normalize_id(connection_id)
+    secret = str(api_key or "")
+    if not secret:
+        raise ValueError("API key is required")
+    from domain.connections.store import save_connection_credential
+
+    result = save_connection_credential(
+        _CREDENTIAL_PROVIDER_ID,
+        _CREDENTIAL_MATERIAL_TYPE,
+        {"api_key": secret, "username": str(username or "")},
+        connection_id=normalized,
+        pack_root=pack_root,
+    )
+    reference = result.get("credential_ref")
+    return {str(key): str(value) for key, value in reference.items()} if isinstance(reference, dict) else {}
+
+
+def delete_connection_auth(connection_id: str, *, pack_root: Path | None = None) -> None:
+    """Remove one connection credential without touching other connections."""
+    from domain.connections.store import delete_connection_credential
+
+    delete_connection_credential(
+        _CREDENTIAL_PROVIDER_ID,
+        _CREDENTIAL_MATERIAL_TYPE,
+        connection_id=_normalize_id(connection_id),
+        pack_root=pack_root,
+    )
+
+
+def connection_status(*, pack_root: Path | None = None) -> dict[str, Any]:
+    """Return settings-safe connection metadata without credential material."""
+    from domain.connections.store import connection_credential_ref
+
+    selected = selected_connection_id(pack_root=pack_root)
+    connections = []
+    for connection in list_connections(pack_root=pack_root):
+        connection_id = str(connection["connection_id"])
+        credential_ref = connection_credential_ref(
+            _CREDENTIAL_PROVIDER_ID,
+            _CREDENTIAL_MATERIAL_TYPE,
+            connection_id=connection_id,
+            pack_root=pack_root,
+        )
+        connections.append(
+            {
+                **connection,
+                "selected": connection_id == selected,
+                "credential_configured": bool(credential_ref),
+                "credential_ref": credential_ref,
+            }
+        )
+    return {"selected_connection_id": selected, "connections": connections}
+
+
+def resolve_connection_secret(
+    connection: dict[str, Any], *, pack_root: Path | None = None
+) -> tuple[str, str]:
+    """Resolve stored credentials first, retaining environment compatibility."""
+    connection_id = str(connection.get("connection_id") or "").strip()
+    if connection_id:
+        try:
+            from domain.connections.store import read_connection_credential
+
+            stored = read_connection_credential(
+                _CREDENTIAL_PROVIDER_ID,
+                _CREDENTIAL_MATERIAL_TYPE,
+                connection_id=_normalize_id(connection_id),
+                pack_root=pack_root,
+            )
+            key = str(stored.get("api_key") or "")
+            username = str(stored.get("username") or "")
+            if key:
+                return key, username
+        except Exception:
+            pass
     key = os.environ.get(str(connection.get("api_key_env") or ""), "") if connection.get("api_key_env") else ""
     username = os.environ.get(str(connection.get("username_env") or ""), "") if connection.get("username_env") else ""
     return str(key), str(username)
@@ -99,10 +221,18 @@ def _normalize_id(value: Any) -> str:
 
 
 def _http_url(value: Any, *, field: str) -> str:
+    """Validate a secret-free absolute HTTP(S) endpoint for persistence."""
     text = str(value or "").strip().rstrip("/")
-    if not text.startswith(("http://", "https://")):
+    parsed = urllib.parse.urlsplit(text)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError(f"{field} must be an HTTP(S) URL")
-    return text
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"{field} must not embed credentials")
+    if parsed.query or parsed.fragment:
+        raise ValueError(f"{field} must not include query or fragment data")
+    return urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path, "", "")
+    )
 
 
 def _optional_http_url(value: Any) -> str:
@@ -118,10 +248,35 @@ def _read(pack_root: Path | None) -> dict[str, dict[str, Any]]:
     return {str(key): dict(value) for key, value in records.items() if isinstance(value, dict)} if isinstance(records, dict) else {}
 
 
-def _write(records: dict[str, dict[str, Any]], pack_root: Path | None) -> None:
+def _read_selected_connection_id(pack_root: Path | None) -> str:
+    try:
+        payload = json.loads(connections_path(pack_root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    raw = payload.get("selected_connection_id") if isinstance(payload, dict) else ""
+    try:
+        return _normalize_id(raw) if raw else ""
+    except ValueError:
+        return ""
+
+
+def _write(
+    records: dict[str, dict[str, Any]],
+    pack_root: Path | None,
+    *,
+    selected_connection_id: str = "",
+) -> None:
     path = connections_path(pack_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps({"schema_version": 1, "connections": records}, ensure_ascii=False, indent=2) + "\n"
+    payload = json.dumps(
+        {
+            "schema_version": 1,
+            "selected_connection_id": selected_connection_id,
+            "connections": records,
+        },
+        ensure_ascii=False,
+        indent=2,
+    ) + "\n"
     fd, temporary = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:

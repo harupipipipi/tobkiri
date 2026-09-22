@@ -12,9 +12,14 @@ if str(DEFAULTSPACK) not in sys.path:
     sys.path.insert(0, str(DEFAULTSPACK))
 
 from domain.ai_client.openai_compatible_connections import (  # noqa: E402
+    connection_status,
     delete_connection,
+    get_connection,
     list_connections,
     save_connection,
+    save_connection_auth,
+    select_connection,
+    selected_connection,
 )
 from domain.ai_client.providers.generic_openai_compatible_provider import (  # noqa: E402
     GenericOpenAICompatibleProvider,
@@ -57,6 +62,97 @@ def test_connection_store_has_stable_ids_and_never_persists_secrets(tmp_path):
     with pytest.raises(ValueError, match="secret"):
         save_connection({**_connection(), "api_key": "do-not-save"}, pack_root=tmp_path)
     assert delete_connection("alpha", pack_root=tmp_path) is True
+
+
+def test_connections_keep_credentials_in_secret_storage_and_select_runtime_endpoint(
+    tmp_path,
+):
+    save_connection(_connection("first"), pack_root=tmp_path)
+    save_connection(
+        _connection(
+            "second",
+            base_url="https://second.test/v1",
+            auth_mode="bearer",
+        ),
+        pack_root=tmp_path,
+    )
+    save_connection_auth("second", "secret-second", pack_root=tmp_path)
+    selected = select_connection("second", pack_root=tmp_path)
+
+    assert selected["connection_id"] == "second"
+    assert selected_connection(pack_root=tmp_path)["base_url"] == "https://second.test/v1"
+    status = connection_status(pack_root=tmp_path)
+    assert status["selected_connection_id"] == "second"
+    assert [item["credential_configured"] for item in status["connections"]] == [False, True]
+    assert "secret-second" not in (
+        tmp_path / "user_data" / "shared" / "openai_compatible_connections.json"
+    ).read_text(encoding="utf-8")
+
+    provider = GenericOpenAICompatibleProvider(
+        get_connection("second", pack_root=tmp_path), pack_root=tmp_path
+    )
+    assert provider._headers()["Authorization"] == "Bearer secret-second"
+    assert delete_connection("second", pack_root=tmp_path) is True
+    assert connection_status(pack_root=tmp_path)["selected_connection_id"] == "first"
+
+
+def test_ai_client_resolves_a_saved_connection_model_without_prefix_leakage(monkeypatch):
+    from domain.ai_client import openai_compatible_connections
+    from domain.ai_client.client import AIClient
+
+    connection = _connection("selected", auth_mode="none", manual_models=["model-x"])
+    monkeypatch.setattr(openai_compatible_connections, "selected_connection", lambda: None)
+    monkeypatch.setattr(
+        openai_compatible_connections,
+        "get_connection",
+        lambda connection_id: connection if connection_id == "selected" else None,
+    )
+    AIClient._instance = None
+    try:
+        provider, model_name = AIClient().resolve_provider(
+            "openai_compatible/selected:model-x"
+        )
+    finally:
+        AIClient._instance = None
+
+    assert isinstance(provider, GenericOpenAICompatibleProvider)
+    assert provider.connection_id == "selected"
+    assert model_name == "model-x"
+
+
+def test_connection_settings_route_is_registered_and_secret_mutations_are_sensitive():
+    from ecosystem.defaultspack.transport.registry import canonical_http_route_specs
+
+    routes = {
+        (route.method, route.pattern): route for route in canonical_http_route_specs()
+    }
+    read_route = routes[("GET", "/api/connections/openai-compatible")]
+    write_route = routes[("POST", "/api/connections/openai-compatible")]
+
+    assert read_route.block_module == "blocks.connections.openai_compatible"
+    assert write_route.block_module == "blocks.connections.openai_compatible"
+    assert write_route.sensitive is True
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("base_url", "https://token@example.test/v1"),
+        ("base_url", "https://example.test/v1?api_key=secret"),
+        ("base_url", "https://example.test/v1#secret"),
+        ("model_list", {"enabled": True, "url": "https://token@example.test/models"}),
+    ],
+)
+def test_connection_store_rejects_embedded_endpoint_secrets(
+    tmp_path, field, value,
+):
+    definition = _connection()
+    definition[field] = value
+
+    with pytest.raises(ValueError, match="credentials|query or fragment"):
+        save_connection(definition, pack_root=tmp_path)
+
+    assert not (tmp_path / "user_data").exists()
 
 
 def test_manual_inventory_keeps_unknown_capabilities_unknown():
