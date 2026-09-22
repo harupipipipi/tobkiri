@@ -10,6 +10,9 @@ test_wave15e_di_container.py - Wave 15-E DI コンテナ基盤サービス登録
 """
 from __future__ import annotations
 
+import os
+from pathlib import Path
+import subprocess
 import sys
 import types
 from unittest.mock import MagicMock
@@ -52,13 +55,101 @@ sys.modules.setdefault("tobkiri_runtime.core_runtime.audit_logger", _dummy_audit
 # テスト対象インポート
 # ---------------------------------------------------------------------------
 from tobkiri_runtime.core_runtime.di_container import (  # noqa: E402
-    DIContainer,
     get_container,
     reset_container,
 )
 from tobkiri_runtime.core_runtime.health import HealthChecker  # noqa: E402
 from tobkiri_runtime.core_runtime.metrics import MetricsCollector  # noqa: E402
 from tobkiri_runtime.core_runtime.profiling import Profiler  # noqa: E402
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+RUNTIME_ROOT = REPOSITORY_ROOT / "tobkiri_runtime"
+
+
+@pytest.mark.parametrize(
+    "first_prefix,second_prefix",
+    [
+        ("core_runtime", "tobkiri_runtime.core_runtime"),
+        ("tobkiri_runtime.core_runtime", "core_runtime"),
+    ],
+)
+def test_supported_module_aliases_share_di_class_identity(
+    first_prefix: str,
+    second_prefix: str,
+) -> None:
+    """Both supported import orders must resolve one module and class identity."""
+
+    script = f"""
+import importlib
+
+first_prefix = {first_prefix!r}
+second_prefix = {second_prefix!r}
+services = {{
+    "health": ("HealthChecker", "health_checker"),
+    "metrics": ("MetricsCollector", "metrics_collector"),
+    "profiling": ("Profiler", "profiler"),
+}}
+first_di = importlib.import_module(f"{{first_prefix}}.di_container")
+second_di = importlib.import_module(f"{{second_prefix}}.di_container")
+assert first_di is second_di
+container = first_di.get_container()
+for module_name, (class_name, service_name) in services.items():
+    first = importlib.import_module(f"{{first_prefix}}.{{module_name}}")
+    second = importlib.import_module(f"{{second_prefix}}.{{module_name}}")
+    assert first is second
+    assert getattr(first, class_name) is getattr(second, class_name)
+    initial = container.get(service_name)
+    assert type(initial) is getattr(first, class_name)
+    container.reset(service_name)
+    replacement = container.get(service_name)
+    assert replacement is not initial
+    assert type(replacement) is getattr(second, class_name)
+"""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(REPOSITORY_ROOT), str(RUNTIME_ROOT))
+    )
+    subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        check=True,
+    )
+
+
+@pytest.mark.parametrize(
+    "python_path,module_prefix",
+    [
+        (RUNTIME_ROOT, "core_runtime"),
+        (REPOSITORY_ROOT, "tobkiri_runtime.core_runtime"),
+    ],
+)
+def test_di_services_import_in_installed_and_repository_modes(
+    python_path: Path,
+    module_prefix: str,
+) -> None:
+    """Canonical installed and repository package layouts both initialize DI."""
+
+    script = f"""
+from {module_prefix}.di_container import get_container
+from {module_prefix}.health import HealthChecker
+from {module_prefix}.metrics import MetricsCollector
+from {module_prefix}.profiling import Profiler
+
+container = get_container()
+assert type(container.get("health_checker")) is HealthChecker
+assert type(container.get("metrics_collector")) is MetricsCollector
+assert type(container.get("profiler")) is Profiler
+"""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(python_path)
+    subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=python_path,
+        env=environment,
+        check=True,
+    )
 
 
 # ======================================================================
@@ -237,11 +328,25 @@ class TestExistingServicesNotBroken:
         assert "metrics_collector" in names
         assert "profiler" in names
 
-    def test_total_service_count_at_least_28(self):
-        """Wave 1-8 で 25 + Wave 15 で 3 = 少なくとも 28 サービス"""
+    def test_canonical_container_excludes_direct_executors(self):
+        """Only Broker-installed execution may enter the canonical container."""
         c = get_container()
-        names = c.registered_names()
-        assert len(names) >= 28
+        names = set(c.registered_names())
+        assert names.isdisjoint(
+            {
+                "container_orchestrator",
+                "docker_capability_handler",
+                "egress_proxy_manager",
+                "flow_composer",
+                "host_privilege_manager",
+                "lib_executor",
+                "modifier_applier",
+                "modifier_loader",
+                "python_file_executor",
+                "secure_executor",
+                "unit_executor",
+            }
+        )
 
 
 # ======================================================================

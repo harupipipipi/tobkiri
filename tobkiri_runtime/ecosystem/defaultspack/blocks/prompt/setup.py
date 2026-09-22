@@ -37,7 +37,13 @@ def run(context):
             pass
         return handler
 
-    from transport.registry import prompt_http_route_specs
+    from transport.registry import (
+        prompt_contract_routes_enabled,
+        prompt_http_route_specs,
+    )
+
+    if not prompt_contract_routes_enabled():
+        return {"status": "ok", "registered": []}
 
     for spec in prompt_http_route_specs():
         module_path = spec.legacy_block_module or spec.block_module or spec.fallback_block_module

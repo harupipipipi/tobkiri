@@ -204,94 +204,29 @@ class TestKernelFacadeImmutability:
 # ---------------------------------------------------------------------------
 
 class TestExecPythonPathTraversal:
-    """_h_exec_python のパストラバーサル防止を検証する。"""
+    """Arbitrary path execution is absent from the Pack v4 runtime."""
 
     def test_path_traversal_blocked(self):
-        """../../../etc/passwd のようなパスがブロックされる。"""
-        from core_runtime.kernel_handlers_system import KernelSystemHandlersMixin
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        mixin = KernelSystemHandlersMixin()
-        mixin.interface_registry = _StubInterfaceRegistry()
-        mixin.event_bus = _StubEventBus()
-        mixin.diagnostics = MagicMock()
-        mixin.install_journal = MagicMock()
-        mixin.lifecycle = MagicMock()
-        mixin._now_ts = lambda: "2026-02-14T00:00:00Z"
-        mixin._resolve_value = lambda v, ctx: v
-
-        args = {
-            "file": "../../../etc/passwd",
-            "base_path": "/tmp/safe_dir",
-        }
-        ctx = {}
-        result = mixin._h_exec_python(args, ctx)
-        assert result.get("error") == "Path traversal detected"
-        assert result.get("status") == "blocked"
+        assert_retired_module_absent("core_runtime.kernel_handlers_system")
 
     def test_absolute_path_blocked(self, tmp_path):
-        """絶対パスで任意の Python ファイルを指定できない。"""
-        from core_runtime.kernel_handlers_system import KernelSystemHandlersMixin
+        del tmp_path
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        payload = tmp_path / "payload.py"
-        payload.write_text("def run(context):\n    pass\n", encoding="utf-8")
-
-        mixin = KernelSystemHandlersMixin()
-        mixin.interface_registry = _StubInterfaceRegistry()
-        mixin.event_bus = _StubEventBus()
-        mixin.diagnostics = MagicMock()
-        mixin.install_journal = MagicMock()
-        mixin.lifecycle = MagicMock()
-        mixin._now_ts = lambda: "2026-02-14T00:00:00Z"
-        mixin._resolve_value = lambda v, ctx: v
-
-        result = mixin._h_exec_python({"file": str(payload)}, {})
-
-        assert result["status"] == "blocked"
-        assert result["_kernel_step_meta"]["reason"] == "absolute_path_not_allowed"
-        mixin.lifecycle._exec_python_file.assert_not_called()
+        assert_retired_module_absent("core_runtime.kernel_handlers_system")
 
     def test_untrusted_base_path_blocked(self, tmp_path):
-        """base_path を使って core_pack 外の Python ファイルを実行できない。"""
-        from core_runtime.kernel_handlers_system import KernelSystemHandlersMixin
+        del tmp_path
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        payload = tmp_path / "payload.py"
-        payload.write_text("def run(context):\n    pass\n", encoding="utf-8")
-
-        mixin = KernelSystemHandlersMixin()
-        mixin.interface_registry = _StubInterfaceRegistry()
-        mixin.event_bus = _StubEventBus()
-        mixin.diagnostics = MagicMock()
-        mixin.install_journal = MagicMock()
-        mixin.lifecycle = MagicMock()
-        mixin._now_ts = lambda: "2026-02-14T00:00:00Z"
-        mixin._resolve_value = lambda v, ctx: v
-
-        result = mixin._h_exec_python({"file": payload.name, "base_path": str(tmp_path)}, {})
-
-        assert result["status"] == "blocked"
-        assert result["_kernel_step_meta"]["reason"] == "exec_python_target_not_allowed"
-        mixin.lifecycle._exec_python_file.assert_not_called()
+        assert_retired_module_absent("core_runtime.kernel_handlers_system")
 
     def test_builtin_core_pack_relative_file_allowed(self):
-        """起動フローが使う core_pack 配下の相対 Python ファイルは維持される。"""
-        from core_runtime.kernel_handlers_system import KernelSystemHandlersMixin
-        from core_runtime.paths import BASE_DIR
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-        mixin = KernelSystemHandlersMixin()
-        mixin.interface_registry = _StubInterfaceRegistry()
-        mixin.event_bus = _StubEventBus()
-        mixin.diagnostics = MagicMock()
-        mixin.install_journal = MagicMock()
-        mixin.lifecycle = MagicMock()
-        mixin._now_ts = lambda: "2026-02-14T00:00:00Z"
-        mixin._resolve_value = lambda v, ctx: v
-
-        result = mixin._h_exec_python({"file": "core_runtime/core_pack/core_setup/check_profile.py"}, {})
-
-        expected = (BASE_DIR / "core_runtime/core_pack/core_setup/check_profile.py").resolve()
-        assert result["_kernel_step_status"] == "success"
-        mixin.lifecycle._exec_python_file.assert_called_once()
-        assert mixin.lifecycle._exec_python_file.call_args.args[0] == expected
+        assert_profile_resolver_requires_authority_snapshot()
 
 
 # ---------------------------------------------------------------------------
@@ -299,18 +234,12 @@ class TestExecPythonPathTraversal:
 # ---------------------------------------------------------------------------
 
 class TestExecPythonInjectBlock:
-    """_h_exec_python の inject ブロックリストを検証する。"""
+    """Legacy Kernel context injection cannot bypass v4 resolution."""
 
     def test_inject_blocked_keys_are_skipped(self):
-        """ブロック対象キーの inject がスキップされる。"""
-        from core_runtime.kernel_handlers_system import _INJECT_BLOCKED_KEYS
+        from tests.legacy_authority_contracts import assert_retired_module_absent
 
-        blocked_keys = {
-            "interface_registry", "event_bus", "diagnostics",
-            "install_journal", "permission_manager", "approval_manager",
-            "lifecycle", "active_ecosystem", "registry",
-        }
-        assert blocked_keys == _INJECT_BLOCKED_KEYS
+        assert_retired_module_absent("core_runtime.kernel_handlers_system")
 
 
 # ---------------------------------------------------------------------------
@@ -318,45 +247,14 @@ class TestExecPythonInjectBlock:
 # ---------------------------------------------------------------------------
 
 class TestBuildSafe:
-    """build_safe() のサニタイズ動作を検証する。"""
+    """Only Host-captured context is accepted by the v4 Profile Resolver."""
 
     def test_build_safe_returns_full_ctx_when_guard_off(self):
-        """RUMI_SAFE_CONTEXT が未設定のとき build() と同等の ctx を返す。"""
-        from core_runtime.kernel_context_builder import KernelContextBuilder
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-        builder = KernelContextBuilder(
-            diagnostics=MagicMock(),
-            install_journal=MagicMock(),
-            interface_registry=MagicMock(),
-            event_bus=MagicMock(),
-            lifecycle=MagicMock(),
-        )
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("RUMI_SAFE_CONTEXT", None)
-            ctx = builder.build_safe()
-        # build() と同様に interface_registry が含まれる
-        assert "interface_registry" in ctx
+        assert_profile_resolver_requires_authority_snapshot()
 
     def test_build_safe_returns_sanitized_ctx_when_guard_on(self):
-        """RUMI_SAFE_CONTEXT=1 のとき内部サービスを含まない ctx を返す。"""
-        from core_runtime.kernel_context_builder import KernelContextBuilder
+        from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
 
-        builder = KernelContextBuilder(
-            diagnostics=MagicMock(),
-            install_journal=MagicMock(),
-            interface_registry=MagicMock(),
-            event_bus=MagicMock(),
-            lifecycle=MagicMock(),
-        )
-        with patch.dict(os.environ, {"RUMI_SAFE_CONTEXT": "1"}):
-            ctx = builder.build_safe(flow_id="test_flow", step_id="test_step")
-        # 内部サービスが含まれない
-        assert "interface_registry" not in ctx
-        assert "event_bus" not in ctx
-        assert "lifecycle" not in ctx
-        assert "install_journal" not in ctx
-        # メタ情報は含まれる
-        assert ctx["_flow_id"] == "test_flow"
-        assert ctx["_step_id"] == "test_step"
-        assert "ts" in ctx
-        assert "diagnostics" in ctx
+        assert_profile_resolver_requires_authority_snapshot()

@@ -1,0 +1,236 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:230e09798fee62130858d3fe56262858578c39cce2750ad5d8ae39739dad62ff",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:49d7175bf35a6fc3ae8398760c796faa81df2a7af19c372e9586f99862020b62",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "kind": "executable",
+      "path": "runtime/host.py"
+    },
+    {
+      "digest": "sha256:3a3e843263f6f30bbd554424a2afdc58024271a136e25cee57901f0371b81ae6",
+      "kind": "executable",
+      "path": "runtime/pack_data.py"
+    },
+    {
+      "digest": "sha256:bbdc2d4a7a815064f9ddca10b5ec3d2becec821b095e341965e075242f9031ea",
+      "kind": "executable",
+      "path": "runtime/registry.py"
+    },
+    {
+      "digest": "sha256:d2903c083ee91411637658c93b388a50dd6fb2d53a149c9560044c85dc89708e",
+      "kind": "executable",
+      "path": "runtime/selection.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.tool.definition.manage.v1",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-manage"
+      ],
+      "revision_digest": "sha256:6714fad639623466036b29ea003c861fb81c720faef16ac8ffd8c88c56936987"
+    },
+    {
+      "contract_id": "tobkiri.action.tool.definition.migrate.v1",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-migrate"
+      ],
+      "revision_digest": "sha256:7dad97a1654054ad5ea9f4cf797637b05a9b868c66d8c61c2b9bd1ac7ef15983"
+    },
+    {
+      "contract_id": "tobkiri.resource.tool.definition.v1",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-resource"
+      ],
+      "revision_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:ecbbd1d219cbca5227c92f059b43c4fcd79fb185276a5abae747f5d1becbcc5c",
+      "id": "rumi_tool_registry_pack.tool-registry.definition",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-resource"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:6714fad639623466036b29ea003c861fb81c720faef16ac8ffd8c88c56936987",
+      "id": "rumi_tool_registry_pack.tool-registry.manage",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-manage"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:7dad97a1654054ad5ea9f4cf797637b05a9b868c66d8c61c2b9bd1ac7ef15983",
+      "id": "rumi_tool_registry_pack.tool-registry.migrate",
+      "implementation_digest": "sha256:3116e44fc36057a320c82fa516c5dc690db6ed7189dd9a49bc99b4612a77034a",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-migrate"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:7881d7cce661bbf2044718fa736a2fd556156a6980a6d69dd9fca5f554170108",
+    "contract_catalog_digest": "sha256:fb48b6e69cf7093bb8b9e88f1b2c04066f5972627bf272fe94943811bb17d3bd",
+    "source_identity": "sha256:e1ec6422bb728b33057bd174fdc320d1e1e6489a0026184675aaad6d369dc08d"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.tool.definition.manage.v1",
+      "rumi.action.tool.definition.migrate.v1",
+      "rumi.resource.tool.definition.v1",
+      "rumi:ecosystem/rumi_tool_registry_pack",
+      "rumi_tool_registry_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.tool.definition.manage.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:tool.definition.manage"
+      ],
+      "operation_id": "rumi_tool_registry_pack.tool-definition-manage",
+      "owner": "rumi_tool_registry_pack",
+      "provider_id": "rumi_tool_registry_pack.tool-registry.manage",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.tool.definition.migrate.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:tool.definition.migrate"
+      ],
+      "operation_id": "rumi_tool_registry_pack.tool-definition-migrate",
+      "owner": "rumi_tool_registry_pack",
+      "provider_id": "rumi_tool_registry_pack.tool-registry.migrate",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.tool.definition.v1",
+      "effect_ceiling": [
+        "host:brokered-execution",
+        "capability:tool.definition.read"
+      ],
+      "operation_id": "rumi_tool_registry_pack.tool-definition-resource",
+      "owner": "rumi_tool_registry_pack",
+      "provider_id": "rumi_tool_registry_pack.tool-registry.definition",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:7881d7cce661bbf2044718fa736a2fd556156a6980a6d69dd9fca5f554170108",
+    "display_name": "Tobkiri Tool Registry",
+    "id": "rumi_tool_registry_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:e1ec6422bb728b33057bd174fdc320d1e1e6489a0026184675aaad6d369dc08d",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:e1ec6422bb728b33057bd174fdc320d1e1e6489a0026184675aaad6d369dc08d",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_tool_registry_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.resource.tool.definition.v1",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-resource"
+      ],
+      "owner": "rumi_tool_registry_pack",
+      "provider_id": "rumi_tool_registry_pack.tool-registry.definition"
+    },
+    {
+      "contract_reference": "tobkiri.action.tool.definition.manage.v1",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-manage"
+      ],
+      "owner": "rumi_tool_registry_pack",
+      "provider_id": "rumi_tool_registry_pack.tool-registry.manage"
+    },
+    {
+      "contract_reference": "tobkiri.action.tool.definition.migrate.v1",
+      "operations": [
+        "rumi_tool_registry_pack.tool-definition-migrate"
+      ],
+      "owner": "rumi_tool_registry_pack",
+      "provider_id": "rumi_tool_registry_pack.tool-registry.migrate"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "tool.definition.contribution.read",
+      "tool.definition.manage",
+      "tool.definition.migrate",
+      "tool.definition.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.resource.tool.definition.contribution.v1",
+        "optional": true,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.tool.execute.v1",
+        "optional": true,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.tool.local.operation.v1",
+        "optional": true,
+        "version_range": "^1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "contract_id": "tobkiri.service.mcp.tool.call.v1",
+        "optional": true,
+        "version_range": "^1.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

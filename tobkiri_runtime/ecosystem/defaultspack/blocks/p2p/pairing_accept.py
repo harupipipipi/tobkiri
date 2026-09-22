@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error, ok
 from blocks.p2p._helpers import settings_from
@@ -16,6 +13,8 @@ def run(input_data, context=None):
     if not code:
         return error("pairing code is required", "INVALID_INPUT")
     settings = settings_from(input_data, context)
+    if not settings.enabled:
+        return error("P2P is disabled", "P2P_DISABLED")
     result = PairingManager(settings.store_path).accept_pairing(
         code,
         peer_id=str(input_data.get("peer_id") or ""),

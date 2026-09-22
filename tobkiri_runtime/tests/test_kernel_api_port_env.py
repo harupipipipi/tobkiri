@@ -1,33 +1,40 @@
+"""The removed kernel HTTP handler has no v4 authority role."""
+
 from __future__ import annotations
 
+from pathlib import Path
 
-def test_kernel_api_init_port_prefers_runtime_env(monkeypatch):
-    from core_runtime.kernel_handlers_system import _resolve_api_port
-
-    monkeypatch.setenv("RUMI_PORT", "8768")
-
-    assert _resolve_api_port({"port": 8765}) == 8768
+from tests.legacy_authority_contracts import assert_retired_module_absent
+from tests.v4_batch_support import harness
 
 
-def test_kernel_api_init_port_falls_back_to_flow_arg(monkeypatch):
-    from core_runtime.kernel_handlers_system import _resolve_api_port
-
-    monkeypatch.delenv("RUMI_PORT", raising=False)
-
-    assert _resolve_api_port({"port": 8765}) == 8765
+def test_kernel_handler_port_resolver_is_physically_absent() -> None:
+    assert_retired_module_absent("core_runtime.kernel_handlers_system")
 
 
-def test_kernel_api_init_port_invalid_env_falls_back_to_flow_arg(monkeypatch):
-    from core_runtime.kernel_handlers_system import _resolve_api_port
+def test_v4_authority_uses_activation_not_environment_port(tmp_path: Path) -> None:
+    h = harness(tmp_path)
+    result = h.kernel.authorize(h.context(), h.scope)
+    assert result.lease_id.startswith("lease-")
+    assert h.target_domain.domain_id == "domain-target"
 
-    monkeypatch.setenv("RUMI_PORT", "not-a-port")
 
-    assert _resolve_api_port({"port": 8769}) == 8769
+def test_v4_target_domain_identity_is_exact(tmp_path: Path) -> None:
+    h = harness(tmp_path)
+    result = h.kernel.authorize(h.context(), h.scope)
+    try:
+        h.kernel.dispatch(
+            result.lease_token,
+            target_domain_id="domain-attacker",
+            target_boot_epoch=h.target_domain.boot_epoch,
+            request_digest=h.context().request_digest,
+        )
+    except Exception as exc:
+        assert type(exc).__name__ == "AuthorityDenied"
+    else:
+        raise AssertionError("unknown target domain was accepted")
 
 
-def test_kernel_api_init_port_out_of_range_env_falls_back_to_flow_arg(monkeypatch):
-    from core_runtime.kernel_handlers_system import _resolve_api_port
-
-    monkeypatch.setenv("RUMI_PORT", "99999")
-
-    assert _resolve_api_port({"port": 8769}) == 8769
+def test_v4_session_identity_is_canonical(tmp_path: Path) -> None:
+    h = harness(tmp_path)
+    assert h.context().activation_id == "activation-1"

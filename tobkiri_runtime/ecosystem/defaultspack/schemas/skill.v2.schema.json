@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.dev/skill/v2.json",
+  "title": "Tobkiri Skill manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "id",
+    "version",
+    "display_name",
+    "description",
+    "instructions",
+    "activation",
+    "scope",
+    "composition",
+    "tool_policy",
+    "security"
+  ],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": "tobkiri.skill/v2"},
+    "kind": {"const": "skill"},
+    "category": {"const": "skill"},
+    "id": {"$ref": "#/$defs/stableId"},
+    "version": {"$ref": "#/$defs/semver"},
+    "enabled": {"type": "boolean"},
+    "priority": {"type": "integer"},
+    "display_name": {"$ref": "#/$defs/localizedText"},
+    "description": {"$ref": "#/$defs/localizedText"},
+    "instructions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "format", "max_tokens"],
+      "properties": {
+        "path": {"const": "SKILL.md"},
+        "format": {"const": "agent-skills"},
+        "max_tokens": {"type": "integer", "minimum": 1}
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {"enum": ["auto", "explicit", "auto_or_explicit"]},
+        "aliases": {"$ref": "#/$defs/idList"},
+        "positive_examples": {"$ref": "#/$defs/idList"},
+        "negative_examples": {"$ref": "#/$defs/idList"}
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "activity_ids": {"$ref": "#/$defs/idList"},
+        "tool_ids": {"$ref": "#/$defs/idList"}
+      }
+    },
+    "composition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "priority"],
+      "properties": {
+        "class": {"enum": ["safety", "required", "explicit", "optional"]},
+        "priority": {"type": "integer"},
+        "requires": {"$ref": "#/$defs/idList"},
+        "conflicts_with": {"$ref": "#/$defs/idList"}
+      }
+    },
+    "tool_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tool_ids": {"$ref": "#/$defs/idList"},
+        "denied_tool_ids": {"$ref": "#/$defs/idList"}
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["may_grant_permissions"],
+      "properties": {
+        "minimum_trust": {"enum": ["bundled", "verified", "local"]},
+        "may_grant_permissions": {"const": false}
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mentionable": {"type": "boolean"},
+        "developer_visible": {"type": "boolean"}
+      }
+    },
+    "metadata": {"type": "object", "additionalProperties": false},
+    "config": {"type": "object", "additionalProperties": false},
+    "capabilities": {"type": "object", "additionalProperties": false},
+    "marketplace": {"type": "object", "additionalProperties": false},
+    "signing": {"type": "object", "additionalProperties": false}
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[._/-][a-z0-9]+)*$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "localizedText": {
+      "oneOf": [
+        {"type": "string"},
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      ]
+    },
+    "idList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}

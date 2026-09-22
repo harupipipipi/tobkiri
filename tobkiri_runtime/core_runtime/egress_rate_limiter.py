@@ -38,7 +38,7 @@ class PackRateLimiter:
     スレッドセーフ。
     """
 
-    def __init__(self, max_requests_per_min: int = None):
+    def __init__(self, max_requests_per_min: int | None = None):
         self._max_rpm = max_requests_per_min if max_requests_per_min is not None else DEFAULT_RATE_LIMIT_PER_MIN
         self._windows: Dict[str, collections.deque] = {}
         self._lock = threading.Lock()
@@ -84,7 +84,7 @@ class PackRateLimiter:
                 window.popleft()
             return len(window)
 
-    def reset(self, pack_id: str = None) -> None:
+    def reset(self, pack_id: str | None = None) -> None:
         """レート制限カウンターをリセット（テスト用）"""
         with self._lock:
             if pack_id:

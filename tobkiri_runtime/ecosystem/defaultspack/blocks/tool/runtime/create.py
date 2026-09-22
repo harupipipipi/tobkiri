@@ -12,10 +12,6 @@ input_data:
 全て揃っている場合はAI生成をスキップし、そのまま定義を返す。
 """
 
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from blocks._common import ok, error
 
@@ -44,7 +40,6 @@ def run(input_data, context):
         return ok({"tool_def": tool_def, "source": "manual"})
 
     # AI生成モード
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
     from domain.tool.runtime_creator import RuntimeToolCreator
 
     creator = RuntimeToolCreator()
