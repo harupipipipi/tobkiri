@@ -80,11 +80,14 @@ export function profileScreenUrlFromLocation(
 
 /**
  * Host-scoped Application screens are served from dedicated top-level mounts
- * and deliberately carry no Runtime Profile identity: the Launcher validates
- * the exact `/approval` window path and request id before any approval
- * context reaches this surface.
+ * and deliberately carry no Runtime Profile identity. The Launcher validates
+ * these exact authenticated window paths before Host-owned authority or
+ * permission context reaches the corresponding sealed surface.
  */
-const HOST_APPLICATION_ROUTES: ReadonlySet<string> = new Set(["/approval"]);
+const HOST_APPLICATION_ROUTES: ReadonlySet<string> = new Set([
+  "/approval",
+  "/host-permissions",
+]);
 
 /** Resolve the Application route for a profile-qualified or Host-scoped path. */
 export function applicationPathname(pathname: string): string | null {

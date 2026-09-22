@@ -106,8 +106,35 @@ test("HostBootstrap renders the sealed approval screen on its dedicated mount", 
   assert.doesNotMatch(markup, /data-frontend-unavailable/);
 });
 
+test("HostBootstrap renders Host permissions on its dedicated Launcher mount", (context) => {
+  const originalWindow = globalThis.window;
+  context.after(() => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+  });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {},
+  });
+
+  const markup = renderToStaticMarkup(
+    createElement(HostBootstrap, { pathname: "/host-permissions" }),
+  );
+  assert.match(markup, /Host Permissions/);
+  assert.match(markup, /Loading host permissions/);
+  assert.doesNotMatch(markup, /data-frontend-unavailable/);
+});
+
 test("HostBootstrap keeps unqualified non-Application paths fail-closed", () => {
-  for (const pathname of ["/chat", "/approvals", "/approval/extra"]) {
+  for (const pathname of [
+    "/chat",
+    "/approvals",
+    "/approval/extra",
+    "/host-permission",
+    "/host-permissions/",
+  ]) {
     const markup = renderToStaticMarkup(
       createElement(HostBootstrap, { pathname }),
     );
