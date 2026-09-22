@@ -13,7 +13,7 @@ abstract class ConversationConnectionStore {
 
 class SecureConversationConnectionStore implements ConversationConnectionStore {
   SecureConversationConnectionStore({AuthoritySecretStore? storage})
-      : _storage = storage ?? FlutterAuthoritySecretStore();
+    : _storage = storage ?? FlutterAuthoritySecretStore();
 
   static const storageKey = 'tobkiri.mobile.conversation_spaces.v1';
   final AuthoritySecretStore _storage;
@@ -58,11 +58,26 @@ class SecureConversationConnectionStore implements ConversationConnectionStore {
     final encoded = jsonEncode(
       connections.map((connection) => connection.toJson()).toList(),
     );
-    await _storage.write(storageKey, encoded);
-    if (await _storage.read(storageKey) != encoded) {
-      await _storage.delete(storageKey);
-      throw StateError('conversation spaces could not be verified');
+    final previous = await _storage.read(storageKey);
+    try {
+      await _storage.write(storageKey, encoded);
+      if (await _storage.read(storageKey) == encoded) return;
+    } catch (_) {
+      // A secure-storage write can fail after changing its value. Restore the
+      // last known bytes before asking the user to retry setup.
     }
+
+    try {
+      if (previous == null || previous.isEmpty) {
+        await _storage.delete(storageKey);
+      } else {
+        await _storage.write(storageKey, previous);
+      }
+    } catch (_) {
+      // The primary failure remains a recoverable save failure. Do not expose
+      // storage implementation details or token material to the UI.
+    }
+    throw StateError('conversation spaces could not be verified');
   }
 }
 
