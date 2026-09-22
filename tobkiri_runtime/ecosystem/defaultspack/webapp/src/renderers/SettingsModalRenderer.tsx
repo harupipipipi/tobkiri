@@ -3603,6 +3603,8 @@ export function SettingsModalRenderer({
     sharedSecretFile: "",
     toolSourceEnabled: false,
     automationEndpointEnabled: false,
+    requiredMcpServers: [],
+    approvalTimeoutSeconds: 120,
   });
   const normalizedSearch = settingsSearch.trim().toLowerCase();
   const dirtySettingsKeys = saveState.dirtyKeys ?? [];
@@ -3870,12 +3872,16 @@ export function SettingsModalRenderer({
       sharedSecretFile: codexAppServerPrelude.sharedSecretFile,
       toolSourceEnabled: codexAppServerPrelude.toolSourceStatus !== "disabled",
       automationEndpointEnabled: codexAppServerPrelude.automationEndpointStatus !== "disabled",
+      requiredMcpServers: codexAppServerPrelude.requiredMcpServers,
+      approvalTimeoutSeconds: codexAppServerPrelude.approvalTimeoutSeconds,
     });
   }, [
     codexAppServerPrelude.automationEndpointStatus,
+    codexAppServerPrelude.approvalTimeoutSeconds,
     codexAppServerPrelude.baseUrl,
     codexAppServerPrelude.enabled,
     codexAppServerPrelude.sharedSecretFile,
+    codexAppServerPrelude.requiredMcpServers,
     codexAppServerPrelude.toolSourceStatus,
     codexAppServerPrelude.transport,
     codexAppServerPrelude.unixSocketPath,
@@ -4799,6 +4805,8 @@ export function SettingsModalRenderer({
                   <label className="space-y-1 text-[11px] text-zinc-500"><span>WebSocket URL</span><input value={codexAppServerDraft.websocketUrl ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, websocketUrl: event.target.value }))} placeholder="ws://127.0.0.1:7331/ws" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
                   <label className="space-y-1 text-[11px] text-zinc-500"><span>WS token file</span><input value={codexAppServerDraft.wsTokenFile ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, wsTokenFile: event.target.value }))} placeholder="~/.config/rumi/codex-app-server.token" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
                   <label className="space-y-1 text-[11px] text-zinc-500 sm:col-span-2"><span>Shared secret file</span><input value={codexAppServerDraft.sharedSecretFile ?? ""} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, sharedSecretFile: event.target.value }))} placeholder="~/.config/rumi/codex-app-server.secret" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
+                  <label className="space-y-1 text-[11px] text-zinc-500 sm:col-span-2"><span>Required MCP servers</span><input value={(codexAppServerDraft.requiredMcpServers ?? []).join(", ")} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, requiredMcpServers: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))} placeholder="filesystem, github" className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-700" /></label>
+                  <label className="space-y-1 text-[11px] text-zinc-500"><span>Approval timeout (seconds)</span><input type="number" min={15} max={600} value={codexAppServerDraft.approvalTimeoutSeconds ?? 120} onChange={(event) => setCodexAppServerDraft((current) => ({ ...current, approvalTimeoutSeconds: Number(event.target.value) }))} className="h-10 w-full rounded-lg border border-zinc-800 bg-black px-3 text-xs text-zinc-100 outline-none focus:border-cyan-700" /></label>
                 </div>
 
                 <div className="mt-4 grid gap-2 sm:grid-cols-3">

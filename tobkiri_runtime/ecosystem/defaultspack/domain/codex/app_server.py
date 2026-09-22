@@ -50,6 +50,8 @@ _DEFAULT_CONFIG = {
     "shared_secret_file": "",
     "tool_source_enabled": False,
     "automation_endpoint_enabled": False,
+    "required_mcp_servers": [],
+    "approval_timeout_seconds": 120,
     "url_secret_rejected": False,
     "account": {},
 }
@@ -88,6 +90,12 @@ def _read_config(pack_root: Path | None = None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return dict(_DEFAULT_CONFIG)
     return _normalize_config(payload)
+
+
+def load_codex_app_server_config(*, pack_root: Path | None = None) -> dict[str, Any]:
+    """Return the normalized, secret-free App Server runtime configuration."""
+
+    return _read_config(pack_root)
 
 
 def _write_config(payload: dict[str, Any], pack_root: Path | None = None) -> None:
@@ -310,6 +318,16 @@ def _normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         unix_socket_path=unix_socket_path,
     )
     enabled = False if transport == "off" else _bool(payload.get("enabled"))
+    raw_required_mcp = payload.get("required_mcp_servers")
+    required_mcp = (
+        sorted({str(item).strip() for item in raw_required_mcp if str(item).strip()})
+        if isinstance(raw_required_mcp, list)
+        else []
+    )
+    try:
+        approval_timeout = int(payload.get("approval_timeout_seconds") or 120)
+    except (TypeError, ValueError):
+        approval_timeout = 120
     return {
         "transport": transport,
         "enabled": enabled,
@@ -322,6 +340,8 @@ def _normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         "shared_secret_file": _normalize_path(payload.get("shared_secret_file")),
         "tool_source_enabled": _bool(payload.get("tool_source_enabled")),
         "automation_endpoint_enabled": _bool(payload.get("automation_endpoint_enabled")),
+        "required_mcp_servers": required_mcp[:64],
+        "approval_timeout_seconds": max(15, min(600, approval_timeout)),
         "url_secret_rejected": url_secret_rejected,
         "account": _safe_account_metadata(payload.get("account") or payload.get("last_account")),
     }
@@ -660,6 +680,8 @@ def codex_app_server_status(*, pack_root: Path | None = None) -> dict[str, Any]:
             if config.get("automation_endpoint_enabled") and configured
             else "disabled",
         },
+        "required_mcp_servers": list(config.get("required_mcp_servers") or []),
+        "approval_timeout_seconds": int(config.get("approval_timeout_seconds") or 120),
         "probe": {"status": "not_run"},
     }
 

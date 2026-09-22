@@ -74,6 +74,13 @@
       "uniqueItems": true,
       "default": []
     },
+    "approval_timeout_seconds": {
+      "type": "integer",
+      "minimum": 15,
+      "maximum": 600,
+      "default": 120,
+      "description": "Time allowed for a signed Tobkiri approval decision."
+    },
     "experimental_api": {
       "type": "boolean",
       "default": false,
@@ -85,7 +92,7 @@
       "default": "server_side_required"
     }
   },
-  "required": ["workspace_root"],
+  "required": [],
   "allOf": [
     {
       "not": {

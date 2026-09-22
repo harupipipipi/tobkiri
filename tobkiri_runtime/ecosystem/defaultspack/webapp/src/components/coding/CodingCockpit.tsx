@@ -13,6 +13,7 @@ import { codingResources } from "../../features/coding/resources/codingResources
 import { ErrorNotice } from "../ErrorNotice";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { ChangeReviewPanel } from "./ChangeReviewPanel";
+import { CodexAppServerPanel } from "./CodexAppServerPanel";
 import { CheckpointPanel, type ApprovedCheckpointDecision } from "./CheckpointPanel";
 import { DiffPanel } from "./DiffPanel";
 import { RumiLogPanel } from "./RumiLogPanel";
@@ -397,6 +398,10 @@ export function CodingCockpit({
         </div>
 
         <div hidden={activeCockpitTab !== "workspace"}>
+          <CodexAppServerPanel
+            workspaceId={activeWorkspaceId}
+            trusted={selectedWorkspace?.trusted === true}
+          />
           <RumiLogPanel workspaceId={activeWorkspaceId} />
           <ApprovalQueue
             onApproved={handleApprovalApproved}

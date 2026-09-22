@@ -113,6 +113,8 @@ export type CodexAppServerPrelude = {
   sharedSecretFile: string;
   toolSourceStatus: string;
   automationEndpointStatus: string;
+  requiredMcpServers: string[];
+  approvalTimeoutSeconds: number;
   accountLabel: string;
   accountType: string;
   accountProviderId: string;
@@ -1092,6 +1094,10 @@ export function buildCodexAppServerPrelude(settingsValues: SettingsValues = {}):
     sharedSecretFile: String(resolvedAppServer.shared_secret_file || ""),
     toolSourceStatus: String(toolSource.status || "disabled"),
     automationEndpointStatus: String(automationEndpoint.status || "disabled"),
+    requiredMcpServers: Array.isArray(resolvedAppServer.required_mcp_servers)
+      ? resolvedAppServer.required_mcp_servers.map((item) => String(item)).filter(Boolean)
+      : [],
+    approvalTimeoutSeconds: Number(resolvedAppServer.approval_timeout_seconds || 120),
     accountLabel: String(account.account_label || account.email || ""),
     accountType: String(account.type || ""),
     accountProviderId: String(account.provider_id || resolvedAppServer.provider_id || "codex"),
