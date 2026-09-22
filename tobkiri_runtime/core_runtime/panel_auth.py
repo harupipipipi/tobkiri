@@ -273,6 +273,7 @@ class PanelAuthManager:
             journal_session = session_hash
             request_scope = ""
             if presenter_grant is not None:
+                assert isinstance(presenter_mark, str)
                 del self._presenter_grants[presenter_mark]
                 journal_session = str(presenter_grant["journal_session"])
                 request_scope = presenter_mark
