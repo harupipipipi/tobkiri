@@ -1,7 +1,7 @@
 {
   "schema": "io.tobkiri.defaultspack-shell-bundle-manifest.v1",
   "source": {
-    "digest": "8617e6307581bbbe616b6bf9e5902761e7b271cfebbf9bc7864865056bc1eb37",
+    "digest": "dd6a55bc4d22bf5587cfed1a13cd4e2524fc9a063fbd7bd82b5358c8073bf0cc",
     "entries": [
       {
         "path": "index.html",
@@ -630,8 +630,8 @@
       },
       {
         "path": "src/components/company/CompanyWorkspacePanel.tsx",
-        "size": 43724,
-        "sha256": "d0251d7bfd6893c4be2ba4009b9bf56a5c1874033383d0a5091d0a768a98c34d"
+        "size": 43774,
+        "sha256": "5983ed1a633da152a86ed79fe79359dc3432420307f1451655a4238f7f266fab"
       },
       {
         "path": "src/components/desktops/DesktopControlSurface.tsx",
@@ -1866,7 +1866,7 @@
     ]
   },
   "bundle": {
-    "digest": "90e909b3b4990dd8f85da1618011ea02e2c1e07b09e04f6d45a23c4ae796157a",
+    "digest": "de1b580cbb243bbff4b26ba4a4e496820b1c2ef5e9c24adf27123a89c685a92b",
     "entries": [
       {
         "path": "shell-app.css",
@@ -1880,8 +1880,8 @@
       },
       {
         "path": "shell-defaultspack-app.js",
-        "size": 2225173,
-        "sha256": "bd979c0020032e387f37fc611836fb3b71784e9d2bf5655d1def73aad4683780"
+        "size": 2225182,
+        "sha256": "cc7946ed367a1882ca218597d47ba49a655bdb267b516dc3837fa13cbb590da7"
       },
       {
         "path": "shell-rolldown-runtime.js",
