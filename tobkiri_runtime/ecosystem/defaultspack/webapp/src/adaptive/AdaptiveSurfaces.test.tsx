@@ -17,6 +17,7 @@ import {
 import { OperatingProfilePage } from "./OperatingProfilePage";
 import {
   AdaptiveApiError,
+  applyAdaptiveOnboardingPlan,
   compileAdaptiveOnboardingAnswers,
   saveAdaptiveOperatingProfile,
   toActivityState,
@@ -65,9 +66,10 @@ test("OnboardingShell renders the adaptive setup steps", () => {
   assert.match(html, /Normalize/);
   assert.match(html, /Compile/);
   assert.match(html, /Simulate/);
-  assert.match(html, /Apply unavailable/);
-  assert.match(html, /aria-label="Apply unavailable: approval flow is not connected"/);
-  assert.match(html, /title="Approval flow is not connected."/);
+  assert.match(html, /Apply reviewed plan/);
+  assert.match(html, /aria-label="Apply reviewed onboarding plan"/);
+  assert.match(html, /Compile and review the current onboarding plan before applying it\./);
+  assert.match(html, /authenticated local approval context/);
   assert.match(html, /disabled=""/);
 });
 
@@ -152,6 +154,36 @@ test("onboarding compile posts current draft answers to the API", async (t) => {
   assert.deepEqual(body.pack_recommendations.map((item: { pack_id: string }) => item.pack_id), ["pack_coding", "pack_evidence"]);
   assert.equal(result.planId, "plan_123");
   assert.equal(result.scenarioSimulation[0]?.approvalRequired[0], "terminal");
+});
+
+test("onboarding applies only the reviewed plan through the local approval route", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = (async (input, init) => {
+    calls.push({ input, init });
+    return new Response(JSON.stringify({
+      status: "ok",
+      data: {
+        profile_id: "default",
+        applied: true,
+        history_id: "history_123",
+        plan_id: "plan_123",
+        local_only: true,
+      },
+    }), { status: 200 });
+  }) as typeof fetch;
+
+  const answers = onboardingAnswersFromState(demoOnboardingState);
+  const plan = { plan_id: "plan_123", target_profile: { profile_id: "default" } };
+  const applied = await applyAdaptiveOnboardingPlan(answers, plan);
+
+  assert.equal(applied.applied, true);
+  assert.equal(applied.planId, "plan_123");
+  assert.equal(requestTarget(calls[0]?.input ?? ""), routeKey("api/onboarding/apply"));
+  assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { plan });
 });
 
 test("onboarding API errors reject visibly instead of returning demo data", async (t) => {
@@ -331,10 +363,16 @@ test("ResourceBanner renders API errors without demo fallback copy", () => {
   assert.doesNotMatch(html, /Local placeholder adaptive state/);
 });
 
-test("OperatingProfilePage renders profile controls and guardrails", () => {
-  const html = renderToStaticMarkup(createElement(OperatingProfilePage, { initialProfile: demoOperatingProfile }));
+test("OperatingProfilePage renders draft controls, guardrails, and the apply journey", () => {
+  const html = renderToStaticMarkup(createElement(OperatingProfilePage, {
+    initialProfile: demoOperatingProfile,
+    onOpenOnboarding: () => undefined,
+  }));
 
   assert.match(html, /Operating Profile/);
+  assert.match(html, /local until you compile and apply an onboarding plan/);
+  assert.match(html, /Save local draft/);
+  assert.match(html, /Review and apply plan/);
   assert.match(html, /Profile summary/);
   assert.match(html, /Autonomy mode/);
   assert.match(html, /Approval policy/);

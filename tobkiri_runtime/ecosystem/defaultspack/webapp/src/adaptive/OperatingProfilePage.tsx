@@ -32,7 +32,13 @@ const autonomyOptions = [
   { value: "autonomous", label: "Autonomous inside policy" },
 ] as const;
 
-export function OperatingProfilePage({ initialProfile }: { initialProfile?: AdaptiveOperatingProfile }) {
+export function OperatingProfilePage({
+  initialProfile,
+  onOpenOnboarding,
+}: {
+  initialProfile?: AdaptiveOperatingProfile;
+  onOpenOnboarding?: () => void;
+}) {
   const { data, status, error, refresh, updateData } = useAdaptiveResource({
     demoData: demoOperatingProfile,
     initialData: initialProfile,
@@ -151,7 +157,7 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
       setRequestId(null);
       setConflictRevision(null);
       clearAdaptiveDraft(adaptiveDraftKey("operating-profile", data.id));
-      setSaveStatus(`Profile draft confirmed at revision ${saved.revision}.`);
+      setSaveStatus(`Profile draft saved locally at revision ${saved.revision}. It does not change runtime policy until an onboarding plan is applied.`);
     } catch (err) {
       setSaveStatus(null);
       setSaveError(`Kept local draft. ${err instanceof Error ? err.message : String(err)}`);
@@ -196,9 +202,9 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
     <section className={`${adaptivePageClass} ${adaptivePanelClass}`} aria-label="Adaptive operating profile">
       <SurfaceHeader
         eyebrow="Adaptive runtime"
-        title="Operating Profile"
-        description="Review the assistant role, autonomy, approval policy, privacy posture, and pack recommendations as one reusable profile."
-        action={<ToneBadge tone={draftState === "confirmed" && status === "live" ? "good" : draftState === "conflict" || draftState === "failed" ? "danger" : "warning"}>{draftState === "confirmed" && status === "live" ? "Confirmed" : draftState === "saving" ? "Pending" : draftState === "conflict" ? "Conflict" : draftState === "offline" ? "Offline draft" : draftState === "failed" ? "Save failed" : "Unsaved"}</ToneBadge>}
+        title="Operating Profile Draft"
+        description="Review an assistant profile draft. It stays local until you compile and apply an onboarding plan through the authenticated runtime flow."
+        action={<ToneBadge tone={draftState === "confirmed" && status === "live" ? "good" : draftState === "conflict" || draftState === "failed" ? "danger" : "warning"}>{draftState === "confirmed" && status === "live" ? "Draft saved" : draftState === "saving" ? "Saving draft" : draftState === "conflict" ? "Conflict" : draftState === "offline" ? "Offline draft" : draftState === "failed" ? "Save failed" : "Unsaved"}</ToneBadge>}
       />
       <ResourceBanner status={status} error={error} onRefresh={requestReload} />
       {!data ? (
@@ -259,14 +265,24 @@ export function OperatingProfilePage({ initialProfile }: { initialProfile?: Adap
               className={adaptivePrimaryControlClass}
               onClick={() => void handleSave()}
               disabled={draftState === "saving" || draftState === "conflict"}
-              aria-label="Save operating profile draft"
+              aria-label="Save local operating profile draft"
             >
               <Save size={14} aria-hidden="true" />
-              Save draft
+              Save local draft
             </button>
             <button type="button" className={adaptiveControlClass} onClick={requestReload} aria-label="Reload operating profile">
               Reload
             </button>
+            {onOpenOnboarding ? (
+              <button
+                type="button"
+                className={adaptiveControlClass}
+                onClick={onOpenOnboarding}
+                aria-label="Review and apply an onboarding plan"
+              >
+                Review and apply plan
+              </button>
+            ) : null}
           </div>
           {saveError ? (
             <ErrorNotice

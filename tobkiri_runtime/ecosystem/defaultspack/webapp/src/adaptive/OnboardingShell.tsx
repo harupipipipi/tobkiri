@@ -26,6 +26,7 @@ import type {
 import { ErrorNotice } from "../components/ErrorNotice";
 import {
   adaptiveOnboardingActionIds,
+  applyAdaptiveOnboardingPlan,
   compileAdaptiveOnboardingAnswers,
   fetchAdaptiveOnboarding,
   normalizeAdaptiveOnboardingAnswers,
@@ -68,7 +69,7 @@ const steps = [
 
 type StepId = (typeof steps)[number]["id"];
 
-type OnboardingOperation = "normalize" | "compile" | "simulate";
+type OnboardingOperation = "normalize" | "compile" | "simulate" | "apply";
 
 const presetOptions: Array<{ value: AdaptiveOnboardingPreset; label: string; summary: string }> = [
   { value: "discussion_only", label: "Discussion only", summary: "Draft and discuss; writes stay blocked." },
@@ -130,6 +131,7 @@ const operationLabels: Record<OnboardingOperation, string> = {
   normalize: "Normalize",
   compile: "Compile",
   simulate: "Simulate",
+  apply: "Apply",
 };
 
 function permissionActionId(id: string): AdaptiveOnboardingActionId | null {
@@ -640,7 +642,7 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
   const [activeIndex, setActiveIndex] = useState(initialIndex > 0 ? initialIndex : 0);
   const activeStep = steps[activeIndex] ?? steps[0];
   const progress = useMemo(() => `${activeIndex + 1} / ${steps.length}`, [activeIndex]);
-  const applyDisabledReason = "Approval flow is not connected.";
+  const applyDisabledReason = "Compile and review the current onboarding plan before applying it.";
   const setDraft = (next: AdaptiveOnboardingAnswers) => {
     const resourceId = displayState?.profileId ?? next.profile_id ?? "default";
     const stored = saveAdaptiveDraft(
@@ -689,6 +691,11 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
   };
 
   const runOperation = async (operation: OnboardingOperation) => {
+    const reviewedPlan = result?.plan;
+    if (operation === "apply" && !reviewedPlan) {
+      setOperationError(applyDisabledReason);
+      return;
+    }
     setBusyAction(operation);
     setOperationError(null);
     setOperationMessage(null);
@@ -698,9 +705,20 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
           ? await normalizeAdaptiveOnboardingAnswers(draft)
           : operation === "compile"
             ? await compileAdaptiveOnboardingAnswers(draft)
-            : await simulateAdaptiveOnboardingAnswers(draft);
+            : operation === "simulate"
+              ? await simulateAdaptiveOnboardingAnswers(draft)
+              : await applyAdaptiveOnboardingPlan(draft, reviewedPlan!);
       setResult(nextResult);
-      setOperationMessage(`${operationLabels[operation]} completed.`);
+      if (operation === "apply") {
+        const resourceId = displayState?.profileId ?? draft.profile_id ?? "default";
+        clearAdaptiveDraft(adaptiveDraftKey("onboarding", resourceId));
+        setDraftTouched(false);
+        setDraftMessage(null);
+        refresh();
+        setOperationMessage("Plan applied through the authenticated local Tobkiri session. Runtime state is reloading.");
+      } else {
+        setOperationMessage(`${operationLabels[operation]} completed.`);
+      }
     } catch (err) {
       setOperationError(`${operationLabels[operation]} failed. ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -760,13 +778,18 @@ export function OnboardingShell({ initialState }: { initialState?: AdaptiveOnboa
         <button
           type="button"
           className={adaptivePrimaryControlClass}
-          disabled
+          onClick={() => void runOperation("apply")}
+          disabled={busyAction !== null || !result?.plan}
           title={applyDisabledReason}
-          aria-label="Apply unavailable: approval flow is not connected"
+          aria-label="Apply reviewed onboarding plan"
         >
-          Apply unavailable
+          Apply reviewed plan
         </button>
       </div>
+      <p className="px-1 text-xs leading-5 text-zinc-500">
+        Applying uses the existing authenticated local approval context. Compile first to review the
+        settings diff and simulation; policy changes are not made from a local draft alone.
+      </p>
       <ResultPanel result={result} message={operationMessage} error={operationError} />
 
       <div className="grid min-h-[520px] lg:grid-cols-[240px_1fr]">
