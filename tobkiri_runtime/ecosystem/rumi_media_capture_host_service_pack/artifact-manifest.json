@@ -1,0 +1,1 @@
+{"version":1,"artifacts":[{"path":"runtime/service.py","sha256":"2350f27970a4283e492bacd40cc95b5a4e21048758e0594f0db74e59c2ed6e01","entrypoints":["create_media_capture","create_media_output"]}]}

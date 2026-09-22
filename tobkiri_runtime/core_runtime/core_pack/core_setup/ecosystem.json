@@ -32,10 +32,6 @@
     {
       "method": "GET",
       "path": "/callback"
-    },
-    {
-      "method": "POST",
-      "path": "/api/setup/complete"
     }
   ],
   "api_routes": [

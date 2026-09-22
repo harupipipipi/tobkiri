@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.rumi.local/rumi.pack.v3/pack_manifest_v3.schema.json",
+  "title": "Rumi Pack Manifest v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pack_api_version",
+    "pack",
+    "contracts",
+    "entrypoints",
+    "resources",
+    "storage",
+    "permissions",
+    "provenance",
+    "migration"
+  ],
+  "properties": {
+    "pack_api_version": {"const": "rumi.pack.v3"},
+    "pack": {"$ref": "#/$defs/packIdentity"},
+    "contracts": {"$ref": "#/$defs/contracts"},
+    "entrypoints": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entrypoint"},
+      "uniqueItems": true
+    },
+    "resources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/resource"},
+      "uniqueItems": true
+    },
+    "storage": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/storage"},
+      "uniqueItems": true
+    },
+    "permissions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/permission"},
+      "uniqueItems": true
+    },
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "migration": {"$ref": "#/$defs/migration"},
+    "extensions": {
+      "type": "object",
+      "description": "Non-authoritative forward-compatible annotations.",
+      "propertyNames": {"pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"}
+    }
+  },
+  "$defs": {
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "contractId": {
+      "type": "string",
+      "pattern": "^rumi\\.(service|action|event|resource|policy|ui|storage|transport)\\.[a-z0-9]+(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"
+    },
+    "packIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "kind", "display_name"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"},
+        "version": {"$ref": "#/$defs/semver"},
+        "kind": {"enum": ["system", "service", "adapter", "runtime", "policy", "ui", "content", "provider", "bundle"]},
+        "display_name": {"type": "string", "minLength": 1},
+        "description": {"type": "string"}
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provides", "requires"],
+      "properties": {
+        "provides": {"type": "array", "items": {"$ref": "#/$defs/providedContract"}},
+        "requires": {"type": "array", "items": {"$ref": "#/$defs/requiredContract"}}
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["introduced", "deprecated"],
+      "properties": {
+        "introduced": {"$ref": "#/$defs/semver"},
+        "deprecated": {"type": "boolean"},
+        "deprecated_at": {"type": "string", "format": "date"},
+        "sunset_at": {"type": "string", "format": "date"},
+        "replacement_contract": {"$ref": "#/$defs/contractId"},
+        "data_owner": {"type": "string"},
+        "migration_id": {"type": "string"},
+        "rollback_id": {"type": "string"}
+      },
+      "allOf": [
+        {"if": {"properties": {"deprecated": {"const": true}}}, "then": {"required": ["deprecated_at", "sunset_at"]}}
+      ]
+    },
+    "providedContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "provider_instance_id", "cardinality", "security", "failure", "lifecycle", "schemas", "isolation", "required_capabilities"],
+      "properties": {
+        "id": {"$ref": "#/$defs/contractId"},
+        "version": {"$ref": "#/$defs/semver"},
+        "provider_instance_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+        "routing_keys": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "instance_key": {"type": "string"},
+        "cardinality": {"enum": ["one", "many", "keyed", "chain", "fanout", "optional"]},
+        "security": {"enum": ["public", "internal", "sensitive", "restricted"]},
+        "failure": {"enum": ["fail_closed", "isolate", "continue_chain", "best_effort"]},
+        "lifecycle": {"$ref": "#/$defs/lifecycle"},
+        "schemas": {"$ref": "#/$defs/schemaSet"},
+        "isolation": {"enum": ["in_process", "process", "sandbox", "remote"]},
+        "required_capabilities": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "priority": {"type": "integer", "default": 0},
+        "before": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "after": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "allOf": [
+        {"if": {"properties": {"cardinality": {"const": "keyed"}}}, "then": {"required": ["instance_key"]}},
+        {"if": {"properties": {"cardinality": {"const": "chain"}}}, "else": {"properties": {"before": {"maxItems": 0}, "after": {"maxItems": 0}}}}
+      ]
+    },
+    "requiredContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version_range", "cardinality", "optional"],
+      "properties": {
+        "id": {"$ref": "#/$defs/contractId"},
+        "version_range": {"type": "string", "minLength": 1},
+        "cardinality": {"enum": ["one", "many", "keyed", "chain", "fanout", "optional"]},
+        "optional": {"type": "boolean"},
+        "instance_key": {"type": "string"}
+      }
+    },
+    "schemaSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "input": {"type": "object"},
+        "output": {"type": "object"},
+        "event": {"type": "object"}
+      }
+    },
+    "entrypoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "contract_id", "loader", "artifact_hash"],
+      "allOf": [
+        {
+          "if": {"required": ["activation_mode"]},
+          "then": {"properties": {"loader": {"const": "python"}}}
+        }
+      ],
+      "properties": {
+        "id": {"type": "string"},
+        "contract_id": {"$ref": "#/$defs/contractId"},
+        "loader": {"enum": ["python", "wasm", "process", "http", "ui_module"]},
+        "module": {"type": "string", "description": "Metadata only; discovery must not import it."},
+        "symbol": {"type": "string"},
+        "activation_mode": {
+          "enum": ["construction_pure", "context_manager"],
+          "description": "Python activation lifecycle. Omitted preserves the verified construction-pure factory contract."
+        },
+        "artifact_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "content_hash"],
+      "properties": {
+        "id": {"type": "string"},
+        "kind": {"type": "string"},
+        "content_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "schema_version", "authoritative", "retention", "export_import"],
+      "properties": {
+        "namespace": {"type": "string"},
+        "schema_version": {"$ref": "#/$defs/semver"},
+        "authoritative": {"const": true},
+        "retention": {"type": "string"},
+        "export_import": {"type": "boolean"}
+      }
+    },
+    "permission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "access", "approval_required"],
+      "properties": {
+        "capability": {"type": "string"},
+        "access": {"enum": ["read", "write", "observe", "control", "inspect", "execute"]},
+        "approval_required": {"type": "boolean"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_hash", "build_identity", "trust_class", "signature"],
+      "properties": {
+        "content_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "build_identity": {"type": "string", "minLength": 1},
+        "trust_class": {"enum": ["untrusted", "local", "verified", "system"]},
+        "signature": {"type": ["string", "null"], "description": "Declarative evidence only; never an authority grant."}
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "compatibility_aliases", "compatibility_projection", "removal_wave", "sunset_at", "rollback"],
+      "properties": {
+        "from": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "compatibility_aliases": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/compatibilityAlias"},
+          "uniqueItems": true
+        },
+        "compatibility_projection": {"enum": ["none", "legacy_to_v3_read_only"]},
+        "removal_wave": {"type": "integer", "minimum": 0, "maximum": 10},
+        "sunset_at": {"type": "string", "format": "date"},
+        "rollback": {"type": "string", "minLength": 1}
+      }
+    },
+    "compatibilityAlias": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["legacy_id", "target_contract", "target_revision", "owner", "removal_wave", "sunset_at"],
+      "properties": {
+        "legacy_id": {"type": "string", "minLength": 1},
+        "target_contract": {"$ref": "#/$defs/contractId"},
+        "target_revision": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "owner": {"type": "string", "minLength": 1},
+        "removal_wave": {"type": "integer", "minimum": 0, "maximum": 10},
+        "sunset_at": {"type": "string", "format": "date"}
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "models": [
+    {
+      "id": "opencode-zen/mimo-v2.5-free",
+      "category": "llm_model",
+      "version": "1",
+      "provider_id": "opencode-zen",
+      "model_id": "mimo-v2.5-free",
+      "display_name": "MiMo V2.5 Free via OpenCode Zen",
+      "type": "chat",
+      "enabled": true,
+      "priority": 0,
+      "routing": {
+        "default_for": [
+          "chat",
+          "subagent"
+        ]
+      },
+      "capabilities": {
+        "text_input": true,
+        "text_output": true,
+        "streaming": true,
+        "thinking": true,
+        "tool_calling": true,
+        "parallel_tool_calls": false,
+        "json_schema": true,
+        "structured_output": true,
+        "image_input": false,
+        "audio_input": false
+      },
+      "pricing": {
+        "input": 0,
+        "output": 0,
+        "currency": "USD"
+      },
+      "metadata": {
+        "transport": "openai_chat_completions",
+        "endpoint_path": "/chat/completions",
+        "source": "opencode_zen_live_inventory",
+        "pricing_verified": true
+      }
+    }
+  ]
+}

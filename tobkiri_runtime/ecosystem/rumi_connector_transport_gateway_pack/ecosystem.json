@@ -1,0 +1,78 @@
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.connector.gateway.v1",
+      "rumi.resource.connector.gateway.v1",
+      "rumi.transport.connector.gateway.v1"
+    ],
+    "requires": [
+      "rumi.action.connector.outbound.v1",
+      "rumi.resource.connector.outbound.v1",
+      "rumi.resource.connector.registry.v1",
+      "rumi.service.host.authorize.v1",
+      "rumi.transport.connector.inbound.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_connector_inbound_broker_pack": ">=1.0.0,<2.0.0",
+    "rumi_connector_outbound_broker_pack": ">=1.0.0,<2.0.0",
+    "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Contract-only connector ingress, egress, and redacted status facade.",
+  "display_name": "Rumi Connector Transport Gateway",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3f5c9e8b96061c598d2a1e6d499ec475c8f77d0a740027ade29fae98245adbe2",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:229a8df2690cce73fe52c8cd0c06e01be10066c5eca9606864d04f073653452c"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "connector_transport_facade"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_connector_transport_gateway_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_transport_gateway_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_transport_gateway_pack:1.0.0",
+    "content_hash": "sha256:2728dce0e3ecf3b2685926742b0c499d8b478ef71d1cfbb70b44d65e2d9fb9f4",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.gateway.control",
+    "connector.gateway.read",
+    "connector.gateway.receive",
+    "connector.inbound.receive",
+    "connector.outbound.control",
+    "connector.outbound.read",
+    "connector.registry.read",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

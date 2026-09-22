@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import os
 import sys
-import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 HERE = Path(__file__).resolve().parent
 PROJECT_ROOT = HERE.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_component_catalog_selected")
 
 
 def test_providers_init_imports_importlib():
@@ -19,29 +21,26 @@ def test_providers_init_imports_importlib():
     assert hasattr(provider_module, "importlib")
 
 
-def test_detect_available_providers_falls_back_to_legacy_imports(monkeypatch):
+def test_detect_available_providers_fails_closed_when_legacy_module_is_absent(monkeypatch):
     import ecosystem.defaultspack.domain.ai_client.providers as provider_module
 
-    fake_provider_cls = MagicMock(return_value=MagicMock(name="FakeOpenAIProvider"))
-    fake_module = types.ModuleType("_fake_openai_provider")
-    fake_module.OpenAIProvider = fake_provider_cls
-
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    absent_module = "domain.ai_client.providers.physically_absent_provider"
+    monkeypatch.setattr(
+        provider_module,
+        "_LEGACY_PROVIDER_REGISTRY",
+        [(["ABSENT_API_KEY"], "absent", absent_module, "AbsentProvider")],
+    )
+    monkeypatch.setattr(provider_module, "provider_has_api_key", lambda _provider_id: True)
+    monkeypatch.delitem(sys.modules, absent_module, raising=False)
     with patch.object(provider_module, "_provider_manifest_map", return_value={}):
-        with patch.dict(
-            sys.modules,
-            {
-                "ecosystem.defaultspack.domain.ai_client.providers.openai_provider": fake_module,
-            },
-        ):
-            providers = provider_module.detect_available_providers()
+        providers = provider_module.detect_available_providers()
 
-    assert "openai" in providers
-    fake_provider_cls.assert_called_once()
+    assert not (PROJECT_ROOT / "ecosystem/defaultspack/domain/ai_client/providers/physically_absent_provider.py").exists()
+    assert providers == {}
 
 
-def test_tool_registry_fallback_keeps_all_builtin_tools():
-    import ecosystem.defaultspack.domain.tool.registry as tool_registry_module
+def test_selected_v4_catalog_keeps_builtin_tools_without_legacy_fallback():
+    import domain.tool.registry as tool_registry_module
 
     tool_registry_module.ToolRegistry._instance = None
 
@@ -205,25 +204,20 @@ def test_openai_compatible_provider_supports_manifest_constructor():
     assert listed[0]["defaults"]["chat"] is True
 
 
-def test_openai_compatible_provider_supports_manifest_api_key_env_list(monkeypatch):
-    from ecosystem.defaultspack.domain.ai_client.providers.openai_compatible_provider import (
-        OpenAICompatibleProvider,
+def test_openai_compatible_provider_supports_manifest_api_key_env_list(
+    monkeypatch,
+    tmp_path,
+):
+    from tests.v4_provider_runtime_support import exercise_captured_provider_send
+
+    monkeypatch.setenv("SECONDARY_MANIFESTED_API_KEY", "ambient-attacker")
+    sent = exercise_captured_provider_send(
+        tmp_path,
+        monkeypatch,
+        "openai_compatible",
+        endpoint="https://manifested.example.test/v1",
     )
 
-    monkeypatch.setenv("SECONDARY_MANIFESTED_API_KEY", "secondary-test-key")
-
-    provider = OpenAICompatibleProvider.from_manifest(
-        {
-            "id": "manifested",
-            "display_name": "Manifested",
-            "adapter": "openai_compatible",
-            "api_key_env": ["PRIMARY_MANIFESTED_API_KEY", "SECONDARY_MANIFESTED_API_KEY"],
-            "base_url_env": "MANIFESTED_BASE_URL",
-            "default_base_url": "https://manifested.example.test/v1",
-            "credential_required": True,
-            "default_model": "manifest-model",
-        }
-    )
-
-    assert provider._api_key == "secondary-test-key"
-    assert provider._api_key_env == "PRIMARY_MANIFESTED_API_KEY"
+    assert sent["credential_bound"] is True
+    assert sent["provider_id"] == "openai_compatible"
+    assert "ambient-attacker" not in str(sent)
