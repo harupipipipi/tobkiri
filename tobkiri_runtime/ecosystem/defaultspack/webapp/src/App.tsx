@@ -692,7 +692,7 @@ function resolveCalendarAgentModel(settings: CalendarSettings, activeModelId: st
   return configuredProfile?.profile_id || configuredProfile?.qualified_model_id || activeModelId || "default";
 }
 
-function CalendarComposerPanel({
+export function CalendarComposerPanel({
   conversationId,
   modelId,
   modelProfiles,

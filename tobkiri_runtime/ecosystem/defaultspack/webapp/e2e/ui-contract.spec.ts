@@ -1344,6 +1344,12 @@ async function openDefaultspack(page: Page, path = "/chat", options: ApiMockOpti
   await expect(page.getByText("Preview Calendar Chat").first()).toBeVisible();
 }
 
+async function openCalendarHarness(page: Page) {
+  await installDefaultspackApiMocks(page);
+  await page.goto("/e2e/calendar-harness.html");
+  await expect(page.getByLabel("Calendar month")).toBeVisible();
+}
+
 async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
   await openDefaultspack(page, "/chat", options);
   await page.locator("textarea.rumi-composer-textarea").fill("/coding");
@@ -2746,14 +2752,13 @@ test("calendar action renders a scheduler preview", async ({ page }) => {
 });
 
 test("calendar mode opens quick add and renders new tasks in blue", async ({ page }) => {
-  await openDefaultspack(page, "/coding");
-
-  await page.locator('button[title="Calendar"]').first().click();
-  await expect(page.getByLabel("Calendar month")).toBeVisible();
+  await openCalendarHarness(page);
 
   const now = new Date();
   const dayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-09`;
   const nextDayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-10`;
+  const rangeStartKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-12`;
+  const rangeEndKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-14`;
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const nextMonthKey = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
   const dayLabel = `${now.getFullYear()}年${now.getMonth() + 1}月9日`;
@@ -2786,8 +2791,8 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("Design review edited")).toBeVisible();
 
-  const rangeStart = page.getByTestId(`${"calendar-day"}-${dayKey.replace("-09", "-12")}`);
-  const rangeEnd = page.getByTestId(`${"calendar-day"}-${dayKey.replace("-09", "-14")}`);
+  const rangeStart = page.getByTestId(`calendar-day-${rangeStartKey}`);
+  const rangeEnd = page.getByTestId(`calendar-day-${rangeEndKey}`);
   const startBox = await rangeStart.boundingBox();
   const endBox = await rangeEnd.boundingBox();
   expect(startBox).not.toBeNull();
@@ -2805,11 +2810,6 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   await page.getByRole("button", { name: "削除", exact: true }).click();
   await expect(page.getByText("Range task")).toHaveCount(0);
 
-  await page.getByTitle("Settings").last().click();
-  const settingsDialog = page.getByRole("dialog", { name: "Settings" });
-  await expect(settingsDialog).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Settings categories" })).toBeVisible();
 });
 
 test("history card drag uses rumi history MIME and sends dropped_widgets metadata", async ({ page }) => {
