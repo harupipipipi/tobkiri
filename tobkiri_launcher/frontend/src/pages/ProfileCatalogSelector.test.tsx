@@ -1241,6 +1241,7 @@ test('an unavailable Profile can be inspected and Pack closure is outside collap
   const {dom, container, root} = createDom();
   const catalog = catalogEnvelope();
   catalog.data.profiles[1]!.available = false;
+  catalog.data.profiles[1]!.diagnostics = [{code: 'PACK_UNAVAILABLE', subject: 'provider-pack'}];
   try {
     await act(async () => {
       root.render(<ProfileCatalogSelector profileSurface={surfaceState()}
