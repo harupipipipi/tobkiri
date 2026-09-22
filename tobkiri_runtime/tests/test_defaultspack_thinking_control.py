@@ -190,6 +190,28 @@ def test_profile_without_a_valid_default_omits_thinking_parameters(
         )
 
 
+def test_profile_default_is_validated_and_bound_at_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service = ModelRuntimeSettingsService(tmp_path)
+    profile = {
+        "profile_id": "example/numeric",
+        "qualified_model_id": "example/numeric",
+        "provider_id": "example",
+        "model_id": "numeric",
+        "default_thinking_level": 1_500,
+        "thinking_control": NUMERIC_CONTRACT,
+    }
+    monkeypatch.setattr(service, "_list_profile_catalog", lambda **_kwargs: [profile])
+
+    effective = service.get_effective_thinking_level("example/numeric")
+
+    assert effective["level"] == 1_500
+    assert service.apply_thinking_control(
+        "example/numeric", {"thinking_level": effective["level"]}
+    ) == {"thinking": {"budget_tokens": 1_500}}
+
+
 def test_legacy_profiles_remain_enum_compatible(tmp_path: Path) -> None:
     service = ModelRuntimeSettingsService(tmp_path)
 
