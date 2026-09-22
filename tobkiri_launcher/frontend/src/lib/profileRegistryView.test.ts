@@ -100,3 +100,11 @@ test('Profile search covers IDs, names, base Packs, and original recommended ord
     ['unresolved', 'ready-work', 'ready-defaults'],
   );
 });
+
+test('an active Profile with newly saved changes must be reviewed before launch', () => {
+  const profile = profileRecord('alpha', 'Alpha', 'needs_resolution', 0, 1);
+  const pending = buildNamedProfileView(profile, {activeSnapshotReady: true, activeDefinitionRevision: digest('c')});
+  assert.equal(pending.status, 'error');
+  assert.match(pending.statusDescription ?? '', /Saved changes need activation/);
+  assert.equal(buildNamedProfileView(profile, {activeSnapshotReady: true, activeDefinitionRevision: profile.profile_revision}).status, 'ready');
+});

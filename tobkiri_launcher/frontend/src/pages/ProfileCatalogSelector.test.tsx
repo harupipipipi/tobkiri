@@ -1210,3 +1210,54 @@ test('Profile catalog remains browseable while runtime ceremony actions are gate
     Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
   }
 });
+
+test('an unknown URL Profile never falls back to the active Profile or exposes its ceremony', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  try {
+    await act(async () => {
+      root.render(<ProfileCatalogSelector
+        initialSelectedProfileId="deleted-profile"
+        profileSurface={surfaceState()}
+        catalogSurface={catalogState(catalogEnvelope())}
+        packs={[]} packsLoading={false} loadPacks={async () => {}}
+      />);
+    });
+    assert.match(container.textContent ?? '', /deleted-profile.*not in the current catalog/);
+    assert.equal(container.querySelector('#profile-ceremony'), null);
+    assert.equal(container.querySelector('[aria-label^="Edit Packs for"]'), null);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
+
+test('an unavailable Profile can be inspected and Pack closure is outside collapsed technical details', async () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const {dom, container, root} = createDom();
+  const catalog = catalogEnvelope();
+  catalog.data.profiles[1]!.available = false;
+  try {
+    await act(async () => {
+      root.render(<ProfileCatalogSelector profileSurface={surfaceState()}
+        catalogSurface={catalogState(catalog)} packs={[]} packsLoading={false} loadPacks={async () => {}} />);
+    });
+    const select = container.querySelector<HTMLButtonElement>('button[aria-label^="Select Profile Alternate Profile"]');
+    assert.ok(select && !select.disabled);
+    await act(async () => select.click());
+    assert.equal(select.getAttribute('aria-pressed'), 'true');
+    const closure = container.querySelector('#profile-closure');
+    assert.ok(closure);
+    assert.equal(closure.closest('details'), null);
+    assert.equal(buttonContaining(container, 'Resolve candidate').disabled, true);
+  } finally {
+    act(() => root.unmount());
+    dom.window.close();
+    Object.defineProperty(globalThis, 'window', {value: previousWindow, configurable: true});
+    Object.defineProperty(globalThis, 'document', {value: previousDocument, configurable: true});
+  }
+});
