@@ -4,22 +4,18 @@ import {
   Wrench,
 } from 'lucide-react';
 
-import {AdvancedSurfaceFrame} from '@/src/components/advanced/AdvancedSurfaceFrame';
-import {RuntimeEvidenceCard} from '@/src/components/advanced/RuntimeEvidenceCard';
+import {RuntimeSettingsDetails} from '@/src/components/settings/RuntimeSettingsDetails';
 import {Badge} from '@/src/components/ui/Badge';
 import {Button} from '@/src/components/ui/Button';
 import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/src/components/ui/Card';
 import {CopyErrorButton} from '@/src/components/ui/CopyErrorButton';
 import {Switch} from '@/src/components/ui/Switch';
-import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
 import {VALID_COLOR_MODES, VALID_THEMES} from '@/src/lib/appearance';
-import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
 import {
   checkLauncherUpdate, isDesktopShellAvailable, openLauncherUpdateRelease,
 } from '@/src/lib/api';
 import type {LauncherUpdateStatus} from '@/src/lib/apiTypes';
 import {useT} from '@/src/lib/i18n';
-import {extractRuntimeProfileSettings} from '@/src/lib/runtimeSurface';
 import {useAppStore} from '@/src/store';
 
 export function Settings() {
@@ -36,15 +32,7 @@ export function Settings() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [openingRelease, setOpeningRelease] = useState(false);
-  const surface = useRuntimeSurface<unknown>('settings');
-  const descriptor = {
-    ...LAUNCHER_ADVANCED_VIEWS.settings,
-    label: t('settings.title'),
-    summary: t('settings.descriptor_summary'),
-  };
-  const runtimeSettings = surface.data
-    ? extractRuntimeProfileSettings(surface.data.data)
-    : null;
+  const [runtimeDetailsOpen, setRuntimeDetailsOpen] = useState(false);
   const desktopShell = typeof window !== 'undefined' && isDesktopShellAvailable();
 
   const checkUpdate = async () => {
@@ -73,17 +61,15 @@ export function Settings() {
   };
 
   return (
-    <AdvancedSurfaceFrame
-      descriptor={descriptor}
-      state={{status: surface.status, stale: surface.stale, error: surface.error}}
-      onRetry={() => void surface.refresh(true)}
-    >
-      <div className="grid gap-5 lg:grid-cols-2">
+    <div className="flex-1 overflow-y-auto page-enter">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 p-4 sm:p-6 lg:p-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-text-main">{t('settings.title')}</h1>
+      <div className="grid items-start gap-5 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2"><Palette className="h-4 w-4" aria-hidden="true" />{t('settings.appearance')}</CardTitle>
-              <Badge variant="warning">{t('settings.source_launcher_local')}</Badge>
+              <span className="text-xs text-text-muted">{t('settings.source_launcher_local')}</span>
             </div>
             <CardDescription>{t('settings.appearance_description')}</CardDescription>
           </CardHeader>
@@ -95,7 +81,7 @@ export function Settings() {
                   <Button
                     key={mode}
                     type="button"
-                    variant={colorMode === mode ? 'default' : 'outline'}
+                    variant={colorMode === mode ? 'secondary' : 'outline'}
                     className="min-h-11 justify-start"
                     aria-pressed={colorMode === mode}
                     onClick={() => setColorMode(mode)}
@@ -114,7 +100,7 @@ export function Settings() {
                   <Button
                     key={option}
                     type="button"
-                    variant={theme === option ? 'default' : 'outline'}
+                    variant={theme === option ? 'secondary' : 'outline'}
                     className="min-h-11 justify-start"
                     aria-pressed={theme === option}
                     onClick={() => setTheme(option)}
@@ -244,7 +230,7 @@ export function Settings() {
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2"><Wrench className="h-4 w-4" aria-hidden="true" />{t('settings.devtools')}</CardTitle>
-              <Badge variant="warning">{t('settings.source_launcher_local')}</Badge>
+              <span className="text-xs text-text-muted">{t('settings.source_launcher_local')}</span>
             </div>
             <CardDescription>{t('settings.devtools_description')}</CardDescription>
           </CardHeader>
@@ -280,36 +266,17 @@ export function Settings() {
             <details
               className="rounded-lg border border-border bg-bg-main px-4 py-4"
               data-testid="runtime-settings-technical-details"
+              onToggle={(event) => setRuntimeDetailsOpen(event.currentTarget.open)}
             >
               <summary className="cursor-pointer text-sm font-medium text-text-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]">
                 {t('settings.technical_details')}
               </summary>
-              {surface.data ? (
-                <div className="mt-4 flex flex-col gap-4">
-                  <RuntimeEvidenceCard envelope={surface.data} title={t('settings.runtime_settings_snapshot')} />
-                  {runtimeSettings ? (
-                    <dl className="grid gap-3 rounded-lg border border-border bg-bg-card p-4 sm:grid-cols-2">
-                      <div><dt className="text-xs text-text-muted">{t('settings.profile')}</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{runtimeSettings.profile_id}</dd></div>
-                      <div><dt className="text-xs text-text-muted">{t('settings.security_epoch')}</dt><dd className="mt-1 font-mono text-xs text-text-main">{runtimeSettings.security_epoch}</dd></div>
-                      <div><dt className="text-xs text-text-muted">{t('settings.profile_revision')}</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{runtimeSettings.profile_revision}</dd></div>
-                      <div><dt className="text-xs text-text-muted">{t('settings.plan_digest')}</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{runtimeSettings.plan_digest}</dd></div>
-                      <div><dt className="text-xs text-text-muted">{t('settings.catalog_revision')}</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{runtimeSettings.catalog_revision}</dd></div>
-                      <div><dt className="text-xs text-text-muted">{t('settings.lock_digest')}</dt><dd className="mt-1 break-all font-mono text-xs text-text-main">{runtimeSettings.lock_digest}</dd></div>
-                    </dl>
-                  ) : (
-                    <p className="rounded-lg border border-dashed border-border px-4 py-4 text-sm text-text-muted">{t('settings.runtime_settings_incomplete')}</p>
-                  )}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-lg border border-dashed border-border px-4 py-4 text-sm leading-6 text-text-muted">
-                <p>{t('settings.runtime_settings_unavailable')}</p>
-                <p className="mt-2">{t('settings.runtime_settings_change_note')}</p>
-                </div>
-              )}
+              {runtimeDetailsOpen ? <RuntimeSettingsDetails /> : null}
             </details>
           </CardContent>
         </Card>
       </div>
-    </AdvancedSurfaceFrame>
+      </div>
+    </div>
   );
 }

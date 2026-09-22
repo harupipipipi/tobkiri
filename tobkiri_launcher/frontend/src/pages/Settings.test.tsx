@@ -8,6 +8,7 @@ import test from 'node:test';
 import {translate} from '@/src/lib/i18n';
 import {useAppStore} from '@/src/store';
 import {Settings} from './Settings';
+import {defaultRuntimeSurfaceClient} from '@/src/lib/runtimeSurface';
 
 function createDom(): {dom: JSDOM; container: HTMLElement; root: Root} {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>');
@@ -29,7 +30,7 @@ test('Settings identifies Devtools as a Launcher-local switch', () => {
     const html = renderToStaticMarkup(<Settings />);
     assert.match(html, /role="switch"/);
     assert.match(html, /aria-checked="false"/);
-    assert.match(html, /source: launcher_local/);
+    assert.match(html, /This device/);
     assert.match(html, /does not grant runtime authority/);
     assert.match(html, /alter Pack closure/);
   } finally {
@@ -188,5 +189,43 @@ test('Settings update failures keep a severity icon and stable copy action', asy
       document: {value: previousDocument, configurable: true},
       navigator: {value: previousNavigator, configurable: true},
     });
+  }
+});
+
+
+test('local Settings work offline without requesting runtime data until diagnostics are opened', async () => {
+  const previous = Object.getOwnPropertyDescriptors(globalThis);
+  const previousState = useAppStore.getState();
+  const {dom, container, root} = createDom();
+  let requests = 0;
+  const previousRead = defaultRuntimeSurfaceClient.read;
+  defaultRuntimeSurfaceClient.read = async () => { requests++; throw new Error('offline'); };
+  try {
+    useAppStore.setState({profile: {...previousState.profile, language: 'en'}, colorMode: 'dark'});
+    await act(async () => { root.render(<Settings />); });
+    assert.equal(requests, 0);
+    const light = [...container.querySelectorAll('button')].find((button) => button.textContent === 'Light')!;
+    await act(async () => light.click());
+    assert.equal(useAppStore.getState().colorMode, 'light');
+    assert.equal(requests, 0);
+    assert.equal(container.querySelector('[role="alert"]'), null);
+    const details = container.querySelector<HTMLDetailsElement>('[data-testid="runtime-settings-technical-details"]')!;
+    await act(async () => {
+      details.open = true;
+      details.dispatchEvent(new dom.window.Event('toggle'));
+      await Promise.resolve();
+    });
+    assert.ok(requests > 0);
+    assert.ok(container.querySelector('[role="alert"]'));
+    assert.equal(light.disabled, false);
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    useAppStore.setState(previousState, true);
+    defaultRuntimeSurfaceClient.read = previousRead;
+    for (const name of ['window', 'document', 'navigator', 'fetch']) {
+      if (previous[name]) Object.defineProperty(globalThis, name, previous[name]!);
+      else Reflect.deleteProperty(globalThis, name);
+    }
   }
 });

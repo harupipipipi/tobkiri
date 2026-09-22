@@ -83,6 +83,10 @@ for (const rejected of [false, true]) test(`Pack selection ${rejected ? 'retains
       assert.equal(posts.length, 1);
       const discard = [...container.querySelectorAll('button')].find((button) => button.textContent?.startsWith('Discard changes'))!;
       await act(async () => discard.click());
+      assert.equal(saved, 1, 'Discarding a stale draft refreshes the parent definition');
+      await act(async () => {root.render(<ProfilePackEditor entry={{...entry, definition: {...entry.definition, digest: digest('f')}}} locked={false} onEditingChange={(value) => {editing = value;}} onSaved={async () => {saved++;}} />);});
+      assert.equal(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]?.disabled, false);
+      assert.equal(saved, 1, 'A matching parent definition does not loop on refresh');
     } else assert.match(container.textContent ?? '', /Pack selection saved/);
   } finally {
     await act(async () => root.unmount());

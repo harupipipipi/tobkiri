@@ -108,7 +108,7 @@ export function Header() {
             title={runtimeBadge.detail || runtimePill.label}
           >
             <span aria-hidden="true" className="rumi-control-pill-dot" />
-            <span>{runtimePill.label}</span>
+            <span>Runtime: {runtimePill.label}</span>
           </Link>
         ) : (
           <div
@@ -125,12 +125,12 @@ export function Header() {
             ) : (
               <span aria-hidden="true" className="rumi-control-pill-dot" />
             )}
-            <span>{runtimePill.label}</span>
+            <span>Runtime: {runtimePill.label}</span>
           </div>
         )}
         <Popover>
           <PopoverTrigger
-            className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-left transition hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
+            className="flex min-h-11 items-center gap-2 rounded-lg px-2 text-left md:hidden transition hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
             aria-label={`${profile.username} profile and settings`}
             aria-haspopup="dialog"
           >

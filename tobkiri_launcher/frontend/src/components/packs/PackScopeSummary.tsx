@@ -23,22 +23,24 @@ export function PackScopeSummary({binding, pack, packRows, stale = false}: PackS
   return (
     <section
       aria-labelledby="pack-scope-title"
-      className="rounded-xl border border-border bg-bg-card px-5 py-4 shadow-[var(--shadow-sm)]"
+      className="border-b border-border pb-4"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="pack-scope-title" className="text-sm font-semibold text-text-main">Pack catalog scope</h2>
+          <h2 id="pack-scope-title" className="text-sm font-semibold text-text-main">Pack availability</h2>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-text-muted">
-            Host-global artifact inventory and install state. Required, membership, enablement, and approval are evaluated for the active execution Profile only.
+            Installed Packs are shared on this device. Enabled state and approval belong to the active Profile.
           </p>
         </div>
         {authoritative && binding && !stale ? <Link className="text-sm font-medium text-accent underline-offset-4 hover:underline" to={profileHref(binding.profile_id, 'profile-packs')}>Edit Packs in this Profile</Link> : null}
         <Badge variant={authoritative ? 'secondary' : 'warning'}>
-          {authoritative ? 'Active execution Profile' : 'Profile scope unavailable'}
+          {authoritative ? `Active Profile: ${binding?.profile_id}` : 'Profile scope unavailable'}
         </Badge>
       </div>
       {authoritative && binding ? (
-        <dl className="mt-3 grid gap-2 text-xs text-text-muted sm:grid-cols-3">
+        <details className="mt-3 text-xs text-text-muted">
+          <summary className="cursor-pointer">Technical details</summary>
+        <dl className="mt-3 grid gap-2 sm:grid-cols-3">
           <div>
             <dt className="font-medium text-text-main">Authoritative Profile</dt>
             <dd className="mt-1 break-all font-mono">{binding.profile_id}</dd>
@@ -52,6 +54,7 @@ export function PackScopeSummary({binding, pack, packRows, stale = false}: PackS
             <dd className="mt-1 break-all font-mono">{binding.plan_digest}</dd>
           </div>
         </dl>
+        </details>
       ) : (
         <p className="mt-3 text-sm text-amber-700 dark:text-amber-300" role="status">
           The active execution Profile scope is unavailable or does not match {rowLabel}; Profile-scoped Pack actions are locked until the authoritative catalog is refreshed.

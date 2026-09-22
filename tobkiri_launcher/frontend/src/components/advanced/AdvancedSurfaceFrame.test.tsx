@@ -38,6 +38,8 @@ test('capability and action metadata is collapsed by default', () => {
   assert.match(html, /<details[^>]*data-advanced-action="read_only"/);
   assert.doesNotMatch(html, /<details[^>]*open/);
   assert.match(html, /<summary[^>]*>Capability and action details<\/summary>/);
+  assert.ok(html.indexOf('Accepted content') < html.indexOf('<details'));
+  assert.doesNotMatch(html, /Canonical v4 projection accepted/);
 });
 
 test('surface failures distinguish destructive, timeout, and blocked semantics', () => {
@@ -53,6 +55,7 @@ test('surface failures distinguish destructive, timeout, and blocked semantics',
 
   const failed = renderNotice('error');
   assert.match(failed, /data-error-icon="surface-load"/);
+  assert.doesNotMatch(failed, /Accepted content/, 'A failed initial load must not also show an empty result');
   assert.match(failed, /lucide-circle-alert/);
   assert.doesNotMatch(failed, /lucide-alert-triangle/);
 

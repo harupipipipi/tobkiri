@@ -11,12 +11,10 @@ import {Graph} from './Graph';
 import {NodeManager} from './NodeManager';
 import {ProfileFiles} from './ProfileFiles';
 import {ProfileWiring} from './ProfileWiring';
-import {Settings} from './Settings';
 import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
 import {useAppStore} from '@/src/store';
 
 const routePages = [
-  ['settings', Settings],
   ['profileWiring', ProfileWiring],
   ['profileFiles', ProfileFiles],
   ['flow', Flow],

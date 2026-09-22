@@ -19,7 +19,6 @@ import {Popover, PopoverContent, PopoverTrigger} from '@/src/components/ui/Popov
 import type {NamedProfileRecord} from '@/src/lib/profileRegistry';
 import type {NamedProfileView} from '@/src/lib/profileRegistryView';
 import {cn} from '@/src/lib/utils';
-import {ProfileCover} from './ProfileCover';
 
 export interface ProfileCardProps {
   activationHref: string;
@@ -105,8 +104,7 @@ export function ProfileCard({
       data-profile-card={profile.profile_id}
       data-profile-status={profileView.status}
     >
-      <div className="relative aspect-[16/9] shrink-0 border-b border-border">
-        <ProfileCover profileId={profile.profile_id} />
+      <div className="relative min-h-14 shrink-0">
         {isActive && (
           <span className="absolute left-3 top-3 inline-flex max-w-[calc(100%-4rem)] items-center gap-1.5 rounded-md border border-accent/40 bg-bg-main/90 px-2 py-1 text-xs font-medium text-accent">
             <CheckCircle2 aria-hidden="true" className="h-3 w-3 shrink-0" />
@@ -204,11 +202,9 @@ export function ProfileCard({
             {displayName}
           </h3>
         </Link>
-        <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-text-muted">
-          {typeof profile.profile.description === 'string' && profile.profile.description.trim()
-            ? profile.profile.description
-            : 'Browse this Profile’s composition and review it before activation.'}
-        </p>
+        {typeof profile.profile.description === 'string' && profile.profile.description.trim() ? (
+          <p className="mt-2 line-clamp-2 break-words text-xs leading-5 text-text-muted">{profile.profile.description}</p>
+        ) : null}
         <p className="mt-3 flex min-w-0 items-center gap-1.5 text-xs text-text-muted">
           <Package aria-hidden="true" className="h-3 w-3 shrink-0" />
           <span className="shrink-0">{Array.isArray(profile.profile.packs) ? profileView.packIds.length : '--'} Packs</span>
@@ -246,18 +242,18 @@ export function ProfileCard({
         <div className="flex min-w-0 flex-col gap-3 pt-3">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <Link
-              aria-label={`Browse and review ${displayName}`}
+              aria-label={`Edit Packs for ${displayName}`}
               className="rounded px-1 py-1 text-text-muted underline-offset-2 hover:text-text-main hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
               to={browseHref}
             >
-              Browse
+              Edit Packs
             </Link>
             <Link
-              aria-label={`View Pack closure for ${displayName}`}
+              aria-label={`View included Packs for ${displayName}`}
               className="flex items-center gap-1 rounded px-1 py-1 text-text-muted underline-offset-2 hover:text-text-main hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
               to={closureHref}
             >
-              <Package aria-hidden="true" className="h-3.5 w-3.5" /> Pack closure
+              <Package aria-hidden="true" className="h-3.5 w-3.5" /> Included Packs
             </Link>
           </div>
           <div className={cn('flex min-w-0 items-center gap-2 border-t border-border pt-3', profileErrorDiagnostic ? 'justify-end' : 'justify-between')}>
@@ -292,6 +288,7 @@ export function ProfileCard({
               )}
             </div>
           </div>
+          {launchBlockedReason && !profileErrorDiagnostic ? <p className="text-xs text-text-muted">{launchBlockedReason}</p> : null}
         </div>
       </div>
     </Card>

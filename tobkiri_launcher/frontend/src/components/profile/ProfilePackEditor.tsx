@@ -35,6 +35,7 @@ export function ProfilePackEditor({entry, locked, onEditingChange, onSaved}: {
   const [notice, setNotice] = useState('');
   const mounted = useRef(true);
   const savingRef = useRef(false);
+  const refreshedDefinition = useRef<string | null>(null);
   const dirty = keyFor(selected) !== keyFor(baseline);
   const record = registry?.profiles.find((profile) => profile.profile_id === entry.profile_id);
   const targetCurrent = record?.profile_revision === entry.definition.digest;
@@ -76,6 +77,12 @@ export function ProfilePackEditor({entry, locked, onEditingChange, onSaved}: {
     }
   }, {paused: dirty || saving});
 
+  useEffect(() => {
+    if (!record || targetCurrent || dirty || saving || refreshedDefinition.current === record.profile_revision) return;
+    refreshedDefinition.current = record.profile_revision;
+    void onSaved();
+  }, [record, targetCurrent, dirty, saving, onSaved]);
+
   const fixedIds = useMemo(() => entry.pack_closure
     .filter((pack) => ['base', 'shell', 'application'].includes(pack.role))
     .map((pack) => pack.pack_id), [entry]);
@@ -109,6 +116,7 @@ export function ProfilePackEditor({entry, locked, onEditingChange, onSaved}: {
       setBaseline(selectedIds(result.changed_profile));
       setSelected(selectedIds(result.changed_profile));
       setNotice('Pack selection saved. Review and activate it to use this configuration.');
+      refreshedDefinition.current = result.changed_profile.profile_revision;
       await onSaved();
     } catch (error) {
       if (mounted.current) {
@@ -163,7 +171,7 @@ export function ProfilePackEditor({entry, locked, onEditingChange, onSaved}: {
         {dirty ? <Button variant="ghost" disabled={saving} onClick={() => {drafts.delete(entry.profile_id); setSelected(baseline); setNotice('');}}>Discard changes{stale ? ' and reload' : ''}</Button> : null}
         {dirty ? <span role="status" className="text-sm text-text-muted">{selected.length ? 'Unsaved changes' : 'Select at least one Pack.'}</span> : null}
         {notice ? <p role="status" className="text-sm text-text-muted">{notice}</p> : null}
-        {record && !targetCurrent ? <p role="status" className="text-sm text-text-muted">Waiting for the latest Profile definition…</p> : null}
+        {record && !targetCurrent ? <div className="text-sm text-text-muted"><p role="status">The saved Profile has changed.</p><Button variant="ghost" disabled={saving || locked || dirty} onClick={() => void onSaved()}>Refresh Profile definition</Button></div> : null}
       </div>
     </section>
   );

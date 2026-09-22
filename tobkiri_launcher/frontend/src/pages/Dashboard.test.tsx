@@ -354,11 +354,11 @@ test('Home keeps the Profile catalog visible while gating ceremony in unresolved
         assert.ok(container.querySelector('[data-profile-card="defaults"][data-profile-status="ready"]'));
         assert.ok(container.querySelector('[data-profile-card="research"][data-profile-status="error"]'));
         assert.equal(
-          container.querySelector<HTMLAnchorElement>('a[aria-label="View Pack closure for Defaults Profile"]')?.getAttribute('href'),
+          container.querySelector<HTMLAnchorElement>('a[aria-label="View included Packs for Defaults Profile"]')?.getAttribute('href'),
           '/profile?profile_id=defaults#profile-closure',
         );
         assert.equal(
-          container.querySelector<HTMLAnchorElement>('a[aria-label="Browse and review Research Profile"]')?.getAttribute('href'),
+          container.querySelector<HTMLAnchorElement>('a[aria-label="Edit Packs for Research Profile"]')?.getAttribute('href'),
           '/profile?profile_id=research',
         );
 
@@ -465,8 +465,8 @@ test('Home exposes a fresh active-none catalog without privileging Defaults', as
         'New custom profile 2',
       ]) {
         assert.ok(buttonByLabel(container, `Launch ${displayName}`).disabled, displayName);
-        assert.ok(linkByLabel(container, `Browse and review ${displayName}`));
-        assert.ok(linkByLabel(container, `View Pack closure for ${displayName}`));
+        assert.ok(linkByLabel(container, `Edit Packs for ${displayName}`));
+        assert.ok(linkByLabel(container, `View included Packs for ${displayName}`));
       }
 
       await act(async () => {
@@ -780,7 +780,7 @@ test('Home keeps a verified catalog writable after a rejected Profile mutation',
       assert.match(container.textContent ?? '', /revision conflict/);
       assert.equal(buttonByLabel(container, 'Add Profile').disabled, false);
       assert.equal(
-        linkByLabel(container, 'Browse and review Research Profile').getAttribute('href'),
+        linkByLabel(container, 'Edit Packs for Research Profile').getAttribute('href'),
         '/profile?profile_id=research',
       );
       await act(async () => {

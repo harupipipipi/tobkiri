@@ -82,7 +82,7 @@ test('ProfileCard keeps a blocked launch and adjacent copy action without an err
     });
     assert.match(container.textContent ?? '', /Error\. The v4 Base Pack is missing\./);
     const cover = container.querySelector('svg[viewBox="0 0 320 180"]');
-    assert.equal(cover?.getAttribute('aria-hidden'), 'true');
+    assert.equal(cover, null);
     const titleLink = container.querySelector<HTMLAnchorElement>('h3')?.closest('a');
     assert.equal(titleLink?.getAttribute('href'), '/profile');
     const launch = container.querySelector<HTMLButtonElement>('button[aria-label="Launch Broken Profile"]');
