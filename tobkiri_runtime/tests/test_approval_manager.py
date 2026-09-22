@@ -15,9 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core_runtime.approval_manager import (
+from core_runtime.approval_manager import (  # noqa: E402
     ApprovalManager,
-    ApprovalResult,
     PackApproval,
     PackStatus,
 )
@@ -154,6 +153,51 @@ class TestApprove:
         data = json.loads(grant_file.read_text(encoding="utf-8"))
         assert data["status"] == "approved"
         assert "_hmac_signature" in data
+
+    def test_approve_if_snapshot_accepts_exact_contents(self, tmp_path, monkeypatch):
+        mgr, _ = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        snapshot = mgr.get_pack_approval_snapshot("testpack")
+
+        result = mgr.approve_if_snapshot("testpack", snapshot["snapshot_digest"])
+
+        assert result.success is True
+        assert mgr.is_pack_approved_and_verified("testpack")[0] is True
+
+    def test_approve_if_snapshot_rejects_changed_contents(self, tmp_path, monkeypatch):
+        mgr, pack_dir = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        snapshot = mgr.get_pack_approval_snapshot("testpack")
+        (pack_dir / "handler.py").write_text("def run(): return 'changed'\n", encoding="utf-8")
+
+        result = mgr.approve_if_snapshot("testpack", snapshot["snapshot_digest"])
+
+        assert result.success is False
+        assert "changed" in str(result.error).lower()
+        assert mgr.get_status("testpack") != PackStatus.APPROVED
+
+    def test_approve_if_snapshot_rejects_external_write_between_compare_and_persist(
+        self, tmp_path, monkeypatch
+    ):
+        mgr, pack_dir = _make_manager(tmp_path, monkeypatch=monkeypatch)
+        snapshot = mgr.get_pack_approval_snapshot("testpack")
+        original_persist = mgr._persist_approved_snapshot
+
+        def replace_before_persist(pack_id, file_hashes):
+            (pack_dir / "handler.py").write_text(
+                "def run(): return 'raced'\n", encoding="utf-8"
+            )
+            return original_persist(pack_id, file_hashes)
+
+        monkeypatch.setattr(mgr, "_persist_approved_snapshot", replace_before_persist)
+
+        result = mgr.approve_if_snapshot(
+            "testpack", snapshot["snapshot_digest"]
+        )
+
+        assert result.success is False
+        assert result.status == PackStatus.MODIFIED
+        approval = mgr.get_approval("testpack")
+        assert approval is not None
+        assert approval.file_hashes != mgr._compute_pack_hashes_nocache(pack_dir)
 
 
 # ===================================================================

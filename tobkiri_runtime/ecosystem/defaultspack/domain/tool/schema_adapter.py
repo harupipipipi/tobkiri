@@ -7,6 +7,8 @@ from urllib.parse import unquote
 
 from domain.capability.tool_scope import normalize_tool_scope
 from domain.tool.security import requires_approval_for_security
+from .normalizers import list_or_empty as list_or_empty
+from .normalizers import mapping_or_empty as mapping_or_empty
 
 
 _APPROVAL_REQUIRED_NAME_PARTS = ("write", "create", "update", "delete", "patch", "commit", "push")
@@ -62,6 +64,8 @@ def adapt_tool_definition(tool: Any) -> Any:
     if not name:
         return tool
     schema_value = tool.get("schema")
+    if not isinstance(schema_value, dict):
+        schema_value = tool.get("input_schema")
     schema: Dict[str, Any] = schema_value if isinstance(schema_value, dict) else {}
     schema_parameters = schema.get("parameters")
     parameters = schema_parameters if isinstance(schema_parameters, dict) else schema

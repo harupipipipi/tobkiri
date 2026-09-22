@@ -5,11 +5,25 @@ import type {
   MobilePairingApprovePayload,
   MobilePairingReview,
   MobilePairingStatus,
+  P2PPairing,
 } from "../../../lib/api";
 
 export const mobileApiResources = {
+  startPairing(payload?: {
+    peer_id?: string;
+    peer_fingerprint?: string;
+    peer_label?: string;
+    ttl_seconds?: number;
+    capabilities?: string[];
+    allowed_company_ids?: string[];
+  }): Promise<{ pairing: P2PPairing }> {
+    return api.startP2PPairing(payload);
+  },
   listDevices(): Promise<MobileDevicesResponse> {
     return api.listMobileDevices();
+  },
+  revokeDevice(deviceId: string) {
+    return api.revokeMobileDevice(deviceId);
   },
   createCredentialTransfer(payload: { device_id: string; provider_id: string; api_id: string; provider_label?: string }) {
     return api.createCredentialTransfer(payload);
@@ -36,4 +50,5 @@ export type {
   MobilePairingApprovePayload,
   MobilePairingReview,
   MobilePairingStatus,
+  P2PPairing,
 };

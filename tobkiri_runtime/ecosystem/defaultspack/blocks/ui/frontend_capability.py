@@ -14,7 +14,7 @@ from core_runtime.global_contract_dispatch import (
     GlobalContractUnavailable,
     invoke_global_contract,
 )
-from core_runtime.resolved_profile_scope import active_resolved_profile
+from core_runtime.resolved_profile_scope import persisted_resolved_profile
 
 _REPLAY_LIMIT = 2048
 _SEEN_REQUESTS: OrderedDict[str, float] = OrderedDict()
@@ -55,8 +55,8 @@ def _declared_contracts(contribution: Any) -> set[str]:
 def run(input_data: dict, context: dict) -> dict:
     """Invoke only a contract declared by the current verified contribution."""
     data = dict(input_data) if isinstance(input_data, dict) else {}
-    plan = active_resolved_profile()
-    registry = context.get("interface_registry") if isinstance(context, dict) else None
+    plan = persisted_resolved_profile()
+    registry = context.get("v4_dispatch_session") if isinstance(context, dict) else None
     if plan is None or registry is None:
         return error("Frontend capability is unavailable", "CAPABILITY_UNAVAILABLE")
 
@@ -69,6 +69,7 @@ def run(input_data: dict, context: dict) -> dict:
         return error("Frontend capability request is stale", "STALE_OR_REPLAYED")
 
     plan_hash = str(data.get("plan_hash") or "").strip()
+    catalog_hash = str(data.get("catalog_hash") or "").strip()
     profile_id = str(data.get("profile_id") or "").strip()
     owner_pack_id = str(data.get("owner_pack_id") or "").strip()
     contribution_id = str(data.get("contribution_id") or "").strip()
@@ -77,6 +78,12 @@ def run(input_data: dict, context: dict) -> dict:
         return error("Resolved frontend plan changed", "STALE_RESOLUTION")
 
     catalog = build_frontend_catalog(plan)
+    if (
+        catalog.plan_hash != plan_hash
+        or not catalog_hash
+        or catalog.catalog_hash != catalog_hash
+    ):
+        return error("Resolved frontend catalog changed", "STALE_CATALOG")
     matches = [
         item
         for item in catalog.contributions

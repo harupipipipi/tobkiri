@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ntpath
+import os
 import shlex
 from typing import Any, Callable, Mapping
 
@@ -65,10 +67,13 @@ def classify(payload: Mapping[str, Any]) -> dict[str, Any]:
         reasons.append("destructive")
     if _prefix(normalized, _CREDENTIAL):
         reasons.append("credential")
+    if _contains_absolute_path(command):
+        reasons.append("outside_workspace_path")
     if any(flag in _argv(command) for flag in ("--fix", "--write", "--bless")):
         reasons.append("write_option")
     read_only = bool(_prefix(normalized, _READ)) and not reasons
     risk = "low" if read_only else "critical" if reasons else "medium"
+    risk_reasons = reasons or (["read_only"] if read_only else ["command_execution"])
     return {
         "normalized_command": normalized,
         "command_hash": hashlib.sha256(
@@ -81,7 +86,8 @@ def classify(payload: Mapping[str, Any]) -> dict[str, Any]:
         ).hexdigest(),
         "classification": risk,
         "risk_level": risk,
-        "risk_reasons": reasons or (["read_only"] if read_only else ["command_execution"]),
+        "risk_reasons": risk_reasons,
+        "reason": risk_reasons[0],
         "read_only": read_only,
         "approval_required": not read_only,
         "shell_syntax": shell_syntax,
@@ -109,3 +115,16 @@ def _prefix(normalized: str, values: set[str]) -> str | None:
             return candidate
     return None
 
+
+def _contains_absolute_path(command: Any) -> bool:
+    try:
+        argv = _argv(command)
+    except ValueError:
+        return False
+    for token in argv[1:]:
+        if token.startswith("-"):
+            continue
+        expanded = os.path.expanduser(token)
+        if os.path.isabs(expanded) or ntpath.isabs(token):
+            return True
+    return False

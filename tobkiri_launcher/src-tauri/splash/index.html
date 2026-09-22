@@ -54,8 +54,9 @@
         }
       }
       animation.addEventListener('load', forceStartupAnimation);
-      function listenProgress() { if (!window.__TAURI__ || !window.__TAURI__.event) { setTimeout(listenProgress, 100); return; } window.__TAURI__.event.listen('setup-progress', function (event) { onProgress(event.payload); }); }
-      function poll() { if (!window.__TAURI__ || !window.__TAURI__.core) { setTimeout(poll, 300); return; } window.__TAURI__.core.invoke('get_setup_progress').then(function (msg) { onProgress(msg); }).catch(function () {}); if (!finished) setTimeout(poll, 500); }
+      function progressUnavailable() { if (!finished) setMessage('Launcher progress unavailable. Retrying…', 'error'); }
+      function listenProgress() { if (!window.__TAURI__ || !window.__TAURI__.event) { setTimeout(listenProgress, 100); return; } window.__TAURI__.event.listen('setup-progress', function (event) { onProgress(event.payload); }).catch(progressUnavailable); }
+      function poll() { if (!window.__TAURI__ || !window.__TAURI__.core) { setTimeout(poll, 300); return; } window.__TAURI__.core.invoke('get_setup_progress').then(function (msg) { onProgress(msg); }).catch(progressUnavailable); if (!finished) setTimeout(poll, 500); }
       listenProgress(); poll();
     });
   </script>

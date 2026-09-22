@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from domain.chat.tool_selection_schema import COMPUTER_TOOL_IDS
-from domain.tool.schema_adapter import tool_name_from_definition
+from domain.tool.schema_adapter import mapping_or_empty, tool_name_from_definition
 
 
 SERVICE_ORDER = [
@@ -139,7 +139,7 @@ class ToolServiceCatalog:
         tool_id = _tool_id(tool)
         service_id = infer_service_id(tool)
         action_class = infer_action_class(tool)
-        metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+        metadata = mapping_or_empty(tool.get("metadata"))
         return {
             "tool_id": tool_id,
             "service_id": service_id,
@@ -158,9 +158,9 @@ class ToolServiceCatalog:
 def infer_service_id(tool: dict[str, Any]) -> str:
     tool_id = _tool_id(tool).lower()
     name = str(tool.get("name") or tool.get("display_name") or "").lower()
-    category = str(tool.get("category") or (tool.get("metadata", {}) if isinstance(tool.get("metadata"), dict) else {}).get("category") or "").lower()
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
-    ui = tool.get("ui") if isinstance(tool.get("ui"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
+    category = str(tool.get("category") or metadata.get("category") or "").lower()
+    ui = mapping_or_empty(tool.get("ui"))
     explicit = str(metadata.get("service_id") or ui.get("service_id") or "").strip().lower()
     if explicit:
         return explicit if explicit in SERVICE_LABELS else "other"
@@ -193,7 +193,7 @@ def infer_service_id(tool: dict[str, Any]) -> str:
 
 def infer_action_class(tool: dict[str, Any]) -> str:
     tool_id = _tool_id(tool).lower()
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
     raw = str(tool.get("action_class") or metadata.get("action_class") or tool.get("action_type") or metadata.get("action_type") or "").strip().lower()
     if raw in ACTION_RANK:
         return raw
@@ -224,7 +224,7 @@ def infer_action_class(tool: dict[str, Any]) -> str:
 def infer_connection_status(tool: dict[str, Any]) -> str:
     if tool.get("enabled") is False:
         return "unavailable"
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
     availability = tool.get("availability") if isinstance(tool.get("availability"), dict) else metadata.get("availability")
     if isinstance(availability, dict):
         status = str(availability.get("status") or "").strip().lower()
@@ -247,14 +247,14 @@ def infer_connection_status(tool: dict[str, Any]) -> str:
 
 def requires_explicit_intent(tool: dict[str, Any]) -> bool:
     tool_id = _tool_id(tool)
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
     if metadata.get("requires_explicit_intent") is True or tool.get("requires_explicit_intent") is True:
         return True
     return tool_id in COMPUTER_TOOL_IDS or infer_action_class(tool) in {"computer"}
 
 
 def minimum_requires_confirm(tool: dict[str, Any]) -> bool:
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
     if bool(tool.get("requires_approval") or metadata.get("requires_approval")):
         return True
     if str(tool.get("risk") or metadata.get("risk") or "").strip().lower() in {"high"}:

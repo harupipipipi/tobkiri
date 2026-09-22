@@ -110,4 +110,6 @@ def merged_tool_policy(context: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def _authority_mode_is_off() -> bool:
-    return str(os.environ.get("RUMI_AUTHORITY_MODE") or "").strip().lower() == "off"
+    from core_runtime.host_contract import host_contract_value
+
+    return host_contract_value("authority_mode").strip().lower() == "off"

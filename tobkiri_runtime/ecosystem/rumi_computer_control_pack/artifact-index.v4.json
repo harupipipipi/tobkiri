@@ -1,0 +1,27 @@
+{
+  "artifact_set_digest": "sha256:aca616bafa7bc604625f9cb00aaef8dfb91e6d01d781a2393a647bf957b7a076",
+  "artifacts": [
+    {
+      "digest": "sha256:4cab0d02a637d1beaeae225586786457345e494143572ade0fd896419b7b2155",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:38c8ee2fc3f1ead1dce91cccec13b41a4ed98ce4b65c85087b58baace94f9edb",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:9384f60e0eb62845cd799a72df95fc6efb1b5bf25bc6e7e38974349c86b662e4",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:a338573b3a865e0adf366803f991c4d6866e41db1f258e148adb8adc833b3c02"
+  },
+  "pack_id": "rumi_computer_control_pack",
+  "source_identity": "sha256:78103daf20e7e622a2685fc36c8eadd88547a381e8a30c17c3dbbdde72a3804a"
+}

@@ -28,6 +28,10 @@ from ecosystem.rumi_tool_result_pack.runtime.normalizer import (
 from ecosystem.rumi_tool_validation_pack.runtime.validator import (
     create_validate_operation,
 )
+from core_runtime.global_contract_dispatch import GlobalContractUnavailable
+from ecosystem.defaultspack.domain.tool.catalog_contract_client import (
+    ContractToolCatalog,
+)
 
 
 def _definition(tool_id: str = "sample.read") -> dict:
@@ -285,3 +289,17 @@ def test_broker_source_has_no_concrete_tool_or_service_branches() -> None:
     )
     assert all(value not in broker for value in forbidden)
 
+
+def test_contract_catalog_does_not_fallback_to_legacy_registry(monkeypatch) -> None:
+    def unavailable(*_args, **_kwargs):
+        raise GlobalContractUnavailable("inactive v4 profile")
+
+    monkeypatch.setattr(
+        "ecosystem.defaultspack.domain.tool.catalog_contract_client._invoke",
+        unavailable,
+    )
+    catalog = ContractToolCatalog()
+
+    assert catalog.list_tools() == []
+    assert catalog.get("legacy-only-tool") is None
+    assert catalog.get_schema("legacy-only-tool") == {}

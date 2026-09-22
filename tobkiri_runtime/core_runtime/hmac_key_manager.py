@@ -6,8 +6,7 @@ hmac_key_manager.py - HMAC鍵のローテーション管理 + 署名ユーティ
 鍵の保存先: user_data/hmac_keys.json (.gitignore 登録済み)
 グレースピリオド: デフォルト24時間（ローテーション後も旧鍵で検証可能）
 ローテーショントリガー:
-  - 環境変数 RUMI_HMAC_ROTATE=true で起動時にローテーション
-  - プログラムから rotate() / rotate_key() を呼び出し
+  - Host が明示的に rotate() / rotate_key() を呼び出す
 
 署名ユーティリティ (#65):
   - generate_or_load_signing_key(key_path) → bytes
@@ -25,24 +24,48 @@ import logging
 import os
 import secrets
 import shutil
+import stat
+import subprocess
 import tempfile
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .compat import safe_chmod
 
 logger = logging.getLogger(__name__)
 
 # Fernet 暗号化の可用性 (W21-B)
-_FERNET_AVAILABLE = False
+if TYPE_CHECKING:
+    from cryptography.fernet import Fernet as _FernetType
+
+_Fernet: type[_FernetType] | None
 try:
-    from cryptography.fernet import Fernet as _Fernet
+    from cryptography.fernet import Fernet as _FernetImplementation
+
+    _Fernet = _FernetImplementation
     _FERNET_AVAILABLE = True
 except ImportError:
     _Fernet = None
+    _FERNET_AVAILABLE = False
+
+
+def _new_fernet(key: bytes):
+    """Construct Fernet only after the optional dependency was detected."""
+    fernet_type = _Fernet
+    if fernet_type is None:
+        raise RuntimeError("cryptography is required for Fernet encryption")
+    return fernet_type(key)
+
+
+def _generate_fernet_key() -> bytes:
+    """Generate an encryption key through the optional Fernet backend."""
+    fernet_type = _Fernet
+    if fernet_type is None:
+        raise RuntimeError("cryptography is required for Fernet encryption")
+    return fernet_type.generate_key()
 
 # 暗号化鍵ファイル名 (W21-B)
 _ENC_KEY_FILENAME = "hmac_keys.key"
@@ -73,6 +96,172 @@ def _parse_ts(ts: str) -> datetime:
 # 署名ユーティリティ関数 (#65)
 # ======================================================================
 
+
+class SigningKeyError(RuntimeError):
+    """Host-owned signing-key material failed a filesystem security check."""
+
+
+def _reject_symlink_key(key_path: Path) -> None:
+    """Reject a redirected key file without rejecting OS path aliases."""
+    if key_path.is_symlink():
+        raise SigningKeyError(f"signing-key path is symlinked: {key_path}")
+
+
+_WINDOWS_SIGNING_KEY_ACL_VALIDATION = r"""
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$sid = $identity.User
+$allow = [System.Security.AccessControl.AccessControlType]::Allow
+$fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
+$noInheritance = [System.Security.AccessControl.InheritanceFlags]::None
+$noPropagation = [System.Security.AccessControl.PropagationFlags]::None
+$file = [System.IO.FileInfo]::new($target)
+$sections = [System.Security.AccessControl.AccessControlSections]::Access -bor
+  [System.Security.AccessControl.AccessControlSections]::Owner
+$verified = $file.GetAccessControl($sections)
+if (-not $verified.AreAccessRulesProtected) {
+  throw 'signing-key ACL inherits'
+}
+$rules = @($verified.GetAccessRules(
+  $true, $false, [System.Security.Principal.SecurityIdentifier]
+))
+if ($rules.Count -ne 1) {
+  throw 'signing-key ACL has extra principals'
+}
+$ownerSid = $verified.GetOwner(
+  [System.Security.Principal.SecurityIdentifier]
+).Value
+if ($ownerSid -ne $sid.Value) {
+  throw 'signing-key ACL owner changed'
+}
+$rule = $rules[0]
+if ($rule.IdentityReference.Value -ne $sid.Value) {
+  throw 'signing-key ACL owner grant changed'
+}
+if ($rule.AccessControlType -ne $allow) {
+  throw 'signing-key ACL is not an allow grant'
+}
+if ($rule.FileSystemRights -ne $fullControl) {
+  throw 'signing-key ACL does not grant full control'
+}
+if ($rule.InheritanceFlags -ne $noInheritance -or
+    $rule.PropagationFlags -ne $noPropagation -or
+    $rule.IsInherited) {
+  throw 'signing-key ACL inheritance changed'
+}
+"""
+
+_WINDOWS_SIGNING_KEY_ACL_HARDEN = (
+    r"""
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$sid = $identity.User
+$allow = [System.Security.AccessControl.AccessControlType]::Allow
+$fullControl = [System.Security.AccessControl.FileSystemRights]::FullControl
+$noInheritance = [System.Security.AccessControl.InheritanceFlags]::None
+$noPropagation = [System.Security.AccessControl.PropagationFlags]::None
+$file = [System.IO.FileInfo]::new($target)
+$acl = [System.Security.AccessControl.FileSecurity]::new()
+$acl.SetOwner($sid)
+$acl.SetAccessRuleProtection($true, $false)
+$rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+  $sid, $fullControl, $noInheritance, $noPropagation, $allow
+)
+[void]$acl.AddAccessRule($rule)
+$file.SetAccessControl($acl)
+"""
+    + _WINDOWS_SIGNING_KEY_ACL_VALIDATION
+)
+
+_WINDOWS_SIGNING_KEY_ACL_TARGET_ENV = "TOBKIRI_SIGNING_KEY_ACL_TARGET_B64"
+_WINDOWS_SIGNING_KEY_ACL_TIMEOUT_SECONDS = 60
+
+
+def _run_windows_signing_key_acl(key_path: Path, *, harden: bool) -> None:
+    """Harden or validate one Windows signing-key ACL without exposing its path."""
+    encoded_path = base64.b64encode(str(key_path).encode("utf-8")).decode("ascii")
+    script = (
+        _WINDOWS_SIGNING_KEY_ACL_HARDEN
+        if harden
+        else _WINDOWS_SIGNING_KEY_ACL_VALIDATION
+    )
+    script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        f"$encodedTarget = $env:{_WINDOWS_SIGNING_KEY_ACL_TARGET_ENV}\n"
+        "if ([string]::IsNullOrEmpty($encodedTarget)) { "
+        "throw 'signing-key ACL target missing' }\n"
+        "$strictUtf8 = [System.Text.UTF8Encoding]::new($false, $true)\n"
+        "$targetBytes = [Convert]::FromBase64String($encodedTarget)\n"
+        "$target = $strictUtf8.GetString($targetBytes)\n"
+        "if ([string]::IsNullOrEmpty($target)) { "
+        "throw 'signing-key ACL target missing' }\n"
+        + script
+    )
+    environment = os.environ.copy()
+    environment[_WINDOWS_SIGNING_KEY_ACL_TARGET_ENV] = encoded_path
+    try:
+        subprocess.run(
+            [
+                "powershell.exe",
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                script,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=_WINDOWS_SIGNING_KEY_ACL_TIMEOUT_SECONDS,
+            env=environment,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        message = (
+            "signing-key Windows ACL could not be secured"
+            if harden
+            else "signing-key Windows ACL is unsafe"
+        )
+        raise SigningKeyError(message) from error
+
+
+def _secure_windows_signing_key(key_path: Path) -> None:
+    """Replace inherited key ACLs with one verified current-user SID grant."""
+    _run_windows_signing_key_acl(key_path, harden=True)
+
+
+def _verify_windows_signing_key_acl(key_path: Path) -> None:
+    """Require an existing key to have only the current user's Windows ACL."""
+    _run_windows_signing_key_acl(key_path, harden=False)
+
+
+def _load_secure_signing_key(key_path: Path) -> bytes:
+    """Load one owner-only regular key file without silent recovery."""
+    _reject_symlink_key(key_path)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(key_path, flags)
+    except OSError as error:
+        raise SigningKeyError("signing-key file is unreadable") from error
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise SigningKeyError("signing-key path is not a regular file")
+        if hasattr(os, "getuid") and metadata.st_uid != os.getuid():
+            raise SigningKeyError("signing-key file is not owned by the Host user")
+        if os.name == "nt":
+            _verify_windows_signing_key_acl(key_path)
+        elif stat.S_IMODE(metadata.st_mode) & 0o077:
+            raise SigningKeyError("signing-key file must have mode 0600")
+        chunks = []
+        while chunk := os.read(descriptor, 4096):
+            chunks.append(chunk)
+        key_data = b"".join(chunks).decode("utf-8").strip()
+    except UnicodeError as error:
+        raise SigningKeyError("signing-key file is unreadable") from error
+    finally:
+        os.close(descriptor)
+    if len(key_data) < 32:
+        raise SigningKeyError("signing-key material is missing or weak")
+    return key_data.encode("utf-8")
+
 def generate_or_load_signing_key(
     key_path: Path,
     env_var: Optional[str] = None,
@@ -80,54 +269,53 @@ def generate_or_load_signing_key(
     """
     署名用秘密鍵をロードまたは生成する。
 
-    優先順位:
-    1. env_var が指定されていれば環境変数から取得
-    2. key_path ファイルから読み込み
-    3. 新規生成して key_path に atomic write (0o600)
+    Ambient environment values are deliberately never key authority. Existing
+    material must be a regular, owner-owned 0600 file. Missing material is
+    generated with an atomic owner-only write; malformed or redirected material
+    fails closed instead of being silently replaced.
 
     Args:
         key_path: 鍵ファイルのパス
-        env_var:  環境変数名（省略可）
+        env_var: Retained only as a compatibility label; its value is ignored.
 
     Returns:
         鍵データ (bytes)
     """
-    # 1. 環境変数
-    if env_var:
-        env_val = os.environ.get(env_var)
-        if env_val and len(env_val) >= 32:
-            return env_val.encode("utf-8")
+    if env_var and os.environ.get(env_var):
+        logger.warning("Ignoring ambient signing-key environment variable %s", env_var)
+    _reject_symlink_key(key_path)
+    if key_path.exists() or key_path.is_symlink():
+        return _load_secure_signing_key(key_path)
 
-    # 2. ファイルから読み込み
-    if key_path.exists():
-        try:
-            key_data = key_path.read_text(encoding="utf-8").strip()
-            if key_data and len(key_data) >= 32:
-                return key_data.encode("utf-8")
-            elif key_data:
-                logger.warning(
-                    "鍵ファイルの鍵長が不十分です（%d文字）。再生成します。",
-                    len(key_data),
-                )
-        except Exception:
-            pass
-
-    # 3. 新規生成 + atomic write
     key_str = hashlib.sha256(os.urandom(32)).hexdigest()
     key_path.parent.mkdir(parents=True, exist_ok=True)
+    _reject_symlink_key(key_path)
 
     fd, tmp_path = tempfile.mkstemp(
         dir=str(key_path.parent), prefix=".signing_key_tmp_"
     )
     try:
-        os.write(fd, key_str.encode("utf-8"))
-        os.close(fd)
-        fd = -1
+        if os.name == "nt":
+            os.close(fd)
+            fd = -1
+            _secure_windows_signing_key(Path(tmp_path))
+            fd = os.open(
+                tmp_path,
+                os.O_WRONLY | os.O_TRUNC | getattr(os, "O_BINARY", 0),
+            )
+            os.write(fd, key_str.encode("utf-8"))
+            os.close(fd)
+            fd = -1
+        else:
+            os.write(fd, key_str.encode("utf-8"))
+            os.fchmod(fd, 0o600)
+            os.close(fd)
+            fd = -1
         os.replace(tmp_path, str(key_path))
-        try:
+        if os.name == "nt":
+            _secure_windows_signing_key(key_path)
+        else:
             safe_chmod(str(key_path), 0o600)
-        except (OSError, AttributeError):
-            pass
     except Exception:
         if fd >= 0:
             try:
@@ -264,13 +452,6 @@ class HMACKeyManager:
         # 鍵をロードまたは初回生成
         self._load_or_initialize()
 
-        # 環境変数によるローテーショントリガー
-        if os.environ.get("RUMI_HMAC_ROTATE", "").lower() == "true":
-            self.rotate()
-            # 一度ローテーションしたらフラグをクリア（同一プロセス内での再トリガー防止）
-            os.environ.pop("RUMI_HMAC_ROTATE", None)
-
-
     # ==================================================================
     # 暗号化関連メソッド (W21-B)
     # ==================================================================
@@ -312,12 +493,12 @@ class HMACKeyManager:
             try:
                 key_data = enc_key_path.read_bytes().strip()
                 # 有効な Fernet 鍵か検証
-                _Fernet(key_data)
+                _new_fernet(key_data)
                 return key_data
             except Exception:
                 pass
         # 新規生成
-        new_key = _Fernet.generate_key()
+        new_key = _generate_fernet_key()
         enc_key_path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(
             dir=str(enc_key_path.parent),
@@ -368,7 +549,7 @@ class HMACKeyManager:
             Base64 エンコードされた Fernet トークン文字列
         """
         enc_key = self._get_encryption_key()
-        f = _Fernet(enc_key)
+        f = _new_fernet(enc_key)
         token = f.encrypt(data_str.encode("utf-8"))
         return token.decode("ascii")
 
@@ -386,7 +567,7 @@ class HMACKeyManager:
             Exception: 復号に失敗した場合
         """
         enc_key = self._get_encryption_key()
-        f = _Fernet(enc_key)
+        f = _new_fernet(enc_key)
         return f.decrypt(payload.encode("ascii")).decode("utf-8")
 
     def _load_or_initialize(self) -> None:

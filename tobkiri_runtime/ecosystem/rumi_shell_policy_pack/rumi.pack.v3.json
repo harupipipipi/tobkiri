@@ -1,11 +1,139 @@
 {
-  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.shell_policy","version":"1.0.0","kind":"service","display_name":"Rumi Shell Policy","description":"Pure command inspection and risk classification."},
-  "contracts":{"provides":[{"id":"rumi.service.shell.inspect.v1","version":"1.0.0","provider_instance_id":"shell-policy.inspect","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["shell.inspect"]}],"requires":[]},
-  "entrypoints":[{"id":"shell-inspect","contract_id":"rumi.service.shell.inspect.v1","loader":"python","module":"ecosystem.rumi_shell_policy_pack.runtime.policy","symbol":"create_shell_policy_operation","artifact_hash":"sha256:ed87da916f1f7d017c487d5862822edca64be08f53b353ca061cf57108807422"}],
-  "resources":[],"storage":[],
-  "permissions":[{"capability":"shell.inspect","access":"inspect","approval_required":false}],
-  "provenance":{"content_hash":"sha256:ed87da916f1f7d017c487d5862822edca64be08f53b353ca061cf57108807422","build_identity":"rumi-shell-policy-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.coding.terminal_policy"],"compatibility_aliases":[],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Select the pinned prior pure classifier."},
-  "extensions":{"rumi.shell_policy.boundary":{"execute":false,"filesystem":false,"network":false,"tool_or_ui_registry_imports":false}}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.shell.inspect.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_shell_policy_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "shell-policy.inspect",
+        "required_capabilities": [
+          "shell.inspect"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:b24ff2c5c66a51052742fa96322e2a515a3aa2187cda41a6f4f6d4daeeacab8e",
+      "contract_id": "rumi.service.shell.inspect.v1",
+      "id": "shell-inspect",
+      "loader": "python",
+      "module": "ecosystem.rumi_shell_policy_pack.runtime.policy",
+      "symbol": "create_shell_policy_operation"
+    }
+  ],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.shell.inspect.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Pure command inspection and risk classification.",
+        "display_name": "Rumi Shell Policy",
+        "host_execution": false,
+        "metadata": {
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:ec113d821a26916c4d1214809a7d7c260caf1931518e2dc38e8c2022d2e31cb2",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:1bd8e35ba1573f45290b340cca887aa42bdc211fe53dc141b030c54cb2fb71b1"
+          },
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_shell_policy_pack",
+        "pack_identity": "rumi:ecosystem/rumi_shell_policy_pack",
+        "provenance": {
+          "build_identity": "rumi_shell_policy_pack:1.0.0",
+          "content_hash": "sha256:b24ff2c5c66a51052742fa96322e2a515a3aa2187cda41a6f4f6d4daeeacab8e",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "shell.inspect"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_shell_policy_pack"
+    },
+    "rumi.shell_policy.boundary": {
+      "execute": false,
+      "filesystem": false,
+      "network": false,
+      "tool_or_ui_registry_imports": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_shell_policy_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:1bd8e35ba1573f45290b340cca887aa42bdc211fe53dc141b030c54cb2fb71b1"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.coding.terminal_policy"
+    ],
+    "removal_wave": 10,
+    "rollback": "Select the pinned prior pure classifier.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Pure command inspection and risk classification.",
+    "display_name": "Rumi Shell Policy",
+    "id": "rumi.shell_policy",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "inspect",
+      "approval_required": false,
+      "capability": "shell.inspect"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_shell_policy_pack:1.0.0",
+    "content_hash": "sha256:b24ff2c5c66a51052742fa96322e2a515a3aa2187cda41a6f4f6d4daeeacab8e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }
-

@@ -1,23 +1,270 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.scheduler_tool_adapter","version":"1.0.0","kind":"adapter","display_name":"Rumi Scheduler Tool Adapter","description":"Scheduler tool definitions and receipt-aware contract projections."},
-  "contracts":{"provides":[
-    {"id":"rumi.resource.tool.definition.contribution.v1","version":"1.0.0","provider_instance_id":"tool-definitions.scheduler","instance_key":"scheduler","cardinality":"many","security":"internal","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_tool_registry_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["tool.definition.contribute"]},
-    {"id":"rumi.service.tool.local.operation.v1","version":"1.0.0","provider_instance_id":"tool-adapter.scheduler","routing_keys":["scheduler_*"],"cardinality":"many","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"scheduler-contract-owners"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["tool.local.operation"]}
-  ],"requires":[
-    {"id":"rumi.resource.schedule.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.action.schedule.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.action.scheduler.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
-  ]},
-  "entrypoints":[
-    {"id":"scheduler-tool-definitions","contract_id":"rumi.resource.tool.definition.contribution.v1","loader":"python","module":"ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter","symbol":"create_definition_contribution","artifact_hash":"sha256:27d1adca67c3b3d7e3d503332def8b881f9097e6e84ae908c3df3a4c0403760e"},
-    {"id":"scheduler-tool-operation","contract_id":"rumi.service.tool.local.operation.v1","loader":"python","module":"ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter","symbol":"create_local_operation","artifact_hash":"sha256:27d1adca67c3b3d7e3d503332def8b881f9097e6e84ae908c3df3a4c0403760e"}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "many",
+        "failure": "isolate",
+        "id": "rumi.resource.tool.definition.contribution.v1",
+        "instance_key": "scheduler",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_tool_registry_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "tool-definitions.scheduler",
+        "required_capabilities": [
+          "tool.definition.contribute"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "internal",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "id": "rumi.service.tool.local.operation.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "scheduler-contract-owners",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "tool-adapter.scheduler",
+        "required_capabilities": [
+          "tool.local.operation"
+        ],
+        "routing_keys": [
+          "scheduler_*"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.schedule.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.schedule.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.scheduler.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+      "contract_id": "rumi.resource.tool.definition.contribution.v1",
+      "id": "scheduler-tool-definitions",
+      "loader": "python",
+      "module": "ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter",
+      "symbol": "create_definition_contribution"
+    },
+    {
+      "artifact_hash": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+      "contract_id": "rumi.service.tool.local.operation.v1",
+      "id": "scheduler-tool-operation",
+      "loader": "python",
+      "module": "ecosystem.rumi_scheduler_tool_adapter_pack.runtime.adapter",
+      "symbol": "create_local_operation"
+    }
   ],
-  "resources":[],"storage":[],
-  "permissions":[{"capability":"tool.definition.contribute","access":"read","approval_required":false},{"capability":"tool.local.operation","access":"execute","approval_required":false},{"capability":"service.invoke","access":"execute","approval_required":false},{"capability":"service.mutate","access":"control","approval_required":true},{"capability":"schedule.read","access":"read","approval_required":false},{"capability":"schedule.manage","access":"control","approval_required":false},{"capability":"scheduler.control","access":"control","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:27d1adca67c3b3d7e3d503332def8b881f9097e6e84ae908c3df3a4c0403760e","build_identity":"rumi-scheduler-tool-adapter-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.blocks.scheduler","defaultspack.blocks.agent.scheduler"],"compatibility_aliases":[],"compatibility_projection":"finite_tool_projection","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Remove contributed definitions and adapter; scheduler owners remain unchanged."},
-  "extensions":{"rumi.scheduler_tool.boundary":{"definition_owner":false,"schedule_owner":false,"runtime_owner":false,"target_imports":false,"defaultspack_imports":false,"client_approved_trusted":false,"one_shot_scope_rechecked":true,"owner_receipt_exchange":true}}
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+        "rumi_schedule_store_pack": ">=1.0.0,<2.0.0",
+        "rumi_scheduler_runtime_pack": ">=1.0.0,<2.0.0",
+        "rumi_tool_local_executor_pack": ">=1.0.0,<2.0.0",
+        "rumi_tool_registry_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.resource.tool.definition.contribution.v1",
+            "rumi.service.tool.local.operation.v1"
+          ],
+          "requires": [
+            "rumi.action.schedule.v1",
+            "rumi.action.scheduler.v1",
+            "rumi.resource.schedule.v1",
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+          "rumi_schedule_store_pack": ">=1.0.0,<2.0.0",
+          "rumi_scheduler_runtime_pack": ">=1.0.0,<2.0.0",
+          "rumi_tool_local_executor_pack": ">=1.0.0,<2.0.0",
+          "rumi_tool_registry_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Scheduler tool definitions and receipt-aware contract projections.",
+        "display_name": "Rumi Scheduler Tool Adapter",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:7348e503b2d0523dfa72fc2c39c49ae9ab00a6e9d7044172963d7c7e34353bbf",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:16e8360d35abe720fbe6e8e34eb46888d8644947d8fece90a18ae382cc6adb08"
+          },
+          "owner_surfaces": [
+            "scheduler_tool_definitions"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_scheduler_tool_adapter_pack",
+        "pack_identity": "rumi:ecosystem/rumi_scheduler_tool_adapter_pack",
+        "provenance": {
+          "build_identity": "rumi_scheduler_tool_adapter_pack:1.0.0",
+          "content_hash": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume",
+          "schedule.manage",
+          "schedule.read",
+          "scheduler.control",
+          "service.invoke",
+          "service.mutate",
+          "tool.definition.contribute",
+          "tool.local.operation"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_scheduler_tool_adapter_pack"
+    },
+    "rumi.scheduler_tool.boundary": {
+      "client_approved_trusted": false,
+      "defaultspack_imports": false,
+      "definition_owner": false,
+      "one_shot_scope_rechecked": true,
+      "owner_receipt_exchange": true,
+      "runtime_owner": false,
+      "schedule_owner": false,
+      "target_imports": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_scheduler_tool_adapter_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:16e8360d35abe720fbe6e8e34eb46888d8644947d8fece90a18ae382cc6adb08"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.blocks.scheduler",
+      "defaultspack.blocks.agent.scheduler"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove contributed definitions and adapter; scheduler owners remain unchanged.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Scheduler tool definitions and receipt-aware contract projections.",
+    "display_name": "Rumi Scheduler Tool Adapter",
+    "id": "rumi.scheduler_tool_adapter",
+    "kind": "adapter",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "tool.definition.contribute"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.local.operation"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "service.invoke"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "service.mutate"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "schedule.read"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "schedule.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "scheduler.control"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_scheduler_tool_adapter_pack:1.0.0",
+    "content_hash": "sha256:38909d724cb9210d7c44cee848b4a4885b7b0b3ed9e484a2a716485066ec8eae",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }
-

@@ -1,0 +1,7 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:8bfff4587940c9622b9be3544dc4211174fb4249a9ca6e45da682e846ad53609",
+  "pack_id": "rumi_sop_mining_pack",
+  "source_identity": "sha256:19ee5727c4cb7781bd54861014392be2c4dbe3ce973ef95101029ac8e82d1398",
+  "variants": []
+}

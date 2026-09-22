@@ -17,6 +17,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_browser_form_operator_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 
@@ -53,7 +54,8 @@ def test_pack_required_assets_and_metadata() -> None:
     assert "vocabulary" in ecosystem
     assert "depends_on" not in ecosystem
     assert "optional_integrations" not in ecosystem
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["metadata"]["required_secrets"] == []
     assert ecosystem["metadata"]["network_policy"] == "none_by_default"
     assert ecosystem["metadata"]["executable_code"] is False

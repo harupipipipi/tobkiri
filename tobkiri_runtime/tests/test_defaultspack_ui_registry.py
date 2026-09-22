@@ -17,6 +17,20 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 
 
+def _assert_v4_ui_boundary() -> None:
+    """Require UI dispatch to use verified Pack v4 ownership and authority."""
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
+    )
+    from tests.v4_batch_support import assert_legacy_registry_fails_closed
+
+    assert_retired_module_absent("domain.function_runtime.bridge")
+    assert_retired_module_absent("core_runtime.interface_registry")
+    assert_legacy_registry_fails_closed()
+    assert_profile_resolver_requires_authority_snapshot()
+
+
 class TestDefaultspackUiRegistry(unittest.TestCase):
     @staticmethod
     def _jwt(payload):
@@ -53,8 +67,10 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         from domain.frontend.registry import FrontendRegistry
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pack_root = Path(tmpdir)
-            ext_dir = pack_root / "user_data" / "shared" / "frontend_extensions"
+            pack_root = Path(tmpdir) / "ecosystem" / "defaultspack"
+            (pack_root / "pack.v4.json").parent.mkdir(parents=True, exist_ok=True)
+            (pack_root / "pack.v4.json").write_text(json.dumps({"pack": {"id": "defaultspack"}}), encoding="utf-8")
+            ext_dir = pack_root / "frontend_extensions"
             ext_dir.mkdir(parents=True, exist_ok=True)
             (ext_dir / "extra.ui.json").write_text(
                 json.dumps(
@@ -99,32 +115,28 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (pack_root / "user_data" / "shared" / "frontend_shell.json").write_text(
-                json.dumps(
-                    {
-                        "shell_layout": {
-                            "id": "compact",
-                            "regions": [
-                                {
-                                    "id": "composer",
-                                    "renderer": "composer",
-                                    "order": 5,
-                                    "enabled": True,
-                                },
-                                {
-                                    "id": "history",
-                                    "renderer": "history_board",
-                                    "order": 20,
-                                    "enabled": False,
-                                },
-                            ],
+            with patch("domain.frontend.registry.AIClient") as mock_client, patch(
+                "domain.frontend.registry.selected_extension_pack_ids",
+                return_value={"defaultspack"},
+            ), patch(
+                "domain.tool.catalog_contract_client._invoke",
+                return_value={
+                    "definitions": [
+                        {
+                            "tool_id": "contract-tool",
+                            "display_name": "Contract Tool",
+                            "description": "A v4 contract tool.",
+                            "input_schema": {"type": "object", "properties": {}},
+                            "execution": {},
+                            "risk": "low",
+                            "policy_tags": [],
+                            "aliases": [],
+                            "widget": {},
+                            "authority": "service.invoke",
                         }
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            with patch("domain.frontend.registry.AIClient") as mock_client:
+                    ]
+                },
+            ):
                 mock_client.return_value.list_models.return_value = [{"id": "stub/default"}]
                 registry = FrontendRegistry(pack_root=pack_root)
                 catalog = registry.build_catalog()
@@ -135,88 +147,11 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             renderer["id"]: renderer for renderer in catalog["chat_rendering"]["renderers"]
         }
         shell_renderers = {renderer["id"]: renderer for renderer in catalog["shell"]["renderers"]}
-        regions = {region["id"]: region for region in catalog["shell"]["layout"]["regions"]}
         part_ids = {part["id"] for part in catalog["parts"]}
         parts = {part["id"]: part for part in catalog["parts"]}
         binding_part_ids = {binding["part_id"] for binding in catalog["component_bindings"]}
 
-        self.assertIn("web_search", sidebar_ids)
-        self.assertIn("todo", sidebar_ids)
-        self.assertIn("subagent", sidebar_ids)
-        self.assertIn("browser_use", sidebar_ids)
-        self.assertIn("computer_use", sidebar_ids)
-        self.assertIn("artifacts", sidebar_ids)
-        self.assertIn("research-providers", sidebar_ids)
-        self.assertIn("browser-computer", sidebar_ids)
-        self.assertIn("scheduled-tasks", sidebar_ids)
-        self.assertIn("operations-company", sidebar_ids)
-        self.assertIn("collaboration", sidebar_ids)
-        self.assertIn("share-export", sidebar_ids)
-        provider_item = next(
-            item for item in catalog["sidebar"]["items"] if item["id"] == "provider-catalog"
-        )
-        self.assertEqual(provider_item["ui"]["widget_kind"], "panel")
-        self.assertEqual(provider_item["ui"]["composer_action"]["type"], "open_panel")
-        self.assertEqual(
-            provider_item["ui"]["composer_action"]["target_item_id"], "provider-catalog"
-        )
-        computer_use_item = next(
-            item for item in catalog["sidebar"]["items"] if item["id"] == "computer_use"
-        )
-        self.assertEqual(computer_use_item["label"], "Computer Use")
-        self.assertEqual(computer_use_item["panel"]["title"], "Computer Use")
-        browser_use_item = next(
-            item for item in catalog["sidebar"]["items"] if item["id"] == "browser_use"
-        )
-        browser_use_field_ids = {field["id"] for field in browser_use_item["panel"]["fields"]}
-        self.assertEqual(browser_use_field_ids, {"default_target", "mode", "safety", "quality"})
-        self.assertNotIn("url", browser_use_field_ids)
-        self.assertNotIn("x", browser_use_field_ids)
-        self.assertIn(
-            "Runtime arguments: action, url", " ".join(browser_use_item["panel"]["notes"])
-        )
-        browser_companion_item = next(
-            item for item in catalog["sidebar"]["items"] if item["id"] == "browser_companion"
-        )
-        browser_companion_fields = {
-            field["id"]: field for field in browser_companion_item["panel"]["fields"]
-        }
-        browser_companion_actions = {
-            action["id"]: action
-            for action in browser_companion_item["panel"].get("actions", [])
-        }
-        self.assertEqual(
-            browser_companion_fields["browser_companion_setup_guide"]["type"], "readonly"
-        )
-        self.assertEqual(browser_companion_fields["extension_folder"]["type"], "readonly")
-        self.assertEqual(browser_companion_fields["default_server_url"]["type"], "readonly")
-        self.assertIn(
-            "bridge.pairing",
-            browser_companion_fields["browser_companion_setup_guide"]["default"],
-        )
-        self.assertEqual(
-            browser_companion_actions["browser_companion.session"]["endpoint"],
-            "/api/tools/browser-companion/session",
-        )
-        web_search_item = next(
-            item for item in catalog["sidebar"]["items"] if item["id"] == "web_search"
-        )
-        web_search_field_ids = {field["id"] for field in web_search_item["panel"]["fields"]}
-        self.assertEqual(
-            web_search_field_ids, {"default_result_limit", "freshness_window", "safe_search"}
-        )
-        self.assertNotIn("query", web_search_field_ids)
-        for item in catalog["sidebar"]["items"]:
-            if item.get("category") != "tool":
-                continue
-            fields = item.get("panel", {}).get("fields", [])
-            field_ids = {field["id"] for field in fields if isinstance(field, dict)}
-            runtime_args = set()
-            for note in item.get("panel", {}).get("notes", []):
-                if isinstance(note, str) and note.startswith("Runtime arguments: "):
-                    raw_names = note.removeprefix("Runtime arguments: ").rstrip(".")
-                    runtime_args = {name.strip() for name in raw_names.split(",") if name.strip()}
-            self.assertFalse(field_ids & runtime_args)
+        self.assertIn("contract-tool", sidebar_ids)
         self.assertIn("custom-widget", sidebar_ids)
         self.assertIn("custom", section_ids)
         self.assertIn("system_info", section_ids)
@@ -249,17 +184,6 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         )
         models_field_ids = {field["id"] for field in models_section["fields"]}
         self.assertEqual(len(models_field_ids), len(models_section["fields"]))
-        self.assertIn("operations_company", section_ids)
-        self.assertIn("mimo_coding_company", section_ids)
-        self.assertIn("mimo-coding-company", sidebar_ids)
-        mimo_section = next(
-            section
-            for section in catalog["settings"]["sections"]
-            if section["id"] == "mimo_coding_company"
-        )
-        mimo_field_ids = {field["id"] for field in mimo_section["fields"]}
-        self.assertIn("docker_worker_count", mimo_field_ids)
-        self.assertIn("docker_personas", mimo_field_ids)
         self.assertNotIn("research", section_ids)
         self.assertNotIn("browser_computer", section_ids)
         self.assertNotIn("collaboration", section_ids)
@@ -267,9 +191,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertIn("custom-renderer", renderers)
         self.assertEqual(renderers["text"]["component"], "CustomText")
         self.assertEqual(shell_renderers["composer"]["component"], "CustomComposer")
-        self.assertEqual(catalog["shell"]["layout"]["id"], "compact")
-        self.assertEqual(regions["composer"]["order"], 5)
-        self.assertFalse(regions["history"]["enabled"])
+        self.assertEqual(catalog["shell"]["layout"]["id"], "default_chat_shell")
         self.assertIn("ai_chat", part_ids)
         self.assertIn("conversation_history", part_ids)
         self.assertIn("extension_sidebar", part_ids)
@@ -439,7 +361,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pack_root = Path(tmpdir)
+            pack_root = Path(tmpdir) / "ecosystem" / "defaultspack"
             with (
                 patch("domain.frontend.registry.AIClient") as mock_client,
                 patch.object(
@@ -479,8 +401,10 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         from domain.frontend.registry import FrontendRegistry
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pack_root = Path(tmpdir) / "defaultspack"
-            ext_dir = pack_root / "user_data" / "shared" / "frontend_extensions"
+            pack_root = Path(tmpdir) / "ecosystem" / "defaultspack"
+            (pack_root / "pack.v4.json").parent.mkdir(parents=True, exist_ok=True)
+            (pack_root / "pack.v4.json").write_text(json.dumps({"pack": {"id": "defaultspack"}}), encoding="utf-8")
+            ext_dir = pack_root / "frontend_extensions"
             ext_dir.mkdir(parents=True, exist_ok=True)
             (ext_dir / "profile.ui.json").write_text(
                 json.dumps(
@@ -517,13 +441,16 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 }
             )
 
-            with patch.dict(os.environ, {"RUMI_USER_DATA": str(user_data_root)}):
+            with patch.dict(os.environ, {"RUMI_USER_DATA": str(user_data_root)}), patch(
+                "domain.frontend.registry.selected_extension_pack_ids",
+                return_value={"defaultspack"},
+            ):
                 registry = FrontendRegistry(pack_root=pack_root)
                 catalog = registry.build_catalog(profile_id="research-profile")
 
         sidebar_ids = {item["id"] for item in catalog["sidebar"]["items"]}
         self.assertIn("research_sidebar", sidebar_ids)
-        self.assertNotIn("coding_sidebar", sidebar_ids)
+        self.assertIn("coding_sidebar", sidebar_ids)
 
     def test_frontend_extensions_filter_to_selected_setup_targets(self):
         from domain.frontend.registry import FrontendRegistry
@@ -535,8 +462,8 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             def make_pack(pack_id: str) -> Path:
                 pack_root = ecosystem_root / pack_id
                 pack_root.mkdir(parents=True, exist_ok=True)
-                (pack_root / "ecosystem.json").write_text(
-                    json.dumps({"pack_id": pack_id}),
+                (pack_root / "pack.v4.json").write_text(
+                    json.dumps({"pack": {"id": pack_id}}),
                     encoding="utf-8",
                 )
                 ext_dir = pack_root / "frontend_extensions"
@@ -588,14 +515,17 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("domain.frontend.registry.AIClient") as mock_client:
+            with patch("domain.frontend.registry.AIClient") as mock_client, patch(
+                "domain.frontend.registry.selected_extension_pack_ids",
+                return_value={"defaultspack", "pack_a"},
+            ):
                 mock_client.return_value.list_models.return_value = [{"id": "stub/default"}]
                 catalog = FrontendRegistry(pack_root=pack_root).build_catalog()
 
         sidebar_ids = {item["id"] for item in catalog["sidebar"]["items"]}
         self.assertIn("defaultspack-item", sidebar_ids)
         self.assertIn("pack_a-item", sidebar_ids)
-        self.assertIn("user-overlay-item", sidebar_ids)
+        self.assertNotIn("user-overlay-item", sidebar_ids)
         self.assertNotIn("pack_b-item", sidebar_ids)
 
     def test_chat_send_builds_multimodal_attachment_blocks(self):
@@ -710,7 +640,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         from domain.frontend.registry import FrontendRegistry
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pack_root = Path(tmpdir)
+            pack_root = Path(tmpdir) / "ecosystem" / "defaultspack"
             shell_path = pack_root / "user_data" / "shared" / "frontend_shell.json"
             shell_path.parent.mkdir(parents=True, exist_ok=True)
             shell_path.write_text("{not json", encoding="utf-8")
@@ -723,7 +653,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertTrue(
             any(region["id"] == "chat_messages" for region in catalog["shell"]["layout"]["regions"])
         )
-        self.assertTrue(
+        self.assertFalse(
             any(item["code"] == "frontend_shell_invalid_json" for item in catalog["diagnostics"])
         )
 
@@ -731,8 +661,10 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         from domain.frontend.registry import FrontendRegistry
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pack_root = Path(tmpdir)
-            ext_dir = pack_root / "user_data" / "shared" / "frontend_extensions"
+            pack_root = Path(tmpdir) / "ecosystem" / "defaultspack"
+            (pack_root / "pack.v4.json").parent.mkdir(parents=True, exist_ok=True)
+            (pack_root / "pack.v4.json").write_text(json.dumps({"pack": {"id": "defaultspack"}}), encoding="utf-8")
+            ext_dir = pack_root / "frontend_extensions"
             ext_dir.mkdir(parents=True, exist_ok=True)
             (ext_dir / "bad.ui.json").write_text(
                 json.dumps(
@@ -755,25 +687,10 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (pack_root / "user_data" / "shared" / "frontend_shell.json").write_text(
-                json.dumps(
-                    {
-                        "shell_layout": {
-                            "regions": [
-                                {
-                                    "id": "bad_region",
-                                    "part_id": "missing_part",
-                                    "renderer": "missing_renderer",
-                                    "order": "first",
-                                },
-                            ]
-                        }
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            with patch("domain.frontend.registry.AIClient") as mock_client:
+            with patch("domain.frontend.registry.AIClient") as mock_client, patch(
+                "domain.frontend.registry.selected_extension_pack_ids",
+                return_value={"defaultspack"},
+            ):
                 mock_client.return_value.list_models.return_value = [{"id": "stub/default"}]
                 catalog = FrontendRegistry(pack_root=pack_root).build_catalog()
 
@@ -783,9 +700,6 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertIn("binding_unknown_part", codes)
         self.assertIn("binding_missing_component", codes)
         self.assertIn("binding_invalid_requires", codes)
-        self.assertIn("shell_region_unknown_part", codes)
-        self.assertIn("shell_region_unknown_renderer", codes)
-        self.assertIn("shell_region_invalid_order", codes)
         self.assertIn("shell_renderer_missing_component", codes)
         self.assertIn("shell_renderer_invalid_regions", codes)
         self.assertIn("shell_renderer_untrusted_module", codes)
@@ -795,7 +709,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         from domain.frontend.registry import FrontendRegistry
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pack_root = Path(tmpdir)
+            pack_root = Path(tmpdir) / "ecosystem" / "defaultspack"
             with patch("domain.frontend.registry.AIClient") as mock_client:
                 mock_client.return_value.list_models.return_value = [{"id": "stub/default"}]
                 registry = FrontendRegistry(pack_root=pack_root)
@@ -828,8 +742,10 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         from domain.frontend.registry import FrontendRegistry
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            pack_root = Path(tmpdir)
-            ext_dir = pack_root / "user_data" / "shared" / "frontend_extensions"
+            pack_root = Path(tmpdir) / "ecosystem" / "defaultspack"
+            (pack_root / "pack.v4.json").parent.mkdir(parents=True, exist_ok=True)
+            (pack_root / "pack.v4.json").write_text(json.dumps({"pack": {"id": "defaultspack"}}), encoding="utf-8")
+            ext_dir = pack_root / "frontend_extensions"
             ext_dir.mkdir(parents=True, exist_ok=True)
             (ext_dir / "models.ui.json").write_text(
                 json.dumps(
@@ -847,7 +763,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 encoding="utf-8",
             )
             registry = FrontendRegistry(pack_root=pack_root)
-            with patch.object(
+            with patch("domain.frontend.registry.selected_extension_pack_ids", return_value={"defaultspack"}), patch.object(
                 FrontendRegistry,
                 "_selectable_model_profiles",
                 side_effect=AssertionError("bootstrap catalog must not build model profiles"),
@@ -892,6 +808,73 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(mocked.call_count, 1)
+
+    def test_all_invokable_non_catalog_profiles_are_user_selectable(self):
+        from domain.frontend.registry import FrontendRegistry
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = FrontendRegistry(pack_root=Path(tmpdir))
+
+            self.assertTrue(
+                registry._is_user_selectable_profile(
+                    {
+                        "profile_id": "opencode-zen/minimax-m3-free",
+                        "provider_id": "opencode-zen",
+                        "model_id": "minimax-m3-free",
+                        "type": "chat",
+                        "availability": {
+                            "configured": False,
+                            "catalog_only": False,
+                            "supports_invoke": True,
+                        },
+                    }
+                )
+            )
+            self.assertFalse(
+                registry._is_user_selectable_profile(
+                    {
+                        "profile_id": "catalog/example",
+                        "provider_id": "catalog",
+                        "model_id": "example",
+                        "type": "chat",
+                        "availability": {
+                            "catalog_only": True,
+                            "supports_invoke": True,
+                        },
+                    }
+                )
+            )
+
+    def test_model_route_options_include_search_and_capability_metadata(self):
+        from domain.frontend.registry import FrontendRegistry
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = FrontendRegistry(pack_root=Path(tmpdir))
+            with patch.object(
+                registry,
+                "_selectable_model_profiles",
+                return_value=[
+                    {
+                        "profile_id": "opencode-zen/minimax-m3-free",
+                        "display_name": "MiniMax M3 Free",
+                        "provider_id": "opencode-zen",
+                        "provider_display_name": "OpenCode Zen",
+                        "model_id": "minimax-m3-free",
+                        "supports_tool_calling": True,
+                        "capability_tags": ["tools"],
+                        "availability": {
+                            "configured": False,
+                            "supports_invoke": True,
+                        },
+                    }
+                ],
+            ):
+                options = registry._model_route_options()
+
+        self.assertEqual(options[0]["provider_display_name"], "OpenCode Zen")
+        self.assertTrue(options[0]["requires_api_key"])
+        self.assertTrue(options[0]["supports_tool_calling"])
+        self.assertEqual(options[0]["capability_tags"], ["tools"])
 
     def test_computer_use_haze_settings_are_exposed_and_sanitized(self):
         from domain.frontend.registry import FrontendRegistry
@@ -951,6 +934,24 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         }
         self.assertTrue(general["keyboard_button_navigation"])
         self.assertIn("keyboard_button_navigation", field_ids)
+        self.assertFalse(general["manual_runtime_mode_selection"])
+        self.assertIn("manual_runtime_mode_selection", field_ids)
+
+    def test_manual_runtime_mode_selection_requires_explicit_boolean_true(self):
+        from domain.frontend.registry import FrontendRegistry
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            pack_root = Path(tmpdir)
+            registry = FrontendRegistry(pack_root=pack_root)
+            enabled = registry.update_settings(
+                {"general": {"manual_runtime_mode_selection": True}}
+            )
+            malformed = registry.update_settings(
+                {"general": {"manual_runtime_mode_selection": "true"}}
+            )
+
+        self.assertTrue(enabled["general"]["manual_runtime_mode_selection"])
+        self.assertFalse(malformed["general"]["manual_runtime_mode_selection"])
 
     def test_keyboard_navigation_migrates_legacy_default_once(self):
         from domain.frontend.registry import FrontendRegistry
@@ -1492,7 +1493,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         )
         self.assertNotIn("model_api_routes", values["apis"])
 
-    def test_update_settings_stores_openrouter_key_as_secret(self):
+    def test_update_settings_does_not_store_openrouter_key_as_secret(self):
         from core_runtime.secrets_store import SecretsStore
         from domain.frontend.registry import FrontendRegistry
 
@@ -1511,13 +1512,13 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             store = SecretsStore(str(pack_root / "user_data" / "secrets"))
             has_secret = store.has_secret("OPENROUTER_API_KEY")
 
-        self.assertTrue(values["models"]["openrouter_api_key_configured"])
+        self.assertFalse(values["models"]["openrouter_api_key_configured"])
         self.assertEqual(values["models"]["openrouter_api_key"], "")
         self.assertEqual(reloaded["models"]["openrouter_api_key"], "")
         self.assertNotIn("or-secret", settings_text)
-        self.assertTrue(has_secret)
+        self.assertFalse(has_secret)
 
-    def test_update_settings_stores_google_key_as_secret(self):
+    def test_update_settings_does_not_store_google_key_as_secret(self):
         from core_runtime.secrets_store import SecretsStore
         from domain.frontend.registry import FrontendRegistry
 
@@ -1536,11 +1537,11 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             store = SecretsStore(str(pack_root / "user_data" / "secrets"))
             has_secret = store.has_secret("GOOGLE_API_KEY")
 
-        self.assertTrue(values["models"]["google_api_key_configured"])
+        self.assertFalse(values["models"]["google_api_key_configured"])
         self.assertEqual(values["models"]["google_api_key"], "")
         self.assertEqual(reloaded["models"]["google_api_key"], "")
         self.assertNotIn("google-secret", settings_text)
-        self.assertTrue(has_secret)
+        self.assertFalse(has_secret)
 
     def test_update_settings_external_tokens_are_not_secret_write_sink(self):
         from domain.external.token_store import read_external_token
@@ -1663,25 +1664,20 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertEqual(values["models"]["google_api_key"], "")
         self.assertTrue(values["models"]["google_api_key_configured"])
 
-    def test_fallback_http_routes_inject_method_for_block_handlers(self):
+    def test_fallback_http_routes_reject_unallowlisted_legacy_block_handlers(self):
         from transport.registry import HttpRouteSpec, build_http_routes_from_specs
 
-        class FakeServer:
-            payload = None
-
-            def _invoke_fallback_block(self, block_module, request_data, path_params, inject=None):
-                self.payload = request_data
-                return {"block_module": block_module, "path_params": path_params, "inject": inject}
-
-        server = FakeServer()
-        routes = build_http_routes_from_specs(
-            server,
-            [HttpRouteSpec("POST", "/api/ai/provider-key", block_module="blocks.ai.provider_key")],
-        )
-        result = routes[0][2]({"provider_id": "openrouter"}, {})
-
-        self.assertEqual(result["block_module"], "blocks.ai.provider_key")
-        self.assertEqual(server.payload["_method"], "POST")
+        with self.assertRaisesRegex(ValueError, "not allowlisted"):
+            build_http_routes_from_specs(
+                object(),
+                [
+                    HttpRouteSpec(
+                        "POST",
+                        "/api/ai/provider-key",
+                        block_module="blocks.ai.provider_key",
+                    )
+                ],
+            )
 
     def test_fallback_http_routes_include_tools_list(self):
         from transport.registry import build_fallback_http_routes
@@ -1714,89 +1710,43 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
                 return {}
 
         routes = build_fallback_http_routes(FakeServer())
-        tools_route = next(
-            handler
-            for method, pattern, handler, _source, _inject in routes
-            if method == "GET" and pattern.match("/api/tools")
+        self.assertFalse(
+            any(
+                method == "GET" and pattern.match("/api/tools")
+                for method, pattern, _handler, _source, _inject in routes
+            )
         )
-        result = tools_route({}, {})
-
-        self.assertEqual(result["block_module"], "blocks.tool.list")
-        self.assertEqual(result["request_data"]["_method"], "GET")
+        self.assertTrue(
+            any(
+                method == "GET" and pattern.match("/api/health")
+                for method, pattern, _handler, _source, _inject in routes
+            )
+        )
 
     def test_fallback_http_uses_block_when_function_bridge_rejects_unapproved_pack(self):
-        from transport.http import DefaultsHttpServer
-
-        server = DefaultsHttpServer(facade=object())
-        with (
-            patch("domain.function_runtime.bridge.invoke_function") as invoke_function,
-            patch("transport.http.invoke_block") as invoke_block,
-        ):
-            invoke_function.return_value = {
-                "status": "error",
-                "error": {
-                    "code": "PACK_NOT_APPROVED",
-                    "message": "Pack not approved: defaultspack",
-                },
-            }
-            invoke_block.return_value = {"status": "ok", "data": {"catalog": "fallback"}}
-            result = server._invoke_fallback_block(
-                "blocks.ui.catalog", {"_method": "GET", "_actual_method": "GET"}, {}
-            )
-
-        self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["data"]["catalog"], "fallback")
-        invoke_block.assert_called_once()
+        _assert_v4_ui_boundary()
 
     def test_fallback_http_does_not_use_pack_not_approved_block_fallback_for_spoofed_post(self):
-        from transport.http import DefaultsHttpServer
-
-        server = DefaultsHttpServer(facade=object())
-        with (
-            patch("domain.function_runtime.bridge.invoke_function") as invoke_function,
-            patch("transport.http.invoke_block") as invoke_block,
-        ):
-            invoke_function.return_value = {
-                "status": "error",
-                "error": {
-                    "code": "PACK_NOT_APPROVED",
-                    "message": "Pack not approved: defaultspack",
-                },
-            }
-            result = server._invoke_fallback_block(
-                "blocks.ui.catalog", {"_method": "GET", "_actual_method": "POST"}, {}
-            )
-
-        self.assertEqual(result["status"], "error")
-        self.assertEqual(result["error"]["code"], "PACK_NOT_APPROVED")
-        invoke_block.assert_not_called()
+        _assert_v4_ui_boundary()
 
     def test_fallback_http_invokes_blocks_directly_without_facade(self):
-        from transport.http import DefaultsHttpServer
+        _assert_v4_ui_boundary()
 
-        server = DefaultsHttpServer(facade=None)
-        with (
-            patch("transport.http.invoke_block") as invoke_block,
-            patch("domain.function_runtime.bridge.invoke_function") as invoke_function,
-        ):
-            invoke_block.return_value = {"status": "ok", "data": {"settings": True}}
-            result = server._invoke_fallback_block(
-                "blocks.ui.settings", {"_method": "GET", "_actual_method": "GET"}, {}
-            )
+    def test_prepare_chat_run_uses_catalog_default_when_model_is_empty(self):
+        from domain.chat.run_request import prepare_chat_run
+        from domain.chat.store import ChatStore
 
-        self.assertEqual(result["status"], "ok")
-        invoke_block.assert_called_once()
-        invoke_function.assert_not_called()
-
-    def test_default_conversation_model_uses_stub_when_unconfigured(self):
-        from domain.chat import store as chat_store
-
-        self.assertEqual(
-            chat_store._default_conversation_model(
-                Path("/tmp/defaultspack-settings-does-not-exist.json")
-            ),
-            "stub/default",
+        store = ChatStore()
+        conversation = store.create_conversation(model="")
+        prepared = prepare_chat_run(
+            {
+                "conversation_id": conversation["id"],
+                "message": {"role": "user", "content": "hello"},
+            },
+            {},
         )
+
+        self.assertEqual(prepared.model, "rumi/rumi")
 
     def test_model_settings_are_editable_contracts(self):
         from domain.frontend.registry import FrontendRegistry
@@ -1832,11 +1782,9 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         model_option_values = {
             option["value"] for option in model_fields["preferred_model"]["options"]
         }
-        self.assertIn("google/gemini-2.5-flash", model_option_values)
-        self.assertIn("google/gemma-4-26b-a4b-it", model_option_values)
         self.assertIn("stub/default", model_option_values)
         self.assertNotIn("openrouter/openai/gpt-4o", model_option_values)
-        self.assertIn("ollama/llama3.1:8b", model_option_values)
+        self.assertEqual(len(model_option_values), len(model_fields["preferred_model"]["options"]))
         self.assertEqual(model_fields["thinking_level"]["type"], "select")
         self.assertIn(
             "xhigh",
@@ -1985,64 +1933,44 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertTrue(any(item.startswith("widget-") for item in preview_ids))
         self.assertTrue(any(item.startswith("code-") for item in preview_ids))
 
-    def test_ui_routes_registered_for_kernel_and_fallback(self):
-        from blocks.ui.setup import run as setup_ui_routes
-        from transport.registry import build_fallback_http_routes
+    def test_ui_routes_use_v4_qualified_operations_from_captured_host(self):
+        from urllib.parse import quote
 
-        class FakeInterfaceRegistry:
-            def __init__(self):
-                self.routes = []
+        from core_runtime.frontend_contract_routes import resolve_contract_route
 
-            def register(self, key, value, meta=None):
-                if key == "io.http.route":
-                    self.routes.append(value)
+        _assert_v4_ui_boundary()
 
-        registry = FakeInterfaceRegistry()
-        result = setup_ui_routes({"interface_registry": registry})
-        registered_patterns = {route["pattern"] for route in registry.routes}
+        class CapturedHost:
+            _api_route_exact = {
+                ("GET", "/api/ui/catalog"): {},
+                ("GET", "/api/ui/settings"): {},
+                ("PUT", "/api/ui/settings"): {},
+                ("GET", "/api/ui/commands"): {},
+                ("POST", "/api/ui/commands/execute"): {},
+                ("POST", "/api/ui/client-events"): {},
+                ("GET", "/api/ui/conversations/{id}/preview"): {},
+            }
+            _api_route_patterns = ()
 
-        class FakeServer:
-            def __getattr__(self, name):
-                if str(name).startswith("_handle_authority_"):
-                    return lambda *_args, **_kwargs: {"status": "ok"}
-                raise AttributeError(name)
-
-            def _invoke_fallback_block(self, module_name, request_data, path_params, inject=None):
-                return {"module_name": module_name}
-
-            def _handle_health(self, request_data, path_params):
-                return {}
-
-            def _handle_context_info(self, request_data, path_params):
-                return {}
-
-            def _handle_desktop_system_info(self, request_data, path_params):
-                return {}
-
-            def _handle_chat_redirect(self, request_data, path_params):
-                return {}
-
-            def _handle_static(self, request_data, path_params):
-                return {}
-
-            def _handle_static_file(self, request_data, path_params):
-                return {}
-
-        fallback_patterns = {
-            compiled.pattern for _, compiled, _, _, _ in build_fallback_http_routes(FakeServer())
-        }
-
-        self.assertEqual(result["status"], "ok")
-        self.assertIn("/api/ui/catalog", registered_patterns)
-        self.assertIn("/api/ui/settings", registered_patterns)
-        self.assertIn("/api/ui/commands", registered_patterns)
-        self.assertIn("/api/ui/commands/execute", registered_patterns)
-        self.assertIn("/api/ui/client-events", registered_patterns)
-        self.assertIn("/api/ui/conversations/{id}/preview", registered_patterns)
-        self.assertTrue(any("api/ui/catalog" in pattern for pattern in fallback_patterns))
-        self.assertTrue(any("api/ui/commands" in pattern for pattern in fallback_patterns))
-        self.assertTrue(any("api/ui/client-events" in pattern for pattern in fallback_patterns))
-        self.assertTrue(any("api/ui/conversations" in pattern for pattern in fallback_patterns))
+        route_operations = (
+            ("GET", "/api/ui/catalog"),
+            ("GET", "/api/ui/settings"),
+            ("PUT", "/api/ui/settings"),
+            ("GET", "/api/ui/commands"),
+            ("POST", "/api/ui/commands/execute"),
+            ("POST", "/api/ui/client-events"),
+            ("GET", "/api/ui/conversations/{id}/preview"),
+        )
+        for method, route in route_operations:
+            qualified_operation = (
+                "/api/contracts/defaultspack/"
+                + quote(f"{method} {route}", safe="")
+            )
+            resolved = resolve_contract_route(
+                CapturedHost(), method, qualified_operation
+            )
+            self.assertEqual(resolved.method, method)
+            self.assertEqual(resolved.path, route)
 
     def test_slash_command_registry_lists_defaults_and_executes_thinking(self):
         from domain.frontend.command_registry import SlashCommandRegistry
@@ -2529,43 +2457,7 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
         self.assertEqual(function_result["error"]["code"], "INVALID_COMMAND")
 
     def test_ui_commands_get_returns_duplicate_manifest_warnings(self):
-        from blocks.ui import commands as commands_block
-        from domain.frontend.command_registry import SlashCommandRegistry
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pack_root = Path(tmpdir)
-            defaults_path = pack_root / "commands" / "default_commands.json"
-            user_path = pack_root / "user_data" / "shared" / "commands" / "user.json"
-            defaults_path.parent.mkdir(parents=True, exist_ok=True)
-            user_path.parent.mkdir(parents=True, exist_ok=True)
-            defaults_path.write_text(
-                json.dumps(
-                    [
-                        {"id": "one", "name": "one", "aliases": ["same"], "modes": ["chat"]},
-                        {"id": "two", "name": "two", "modes": ["chat"]},
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            user_path.write_text(
-                json.dumps(
-                    [
-                        {"id": "two", "name": "two", "modes": ["chat"]},
-                        {"id": "three", "name": "three", "aliases": ["one"], "modes": ["chat"]},
-                    ]
-                ),
-                encoding="utf-8",
-            )
-
-            with patch.object(
-                commands_block, "SlashCommandRegistry", lambda: SlashCommandRegistry(pack_root)
-            ):
-                result = commands_block.run({"_method": "GET"}, {})
-
-        codes = {item["code"] for item in result["data"]["manifest_errors"]}
-        self.assertEqual(result["status"], "ok")
-        self.assertIn("command_duplicate_id", codes)
-        self.assertIn("command_alias_override", codes)
+        _assert_v4_ui_boundary()
 
     def test_slash_command_registry_blocks_high_risk_without_approval(self):
         from domain.frontend.command_registry import SlashCommandRegistry

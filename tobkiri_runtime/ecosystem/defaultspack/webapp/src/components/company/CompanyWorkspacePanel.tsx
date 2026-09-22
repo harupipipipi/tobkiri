@@ -28,7 +28,7 @@ type CompanyTab = "tasks" | "channels" | "agents" | "routes" | "settings" | "p2p
 const TABS: Array<{ id: CompanyTab; label: string; icon: typeof ClipboardList }> = [
   { id: "tasks", label: "Tasks", icon: ClipboardList },
   { id: "channels", label: "Channels", icon: MessageSquare },
-  { id: "agents", label: "Employees", icon: Bot },
+  { id: "agents", label: "Agents", icon: Bot },
   { id: "routes", label: "Routes", icon: Route },
   { id: "settings", label: "Settings", icon: Settings },
   { id: "p2p", label: "P2P", icon: Share2 },
@@ -235,7 +235,7 @@ function researchSources(value: unknown): Array<Record<string, unknown>> {
 
 function researchTaskDescription(query: string, sources: Array<Record<string, unknown>>): string {
   const lines = [
-    "Deep research request delegated from the president chat.",
+    "Deep research request delegated from the Main Agent chat.",
     `Search query: ${query}`,
   ];
   if (sources.length > 0) {
@@ -283,7 +283,7 @@ function mergeCompanyRecords(primary: CompanyRecord | null, fallback: CompanyRec
 
 function companyNameFromId(companyId: string): string {
   if (companyId === MIMO_CODING_COMPANY_ID) return "MiMo Coding Company";
-  if (companyId === OPERATIONS_COMPANY_ID) return "Rumi Operations Company";
+  if (companyId === OPERATIONS_COMPANY_ID) return "Tobkiri Operations Team";
   return companyId
     .split("-")
     .filter(Boolean)
@@ -586,7 +586,7 @@ export function CompanyWorkspacePanel({
 
   const renderTab = () => {
     if (!activeCompanyId && activeTab !== "p2p") {
-      return <div className="p-3 text-[12px] text-zinc-500">Start or send a chat message to create its employee group.</div>;
+      return <div className="p-3 text-[12px] text-zinc-500">Start or send a chat message to create its Subagent Team.</div>;
     }
     switch (activeTab) {
       case "channels":
@@ -691,9 +691,9 @@ export function CompanyWorkspacePanel({
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-[#0a0a0c] text-zinc-300">
       <div className="border-b border-zinc-800/60 px-3 py-2">
-        <p className="truncate text-[13px] font-medium text-zinc-100">Employees</p>
+        <p className="truncate text-[13px] font-medium text-zinc-100">Main Agent &amp; Subagents</p>
         <p className="truncate text-[10px] text-zinc-600">
-          {activeConversationTitle || activeConversationId || activeCompany?.name || "start a chat to create employees"}
+          {activeConversationTitle || activeConversationId || activeCompany?.name || "start a chat to create a Subagent Team"}
         </p>
         {(activeCompany?.id || activeCompanyId) && (
           <p
@@ -717,7 +717,7 @@ export function CompanyWorkspacePanel({
         activeCompanyId={activeCompanyId}
         activeTaskCount={Math.max(tasks.length, activeCompany?.task_count ?? 0)}
         busy={busy}
-        emptyMessage={hasActiveConversation ? "No employee group loaded." : "Start or send a chat message to create its employee group."}
+        emptyMessage={hasActiveConversation ? "No Subagent Team loaded." : "Start or send a chat message to create its Subagent Team."}
         onSelect={(companyId) => void loadCompany(companyId)}
         onBootstrap={hasActiveConversation ? () => void run(() => companyResources.bootstrapCompanyWorkspace(
           {
@@ -756,7 +756,7 @@ export function CompanyWorkspacePanel({
       {isMoreMenuOpen && (
         <button
           type="button"
-          aria-label="Close employee workspace options"
+          aria-label="Close Subagent Team options"
           className="fixed inset-0 rumi-layer-panel cursor-default bg-transparent"
           onClick={() => setIsMoreMenuOpen(false)}
         />
@@ -786,7 +786,7 @@ export function CompanyWorkspacePanel({
         )}
         <button
           type="button"
-          aria-label="Employee workspace options"
+          aria-label="Subagent Team options"
           aria-haspopup="menu"
           aria-expanded={isMoreMenuOpen}
           onClick={() => setIsMoreMenuOpen((open) => !open)}
@@ -795,7 +795,7 @@ export function CompanyWorkspacePanel({
               ? "border-zinc-600 bg-zinc-100 text-zinc-950"
               : "border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:text-zinc-100"
           }`}
-          title="Employee workspace options"
+          title="Subagent Team options"
         >
           <Settings size={16} />
         </button>

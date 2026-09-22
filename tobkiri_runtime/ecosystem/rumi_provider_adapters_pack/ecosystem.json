@@ -1,32 +1,75 @@
 {
-  "pack_id": "rumi_provider_adapters_pack",
-  "pack_identity": "rumi:ecosystem/rumi_provider_adapters_pack",
-  "display_name": "Rumi Provider Adapters Pack",
-  "version": "1.0.0",
-  "description": "Provider-neutral HTTP protocol execution over registry state and scoped credentials.",
-  "dependencies": {},
   "connectivity": {
-    "requires": [
-      "rumi.resource.ai.provider.registry.v1",
-      "rumi.service.credential.resolve.v1"
-    ],
     "provides": [
-      "rumi.service.ai.provider.generate.v1",
-      "rumi.service.ai.provider.stream.v1",
       "rumi.service.ai.provider.embedding.v1",
-      "rumi.service.ai.provider.image.v1"
+      "rumi.service.ai.provider.generate.v1",
+      "rumi.service.ai.provider.image.v1",
+      "rumi.service.ai.provider.stream.v1"
+    ],
+    "requires": [
+      "rumi.resource.ai.provider.registry.v1"
     ]
   },
-  "required_secrets": [],
-  "required_capabilities": ["ai.provider.generate", "ai.provider.stream", "ai.provider.embedding", "ai.provider.image"],
-  "required_network": {"allowed_domains": ["registry-selected"], "allowed_ports": [80, 443]},
+  "dependencies": {},
+  "description": "Provider-neutral protocol execution using scoped global resources.",
+  "display_name": "Rumi Provider Adapters",
   "host_execution": true,
-  "resources": [],
-  "provenance": {"content_hash": "sha256:586608639869c3a9f37d9283dfed48d295180fc1f9559a44670474d413bf82df", "build_identity": "rumi-provider-adapters-pack:1.0.0", "trust_class": "local", "signature": null},
   "metadata": {
     "authoritative_owner": true,
-    "owner_surfaces": ["provider_protocol_execution"],
-    "integrity": {"artifact_manifest": "artifact-manifest.json"},
-    "security": {"environment_secret_injection": false, "opaque_credentials_only": true, "registry_selected_endpoints_only": true, "provider_pack_id_branches": false}
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:f1bd846662e32899413ef6e971a96fca2ff5da322d7c9c1d79bfb510de23c029",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:923b6baa2c4a19aad2e33895787bb62671fc08d9c37e0e4acf8c4a4d7bda3722"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:923b6baa2c4a19aad2e33895787bb62671fc08d9c37e0e4acf8c4a4d7bda3722"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "provider_protocol_execution"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "environment_secret_injection": false,
+      "opaque_credentials_only": true,
+      "provider_pack_id_branches": false,
+      "registry_selected_endpoints_only": true
+    }
+  },
+  "pack_id": "rumi_provider_adapters_pack",
+  "pack_identity": "rumi:ecosystem/rumi_provider_adapters_pack",
+  "provenance": {
+    "build_identity": "rumi_provider_adapters_pack:1.0.0",
+    "content_hash": "sha256:7dd19b90171d18fea7b2e0f7f787b8140823b38461c7c05e3c7fd850fbf48794",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.provider.embedding",
+    "ai.provider.generate",
+    "ai.provider.image",
+    "ai.provider.stream"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
   }
 }

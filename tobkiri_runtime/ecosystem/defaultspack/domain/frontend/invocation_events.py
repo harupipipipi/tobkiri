@@ -5,7 +5,7 @@ import os
 import re
 import sqlite3
 import threading
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -89,7 +89,7 @@ class InvocationEventStore:
         self._initialize()
         _restrict_sqlite_files(self.path)
         self.prune(
-            before=(datetime.now(UTC) - timedelta(days=retention_days)).isoformat(),
+            before=(datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat(),
             terminal_only=True,
         )
 
@@ -115,7 +115,7 @@ class InvocationEventStore:
         encoded = _canonical_json(redacted_payload)
         if len(encoded.encode("utf-8")) > self.max_payload_bytes:
             raise InvocationEventError("event payload exceeds the configured size limit")
-        occurred_at = timestamp or datetime.now(UTC).isoformat()
+        occurred_at = timestamp or datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             if owner_key is None:
@@ -203,7 +203,7 @@ class InvocationEventStore:
         encoded = _canonical_json(redacted_payload)
         if len(encoded.encode("utf-8")) > self.max_payload_bytes:
             raise InvocationEventError("event payload exceeds the configured size limit")
-        occurred_at = datetime.now(UTC).isoformat()
+        occurred_at = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
@@ -255,7 +255,7 @@ class InvocationEventStore:
     ) -> bool:
         """Atomically claim one approval continuation."""
 
-        current = datetime.now(UTC)
+        current = datetime.now(timezone.utc)
         now = current.isoformat()
         stale_before = (current - timedelta(seconds=self.lease_seconds)).isoformat()
         with self._lock, self._connect() as connection:
@@ -306,7 +306,7 @@ class InvocationEventStore:
             raise InvocationEventError(
                 "invocation result exceeds the configured size limit"
             )
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as connection:
             expected = sorted(expected_states or [])
             state_clause = (
@@ -350,9 +350,9 @@ class InvocationEventStore:
         """Recover an abandoned lease without repeating an uncertain side effect."""
 
         cutoff = (
-            datetime.now(UTC) - timedelta(seconds=self.lease_seconds)
+            datetime.now(timezone.utc) - timedelta(seconds=self.lease_seconds)
         ).isoformat()
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         unknown_result = _canonical_json(
             {
                 "api_version": "tobkiri.commands/v1",
@@ -409,7 +409,7 @@ class InvocationEventStore:
         expected_state: str,
         lease_id: str | None = None,
     ) -> bool:
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         lease_clause = "AND lease_id = ?" if lease_id is not None else ""
         parameters: list[Any] = [
             now,

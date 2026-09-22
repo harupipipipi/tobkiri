@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -169,23 +170,24 @@ def test_operating_profile_activate_honors_route_id_without_body_profile(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
-    from core_runtime import startup_profiles
     from domain.adaptive.service import dispatch
 
-    activated: dict[str, str] = {}
-
-    class FakeStartupProfileManager:
-        def activate_profile(self, profile_id: str) -> dict[str, str]:
-            activated["profile_id"] = profile_id
-            return {"profile_id": profile_id, "activated": True}
-
-    monkeypatch.setattr(startup_profiles, "StartupProfileManager", FakeStartupProfileManager)
+    active = SimpleNamespace(
+        activation={"activation_id": "activation:defaults-test"},
+        resolved=SimpleNamespace(
+            profile={"profile_id": "defaults"},
+            plan={"plan_digest": "sha256:" + "1" * 64},
+        ),
+    )
+    monkeypatch.setattr(
+        "core_runtime.bootstrap.profile_capture.capture_default_profile",
+        lambda: active,
+    )
 
     result = dispatch("operating_profiles_activate", {"id": "route-profile"}, {})
 
-    assert result["status"] == "ok"
-    assert activated == {"profile_id": "route-profile"}
-    assert result["data"]["profile_id"] == "route-profile"
+    assert result["status"] == "error"
+    assert result["code"] == "PROFILE_NOT_FOUND"
 
 
 def test_adaptive_freeze_blocks_real_tool_and_public_function_dispatch(
@@ -241,7 +243,9 @@ def test_adaptive_freeze_blocks_real_tool_and_public_function_dispatch(
 
 
 def test_active_operating_profile_denies_tool_and_public_function_dispatch(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    defaultspack_capability_plan_context,
 ) -> None:
     monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path))
     from core_runtime.operating_profile import OperatingProfilePlanStore, compile_operating_profile
@@ -267,10 +271,18 @@ def test_active_operating_profile_denies_tool_and_public_function_dispatch(
     executor = ToolExecutor()
     executor._registry = Registry()
     monkeypatch.setattr(executor, "_execute_local", must_not_run)
+    capability_context = defaultspack_capability_plan_context(
+        "coding_terminal_exec",
+        _tool_definitions={"coding_terminal_exec": {"schema": {}}},
+    )
     tool_result = executor.execute(
         "coding_terminal_exec",
         {"command": "echo denied"},
-        {"profile_id": "coding", "_tool_server_approved": True},
+        {
+            **capability_context,
+            "profile_id": "coding",
+            "_tool_server_approved": True,
+        },
     )
     assert tool_result["is_error"] is True
     assert tool_result["adaptive_policy"]["code"] == "ADAPTIVE_PROFILE_DENIED"
@@ -296,25 +308,16 @@ def test_adaptive_guard_splits_git_commit_push_and_merge_actions() -> None:
 
 
 def test_adaptive_generated_functions_register_into_shared_registry() -> None:
-    from core_runtime.function_registry import FunctionRegistry
-    from domain.function_runtime.bridge import ensure_defaultspack_functions_registered
+    from tests.legacy_authority_contracts import (
+        assert_profile_resolver_requires_authority_snapshot,
+        assert_retired_module_absent,
+    )
+    from tests.v4_batch_support import assert_legacy_registry_fails_closed
 
-    registry = FunctionRegistry()
-
-    class Container:
-        def get_or_none(self, name: str):
-            if name == "function_registry":
-                return registry
-            return None
-
-    registered = ensure_defaultspack_functions_registered(Container())
-    entry = registry.get("defaultspack:adaptive_onboarding_status")
-
-    assert registered > 0
-    assert entry is not None
-    assert entry.entrypoint == "main.py:run"
-    assert entry.function_dir.name == "adaptive_onboarding_status"
-    assert entry.manifest["extensions"]["defaultspack"]["block_module"] == "blocks.adaptive"
+    assert_retired_module_absent("core_runtime.function_registry")
+    assert_retired_module_absent("domain.function_runtime.bridge")
+    assert_legacy_registry_fails_closed()
+    assert_profile_resolver_requires_authority_snapshot()
 
 
 def test_adaptive_function_route_defaults_ignore_client_operation_override(
@@ -510,6 +513,8 @@ def test_prepared_actions_redact_secret_and_lease_roundtrip(tmp_path, monkeypatc
 def test_adaptive_leases_gate_coding_file_and_worktree_mutations(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from tests._coding_contract_fixture import bind_verified_coding_contracts
+
     monkeypatch.setenv("RUMI_USER_DATA", str(tmp_path / "user_data"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CODING_WORKSPACE_STORE_PATH", str(tmp_path / "workspaces.json"))
 
@@ -522,6 +527,7 @@ def test_adaptive_leases_gate_coding_file_and_worktree_mutations(
     workspace = tmp_path / "repo"
     workspace.mkdir()
     WorkspaceStore().create(workspace, workspace_id="ws1", trusted=True)
+    bind_verified_coding_contracts(monkeypatch, workspace, workspace_id="ws1")
 
     lease = dispatch(
         "lease_acquire",
@@ -544,12 +550,14 @@ def test_adaptive_leases_gate_coding_file_and_worktree_mutations(
     assert blocked["status"] == "error"
     assert blocked["error"]["code"] == "ADAPTIVE_LEASE_HELD"
     assert not (workspace / "src" / "App.tsx").exists()
+    (workspace / "src").mkdir()
+    (workspace / "src" / "App.tsx").write_text("", encoding="utf-8")
 
     allowed = file_write_run(
         {"profile_id": "coding", "workspace_id": "ws1", "path": "src/App.tsx", "content": "ok"},
         _approved_tool_context(profile_id="coding", principal_id="agent-a"),
     )
-    assert allowed["status"] == "ok"
+    assert allowed["status"] == "ok", allowed
     assert (workspace / "src" / "App.tsx").read_text(encoding="utf-8") == "ok"
 
     blocked_commit = git_commit_run(
@@ -590,6 +598,31 @@ def test_adaptive_leases_gate_coding_file_and_worktree_mutations(
     assert not (workspace / "docs" / "notes.txt").exists()
 
 
+def test_coding_mutation_requests_approval_before_resolving_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from blocks.coding.file_write import run as file_write_run
+
+    def unexpected_resolution(*_args, **_kwargs):
+        raise AssertionError("workspace resolution must follow approval")
+
+    monkeypatch.setattr(
+        "blocks.coding.file_write.canonical_mutation_guard",
+        unexpected_resolution,
+    )
+    result = file_write_run(
+        {
+            "workspace_id": "not-yet-resolved",
+            "path": "src/App.tsx",
+            "content": "pending approval",
+        },
+        {},
+    )
+
+    assert result["status"] == "ok"
+    assert result["data"]["approval_required"] is True
+
+
 def test_adaptive_pack_skill_automation_and_event_state_are_not_placeholders(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -611,16 +644,14 @@ def test_adaptive_pack_skill_automation_and_event_state_are_not_placeholders(
     )
     assert recommendations["status"] == "ok"
     assert "degraded" not in recommendations["data"]
-    recommended_pack_ids = {item["pack_id"] for item in recommendations["data"]["recommendations"]}
-    assert recommended_pack_ids >= {
-        "defaultspack",
-        "rumi_default_tools_pack",
-        "rumi_local_agent_pack",
-        "rumi_code_ide_pack",
-        "rumi_workflow_scheduler_pack",
-    }
-    assert all(item["source"] == "setup_pack" for item in recommendations["data"]["recommendations"])
-    assert all(item["setup_pack_id"] == item["pack_id"] for item in recommendations["data"]["recommendations"])
+    # Legacy Setup Pack recommendation authority is retired. Pack discovery and
+    # selection now come from the finite v4 Host Pack Control catalog, so this
+    # compatibility endpoint must not synthesize recommendations from mutable
+    # setup state or legacy ecosystem manifests.
+    assert recommendations["data"]["recommendations"] == []
+    assert recommendations["data"]["pack_recommendations"] == []
+    assert recommendations["data"]["count"] == 0
+    assert recommendations["data"]["local_only"] is True
 
     prepared = dispatch(
         "prepared_action_prepare",

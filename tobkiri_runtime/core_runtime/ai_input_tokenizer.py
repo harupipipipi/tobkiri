@@ -78,7 +78,7 @@ def apply_tokenizer_to_ai_input_response(
     if not model_profile_id and not model:
         return response
     payload = copy.deepcopy(response)
-    effective = payload.get("effective_input") if isinstance(payload.get("effective_input"), dict) else {}
+    effective = _dict_value(payload.get("effective_input"))
     profile_catalog = profiles if isinstance(profiles, list) else _profile_catalog()
     summary_metadata = tokenizer_metadata(model_profile_id=model_profile_id, model=model, profiles=profile_catalog)
     by_port: dict[str, int] = {}
@@ -91,7 +91,7 @@ def apply_tokenizer_to_ai_input_response(
         ("tools", "tool_schemas"),
     ):
         total = 0
-        for segment in effective.get(key) if isinstance(effective.get(key), list) else []:
+        for segment in _list_value(effective.get(key)):
             if not isinstance(segment, dict):
                 continue
             counted = _count_segment_tokens(
@@ -112,9 +112,9 @@ def apply_tokenizer_to_ai_input_response(
                 by_node[segment_id] = tokens
         by_port[port] = total
 
-    policy = effective.get("policy") if isinstance(effective.get("policy"), dict) else {}
+    policy = _dict_value(effective.get("policy"))
     policy_total = 0
-    for segment in policy.get("segments") if isinstance(policy.get("segments"), list) else []:
+    for segment in _list_value(policy.get("segments")):
         if not isinstance(segment, dict):
             continue
         counted = _count_segment_tokens(
@@ -135,7 +135,7 @@ def apply_tokenizer_to_ai_input_response(
             by_node[segment_id] = tokens
     by_port["policy"] = policy_total
 
-    for segment in effective.get("disabled_segments") if isinstance(effective.get("disabled_segments"), list) else []:
+    for segment in _list_value(effective.get("disabled_segments")):
         if not isinstance(segment, dict):
             continue
         counted = _count_segment_tokens(
@@ -150,7 +150,7 @@ def apply_tokenizer_to_ai_input_response(
         else:
             segment["tokenizer"] = summary_metadata
 
-    token_estimate = payload.get("token_estimate") if isinstance(payload.get("token_estimate"), dict) else {}
+    token_estimate = _dict_value(payload.get("token_estimate"))
     token_estimate["by_port"] = by_port
     token_estimate["by_node"] = dict(sorted(by_node.items(), key=lambda item: item[1], reverse=True))
     token_estimate["total"] = sum(by_port.values())
@@ -172,7 +172,7 @@ def apply_tokenizer_to_prompt_usage(
     profile_catalog = profiles if isinstance(profiles, list) else _profile_catalog()
     summary_metadata = tokenizer_metadata(model_profile_id=model_profile_id, model=model, profiles=profile_catalog)
     by_port: dict[str, int] = {}
-    for segment in payload.get("segments") if isinstance(payload.get("segments"), list) else []:
+    for segment in _list_value(payload.get("segments")):
         if not isinstance(segment, dict):
             continue
         counted = _count_segment_tokens(
@@ -189,7 +189,7 @@ def apply_tokenizer_to_prompt_usage(
         if segment.get("status") == "active":
             port = str(segment.get("port") or "system")
             by_port[port] = by_port.get(port, 0) + _int(segment.get("tokens"))
-    token_estimate = payload.get("token_estimate") if isinstance(payload.get("token_estimate"), dict) else {}
+    token_estimate = _dict_value(payload.get("token_estimate"))
     if by_port:
         token_estimate["by_port"] = by_port
         token_estimate["total"] = sum(by_port.values())
@@ -315,7 +315,7 @@ def _borrow_tokenizer_for_same_model(
 
 def _counter_from_config(config: Any) -> TokenCounter | None:
     if callable(config):
-        return lambda text: max(0, int(config(text)))
+        return _callable_counter(config)
     if isinstance(config, str):
         config = {"tokenizer_id": config}
     if not isinstance(config, dict):
@@ -323,14 +323,14 @@ def _counter_from_config(config: Any) -> TokenCounter | None:
     for key in ("count_tokens", "token_count", "counter"):
         counter = config.get(key)
         if callable(counter):
-            return lambda text, counter=counter: max(0, int(counter(text)))
+            return _callable_counter(counter)
     kind = str(config.get("kind") or config.get("type") or "").strip().lower()
     chars_per_token = _float_value(config.get("characters_per_token") or config.get("chars_per_token"))
     if chars_per_token and chars_per_token > 0:
-        return lambda text, divisor=chars_per_token: math.ceil(len(text) / divisor) if text else 0
+        return _characters_counter(chars_per_token)
     bytes_per_token = _float_value(config.get("bytes_per_token"))
     if bytes_per_token and bytes_per_token > 0:
-        return lambda text, divisor=bytes_per_token: math.ceil(len(text.encode("utf-8")) / divisor) if text else 0
+        return _bytes_counter(bytes_per_token)
     if kind in {"whitespace", "word", "words"}:
         return lambda text: len(re.findall(r"\S+", text))
     encoding_name = str(config.get("encoding") or config.get("tokenizer_id") or "").strip()
@@ -496,6 +496,40 @@ def _float_value(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    """Return a JSON object value, or an empty object for another shape."""
+    return value if isinstance(value, dict) else {}
+
+
+def _list_value(value: Any) -> list[Any]:
+    """Return a JSON array value, or an empty array for another shape."""
+    return value if isinstance(value, list) else []
+
+
+def _callable_counter(callback: Callable[[str], object]) -> TokenCounter:
+    def count(text: str) -> int:
+        value = callback(text)
+        if not isinstance(value, (str, bytes, bytearray, int, float)):
+            raise TypeError("token counter must return a numeric value")
+        return max(0, int(value))
+
+    return count
+
+
+def _characters_counter(divisor: float) -> TokenCounter:
+    def count(text: str) -> int:
+        return math.ceil(len(text) / divisor) if text else 0
+
+    return count
+
+
+def _bytes_counter(divisor: float) -> TokenCounter:
+    def count(text: str) -> int:
+        return math.ceil(len(text.encode("utf-8")) / divisor) if text else 0
+
+    return count
 
 
 def _int(value: Any) -> int:

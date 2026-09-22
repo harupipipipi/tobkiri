@@ -1,0 +1,57 @@
+{
+  "dependencies": {},
+  "description": "Finite read-only host-brokered access to the committed Pack catalog.",
+  "display_name": "Tobkiri Host Pack Control",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:fffbf39da451dd066338191b891e85667f25acfb2099eb6257baf75deb032777",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:2d568d178c7f9f6b790fc6224e3311f21e88c94cb3d44b7a06cb5b132f1a76fa"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:2d568d178c7f9f6b790fc6224e3311f21e88c94cb3d44b7a06cb5b132f1a76fa"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "pack_catalog_read"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "ambient_authority": false,
+      "mutation_operations": false,
+      "profile_snapshot_bound": true
+    }
+  },
+  "pack_id": "tobkiri_host_pack_control",
+  "pack_identity": "tobkiri:ecosystem/tobkiri_host_pack_control",
+  "provenance": {
+    "build_identity": "tobkiri_host_pack_control:1.0.0",
+    "content_hash": "sha256:fffbf39da451dd066338191b891e85667f25acfb2099eb6257baf75deb032777",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "pack.catalog.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

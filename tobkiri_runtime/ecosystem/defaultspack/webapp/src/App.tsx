@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Cloud, Copy, Download, Hand, Link, Loader2, X } from "lucide-react";
 
 import {
@@ -26,6 +26,10 @@ import {
   type TransientAlertTone,
 } from "./components/TransientAlert";
 import { WarmActionIcon } from "./components/WarmActionIcon";
+import {
+  TobkiriLoadingScreen,
+  type TobkiriLoadingStep,
+} from "./components/TobkiriLoadingScreen";
 import { SubagentTeamWorkspace } from "./subagentTeam";
 import {
   DEFAULT_WORKSPACE_TAB_ID,
@@ -48,9 +52,15 @@ import { ConversationShareLanding, ImportedConversationNotice } from "./pages/Co
 import type { ChatGroup, ChatItem, HistoryBoardNewTaskOptions } from "./components/HistoryBoard";
 import type { ToolPreviewItem, ToolPreviewMode } from "./components/ToolPreview";
 import { buildToolPreviewDisplayItems, hasCanvasItems } from "./components/ToolPreview";
-import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackUrlWithLocalAuth, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
+import { ChatStreamInterruptedError, api, composerCommandFeedbackTone, composerCommandResultMessage, defaultspackApiFetch, defaultspackCanonicalRouteKey, defaultspackContractRoute, defaultspackUrlWithLocalAuth, mergeComposerCommands, type ChatActivityEvent, type ChatContentBlock, type ChatMessage, type ChatStreamEvent, type ChatToolStreamEvent, type CodingWorkspaceRecord, type ComposerCommandExecuteResult, type ComposerCommandItem, type ComposerCommandMode, type ComposerWidgetAction, type Conversation, type ConversationSearchResult, type ConversationSteerItem, type KanbanBoardScope, type MimoCodingCompanyStatus, type ModelCommandCandidate, type ModelProfile, type OperationsCompanyStatus, type PromptUsageSummary, type ResolvedCommandCatalog, type SettingsSection, type SidebarAction, type SidebarItem, type ToolSelectionRequest, type ToolTarget, type UICatalog } from "./lib/api";
 import { applyCommandStateSnapshots, createCommandInvocationId } from "./lib/commandState";
 import type { ActionApprovalMode } from "./features/tools/ActionApprovalControl";
+import {
+  PROJECTS_CHANGED_EVENT,
+  loadProjects,
+  projectTaskContext,
+  type ProjectInfo,
+} from "./features/projects/projectStorage";
 import {
   filterModelProfilesBySelector,
   modelSelectorSchemaFromCatalog,
@@ -68,6 +78,7 @@ import { browserApprovalRuntimeContent, pendingBrowserApproval, pendingRuntimeAp
 import { browserApprovalViewModel, runtimeApprovalViewModel, type ApprovalViewModel } from "./lib/approvalPresentation";
 import { reduceBrowserStateFromEvents } from "./lib/browserState";
 import { deriveConversationTitle, formatRelativeTime, inspectConversationIntegrity, messageToText, orderConversationMessages } from "./lib/chat";
+import { isMessageScrollerNearBottom } from "./lib/chatScroll";
 import { loadConversationForRefresh, resolveSupersededConversationRedirect } from "./lib/chatRouteLoading";
 import { cn } from "./lib/cn";
 import { deleteCalendarScheduleBeforeLocalChange } from "./lib/calendarScheduleDeletion";
@@ -88,6 +99,7 @@ import {
   withComposerMentionSelectionOwnership,
 } from "./lib/composerWidgets";
 import { hasUnescapedMentionSyntax } from "./lib/mentionContract";
+import { fileToAttachment } from "./lib/attachments";
 import { toolGroupFor } from "./lib/toolUi";
 import type { ComposerEntityReference } from "./lib/composerReferences";
 import { conversationMatchesSpotlightFilter, conversationToSearchResult, type SpotlightFilter } from "./lib/conversationSpotlight";
@@ -115,6 +127,7 @@ import { hasShellRegion } from "./lib/uiShell";
 import { hasWorkspaceAttachment, workspaceFileToAttachment } from "./lib/workspaceAttachments";
 import { createWidgetConversationContext } from "./lib/widgetContext";
 import { promptResources } from "./features/prompts/resources/promptResources";
+import { manualRuntimeModeSelectionEnabled } from "./features/runtimeMode/runtimeMode";
 import { resolveDefaultspackRenderers } from "./renderers/defaultspackRenderers";
 import { RendererBoundary } from "./renderers/trustedRendererLoader";
 import type { AppMode, AttachedFile, ChatUiMessage, CodingContext, ComposerExtensionItem, ComposerModelStatusIndicator, ComposerSkillItem, ContextUsageInfo, DroppedWidget, SettingsLoadState, SettingsSaveState } from "./renderers/types";
@@ -127,6 +140,13 @@ type ComposerCandidateMenuState = {
 } | null;
 
 type BackendConnectionState = "online" | "degraded" | "offline";
+
+type CatalogRefreshResult = {
+  catalog: UICatalog | null;
+  ready: boolean;
+  degraded: boolean;
+  errorMessage: string | null;
+};
 
 type PendingMentionAttachmentRequest = {
   generation: number;
@@ -193,6 +213,16 @@ type SubmitOverride = {
 type RetryableSubmission = SubmitOverride & {
   errorMessage: string;
 };
+
+type ConversationScrollState = {
+  follow: boolean;
+  scrollTop: number;
+};
+
+// The shell may remount ChatApp while refreshing its resolved UI catalog.
+// Keep the user's reading position outside the component so a remount cannot
+// silently restore the default "follow bottom" behavior.
+const conversationScrollState = new Map<string, ConversationScrollState>();
 
 function toolIdsFromSelectionRequest(request: ToolSelectionRequest): string[] {
   const ids: string[] = [];
@@ -361,14 +391,14 @@ const fallbackExternalIoTemplates: ExternalIoTemplateRecord[] = [
     direction: "input",
     provider: "line",
     input_profile_id: "line.default",
-    endpoint: { id: "line-main", route: "/api/integrations/line/webhook" },
+    endpoint: { id: "line-main", route: defaultspackCanonicalRouteKey("api/integrations/line/webhook") },
   },
   {
     id: "line.input.computer_use",
     direction: "input",
     provider: "line",
     input_profile_id: "line.computer_use",
-    endpoint: { id: "line-main", route: "/api/integrations/line/webhook" },
+    endpoint: { id: "line-main", route: defaultspackCanonicalRouteKey("api/integrations/line/webhook") },
     response: { mode: "computer_use_line_biz" },
     response_prompt: { preset: "computer_use_line_biz" },
   },
@@ -377,21 +407,21 @@ const fallbackExternalIoTemplates: ExternalIoTemplateRecord[] = [
     direction: "input",
     provider: "discord",
     input_profile_id: "discord.default",
-    endpoint: { id: "discord-main", route: "/api/integrations/discord/interactions" },
+    endpoint: { id: "discord-main", route: defaultspackCanonicalRouteKey("api/integrations/discord/interactions") },
   },
   {
     id: "slack.input.default",
     direction: "input",
     provider: "slack",
     input_profile_id: "slack.default",
-    endpoint: { id: "slack-main", route: "/api/integrations/slack/events" },
+    endpoint: { id: "slack-main", route: defaultspackCanonicalRouteKey("api/integrations/slack/events") },
   },
   {
     id: "generic.input.default",
     direction: "input",
     provider: "generic",
     input_profile_id: "generic.webhook.default",
-    endpoint: { id: "generic-main", route: "/api/webhooks/inbound/{webhook_id}" },
+    endpoint: { id: "generic-main", route: defaultspackCanonicalRouteKey("api/webhooks/inbound/{webhook_id}") },
   },
   {
     id: "line.output.default",
@@ -2498,6 +2528,13 @@ function ChatApp() {
   const [requestedSettingsSectionId, setRequestedSettingsSectionId] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [startupError, setStartupError] = useState<string | null>(null);
+  const [startupSteps, setStartupSteps] = useState<TobkiriLoadingStep[]>([
+    { id: "backend", label: "バックエンドとの接続を確認しています…", status: "loading" },
+    { id: "capabilities", label: "ツール・スキル・@候補を読み込みます", status: "pending" },
+    { id: "commands", label: "/コマンド・モデル・設定を準備します", status: "pending" },
+    { id: "conversations", label: "会話とワークスペースを復元します", status: "pending" },
+  ]);
   const [error, setError] = useState<string | null>(null);
   const [transientAlert, setTransientAlert] = useState<TransientAlertItem | null>(null);
   const transientAlertSequenceRef = useRef(0);
@@ -2546,8 +2583,11 @@ function ChatApp() {
   const [codingWorkspaces, setCodingWorkspaces] = useState<CodingWorkspaceRecord[]>([]);
   const [selectedCodingWorkspaceId, setSelectedCodingWorkspaceId] = useState<string | null>(null);
   const [pendingNewTaskContext, setPendingNewTaskContext] = useState<PendingNewTaskContext | null>(null);
+  const [projects, setProjects] = useState<ProjectInfo[]>(() => loadProjects());
   const [codingDirectory, setCodingDirectory] = useState(".");
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
+  const workspaceFileDragDepthRef = useRef(0);
   const [pendingMentionAttachmentPaths, setPendingMentionAttachmentPaths] = useState<string[]>([]);
   const [droppedWidgets, setDroppedWidgets] = useState<DroppedWidget[]>([]);
   const [composerEntityReferences, setComposerEntityReferences] = useState<ComposerEntityReference[]>([]);
@@ -2555,6 +2595,8 @@ function ChatApp() {
   const pendingStorageKey = "rumi-pending-chat-requests";
   const [pendingRequests, setPendingRequests] = useLocalStorage<Record<string, PendingChatRequest>>(pendingStorageKey, {});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const shouldFollowMessagesRef = useRef(true);
   const isUnloadingRef = useRef(false);
   const humanOperatorAutoOpenedPreviewRef = useRef<string | null>(null);
   const currentAbortControllerRef = useRef<AbortController | null>(null);
@@ -2597,10 +2639,26 @@ function ChatApp() {
   ];
 
   useEffect(() => {
-    if (mode === "chat") {
+    const refreshProjects = () => setProjects(loadProjects());
+    window.addEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
+    window.addEventListener("storage", refreshProjects);
+    return () => {
+      window.removeEventListener(PROJECTS_CHANGED_EVENT, refreshProjects);
+      window.removeEventListener("storage", refreshProjects);
+    };
+  }, []);
+
+  const allowManualRuntimeModeSelection = manualRuntimeModeSelectionEnabled(settingsValues);
+
+  useEffect(() => {
+    if (
+      !allowManualRuntimeModeSelection
+      && mode !== "agent"
+      && window.location.pathname !== "/coding"
+    ) {
       setMode("agent");
     }
-  }, [mode, setMode]);
+  }, [allowManualRuntimeModeSelection, mode, setMode]);
 
   useEffect(() => {
     if (!shareDialogOpen) return;
@@ -3199,8 +3257,38 @@ function ChatApp() {
   }, [codingDirectory, effectiveWorkspaceId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isGenerating]);
+    if (!activeConversationId) {
+      shouldFollowMessagesRef.current = false;
+      return;
+    }
+    const saved = conversationScrollState.get(activeConversationId);
+    shouldFollowMessagesRef.current = saved?.follow ?? true;
+    if (!saved || saved.follow) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (messagesScrollRef.current) {
+        messagesScrollRef.current.scrollTop = saved.scrollTop;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeConversationId]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const scroller = messagesScrollRef.current;
+    if (!scroller) return;
+    const follow = isMessageScrollerNearBottom(scroller);
+    shouldFollowMessagesRef.current = follow;
+    if (activeConversationId) {
+      conversationScrollState.set(activeConversationId, {
+        follow,
+        scrollTop: scroller.scrollTop,
+      });
+    }
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!shouldFollowMessagesRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
+  }, [activeConversationId, messages, isGenerating]);
 
   useEffect(() => {
     const markUnloading = () => {
@@ -3407,7 +3495,7 @@ function ChatApp() {
     void refreshCatalog().catch(console.error);
   }
 
-  async function refreshCatalog() {
+  async function refreshCatalog(): Promise<CatalogRefreshResult | null> {
     const requestSequence = ++refreshCatalogSequenceRef.current;
     setSettingsLoadState({ status: "loading" });
     setModelProfilesLoadState({ status: "loading" });
@@ -3477,7 +3565,22 @@ function ChatApp() {
     if (defaultMode === "auto" || defaultMode === "manual") {
       setPreviewMode(defaultMode);
     }
-    return nextCatalog;
+    const fallbackCommandsAvailable = Boolean(nextCatalog?.commands?.length);
+    const commandReady = commandsResult.status === "fulfilled" || fallbackCommandsAvailable;
+    const readinessFailures = [
+      !nextCatalog ? "UIカタログ" : "",
+      settingsResult.status === "rejected" ? "設定" : "",
+      profilesResult.status === "rejected" ? "モデル" : "",
+      !commandReady ? "コマンド" : "",
+    ].filter(Boolean);
+    return {
+      catalog: nextCatalog,
+      ready: readinessFailures.length === 0,
+      degraded: commandsResult.status === "rejected" && fallbackCommandsAvailable,
+      errorMessage: readinessFailures.length > 0
+        ? `${readinessFailures.join("・")}の初期化を完了できませんでした。`
+        : null,
+    };
   }
 
   async function refreshOperationsStatus() {
@@ -3564,6 +3667,23 @@ function ChatApp() {
 
     async function bootstrap() {
       setIsLoading(true);
+      setStartupError(null);
+      setStartupSteps([
+        { id: "backend", label: "バックエンドとの接続を確認しています…", status: "loading" },
+        { id: "capabilities", label: "ツール・スキル・@候補を読み込みます", status: "pending" },
+        { id: "commands", label: "/コマンド・モデル・設定を準備します", status: "pending" },
+        { id: "conversations", label: "会話とワークスペースを復元します", status: "pending" },
+      ]);
+      const updateStartupStep = (
+        id: string,
+        status: TobkiriLoadingStep["status"],
+        label?: string,
+      ) => {
+        if (cancelled) return;
+        setStartupSteps((current) => current.map((step) => (
+          step.id === id ? { ...step, status, ...(label ? { label } : {}) } : step
+        )));
+      };
       const pendingConversationId = chatIdFromLocation();
       if (pendingConversationId && isPendingInLocation()) {
         // A reload can arrive through the pending URL after the transport has
@@ -3581,42 +3701,76 @@ function ChatApp() {
           recoveredFromLocation: true,
         });
       }
-      const shellBootstrap = Promise.all([refreshHealth("bootstrap"), refreshCatalog()])
-        .then(([, nextCatalog]) => {
-          if (cancelled) return;
+      const backendBootstrap = refreshHealth("bootstrap").then(() => {
+        updateStartupStep("backend", "ready", "バックエンドの接続状態を確認しました");
+      });
+      updateStartupStep("capabilities", "loading", "ツール・スキル・@候補を読み込んでいます…");
+      updateStartupStep("commands", "loading", "/コマンド・モデル・設定を読み込んでいます…");
+      const interfaceBootstrap = refreshCatalog()
+        .then(async (result) => {
+          if (cancelled) return null;
+          if (!result?.ready || !result.catalog) {
+            updateStartupStep("capabilities", "error", "ツール・スキル・@候補を準備できませんでした");
+            updateStartupStep("commands", "error", "/コマンド・モデル・設定を準備できませんでした");
+            throw new Error(
+              result?.errorMessage
+              ?? "インターフェース情報を取得できませんでした。バックエンド接続を確認してください。",
+            );
+          }
+          updateStartupStep("capabilities", "ready", "ツール・スキル・@候補を準備しました");
+          updateStartupStep(
+            "commands",
+            "ready",
+            result.degraded
+              ? "/コマンドを互換カタログから準備しました"
+              : "/コマンド・モデル・設定を準備しました",
+          );
           const statusRefreshes: Array<Promise<unknown>> = [];
-          if (hasOperationsProfile(nextCatalog)) {
+          if (hasOperationsProfile(result.catalog)) {
             statusRefreshes.push(refreshOperationsStatus());
           }
-          if (hasMimoCodingProfile(nextCatalog)) {
+          if (hasMimoCodingProfile(result.catalog)) {
             statusRefreshes.push(refreshMimoCodingStatus());
           }
           if (statusRefreshes.length > 0) {
-            return Promise.all(statusRefreshes);
+            await Promise.all(statusRefreshes);
           }
-          return undefined;
-        })
-        .catch((shellError) => {
-          if (!cancelled) console.error(shellError);
+          return result;
         });
+      updateStartupStep("conversations", "loading", "会話とワークスペースを復元しています…");
+      const conversationBootstrap = refreshConversations(null).then(() => {
+        updateStartupStep("conversations", "ready", "会話とワークスペースを復元しました");
+      });
       try {
+        const [, interfaceResult] = await Promise.all([
+          backendBootstrap,
+          interfaceBootstrap,
+          conversationBootstrap,
+        ]);
         if (!cancelled) {
-          await refreshConversations(null);
+          setIsLoading(false);
+          if (interfaceResult?.degraded) {
+            transientAlertSequenceRef.current += 1;
+            setTransientAlert({
+              id: `startup-degraded-${transientAlertSequenceRef.current}`,
+              message: "最新のコマンド経路を取得できなかったため、互換カタログを使用しています。",
+              tone: "warning",
+              durationMs: 6000,
+            });
+          }
         }
       } catch (bootstrapError) {
         if (!cancelled) {
-          setError(
-            bootstrapError instanceof Error
-              ? bootstrapError.message
-              : "defaultspack の読み込みに失敗しました。",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoading(false);
+          const message = bootstrapError instanceof Error
+            ? bootstrapError.message
+            : "起動準備を完了できませんでした。";
+          setStartupError(message);
+          setError(message);
+          setStartupSteps((current) => current.map((step) => (
+            step.status === "loading" ? { ...step, status: "error" } : step
+          )));
         }
       }
-      void shellBootstrap;
     }
 
     void bootstrap();
@@ -3853,6 +4007,41 @@ function ChatApp() {
 
   const handleHistoryGroupSelect = (group: ChatGroup) => {
     setActiveHistoryCompanyId(resolveCompanyWorkspaceHintFromGroup(group));
+  };
+
+  const handleComposerProjectSelect = (project: ProjectInfo | null) => {
+    const context = projectTaskContext(project);
+    if (!activeConversationId || !activeConversation) {
+      setPendingNewTaskContext(context);
+      if (project?.workspaceId) setSelectedCodingWorkspaceId(project.workspaceId);
+      return;
+    }
+
+    const metadata = { ...(activeConversation.metadata ?? {}) };
+    delete metadata.groupId;
+    if (project) {
+      metadata.group_id = project.id;
+      metadata.group_title = project.title;
+      if (project.workspaceId) metadata.workspace_id = project.workspaceId;
+      if (project.workspaceLabel) metadata.workspace_label = project.workspaceLabel;
+      if (project.workspaceRoot) metadata.workspace_root = project.workspaceRoot;
+      if (project.rumiDataPath) metadata.rumi_data_path = project.rumiDataPath;
+    } else {
+      delete metadata.group_id;
+      delete metadata.group_title;
+    }
+
+    setError(null);
+    void api.updateConversation(activeConversationId, {
+      group_id: project?.id ?? null,
+      metadata,
+    }).then((conversation) => {
+      setConversations((current) => current.map((item) => item.id === conversation.id ? { ...conversation, messages: [] } : item));
+      setActiveConversation(conversation);
+      if (project?.workspaceId) setSelectedCodingWorkspaceId(project.workspaceId);
+    }).catch((updateError) => {
+      setError(updateError instanceof Error ? updateError.message : "Project update failed.");
+    });
   };
 
   const closeSpotlight = () => {
@@ -4993,6 +5182,37 @@ function ChatApp() {
     setAttachedFiles((prev) => [...prev, ...files]);
   };
 
+  const handleWorkspaceFileDragEnter = (event: ReactDragEvent<HTMLElement>) => {
+    if (!isChatWorkspace || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    workspaceFileDragDepthRef.current += 1;
+    setIsWorkspaceFileDragActive(true);
+  };
+
+  const handleWorkspaceFileDragOver = (event: ReactDragEvent<HTMLElement>) => {
+    if (!isChatWorkspace || !event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleWorkspaceFileDragLeave = (event: ReactDragEvent<HTMLElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    workspaceFileDragDepthRef.current = Math.max(0, workspaceFileDragDepthRef.current - 1);
+    if (workspaceFileDragDepthRef.current === 0) setIsWorkspaceFileDragActive(false);
+  };
+
+  const handleWorkspaceFileDrop = (event: ReactDragEvent<HTMLElement>) => {
+    workspaceFileDragDepthRef.current = 0;
+    setIsWorkspaceFileDragActive(false);
+    if (event.defaultPrevented || event.dataTransfer.files.length === 0) return;
+    event.preventDefault();
+    void Promise.all(Array.from(event.dataTransfer.files).map(fileToAttachment))
+      .then(handleFileAttach)
+      .catch((attachmentError) => {
+        setError(attachmentError instanceof Error ? attachmentError.message : "ファイルを添付できませんでした。");
+      });
+  };
+
   const handleAtFileAttach = (path: string) => {
     const normalizedPath = path.trim();
     if (mode !== "coding" || !normalizedPath) return;
@@ -5102,7 +5322,7 @@ function ChatApp() {
   };
 
   const handleDirectorySelect = async () => {
-    const selected = await api.selectDirectory("New Group の保存先フォルダを選択");
+    const selected = await api.selectDirectory("Project に紐づける既存フォルダを選択");
     return selected.cancelled ? null : selected.path;
   };
 
@@ -5220,7 +5440,7 @@ function ChatApp() {
     }
 
     const method = (action.method ?? "GET").toUpperCase();
-    const result = await defaultspackApiFetch(action.endpoint, {
+    const result = await defaultspackApiFetch(defaultspackContractRoute(action.endpoint), {
       method,
       body: method === "GET" ? undefined : JSON.stringify(action.payload ?? {}),
     }).then((response) => response.json());
@@ -5311,12 +5531,13 @@ function ChatApp() {
         approvalToken = decision.token ?? "";
         settleBrowserApproval(currentApproval);
       }
-      await api.sendMessage(activeConversationId, "ユーザーが許可しました。承認済みの操作を踏まえて続行してください。", {
+      await api.streamMessage(activeConversationId, "ユーザーが許可しました。承認済みの操作を踏まえて続行してください。", {
         tool_choice: "required",
         tool_policy: {
           ...templatePolicyReferencePayload,
           action_approval_mode: actionApprovalMode,
-          ...((yoloMode || ultraYoloMode) ? { yolo_mode: true, allow_shell: true, allow_file_write: true, write_actions_require_approval: false } : {}),
+          // Delegated approval is reviewed server-side; only full access uses yolo.
+          ...(ultraYoloMode ? { yolo_mode: true, allow_shell: true, allow_file_write: true, write_actions_require_approval: false } : {}),
           ...(ultraYoloMode ? { full_access: true } : {}),
           ...(approvalWorkspace.workspaceId ? { workspace_id: approvalWorkspace.workspaceId } : {}),
           ...(effectiveDisabledToolIds.length ? { disabled_tools: effectiveDisabledToolIds } : {}),
@@ -5415,7 +5636,7 @@ function ChatApp() {
       setSettledRuntimeApprovalIds((ids) => (
         ids.includes(runtimeApproval.requestId) ? ids : [...ids, runtimeApproval.requestId].slice(-50)
       ));
-      await api.sendMessage(activeConversationId, "ユーザーが許可しました。承認済みの操作を続行してください。", {
+      await api.streamMessage(activeConversationId, "ユーザーが許可しました。承認済みの操作を続行してください。", {
         tool_choice: "required",
         tool_policy: {
           ...templatePolicyReferencePayload,
@@ -5847,7 +6068,7 @@ function ChatApp() {
         if (!isSafeLocalEndpoint(action.endpoint) || action.requires_approval) {
           throw new Error("この action は安全な /api/ endpoint ではないか、承認が必要なため直接実行できません。");
         }
-        result = await defaultspackApiFetch(action.endpoint, { method: action.method ?? "GET" }).then((response) => response.json());
+        result = await defaultspackApiFetch(defaultspackContractRoute(action.endpoint), { method: action.method ?? "GET" }).then((response) => response.json());
       } else {
         result = { item: item.id, action: action.id, status: "ready" };
       }
@@ -5895,6 +6116,13 @@ function ChatApp() {
     const attachmentsForSubmit = override?.attachments ?? attachedFiles;
     const requestedDroppedWidgets = override?.droppedWidgets ?? droppedWidgets;
     if ((!inputForSubmit.trim() && attachmentsForSubmit.length === 0) || isGenerating) return;
+    shouldFollowMessagesRef.current = true;
+    if (activeConversationId) {
+      conversationScrollState.set(activeConversationId, {
+        follow: true,
+        scrollTop: messagesScrollRef.current?.scrollTop ?? 0,
+      });
+    }
     setRetryableSubmission(null);
 
     const commandInput = override ? null : parseSlashCommandInput(inputForSubmit, effectiveCommandCatalog, { enabled: slashCommandsEnabled });
@@ -6634,6 +6862,16 @@ function ChatApp() {
     : {};
   const activeConversationGroupId = cleanOptionalString(activeConversation?.group_id)
     ?? cleanOptionalString(activeConversationMetadata.group_id ?? activeConversationMetadata.groupId);
+  const composerProjects = effectiveGroupId && !projects.some((project) => project.id === effectiveGroupId)
+    ? [{
+        id: effectiveGroupId,
+        title: cleanOptionalString(activeConversationMetadata.group_title ?? activeConversationMetadata.groupTitle) ?? effectiveGroupId,
+        workspaceId: activeConversationWorkspaceContext.workspaceId ?? null,
+        workspaceLabel: activeConversationWorkspaceContext.workspaceLabel ?? null,
+        workspaceRoot: activeConversationWorkspaceContext.workspaceRoot ?? null,
+        rumiDataPath: activeConversationWorkspaceContext.rumiDataPath ?? null,
+      }, ...projects]
+    : projects;
   const activeConversationCompanyId = resolveCompanyWorkspaceHint({
     companyId: activeConversationMetadata.company_id ?? activeConversationMetadata.companyId,
     groupId: activeConversationGroupId,
@@ -6717,10 +6955,13 @@ function ChatApp() {
       modelStatusIndicators={composerModelStatusIndicators}
       voiceInputEnabled={settingsValues.general?.voice_input_enabled !== false}
       voiceInputUseAi={settingsValues.general?.voice_input_use_ai === true}
+      manualRuntimeModeSelectionEnabled={allowManualRuntimeModeSelection}
       mode={mode}
       codingContext={codingContext}
       codingWorkspaces={codingWorkspaces}
       selectedCodingWorkspaceId={effectiveWorkspaceId}
+      projects={composerProjects}
+      selectedProjectId={effectiveGroupId}
       attachedFiles={attachedFiles}
       pendingMentionAttachmentPaths={pendingMentionAttachmentPaths}
       droppedWidgets={activeDroppedWidgets}
@@ -6772,8 +7013,21 @@ function ChatApp() {
       onCodingWorkspaceCreate={handleCodingWorkspaceCreate}
       onCodingWorkspacesRefresh={() => void loadCodingWorkspaces()}
       onCodingContextRefresh={loadCodingContext}
+      onProjectSelect={handleComposerProjectSelect}
+      onProjectDirectorySelect={handleDirectorySelect}
+      onProjectStoragePrepare={handlePrepareChatGroupStorage}
     />;
   };
+
+  if (isLoading) {
+    return (
+      <TobkiriLoadingScreen
+        error={startupError}
+        onRetry={startupError ? () => window.location.reload() : undefined}
+        steps={startupSteps}
+      />
+    );
+  }
 
   return (
     <RendererBoundary>
@@ -6847,7 +7101,24 @@ function ChatApp() {
         <main
           className={cn("rumi-workspace-main relative flex min-h-0 min-w-0 flex-1 bg-[#09090b]", isActivityPreviewVisible && "has-activity-preview")}
           style={{ "--rumi-activity-preview-width": `${activityPreviewWidthPx}px` } as CSSProperties}
+          onDragEnter={handleWorkspaceFileDragEnter}
+          onDragOver={handleWorkspaceFileDragOver}
+          onDragLeave={handleWorkspaceFileDragLeave}
+          onDrop={handleWorkspaceFileDrop}
         >
+          {isWorkspaceFileDragActive && (
+            <div
+              role="status"
+              aria-label="ファイルをここにドロップ"
+              className="pointer-events-none absolute inset-0 rumi-layer-modal flex items-center justify-center bg-black/75 backdrop-blur-[2px]"
+            >
+              <div className="mx-6 flex max-w-md flex-col items-center rounded-3xl border border-dashed border-sky-300/55 bg-[#15171c]/95 px-10 py-9 text-center shadow-2xl">
+                <Cloud className="mb-4 text-sky-200" size={42} strokeWidth={1.6} aria-hidden="true" />
+                <p className="text-xl font-semibold text-zinc-50">ここにドロップ</p>
+                <p className="mt-2 text-sm text-zinc-400">画像やファイルを会話に追加します</p>
+              </div>
+            </div>
+          )}
           <div className={cn("rumi-chat-pane flex min-h-0 min-w-0 flex-1 flex-col rumi-anim-fade-up", isActivityPreviewVisible && "border-r border-zinc-800/40")}>
             <WorkspaceTabBar
               tabs={workspaceTabs}
@@ -6992,6 +7263,8 @@ function ChatApp() {
                 pendingToolStartedAt={pendingRequest?.toolStartedAt ?? {}}
                 messages={messages}
                 messagesEndRef={messagesEndRef}
+                messagesScrollRef={messagesScrollRef}
+                onMessagesScroll={handleMessagesScroll}
                 unknownBlockStrategy={unknownBlockStrategy}
                 showActivityInMessages={showActivityInMessages}
                 showWidgets={showWidgets}

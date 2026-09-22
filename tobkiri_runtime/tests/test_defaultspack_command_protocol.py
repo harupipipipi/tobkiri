@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import sys
 import json
+import os
+import shutil
 import subprocess
+import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -20,7 +21,6 @@ from domain.frontend.command_protocol import (  # noqa: E402
 )
 from transport.registry import (  # noqa: E402
     canonical_http_route_specs,
-    require_legacy_route_allowlisted,
 )
 
 
@@ -30,6 +30,29 @@ def test_resolved_catalog_projects_all_legacy_commands_to_v1() -> None:
     assert catalog["api_version"] == "tobkiri.commands/v1"
     assert len(catalog["commands"]) == 55
     assert len({item["canonical_id"] for item in catalog["commands"]}) == 55
+
+
+def test_pack_generation_reads_the_canonical_v4_manifest(tmp_path: Path) -> None:
+    """The command generation pin remains usable without legacy ecosystem.json."""
+    for relative in (
+        Path("pack.v4.json"),
+        Path("commands/default_commands.json"),
+        Path("schemas/command-protocol-v1.schema.json"),
+    ):
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(DEFAULTSPACK_ROOT / relative, destination)
+
+    registry = CommandProtocolRegistry(tmp_path)
+    first = registry._pack_generation()
+    assert first > 0
+
+    manifest = tmp_path / "pack.v4.json"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+    assert registry._pack_generation() != first
 
 
 def test_all_command_bindings_are_concretely_probed_and_pack_blocks_execute(
@@ -301,7 +324,7 @@ def test_settings_registered_command_is_resolved_and_invoked_through_protocol(
     assert result["legacy_result"]["action"] == "toggle_yolo"
 
 
-def test_high_risk_command_requires_one_shot_approval_resume(
+def test_high_risk_command_refuses_removed_runtime_authority(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -317,10 +340,6 @@ def test_high_risk_command_requires_one_shot_approval_resume(
         "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
         str(tmp_path / "frontend_settings.json"),
     )
-    monkeypatch.setenv("RUMI_AUTHORITY_MODE", "off")
-    from domain.safety.approval import approve, reset_approval_state_for_tests
-
-    reset_approval_state_for_tests()
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     subprocess.run(["git", "init", "-q", str(workspace)], check=True)
@@ -339,9 +358,10 @@ def test_high_risk_command_requires_one_shot_approval_resume(
         check=True,
     )
     protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
+    durable_secret = "durable-raw-execution-secret-62e6099b"
     payload = {
         "command_ref": "defaultspack:terminal",
-        "args": {"cmd": "python -c \"print('approved')\""},
+        "args": {"cmd": f"python -c \"print('{durable_secret}')\""},
         "conversation_id": "conversation-1",
         "invocation_id": "terminal-approval-1",
         "mode": "coding",
@@ -351,63 +371,17 @@ def test_high_risk_command_requires_one_shot_approval_resume(
         "workspace_path": str(workspace),
         "authorized_workspace_roots": [str(workspace)],
     }
-    pending = protocol.invoke(payload, trusted_context)
-    decision = approve(pending["approval"]["request_id"])
-    resumed = protocol.invoke(
-        {
-            **payload,
-            "approval_token": decision["token"],
-        },
-        trusted_context,
-    )
-    replay = protocol.invoke(
-        {
-            **payload,
-            "invocation_id": "terminal-approval-2",
-            "approval_token": decision["token"],
-        },
-        trusted_context,
-    )
+    result = protocol.invoke(payload, trusted_context)
 
-    assert pending["status"] == "approval_required"
-    assert pending["approval"]["request_id"].startswith("apr_")
-    assert resumed["status"] == "succeeded"
-    assert resumed["legacy_result"]["action"] == "request_terminal_approval"
-    assert resumed["legacy_result"]["executed"] is True
-    assert "approved" in resumed["legacy_result"]["stdout"]
-    assert replay["status"] == "failed"
-    assert replay["error"]["code"] in {
-        "APPROVAL_ARGUMENTS_CHANGED",
-        "APPROVAL_TOKEN_ARGUMENTS_MISMATCH",
-        "APPROVAL_TOKEN_USED",
-    }
+    assert result["status"] == "failed"
+    assert result["error"]["code"] == "AUTHORITY_UNAVAILABLE"
+    assert "approval" not in result
+    assert durable_secret not in json.dumps(result, sort_keys=True)
 
 
-def test_high_risk_executor_policy_calls_runtime_authority(
+def test_high_risk_executor_policy_refuses_removed_runtime_authority(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
-    captured: dict[str, object] = {}
-
-    class Authority:
-        def check(self, **kwargs):
-            captured.update(kwargs)
-            return SimpleNamespace(
-                allowed=False,
-                approval_required=True,
-                request_id="auth-1",
-                permission_id="host.process.exec_guarded",
-                reason="approval required",
-            )
-
-    monkeypatch.setattr(
-        "core_runtime.authority.get_authority_service",
-        lambda: Authority(),
-    )
-    monkeypatch.setenv(
-        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
-        str(tmp_path / "settings.json"),
-    )
     protocol = CommandProtocolRegistry(DEFAULTSPACK_ROOT)
     result = protocol._enforce_runtime_authority(
         {
@@ -428,10 +402,8 @@ def test_high_risk_executor_policy_calls_runtime_authority(
     )
 
     assert result is not None
-    assert result["status"] == "approval_required"
-    assert result["approval"]["kind"] == "authority"
-    assert captured["permission_id"] == "host.process.exec_guarded"
-    assert captured["principal_id"] == "alice"
+    assert result["status"] == "failed"
+    assert result["error"]["code"] == "AUTHORITY_UNAVAILABLE"
 
 
 def test_high_risk_operation_plan_binds_workspace_and_git_state(
@@ -474,43 +446,216 @@ def test_high_risk_operation_plan_binds_workspace_and_git_state(
     )
 
     assert approved["cwd"] == str(workspace.resolve())
-    assert approved["argv"] == ["true"]
+    assert Path(approved["argv"][0]).name == "true"
+    assert approved["argv"][0] == approved["executable"]["path"]
+    assert approved["executable"]["sha256"].startswith("sha256:")
     assert approved["plan_sha256"] != changed["plan_sha256"]
 
+    patch_text = (
+        "diff --git a/new.txt b/new.txt\n"
+        "new file mode 100644\n"
+        "index 0000000..3e75765\n"
+        "--- /dev/null\n"
+        "+++ b/new.txt\n"
+        "@@ -0,0 +1 @@\n"
+        "+new\n"
+    )
+    patch = protocol.operations.prepare_high_risk_plan(
+        "request_patch_approval",
+        {"patch": patch_text},
+        context,
+    )
+    restore = protocol.operations.prepare_high_risk_plan(
+        "request_restore_approval",
+        {"paths": "tracked.txt"},
+        context,
+    )
+    assert Path(patch["argv"][0]).name == "git"
+    assert patch["argv"][1] == "apply"
+    assert Path(restore["argv"][0]).name == "git"
+    assert restore["argv"][1:3] == ["restore", "--worktree"]
+    applied = protocol.operations._execute_high_risk_host_operation(
+        {"id": "patch"},
+        "request_patch_approval",
+        {"patch": patch_text},
+        {**context, "_approved_operation_plan": patch},
+    )
+    assert applied["status"] == "ok"
+    assert (workspace / "new.txt").read_text(encoding="utf-8") == "new\n"
 
-def test_command_protocol_routes_are_registered() -> None:
+
+def test_high_risk_terminal_rejects_path_executable_swap_after_approval(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(["git", "init", "-q", str(workspace)], check=True)
+    subprocess.run(
+        ["git", "-C", str(workspace), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(workspace), "config", "user.name", "Test"],
+        check=True,
+    )
+    (workspace / "tracked.txt").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(workspace), "add", "tracked.txt"], check=True)
+    subprocess.run(
+        ["git", "-C", str(workspace), "commit", "-qm", "seed"],
+        check=True,
+    )
+    executable_a_dir = tmp_path / "bin-a"
+    executable_b_dir = tmp_path / "bin-b"
+    executable_a_dir.mkdir()
+    executable_b_dir.mkdir()
+    executable_name = "python.exe" if os.name == "nt" else "python"
+    executable_a = executable_a_dir / executable_name
+    executable_b = executable_b_dir / executable_name
+    shutil.copy2(sys.executable, executable_a)
+    shutil.copy2(sys.executable, executable_b)
+    executable_a.chmod(0o755)
+    executable_b.chmod(0o755)
+    original_path = os.environ.get("PATH", os.defpath)
+    operations = CommandProtocolRegistry(DEFAULTSPACK_ROOT).operations
+    context = {
+        "workspace_path": str(workspace),
+        "authorized_workspace_roots": [str(workspace)],
+    }
+
+    monkeypatch.setenv(
+        "PATH",
+        os.pathsep.join((str(executable_a_dir), original_path)),
+    )
+    approved = operations.prepare_high_risk_plan(
+        "request_terminal_approval",
+        {"cmd": 'python -c "open(\'ran.txt\', \'w\').write(\'ran\')"'},
+        context,
+    )
+    monkeypatch.setenv(
+        "PATH",
+        os.pathsep.join((str(executable_b_dir), original_path)),
+    )
+    result = operations._execute_high_risk_host_operation(
+        {"id": "terminal"},
+        "request_terminal_approval",
+        {"cmd": 'python -c "open(\'ran.txt\', \'w\').write(\'ran\')"'},
+        {**context, "_approved_operation_plan": approved},
+    )
+
+    assert approved["argv"][0] == str(executable_a.resolve())
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "APPROVED_OPERATION_PLAN_CHANGED"
+    assert not (workspace / "ran.txt").exists()
+
+
+def test_high_risk_host_policy_requires_authoritative_roots_and_executable(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    subprocess.run(["git", "init", "-q", str(workspace)], check=True)
+    subprocess.run(
+        ["git", "-C", str(workspace), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(workspace), "config", "user.name", "Test"],
+        check=True,
+    )
+    (workspace / "tracked.txt").write_text("seed\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(workspace), "add", "tracked.txt"], check=True)
+    subprocess.run(
+        ["git", "-C", str(workspace), "commit", "-qm", "seed"],
+        check=True,
+    )
+    operations = CommandProtocolRegistry(DEFAULTSPACK_ROOT).operations
+
+    with pytest.raises(ValueError, match="authorized_workspace_roots"):
+        operations.prepare_high_risk_plan(
+            "request_terminal_approval",
+            {"cmd": "true"},
+            {"workspace_path": str(workspace)},
+        )
+
+    with pytest.raises(ValueError, match="not allowlisted"):
+        operations.prepare_high_risk_plan(
+            "request_terminal_approval",
+            {"cmd": "/bin/rm tracked.txt"},
+            {
+                "workspace_path": str(workspace),
+                "authorized_workspace_roots": [str(workspace)],
+            },
+        )
+
+    host_only_secret = "host-environment-secret-43de6ab0"
+    monkeypatch.setenv("UNTRUSTED_COMMAND_SECRET", host_only_secret)
+    environment_probe = operations._run_host_process(
+        argv=(
+            "python",
+            "-c",
+            (
+                "import os; "
+                "print(os.environ.get('UNTRUSTED_COMMAND_SECRET', 'absent'))"
+            ),
+        ),
+        cwd=workspace,
+        stdin=None,
+        timeout_seconds=10,
+        command_class="terminal",
+        allowed_cwds=(workspace,),
+    )
+    assert environment_probe.exit_code == 0
+    assert environment_probe.stdout.strip() == "absent"
+    assert host_only_secret not in environment_probe.stdout
+    with pytest.raises(ValueError, match="not allowlisted"):
+        operations.prepare_high_risk_plan(
+            "request_terminal_approval",
+            {"cmd": "/tmp/git status"},
+            {
+                "workspace_path": str(workspace),
+                "authorized_workspace_roots": [str(workspace)],
+            },
+        )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="real Windows environment test")
+def test_windows_host_process_gets_required_curated_environment(
+    tmp_path: Path,
+) -> None:
+    operations = CommandProtocolRegistry(DEFAULTSPACK_ROOT).operations
+    probe = operations._run_host_process(
+        argv=(
+            "python",
+            "-c",
+            (
+                "import json, os; "
+                "print(json.dumps({'path': os.environ.get('PATH'), "
+                "'system_root': os.environ.get('SystemRoot')}))"
+            ),
+        ),
+        cwd=tmp_path,
+        stdin=None,
+        timeout_seconds=10,
+        command_class="terminal",
+        allowed_cwds=(tmp_path,),
+    )
+
+    assert probe.exit_code == 0
+    environment = json.loads(probe.stdout)
+    assert environment["system_root"] == str(Path(os.environ["SystemRoot"]).resolve())
+    path_entries = environment["path"].split(os.pathsep)
+    assert path_entries
+    assert all(entry and entry != "." and Path(entry).is_absolute() for entry in path_entries)
+
+
+def test_command_protocol_routes_are_not_legacy_transport_routes() -> None:
     specs = canonical_http_route_specs()
-    routes = {(item.method, item.pattern) for item in specs}
-    assert ("GET", "/api/command-protocol/v1/catalog") in routes
-    assert ("POST", "/api/command-protocol/v1/invoke") in routes
-    assert (
-        "POST",
-        "/api/command-protocol/v1/invocations/events/query",
-    ) in routes
-    assert (
-        "GET",
-        "/api/command-protocol/v1/invocations/{invocation_id}/events",
-    ) in routes
-    assert ("POST", "/api/command-protocol/v1/offline") in routes
-    assert ("POST", "/api/command-protocol/v1/resume") in routes
-    assert ("POST", "/api/command-protocol/v1/states/query") in routes
-    assert ("POST", "/api/command-protocol/v1/datasources/query") in routes
-
     protocol_specs = [
         item for item in specs if item.pattern.startswith("/api/command-protocol/v1/")
     ]
-    assert len(protocol_specs) == 8
-    remotely_resumable = {
-        "/api/command-protocol/v1/resume",
-        "/api/command-protocol/v1/invocations/{invocation_id}/events",
-    }
-    assert all(
-        not item.local_only
-        for item in protocol_specs
-        if item.pattern in remotely_resumable
-    )
-    for item in protocol_specs:
-        require_legacy_route_allowlisted(item)
+    assert protocol_specs == []
 
 
 def test_invocation_id_is_idempotent_and_conflict_safe(

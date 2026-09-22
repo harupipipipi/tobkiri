@@ -7,9 +7,7 @@ from core_runtime.ai_input_graph_builder import MODEL_INPUT_NODE_ID, build_ai_in
 from core_runtime.ai_input_models import normalize_ai_input_config
 from core_runtime.ai_input_tokenizer import apply_tokenizer_to_ai_input_response
 from core_runtime.ai_input_trace_store import AiInputTraceStore
-from core_runtime.profile_paths import active_profile_id
-from core_runtime.profile_runtime_selection import apply_profile_graph_selection
-from core_runtime.profile_workspace import ProfileWorkspaceManager, validate_profile_id
+from core_runtime.resolved_profile_scope import persisted_resolved_profile
 from core_runtime.runtime_audit_helpers import redact_sensitive
 from domain.prompt.studio_client import (
     authored_edge_states,
@@ -666,38 +664,32 @@ def _disabled_payload(segment: dict[str, Any], *, graph: dict[str, Any], include
 
 
 def _resolve_profile_id(value: Any = None) -> str:
-    candidate = str(value or "").strip()
-    if not candidate:
-        candidate = str(active_profile_id() or "").strip()
-    if not candidate:
-        candidate = "defaultspack.startup"
-    return validate_profile_id(candidate)
+    plan = persisted_resolved_profile()
+    if plan is None:
+        raise RuntimeError("Pack v4 resolved profile is not active")
+    candidate = str(value or plan.profile_id).strip()
+    if candidate != str(plan.profile_id):
+        raise PermissionError("requested Profile is not the verified v4 activation")
+    return candidate
 
 
 def _load_profile(profile_id: str) -> dict[str, Any]:
-    profile = _load_raw_profile(profile_id)
-    try:
-        return apply_profile_graph_selection(profile)
-    except Exception:
-        return profile
+    return _load_raw_profile(profile_id)
 
 
 def _load_raw_profile(profile_id: str) -> dict[str, Any]:
-    manager = ProfileWorkspaceManager()
-    profile = manager.load_profile_yaml(profile_id)
-    if not isinstance(profile, dict) or not profile:
-        profile = {
-            "version": 1,
-            "profile_id": profile_id,
-            "name": profile_id,
-            "base_pack": "defaultspack",
-            "default_prompt_id": "default_chat",
-            "metadata": {},
-            "policy": {},
-        }
-    profile.setdefault("profile_id", profile_id)
-    profile.setdefault("base_pack", "defaultspack")
-    return profile
+    plan = persisted_resolved_profile()
+    if plan is None or str(plan.profile_id) != profile_id:
+        raise PermissionError("Profile is not the verified v4 activation")
+    return {
+        "version": 4,
+        "profile_id": str(plan.profile_id),
+        "profile_revision": str(plan.profile_revision),
+        "plan_hash": str(plan.plan_hash),
+        "packs": list(plan.effective_pack_set),
+        "metadata": {"authority": "verified-v4-activation"},
+        "policy": {},
+    }
 
 
 def _request_context(data: dict[str, Any]) -> dict[str, Any]:
@@ -842,7 +834,6 @@ def _segment_extras(
     edge: dict[str, Any],
 ) -> dict[str, Any]:
     kind = str(payload.get("kind") or "prompt")
-    status = str(payload.get("status") or "available")
     source_type = str(payload.get("source_type") or "")
     port = str(payload.get("port") or "")
     reason = str(payload.get("reason") or _reason_for_segment(payload, metadata, edge))

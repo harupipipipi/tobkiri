@@ -1,1 +1,74 @@
-{"pack_id":"rumi_turn_runtime_pack","pack_identity":"rumi:ecosystem/rumi_turn_runtime_pack","display_name":"Rumi Turn Runtime Pack","version":"1.0.0","description":"Ephemeral revision-bound turn lifecycle owner.","dependencies":{"rumi_conversation_store_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.resource.conversation.v1","rumi.resource.message.v1"],"provides":["rumi.resource.turn.v1","rumi.action.turn.lifecycle.v1","rumi.event.turn.v1"]},"required_secrets":[],"required_capabilities":["turn.read","turn.manage"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":true,"resources":[],"provenance":{"content_hash":"sha256:9a6b5db5bc1278522f8b51ccd30c05a6f22f4640239b2154033a8591e08fb064","build_identity":"rumi-turn-runtime-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":true,"owner_surfaces":["turn_lifecycle"],"integrity":{"artifact_manifest":"artifact-manifest.json"},"security":{"conversation_storage":false,"message_storage":false,"bounded_retention":true}}}
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.turn.lifecycle.v1",
+      "rumi.event.turn.v1",
+      "rumi.resource.turn.v1"
+    ],
+    "requires": [
+      "rumi.resource.conversation.v1",
+      "rumi.resource.message.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_conversation_store_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Ephemeral revision-bound turn lifecycle owner.",
+  "display_name": "Rumi Turn Runtime",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:527b3948b0453aa8311b0295ab22b67ffb04b623509dd958f6dcb1fe12dc94e6",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:efc055d0765a37ceade0bcdd78f6b960a262d8a47e19cee9cad32d15b56d3d44"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:efc055d0765a37ceade0bcdd78f6b960a262d8a47e19cee9cad32d15b56d3d44"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "turn_lifecycle"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "bounded_retention": true,
+      "conversation_storage": false,
+      "message_storage": false
+    }
+  },
+  "pack_id": "rumi_turn_runtime_pack",
+  "pack_identity": "rumi:ecosystem/rumi_turn_runtime_pack",
+  "provenance": {
+    "build_identity": "rumi_turn_runtime_pack:1.0.0",
+    "content_hash": "sha256:c9a5027c264ea1172198b1d4946c3512c29cfaf911f8e6f6a1cbde1795973eac",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "turn.manage",
+    "turn.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -3,16 +3,28 @@
 //! V2: Full implementation with setup hook, commands, tray menu, and navigation guard.
 
 mod app_data_migration;
+mod artifact_integrity;
 mod config;
+mod debug_approval;
+mod defaultspack_authority;
 mod defaultspack_manager;
 mod desktop_system_info;
 mod health_check;
 mod host_audit;
 mod host_broker;
 mod host_broker_types;
+mod host_contract;
 mod kernel_manager;
+mod presentation;
 mod process_utils;
 mod python_env;
+mod runtime_resource_integrity;
+mod runtime_resource_paths;
+mod sealed_python;
+#[allow(dead_code)]
+mod sealed_python_protocol;
+mod shell_handoff;
+mod shell_runtime;
 mod tray;
 mod updater;
 
@@ -32,10 +44,14 @@ use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use tauri::{AppHandle, Emitter, Manager, Url};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 use config::AppConfig;
+use debug_approval::{DebugApprovalManager, DebugApprovalStatus};
 use defaultspack_manager::DefaultspackManager;
-use host_broker::HostBrokerRuntime;
+#[cfg(any(debug_assertions, test))]
+use host_broker::DEFAULT_PORT as DEFAULT_HOST_BROKER_PORT;
+use host_broker::{BrokerAttestationIdentity, HostBrokerRuntime};
 use kernel_manager::KernelManager;
 
 mod dock_registration;
@@ -58,6 +74,101 @@ const DEFAULTS_CONSOLE_WINDOW_TITLE: &str = "詳細ログ";
 const HOST_PERMISSIONS_WINDOW_LABEL: &str = "host-permissions";
 const HOST_PERMISSIONS_WINDOW_TITLE: &str = "Rumi Host Permissions";
 const AUTHORITY_UI_OPERATOR_TTL_SECONDS: u64 = 180;
+#[cfg(any(debug_assertions, test))]
+const DEBUG_INSTANCE_ID_ENV: &str = "RUMI_VIEWER_DEBUG_INSTANCE_ID";
+#[cfg(any(debug_assertions, test))]
+const DEBUG_USER_DATA_ROOT_ENV: &str = "RUMI_VIEWER_DEBUG_USER_DATA_ROOT";
+#[cfg(any(debug_assertions, test))]
+const HOST_BROKER_CONNECTION_ENV: &str = "RUMI_VIEWER_HOST_BROKER_CONNECTION";
+#[cfg(any(debug_assertions, test))]
+const HOST_BROKER_PORT_ENV: &str = "RUMI_VIEWER_BROKER_PORT";
+#[cfg(any(debug_assertions, test))]
+const HOST_BROKER_INSTANCE_NONCE_ENV: &str = "RUMI_VIEWER_BROKER_INSTANCE_NONCE";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_ISOLATION_ENV: &str = "RUMI_DEFAULTSPACK_DEBUG_ISOLATION";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_RUN_ID_ENV: &str = "RUMI_DEFAULTSPACK_RUN_ID";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_LAUNCH_NONCE_ENV: &str = "RUMI_DEFAULTSPACK_LAUNCH_NONCE";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_STATE_ROOT_ENV: &str = "RUMI_DEFAULTSPACK_DEBUG_STATE_ROOT";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_HTTP_PORT_ENV: &str = "RUMI_DEFAULTSPACK_DEBUG_HTTP_PORT";
+#[cfg(any(debug_assertions, test))]
+const DEFAULTSPACK_DEBUG_KERNEL_PORT_ENV: &str = "RUMI_DEFAULTSPACK_DEBUG_KERNEL_PORT";
+#[cfg(any(debug_assertions, test))]
+const DEBUG_CACHE_ENVIRONMENTS: [(&str, &str); 6] = [
+    ("PYTHONPYCACHEPREFIX", "python_bytecode"),
+    ("PYTHONUSERBASE", "python_user_base"),
+    ("PIP_CACHE_DIR", "pip_cache"),
+    ("XDG_CACHE_HOME", "xdg_cache"),
+    ("UV_CACHE_DIR", "uv_cache"),
+    ("CARGO_TARGET_DIR", "cargo_target"),
+];
+
+/// Debug-only, non-authorizing identity for an isolated Viewer run.
+///
+/// This is deliberately not a credential. It only allows a debug build to skip
+/// Tauri's process-global single-instance plugin after every other isolation
+/// precondition has been checked. Release builds always return `None`.
+#[cfg(any(debug_assertions, test))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DebugParallelInstancePolicy {
+    supervisor_root: PathBuf,
+    user_data_root: PathBuf,
+    defaultspack_state_root: PathBuf,
+    broker_port: u16,
+    defaultspack_http_port: u16,
+    kernel_port: u16,
+}
+
+#[cfg(any(debug_assertions, test))]
+fn create_secure_debug_subdirectory(
+    supervisor_root: &std::path::Path,
+    name: &str,
+) -> AnyResult<PathBuf> {
+    let path = supervisor_root.join(name);
+    match fs::symlink_metadata(&path) {
+        Ok(_) => {
+            if !secure_debug_directory(&path, Some(name))
+                || !debug_directories_have_same_owner(&[supervisor_root, &path])
+            {
+                bail!("debug cache directory failed native ownership checks");
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let mut builder = fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+
+                builder.mode(0o700);
+            }
+            builder
+                .create(&path)
+                .context("failed to create isolated debug cache directory")?;
+            if !secure_debug_directory(&path, Some(name))
+                || !debug_directories_have_same_owner(&[supervisor_root, &path])
+            {
+                bail!("created debug cache directory failed native ownership checks");
+            }
+        }
+        Err(error) => return Err(error).context("failed to inspect debug cache directory"),
+    }
+    Ok(path)
+}
+
+#[cfg(any(debug_assertions, test))]
+fn prepare_debug_cache_environment(
+    policy: &DebugParallelInstancePolicy,
+) -> AnyResult<Vec<(&'static str, PathBuf)>> {
+    DEBUG_CACHE_ENVIRONMENTS
+        .iter()
+        .map(|(key, name)| {
+            create_secure_debug_subdirectory(&policy.supervisor_root, name).map(|path| (*key, path))
+        })
+        .collect()
+}
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -127,6 +238,22 @@ struct AuthorityApprovalContext {
     ui_operator: AuthorityUiOperator,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct CodingUiOperator {
+    version: u8,
+    kind: String,
+    origin: String,
+    instance_nonce: String,
+    window_label: String,
+    request_id: String,
+    expected_digest: String,
+    decision: String,
+    issued_at: u64,
+    expires_at: u64,
+    nonce: String,
+    signature: String,
+}
+
 /// Returns the current setup progress message.
 #[tauri::command]
 fn get_setup_progress(state: tauri::State<'_, SetupProgress>) -> String {
@@ -137,6 +264,86 @@ fn get_setup_progress(state: tauri::State<'_, SetupProgress>) -> String {
             "Setup status unavailable".to_string()
         }
     }
+}
+
+#[tauri::command]
+fn debug_approval_status(
+    state: tauri::State<'_, Arc<DebugApprovalManager>>,
+) -> DebugApprovalStatus {
+    state.status()
+}
+
+fn validate_debug_approval_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("debug approval can only be changed from the Launcher main window".into());
+    }
+    let url = window
+        .url()
+        .map_err(|error| format!("failed to inspect Launcher URL: {error}"))?;
+    let local_launcher = matches!(url.scheme(), "tauri" | "http" | "https")
+        && matches!(
+            url.host_str().unwrap_or(""),
+            "localhost" | "127.0.0.1" | "tauri.localhost"
+        );
+    if !local_launcher || url.path() == "/approval" {
+        return Err("debug approval is unavailable from this Launcher route".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn arm_debug_approval(
+    duration: String,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<DebugApprovalManager>>,
+) -> Result<DebugApprovalStatus, String> {
+    validate_debug_approval_window(&window)?;
+    let pending = state.status();
+    if matches!(pending.state.as_str(), "armed" | "active") {
+        return state.arm(&duration);
+    }
+    if pending.state != "pending" {
+        return Err("start a CLI debug session request before enabling".into());
+    }
+    let duration_label = match duration.as_str() {
+        "1h" => "1時間",
+        "1d" => "1日",
+        "1w" => "1週間",
+        "1mo" => "1か月",
+        "permanent" => "無期限（手動OFF・Launcher終了・guardian終了まで）",
+        _ => return Err("invalid debug approval duration".into()),
+    };
+    let message = format!(
+        "この1つのCLIデバッグセッションだけに個別承認を委任します。\n\n利用期間: {}\nWorkspace: {}\nPack / Profile: {} / {}\nRun: {}\nGuardian: Launcher-owned Defaultspack child（検証済み）\n\n承認後も各操作は個別のdigestに束縛されます。",
+        duration_label,
+        pending.workspace.as_deref().unwrap_or("unknown"),
+        pending.pack_id.as_deref().unwrap_or("unknown"),
+        pending.profile_id.as_deref().unwrap_or("unknown"),
+        pending.run_id.as_deref().unwrap_or("unknown"),
+    );
+    let confirmed = window
+        .dialog()
+        .message(message)
+        .title("Developer Debug Approvalを有効にしますか？")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            format!("{duration_label}だけ有効化"),
+            "キャンセル".into(),
+        ))
+        .blocking_show();
+    if !confirmed {
+        return Err("native confirmation was cancelled".into());
+    }
+    state.arm(&duration)
+}
+
+#[tauri::command]
+fn revoke_debug_approval(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<DebugApprovalManager>>,
+) -> Result<DebugApprovalStatus, String> {
+    validate_debug_approval_window(&window)?;
+    state.revoke("user_revoked")
 }
 
 /// Restart the Kernel process.
@@ -184,12 +391,25 @@ fn valid_authority_request_id(request_id: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
 }
 
+fn defaultspack_http_port_for_urls(isolated_port: Option<u16>) -> u16 {
+    isolated_port.unwrap_or(DEFAULTSPACK_RESERVED_PORT)
+}
+
+fn active_defaultspack_http_port() -> u16 {
+    defaultspack_http_port_for_urls(
+        debug_defaultspack_ports_from_env().map(|(http_port, _)| http_port),
+    )
+}
+
 fn authority_approval_url(request_id: &str) -> Result<Url, String> {
     if !valid_authority_request_id(request_id) {
         return Err("invalid authority request id".into());
     }
     Url::parse_with_params(
-        &format!("http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/approval"),
+        &format!(
+            "http://127.0.0.1:{}/approval",
+            active_defaultspack_http_port()
+        ),
         &[("request_id", request_id.trim())],
     )
     .map_err(|error| format!("failed to build approval window URL: {error}"))
@@ -197,28 +417,32 @@ fn authority_approval_url(request_id: &str) -> Result<Url, String> {
 
 fn ambient_trigger_url() -> Result<Url, String> {
     Url::parse(&format!(
-        "http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/ambient"
+        "http://127.0.0.1:{}/ambient",
+        active_defaultspack_http_port()
     ))
     .map_err(|error| format!("failed to build ambient trigger window URL: {error}"))
 }
 
 fn finger_recording_url() -> Result<Url, String> {
     Url::parse(&format!(
-        "http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/finger-recording"
+        "http://127.0.0.1:{}/finger-recording",
+        active_defaultspack_http_port()
     ))
     .map_err(|error| format!("failed to build finger recording window URL: {error}"))
 }
 
 fn defaults_console_url() -> Result<Url, String> {
     Url::parse(&format!(
-        "http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/console"
+        "http://127.0.0.1:{}/console",
+        active_defaultspack_http_port()
     ))
     .map_err(|error| format!("failed to build defaults console window URL: {error}"))
 }
 
 fn host_permissions_url() -> Result<Url, String> {
     Url::parse(&format!(
-        "http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}/host-permissions"
+        "http://127.0.0.1:{}/host-permissions",
+        active_defaultspack_http_port()
     ))
     .map_err(|error| format!("failed to build host permissions window URL: {error}"))
 }
@@ -521,7 +745,7 @@ fn maybe_spawn_authority_approval_smoke_window(app: AppHandle) {
                 return;
             }
         };
-        let base_url = format!("http://127.0.0.1:{DEFAULTSPACK_RESERVED_PORT}");
+        let base_url = format!("http://127.0.0.1:{}", active_defaultspack_http_port());
         let health_url = format!("{base_url}/api/health");
         let deadline = SystemTime::now() + Duration::from_secs(60);
         while SystemTime::now() < deadline {
@@ -631,6 +855,105 @@ fn authority_operator_message(operator: &AuthorityUiOperator) -> String {
         operator.nonce.clone(),
     ]
     .join("\n")
+}
+
+fn coding_operator_message(operator: &CodingUiOperator) -> String {
+    [
+        format!("v{}", operator.version),
+        operator.origin.clone(),
+        operator.instance_nonce.clone(),
+        operator.window_label.clone(),
+        operator.request_id.clone(),
+        operator.expected_digest.clone(),
+        operator.decision.clone(),
+        operator.issued_at.to_string(),
+        operator.expires_at.to_string(),
+        operator.nonce.clone(),
+    ]
+    .join("\n")
+}
+
+#[tauri::command]
+async fn coding_approval_operator(
+    window: tauri::WebviewWindow,
+    attestation: tauri::State<'_, BrokerAttestationIdentity>,
+    request_id: String,
+    expected_digest: String,
+    decision: String,
+) -> Result<CodingUiOperator, String> {
+    if window.label() != "defaultspack-main" {
+        return Err("coding approval is only available in the Defaultspack Launcher window".into());
+    }
+    if !window
+        .is_focused()
+        .map_err(|error| format!("failed to inspect Defaultspack focus: {error}"))?
+    {
+        return Err("Defaultspack approval window must be focused".into());
+    }
+    let url = window
+        .url()
+        .map_err(|error| format!("failed to inspect Defaultspack URL: {error}"))?;
+    if !matches!(url.host_str().unwrap_or(""), "127.0.0.1" | "localhost")
+        || url.port_or_known_default() != Some(DEFAULTSPACK_RESERVED_PORT)
+    {
+        return Err("coding approval is unavailable from this window origin".into());
+    }
+    if !valid_authority_request_id(&request_id)
+        || expected_digest.len() != 64
+        || !expected_digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || !matches!(decision.as_str(), "approve" | "deny")
+    {
+        return Err("coding approval binding is invalid".into());
+    }
+    let confirmed = window
+        .dialog()
+        .message(format!(
+            "{} request {}\nDigest: {}\n\nこのexact requestだけに適用します。",
+            if decision == "approve" {
+                "Approve"
+            } else {
+                "Deny"
+            },
+            request_id,
+            expected_digest,
+        ))
+        .title("Tobkiri coding approval")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            if decision == "approve" {
+                "Approve once".into()
+            } else {
+                "Deny".into()
+            },
+            "Cancel".into(),
+        ))
+        .blocking_show();
+    if !confirmed {
+        return Err("native coding approval was cancelled".into());
+    }
+    let issued_at = unix_now_seconds();
+    let nonce: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect();
+    let mut operator = CodingUiOperator {
+        version: 4,
+        kind: "coding_ui_operator".into(),
+        origin: "tauri_webview_window".into(),
+        instance_nonce: attestation.instance_nonce().into(),
+        window_label: "defaultspack-main".into(),
+        request_id,
+        expected_digest,
+        decision,
+        issued_at,
+        expires_at: issued_at + 60,
+        nonce,
+        signature: String::new(),
+    };
+    operator.signature =
+        attestation.sign_message_base64(coding_operator_message(&operator).as_bytes());
+    Ok(operator)
 }
 
 fn sign_authority_ui_operator(
@@ -1428,7 +1751,7 @@ fn run_delayed_update_check() {
 fn startup_failure_message(stage: &str, error: &anyhow::Error, config: &AppConfig) -> String {
     let log_path = config.log_dir.join("kernel.log");
     format!(
-        "Error: {stage} failed — {error}. See {}",
+        "Error: {stage} failed — {error:#}. See {}",
         log_path.display()
     )
 }
@@ -1437,6 +1760,34 @@ fn startup_failure_message(stage: &str, error: &anyhow::Error, config: &AppConfi
 enum StartupRecoveryStage {
     HealthCheck,
     Bootstrap,
+}
+
+fn prepare_defaultspack_guardian_in_background(
+    app: AppHandle,
+    config: AppConfig,
+    panel_bootstrap_secret: String,
+) {
+    thread::spawn(move || {
+        match health_check::check_authenticated_runtime_ready(
+            config.kernel_port,
+            &panel_bootstrap_secret,
+        ) {
+            Ok(true) => {}
+            Ok(false) => {
+                info!("Deferring Launcher-owned Defaultspack guardian until runtime activation");
+                return;
+            }
+            Err(error) => {
+                error!(
+                    "Failed to verify runtime readiness before preparing Defaultspack guardian: {error:#}"
+                );
+                return;
+            }
+        }
+        if let Err(error) = dock_registration::prepare_defaultspack_guardian_impl(&app, &config) {
+            error!("Failed to prepare Launcher-owned Defaultspack guardian: {error:#}");
+        }
+    });
 }
 
 fn run_startup_sequence<StartKernel, WaitForHealthy, AuthorizePanel, RecoverConflict>(
@@ -1534,8 +1885,301 @@ fn start_kernel_and_bootstrap(
     )
 }
 
+fn startup_stage_name(stage: &Arc<Mutex<&'static str>>) -> &'static str {
+    stage
+        .lock()
+        .map(|current| *current)
+        .unwrap_or("unavailable")
+}
+
+fn record_startup_stage(stage: &Arc<Mutex<&'static str>>, next: &'static str) {
+    if let Ok(mut current) = stage.lock() {
+        *current = next;
+    }
+    // Keep this intentionally structural: startup logs must never include
+    // broker tokens, approval tokens, connection payloads, or environment
+    // values.
+    info!("Viewer startup stage={next}");
+}
+
+#[cfg(any(debug_assertions, test))]
+fn ascii_decimal_port(value: &str) -> Option<u16> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value.parse::<u16>().ok().filter(|port| *port != 0)
+}
+
+#[cfg(any(debug_assertions, test))]
+fn is_clean_absolute_path(path: &std::path::Path) -> bool {
+    path.is_absolute()
+        && path.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            ) || cfg!(windows) && matches!(component, std::path::Component::Prefix(_))
+        })
+}
+
+#[cfg(any(debug_assertions, test))]
+fn secure_debug_directory(path: &std::path::Path, expected_name: Option<&str>) -> bool {
+    if !is_clean_absolute_path(path)
+        || expected_name
+            .is_some_and(|name| path.file_name().and_then(|part| part.to_str()) != Some(name))
+    {
+        return false;
+    }
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return false;
+    }
+    if path.canonicalize().ok().as_deref() != Some(path) {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        if metadata.permissions().mode() & 0o777 != 0o700 {
+            return false;
+        }
+    }
+    true
+}
+
+#[cfg(all(any(debug_assertions, test), unix))]
+fn debug_directories_have_same_owner(paths: &[&std::path::Path]) -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+
+    let mut owners = paths
+        .iter()
+        .filter_map(|path| fs::metadata(path).ok().map(|item| item.uid()));
+    let Some(owner) = owners.next() else {
+        return false;
+    };
+    // POSIX geteuid has no preconditions and does not dereference memory.
+    let effective_user = unsafe { geteuid() };
+    owner == effective_user && owners.all(|candidate| candidate == owner)
+}
+
+#[cfg(all(any(debug_assertions, test), not(unix)))]
+fn debug_directories_have_same_owner(_paths: &[&std::path::Path]) -> bool {
+    true
+}
+
+#[cfg(any(debug_assertions, test))]
+fn valid_debug_instance_id(value: &str) -> bool {
+    let Some(suffix) = value.strip_prefix("debug-") else {
+        return false;
+    };
+    (3..=58).contains(&suffix.len())
+        && suffix
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+#[cfg(any(debug_assertions, test))]
+fn valid_launch_nonce(value: &str) -> bool {
+    (16..=128).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+#[cfg(any(debug_assertions, test))]
+struct DebugParallelInstanceEnvironment<'a> {
+    debug_build: bool,
+    instance_id: Option<&'a str>,
+    user_data_root: Option<&'a str>,
+    connection_path: Option<&'a str>,
+    broker_port: Option<&'a str>,
+    nonce: Option<&'a str>,
+    defaultspack_isolation: Option<&'a str>,
+    defaultspack_run_id: Option<&'a str>,
+    defaultspack_nonce: Option<&'a str>,
+    defaultspack_state_root: Option<&'a str>,
+    defaultspack_http_port: Option<&'a str>,
+    defaultspack_kernel_port: Option<&'a str>,
+}
+
+#[cfg(any(debug_assertions, test))]
+fn debug_parallel_instance_policy_from_values(
+    environment: DebugParallelInstanceEnvironment<'_>,
+) -> Option<DebugParallelInstancePolicy> {
+    if !environment.debug_build {
+        return None;
+    }
+
+    let instance_id = environment.instance_id?;
+    if !valid_debug_instance_id(instance_id) {
+        return None;
+    }
+
+    let user_data_root = PathBuf::from(environment.user_data_root?);
+    if !is_clean_absolute_path(&user_data_root)
+        || user_data_root.file_name()?.to_str()? != "viewer_user_data"
+    {
+        return None;
+    }
+
+    let connection_path = PathBuf::from(environment.connection_path?);
+    let expected_connection_path = user_data_root.join("host_broker").join("connection.json");
+    if !is_clean_absolute_path(&connection_path) || connection_path != expected_connection_path {
+        return None;
+    }
+
+    let broker_port = ascii_decimal_port(environment.broker_port?)?;
+    if broker_port == DEFAULT_HOST_BROKER_PORT {
+        return None;
+    }
+
+    let nonce = environment.nonce?;
+    if !valid_launch_nonce(nonce) {
+        return None;
+    }
+
+    if environment.defaultspack_isolation? != "1"
+        || environment.defaultspack_run_id? != instance_id
+        || environment.defaultspack_nonce? != nonce
+    {
+        return None;
+    }
+    let supervisor_root = user_data_root.parent()?.to_path_buf();
+    let defaultspack_state_root = PathBuf::from(environment.defaultspack_state_root?);
+    let expected_state_root = supervisor_root.join("defaultspack_state");
+    if !is_clean_absolute_path(&defaultspack_state_root)
+        || defaultspack_state_root != expected_state_root
+        || !secure_debug_directory(&supervisor_root, None)
+        || !secure_debug_directory(&user_data_root, Some("viewer_user_data"))
+        || !secure_debug_directory(&defaultspack_state_root, Some("defaultspack_state"))
+        || !debug_directories_have_same_owner(&[
+            &supervisor_root,
+            &user_data_root,
+            &defaultspack_state_root,
+        ])
+    {
+        return None;
+    }
+    let defaultspack_http_port = ascii_decimal_port(environment.defaultspack_http_port?)?;
+    let kernel_port = ascii_decimal_port(environment.defaultspack_kernel_port?)?;
+    if defaultspack_http_port == DEFAULTSPACK_RESERVED_PORT
+        || kernel_port == 8765
+        || defaultspack_http_port == kernel_port
+        || defaultspack_http_port == broker_port
+        || kernel_port == broker_port
+    {
+        return None;
+    }
+
+    Some(DebugParallelInstancePolicy {
+        supervisor_root,
+        user_data_root,
+        defaultspack_state_root,
+        broker_port,
+        defaultspack_http_port,
+        kernel_port,
+    })
+}
+
+#[cfg(debug_assertions)]
+fn debug_parallel_instance_policy_from_env() -> Option<DebugParallelInstancePolicy> {
+    debug_parallel_instance_policy_from_values(DebugParallelInstanceEnvironment {
+        debug_build: true,
+        instance_id: std::env::var(DEBUG_INSTANCE_ID_ENV).ok().as_deref(),
+        user_data_root: std::env::var(DEBUG_USER_DATA_ROOT_ENV).ok().as_deref(),
+        connection_path: std::env::var(HOST_BROKER_CONNECTION_ENV).ok().as_deref(),
+        broker_port: std::env::var(HOST_BROKER_PORT_ENV).ok().as_deref(),
+        nonce: std::env::var(HOST_BROKER_INSTANCE_NONCE_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_isolation: std::env::var(DEFAULTSPACK_DEBUG_ISOLATION_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_run_id: std::env::var(DEFAULTSPACK_DEBUG_RUN_ID_ENV).ok().as_deref(),
+        defaultspack_nonce: std::env::var(DEFAULTSPACK_DEBUG_LAUNCH_NONCE_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_state_root: std::env::var(DEFAULTSPACK_DEBUG_STATE_ROOT_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_http_port: std::env::var(DEFAULTSPACK_DEBUG_HTTP_PORT_ENV)
+            .ok()
+            .as_deref(),
+        defaultspack_kernel_port: std::env::var(DEFAULTSPACK_DEBUG_KERNEL_PORT_ENV)
+            .ok()
+            .as_deref(),
+    })
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn debug_defaultspack_ports_from_env() -> Option<(u16, u16)> {
+    debug_parallel_instance_policy_from_env()
+        .map(|policy| (policy.defaultspack_http_port, policy.kernel_port))
+}
+
+#[cfg(debug_assertions)]
+pub(crate) fn debug_defaultspack_approval_secret_path_from_env() -> Option<PathBuf> {
+    debug_parallel_instance_policy_from_env().map(|policy| {
+        policy
+            .defaultspack_state_root
+            .join("approval")
+            .join("approval_runtime_secret")
+    })
+}
+
+#[cfg(not(debug_assertions))]
+pub(crate) fn debug_defaultspack_approval_secret_path_from_env() -> Option<PathBuf> {
+    None
+}
+
+#[cfg(not(debug_assertions))]
+pub(crate) fn debug_defaultspack_ports_from_env() -> Option<(u16, u16)> {
+    None
+}
+
 pub fn run() {
+    let context = tauri::generate_context!();
+    if context.config().identifier == shell_handoff::SHELL_BUNDLE_IDENTIFIER {
+        shell_runtime::run(context);
+        return;
+    }
+    run_launcher(context);
+}
+
+fn run_launcher(context: tauri::Context<tauri::Wry>) {
     env_logger::init();
+
+    #[cfg(debug_assertions)]
+    let debug_parallel_instance = debug_parallel_instance_policy_from_env().and_then(|policy| {
+        match prepare_debug_cache_environment(&policy) {
+            Ok(environment) => {
+                for (key, path) in environment {
+                    std::env::set_var(key, path);
+                }
+                Some(policy)
+            }
+            Err(error) => {
+                error!("Viewer debug parallel-instance cache isolation was rejected: {error:#}");
+                None
+            }
+        }
+    });
+    #[cfg(debug_assertions)]
+    let debug_writable_roots = debug_parallel_instance.as_ref().map(|policy| {
+        (
+            policy.supervisor_root.clone(),
+            policy.user_data_root.clone(),
+        )
+    });
+    #[cfg(not(debug_assertions))]
+    let debug_writable_roots: Option<(PathBuf, PathBuf)> = None;
+    let startup_stage = Arc::new(Mutex::new("builder"));
 
     let allowed_navigation_ports =
         Arc::new(Mutex::new(navigation_ports_with_tauri_dev_server(vec![
@@ -1544,12 +2188,37 @@ pub fn run() {
     let allowed_navigation_ports_for_plugin = Arc::clone(&allowed_navigation_ports);
     let allowed_navigation_ports_for_setup = Arc::clone(&allowed_navigation_ports);
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    #[cfg(debug_assertions)]
+    let builder = if let Some(policy) = debug_parallel_instance.as_ref() {
+        // The policy is validated above, is debug-only, and carries no
+        // authorization. Production/release continues to register the plugin
+        // unconditionally.
+        info!(
+            "Viewer debug parallel-instance mode enabled for isolated ports broker={}, defaultspack={}, kernel={}",
+            policy.broker_port, policy.defaultspack_http_port, policy.kernel_port
+        );
+        tauri::Builder::default()
+    } else {
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Err(error) = show_primary_window(app) {
                 error!("Failed to focus existing Rumi window after duplicate launch: {error}");
             }
         }))
+    };
+    #[cfg(not(debug_assertions))]
+    let builder =
+        tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Err(error) = show_primary_window(app) {
+                error!("Failed to focus existing Rumi window after duplicate launch: {error}");
+            }
+        }));
+
+    record_startup_stage(&startup_stage, "builder_configured");
+    let setup_startup_stage = Arc::clone(&startup_stage);
+    let build_startup_stage = Arc::clone(&startup_stage);
+
+    let app = builder
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri::plugin::Builder::<tauri::Wry, ()>::new("nav-guard")
                 .on_navigation(move |_webview, url| {
@@ -1570,6 +2239,8 @@ pub fn run() {
                 .build(),
         )
         .setup(move |app| {
+            record_startup_stage(&setup_startup_stage, "setup_entered");
+            record_startup_stage(&setup_startup_stage, "resolving_app_paths");
             let resource_dir = match app.path().resource_dir() {
                 Ok(resource_dir) => resource_dir,
                 Err(error) => bundled_resource_dir_fallback().ok_or_else(|| {
@@ -1584,9 +2255,14 @@ pub fn run() {
                 info!("copied legacy Rumi Viewer application data into Tobkiri Launcher storage");
             }
 
+            record_startup_stage(&setup_startup_stage, "building_config");
             let mut config = AppConfig::detect_for_tauri(resource_dir, app_data_dir)
                 .context("failed to build AppConfig")?;
+            if let Some((supervisor_root, user_data_root)) = debug_writable_roots.as_ref() {
+                config.isolate_writable_state(supervisor_root, user_data_root.clone());
+            }
 
+            record_startup_stage(&setup_startup_stage, "creating_state_directories");
             std::fs::create_dir_all(&config.log_dir).ok();
             std::fs::create_dir_all(&config.user_data_dir).ok();
             std::fs::create_dir_all(config.host_broker_dir()).ok();
@@ -1599,16 +2275,43 @@ pub fn run() {
             let shutdown_flag = Arc::new(AtomicBool::new(false));
             app.manage(ShutdownState(Arc::clone(&shutdown_flag)));
 
+            record_startup_stage(&setup_startup_stage, "loading_panel_bootstrap_secret");
             let panel_bootstrap_secret = load_or_create_panel_bootstrap_secret(&config)
                 .context("failed to load persisted panel bootstrap secret")?;
-            let host_broker = HostBrokerRuntime::start(&config)
+            let debug_approval = Arc::new(DebugApprovalManager::new(
+                config.log_dir.join("debug-approval-audit.jsonl"),
+            ));
+            record_startup_stage(&setup_startup_stage, "starting_host_broker");
+            let host_broker =
+                HostBrokerRuntime::start(&config, Arc::clone(&debug_approval))
                 .context("failed to start Viewer host broker")?;
+            let broker_attestation = host_broker.attestation_identity();
+            record_startup_stage(&setup_startup_stage, "host_broker_running");
             app.manage(host_broker.clone());
-            config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
+            app.manage(broker_attestation.clone());
+            app.manage(Arc::clone(&debug_approval));
+            #[cfg(debug_assertions)]
+            if let Some(policy) = debug_parallel_instance.as_ref() {
+                // A complete debug policy binds every run to an exact reserved
+                // kernel port.  Do not scan/reuse another Viewer's kernel.
+                config.kernel_port = policy.kernel_port;
+            } else {
+                config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                config.kernel_port = resolve_available_kernel_port(&config, &panel_bootstrap_secret);
+            }
             set_allowed_navigation_ports(
                 &allowed_navigation_ports_for_setup,
                 navigation_ports_with_tauri_dev_server(vec![
                     config.kernel_port,
+                    #[cfg(debug_assertions)]
+                    debug_parallel_instance
+                        .as_ref()
+                        .map(|policy| policy.defaultspack_http_port)
+                        .unwrap_or(DEFAULTSPACK_RESERVED_PORT),
+                    #[cfg(not(debug_assertions))]
                     DEFAULTSPACK_RESERVED_PORT,
                 ]),
             );
@@ -1626,6 +2329,8 @@ pub fn run() {
             let defaultspack_manager = Arc::new(DefaultspackManager::new(
                 config.clone(),
                 Arc::clone(&shutdown_flag),
+                broker_attestation,
+                Arc::clone(&debug_approval),
             ));
             let defaultspack_manager_for_monitor = Arc::clone(&defaultspack_manager);
             app.manage(defaultspack_manager);
@@ -1673,6 +2378,11 @@ pub fn run() {
                                     error!("Failed to navigate to panel: {e}");
                                 }
                             }
+                            prepare_defaultspack_guardian_in_background(
+                                handle.clone(),
+                                config.clone(),
+                                panel_bootstrap_secret.clone(),
+                            );
                             // Delayed background update check.
                             run_delayed_update_check();
                             return;
@@ -1685,7 +2395,9 @@ pub fn run() {
 
                 // --- Normal startup sequence ---
                 update_setup_progress(Some(&handle), &progress_arc, "Checking Python environment...");
-                if let Err(e) = python_env::ensure_python_env(&config) {
+                if let Err(e) = python_env::ensure_python_env_with_progress(&config, |message| {
+                    update_setup_progress(Some(&handle), &progress_arc, message);
+                }) {
                     let msg = startup_failure_message("Python setup", &e, &config);
                     error!("{msg}");
                     update_setup_progress(Some(&handle), &progress_arc, &msg);
@@ -1716,11 +2428,19 @@ pub fn run() {
                     }
                 }
 
+                prepare_defaultspack_guardian_in_background(
+                    handle.clone(),
+                    config.clone(),
+                    panel_bootstrap_secret.clone(),
+                );
+
                 // Delayed background update check.
                 run_delayed_update_check();
             });
 
+            record_startup_stage(&setup_startup_stage, "setting_up_tray");
             tray::setup_tray(app)?;
+            record_startup_stage(&setup_startup_stage, "setup_complete");
 
             Ok(())
         })
@@ -1728,11 +2448,11 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if should_send_to_background_on_close(window.label()) {
                     api.prevent_close();
-                    if let Err(error) = send_app_to_background(&window.app_handle()) {
+                    if let Err(error) = send_app_to_background(window.app_handle()) {
                         error!("Failed to send app to background: {error}");
                     }
                 } else if should_restore_primary_on_close(window.label()) {
-                    if let Err(error) = restore_primary_window(&window.app_handle(), true) {
+                    if let Err(error) = restore_primary_window(window.app_handle(), true) {
                         error!("Failed to restore launcher after closing Tobkiri: {error}");
                     }
                 }
@@ -1740,6 +2460,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_setup_progress,
+            debug_approval_status,
+            arm_debug_approval,
+            revoke_debug_approval,
             restart_kernel,
             reauthorize_panel_session,
             open_external_url,
@@ -1751,6 +2474,7 @@ pub fn run() {
             open_defaults_console_window,
             open_host_permissions_window,
             authority_approval_context,
+            coding_approval_operator,
             send_to_background,
             show_app_window,
             get_background_control_status,
@@ -1758,71 +2482,76 @@ pub fn run() {
             desktop_system_info::get_host_permission_status,
             desktop_system_info::open_host_permission_settings,
             dock_registration::register_defaultspack_dock,
-            dock_registration::launch_defaultspack_desktop
+            dock_registration::launch_defaultspack_desktop,
+            presentation::get_presentation_catalog,
+            presentation::select_presentation,
+            presentation::launch_selected_presentation
         ])
-        .build(tauri::generate_context!())
-        .map(|app| {
-            app.run(|app_handle, event| {
-                if let tauri::RunEvent::ExitRequested { api, .. } = &event {
-                    let shutdown_requested = app_handle
-                        .state::<ShutdownState>()
-                        .inner()
-                        .0
-                        .load(Ordering::SeqCst);
-                    if !shutdown_requested {
-                        api.prevent_exit();
-                        request_app_exit(app_handle);
-                    }
-                }
+        .build(context);
 
-                // macOS can deliver a terminal Exit without first allowing the
-                // asynchronous ExitRequested shutdown path to finish (for
-                // example from the application-menu Quit action). Keep this
-                // synchronous fallback so Launcher-owned 8765/8766 processes
-                // cannot outlive the app. Re-running it after the normal path
-                // is harmless because both managers have idempotent stops.
-                if matches!(&event, tauri::RunEvent::Exit) {
-                    app_handle
-                        .state::<ShutdownState>()
-                        .inner()
-                        .0
-                        .store(true, Ordering::SeqCst);
-                    let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
-                    let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
-                    stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
-                }
+    let app = match app {
+        Ok(app) => app,
+        Err(_) => {
+            // Do not convert a setup/build failure into a duplicate-instance
+            // success. The single-instance plugin itself retains its documented
+            // exit(0) behavior for normal duplicate launches.
+            error!(
+                "Viewer startup failed at stage={}; exiting nonzero",
+                startup_stage_name(&build_startup_stage)
+            );
+            std::process::exit(1);
+        }
+    };
 
-                #[cfg(target_os = "macos")]
-                if let tauri::RunEvent::Reopen {
-                    has_visible_windows: false,
-                    ..
-                } = &event
-                {
-                    if let Err(error) = show_primary_window(app_handle) {
-                        warn!("Failed to reopen primary window: {error}");
-                    }
-                }
+    record_startup_stage(&startup_stage, "running");
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = &event {
+            let shutdown_requested = app_handle
+                .state::<ShutdownState>()
+                .inner()
+                .0
+                .load(Ordering::SeqCst);
+            if !shutdown_requested {
+                api.prevent_exit();
+                request_app_exit(app_handle);
+            }
+        }
 
-                #[cfg(not(target_os = "macos"))]
-                {
-                    let _ = (app_handle, event);
-                }
-            });
-        })
-        .unwrap_or_else(|error| error!("error while running tauri application: {error}"));
+        if matches!(&event, tauri::RunEvent::Exit) {
+            app_handle
+                .state::<ShutdownState>()
+                .inner()
+                .0
+                .store(true, Ordering::SeqCst);
+            let defaultspack = app_handle.state::<Arc<DefaultspackManager>>();
+            let kernel_manager = app_handle.state::<Arc<Mutex<KernelManager>>>();
+            stop_managed_runtimes(defaultspack.inner(), kernel_manager.inner());
+        }
+
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen {
+            has_visible_windows: false,
+            ..
+        } = &event
+        {
+            if let Err(error) = show_primary_window(app_handle) {
+                warn!("Failed to reopen primary window: {error}");
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (app_handle, event);
+        }
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        ENV_LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     fn test_config() -> AppConfig {
         AppConfig::detect_for_tauri(
@@ -1830,6 +2559,458 @@ mod tests {
             PathBuf::from("/tmp/test_appdata"),
         )
         .unwrap()
+    }
+
+    struct DebugPolicyFixture {
+        supervisor: PathBuf,
+        user_data: PathBuf,
+        connection: PathBuf,
+        defaultspack_state: PathBuf,
+    }
+
+    impl DebugPolicyFixture {
+        fn new() -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let supervisor = std::env::temp_dir().canonicalize().unwrap().join(format!(
+                "rumi-viewer-policy-{}-{unique}",
+                std::process::id()
+            ));
+            let user_data = supervisor.join("viewer_user_data");
+            let connection = user_data.join("host_broker").join("connection.json");
+            let defaultspack_state = supervisor.join("defaultspack_state");
+            fs::create_dir(&supervisor).unwrap();
+            fs::create_dir(&user_data).unwrap();
+            fs::create_dir(&defaultspack_state).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+
+                for path in [&supervisor, &user_data, &defaultspack_state] {
+                    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
+                }
+            }
+            Self {
+                supervisor,
+                user_data,
+                connection,
+                defaultspack_state,
+            }
+        }
+
+        fn path_text(path: &std::path::Path) -> &str {
+            path.to_str().unwrap()
+        }
+
+        fn viewer_values(&self) -> (&'static str, &str, &str, &'static str, &'static str) {
+            (
+                "debug-viewer-smoke-12345",
+                Self::path_text(&self.user_data),
+                Self::path_text(&self.connection),
+                "18770",
+                "debug_nonce_0123456789",
+            )
+        }
+
+        fn defaultspack_values(
+            &self,
+        ) -> (
+            &'static str,
+            &'static str,
+            &'static str,
+            &str,
+            &'static str,
+            &'static str,
+        ) {
+            (
+                "1",
+                "debug-viewer-smoke-12345",
+                "debug_nonce_0123456789",
+                Self::path_text(&self.defaultspack_state),
+                "18771",
+                "18772",
+            )
+        }
+    }
+
+    impl Drop for DebugPolicyFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.supervisor);
+        }
+    }
+
+    fn valid_debug_parallel_policy_values(
+        fixture: &DebugPolicyFixture,
+    ) -> (&'static str, &str, &str, &'static str, &'static str) {
+        fixture.viewer_values()
+    }
+
+    fn valid_debug_defaultspack_policy_values(
+        fixture: &DebugPolicyFixture,
+    ) -> (
+        &'static str,
+        &'static str,
+        &'static str,
+        &str,
+        &'static str,
+        &'static str,
+    ) {
+        fixture.defaultspack_values()
+    }
+
+    macro_rules! debug_policy {
+        (
+            $debug_build:expr, $instance_id:expr, $user_data_root:expr,
+            $connection_path:expr, $broker_port:expr, $nonce:expr,
+            $defaultspack_isolation:expr, $defaultspack_run_id:expr,
+            $defaultspack_nonce:expr, $defaultspack_state_root:expr,
+            $defaultspack_http_port:expr, $defaultspack_kernel_port:expr $(,)?
+        ) => {
+            debug_parallel_instance_policy_from_values(DebugParallelInstanceEnvironment {
+                debug_build: $debug_build,
+                instance_id: $instance_id,
+                user_data_root: $user_data_root,
+                connection_path: $connection_path,
+                broker_port: $broker_port,
+                nonce: $nonce,
+                defaultspack_isolation: $defaultspack_isolation,
+                defaultspack_run_id: $defaultspack_run_id,
+                defaultspack_nonce: $defaultspack_nonce,
+                defaultspack_state_root: $defaultspack_state_root,
+                defaultspack_http_port: $defaultspack_http_port,
+                defaultspack_kernel_port: $defaultspack_kernel_port,
+            })
+        };
+    }
+
+    #[test]
+    fn debug_parallel_instance_requires_every_isolation_precondition() {
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, port, nonce) = valid_debug_parallel_policy_values(&fixture);
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            valid_debug_defaultspack_policy_values(&fixture);
+        let policy = debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .expect("fully isolated debug launch should be eligible");
+        assert_eq!(policy.supervisor_root, fixture.supervisor);
+        assert_eq!(policy.user_data_root, PathBuf::from(root));
+        assert_eq!(policy.broker_port, 18770);
+        assert_eq!(policy.defaultspack_http_port, 18771);
+        assert_eq!(policy.kernel_port, 18772);
+
+        for missing in 0..11 {
+            let mut values = [
+                Some(id),
+                Some(root),
+                Some(connection),
+                Some(port),
+                Some(nonce),
+                Some(isolation),
+                Some(run_id),
+                Some(defaultspack_nonce),
+                Some(state_root),
+                Some(http_port),
+                Some(kernel_port),
+            ];
+            values[missing] = None;
+            assert!(
+                debug_policy!(
+                    true, values[0], values[1], values[2], values[3], values[4], values[5],
+                    values[6], values[7], values[8], values[9], values[10]
+                )
+                .is_none(),
+                "missing precondition {missing} must retain single-instance"
+            );
+        }
+    }
+
+    #[test]
+    fn debug_parallel_instance_rejects_malformed_or_shared_inputs() {
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, _port, nonce) = valid_debug_parallel_policy_values(&fixture);
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            valid_debug_defaultspack_policy_values(&fixture);
+        for bad_id in ["viewer-smoke", "debug-x", "debug-has space"] {
+            assert!(debug_policy!(
+                true,
+                Some(bad_id),
+                Some(root),
+                Some(connection),
+                Some("18770"),
+                Some(nonce),
+                Some(isolation),
+                Some(run_id),
+                Some(defaultspack_nonce),
+                Some(state_root),
+                Some(http_port),
+                Some(kernel_port),
+            )
+            .is_none());
+        }
+        for bad_port in ["8770", "0", " 18770", "18770 ", "65536"] {
+            assert!(
+                debug_policy!(
+                    true,
+                    Some(id),
+                    Some(root),
+                    Some(connection),
+                    Some(bad_port),
+                    Some(nonce),
+                    Some(isolation),
+                    Some(run_id),
+                    Some(defaultspack_nonce),
+                    Some(state_root),
+                    Some(http_port),
+                    Some(kernel_port),
+                )
+                .is_none(),
+                "{bad_port:?} must retain single-instance"
+            );
+        }
+        assert!(debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some("/tmp/not-the-run/host_broker/connection.json"),
+            Some("18770"),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .is_none());
+        assert!(debug_policy!(
+            true,
+            Some(id),
+            Some("relative-root"),
+            Some(connection),
+            Some("18770"),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn debug_parallel_instance_rejects_symlinked_or_permissive_supervisor() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let fixture = DebugPolicyFixture::new();
+        let alias = fixture.supervisor.with_file_name(format!(
+            "{}-alias",
+            fixture.supervisor.file_name().unwrap().to_string_lossy()
+        ));
+        symlink(&fixture.supervisor, &alias).unwrap();
+        let alias_user_data = alias.join("viewer_user_data");
+        let alias_connection = alias_user_data.join("host_broker").join("connection.json");
+        let alias_state = alias.join("defaultspack_state");
+        assert!(debug_policy!(
+            true,
+            Some("debug-viewer-smoke-12345"),
+            alias_user_data.to_str(),
+            alias_connection.to_str(),
+            Some("18770"),
+            Some("debug_nonce_0123456789"),
+            Some("1"),
+            Some("debug-viewer-smoke-12345"),
+            Some("debug_nonce_0123456789"),
+            alias_state.to_str(),
+            Some("18771"),
+            Some("18772"),
+        )
+        .is_none());
+        fs::remove_file(&alias).unwrap();
+
+        fs::set_permissions(&fixture.supervisor, fs::Permissions::from_mode(0o755)).unwrap();
+        let (id, root, connection, port, nonce) = fixture.viewer_values();
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            fixture.defaultspack_values();
+        assert!(debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn debug_parallel_instance_rejects_unexpected_state_basenames() {
+        let fixture = DebugPolicyFixture::new();
+        let wrong_user_data = fixture.supervisor.join("user_data");
+        let wrong_connection = wrong_user_data.join("host_broker").join("connection.json");
+        assert!(debug_policy!(
+            true,
+            Some("debug-viewer-smoke-12345"),
+            wrong_user_data.to_str(),
+            wrong_connection.to_str(),
+            Some("18770"),
+            Some("debug_nonce_0123456789"),
+            Some("1"),
+            Some("debug-viewer-smoke-12345"),
+            Some("debug_nonce_0123456789"),
+            fixture.defaultspack_state.to_str(),
+            Some("18771"),
+            Some("18772"),
+        )
+        .is_none());
+
+        let wrong_state = fixture.supervisor.join("state");
+        let (id, root, connection, port, nonce) = fixture.viewer_values();
+        assert!(debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some("1"),
+            Some(id),
+            Some(nonce),
+            wrong_state.to_str(),
+            Some("18771"),
+            Some("18772"),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn debug_cache_environment_stays_under_supervisor_without_recreating_state() {
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, port, nonce) = fixture.viewer_values();
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            fixture.defaultspack_values();
+        let policy = debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .unwrap();
+        let sentinel = fixture.supervisor.join("do-not-delete.txt");
+        fs::write(&sentinel, b"preserve").unwrap();
+
+        let environment = prepare_debug_cache_environment(&policy).unwrap();
+        let second = prepare_debug_cache_environment(&policy).unwrap();
+
+        assert_eq!(environment, second);
+        assert_eq!(fs::read(&sentinel).unwrap(), b"preserve");
+        for (_, path) in environment {
+            assert!(path.starts_with(&fixture.supervisor));
+            assert!(secure_debug_directory(
+                &path,
+                path.file_name().and_then(|v| v.to_str())
+            ));
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn debug_cache_environment_rejects_preplanted_symlink() {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, port, nonce) = fixture.viewer_values();
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            fixture.defaultspack_values();
+        let policy = debug_policy!(
+            true,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .unwrap();
+        let external = fixture.supervisor.with_file_name(format!(
+            "{}-external-cache",
+            fixture.supervisor.file_name().unwrap().to_string_lossy()
+        ));
+        fs::create_dir(&external).unwrap();
+        fs::set_permissions(&external, fs::Permissions::from_mode(0o700)).unwrap();
+        symlink(&external, fixture.supervisor.join("cargo_target")).unwrap();
+
+        assert!(prepare_debug_cache_environment(&policy).is_err());
+        assert!(external.read_dir().unwrap().next().is_none());
+
+        fs::remove_dir(&external).unwrap();
+    }
+
+    #[test]
+    fn release_policy_never_bypasses_single_instance() {
+        let fixture = DebugPolicyFixture::new();
+        let (id, root, connection, port, nonce) = valid_debug_parallel_policy_values(&fixture);
+        let (isolation, run_id, defaultspack_nonce, state_root, http_port, kernel_port) =
+            valid_debug_defaultspack_policy_values(&fixture);
+        assert!(debug_policy!(
+            false,
+            Some(id),
+            Some(root),
+            Some(connection),
+            Some(port),
+            Some(nonce),
+            Some(isolation),
+            Some(run_id),
+            Some(defaultspack_nonce),
+            Some(state_root),
+            Some(http_port),
+            Some(kernel_port),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn defaultspack_auxiliary_urls_keep_production_default_and_accept_isolated_port() {
+        assert_eq!(
+            defaultspack_http_port_for_urls(None),
+            DEFAULTSPACK_RESERVED_PORT
+        );
+        assert_eq!(defaultspack_http_port_for_urls(Some(18771)), 18771);
     }
 
     #[test]
@@ -2194,40 +3375,6 @@ mod tests {
         let mut km = KernelManager::new(&config, "test-bootstrap".into());
         let result = km.wait_and_handle_restart().unwrap();
         assert!(!result);
-    }
-
-    #[test]
-    fn explicit_auto_approve_opt_in_is_required() {
-        let _guard = env_lock().lock().unwrap();
-        std::env::remove_var("RUMI_AUTO_APPROVE_LOCAL");
-
-        let dev_environment = true;
-        let auto_approve_local = dev_environment
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-        assert!(!auto_approve_local);
-    }
-
-    #[test]
-    fn explicit_auto_approve_opt_in_only_applies_in_dev() {
-        let _guard = env_lock().lock().unwrap();
-        std::env::set_var("RUMI_AUTO_APPROVE_LOCAL", "true");
-
-        let production_auto_approve = false
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-        let development_auto_approve = true
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-        assert!(!production_auto_approve);
-        assert!(development_auto_approve);
-
-        std::env::remove_var("RUMI_AUTO_APPROVE_LOCAL");
     }
 
     #[test]

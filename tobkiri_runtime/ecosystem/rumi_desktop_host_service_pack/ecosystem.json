@@ -1,17 +1,70 @@
 {
+  "connectivity": {
+    "provides": [
+      "rumi.action.desktop.host.v1",
+      "rumi.resource.desktop.host.v1"
+    ],
+    "requires": [
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Typed desktop observe/control requests mediated by core Authority and the Viewer host broker.",
+  "display_name": "Rumi Desktop Host Service",
+  "host_execution": false,
+  "metadata": {
+    "authority_split": [
+      "observe",
+      "control"
+    ],
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:b186aa7b575b3ae2107d83aa065b2c1e8dc3fe775cfb1fad01e7ff3d17a5a882",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:ca73b3e6f40b82deeb3c77a28d1d70fba39feac0cbd166b4d8a0b68c87495d40"
+    },
+    "executor_owner": "rumi_viewer_host_broker",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:ca73b3e6f40b82deeb3c77a28d1d70fba39feac0cbd166b4d8a0b68c87495d40"
+    },
+    "manifest_authority": "v4-authoritative",
+    "operation_descriptor_owner": true,
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "tool_or_ui_registry_imports": false
+  },
   "pack_id": "rumi_desktop_host_service_pack",
   "pack_identity": "rumi:ecosystem/rumi_desktop_host_service_pack",
-  "display_name": "Rumi Desktop Host Service Pack",
-  "version": "1.0.0",
-  "description": "Independent desktop observe/control boundary for the Viewer host broker.",
-  "dependencies": {"rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"},
-  "connectivity": {"requires": ["rumi.service.host.authorize.v1"], "provides": ["rumi.resource.desktop.host.v1", "rumi.action.desktop.host.v1"]},
+  "provenance": {
+    "build_identity": "rumi_desktop_host_service_pack:1.0.0",
+    "content_hash": "sha256:978f30aeae69ba9c5616e837c712e0977447e82268cdb82ad3a11366e3f819de",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "desktop.host.control",
+    "desktop.host.observe",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
   "required_secrets": [],
-  "required_capabilities": ["desktop.host.observe", "desktop.host.control", "host.authority.consume"],
-  "required_network": {"allowed_domains": [], "allowed_ports": []},
-  "host_execution": false,
   "resources": [],
-  "provenance": {"content_hash": "sha256:331df96aaafce1d1ff58ad94736467453e388c5f7610c9e9739cfbbd8e5a7a6c", "build_identity": "rumi-desktop-host-service-pack:1.0.0", "trust_class": "local", "signature": null},
-  "metadata": {"authority_split": ["observe", "control"], "executor_owner": "rumi_viewer_host_broker", "operation_descriptor_owner": true, "tool_or_ui_registry_imports": false}
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "host",
+      "desktop",
+      "service"
+    ]
+  }
 }
-

@@ -27,25 +27,37 @@ def _read(path: Path) -> str:
 
 def test_rumi_widgets_pack_modules_are_core_runtime_shims():
     modules = ["__init__.py", "base.py", "controls.py", "custom.py", "display.py", "layout.py", "stream.py"]
-    for pack_root in (DEFAULTS_ROOT, DEFAULTSPACK_ROOT):
-        for module in modules:
-            source = _read(pack_root / "lib" / "rumi_widgets" / module)
-            assert "core_runtime.rumi_widgets" in source
-            assert "class Widget" not in source
-            assert "class Button" not in source
+    for module in modules:
+        assert not (DEFAULTS_ROOT / "lib" / "rumi_widgets" / module).exists()
+        source = _read(DEFAULTSPACK_ROOT / "lib" / "rumi_widgets" / module)
+        assert "core_runtime.rumi_widgets" in source
+        assert "class Widget" not in source
+        assert "class Button" not in source
+
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+
+    assert_profile_resolver_requires_authority_snapshot()
 
 
 def test_prompt_builder_and_session_manager_are_core_runtime_shims():
-    for pack_root in (DEFAULTS_ROOT, DEFAULTSPACK_ROOT):
-        builder_source = _read(pack_root / "domain" / "prompt" / "builder.py")
-        assert "core_runtime.prompt_builder" in builder_source
-        assert "class PromptBuilder" not in builder_source
-        assert "def evaluate_condition" not in builder_source
+    for relative_path, marker in (
+        ("domain/prompt/builder.py", "core_runtime.prompt_builder"),
+        ("domain/chat/session_manager.py", "core_runtime.chat_session_manager"),
+    ):
+        assert not (DEFAULTS_ROOT / relative_path).exists()
+        source = _read(DEFAULTSPACK_ROOT / relative_path)
+        assert marker in source
 
-        session_source = _read(pack_root / "domain" / "chat" / "session_manager.py")
-        assert "core_runtime.chat_session_manager" in session_source
-        assert "def create_session" not in session_source
-        assert "def add_conversation" not in session_source
+    builder_source = _read(DEFAULTSPACK_ROOT / "domain" / "prompt" / "builder.py")
+    assert "class PromptBuilder" not in builder_source
+    assert "def evaluate_condition" not in builder_source
+    session_source = _read(DEFAULTSPACK_ROOT / "domain" / "chat" / "session_manager.py")
+    assert "def create_session" not in session_source
+    assert "def add_conversation" not in session_source
+
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+
+    assert_profile_resolver_requires_authority_snapshot()
 
 
 def test_unified_template_modules_are_safe_core_runtime_shims():
@@ -58,21 +70,25 @@ def test_unified_template_modules_are_safe_core_runtime_shims():
         "metadata": {"handler_code": "raise RuntimeError('should stay inert')"},
     }
 
-    for pack_name, pack_root in (("defaults", DEFAULTS_ROOT), ("defaultspack", DEFAULTSPACK_ROOT)):
-        source = _read(pack_root / "domain" / "template" / "unified.py")
-        assert "core_runtime.template_unified" in source
-        assert '"type": "dynamic"' not in source
-        assert '"type": "prompt"' not in source
+    assert not (DEFAULTS_ROOT / "domain" / "template" / "unified.py").exists()
+    source = _read(DEFAULTSPACK_ROOT / "domain" / "template" / "unified.py")
+    assert "core_runtime.template_unified" in source
+    assert '"type": "dynamic"' not in source
+    assert '"type": "prompt"' not in source
 
-        module = _load_module(
-            pack_root / "domain" / "template" / "unified.py",
-            f"{pack_name}_template_unified_shim",
-        )
-        tool = module.convert_prompt_to_tool(prompt)
+    module = _load_module(
+        DEFAULTSPACK_ROOT / "domain" / "template" / "unified.py",
+        "defaultspack_template_unified_shim",
+    )
+    tool = module.convert_prompt_to_tool(prompt)
 
-        assert tool["execution"]["type"] == "rumi_function"
-        assert tool["execution"]["qualified_name"] == "defaultspack:prompt_render"
-        assert "handler_code" not in tool
-        assert tool["metadata"]["template_facade_preview"] is True
-        assert tool["metadata"]["template_body"] == prompt["body"]
-        assert tool["metadata"].get("legacy_handler_code") is None
+    assert tool["execution"]["type"] == "rumi_function"
+    assert tool["execution"]["qualified_name"] == "defaultspack:prompt_render"
+    assert "handler_code" not in tool
+    assert tool["metadata"]["template_facade_preview"] is True
+    assert tool["metadata"]["template_body"] == prompt["body"]
+    assert tool["metadata"].get("legacy_handler_code") is None
+
+    from tests.legacy_authority_contracts import assert_profile_resolver_requires_authority_snapshot
+
+    assert_profile_resolver_requires_authority_snapshot()

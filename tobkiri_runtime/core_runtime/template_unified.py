@@ -269,7 +269,7 @@ def unified_to_tool(ut: UnifiedTemplate) -> dict:
             if tag not in tags:
                 tags.append(tag)
 
-    tool_def = {
+    tool_def: dict[str, Any] = {
         "tool_id": ut.name,
         "name": ut.name,
         "summary": ut.description,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -78,9 +79,7 @@ class WorkspaceMountStore:
                 "metadata": _copy(metadata or {}),
                 "created_at": current.get("created_at") if current else now,
                 "updated_at": now,
-                "mount_revision": int(current.get("mount_revision") or 0) + 1
-                if current
-                else 1,
+                "mount_revision": int(current.get("mount_revision") or 0) + 1 if current else 1,
             }
             state["mounts"][workspace_id] = record
             state["revision"] += 1
@@ -212,9 +211,7 @@ def create_workspace_action(client: Any) -> Callable[[str, Mapping[str, Any]], A
                 metadata=arguments["metadata"],
             )
         if name == "unmount":
-            return store.unmount(
-                arguments["workspace_id"], expected_revision=expected
-            )
+            return store.unmount(arguments["workspace_id"], expected_revision=expected)
         if name == "select":
             return store.select(arguments["workspace_id"], expected_revision=expected)
         metadata = {"trusted": True} if name == "trust" else arguments["metadata"]
@@ -226,6 +223,57 @@ def create_workspace_action(client: Any) -> Callable[[str, Mapping[str, Any]], A
         )
 
     return operation
+
+
+def capture_selected_workspace_binding(
+    profile_id: str,
+    *,
+    user_data_root: Path | None = None,
+) -> dict[str, object]:
+    """Capture the selected root with immutable mount and filesystem identity."""
+
+    store = WorkspaceMountStore(profile_id, user_data_root=user_data_root)
+    snapshot = store.snapshot()
+    workspace_id = str(snapshot.get("selected_workspace_id") or "").strip()
+    if not workspace_id:
+        raise ValueError("a Host-selected workspace is required")
+    mount = store.get(workspace_id)
+    if not isinstance(mount, Mapping):
+        raise ValueError("the Host-selected workspace is unavailable")
+    unresolved = Path(str(mount.get("root_path") or ""))
+    if unresolved.is_symlink():
+        raise PermissionError("the selected workspace root must not be a symlink")
+    root = unresolved.resolve(strict=True)
+    if not root.is_dir():
+        raise PermissionError("the selected workspace root is unavailable")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    root_fd = os.open(root, flags)
+    try:
+        root_stat = os.fstat(root_fd)
+        current = root.stat()
+        if (root_stat.st_dev, root_stat.st_ino) != (current.st_dev, current.st_ino):
+            raise PermissionError("the selected workspace root changed during capture")
+    finally:
+        os.close(root_fd)
+    binding: dict[str, object] = {
+        "workspace_id": workspace_id,
+        "access": "read_only",
+        "mount_revision": str(
+            mount.get("revision") or mount.get("updated_at_ms") or mount.get("updated_at") or ""
+        ),
+        "canonical_root": str(root),
+        "root_st_dev": int(root_stat.st_dev),
+        "root_st_ino": int(root_stat.st_ino),
+    }
+    binding["root_identity"] = hashlib.sha256(
+        json.dumps(
+            binding,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    return binding
 
 
 def _redeem(
@@ -308,4 +356,3 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
-

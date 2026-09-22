@@ -14,6 +14,7 @@ from domain.safety.browser_approval_exchange import (  # noqa: E402
     BrowserApprovalAudience,
     BrowserApprovalExchangeStore,
 )
+from core_runtime.host_contract import bind_host_contract  # noqa: E402
 
 
 def _audience(**changes: str) -> BrowserApprovalAudience:
@@ -120,14 +121,11 @@ def test_legacy_url_cleanup_preserves_only_nonsensitive_parameters() -> None:
     assert "fake-old" not in clean
 
 
-def test_exchange_transport_rejects_fake_bearer_and_other_loopback_port(
-    monkeypatch,
-) -> None:
+def test_exchange_transport_rejects_fake_bearer_and_other_loopback_port() -> None:
     from ecosystem.defaultspack.transport.http import (
         _browser_exchange_transport_error,
     )
 
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_LOCAL_TOKEN", "fake-configured-local-token")
     base = {
         "Authorization": "Bearer fake-configured-local-token",
         "Origin": "http://127.0.0.1:8766",
@@ -135,12 +133,19 @@ def test_exchange_transport_rejects_fake_bearer_and_other_loopback_port(
         "X-Rumi-CSRF": "fake-csrf-marker",
     }
 
-    assert _browser_exchange_transport_error(base) is None
-    fake_bearer = {**base, "Authorization": "Bearer fake-attacker-token"}
-    assert _browser_exchange_transport_error(fake_bearer) == (
-        401,
-        "local auth token required",
-        "AUTH_REQUIRED",
-    )
-    wrong_port = {**base, "Origin": "http://127.0.0.1:9999"}
-    assert _browser_exchange_transport_error(wrong_port)[2] == "ORIGIN_DENIED"
+    with bind_host_contract(
+        {
+            "schema_version": "tobkiri.host-contract.v1",
+            "profile_id": "profile:test",
+            "values": {"desktop_api_token": "fake-configured-local-token"},
+        }
+    ):
+        assert _browser_exchange_transport_error(base) is None
+        fake_bearer = {**base, "Authorization": "Bearer fake-attacker-token"}
+        assert _browser_exchange_transport_error(fake_bearer) == (
+            401,
+            "local auth token required",
+            "AUTH_REQUIRED",
+        )
+        wrong_port = {**base, "Origin": "http://127.0.0.1:9999"}
+        assert _browser_exchange_transport_error(wrong_port)[2] == "ORIGIN_DENIED"

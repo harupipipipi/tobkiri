@@ -8,7 +8,6 @@ from typing import Any
 from .ai_input_models import PromptSegment, ToolSchemaSegment
 from .ai_input_token_estimator import estimate_json_tokens, estimate_tokens
 from .pack_trust import is_pack_trusted
-from .profile_graph_models import normalize_profile_graph_selected
 from .profile_workspace import ProfileWorkspaceManager, profile_workspace_payload
 
 _DEFAULTSPACK_IMPORT_ROOT = Path(__file__).resolve().parent.parent / "ecosystem" / "defaultspack"
@@ -72,7 +71,7 @@ def collect_prompt_segments(
 
 
 def collect_tool_schema_segments(profile: dict[str, Any], available_tools: list[dict[str, Any]] | None = None) -> list[ToolSchemaSegment]:
-    policy = profile.get("policy") if isinstance(profile.get("policy"), dict) else {}
+    policy = _dict_value(profile.get("policy"))
     allowlist = _tool_allowlist(policy)
     tools = list(available_tools) if isinstance(available_tools, list) else list(ToolRegistry().list_tools())
     segments: list[ToolSchemaSegment] = []
@@ -84,14 +83,14 @@ def collect_tool_schema_segments(profile: dict[str, Any], available_tools: list[
         if not tool_id and not name:
             continue
         adapted = adapt_tool_definition(tool)
-        schema = {}
+        schema: dict[str, Any] = {}
         if isinstance(adapted, dict):
-            function_def = adapted.get("function") if isinstance(adapted.get("function"), dict) else {}
-            schema = function_def.get("parameters") if isinstance(function_def.get("parameters"), dict) else {}
+            function_def = _dict_value(adapted.get("function"))
+            schema = _dict_value(function_def.get("parameters"))
         if not schema:
-            schema = tool.get("schema") if isinstance(tool.get("schema"), dict) else {}
+            schema = _dict_value(tool.get("schema"))
         enabled = not allowlist or tool_id in allowlist or name in allowlist
-        metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+        metadata = _dict_value(tool.get("metadata"))
         skill_ids = _string_list(tool.get("skills") or metadata.get("skills"))
         skill_triggers = _string_list(metadata.get("skill_triggers"))
         segments.append(
@@ -172,7 +171,7 @@ def collect_context_segments(
 
 
 def collect_api_route_segments(profile: dict[str, Any]) -> list[PromptSegment]:
-    policy = profile.get("policy") if isinstance(profile.get("policy"), dict) else {}
+    policy = _dict_value(profile.get("policy"))
     allowlist = _string_set(policy.get("api_route_allowlist"))
     if not allowlist:
         return []
@@ -214,7 +213,7 @@ def collect_api_route_segments(profile: dict[str, Any]) -> list[PromptSegment]:
 
 
 def collect_policy_segment(profile: dict[str, Any]) -> PromptSegment:
-    policy = profile.get("policy") if isinstance(profile.get("policy"), dict) else {}
+    policy = _dict_value(profile.get("policy"))
     text = json.dumps(policy, ensure_ascii=False, sort_keys=True)
     return PromptSegment(
         id="policy:profile",
@@ -229,11 +228,8 @@ def collect_policy_segment(profile: dict[str, Any]) -> PromptSegment:
 
 
 def _profile_prompt_ids(profile: dict[str, Any]) -> list[str]:
-    metadata = profile.get("metadata") if isinstance(profile.get("metadata"), dict) else {}
-    selected = normalize_profile_graph_selected(metadata.get("selected"))
-    selected_prompts = selected.get("prompts") if isinstance(selected.get("prompts"), list) else []
+    metadata = _dict_value(profile.get("metadata"))
     candidates: list[Any] = [
-        *selected_prompts,
         profile.get("system_prompt_id"),
         profile.get("default_prompt_id"),
         metadata.get("system_prompt_id"),
@@ -275,12 +271,12 @@ def _resolve_prompt_text(
         str(effective.get("source") or f"profile.prompt:{prompt_id}"),
         str(effective.get("source_type") or "profile_prompt"),
         {
-            **(effective.get("metadata") if isinstance(effective.get("metadata"), dict) else {}),
+            **_dict_value(effective.get("metadata")),
             "resolved_prompt_id": effective.get("prompt_id"),
             "source_pack_id": effective.get("source_pack_id"),
             "source_pack_trusted": effective.get("source_pack_trusted"),
             "source_pack_trust_reason": effective.get("source_pack_trust_reason"),
-            "source_chain": effective.get("source_chain") if isinstance(effective.get("source_chain"), list) else [],
+            "source_chain": _list_value(effective.get("source_chain")),
         },
     )
 
@@ -332,8 +328,18 @@ def _result_count(value: Any) -> int:
 
 
 def _tool_source(tool: dict[str, Any]) -> str:
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    metadata = _dict_value(tool.get("metadata"))
     return str(metadata.get("source_pack_id") or tool.get("source_pack_id") or metadata.get("source") or "")
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    """Return a JSON object value, or an empty object for another shape."""
+    return value if isinstance(value, dict) else {}
+
+
+def _list_value(value: Any) -> list[Any]:
+    """Return a JSON array value, or an empty array for another shape."""
+    return value if isinstance(value, list) else []
 
 
 def _api_route_catalog() -> dict[str, dict[str, Any]]:

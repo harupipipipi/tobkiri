@@ -1,0 +1,66 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:acda6e5a3883815d272a73500144ec1d15344bf741026851a22aff454cda04fb",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:3bdecdcc2d4fdb6b972872a5f1246925d8aac33c8a5929f87ebb00106195d14f",
+    "contract_catalog_digest": "sha256:bc7be2f235efce695b8d8e2432530cacf9717f7a99131b0c117ca5d80b515fb7",
+    "source_identity": "sha256:7ccc85bacb791430ca0a753e3fa84529bc401d0fc6d13b85d52f692a6287ef27"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_document_intelligence_pack",
+      "rumi_document_intelligence_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2099-01-01"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:3bdecdcc2d4fdb6b972872a5f1246925d8aac33c8a5929f87ebb00106195d14f",
+    "display_name": "Rumi Document Intelligence Pack",
+    "id": "rumi_document_intelligence_pack",
+    "kind": "application",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:7ccc85bacb791430ca0a753e3fa84529bc401d0fc6d13b85d52f692a6287ef27",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:7ccc85bacb791430ca0a753e3fa84529bc401d0fc6d13b85d52f692a6287ef27",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_document_intelligence_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

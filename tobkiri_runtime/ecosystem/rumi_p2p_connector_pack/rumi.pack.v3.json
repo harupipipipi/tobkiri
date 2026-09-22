@@ -1,12 +1,189 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.p2p_connector","version":"1.0.0","kind":"provider","display_name":"Rumi P2P Connector","description":"Timestamped signed peer envelopes and HTTPS delivery."},
-  "contracts":{"provides":[{"id":"rumi.service.connector.adapter.v1","version":"1.0.0","provider_instance_id":"connector.p2p","instance_key":"p2p","cardinality":"many","security":"critical","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.adapter.verify","connector.delivery.execute"]}],"requires":[{"id":"rumi.service.credential.resolve.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
-  "entrypoints":[{"id":"p2p-adapter","contract_id":"rumi.service.connector.adapter.v1","loader":"python","module":"ecosystem.rumi_p2p_connector_pack.runtime.adapter","symbol":"create_connector_adapter","artifact_hash":"sha256:beb7d2f0f1dfe9bb9eaa4f4e2d960ded504465a1de26f9df2f4fead681a146ce"}],
-  "resources":[],"storage":[],
-  "permissions":[{"capability":"connector.adapter.verify","access":"execute","approval_required":false},{"capability":"connector.delivery.execute","access":"execute","approval_required":true},{"capability":"credential.resolve","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:beb7d2f0f1dfe9bb9eaa4f4e2d960ded504465a1de26f9df2f4fead681a146ce","build_identity":"rumi-p2p-connector-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.p2p","defaultspack.domain.company.mimo_sync"],"compatibility_aliases":["p2p"],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Disable peer ingress and select one prior adapter after replay-ledger preservation."},
-  "extensions":{"rumi.connector_adapter.boundary":{"vendor":"p2p","chat_imports":false,"company_imports":false,"credential_scope_bound":true,"inbound_signature":"timestamped-hmac-sha256","replay_window_ms":300000,"outbound_receipt":true,"https_only":true,"redirects":false,"private_network":false}}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "many",
+        "failure": "isolate",
+        "id": "rumi.service.connector.adapter.v1",
+        "instance_key": "p2p",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector.p2p",
+        "required_capabilities": [
+          "connector.adapter.verify",
+          "connector.delivery.execute"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.credential.resolve.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:08de45459e7857a492a480fdf6a028dac404c58c53a81978c2a5a40002497fcb",
+      "contract_id": "rumi.service.connector.adapter.v1",
+      "id": "p2p-adapter",
+      "loader": "python",
+      "module": "ecosystem.rumi_p2p_connector_pack.runtime.adapter",
+      "symbol": "create_connector_adapter"
+    }
+  ],
+  "extensions": {
+    "rumi.connector_adapter.boundary": {
+      "chat_imports": false,
+      "company_imports": false,
+      "credential_scope_bound": true,
+      "https_only": true,
+      "inbound_signature": "timestamped-hmac-sha256",
+      "outbound_receipt": true,
+      "private_network": false,
+      "redirects": false,
+      "replay_window_ms": 300000,
+      "vendor": "p2p"
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.connector.adapter.v1"
+          ],
+          "requires": [
+            "rumi.service.credential.resolve.v1",
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Timestamped signed peer envelopes and HTTPS delivery.",
+        "display_name": "Rumi P2P Connector",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:ac8d258e3ed2603dd077627ea682a7789b2d6997804ab44a2c57cea46fbaae4b",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:25a8069c5de442d25b55432884f35d1e9ade2f8b0c3e064ff116f332f84fef0b"
+          },
+          "owner_surfaces": [],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_p2p_connector_pack",
+        "pack_identity": "rumi:ecosystem/rumi_p2p_connector_pack",
+        "provenance": {
+          "build_identity": "rumi_p2p_connector_pack:1.0.0",
+          "content_hash": "sha256:08de45459e7857a492a480fdf6a028dac404c58c53a81978c2a5a40002497fcb",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "connector.adapter.verify",
+          "connector.delivery.execute",
+          "credential.resolve",
+          "host.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_p2p_connector_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_p2p_connector_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:25a8069c5de442d25b55432884f35d1e9ade2f8b0c3e064ff116f332f84fef0b"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.p2p",
+      "defaultspack.domain.company.mimo_sync"
+    ],
+    "removal_wave": 10,
+    "rollback": "Disable peer ingress and select one prior adapter after replay-ledger preservation.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Timestamped signed peer envelopes and HTTPS delivery.",
+    "display_name": "Rumi P2P Connector",
+    "id": "rumi.p2p_connector",
+    "kind": "provider",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "connector.adapter.verify"
+    },
+    {
+      "access": "execute",
+      "approval_required": true,
+      "capability": "connector.delivery.execute"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "credential.resolve"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_p2p_connector_pack:1.0.0",
+    "content_hash": "sha256:08de45459e7857a492a480fdf6a028dac404c58c53a81978c2a5a40002497fcb",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }
-

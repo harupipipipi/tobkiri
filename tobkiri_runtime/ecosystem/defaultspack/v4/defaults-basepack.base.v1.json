@@ -1,0 +1,64 @@
+{
+  "artifact_digest": "sha256:82894dea351dc4b6be97bc625db30c144dfd3bde8245708b275b1c5c37833077",
+  "base_api_version": "io.tobkiri.base.v4",
+  "capability_foundation": {
+    "provided_contracts": [
+      "conversation.turn.v1",
+      "workspace.file.inspect.v1"
+    ],
+    "required_contracts": []
+  },
+  "definition_revision": "sha256:1ee57bf3d8d75cb86703f115c738259e0eb42d812042c7a1575e2ebed1863f63",
+  "dependencies": [],
+  "pack_id": "defaults-basepack",
+  "policy_foundation": {
+    "host_effect_default": "lease_only",
+    "network_default": "deny",
+    "policy_digest": "sha256:a49520a95e91553c6729ab93b7bae564510205fdddf7af2e2c62540d49f1286d"
+  },
+  "provenance": {
+    "schema": "io.tobkiri.provenance.v2",
+    "source_kind": "generated",
+    "source_path": "ecosystem/defaultspack/v4/defaults-basepack.base.v1.json",
+    "source_digest": "sha256:d77ab5ddd24c978e196c451cca7cac67608606de3d6f23ef124de77820c18fca",
+    "repository_commit": "working-tree",
+    "repository_commit_trusted": false,
+    "content_root_digest": "sha256:e62d98946576999a1afdfb63308bb4f241813e950592b2bfb8ed2bbbe5736e06",
+    "generator": "defaultspack-v4-core",
+    "generator_version": "2.0.0",
+    "generator_path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+    "generator_digest": "sha256:0c8f25260f31f9c84413e7da7bd4a1c373c9047b334055122751679721d35f2d",
+    "input_inventory_digest": "sha256:95182f42d07a89d22c4a07f5c28d1a029f31ccee1c42eea3a785d2e13cfcf3c6",
+    "normative": true,
+    "evidence": [
+      {
+        "path": "tobkiri_runtime/scripts/generate_defaultspack_v4_bundle.py",
+        "rule_id": "normative-generator-bytes",
+        "digest": "sha256:0c8f25260f31f9c84413e7da7bd4a1c373c9047b334055122751679721d35f2d"
+      },
+      {
+        "path": "ecosystem/defaultspack/v4/defaults-basepack.base.v1.json",
+        "rule_id": "normative-input-bytes",
+        "digest": "sha256:d77ab5ddd24c978e196c451cca7cac67608606de3d6f23ef124de77820c18fca"
+      }
+    ]
+  },
+  "shell_requirements": {
+    "mode": "interactive",
+    "presentation_families": [
+      "graphical",
+      "terminal"
+    ],
+    "required_capabilities": [
+      "commands",
+      "interactive_prompt",
+      "navigation",
+      "notifications",
+      "rich_text"
+    ]
+  },
+  "state_owners": [
+    "defaultspack.conversation",
+    "defaultspack.settings"
+  ]
+}

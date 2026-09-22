@@ -1,7 +1,10 @@
 import stat
 
 from core_runtime.connections.credential_store import LocalEncryptedCredentialStore
-from core_runtime.connections.registry import ConnectionsRegistry
+from core_runtime.connections.registry import (
+    ConnectionsRegistry,
+    discover_connection_manifests,
+)
 from core_runtime.connections.oauth_service import InMemoryOAuthStateStore
 from core_runtime.connections.permission_resolver import resolve_connection_permissions
 from core_runtime.connections.providers.codex import CODEX_PROVIDER
@@ -20,6 +23,28 @@ def test_connections_registry_orders_providers():
     registry.register(CODEX_PROVIDER)
     providers = registry.list_providers()
     assert [provider["providerId"] for provider in providers][:4] == ["cloudflare", "google", "github", "codex"]
+
+
+def test_connection_manifest_discovery_is_bounded_and_skips_symlinks(tmp_path):
+    root = tmp_path / "providers"
+    root.mkdir()
+    direct = root / "direct.connection.json"
+    direct.write_text("{}", encoding="utf-8")
+    nested = root / "one" / "two"
+    nested.mkdir(parents=True)
+    included = nested / "nested.connection.json"
+    included.write_text("{}", encoding="utf-8")
+    too_deep = nested / "three" / "four"
+    too_deep.mkdir(parents=True)
+    (too_deep / "deep.connection.json").write_text("{}", encoding="utf-8")
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "escaped.connection.json").write_text("{}", encoding="utf-8")
+    (root / "linked").symlink_to(external, target_is_directory=True)
+
+    discovered = discover_connection_manifests(root, max_depth=2)
+
+    assert discovered == (direct, included)
 
 
 def test_provider_safe_payload_has_no_secret():

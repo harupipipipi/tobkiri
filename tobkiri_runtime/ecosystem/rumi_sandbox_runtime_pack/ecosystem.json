@@ -1,36 +1,89 @@
 {
-  "pack_id": "rumi_sandbox_runtime_pack",
-  "pack_identity": "rumi:ecosystem/rumi_sandbox_runtime_pack",
-  "display_name": "Rumi Sandbox Runtime Pack",
-  "version": "0.1.0",
-  "description": "Declarative sandbox/runtime pack for safe code execution boundaries, secret-mount review, runtime receipts, and reproducibility checklists.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "policy",
-      "profile",
-      "prompt",
-      "preset",
-      "template",
-      "example",
-      "spec",
-      "checklist",
-      "evidence"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative sandbox/runtime pack for safe code execution boundaries, secret-mount review, runtime receipts, and reproducibility checklists.",
+  "display_name": "Rumi Sandbox Runtime Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "asset_index": {
+      "catalogs": [
+        "catalog/runtime_matrix.yaml"
+      ],
+      "checklists": [
+        "checklists/reproducibility_checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "evidence": [
+        "evidence/runtime_receipt_ledger.template.yaml"
+      ],
+      "examples": [
+        "examples/container_test_run.example.yaml",
+        "examples/host_command_review.example.yaml",
+        "examples/remote_runtime_scope.example.yaml"
+      ],
+      "policies": [
+        "policies/sandbox_execution.policy.yaml",
+        "policies/secret_mount.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/sandbox_runtime_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/sandbox_runtime_reviewer.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "specs": [
+        "specs/execution_boundary_matrix.yaml",
+        "specs/runtime_receipt.schema.yaml"
+      ],
+      "templates": [
+        "templates/coding.node/template.json",
+        "templates/coding.python/template.json",
+        "templates/coding.rust/template.json",
+        "templates/desktop.browser/template.json",
+        "templates/desktop.coding/template.json",
+        "templates/desktop.linux_native/template.json",
+        "templates/desktop.ubuntu/template.json",
+        "templates/pack.networked/template.json",
+        "templates/pack.safe/template.json",
+        "templates/tool.ephemeral/template.json"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:1387a7591c3d5de73e917a2d83cad0fcc92fd6624ed8fb60fd6a67b034ea10c3",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:6df259cc36897f9fb95f7c03a3cbf8ca6596cf6101b6a041714ec986e71138de"
+    },
     "executable_code": false,
-    "registers_tools": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:6df259cc36897f9fb95f7c03a3cbf8ca6596cf6101b6a041714ec986e71138de"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_code_ide_pack",
@@ -58,49 +111,34 @@
       "runtime_receipts",
       "reproducibility_checklists"
     ],
-    "asset_index": {
-      "readme": ["README.md"],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalogs": ["catalog/runtime_matrix.yaml"],
-      "policies": [
-        "policies/sandbox_execution.policy.yaml",
-        "policies/secret_mount.policy.yaml"
-      ],
-      "profiles": ["profiles/sandbox_runtime_reviewer.profile.yaml"],
-      "prompts": ["prompts/sandbox_runtime_reviewer.system.md"],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "examples": [
-        "examples/container_test_run.example.yaml",
-        "examples/host_command_review.example.yaml",
-        "examples/remote_runtime_scope.example.yaml"
-      ],
-      "specs": [
-        "specs/execution_boundary_matrix.yaml",
-        "specs/runtime_receipt.schema.yaml"
-      ],
-      "templates": [
-        "templates/coding.node/template.json",
-        "templates/coding.python/template.json",
-        "templates/coding.rust/template.json",
-        "templates/desktop.browser/template.json",
-        "templates/desktop.coding/template.json",
-        "templates/desktop.linux_native/template.json",
-        "templates/desktop.ubuntu/template.json",
-        "templates/pack.networked/template.json",
-        "templates/pack.safe/template.json",
-        "templates/tool.ephemeral/template.json"
-      ],
-      "checklists": ["checklists/reproducibility_checklist.yaml"],
-      "evidence": ["evidence/runtime_receipt_ledger.template.yaml"]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "registers_tools": false,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_sandbox_runtime_pack",
+  "pack_identity": "rumi:ecosystem/rumi_sandbox_runtime_pack",
+  "provenance": {
+    "build_identity": "rumi_sandbox_runtime_pack:0.1.0",
+    "content_hash": "sha256:1387a7591c3d5de73e917a2d83cad0fcc92fd6624ed8fb60fd6a67b034ea10c3",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "policy",
+      "profile",
+      "prompt",
+      "preset",
+      "template",
+      "example",
+      "spec",
+      "checklist",
+      "evidence"
+    ]
   }
 }

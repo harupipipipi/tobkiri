@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "debug-approval",
+  "description": "Launcher-only authority for a single registered CLI debug session",
+  "windows": ["main"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*",
+      "http://localhost:*/*"
+    ]
+  },
+  "permissions": [
+    "allow-debug-approval-status",
+    "allow-arm-debug-approval",
+    "allow-revoke-debug-approval"
+  ]
+}

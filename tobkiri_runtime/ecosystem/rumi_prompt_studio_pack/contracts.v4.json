@@ -1,0 +1,324 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.prompt.author.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:profile.prompt.author.write",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-runtime",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_prompt_studio_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_prompt_studio_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "prompt-studio-v1",
+          "rollback_id": "prompt-studio-v1"
+        },
+        "provider_id": "rumi_prompt_studio_pack.prompt-studio.author",
+        "required_capabilities": [
+          "profile.prompt.author.write"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:27332f83287a0b22c85f08c8439ab2e110d4757fe32ce3ae576740e8ecc12503",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.prompt.migrate.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:profile.prompt.author.migrate",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-migrate",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_prompt_studio_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_prompt_studio_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "prompt-studio-v1",
+          "rollback_id": "prompt-studio-v1"
+        },
+        "provider_id": "rumi_prompt_studio_pack.prompt-studio.migrate",
+        "required_capabilities": [
+          "profile.prompt.author.migrate"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:91bf8d5b3e38a0721753f9d92e59b1067e818c6b0f98e14afd419196eee176c1",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.prompt.test.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:profile.prompt.author.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-test",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_prompt_studio_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "isolate",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_prompt_studio_pack.prompt-studio.test",
+        "required_capabilities": [
+          "profile.prompt.author.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:f19c73ddc2a6605a334c5246c59807893909d5f54bb9973cf98e35688846babb",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.action.prompt.version.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:profile.prompt.author.write",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-version",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_prompt_studio_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_prompt_studio_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "prompt-studio-v1",
+          "rollback_id": "prompt-studio-v1"
+        },
+        "provider_id": "rumi_prompt_studio_pack.prompt-studio.version",
+        "required_capabilities": [
+          "profile.prompt.author.write"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:9d0cf032fe65eb4cffca42d0c56eb29dc5d1aff310696611a3c7753307efd9e6",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    },
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.resource.prompt.studio.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:profile.prompt.author.read",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_prompt_studio_pack.prompt-studio-resource",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_prompt_studio_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_prompt_studio_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "prompt-studio-v1",
+          "rollback_id": "prompt-studio-v1"
+        },
+        "provider_id": "rumi_prompt_studio_pack.prompt-studio.resource",
+        "required_capabilities": [
+          "profile.prompt.author.read"
+        ],
+        "security": "sensitive"
+      },
+      "revision_digest": "sha256:3833768ada44eb152a859a21914cf394ed9a0edb0106f3f7a2a3c78daf7b6178",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_prompt_studio_pack",
+  "source_identity": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6"
+}

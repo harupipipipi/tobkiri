@@ -14,11 +14,19 @@ sys.path.insert(0, str(DEFAULTSPACK_ROOT))
 def test_signed_approval_token_binds_operation_and_arguments(tmp_path, monkeypatch):
     from blocks.coding.file_write import run as file_write_run
     from domain.safety.approval import approve, reset_approval_state_for_tests
+    from tests._coding_contract_fixture import bind_verified_coding_contracts
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     reset_approval_state_for_tests()
 
-    args = {"path": "approved.txt", "content": "ok", "workspace_root": str(tmp_path)}
+    (tmp_path / "approved.txt").write_text("before", encoding="utf-8")
+    args = {
+        "path": "approved.txt",
+        "content": "ok",
+        "workspace_id": "trusted",
+        "workspace_root": str(tmp_path),
+    }
     request = file_write_run(args, {})
 
     assert request["status"] == "ok"
@@ -39,11 +47,19 @@ def test_signed_approval_token_binds_operation_and_arguments(tmp_path, monkeypat
 def test_signed_approval_token_rejects_argument_tampering(tmp_path, monkeypatch):
     from blocks.coding.file_write import run as file_write_run
     from domain.safety.approval import approve, reset_approval_state_for_tests
+    from tests._coding_contract_fixture import bind_verified_coding_contracts
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     reset_approval_state_for_tests()
 
-    args = {"path": "approved.txt", "content": "ok", "workspace_root": str(tmp_path)}
+    (tmp_path / "approved.txt").write_text("before", encoding="utf-8")
+    args = {
+        "path": "approved.txt",
+        "content": "ok",
+        "workspace_id": "trusted",
+        "workspace_root": str(tmp_path),
+    }
     request = file_write_run(args, {})
     approval = approve(request["data"]["approval_request_id"])
 
@@ -54,34 +70,48 @@ def test_signed_approval_token_rejects_argument_tampering(tmp_path, monkeypatch)
 
     assert tampered["status"] == "error"
     assert tampered["error"]["code"] == "APPROVAL_ARGUMENTS_CHANGED"
-    assert not (tmp_path / "approved.txt").exists()
+    assert (tmp_path / "approved.txt").read_text(encoding="utf-8") == "before"
 
 
 def test_terminal_stream_starts_real_read_only_process(tmp_path, monkeypatch):
     from blocks.coding.terminal_stream import run as terminal_stream_run
+    from tests._coding_contract_fixture import bind_verified_coding_contracts
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
 
-    result = terminal_stream_run({"command": "pwd", "workspace_root": str(tmp_path)}, {})
+    result = terminal_stream_run(
+        {"command": "pwd", "workspace_id": "trusted", "workspace_root": str(tmp_path)},
+        {},
+    )
 
     assert result["status"] == "ok"
     assert result["data"]["started"] is True
-    assert result["data"]["exit_code"] == 0
-    assert str(tmp_path) in result["data"]["stdout"]
+    assert result["data"]["status"] in {"running", "exited"}
+    assert result["data"]["workspace_id"] == "trusted"
 
 
 def test_git_branch_switch_requires_signed_one_shot_approval(tmp_path, monkeypatch):
     from blocks.coding.git_branch import run as git_branch_run
     from domain.safety.approval import approve, reset_approval_state_for_tests
+    from tests._coding_contract_fixture import bind_verified_coding_contracts
 
     monkeypatch.setenv("RUMI_DEFAULTSPACK_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+    bind_verified_coding_contracts(monkeypatch, tmp_path)
     reset_approval_state_for_tests()
     subprocess.run(["git", "init", "-b", "main"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
     args = {
         "action": "switch",
         "branch": "feature/local-first",
         "create": True,
+        "workspace_id": "trusted",
         "workspace_root": str(tmp_path),
     }
     request = git_branch_run(args, {})

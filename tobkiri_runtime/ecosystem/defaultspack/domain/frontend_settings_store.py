@@ -11,7 +11,6 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
-
 REVISION_KEY = "_settings_revision"
 STATE_REVISIONS_KEY = "_state_revisions"
 MUTATION_RECEIPTS_KEY = "_mutation_receipts"
@@ -34,7 +33,7 @@ class FrontendSettingsIdempotencyConflict(RuntimeError):
     """Raised when an idempotency key is reused for a different mutation."""
 
 
-def defaultspack_frontend_settings_path(pack_root: Path) -> Path:
+def defaultspack_frontend_settings_path(pack_root: Path | None = None) -> Path:
     """Return the durable settings path for a Defaultspack installation.
 
     Managed desktop packs are unpacked into a replaceable application bundle.
@@ -44,6 +43,9 @@ def defaultspack_frontend_settings_path(pack_root: Path) -> Path:
     override = os.environ.get("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", "").strip()
     if override:
         return Path(override).expanduser()
+    if pack_root is not None:
+        return Path(pack_root).expanduser() / "user_data" / "shared" / "frontend_settings.json"
+
     user_data = os.environ.get("RUMI_USER_DATA", "").strip()
     if user_data:
         return (
@@ -52,7 +54,12 @@ def defaultspack_frontend_settings_path(pack_root: Path) -> Path:
             / "shared"
             / "frontend_settings.json"
         )
-    return pack_root / "user_data" / "shared" / "frontend_settings.json"
+    return (
+        Path(__file__).resolve().parents[1]
+        / "user_data"
+        / "shared"
+        / "frontend_settings.json"
+    )
 
 
 class FrontendSettingsCorruptError(ValueError):
@@ -67,6 +74,30 @@ def _thread_lock(path: Path) -> threading.RLock:
     key = str(path.resolve())
     with _locks_guard:
         return _locks.setdefault(key, threading.RLock())
+
+
+def _acquire_file_lock(lock_file: BinaryIO) -> None:
+    if _fcntl is not None:
+        _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_EX)
+        return
+    if _msvcrt is not None:
+        lock_file.seek(0, os.SEEK_END)
+        if lock_file.tell() == 0:
+            lock_file.write(b"\0")
+            lock_file.flush()
+        lock_file.seek(0)
+        _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_LOCK, 1)
+        return
+    raise RuntimeError("no supported file-locking implementation is available")
+
+
+def _release_file_lock(lock_file: BinaryIO) -> None:
+    if _fcntl is not None:
+        _fcntl.flock(lock_file.fileno(), _fcntl.LOCK_UN)
+        return
+    if _msvcrt is not None:
+        lock_file.seek(0)
+        _msvcrt.locking(lock_file.fileno(), _msvcrt.LK_UNLCK, 1)
 
 
 class FrontendSettingsStore:
@@ -255,7 +286,9 @@ class FrontendSettingsStore:
         )
         temp_path = Path(temp_name)
         try:
-            os.fchmod(fd, mode)
+            fchmod = getattr(os, "fchmod", None)
+            if fchmod is not None:
+                fchmod(fd, mode)
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
                 json.dump(value, handle, ensure_ascii=False, indent=2)
                 handle.write("\n")

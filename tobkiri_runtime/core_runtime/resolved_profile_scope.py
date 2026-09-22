@@ -1,152 +1,176 @@
-"""Revision-bound access to the active immutable resolved profile."""
+"""Thread-safe access to the sole verified Pack v4 activation snapshot."""
 
 from __future__ import annotations
 
 from contextvars import ContextVar, Token
-from pathlib import Path
-import json
-from dataclasses import replace
+from dataclasses import dataclass
 from threading import RLock
-from typing import TYPE_CHECKING
-
-from backend_core.ecosystem.active_ecosystem import ActiveEcosystemManager
-
-from .paths import USER_DATA_DIR
-
-if TYPE_CHECKING:
-    from .resolved_profile import ResolvedProfile
+from typing import Any
 
 
-_ACTIVE_PROFILE: ContextVar[ResolvedProfile | None] = ContextVar(
+@dataclass(frozen=True)
+class V4PackView:
+    """Non-authoritative compatibility view of one effective v4 Pack."""
+
+    pack_id: str
+    version: str
+    manifest_hash: str
+    content_hash: str
+
+
+@dataclass(frozen=True)
+class V4ProviderView:
+    """Non-secret provider identity copied from one ResolvedPlan binding."""
+
+    contract_id: str
+    provider_instance_id: str
+    source_pack_id: str
+    version: str
+    content_hash: str
+
+
+@dataclass(frozen=True)
+class V4ResolvedProfileView:
+    """Read-only structural view backed only by a verified v4 activation."""
+
+    profile_id: str
+    profile_revision: str
+    plan_hash: str
+    effective_pack_set: tuple[str, ...]
+    packs: tuple[V4PackView, ...]
+    providers: tuple[V4ProviderView, ...]
+    projections: tuple[Any, ...] = ()
+    effective_permissions: tuple[str, ...] = ()
+
+
+_ACTIVE_PROFILE: ContextVar[Any | None] = ContextVar(
     "tobkiri_active_resolved_profile",
     default=None,
 )
 _PERSISTED_PROFILE_LOCK = RLock()
-_PERSISTED_PROFILE_CACHE: tuple[tuple[int, int], ResolvedProfile] | None = None
+_PERSISTED_PROFILE_CACHE: tuple[tuple[str, int], V4ResolvedProfileView] | None = None
+_PERSISTED_PROFILE_INVALIDATION_REVISION = 0
 
 
-def activate_resolved_profile(plan: ResolvedProfile) -> Token[ResolvedProfile | None]:
-    """Bind subsequent loaders and calls to one immutable plan revision."""
+def activate_resolved_profile(plan: Any) -> Token[Any | None]:
+    """Bind an already-verified plan view to the current execution context."""
+
     return _ACTIVE_PROFILE.set(plan)
 
 
-def restore_resolved_profile(token: Token[ResolvedProfile | None]) -> None:
-    """Restore the prior plan after a revision-bound execution scope."""
+def restore_resolved_profile(token: Token[Any | None]) -> None:
+    """Restore the prior verified plan view."""
+
     _ACTIVE_PROFILE.reset(token)
 
 
-def active_resolved_profile() -> ResolvedProfile | None:
-    """Return the current plan, or ``None`` before startup resolution."""
+def active_resolved_profile() -> Any | None:
+    """Return the explicitly bound plan view, if any."""
+
     return _ACTIVE_PROFILE.get()
 
 
-def persisted_resolved_profile() -> ResolvedProfile | None:
-    """Recover the verified active plan for a request worker.
+def invalidate_persisted_resolved_profile() -> None:
+    """Invalidate the worker cache after an Authority/Profile transaction."""
 
-    ``ContextVar`` bindings are intentionally thread-local. HTTP handlers run
-    after startup on different threads, so they must reconstruct the same
-    persisted profile rather than treating every global contract as absent.
-    Pack approval remains part of the reconstructed plan.
-    """
     global _PERSISTED_PROFILE_CACHE
+    global _PERSISTED_PROFILE_INVALIDATION_REVISION
+    with _PERSISTED_PROFILE_LOCK:
+        _PERSISTED_PROFILE_INVALIDATION_REVISION += 1
+        _PERSISTED_PROFILE_CACHE = None
 
+
+def persisted_resolved_profile() -> Any | None:
+    """Load only the committed, digest-bound Pack v4 activation.
+
+    No startup JSON, active-ecosystem file, installed-Pack scan, approval
+    registry, or legacy manifest participates in this recovery path.
+    """
+
+    global _PERSISTED_PROFILE_CACHE
     active = active_resolved_profile()
     if active is not None:
         return active
     try:
-        from .approval_manager import get_approval_manager
-        from .resolved_profile import (
-            resolution_input_from_startup_profile,
-            resolve_profile,
-        )
+        from .bootstrap.profile_capture import capture_default_profile
 
-        state_path = Path(USER_DATA_DIR) / "settings" / "startup_profiles.json"
-        stat = state_path.stat()
-        cache_key = (stat.st_mtime_ns, stat.st_size)
+        captured = capture_default_profile()
+        activation_id = str(captured.activation["activation_id"])
+        cache_key = (activation_id, _PERSISTED_PROFILE_INVALIDATION_REVISION)
         with _PERSISTED_PROFILE_LOCK:
             cached = _PERSISTED_PROFILE_CACHE
             if cached is not None and cached[0] == cache_key:
                 return cached[1]
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-        active_profile_id = str(state.get("active_profile_id") or "")
-        profiles = state.get("profiles")
-        profile = next(
-            (
-                item for item in profiles if isinstance(item, dict)
-                and item.get("profile_id") == active_profile_id
-            ),
-            None,
-        ) if isinstance(profiles, list) else None
-        if not isinstance(profile, dict):
-            return None
-        provisional_input = resolution_input_from_startup_profile(profile)
-        provisional = resolve_profile(provisional_input)
-        approval_manager = get_approval_manager()
-        verified_pack_trust = approval_manager.get_verified_pack_trust(
-            provisional.selected_pack_ids
-        )
-        resolution_input = resolution_input_from_startup_profile(
-            profile,
-            verified_pack_trust=verified_pack_trust,
-        )
-        resolved = resolve_profile(
-            replace(
-                resolution_input,
-                authorized_pack_ids=tuple(verified_pack_trust),
-            )
-        )
+        view = _view_from_activation(captured)
         with _PERSISTED_PROFILE_LOCK:
-            _PERSISTED_PROFILE_CACHE = (cache_key, resolved)
-        return resolved
+            _PERSISTED_PROFILE_CACHE = (cache_key, view)
+        return view
     except Exception:
         return None
 
 
-def _persisted_startup_pack_ids() -> list[str]:
-    """Read the launch profile from the configured user-data root.
-
-    ``ActiveEcosystemManager()`` without a path uses the legacy mount root.
-    That root is the bundled application directory, not ``RUMI_USER_DATA``
-    in the desktop launcher.  Always use the explicit configured path here so
-    worker threads recover the same Defaults Profile the launcher activated.
-    """
-    config_path = Path(USER_DATA_DIR) / "active_ecosystem.json"
-    active = ActiveEcosystemManager(config_path=str(config_path))
-    pack_ids = active.get_metadata("startup_packs", [])
-    return [pack_id for pack_id in pack_ids if isinstance(pack_id, str)]
+def _view_from_activation(captured: Any) -> V4ResolvedProfileView:
+    profile = captured.resolved.profile
+    lock = captured.resolved.lock
+    plan = captured.resolved.plan
+    effective = tuple(str(item["identity"]) for item in lock["effective_set"])
+    packs = tuple(
+        V4PackView(
+            pack_id=str(item["identity"]),
+            version="",
+            manifest_hash=str(item["artifact_digest"]),
+            content_hash=str(item["artifact_digest"]),
+        )
+        for item in lock["effective_set"]
+    )
+    providers = tuple(
+        V4ProviderView(
+            contract_id=str(binding["contract_id"]),
+            provider_instance_id=str(binding["function_principal"]["function_id"]),
+            source_pack_id=str(binding["pack_id"]),
+            version="",
+            content_hash=str(binding["artifact_digest"]),
+        )
+        for binding in plan["bindings"]
+    )
+    return V4ResolvedProfileView(
+        profile_id=str(profile["profile_id"]),
+        profile_revision=str(plan["profile_revision"]),
+        plan_hash=str(plan["plan_digest"]),
+        effective_pack_set=effective,
+        packs=packs,
+        providers=providers,
+    )
 
 
 def effective_pack_ids() -> frozenset[str]:
-    """Return the only pack scope runtime resource loaders may consume."""
+    """Return exactly the effective set in the active Pack v4 lock."""
+
     plan = persisted_resolved_profile()
-    if plan is not None:
-        return frozenset(plan.effective_pack_set)
-
-    # Startup resources are initialized on worker threads where ContextVar
-    # bindings are not inherited.  Until the immutable plan is re-bound in
-    # that thread, recover the persisted startup-profile scope and keep the
-    # same approval-and-hash verification boundary.  This prevents a valid
-    # Defaults Profile from degrading to first-party memo tools only.
-    try:
-        from .approval_manager import get_approval_manager
-
-        pack_ids = _persisted_startup_pack_ids()
-        approval_manager = get_approval_manager()
-        return frozenset(
-            pack_id
-            for pack_id in pack_ids
-            if approval_manager.is_pack_approved_and_verified(pack_id)[0]
-        )
-    except Exception:
-        return frozenset()
+    return frozenset(plan.effective_pack_set) if plan is not None else frozenset()
 
 
 def require_effective_pack(pack_id: str) -> None:
-    """Fail closed when a caller tries to consume an out-of-plan pack."""
-    plan = active_resolved_profile()
+    """Fail closed when a Pack is outside the active Pack v4 lock."""
+
+    plan = persisted_resolved_profile()
     if plan is None:
-        raise RuntimeError("resolved profile is not active")
+        raise RuntimeError("Pack v4 resolved profile is not active")
     if pack_id not in plan.effective_pack_set:
         raise PermissionError(
-            f"pack is outside resolved profile {plan.plan_hash}: {pack_id}"
+            f"Pack is outside resolved Profile {plan.plan_hash}: {pack_id}"
         )
+
+
+__all__ = [
+    "V4PackView",
+    "V4ProviderView",
+    "V4ResolvedProfileView",
+    "activate_resolved_profile",
+    "active_resolved_profile",
+    "effective_pack_ids",
+    "invalidate_persisted_resolved_profile",
+    "persisted_resolved_profile",
+    "require_effective_pack",
+    "restore_resolved_profile",
+]

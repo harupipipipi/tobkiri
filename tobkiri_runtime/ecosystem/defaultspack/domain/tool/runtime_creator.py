@@ -60,6 +60,7 @@ class RuntimeToolCreator:
     """ランタイムtool作成・検証・登録を行うファサード（シングルトン）"""
 
     _instance = None
+    _initialized: bool
 
     def __new__(cls):
         if cls._instance is None:
@@ -197,7 +198,7 @@ class RuntimeToolCreator:
         戻り値: {"valid": bool, "errors": [str], "warnings": [str]}
         """
         errors = []
-        warnings = []
+        warnings: list[str] = []
 
         # --- name ---
         name = tool_def.get("name")
@@ -311,7 +312,7 @@ class RuntimeToolCreator:
     def _validate_handler_code(self, handler_code):
         """handler_code の構文チェックとセキュリティチェック"""
         errors = []
-        warnings = []
+        warnings: list[str] = []
 
         if "def handler(" not in handler_code and "def handler (" not in handler_code:
             errors.append(

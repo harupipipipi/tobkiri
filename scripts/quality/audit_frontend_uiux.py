@@ -162,8 +162,10 @@ REGEX_RULES: tuple[RegexRule, ...] = (
         "error",
         "Script-enabled inline documents require a dedicated origin and explicit sandbox policy.",
         rx(
-            r"(?:<iframe\b[\s\S]{0,600}?(?:srcDoc|srcdoc)[\s\S]{0,600}?allow-scripts|"
-            r"sandbox\s*=\s*['\"][^'\"]*allow-scripts)",
+            r"<iframe\b"
+            r"(?=[^>]{0,900}?\b(?:srcDoc|srcdoc)\s*=)"
+            r"(?=[^>]{0,900}?\bsandbox\s*=\s*['\"][^'\"]*\ballow-scripts\b)"
+            r"[^>]{0,900}?>",
             flags=re.IGNORECASE,
         ),
         frozenset({".tsx", ".jsx", ".html"}),

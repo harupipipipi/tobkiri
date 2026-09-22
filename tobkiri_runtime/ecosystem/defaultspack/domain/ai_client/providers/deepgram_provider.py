@@ -14,6 +14,7 @@ import urllib.request
 from typing import Any, Dict, List
 
 from ..base_provider import BaseProvider
+from ..api_key_store import read_provider_api_key
 
 
 class DeepgramProvider(BaseProvider):
@@ -22,8 +23,8 @@ class DeepgramProvider(BaseProvider):
     _MODEL_INVENTORY_CACHE: Dict[str, tuple[float, List[Dict[str, Any]]]] = {}
     _MODEL_INVENTORY_CACHE_TTL_SECONDS = 300
 
-    def __init__(self):
-        self._api_key = str(os.environ.get("DEEPGRAM_API_KEY", "") or "").strip()
+    def __init__(self, api_key: str | None = None):
+        self._api_key = str(api_key or read_provider_api_key("deepgram", "legacy") or "").strip()
         self._base_url = (
             str(os.environ.get("DEEPGRAM_BASE_URL", self.BASE_URL) or self.BASE_URL)
             .strip()

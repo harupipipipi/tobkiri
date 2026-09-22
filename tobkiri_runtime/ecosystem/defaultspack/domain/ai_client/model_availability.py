@@ -230,6 +230,7 @@ class ModelAvailabilityService:
             # in full without a Settings-side model list.
             if source and source not in {
                 "remote_models_endpoint",
+                "openai_models_endpoint",
                 "openrouter_models_api",
                 "vercel_gateway_models_api",
                 "vercel_ai_gateway_models_api",

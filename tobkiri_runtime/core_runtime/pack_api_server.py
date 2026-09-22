@@ -1,1268 +1,1805 @@
-"""
-pack_api_server.py - Pack管理HTTP APIサーバー
-
-Pack承認、コンテナ操作、特権操作、Capability Handler候補管理、
-pip依存ライブラリ管理のHTTP APIを提供。
-"""
+"""Finite localhost HTTP boundary for the captured Tobkiri Pack v4 runtime."""
 
 from __future__ import annotations
 
-import collections
 import hashlib
+import heapq
 import hmac
-import json
 import logging
-import os
 import re
 import threading
 import time
-from pathlib import Path
-from typing import Any, Optional
+import uuid
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs, unquote
-
-from .hmac_key_manager import get_hmac_key_manager, HMACKeyManager
-from .panel_auth import get_panel_auth_manager, PanelAuthManager
-from .runtime_port import resolve_runtime_port
-
-from .validation import (
-    validate_pack_id as _v_validate_pack_id,
-    is_safe_id as _v_is_safe_id,
-    is_safe_staging_id as _v_is_safe_staging_id,
-    PACK_ID_RE,  # noqa: F401 - re-exported for legacy pack_api_server imports.
-    SAFE_ID_RE,  # noqa: F401 - re-exported for legacy pack_api_server imports.
-    MAX_REQUEST_BODY_BYTES,
-)
-
-from .api.route_handlers import _is_safe_path_param
+from pathlib import Path
+from pathlib import PurePosixPath
+from typing import Any, Callable, Mapping, Protocol, cast
+from urllib.parse import parse_qs, urlparse
 
 from .api.api_response import APIResponse
-from .api.safe_headers import (
-    RESERVED_REQUEST_CONTEXT_KEYS,
-    sanitized_forwarded_headers,
-    strip_reserved_request_context,
+from .api.auth_gate import AuthGateMixin
+from .api.http_response import ResponseWriterMixin
+from .api.request_body import RequestBodyMixin
+from .api.setup_handlers import SetupHandlersMixin
+from .api.web_mounts import WebMountMixin
+from .api.web_mounts import WebMountEntry
+from .capability_bindings_v4 import (
+    CapabilityBindingSnapshot,
+    capture_capability_binding_snapshot,
 )
-from .api.route_errors import (
-    APIRouteFunctionError,
-    api_route_function_error_status,
-    api_route_function_public_error,
+from .control_reconciliation_v4 import (
+    ControlReconciliationCapacityError,
+    ControlReconciliationConflictError,
+    ControlReconciliationError,
+    ControlReconciliationStore,
+    ControlReconciliationUnavailableError,
 )
-
-from .api import (
-    APIRouteTableMixin,
-    AuthGateMixin,
-    AuthorityHandlersMixin,
-    PackHandlersMixin,
-    ContainerHandlersMixin,
-    NetworkHandlersMixin,
-    CapabilityGrantHandlersMixin,
-    StoreShareHandlersMixin,
-    PrivilegeHandlersMixin,
-    CapabilityInstallerHandlersMixin,
-    PipHandlersMixin,
-    SecretsHandlersMixin,
-    StoreHandlersMixin,
-    UnitHandlersMixin,
-    FlowHandlersMixin,
-    RouteHandlersMixin,
-    PackLifecycleHandlersMixin,
-    ControlPanelHandlersMixin,
-    CapabilityGraphHandlersMixin,
-    SetupHandlersMixin,
-    OAuthHandlersMixin,
-    ViewerHandlersMixin,
-    DesktopHandlersMixin,
-    RequestBodyMixin,
-    ResponseWriterMixin,
-    WebMountMixin,
+from .frontend_contract_routes import (
+    ContractRouteError,
+    FrontendContractBinding,
+    FrontendContractTarget,
+    contract_binding_map,
+    is_contract_route_path,
+    resolve_contract_route,
 )
-from .api._helpers import _log_internal_error, _SAFE_ERROR_MSG
+from tobkiri_protocol.canonical import canonical_digest
+from .host_contract import host_contract_value
+from .panel_auth import PanelAuthManager, get_panel_auth_manager
+from .runtime_surface_v4 import RuntimeSurfaceError, RuntimeSurfaceErrorCode
+from .authority.v4_models import AuthorityDenied
+from tobkiri_host.errors import HostCoreError
 
 
 logger = logging.getLogger(__name__)
 
-_PACK_APPLY_ROUTE_AUTHORITY: dict[str, Any] = {
-    "owner_pack_id": "core_runtime",
-    "permission_id": "pack.manage",
-    "audience": "kernel_api",
-    "resource_template": {"operation": "pack.apply"},
-}
-
-_HARDCODED_ROUTE_AUTHORITY: dict[tuple[str, str], dict[str, Any]] = {
-    ("POST", "/api/packs/apply"): _PACK_APPLY_ROUTE_AUTHORITY,
-}
-
-
-def _persist_desktop_api_token(api_token: str) -> None:
-    """Persist the current localhost API token for Viewer-launched pack apps."""
-    if not api_token:
-        return
-    try:
-        from .paths import USER_DATA_DIR
-
-        token_path = Path(USER_DATA_DIR).parent / ".desktop_api_token"
-        token_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = token_path.with_name(f".{token_path.name}.tmp")
-        tmp_path.write_text(api_token, encoding="utf-8")
-        try:
-            os.chmod(tmp_path, 0o600)
-        except OSError:
-            pass
-        os.replace(tmp_path, token_path)
-    except Exception:
-        logger.debug("failed to persist desktop API token", exc_info=True)
-
-
-# --- スレッド終了待ちタイムアウト (秒) --- (PACK_ID_RE, SAFE_ID_RE, MAX_REQUEST_BODY_BYTES は validation.py から import)
 THREAD_JOIN_TIMEOUT_SECONDS = 5
+MAX_CONCURRENT_REQUESTS = 32
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
-# --- W20-D: IP-based sliding window rate limiter ---
-class _RateLimiter:
-    """IP アドレスベースのスライディングウィンドウレートリミッター。
+_PUBLIC_ERROR_MESSAGES: Mapping[str, str] = {
+    RuntimeSurfaceErrorCode.INVALID_REQUEST.value: "The request is invalid",
+    RuntimeSurfaceErrorCode.PROFILE_NOT_ACTIVE.value: "The active Profile is unavailable",
+    RuntimeSurfaceErrorCode.STALE_REVISION.value: "The Profile revision is stale",
+    RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value: "The request binding does not match",
+    RuntimeSurfaceErrorCode.UNAPPROVED.value: "Host approval is required",
+    RuntimeSurfaceErrorCode.TIMEOUT.value: "The runtime operation timed out",
+    RuntimeSurfaceErrorCode.API_FAILURE.value: "The runtime operation is unavailable",
+}
 
-    メモリ上の dict で管理し、外部依存なし。threading.Lock でスレッドセーフ。
-    """
+_PUBLIC_ERROR_STATUS: Mapping[str, int] = {
+    RuntimeSurfaceErrorCode.INVALID_REQUEST.value: 400,
+    RuntimeSurfaceErrorCode.PROFILE_NOT_ACTIVE.value: 409,
+    RuntimeSurfaceErrorCode.STALE_REVISION.value: 409,
+    RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value: 409,
+    RuntimeSurfaceErrorCode.UNAPPROVED.value: 403,
+    RuntimeSurfaceErrorCode.TIMEOUT.value: 504,
+    RuntimeSurfaceErrorCode.API_FAILURE.value: 503,
+}
 
-    def __init__(
-        self,
-        max_requests: int = 120,
-        window_seconds: float = 60.0,
-        max_ips: int = 10000,
-    ) -> None:
-        self._max_requests = max_requests
-        self._window = float(window_seconds)
-        self._max_ips = max_ips
-        self._lock = threading.Lock()
-        # ip -> deque of monotonic timestamps
-        self._requests: dict[str, collections.deque] = {}
-
-    # -- public API --
-
-    def is_allowed(self, ip: str) -> bool:
-        """ip からのリクエストが許可されるなら True を返す。"""
-        now = time.monotonic()
-        with self._lock:
-            return self._is_allowed_locked(ip, now)
-
-    # -- internal --
-
-    def _is_allowed_locked(self, ip: str, now: float) -> bool:
-        # 既存エントリのクリーンアップ
-        if ip in self._requests:
-            dq = self._requests[ip]
-            cutoff = now - self._window
-            while dq and dq[0] <= cutoff:
-                dq.popleft()
-            if not dq:
-                del self._requests[ip]
-
-        # 新規 IP のスロット確保
-        if ip not in self._requests:
-            if len(self._requests) >= self._max_ips:
-                self._evict_oldest()
-            self._requests[ip] = collections.deque()
-
-        dq = self._requests[ip]
-        if len(dq) >= self._max_requests:
-            return False
-        dq.append(now)
-        return True
-
-    def _evict_oldest(self) -> None:
-        """最もリクエストが古い IP を 1 件除去する。"""
-        oldest_ip = None
-        oldest_time = float("inf")
-        for ip, dq in self._requests.items():
-            if not dq:
-                oldest_ip = ip
-                break
-            if dq[0] < oldest_time:
-                oldest_time = dq[0]
-                oldest_ip = ip
-        if oldest_ip is not None:
-            del self._requests[oldest_ip]
+_ERROR_CODE_ALIASES: Mapping[str, str] = {
+    "denied": RuntimeSurfaceErrorCode.UNAPPROVED.value,
+    "pack_control_denied": RuntimeSurfaceErrorCode.UNAPPROVED.value,
+    "pack_control_invalid_request": RuntimeSurfaceErrorCode.INVALID_REQUEST.value,
+    "pack_control_conflict": RuntimeSurfaceErrorCode.STALE_REVISION.value,
+    "pack_control_stale_revision": RuntimeSurfaceErrorCode.STALE_REVISION.value,
+    "pack_control_digest_mismatch": RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value,
+    "pack_control_unapproved": RuntimeSurfaceErrorCode.UNAPPROVED.value,
+    "pack_control_unavailable": RuntimeSurfaceErrorCode.API_FAILURE.value,
+    "pack_control_timeout": RuntimeSurfaceErrorCode.TIMEOUT.value,
+    "timed_out": RuntimeSurfaceErrorCode.TIMEOUT.value,
+    "backend_unavailable": RuntimeSurfaceErrorCode.API_FAILURE.value,
+    "provider_failed": RuntimeSurfaceErrorCode.API_FAILURE.value,
+    "audit_unavailable": RuntimeSurfaceErrorCode.API_FAILURE.value,
+    "busy": RuntimeSurfaceErrorCode.API_FAILURE.value,
+    "resource_exhausted": RuntimeSurfaceErrorCode.API_FAILURE.value,
+    "host_core_error": RuntimeSurfaceErrorCode.API_FAILURE.value,
+}
 
 
-_rate_limiter = _RateLimiter(
-    max_requests=int(os.environ.get("RUMI_API_RATE_LIMIT", "120")),
-    window_seconds=float(os.environ.get("RUMI_API_RATE_WINDOW", "60")),
+def _public_error_code(value: object) -> str:
+    """Return one stable public code without reflecting provider-controlled text."""
+
+    if isinstance(value, RuntimeSurfaceErrorCode):
+        return value.value
+    candidate = str(value or "").strip()
+    if candidate in _PUBLIC_ERROR_STATUS:
+        return candidate
+    return _ERROR_CODE_ALIASES.get(candidate.lower(), RuntimeSurfaceErrorCode.API_FAILURE.value)
+
+
+def _public_error_result(code: object) -> dict[str, object]:
+    """Build the only error representation persisted or returned by PackAPI."""
+
+    public_code = _public_error_code(code)
+    return {
+        "runtime_surface_api_version": "io.tobkiri.launcher.runtime-surface.v4",
+        "state": "error",
+        "code": public_code,
+        "message": _PUBLIC_ERROR_MESSAGES[public_code],
+        "retryable": public_code
+        in {
+            RuntimeSurfaceErrorCode.TIMEOUT.value,
+            RuntimeSurfaceErrorCode.API_FAILURE.value,
+        },
+        "write_set": [],
+    }
+
+
+def _exception_error_code(error: BaseException) -> str:
+    """Classify an internal exception without exposing its text or class name."""
+
+    current: BaseException | None = error
+    seen: set[int] = set()
+    host_code: str | None = None
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, RuntimeSurfaceError):
+            return _public_error_code(current.code)
+        if isinstance(current, ControlReconciliationConflictError):
+            return RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value
+        if isinstance(current, ControlReconciliationUnavailableError):
+            return RuntimeSurfaceErrorCode.API_FAILURE.value
+        if isinstance(current, AuthorityDenied):
+            authority_codes = {
+                "authority_denied": RuntimeSurfaceErrorCode.UNAPPROVED.value,
+                "revoked": RuntimeSurfaceErrorCode.UNAPPROVED.value,
+                "stale_epoch": RuntimeSurfaceErrorCode.STALE_REVISION.value,
+                "stale_revision": RuntimeSurfaceErrorCode.STALE_REVISION.value,
+                "digest_mismatch": RuntimeSurfaceErrorCode.DIGEST_MISMATCH.value,
+                "backend_unavailable": RuntimeSurfaceErrorCode.API_FAILURE.value,
+                "timed_out": RuntimeSurfaceErrorCode.TIMEOUT.value,
+            }
+            return authority_codes.get(str(current.code), RuntimeSurfaceErrorCode.UNAPPROVED.value)
+        if isinstance(current, HostCoreError):
+            candidate = str(current.code)
+            if candidate in _ERROR_CODE_ALIASES:
+                mapped = _ERROR_CODE_ALIASES[candidate]
+                if candidate.startswith("pack_control_"):
+                    return mapped
+                if mapped != RuntimeSurfaceErrorCode.API_FAILURE.value:
+                    return mapped
+                host_code = mapped
+        if isinstance(current, (KeyError, ValueError)):
+            return RuntimeSurfaceErrorCode.INVALID_REQUEST.value
+        current = current.__cause__ or current.__context__
+    if host_code is not None:
+        return host_code
+    return RuntimeSurfaceErrorCode.API_FAILURE.value
+
+
+def _result_record_refs(result: Mapping[str, Any]) -> list[Mapping[str, str]]:
+    """Return stable non-secret record references from one mutation result."""
+
+    references: list[Mapping[str, str]] = []
+    for key, value in sorted(result.items()):
+        if not key.endswith("_id") or not isinstance(value, str) or not value:
+            continue
+        digest_key = key.removesuffix("_id") + "_digest"
+        digest = result.get(digest_key)
+        reference: dict[str, str] = {"kind": key.removesuffix("_id"), "id": value}
+        if isinstance(digest, str) and digest.startswith("sha256:"):
+            reference["digest"] = digest
+        references.append(reference)
+    return references
+
+
+_RETIRED_API_ROOTS = frozenset(
+    {
+        "auth",
+        "authority",
+        "blocks",
+        "capabilities",
+        "containers",
+        "desktop",
+        "flows",
+        "executors",
+        "functions",
+        "graphs",
+        "integrations",
+        "mobile",
+        "network",
+        "nodes",
+        "packs",
+        "panel",
+        "pip",
+        "privileges",
+        "profiles",
+        "routes",
+        "runtime",
+        "secrets",
+        "stores",
+        "units",
+        "viewer",
+        "webhooks",
+    }
+)
+
+_CONVERSATION_CAPABILITY_TARGET = (
+    "defaults.conversation.complete",
+    "conversation.turn.v1",
+    "complete",
+    "defaultspack.conversation",
+    "defaultspack.conversation",
 )
 
 
+def _is_conversation_capability_target(target: FrontendContractTarget) -> bool:
+    """Return whether a target is the exact host-rendered Conversation binding."""
+
+    return (
+        target.contribution_id,
+        target.contract_id,
+        target.operation_id,
+        target.provider_id,
+        target.function_id,
+    ) == _CONVERSATION_CAPABILITY_TARGET
+
+
+class DispatchSession(Protocol):
+    """Captured Broker session exposed to the HTTP adapter."""
+
+    def invoke(
+        self,
+        contract_id: str,
+        operation_id: str,
+        payload: Mapping[str, object],
+        *,
+        version_range: str | None = None,
+    ) -> Mapping[str, object]:
+        """Invoke one exact qualified operation through RequestBroker."""
+
+    def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, object], ...]:
+        """Return the providers pinned into the captured activation."""
+
+    def assert_current(self) -> None:
+        """Reject a stale, revoked, or replaced capture."""
+
+    def assert_operation_ready(self, contract_id: str, operation_id: str) -> None:
+        """Reject a selected operation without a production backend."""
+
+    @property
+    def profile_id(self) -> str:
+        """Return the exact captured Profile identity."""
+
+    @property
+    def plan_digest(self) -> str:
+        """Return the exact captured ResolvedPlan digest."""
+
+
+def _load_production_capture_inputs() -> tuple[
+    Path, Path, Any, tuple[FrontendContractBinding, ...]
+]:
+    """Load canonical inputs for one production runtime capture."""
+
+    from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+
+    from .bootstrap.profile_capture import _bundle_root
+    from .frontend_contract_routes import load_frontend_contract_bindings
+
+    runtime_root = Path(__file__).resolve().parents[1]
+    bundle_root = _bundle_root()
+    catalog = BundledCatalog.load(bundle_root)
+    bindings = load_frontend_contract_bindings(
+        runtime_root
+        / "ecosystem"
+        / "defaultspack"
+        / "defaultspack"
+        / "frontend_contract_map.v4.json",
+        catalog.packs["runtime.tauri.application.default"],
+    )
+    return runtime_root, bundle_root, catalog, bindings
+
+
+class WorkspaceBindingResolver(Protocol):
+    """Host-injected port for an immutable selected-workspace capture."""
+
+    def __call__(self, profile_id: str) -> Mapping[str, object]:
+        """Return canonical root and filesystem identity for the Profile."""
+
+
+class LifecyclePort(Protocol):
+    """Read-only lifecycle surface required by the HTTP shell."""
+
+    def check_setup_status(self) -> dict[str, object]:
+        """Return canonical setup and readiness state."""
+
+    def get_health(self) -> dict[str, object]:
+        """Return current process health."""
+
+
+class PackVMLifecyclePort(Protocol):
+    """Typed Host-owned lifecycle for the dedicated v4 PackVM."""
+
+    def production_backend_registration(self) -> object | None: ...
+
+    def prepare(self, *, session_id: str | None = None) -> Mapping[str, object]: ...
+
+    def consent(
+        self, payload: Mapping[str, object], *, session_id: str | None = None
+    ) -> Mapping[str, object]: ...
+
+    def provision(
+        self, payload: Mapping[str, object], *, session_id: str | None = None
+    ) -> Mapping[str, object]: ...
+
+    def doctor(self) -> Mapping[str, object]: ...
+
+    def readiness_snapshot(self) -> Mapping[str, object]: ...
+
+    def progress(
+        self, operation_id: str, *, session_id: str | None = None
+    ) -> Mapping[str, object]: ...
+
+    def cancel(
+        self, payload: Mapping[str, object], *, session_id: str | None = None
+    ) -> Mapping[str, object]: ...
+
+    def stop(self, payload: Mapping[str, object]) -> Mapping[str, object]: ...
+
+    def cleanup(
+        self, payload: Mapping[str, object], *, session_id: str | None = None
+    ) -> Mapping[str, object]: ...
+
+
+@dataclass(frozen=True)
+class RuntimeHTTPConfig:
+    """Verified local-only server coordinates."""
+
+    host: str
+    port: int
+
+    @classmethod
+    def verify(cls, host: str, port: int) -> "RuntimeHTTPConfig":
+        """Canonicalize a loopback request and reject network exposure."""
+
+        if host.strip().lower() not in _LOOPBACK_HOSTS:
+            raise ValueError("Pack v4 HTTP server is loopback-only")
+        if not isinstance(port, int) or not 0 <= port <= 65535:
+            raise ValueError("Pack v4 HTTP port must be between 0 and 65535")
+        return cls(host="127.0.0.1", port=port)
+
+
 class _PackThreadingHTTPServer(ThreadingHTTPServer):
-    """Thread-per-request server so long SSE streams do not block control APIs."""
+    """Thread-per-request local server with bounded lifecycle semantics."""
 
     allow_reuse_address = True
     daemon_threads = True
     block_on_close = False
-    request_queue_size = int(os.environ.get("RUMI_API_REQUEST_QUEUE_SIZE", "128"))
+    request_queue_size = 128
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self._request_condition = threading.Condition()
+        self._active_requests = 0
+        self._accepting_requests = True
+        self._request_slots = threading.BoundedSemaphore(MAX_CONCURRENT_REQUESTS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        with self._request_condition:
+            accepted = self._accepting_requests and self._request_slots.acquire(blocking=False)
+            if accepted:
+                self._active_requests += 1
+        if not accepted:
+            self._reject_overloaded_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            with self._request_condition:
+                self._active_requests -= 1
+                self._request_condition.notify_all()
+            self._request_slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            with self._request_condition:
+                self._active_requests -= 1
+                self._request_condition.notify_all()
+            self._request_slots.release()
+
+    def _reject_overloaded_request(self, request: Any) -> None:
+        """Apply backpressure without allocating another handler thread."""
+
+        body = b'{"success":false,"error":"Pack API request capacity exhausted"}'
+        response = (
+            b"HTTP/1.1 503 Service Unavailable\r\n"
+            b"Content-Type: application/json; charset=utf-8\r\n"
+            b"Cache-Control: no-store\r\n"
+            b"Connection: close\r\n" + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+        )
+        try:
+            request.sendall(response)
+        except OSError:
+            pass
+        finally:
+            self.shutdown_request(request)
+
+    def request_shutdown(self) -> None:
+        """Request ``serve_forever`` exit without waiting for its thread."""
+
+        # ``BaseServer.shutdown`` performs this assignment and then waits on
+        # its private event.  Stop owns the bounded join below, so avoid that
+        # unbounded wait while retaining the standard serve-forever signal.
+        setattr(self, "_BaseServer__shutdown_request", True)
+
+    def stop_accepting_requests(self) -> None:
+        """Fence new handlers before lifecycle teardown begins."""
+
+        with self._request_condition:
+            self._accepting_requests = False
+
+    def close_handler_slots(self) -> None:
+        """Permanently fence this server instance after all handlers drain."""
+
+        with self._request_condition:
+            self._accepting_requests = False
+
+    def wait_for_request_drain(self, timeout: float) -> bool:
+        """Wait a bounded interval for accepted handlers to finish."""
+
+        deadline = time.monotonic() + timeout
+        with self._request_condition:
+            while self._active_requests:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._request_condition.wait(remaining)
+        return True
+
+    def teardown_snapshot(self) -> dict[str, object]:
+        """Return bounded, non-sensitive state for failed teardown diagnostics."""
+
+        with self._request_condition:
+            return {
+                "active_requests": self._active_requests,
+                "accepting_requests": self._accepting_requests,
+            }
 
 
-# _SAFE_ERROR_MSG: moved to api._helpers
+class _RequestReplayCapacityError(RuntimeError):
+    """Raised when replay state is full of still-live session identities."""
 
 
-# _log_internal_error: moved to api._helpers
+@dataclass
+class _ReplaySession:
+    request_ids: dict[str, float]
+
+
+class _RequestReplayGuard:
+    """Consume browser request identities once per authenticated server."""
+
+    _REQUEST_ID = re.compile(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-"
+        r"[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    )
+
+    DEFAULT_CAPACITY = 100_000
+
+    def __init__(
+        self,
+        *,
+        capacity: int = DEFAULT_CAPACITY,
+        clock: Callable[[], float] = time.monotonic,
+        max_session_ttl_seconds: float = PanelAuthManager.DEFAULT_SESSION_TTL_SECONDS,
+    ) -> None:
+        if capacity <= 0:
+            raise ValueError("replay capacity must be positive")
+        if max_session_ttl_seconds <= 0:
+            raise ValueError("maximum session TTL must be positive")
+        self._lock = threading.Lock()
+        self._capacity = capacity
+        self._clock = clock
+        self._max_session_ttl_seconds = max_session_ttl_seconds
+        self._sessions: dict[str, _ReplaySession] = {}
+        self._expirations: list[tuple[float, str, str]] = []
+        self._size = 0
+
+    def consume(
+        self,
+        session_id: str,
+        request_id: str,
+        *,
+        session_ttl_seconds: float | None = None,
+    ) -> bool:
+        """Return true only for a fresh canonical request identity."""
+
+        if not session_id or self._REQUEST_ID.fullmatch(request_id) is None:
+            return False
+        requested_ttl = (
+            self._max_session_ttl_seconds
+            if session_ttl_seconds is None
+            else float(session_ttl_seconds)
+        )
+        ttl = min(
+            self._max_session_ttl_seconds,
+            max(0.0, requested_ttl),
+        )
+        with self._lock:
+            now = self._clock()
+            self._purge_expired_locked(now)
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = _ReplaySession(request_ids={})
+                self._sessions[session_id] = session
+            if request_id in session.request_ids:
+                return False
+            if self._size >= self._capacity:
+                if not session.request_ids:
+                    del self._sessions[session_id]
+                raise _RequestReplayCapacityError("request replay capacity exhausted")
+            expires_at = now + ttl
+            session.request_ids[request_id] = expires_at
+            heapq.heappush(self._expirations, (expires_at, session_id, request_id))
+            self._size += 1
+        return True
+
+    def _purge_expired_locked(self, now: float) -> None:
+        while self._expirations and self._expirations[0][0] <= now:
+            expires_at, session_id, request_id = heapq.heappop(self._expirations)
+            session = self._sessions.get(session_id)
+            if session is None or session.request_ids.get(request_id) != expires_at:
+                continue
+            del session.request_ids[request_id]
+            self._size -= 1
+            if not session.request_ids:
+                del self._sessions[session_id]
+
+    def renew_session(self, session_id: str, *, session_ttl_seconds: float) -> None:
+        """Purge elapsed identities without extending their absolute horizons."""
+
+        with self._lock:
+            self._purge_expired_locked(self._clock())
+
+    def snapshot(self) -> Mapping[str, int]:
+        """Return non-sensitive bounded-state counters for tests and diagnostics."""
+
+        with self._lock:
+            self._purge_expired_locked(self._clock())
+            return {
+                "capacity": self._capacity,
+                "entries": self._size,
+                "sessions": len(self._sessions),
+            }
+
+    def valid(self, session_id: str, request_id: str) -> bool:
+        """Return whether an identity is canonical without consuming it."""
+
+        return bool(session_id and self._REQUEST_ID.fullmatch(request_id))
 
 
 class PackAPIHandler(
     ResponseWriterMixin,
     AuthGateMixin,
-    WebMountMixin,
-    APIRouteTableMixin,
     RequestBodyMixin,
-    PackHandlersMixin,
-    ContainerHandlersMixin,
-    AuthorityHandlersMixin,
-    NetworkHandlersMixin,
-    CapabilityGrantHandlersMixin,
-    StoreShareHandlersMixin,
-    PrivilegeHandlersMixin,
-    CapabilityInstallerHandlersMixin,
-    PipHandlersMixin,
-    SecretsHandlersMixin,
-    StoreHandlersMixin,
-    UnitHandlersMixin,
-    FlowHandlersMixin,
-    RouteHandlersMixin,
-    PackLifecycleHandlersMixin,
-    ControlPanelHandlersMixin,
-    CapabilityGraphHandlersMixin,
     SetupHandlersMixin,
-    OAuthHandlersMixin,
-    ViewerHandlersMixin,
-    DesktopHandlersMixin,
+    WebMountMixin,
     BaseHTTPRequestHandler,
 ):
+    """Serve only health, setup, panel auth/static, and Pack v4 dispatch."""
+
     _CLIENT_DISCONNECT_EXCEPTIONS = (
         BrokenPipeError,
         ConnectionResetError,
         ConnectionAbortedError,
     )
-    approval_manager = None
-    container_orchestrator = None
-    host_privilege_manager = None
-    internal_token: str = ""
-    _allowed_origins: Optional[list[str]] = None
-    _allowed_origins_from_env: bool = False
-    _allowed_origins_cache_key: Optional[tuple[str, str]] = None
-    _hmac_key_manager: Optional[HMACKeyManager] = None
-    _panel_auth_manager: Optional[PanelAuthManager] = None
-    kernel = None  # Kernel インスタンス参照（Flow実行API用）
-    app_lifecycle_manager = None  # AppLifecycleManager インスタンス参照（Phase A）
-    _request_auth_mode: Optional[str] = None
-    _authenticated_principal: Optional[Any] = None
-    _panel_session: Optional[dict[str, Any]] = None
-    _panel_session_cookie: Optional[str] = None
-    _authenticated_device_id: Optional[str] = None
-    _authenticated_scopes: list[str] = []
-    _authenticated_device_scope_authorized: bool = False
-    _web_mounts: list[dict[str, Any]] = []           # web_mount テーブル（テーブル駆動静的配信）
-    _pre_auth_table: list[dict[str, Any]] = []       # pre_auth_routes テーブル（テーブル駆動認証バイパス）
-    _api_route_exact: dict[tuple[str, str], dict[str, Any]] = {}      # api_routes 完全一致テーブル {(METHOD, path): entry}
-    _api_route_patterns: list[tuple[Any, Any, Any, dict[str, Any]]] = []   # api_routes パターンテーブル [(METHOD, regex, params, entry)]
-    
-    def log_message(self, format: str, *args) -> None:
-        sanitized_args = tuple(self._redact_log_value(arg) for arg in args)
+    _panel_auth_manager: PanelAuthManager | None = None
+    _dispatch_session: DispatchSession | None = None
+    _contract_routes: Mapping[tuple[str, str], FrontendContractBinding] = {}
+    _contract_replay_guard: _RequestReplayGuard | None = None
+    _operation_journal: ControlReconciliationStore | None = None
+    _runtime_refresh: Callable[[DispatchSession | None], None] | None = None
+    _packvm_lifecycle: PackVMLifecyclePort | None = None
+    _workspace_binding_resolver: WorkspaceBindingResolver | None = None
+    _instance_web_mounts: tuple[WebMountEntry, ...] | None = None
+    app_lifecycle_manager: LifecyclePort | None = None
+    _runtime_port = 8765
+    _request_auth_mode: str | None = None
+    _panel_session: Mapping[str, object] | None = None
+    _panel_session_cookie: str | None = None
+    _raw_body_bytes = b""
+
+    @staticmethod
+    def canonical_v4_server_handler(
+        *,
+        panel_auth_manager: PanelAuthManager,
+        dispatch_session: DispatchSession | None,
+        app_lifecycle_manager: LifecyclePort | None,
+        contract_routes: Mapping[tuple[str, str], FrontendContractBinding] | None = None,
+        replay_guard: _RequestReplayGuard | None = None,
+        operation_journal: ControlReconciliationStore | None = None,
+        web_mounts: tuple[WebMountEntry, ...] | None = None,
+        runtime_refresh: Callable[[DispatchSession | None], None] | None = None,
+        workspace_binding_resolver: WorkspaceBindingResolver | None = None,
+        packvm_lifecycle: PackVMLifecyclePort | None = None,
+    ) -> type["PackAPIHandler"]:
+        """Create an isolated handler bound to one captured runtime session."""
+
+        bound_panel_auth = panel_auth_manager
+        bound_dispatch = dispatch_session
+        bound_lifecycle = app_lifecycle_manager
+        bound_contract_routes = dict(contract_routes or {})
+        bound_replay_guard = replay_guard
+        bound_operation_journal = operation_journal
+        bound_web_mounts = web_mounts
+        bound_runtime_refresh = runtime_refresh
+        bound_workspace_binding_resolver = workspace_binding_resolver
+        bound_packvm_lifecycle = packvm_lifecycle
+
+        class BoundPackAPIHandler(PackAPIHandler):
+            _panel_auth_manager = bound_panel_auth
+            _dispatch_session = bound_dispatch
+            app_lifecycle_manager = bound_lifecycle
+            _contract_routes = bound_contract_routes
+            _contract_replay_guard = bound_replay_guard
+            _operation_journal = bound_operation_journal
+            _packvm_lifecycle = bound_packvm_lifecycle
+            _instance_web_mounts = bound_web_mounts
+            _runtime_refresh = (
+                staticmethod(bound_runtime_refresh) if bound_runtime_refresh is not None else None
+            )
+            _workspace_binding_resolver = (
+                staticmethod(bound_workspace_binding_resolver)
+                if bound_workspace_binding_resolver is not None
+                else None
+            )
+
+            def _setup_install_pack(self, body: dict[str, object]) -> dict[str, object]:
+                from .bootstrap.profile_capture import profile_capture_scope
+
+                with profile_capture_scope():
+                    return super()._setup_install_pack(body)
+
+            def _refresh_setup_runtime_after_response(
+                self,
+                result: Mapping[str, object],
+            ) -> None:
+                """Recapture committed setup state after flushing its receipt."""
+
+                if result.get("state") != "active" or bound_runtime_refresh is None:
+                    return
+                try:
+                    bound_runtime_refresh(self.__class__._dispatch_session)
+                except Exception as error:
+                    from .app_lifecycle_manager import mark_runtime_failed
+
+                    mark_runtime_failed("canonical runtime capture failed")
+                    logger.warning(
+                        "Canonical runtime recapture failed after setup response",
+                        exc_info=error,
+                    )
+
+            @staticmethod
+            def _fixed_web_mounts() -> tuple[WebMountEntry, ...]:
+                if bound_web_mounts is not None:
+                    return bound_web_mounts
+                return WebMountMixin._fixed_web_mounts()
+
+        BoundPackAPIHandler.__name__ = "PackAPIHandlerV4Instance"
+        return BoundPackAPIHandler
+
+    def log_message(self, format: str, *args: object) -> None:
+        """Write request logs after removing bootstrap query material."""
+
+        sanitized = tuple(self._redact_log_value(value) for value in args)
         try:
-            message = format % sanitized_args if sanitized_args else format
-        except Exception:
-            message = " ".join(sanitized_args) if sanitized_args else format
+            message = format % sanitized if sanitized else format
+        except (TypeError, ValueError):
+            message = " ".join(sanitized) if sanitized else format
         logger.info("API: %s", message)
+
+    def _check_auth(self, method: str, path: str) -> bool:
+        authenticated = AuthGateMixin._check_auth(self, method, path)
+        if not authenticated:
+            return False
+        panel_session = self._panel_session
+        session_id = panel_session.get("session_id") if panel_session else None
+        guard = self._contract_replay_guard
+        if isinstance(session_id, str) and guard is not None:
+            guard.renew_session(
+                session_id,
+                session_ttl_seconds=self._panel_session_ttl_seconds(panel_session),
+            )
+        return True
 
     @staticmethod
     def _redact_log_value(value: object) -> str:
-        text = "" if value is None else str(value)
         return re.sub(
             r"([?&](?:token|code)=)[^&\s\"]+",
             r"\1[REDACTED]",
-            text,
+            "" if value is None else str(value),
             flags=re.IGNORECASE,
         )
 
     @staticmethod
-    def _validate_pack_id(pack_id: str) -> bool:
-        """pack_id が安全なパターンに合致するか検証する (Fix #9)"""
-        return _v_validate_pack_id(pack_id)
+    def _is_loopback_client(client_address: object) -> bool:
+        if not isinstance(client_address, tuple) or not client_address:
+            return False
+        return str(client_address[0]).lower() in _LOOPBACK_HOSTS | {"::ffff:127.0.0.1"}
+
+    def _reset_request_state(self) -> None:
+        self._request_auth_mode = None
+        self._panel_session = None
+        self._panel_session_cookie = None
+        self._raw_body_bytes = b""
+
+    @classmethod
+    def _get_cors_origin(cls, request_origin: str) -> str:
+        """Allow only the exact local runtime origin."""
+
+        allowed = {
+            f"http://127.0.0.1:{cls._runtime_port}",
+            f"http://localhost:{cls._runtime_port}",
+        }
+        return request_origin if request_origin in allowed else ""
 
     @staticmethod
-    def _is_safe_id(value: str) -> bool:
-        """汎用 ID バリデーション。staging_id, privilege_id, flow_id 等に使用する。"""
-        return _v_is_safe_id(value)
+    def _retired_api_path(path: str) -> bool:
+        parts = path.strip("/").split("/")
+        return len(parts) >= 2 and parts[0] == "api" and parts[1] in _RETIRED_API_ROOTS
 
-    def _api_units_list(self, query: dict[str, str]) -> Any:
-        return self._units_list(query.get("store_id", ""))
-
-    def _api_capability_grants(self, query: dict[str, str]) -> Any:
-        return self._capability_grants_list(query.get("principal_id", ""))
-
-    def _api_capability_requests(self, query: dict[str, str]) -> Any:
-        return self._capability_list_requests(query.get("status", "all"))
-
-    def _api_pip_requests(self, query: dict[str, str]) -> Any:
-        return self._pip_list_requests(query.get("status", "all"))
-
-
-    # --- テーブル駆動: web_mount / pre_auth_routes ---
-
-    @classmethod
-    def load_web_mounts(cls, registry, pack_ids: Optional[set[str]] = None) -> int:
-        """Registry から全 Pack の web_mount 情報を読み込み、テーブルを構築する。"""
-        cls._web_mounts = []
-        if registry is None:
-            return 0
-        count = 0
-        for pack_id, pack_info in registry.packs.items():
-            if pack_ids is not None and pack_id not in pack_ids:
-                continue
-            if not cls._is_pack_approved_for_runtime_routes(pack_id):
-                continue
-            wm = pack_info.ecosystem.get("web_mount")
-            if not wm or not isinstance(wm, dict):
-                continue
-            path_prefix = wm.get("path_prefix", "")
-            static_root_rel = wm.get("static_root", "")
-            if not path_prefix or not static_root_rel:
-                continue
-            # subdir が利用可能ならそちらを使う（ecosystem.json の位置基準）
-            base_dir = getattr(pack_info, "subdir", None) or pack_info.path
-            web_root = Path(str(base_dir)) / static_root_rel
-            cls._web_mounts.append({
-                "path_prefix": path_prefix,
-                "web_root": web_root.resolve(),
-                "spa_fallback": wm.get("spa_fallback", False),
-                "auth_required": wm.get("auth_required", True),
-                "pack_id": pack_id,
-            })
-            count += 1
-        # 最長一致のために path_prefix の長さで降順ソート
-        cls._web_mounts.sort(key=lambda e: len(e["path_prefix"]), reverse=True)
-        logger.info("Loaded %d web_mount entries", count)
-        return count
-
-    @classmethod
-    def load_pre_auth_routes(cls, registry, pack_ids: Optional[set[str]] = None) -> int:
-        """Registry から全 Pack の pre_auth_routes を読み込み、テーブルを構築する。
-
-        web_mount で auth_required=false の静的配信パスも自動的に
-        pre-auth テーブルに含める。
-        """
-        cls._pre_auth_table = []
-        if registry is None:
-            return 0
-        count = 0
-        for pack_id, pack_info in registry.packs.items():
-            if pack_ids is not None and pack_id not in pack_ids:
-                continue
-            # 1. 明示的な pre_auth_routes
-            if not cls._is_pack_approved_for_runtime_routes(pack_id):
-                continue
-            routes = pack_info.ecosystem.get("pre_auth_routes")
-            if routes and isinstance(routes, list):
-                for route in routes:
-                    if not isinstance(route, dict):
-                        continue
-                    method = route.get("method", "").upper()
-                    if not method:
-                        continue
-                    entry = {"method": method, "pack_id": pack_id}
-                    if "path" in route:
-                        entry["path"] = route["path"]
-                    if "path_prefix" in route:
-                        entry["path_prefix"] = route["path_prefix"]
-                    cls._pre_auth_table.append(entry)
-                    count += 1
-            # 2. web_mount で auth_required=false のパスも pre-auth に追加
-            wm = pack_info.ecosystem.get("web_mount")
-            if wm and isinstance(wm, dict) and not wm.get("auth_required", True):
-                prefix = wm.get("path_prefix", "")
-                if prefix:
-                    for m in ("GET", "POST", "PUT", "DELETE"):
-                        cls._pre_auth_table.append({
-                            "method": m,
-                            "path_prefix": prefix,
-                            "pack_id": pack_id,
-                            "_source": "web_mount",
-                        })
-                    count += 4
-        logger.info("Loaded %d pre_auth_route entries", count)
-        return count
-
-    def _match_web_mount(self, request_path: str):
-        """リクエストパスが web_mount テーブルにマッチするか判定する。
-
-        最長一致（テーブルは path_prefix 長の降順ソート済み）。
-        マッチした場合は web_mount dict を返す。しなければ None。
-        """
-        for wm in self._web_mounts:
-            prefix = wm["path_prefix"]
-            if request_path == prefix or request_path.startswith(prefix + "/"):
-                if self._is_pack_approved_for_runtime_routes(wm.get("pack_id", "")):
-                    return wm
-                continue
-        fallback_mounts = {
-            "/panel": {
-                "web_root": Path(__file__).resolve().parent / "core_pack" / "core_control_panel" / "web",
-                "spa_fallback": True,
-                "index_file": "index.html",
-                "auth_required": True,
-                "pack_id": "core_control_panel",
-            },
-            "/setup": {
-                "web_root": Path(__file__).resolve().parent / "core_pack" / "core_setup" / "web",
-                "spa_fallback": True,
-                "index_file": "index.html",
-                "auth_required": False,
-                "pack_id": "core_setup",
-            },
-        }
-        for prefix, mount in fallback_mounts.items():
-            if request_path == prefix or request_path.startswith(prefix + "/"):
-                candidate = {"path_prefix": prefix, **mount}
-                if self._is_pack_approved_for_runtime_routes(candidate.get("pack_id", "")):
-                    return candidate
-        return None
-
-
-    @classmethod
-    def load_api_routes(
-        cls,
-        registry,
-        pack_ids: Optional[set[str]] = None,
-        *,
-        include_builtin_core_control_panel: bool = False,
-    ) -> int:
-        return APIRouteTableMixin.load_api_routes.__func__(
-            cls,
-            registry,
-            pack_ids,
-            include_builtin_core_control_panel=include_builtin_core_control_panel,
+    def _send_retired_api(self, path: str) -> None:
+        self._send_response(
+            APIResponse(
+                False,
+                data={
+                    "api_version": "io.tobkiri.pack-api.v4",
+                    "state": "legacy_api_retired",
+                    "retired_route": path,
+                    "write_set": [],
+                },
+                error="Legacy API route is retired; use an exact Pack v4 operation",
+            ),
+            410,
         )
 
-    def _setup_pack_pre_auth_allowed(self, method: str, path: str) -> bool:
-        setup_pack_routes = {
-            ("GET", "/api/setup/packs"),
-            ("GET", "/api/setup/migration/status"),
-            ("POST", "/api/setup/packs/install"),
-        }
-        if (method.upper(), path) not in setup_pack_routes:
-            return False
-        alm = self.__class__.app_lifecycle_manager
-        if alm is None:
+    def _send_not_found(self) -> None:
+        self._send_response(APIResponse(False, error="Not found"), 404)
+
+    def _refresh_setup_runtime_after_response(
+        self,
+        result: Mapping[str, object],
+    ) -> None:
+        """No-op unless a canonical server handler binds runtime recapture."""
+
+        del result
+
+    def _send_contract_error(self, error: ContractRouteError) -> None:
+        self._send_response(
+            APIResponse(
+                False,
+                data={"state": "contract_dispatch_denied", "code": error.code},
+                error=str(error),
+            ),
+            error.status,
+        )
+
+    def _handle_contract_request(self, method: str) -> bool:
+        """Dispatch one contract request with one explicit capture scope."""
+
+        from .bootstrap.profile_capture import profile_capture_scope
+
+        with profile_capture_scope():
+            return self._handle_contract_request_scoped(method)
+
+    def _handle_contract_request_scoped(self, method: str) -> bool:
+        """Resolve, authenticate, and dispatch one exact frontend operation."""
+
+        if not is_contract_route_path(urlparse(self.path).path):
             return False
         try:
-            return bool(alm.check_setup_status().get("needs_setup"))
-        except Exception:
-            logger.debug("Failed to check setup status for setup-pack pre-auth", exc_info=True)
+            resolved = resolve_contract_route(self, method, self.path)
+        except ContractRouteError as error:
+            self._discard_request_body()
+            self._send_contract_error(error)
+            return True
+        if resolved is None:  # pragma: no cover - prefix was checked above
             return False
-
-    def _is_pre_auth_route(self, method: str, path: str) -> bool:
-        """method + path が pre_auth_table にマッチするか判定する。"""
-        method_upper = method.upper()
-        if self._setup_pack_pre_auth_allowed(method_upper, path):
-            return True
-        core_pre_auth_routes = {
-            ("POST", "/api/panel/auth/bootstrap"),
-            ("POST", "/api/panel/auth/exchange"),
-            ("GET", "/api/setup/status"),
-            ("GET", "/api/setup/oauth/start"),
-            ("GET", "/callback"),
-            ("POST", "/api/setup/complete"),
-        }
-        if (method_upper, path) in core_pre_auth_routes:
-            return True
-        if self._is_fixed_pre_auth_route(method_upper, path):
-            return True
-        if method_upper in {"POST", "GET"} and path.startswith("/api/mobile/v1/pairings/"):
-            suffix = path[len("/api/mobile/v1/pairings/"):]
-            if method_upper == "POST" and (
-                suffix.endswith("/claim")
-                or suffix.endswith("/token/pickup")
-                or suffix.endswith("/token/ack")
-            ):
-                return True
-            if method_upper == "GET" and suffix.endswith("/status"):
-                return True
-        # Provider webhooks must reach their own signature/shared-secret checks
-        # before panel or bearer auth can apply.
-        if method_upper == "POST":
-            if path in {
-                "/api/integrations/line/webhook",
-                "/api/integrations/slack/events",
-                "/api/integrations/discord/interactions",
-                "/api/integrations/discord/events",
-            }:
-                return True
-            if path.startswith("/api/webhooks/inbound/"):
-                return True
-        for entry in self._pre_auth_table:
-            if entry["method"] != method_upper:
-                continue
-            matched = "path" in entry and entry["path"] == path
-            if "path_prefix" in entry:
-                prefix = str(entry["path_prefix"]).rstrip("/")
-                if path == prefix or path.startswith(prefix + "/"):
-                    matched = True
-            if matched:
-                if self._is_pack_approved_for_runtime_routes(entry.get("pack_id", "")):
-                    return True
-        return False
-
-
-    def _dispatch_api_route(
-        self,
-        method: str,
-        path: str,
-        body: Optional[dict[str, Any]] = None,
-        query: Optional[dict[str, Any]] = None,
-    ) -> bool:
-        """api_routes テーブルからルートをディスパッチする。
-
-        マッチした場合はレスポンスを送信して True を返す。
-        マッチしなかった場合は False を返す（既存分岐に fallthrough）。
-        """
-        method_upper = method.upper()
-
-        # 1. 完全一致 (O(1))
-        entry = self._api_route_exact.get((method_upper, path))
-        path_params = {}
-
-        # 2. パターンマッチ (正規表現)
-        if entry is None:
-            normalized = path.rstrip("/")
-            if not normalized.startswith("/"):
-                normalized = "/" + normalized
-            for tmpl_method, pattern, param_names, route_entry in self._api_route_patterns:
-                if tmpl_method != method_upper:
-                    continue
-                m = pattern.match(normalized)
-                if m is None:
-                    continue
-                safe = True
-                params = {}
-                for name in param_names:
-                    decoded = unquote(m.group(name))
-                    if not _is_safe_path_param(decoded):
-                        safe = False
-                        break
-                    params[name] = decoded
-                if safe:
-                    entry = route_entry
-                    path_params = params
-                    break
-
-        if entry is None:
-            return False
-
-        pack_id = entry.get("pack_id", "")
-        if not self._is_pack_approved_for_runtime_routes(pack_id):
-            self._send_response(
-                APIResponse(False, error=f"Pack not approved: {pack_id}"),
-                403,
+        route_binding = self._contract_routes.get((resolved.method, resolved.path))
+        if route_binding is None:
+            self._discard_request_body()
+            self._send_contract_error(
+                ContractRouteError(
+                    "CONTRACT_OPERATION_UNKNOWN",
+                    "Unknown frontend contract operation",
+                    404,
+                )
             )
             return True
-
-        handler_name = entry["handler"]
-        pass_body = entry.get("pass_body", False)
-        pass_query = entry.get("pass_query", False)
-        response_mode = entry.get("response_mode", "result")
-
-        # パスパラメータのバリデーション
-        for param_val in path_params.values():
-            if not self._is_safe_id(param_val):
+        if not self._check_auth(method, urlparse(self.path).path):
+            self._discard_request_body()
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return True
+        panel_session = self._panel_session
+        raw_session_id = panel_session.get("session_id") if panel_session else None
+        session_id: str | None = raw_session_id if isinstance(raw_session_id, str) else None
+        session_ttl_seconds = self._panel_session_ttl_seconds(panel_session)
+        request_id = self.headers.get("X-Tobkiri-Request-ID", "").strip().lower()
+        replay_guard = self._contract_replay_guard
+        if (
+            not isinstance(session_id, str)
+            or replay_guard is None
+            or not replay_guard.valid(session_id, request_id)
+        ):
+            self._discard_request_body()
+            self._send_response(
+                APIResponse(
+                    False,
+                    data={
+                        "state": "contract_dispatch_denied",
+                        "code": "invalid_request_identity",
+                    },
+                    error="Canonical request identity is missing or invalid",
+                ),
+                409,
+            )
+            return True
+        outer_body: dict[str, object] = {}
+        if method.upper() == "GET":
+            self._discard_request_body()
+            payload: dict[str, object] = dict(resolved.query)
+        else:
+            body = self._parse_object_body()
+            if body is None:
+                return True
+            if len(route_binding.targets) == 1:
+                payload = {**resolved.query, **body}
+            else:
+                outer_body = body
+                nested = body.get("payload")
+                if not isinstance(nested, dict) or any(not isinstance(key, str) for key in nested):
+                    self._send_response(
+                        APIResponse(False, error="Contract payload must be an object"),
+                        400,
+                    )
+                    return True
+                payload = {**resolved.query, **nested}
+        target = self._select_contract_target(route_binding, outer_body)
+        if target is None:
+            self._send_response(
+                APIResponse(
+                    False,
+                    data={
+                        "state": "contract_dispatch_denied",
+                        "code": "unselected_contract_contribution",
+                    },
+                    error="Contract contribution is not selected",
+                ),
+                404,
+            )
+            return True
+        if set(payload) - target.allowed_payload_keys:
+            self._send_response(
+                APIResponse(
+                    False,
+                    data={
+                        "state": "contract_dispatch_denied",
+                        "code": "invalid_contract_payload",
+                    },
+                    error="Contract payload contains unknown fields",
+                ),
+                400,
+            )
+            return True
+        session = self._dispatch_session
+        if session is None:
+            self._send_response(
+                APIResponse(False, error="Captured v4 dispatch session is unavailable"),
+                503,
+            )
+            return True
+        try:
+            payload = self._normalize_dynamic_payload(target, payload, session)
+        except (OSError, ValueError) as error:
+            logger.warning("Contract payload normalization failed", exc_info=error)
+            self._send_response(
+                APIResponse(
+                    False,
+                    data={
+                        "state": "contract_dispatch_denied",
+                        "code": "invalid_contract_payload",
+                    },
+                    error="Contract payload is invalid",
+                ),
+                400,
+            )
+            return True
+        payload["_session_id"] = session_id
+        operation_record: Mapping[str, Any] | None = None
+        operation_journal = self._operation_journal
+        if method.upper() == "GET" and operation_journal is not None:
+            try:
+                operation_journal.renew_session(
+                    session_id,
+                    expires_at=time.time() + session_ttl_seconds,
+                )
+            except ControlReconciliationCapacityError:
+                pass
+            except (ControlReconciliationUnavailableError, ControlReconciliationError):
+                pass
+        if method.upper() == "GET":
+            try:
+                fresh_get = replay_guard.consume(
+                    session_id,
+                    request_id,
+                    session_ttl_seconds=session_ttl_seconds,
+                )
+            except _RequestReplayCapacityError:
+                self._send_replay_capacity_error()
+                return True
+            if not fresh_get:
                 self._send_response(
-                    APIResponse(False, error="Invalid path parameter"), 400
+                    APIResponse(False, error="Canonical request identity is replayed"),
+                    409,
                 )
                 return True
-
-        # ハンドラ呼び出し
-        try:
-            if entry.get("function_id"):
-                call_args = dict(body if pass_body and body is not None else {})
-                if pass_query:
-                    call_args.update(dict(query or {}))
-                # Route-level args define the contract for fixed endpoints such as
-                # /approve and /reject, so body values must not override them.
-                call_args.update(entry.get("args") or {})
-                param_map = entry.get("path_param_map") or {}
-                if param_map:
-                    for target_key, source_key in param_map.items():
-                        if source_key in path_params:
-                            call_args[target_key] = path_params[source_key]
+        else:
+            if operation_journal is None:
+                self._send_response(
+                    APIResponse(False, error="Control operation journal is unavailable"),
+                    503,
+                )
+                return True
+            request_digest = canonical_digest(
+                {
+                    "method": resolved.method,
+                    "path": resolved.path,
+                    "contract_id": target.contract_id,
+                    "operation_id": target.operation_id,
+                    "payload": payload,
+                }
+            )
+            try:
+                operation_record = operation_journal.lookup_operation(
+                    request_id=request_id,
+                    session_id=session_id,
+                    operation_id=target.operation_id,
+                    contract_id=target.contract_id,
+                    request_digest=request_digest,
+                )
+            except ControlReconciliationConflictError:
+                self._send_response(
+                    APIResponse(
+                        False,
+                        data={
+                            "state": "contract_dispatch_denied",
+                            "code": "operation_reconciliation_mismatch",
+                        },
+                        error="Control operation conflicts with durable state",
+                    ),
+                    409,
+                )
+                return True
+            except (ControlReconciliationUnavailableError, ControlReconciliationError):
+                self._send_response(
+                    APIResponse(
+                        False,
+                        data={
+                            "state": "contract_dispatch_denied",
+                            "code": "operation_reconciliation_unavailable",
+                        },
+                        error="Control operation reconciliation is unavailable",
+                    ),
+                    503,
+                )
+                return True
+            if operation_record is not None:
+                state = str(operation_record["state"])
+                prior_result = operation_record.get("result")
+                if state in {"succeeded", "failed"} and isinstance(
+                    prior_result, Mapping
+                ):
+                    self._send_contract_outcome(route_binding, prior_result)
+                    return True
+            try:
+                # Only an exact durable terminal result may bypass freshness.
+                # Unknown and pending requests must prove the capture current
+                # before any replay admission, renewal, or journal write.
+                session.assert_current()
+            except (
+                HostCoreError,
+                KeyError,
+                OSError,
+                RuntimeError,
+                ValueError,
+            ) as error:
+                public_result = _public_error_result(_exception_error_code(error))
+                self._send_contract_outcome(route_binding, public_result)
+                if public_result["code"] == RuntimeSurfaceErrorCode.UNAPPROVED.value:
+                    self._defer_response_log(
+                        logger,
+                        logging.INFO,
+                        "Contract dispatch denied for %s/%s: %s",
+                        target.contract_id,
+                        target.operation_id,
+                        public_result["code"],
+                    )
                 else:
-                    call_args.update(path_params)
-                result = self._execute_api_route_pack_function(
-                    entry["pack_id"],
-                    entry["function_id"],
-                    call_args,
-                    {"pack_id": entry["pack_id"], "method": method_upper, "path": path},
+                    self._defer_response_log(
+                        logger,
+                        logging.WARNING,
+                        "Contract dispatch failed for %s/%s",
+                        target.contract_id,
+                        target.operation_id,
+                        exc_info=error,
+                    )
+                return True
+            if operation_record is not None:
+                self._send_response(
+                    APIResponse(
+                        str(operation_record["state"]) == "pending",
+                        data=dict(operation_record),
+                    ),
+                    200 if str(operation_record["state"]) == "pending" else 409,
+                )
+                return True
+            replay_capacity_exhausted = False
+            try:
+                fresh = replay_guard.consume(
+                    session_id,
+                    request_id,
+                    session_ttl_seconds=session_ttl_seconds,
+                )
+            except _RequestReplayCapacityError:
+                fresh = False
+                replay_capacity_exhausted = True
+            if not fresh:
+                if replay_capacity_exhausted:
+                    self._send_replay_capacity_error()
+                else:
+                    self._send_response(
+                        APIResponse(
+                            False,
+                            error="Canonical request identity is replayed",
+                        ),
+                        409,
+                    )
+                return True
+            try:
+                operation_journal.renew_session(
+                    session_id,
+                    expires_at=time.time() + session_ttl_seconds,
+                )
+                operation_record, created = operation_journal.begin_operation(
+                    request_id=request_id,
+                    session_id=session_id,
+                    operation_id=target.operation_id,
+                    contract_id=target.contract_id,
+                    request_digest=request_digest,
+                    session_expires_at=time.time() + session_ttl_seconds,
+                )
+            except ControlReconciliationCapacityError:
+                self._send_reconciliation_capacity_error()
+                return True
+            except ControlReconciliationConflictError:
+                self._send_response(
+                    APIResponse(
+                        False,
+                        data={
+                            "state": "contract_dispatch_denied",
+                            "code": "operation_reconciliation_mismatch",
+                        },
+                        error="Control operation conflicts with durable state",
+                    ),
+                    409,
+                )
+                return True
+            except (ControlReconciliationUnavailableError, ControlReconciliationError):
+                self._send_response(
+                    APIResponse(
+                        False,
+                        data={
+                            "state": "contract_dispatch_denied",
+                            "code": "operation_reconciliation_unavailable",
+                        },
+                        error="Control operation reconciliation is unavailable",
+                    ),
+                    503,
+                )
+                return True
+            if not created:
+                state = str(operation_record["state"])
+                prior_result = operation_record.get("result")
+                if state in {"succeeded", "failed"} and isinstance(
+                    prior_result, Mapping
+                ):
+                    self._send_contract_outcome(route_binding, prior_result)
+                else:
+                    self._send_response(
+                        APIResponse(state == "pending", data=dict(operation_record)),
+                        200 if state == "pending" else 409,
+                    )
+                return True
+        try:
+            session.assert_current()
+            result = session.invoke(
+                target.contract_id,
+                target.operation_id,
+                payload,
+            )
+            safe_result = self._safe_contract_result(result)
+            if operation_journal is not None and operation_record is not None:
+                operation_journal.finish_operation(
+                    request_id,
+                    session_id=session_id,
+                    state=("failed" if safe_result.get("state") == "error" else "succeeded"),
+                    result=safe_result,
+                    record_refs=_result_record_refs(safe_result),
+                    safe_error_code=(
+                        str(safe_result.get("code"))
+                        if safe_result.get("state") == "error"
+                        else None
+                    ),
+                )
+            self._refresh_after_operation(target.operation_id, safe_result)
+        except (
+            HostCoreError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as error:
+            public_result = _public_error_result(_exception_error_code(error))
+            journal_error: BaseException | None = None
+            if operation_journal is not None and operation_record is not None:
+                try:
+                    operation_journal.finish_operation(
+                        request_id,
+                        session_id=session_id,
+                        state="failed",
+                        result=public_result,
+                        safe_error_code=str(public_result["code"]),
+                    )
+                except ControlReconciliationError as reconciliation_error:
+                    journal_error = reconciliation_error
+                    public_result = _public_error_result(
+                        RuntimeSurfaceErrorCode.API_FAILURE
+                    )
+            self._send_contract_outcome(route_binding, public_result)
+            # Write the bounded, sanitized response before diagnostic logging.
+            # Logging a provider traceback can contend with suite-wide capture or
+            # a slow sink and must never extend the frontend response deadline.
+            if journal_error is not None:
+                self._defer_response_log(
+                    logger,
+                    logging.WARNING,
+                    "Contract rejection reconciliation failed for %s/%s",
+                    target.contract_id,
+                    target.operation_id,
+                    exc_info=journal_error,
+                )
+            elif public_result["code"] == RuntimeSurfaceErrorCode.UNAPPROVED.value:
+                self._defer_response_log(
+                    logger,
+                    logging.INFO,
+                    "Contract dispatch denied for %s/%s: %s",
+                    target.contract_id,
+                    target.operation_id,
+                    public_result["code"],
                 )
             else:
-                # ハンドラの存在確認
-                handler = getattr(self, handler_name, None)
-                if handler is None:
-                    logger.error("api_route handler not found: %s", handler_name)
-                    self._send_response(APIResponse(False, error=_SAFE_ERROR_MSG), 500)
-                    return True
-
-                args: list[Any] = []
-                if path_params:
-                    args.extend(path_params.values())
-                if pass_body:
-                    args.append(body if body is not None else {})
-                elif pass_query:
-                    args.append(dict(query or {}))
-
-                result = handler(*args)
-
-            if entry.get("function_id"):
-                result = self._unwrap_defaultspack_function_envelope(result)
-            sse_events = self._sse_events_from_result(result)
-            if sse_events is not None:
-                self._send_sse(sse_events)
-            elif response_mode == "raw":
-                self._send_response(APIResponse(True, data=result))
-            else:
-                self._send_result(result)
-        except LookupError as e:
-            logger.warning("api_route function not found: %s", e)
-            return False
-        except PermissionError as e:
-            logger.warning("api_route denied: %s", e)
-            self._send_response(APIResponse(False, error="Forbidden"), 403)
-        except APIRouteFunctionError as e:
-            logger.warning("api_route function failed: %s", e)
-            self._send_response(APIResponse(False, error=str(e)), e.status)
-        except Exception as e:
-            _log_internal_error(f"api_route:{handler_name}", e)
-            self._send_response(APIResponse(False, error=_SAFE_ERROR_MSG), 500)
-
+                self._defer_response_log(
+                    logger,
+                    logging.WARNING,
+                    "Contract dispatch failed for %s/%s",
+                    target.contract_id,
+                    target.operation_id,
+                    exc_info=error,
+                )
+            return True
+        self._send_contract_outcome(route_binding, safe_result)
         return True
 
-    def _execute_api_route_pack_function(
-        self,
-        pack_id: str,
-        function_id: str,
-        args: dict[str, Any],
-        context: dict[str, Any],
-    ) -> Any:
-        """Execute a pack-backed API route through the capability boundary.
+    @staticmethod
+    def _panel_session_ttl_seconds(session: Mapping[str, object] | None) -> float:
+        value = session.get("expires_in") if session else None
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            return min(float(value), PanelAuthManager.DEFAULT_SESSION_TTL_SECONDS)
+        return float(PanelAuthManager.DEFAULT_SESSION_TTL_SECONDS)
 
-        Pack-declared HTTP routes are externally triggerable, so they must not
-        import and execute pack code in the API server process. Route function
-        calls go through ``CapabilityExecutor`` to preserve approval/hash, grant,
-        audit, and sandbox/subprocess dispatch semantics.
-        """
-        from .capability_executor import get_capability_executor
-
-        qualified_name = (
-            function_id if ":" in function_id else f"{pack_id}:{function_id}"
-        )
-        route_context = dict(context or {})
-        route_context["_api_route"] = True
-        principal_payload = route_context.get("_authenticated_principal")
-        execution_principal = pack_id
-        if isinstance(principal_payload, dict):
-            if not bool(principal_payload.get("core_role")):
-                execution_principal = str(principal_payload.get("principal_id") or "").strip() or pack_id
-            subject_payload = route_context.get("_authority_subject")
-            route_context["_authority_subject"] = (
-                dict(subject_payload) if isinstance(subject_payload, dict) else dict(principal_payload)
-            )
-        request_id = "api-route:{}:{}".format(
-            route_context.get("method", ""),
-            route_context.get("path", ""),
-        )
-        request = {
-            "type": "function.call",
-            "qualified_name": qualified_name,
-            "args": dict(args or {}),
-            "request_id": request_id,
-            "context": route_context,
-        }
-        response = get_capability_executor().execute(execution_principal, request)
-        if response.success:
-            return response.output
-
-        error_type = getattr(response, "error_type", None) or "function_call_failed"
-        status = api_route_function_error_status(error_type)
-        if status is None:
-            raise LookupError(
-                getattr(response, "error", None) or "Pack function not found"
-            )
-        if status == 403:
-            logger.warning(
-                "api_route pack function denied: pack_id=%s function_id=%s error_type=%s",
-                pack_id,
-                function_id,
-                error_type,
-            )
-            raise PermissionError(
-                getattr(response, "error", None) or "Pack function denied"
-            )
-        raise APIRouteFunctionError(
-            api_route_function_public_error(
-                str(error_type),
-                getattr(response, "error", None),
-                _SAFE_ERROR_MSG,
+    def _send_replay_capacity_error(self) -> None:
+        self._send_response(
+            APIResponse(
+                False,
+                data={
+                    "state": "contract_dispatch_denied",
+                    "code": "request_replay_capacity_exhausted",
+                },
+                error="Request replay protection is temporarily unavailable",
             ),
-            status=status,
-            error_type=str(error_type),
+            503,
         )
 
-    def _send_response(
-        self,
-        response: APIResponse,
-        status: int = 200,
-        extra_headers: Optional[list[tuple[str, str]]] = None,
-    ) -> None:
-        data = response.to_json().encode('utf-8')
-        response_headers = list(extra_headers or [])
-        if self._panel_session_cookie:
-            response_headers.append(("Set-Cookie", self._panel_session_cookie))
-        try:
-            self.send_response(status)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.send_header('Content-Length', str(len(data)))
-            origin = self._get_cors_origin(self.headers.get('Origin', ''))
-            if origin:
-                self.send_header('Access-Control-Allow-Origin', origin)
-                self.send_header('Vary', 'Origin')
-            for header_name, header_value in response_headers:
-                self.send_header(header_name, header_value)
-            self.end_headers()
-            self.wfile.write(data)
-        except self._CLIENT_DISCONNECT_EXCEPTIONS:
-            self.close_connection = True
+    def _send_reconciliation_capacity_error(self) -> None:
+        self._send_response(
+            APIResponse(
+                False,
+                data={
+                    "state": "contract_dispatch_denied",
+                    "code": "operation_reconciliation_capacity_exhausted",
+                },
+                error="Control operation reconciliation capacity is exhausted",
+            ),
+            503,
+        )
 
-    def _send_raw_json(
+    @staticmethod
+    def _contract_result_status(result: Mapping[str, object]) -> int:
+        """Map one public typed result to its semantic HTTP status."""
+
+        if result.get("state") == "error":
+            return _PUBLIC_ERROR_STATUS[_public_error_code(result.get("code"))]
+        return 200
+
+    @staticmethod
+    def _safe_contract_result(result: Mapping[str, object]) -> dict[str, object]:
+        """Remove all provider-controlled detail from typed failure results."""
+
+        if result.get("state") == "error":
+            return _public_error_result(result.get("code"))
+        return dict(result)
+
+    def _send_contract_outcome(
         self,
-        payload: Any,
-        status: int = 200,
-        extra_headers: Optional[list[tuple[str, str]]] = None,
+        binding: FrontendContractBinding,
+        result: Mapping[str, object],
     ) -> None:
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        response_headers = list(extra_headers or [])
-        if self._panel_session_cookie:
-            response_headers.append(("Set-Cookie", self._panel_session_cookie))
+        """Send initial and replayed terminal outcomes through one mapping."""
+
+        safe_result = self._safe_contract_result(result)
+        status = self._contract_result_status(safe_result)
+        presented = self._present_contract_result(binding, safe_result)
+        if status == 200:
+            self._send_response(APIResponse(True, data=presented), status)
+            return
+        self._send_response(
+            APIResponse(
+                False,
+                data=presented,
+                error=_PUBLIC_ERROR_MESSAGES[str(safe_result["code"])],
+            ),
+            status,
+        )
+
+    def _handle_packvm_lifecycle(self, method: str, path: str) -> bool:
+        """Serve the finite authenticated v4 PackVM lifecycle contract."""
+
+        prefix = "/api/v4/packvm/"
+        if not path.startswith(prefix):
+            return False
+        operation = path.removeprefix(prefix)
+        allowed = {
+            ("POST", "prepare"),
+            ("POST", "consent"),
+            ("POST", "provision"),
+            ("GET", "doctor"),
+            ("GET", "progress"),
+            ("POST", "cancel"),
+            ("POST", "stop"),
+            ("POST", "cleanup"),
+        }
+        if (method, operation) not in allowed:
+            self._discard_request_body()
+            self._send_not_found()
+            return True
+        if not self._check_auth(method, path):
+            self._discard_request_body()
+            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            return True
+        panel_session = self._panel_session
+        raw_packvm_session_id = panel_session.get("session_id") if panel_session else None
+        packvm_session_id: str | None = (
+            raw_packvm_session_id if isinstance(raw_packvm_session_id, str) else None
+        )
+        if method == "POST":
+            request_id = self.headers.get("X-Tobkiri-Request-ID", "").strip().lower()
+            guard = self._contract_replay_guard
+            try:
+                fresh_request = bool(
+                    packvm_session_id is not None
+                    and guard is not None
+                    and guard.consume(
+                        packvm_session_id,
+                        request_id,
+                        session_ttl_seconds=self._panel_session_ttl_seconds(panel_session),
+                    )
+                )
+            except _RequestReplayCapacityError:
+                self._discard_request_body()
+                self._send_replay_capacity_error()
+                return True
+            if not fresh_request:
+                self._discard_request_body()
+                self._send_response(
+                    APIResponse(False, error="Canonical request identity is missing or replayed"),
+                    409,
+                )
+                return True
+            payload = self._parse_object_body()
+            if payload is None:
+                return True
+        else:
+            self._discard_request_body()
+            payload = {}
+        lifecycle = self._packvm_lifecycle
+        if lifecycle is None:
+            self._send_response(APIResponse(False, error="PackVM lifecycle is unavailable"), 503)
+            return True
+        try:
+            if operation == "prepare":
+                if payload:
+                    raise ValueError("PackVM prepare payload must be empty")
+                result = lifecycle.prepare(session_id=packvm_session_id)
+            elif operation == "consent":
+                result = lifecycle.consent(payload, session_id=packvm_session_id)
+            elif operation == "provision":
+                result = lifecycle.provision(payload, session_id=packvm_session_id)
+            elif operation == "doctor":
+                result = lifecycle.doctor()
+            elif operation == "progress":
+                operation_values = parse_qs(urlparse(self.path).query).get("operation_id", [])
+                if len(operation_values) != 1:
+                    raise ValueError("PackVM progress requires one operation_id")
+                result = lifecycle.progress(operation_values[0], session_id=packvm_session_id)
+            elif operation == "cancel":
+                result = lifecycle.cancel(payload, session_id=packvm_session_id)
+            elif operation == "stop":
+                result = lifecycle.stop(payload)
+            else:
+                result = lifecycle.cleanup(payload, session_id=packvm_session_id)
+            if operation == "doctor" and result.get("ready") is True and self._runtime_refresh:
+                self._runtime_refresh(None)
+            elif operation == "stop" and self._runtime_refresh:
+                self._runtime_refresh(None)
+            elif (
+                operation == "progress"
+                and result.get("operation_kind") == "cleanup"
+                and result.get("state") == "succeeded"
+                and self._runtime_refresh
+            ):
+                self._runtime_refresh(None)
+        except (OSError, RuntimeError, ValueError) as error:
+            public_result = _public_error_result(_exception_error_code(error))
+            logger.warning(
+                "PackVM lifecycle operation failed: %s",
+                operation,
+                exc_info=error,
+            )
+            self._send_response(
+                APIResponse(
+                    False,
+                    data=public_result,
+                    error=_PUBLIC_ERROR_MESSAGES[str(public_result["code"])],
+                ),
+                _PUBLIC_ERROR_STATUS[str(public_result["code"])],
+            )
+            return True
+        self._send_response(APIResponse(True, data=dict(result)))
+        return True
+
+    def _refresh_after_operation(
+        self,
+        operation_id: str,
+        result: Mapping[str, Any],
+    ) -> None:
+        """Publish a fresh runtime capture after an activation boundary."""
+
+        refresh = self._runtime_refresh
+        if operation_id == "profile.change.activate" and (
+            result.get("state") != "active" or not result.get("activation_id")
+        ):
+            return
+        if refresh is not None and operation_id in {
+            "pack.enable",
+            "pack.disable",
+            "approval.revoke",
+            "profile.change.activate",
+            "runtime.restart",
+        }:
+            refresh(None)
+
+    def _select_contract_target(
+        self,
+        binding: FrontendContractBinding,
+        body: Mapping[str, object],
+    ) -> FrontendContractTarget | None:
+        """Select only a contribution committed in the captured application map."""
+
+        if len(binding.targets) == 1 and not body:
+            return binding.targets[0]
+        expected_fields = {
+            "request_id",
+            "expires_at",
+            "profile_id",
+            "plan_hash",
+            "catalog_hash",
+            "contribution_id",
+            "owner_pack_id",
+            "contract_id",
+            "payload",
+        }
+        if set(body) != expected_fields:
+            return None
+        capability_request_id = body.get("request_id")
+        expires_at = body.get("expires_at")
+        try:
+            valid_request_id = (
+                isinstance(capability_request_id, str)
+                and str(uuid.UUID(capability_request_id)) == capability_request_id
+            )
+        except ValueError:
+            valid_request_id = False
+        now = time.time()
+        valid_expiry = (
+            isinstance(expires_at, (int, float))
+            and not isinstance(expires_at, bool)
+            and now < float(expires_at) <= now + 60
+        )
+        if not valid_request_id or not valid_expiry:
+            return None
+        session = self._dispatch_session
+        if session is None or (
+            body.get("profile_id") != session.profile_id
+            or body.get("plan_hash") != session.plan_digest
+            or body.get("catalog_hash") != self._frontend_catalog_hash(binding)
+        ):
+            return None
+        contribution_id = body.get("contribution_id")
+        contract_id = body.get("contract_id")
+        return next(
+            (
+                target
+                for target in self._capability_targets(binding)
+                if target.contribution_id == contribution_id
+                and target.contract_id == contract_id
+                and target.owner_pack_id == body.get("owner_pack_id")
+            ),
+            None,
+        )
+
+    def _frontend_catalog_hash(self, binding: FrontendContractBinding) -> str:
+        return self._capability_snapshot(binding).catalog_hash
+
+    def _capability_targets(
+        self,
+        binding: FrontendContractBinding,
+        catalog: Mapping[str, object] | None = None,
+    ) -> tuple[FrontendContractTarget, ...]:
+        """Return static map targets plus exact enabled Pack contributions."""
+
+        return self._capability_snapshot(binding, catalog).targets
+
+    def _capability_snapshot(
+        self,
+        binding: FrontendContractBinding,
+        catalog: Mapping[str, object] | None = None,
+    ) -> CapabilityBindingSnapshot:
+        """Capture the exact targets and hash used by selection and presentation."""
+
+        session = self._dispatch_session
+        if session is None:
+            return CapabilityBindingSnapshot(
+                catalog_hash=canonical_digest(
+                    {
+                        "profile_id": "",
+                        "plan_digest": "",
+                        "contributions": [],
+                    }
+                ),
+                targets=binding.targets,
+            )
+        if catalog is None:
+            catalog = getattr(self, "_capability_catalog_cache", None)
+            if catalog is None:
+                try:
+                    from .pack_control_v4 import capture_pack_catalog_reader
+
+                    catalog = capture_pack_catalog_reader().read()
+                    # A handler serves one request, so this cache cannot span a
+                    # lifecycle mutation while avoiding duplicate authority
+                    # database scans for hash and target selection.
+                    self._capability_catalog_cache = catalog
+                except Exception:
+                    catalog = {"packs": []}
+        if not isinstance(catalog, Mapping):
+            catalog = {"packs": []}
+        return capture_capability_binding_snapshot(
+            binding,
+            session=session,
+            catalog=catalog,
+        )
+
+    def _capability_diagnostics(
+        self,
+        catalog: Mapping[str, object],
+    ) -> list[dict[str, str]]:
+        """Expose stable fail-closed reasons for selected unavailable operations."""
+
+        session = self._dispatch_session
+        packs = catalog.get("packs")
+        if session is None or not isinstance(packs, list):
+            return []
+        diagnostics: list[dict[str, str]] = []
+        for pack in packs:
+            if not isinstance(pack, Mapping) or pack.get("enabled") is not True:
+                continue
+            pack_id = str(pack.get("pack_id") or "")
+            operations = pack.get("operations")
+            if not isinstance(operations, list):
+                continue
+            for operation in operations:
+                if not isinstance(operation, Mapping):
+                    continue
+                if operation.get("invokable") is not True:
+                    continue
+                contract_id = str(operation.get("contract_id") or "")
+                operation_id = str(operation.get("operation_id") or "")
+                provider_id = str(operation.get("provider_id") or "")
+                for provider in session.provider_metadata(contract_id):
+                    if (
+                        provider.get("provider_id") == provider_id
+                        and provider.get("operation_id") == operation_id
+                        and provider.get("backend_unavailable_reason")
+                    ):
+                        diagnostics.append(
+                            {
+                                "code": "production_backend_unavailable",
+                                "severity": "error",
+                                "owner_pack_id": pack_id,
+                                "contribution_id": f"pack.{pack_id}.{operation_id}",
+                                "message": str(provider["backend_unavailable_reason"]),
+                            }
+                        )
+        return diagnostics
+
+    def _present_contract_result(
+        self,
+        binding: FrontendContractBinding,
+        result: Mapping[str, object],
+    ) -> dict[str, object]:
+        """Apply the presentation named by the committed application artifact."""
+
+        if binding.presentation != "dynamic_pack_catalog":
+            return dict(result)
+        capability_binding = self._contract_routes.get(("POST", "/api/ui/capability/invoke"))
+        contributions = (
+            self._capability_targets(capability_binding, result) if capability_binding else ()
+        )
+        diagnostics = self._capability_diagnostics(result)
+        session = self._dispatch_session
+        catalog_hash = (
+            self._frontend_catalog_hash(capability_binding)
+            if capability_binding is not None
+            else canonical_digest({"contributions": []})
+        )
+        return {
+            **dict(result),
+            "dynamic_host": {
+                "version": "rumi.ui.contribution.v1",
+                "profile_id": session.profile_id if session is not None else "",
+                "profile_revision": session.plan_digest if session is not None else "",
+                "plan_hash": session.plan_digest if session is not None else "",
+                "contributions": [
+                    self._capability_contribution(target, index, session)
+                    for index, target in enumerate(contributions)
+                ],
+                "diagnostics": diagnostics,
+                "quarantined_pack_ids": [],
+                "catalog_hash": catalog_hash,
+            },
+        }
+
+    @staticmethod
+    def _capability_contribution(
+        target: FrontendContractTarget,
+        priority: int,
+        session: DispatchSession | None,
+    ) -> dict[str, object]:
+        """Project one capture-verified capability as a frontend contribution."""
+
+        is_conversation = _is_conversation_capability_target(target)
+        contribution: dict[str, object] = {
+            "contribution_id": target.contribution_id,
+            "kind": "route" if is_conversation else "action",
+            "mode": "declarative" if is_conversation else "same_origin_builtin",
+            "label": (
+                "Tobkiri Conversation" if is_conversation else target.operation_id
+            ),
+            "priority": priority,
+            "owner_pack_id": target.owner_pack_id,
+            "owner_pack_hash": target.artifact_digest
+            or (session.plan_digest if session is not None else ""),
+            "build_identity": target.function_id,
+            "resolved_profile_revision": session.plan_digest if session is not None else "",
+            "resolved_plan_hash": session.plan_digest if session is not None else "",
+            "descriptor_hash": canonical_digest(
+                {
+                    "contribution_id": target.contribution_id,
+                    "operation_id": target.operation_id,
+                }
+            ),
+            "route": "/chat" if is_conversation else "/packs",
+            "action_contract": target.contract_id,
+            "operation_id": target.operation_id,
+            "provider_id": target.provider_id,
+            "function_id": target.function_id,
+            "localization": {},
+            "accessibility": {
+                "name": (
+                    "Tobkiri Conversation" if is_conversation else target.operation_id
+                ),
+                "keyboard": True,
+            },
+        }
+        if is_conversation:
+            contribution["view"] = {
+                "type": "conversation_v4",
+                "title": "Tobkiri Conversation",
+                "body": "Start a conversation with your active Tobkiri Profile.",
+            }
+        return contribution
+
+    @classmethod
+    def _normalize_dynamic_payload(
+        cls,
+        target: FrontendContractTarget,
+        payload: Mapping[str, object],
+        session: DispatchSession,
+    ) -> dict[str, object]:
+        """Bind dynamic Pack requests to Host identity and safe path semantics."""
+
+        if not target.contribution_id.startswith("pack."):
+            return dict(payload)
+        if target.contract_id != "tobkiri.service.media.inspect.v1":
+            raise ValueError("dynamic Pack operation is not an approved media contract")
+        if payload.get("name") not in {
+            "document.parse",
+            "image.inspect",
+            "audio.inspect",
+            "recording.inspect",
+        }:
+            raise ValueError("media inspection operation is not selected")
+        path = payload.get("path")
+        if not isinstance(path, str) or not path.strip() or "\x00" in path:
+            raise ValueError("a workspace-relative path is required")
+        if "\\" in path:
+            raise PermissionError("backslash paths are not accepted")
+        relative = PurePosixPath(path.strip())
+        if relative.is_absolute() or ".." in relative.parts or "." in relative.parts:
+            raise PermissionError("a workspace-relative path is required")
+        resolver = cls._workspace_binding_resolver
+        if resolver is None:
+            raise RuntimeError("Host workspace binding resolver is unavailable")
+        binding = dict(resolver(session.profile_id))
+        normalized = dict(payload)
+        normalized["path"] = relative.as_posix()
+        normalized["profile_id"] = session.profile_id
+        normalized["workspace_id"] = binding["workspace_id"]
+        normalized["require_selected"] = True
+        normalized["_workspace_binding"] = binding
+        return normalized
+
+    def _parse_object_body(self) -> dict[str, object] | None:
+        """Parse one JSON object and reject every other JSON root type."""
+
+        parsed: object = self._parse_body()
+        if parsed is None:
+            return None
+        if not isinstance(parsed, dict) or any(not isinstance(key, str) for key in parsed):
+            self._send_response(
+                APIResponse(False, error="Request body must be a JSON object"),
+                400,
+            )
+            return None
+        return {key: value for key, value in parsed.items() if isinstance(key, str)}
+
+    def _send_mapping_result(self, result: Mapping[str, object]) -> None:
+        response, status_code = self._mapping_response(result)
+        self._send_response(response, status_code)
+
+    @staticmethod
+    def _mapping_response(
+        result: Mapping[str, object],
+    ) -> tuple[APIResponse, int]:
+        """Convert one typed handler result into its HTTP envelope and status."""
+
+        error = result.get("error")
+        status = result.get("status_code", 500 if error is not None else 200)
+        status_code = status if isinstance(status, int) else 500
+        if error is None:
+            return APIResponse(True, data=dict(result)), status_code
+        return (
+            APIResponse(
+                False,
+                data={
+                    key: value
+                    for key, value in result.items()
+                    if key not in {"error", "status_code"}
+                },
+                error=str(error),
+            ),
+            status_code,
+        )
+
+    def _is_retired_setup_complete_path(self) -> bool:
+        """Match only the canonical retired path, with any query string."""
+
+        return urlparse(self.path).path == "/api/setup/complete"
+
+    def _handle_retired_setup_complete(self, *, head_only: bool = False) -> None:
+        """Return the method-independent no-write retirement contract."""
+
+        self._discard_request_body()
+        result = self._retired_setup_complete_state()
+        if not head_only:
+            self._send_mapping_result(result)
+            return
+        response, status = self._mapping_response(result)
+        data = response.to_json().encode("utf-8")
         try:
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
-            origin = self._get_cors_origin(self.headers.get("Origin", ""))
-            if origin:
-                self.send_header("Access-Control-Allow-Origin", origin)
-                self.send_header("Vary", "Origin")
-            for header_name, header_value in response_headers:
-                self.send_header(header_name, header_value)
             self.end_headers()
-            self.wfile.write(data)
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
             self.close_connection = True
 
-    def _send_sse(self, events) -> None:
-        response_headers: list[tuple[str, str]] = []
-        if self._panel_session_cookie:
-            response_headers.append(("Set-Cookie", self._panel_session_cookie))
-        try:
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
-            self.send_header('Cache-Control', 'no-cache, no-transform')
-            self.send_header('Connection', 'close')
-            origin = self._get_cors_origin(self.headers.get('Origin', ''))
-            if origin:
-                self.send_header('Access-Control-Allow-Origin', origin)
-                self.send_header('Vary', 'Origin')
-            for header_name, header_value in response_headers:
-                self.send_header(header_name, header_value)
-            self.end_headers()
-            for event in events:
-                if isinstance(event, bytes):
-                    payload = event
-                else:
-                    payload = (
-                        "data: " + json.dumps(event, ensure_ascii=False) + "\n\n"
-                    ).encode('utf-8')
-                self.wfile.write(payload)
-                self.wfile.flush()
-        except self._CLIENT_DISCONNECT_EXCEPTIONS:
-            self.close_connection = True
-        finally:
-            self.close_connection = True
-
-    @staticmethod
-    def _sse_events_from_result(result):
-        if isinstance(result, dict) and result.get("_sse"):
-            return result.get("events", [])
-        if (
-            isinstance(result, dict)
-            and result.get("status") == "ok"
-            and isinstance(result.get("data"), dict)
-            and result["data"].get("_sse")
-        ):
-            return result["data"].get("events", [])
-        return None
-
-    def _send_defaultspack_http_result(self, result: Any) -> None:
-        if isinstance(result, dict) and result.get("_static"):
-            body = str(result.get("body", "")).encode("utf-8")
-            try:
-                self.send_response(200)
-                self.send_header(
-                    "Content-Type",
-                    str(result.get("content_type", "text/html")),
-                )
-                self.send_header("Content-Length", str(len(body)))
-                origin = self._get_cors_origin(self.headers.get("Origin", ""))
-                if origin:
-                    self.send_header("Access-Control-Allow-Origin", origin)
-                    self.send_header("Vary", "Origin")
-                self.end_headers()
-                self.wfile.write(body)
-            except self._CLIENT_DISCONNECT_EXCEPTIONS:
-                self.close_connection = True
-            return
-        if isinstance(result, dict) and result.get("_redirect"):
-            try:
-                self.send_response(int(result.get("status_code", 302)))
-                self.send_header("Location", str(result.get("location") or "/chat"))
-                self.end_headers()
-            except self._CLIENT_DISCONNECT_EXCEPTIONS:
-                self.close_connection = True
-            return
-        sse_events = self._sse_events_from_result(result)
-        if sse_events is not None:
-            self._send_sse(sse_events)
-            return
-        status_code = 200
-        payload = result
-        if isinstance(result, dict) and result.get("status") == "error":
-            payload = dict(result)
-            status_code = int(payload.pop("_http_status", 400))
-        self._send_raw_json(payload, status=status_code)
-
-    def _defaultspack_request_data(
-        self,
-        method: str,
-        path_params: Optional[dict[str, str]] = None,
-        path_inject: Optional[dict[str, str]] = None,
-        body: Optional[dict[str, Any]] = None,
-    ) -> dict[str, Any]:
-        parsed_url = urlparse(self.path)
-        query_params: dict[str, Any] = {
-            key: values[-1]
-            for key, values in parse_qs(parsed_url.query, keep_blank_values=True).items()
-            if values and str(key) not in RESERVED_REQUEST_CONTEXT_KEYS
-        }
-        request_data: dict[str, Any] = dict(query_params)
-        if body:
-            request_data.update(strip_reserved_request_context(body))
-        for url_param, data_key in (path_inject or {}).items():
-            if str(data_key) in RESERVED_REQUEST_CONTEXT_KEYS:
-                continue
-            request_data[data_key] = (path_params or {}).get(url_param, "")
-        principal = getattr(self, "_authenticated_principal", None)
-        request_data["_path"] = parsed_url.path
-        request_data["_query_params"] = dict(query_params)
-        request_data["_headers"] = sanitized_forwarded_headers(self.headers)
-        request_data["_authenticated_device_id"] = self._authenticated_device_id or ""
-        request_data["_authenticated_scopes"] = list(self._authenticated_scopes or [])
-        if principal is not None:
-            request_data["_authenticated_principal"] = principal.to_dict()
-            to_subject = getattr(principal, "to_internal_subject", None)
-            request_data["_authority_subject"] = (
-                to_subject(owner_pack_id="defaultspack")
-                if callable(to_subject)
-                else principal.to_dict()
-            )
-        else:
-            request_data.pop("_authenticated_principal", None)
-            request_data.pop("_authority_subject", None)
-        request_data["_method"] = method.upper()
-        request_data["_actual_method"] = method.upper()
-        return request_data
-
-    def _defaultspack_http_context(self, facade: Any) -> dict[str, Any]:
-        return {
-            "flow_id": "transport_direct",
-            "step_id": "http_request",
-            "phase": "execute",
-            "ts": time.time(),
-            "owner_pack": "defaultspack",
-            "inputs": {},
-            "_facade": facade,
-            "_authenticated_device_id": self._authenticated_device_id or "",
-            "_authenticated_scopes": list(self._authenticated_scopes or []),
-            "_authenticated_principal": (
-                principal.to_dict()
-                if (principal := getattr(self, "_authenticated_principal", None)) is not None
-                else None
-            ),
-            "_authority_subject": (
-                principal.to_internal_subject(owner_pack_id="defaultspack")
-                if principal is not None and hasattr(principal, "to_internal_subject")
-                else (principal.to_dict() if principal is not None else None)
-            ),
-        }
-
-    def _dispatch_defaultspack_http_route(
-        self,
-        method: str,
-        path: str,
-        body: Optional[dict[str, Any]] = None,
-    ) -> bool:
-        kernel = self.__class__.kernel
-        try:
-            from ecosystem.defaultspack.transport.http import DefaultsHttpServer
-
-            facade = None
-            if kernel is not None:
-                from .kernel_facade import KernelFacade
-
-                facade = KernelFacade(kernel)
-            registry_routes = []
-            if facade is not None:
-                try:
-                    registry_routes = facade.get_interface("io.http.route", strategy="all") or []
-                except Exception:
-                    registry_routes = []
-            adapter_facade = facade if registry_routes else None
-            adapter = DefaultsHttpServer(adapter_facade)
-            handler, path_params, source, path_inject, _route_pattern = adapter._match_route(
-                method.upper(),
-                path,
-            )
-            if handler is None:
-                return False
-            route_entry = dict(getattr(handler, "__rumi_route_authority__", {}) or {})
-            route_entry.setdefault("pack_id", "defaultspack")
-            route_entry.setdefault("owner_pack_id", "defaultspack")
-            if not self._authorize_authenticated_route(method, path, route_entry):
-                return True
-            request_data = self._defaultspack_request_data(
-                method,
-                path_params=path_params or {},
-                path_inject=path_inject or {},
-                body=body,
-            )
-            if source == "registry":
-                if getattr(handler, "_defaultspack_flow_route_handler", False):
-                    result = handler(request_data, path_params or {})
-                else:
-                    result = handler(
-                        request_data,
-                        self._defaultspack_http_context(adapter_facade),
-                    )
-            else:
-                result = handler(request_data, path_params or {})
-            self._send_defaultspack_http_result(result)
-            return True
-        except Exception as e:
-            _log_internal_error(f"defaultspack_http_route:{method}:{path}", e)
-            self._send_raw_json(
-                {
-                    "status": "error",
-                    "error": {
-                        "code": "DEFAULTSPACK_ROUTE_FAILED",
-                        "message": _SAFE_ERROR_MSG,
-                    },
-                },
-                status=500,
-            )
-            return True
-
-    def _discard_request_body(self) -> None:
-        """Consume unread request bytes before returning an early response."""
-        try:
-            raw_cl = self.headers.get('Content-Length', '0')
-            content_length = int(raw_cl)
-        except (TypeError, ValueError):
-            content_length = 0
-        if content_length <= 0:
-            return
-        try:
-            self.rfile.read(content_length)
-        except Exception:
-            logger.debug("Failed to discard request body", exc_info=True)
-
-    def _send_result(self, result, error_status: int = 500) -> None:
-        """ハンドラ戻り値を判定してレスポンスを送信する (T-008)。
-
-        戻り値が dict で ``"error"`` キーを含む場合はエラーレスポンスとして送信し、
-        それ以外は成功レスポンスとして送信する。
-
-        handler が ``status_code`` キーを返した場合、その値を HTTP ステータスに使用する。
-        ``status_code`` が無い場合は *error_status* をデフォルトとする。
-        """
-        sse_events = self._sse_events_from_result(result)
-        if sse_events is not None:
-            self._send_sse(sse_events)
-            return
-        if isinstance(result, dict) and "error" in result:
-            status = result.get("status_code", error_status)
-            self._send_response(
-                APIResponse(False, error=result["error"]), status
-            )
-        else:
-            self._send_response(APIResponse(True, data=result))
-
-    @staticmethod
-    def _unwrap_defaultspack_function_envelope(result: Any) -> Any:
-        if not isinstance(result, dict) or "status" not in result:
-            return result
-        status = str(result.get("status") or "").lower()
-        if status == "ok":
-            return result.get("data")
-        if status != "error":
-            return result
-        error_payload = result.get("error")
-        if isinstance(error_payload, dict):
-            code = str(error_payload.get("code") or "ERROR")
-            message = str(error_payload.get("message") or code)
-            error_value: Any = {"code": code, "message": message}
-        else:
-            error_value = str(error_payload or "error")
-        try:
-            status_int = int(result.get("status_code"))
-        except (TypeError, ValueError):
-            status_int = 500
-        return {"error": error_value, "status_code": status_int}
-    
-    @staticmethod
-    def _is_loopback_ip(ip: str) -> bool:
-        return ip in {"127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"}
-
-    def _check_rate_limit(self, path: str) -> bool:
-        """レート制限チェック。制限超過なら 429 を返して False。"""
-        ip = self.client_address[0]
-        if self._is_loopback_ip(ip) and (path.startswith("/api/panel/") or path.startswith("/panel") or path.startswith("/api/setup/")):
-            return True
-        if not _rate_limiter.is_allowed(ip):
-            self._send_response(APIResponse(False, error="Too Many Requests"), 429)
-            return False
-        return True
-
-    def _reset_request_auth_state(self) -> None:
-        self._request_auth_mode = None
-        self._panel_session = None
-        self._panel_session_cookie = None
-        self._authenticated_principal = None
-        self._authenticated_device_id = None
-        self._authenticated_scopes = []
-        self._authenticated_device_scope_authorized = False
-
-    def _current_principal(self):
-        return getattr(self, "_authenticated_principal", None)
-
-    def _require_core_principal(self) -> bool:
-        principal = self._current_principal()
-        if principal is not None and getattr(principal, "core_role", False):
-            return True
-        self._send_response(APIResponse(False, error="Forbidden"), 403)
-        return False
-
-    def _auth_whoami(self) -> None:
-        principal = self._current_principal()
-        if principal is None:
-            self._send_response(APIResponse(False, error="Unauthorized"), 401)
-            return
-        self._send_response(APIResponse(True, data=principal.whoami_dict()))
-
-    def _auth_list_access_tokens(self, query: dict[str, Any]) -> None:
-        if not self._require_core_principal():
-            return
-        from .access_tokens import get_scoped_access_token_manager
-
-        profile_id = str(query.get("profile_id") or "").strip() or None
-        include_revoked = str(query.get("include_revoked") or "").strip().lower() in {"1", "true", "yes"}
-        rows = get_scoped_access_token_manager().list_tokens(
-            profile_id=profile_id,
-            include_revoked=include_revoked,
-            include_hash=False,
+    def _handle_health(self) -> None:
+        lifecycle = self.__class__.app_lifecycle_manager
+        health: dict[str, object] = (
+            lifecycle.get_health()
+            if lifecycle is not None
+            else {
+                "status": "ok",
+                "needs_setup": True,
+                "runtime_status": "starting",
+            }
         )
-        self._send_response(APIResponse(True, data={"tokens": rows, "count": len(rows)}))
-
-    def _auth_issue_access_token(self, body: dict[str, Any]) -> None:
-        if not self._require_core_principal():
-            return
-        from .access_tokens import (
-            DEFAULT_ACCESS_TOKEN_TTL_SECONDS,
-            access_token_issue_policy,
-            get_scoped_access_token_manager,
+        challenge = (
+            self.headers.get("X-Rumi-Desktop-Health-Challenge", "")
+            if hasattr(self, "headers")
+            else ""
         )
-
-        expires_in_seconds = body.get("expires_in_seconds")
-        if expires_in_seconds is None:
-            expires_in_seconds = DEFAULT_ACCESS_TOKEN_TTL_SECONDS
-        try:
-            policy = access_token_issue_policy(
-                role=str(body.get("role") or "mobile_client"),
-                surface_id=str(body.get("surface_id") or ""),
-                audiences=body.get("audiences"),
-            )
-            issued = get_scoped_access_token_manager().issue_token(
-                profile_id=str(body.get("profile_id") or "main"),
-                surface_id=str(policy["surface_id"]),
-                device_id=str(body.get("device_id") or ""),
-                role=str(policy["role"]),
-                audiences=policy["audiences"],
-                expires_in_seconds=expires_in_seconds,
-            )
-        except (TypeError, ValueError) as exc:
-            self._send_response(APIResponse(False, error=str(exc)), 400)
-            return
-        payload = issued.metadata.to_dict(include_hash=False)
-        payload["access_token"] = issued.access_token
-        payload["token"] = issued.access_token
-        self._send_response(APIResponse(True, data=payload))
-
-    def _auth_revoke_access_token(self, token_id: str) -> None:
-        if not self._require_core_principal():
-            return
-        from .access_tokens import get_scoped_access_token_manager
-
-        revoked = get_scoped_access_token_manager().revoke_token(token_id=token_id)
-        self._send_response(APIResponse(True, data={"token_id": token_id, "revoked": revoked}))
-
-    @staticmethod
-    def _allows_public_bootstrap_page(request_path: str, web_mount: dict[str, Any]) -> bool:
-        if web_mount.get("pack_id") != "core_control_panel":
-            return False
-        prefix = web_mount.get("path_prefix", "")
-        if not prefix:
-            return False
-        return request_path in {prefix, f"{prefix}/", f"{prefix}/index.html"}
-
-    def _serve_panel_bootstrap_page(self) -> None:
-        html = """<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rumi AI</title>
-    <style>
-      :root { color-scheme: dark; }
-      body {
-        margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: #0f172a;
-        color: #e2e8f0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      }
-      main {
-        width: min(32rem, calc(100vw - 2rem));
-        padding: 2rem;
-        border-radius: 1rem;
-        background: rgba(15, 23, 42, 0.92);
-        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.35);
-      }
-      h1 {
-        margin: 0 0 0.75rem;
-        font-size: 1.25rem;
-      }
-      p {
-        margin: 0;
-        line-height: 1.5;
-        color: #cbd5e1;
-      }
-      .error {
-        color: #fca5a5;
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1 id="title">Starting Rumi AI…</h1>
-      <p id="message">Exchanging your one-time desktop login code.</p>
-    </main>
-    <script>
-      (async () => {
-        const title = document.getElementById('title');
-        const message = document.getElementById('message');
-        const PANEL_CSRF_STORAGE_KEY = 'rumi-panel-csrf';
-        const url = new URL(window.location.href);
-        const code = url.searchParams.get('code');
-
-        const fail = (text) => {
-          title.textContent = 'Panel sign-in failed';
-          message.textContent = text;
-          message.classList.add('error');
-        };
-
-        if (!code) {
-          fail('This panel launch is missing a valid one-time login code.');
-          return;
-        }
-
-        try {
-          const response = await fetch('/api/panel/auth/exchange', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code }),
-          });
-
-          const envelope = await response.json().catch(() => ({}));
-          if (!response.ok || !envelope.success || !envelope.data || !envelope.data.csrf_token) {
-            throw new Error(envelope.error || `Panel bootstrap failed: ${response.status}`);
-          }
-
-          sessionStorage.setItem(PANEL_CSRF_STORAGE_KEY, envelope.data.csrf_token);
-          url.searchParams.delete('code');
-          window.location.replace(url.pathname + url.search + url.hash);
-        } catch (error) {
-          fail(error instanceof Error ? error.message : 'Panel bootstrap failed.');
-        }
-      })();
-    </script>
-  </body>
-</html>
-"""
-        data = html.encode("utf-8")
-        try:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            origin = self._get_cors_origin(self.headers.get("Origin", ""))
-            if origin:
-                self.send_header("Access-Control-Allow-Origin", origin)
-                self.send_header("Vary", "Origin")
-            self.end_headers()
-            self.wfile.write(data)
-        except self._CLIENT_DISCONNECT_EXCEPTIONS:
-            self.close_connection = True
+        bootstrap_secret = host_contract_value("panel_bootstrap_secret")
+        if challenge and bootstrap_secret:
+            health["desktop_challenge_response"] = hmac.new(
+                bootstrap_secret.encode("utf-8"),
+                challenge.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+        self._send_response(APIResponse(True, data=health))
 
     def _handle_panel_bootstrap(self) -> None:
-        if self._panel_auth_manager is None:
-            self._send_response(APIResponse(False, error="Panel auth unavailable"), 503)
-            return
-
-        bootstrap_secret = self.headers.get("X-Rumi-Desktop-Bootstrap", "")
-        if not self._panel_auth_manager.validate_bootstrap_secret(bootstrap_secret):
+        manager = self._panel_auth_manager
+        secret = self.headers.get("X-Rumi-Desktop-Bootstrap", "")
+        if (
+            manager is None
+            or not self._is_loopback_client(self.client_address)
+            or not manager.validate_bootstrap_secret(secret)
+        ):
+            self._discard_request_body()
             self._send_response(APIResponse(False, error="Unauthorized"), 401)
             return
+        self._discard_request_body()
+        self._send_response(APIResponse(True, data=manager.issue_login_code()))
 
-        payload = self._panel_auth_manager.issue_login_code()
-        self._send_response(APIResponse(True, data=payload))
-
-    def _handle_panel_exchange(self, body: dict[str, Any]) -> None:
-        if self._panel_auth_manager is None:
-            self._send_response(APIResponse(False, error="Panel auth unavailable"), 503)
-            return
-        if not self._check_panel_origin():
+    def _handle_panel_exchange(self, body: Mapping[str, object]) -> None:
+        manager = self._panel_auth_manager
+        if not self._is_loopback_client(self.client_address) or not self._check_panel_origin():
             self._send_response(APIResponse(False, error="Forbidden origin"), 403)
             return
-
-        code = str(body.get("code", "")).strip()
-        exchange = self._panel_auth_manager.exchange_code(code)
+        code_value = body.get("code")
+        code = code_value.strip() if isinstance(code_value, str) else ""
+        exchange = manager.exchange_code(code) if manager is not None else None
         if exchange is None:
             self._send_response(APIResponse(False, error="Invalid or expired code"), 401)
             return
-
-        session_cookie = self._build_set_cookie(
+        cookie = self._build_set_cookie(
             "rumi_panel_session",
-            exchange["session_id"],
+            str(exchange["session_id"]),
             path="/",
             max_age=int(exchange["expires_in"]),
             http_only=True,
@@ -1275,1416 +1812,673 @@ class PackAPIHandler(
                     "expires_in": exchange["expires_in"],
                 },
             ),
-            extra_headers=[("Set-Cookie", session_cookie)],
+            extra_headers=[("Set-Cookie", cookie)],
         )
 
-    def _handle_builtin_public_get(self, path: str) -> bool:
-        if path == "/health":
-            alm = self.__class__.app_lifecycle_manager
-            if alm is not None:
-                health = alm.get_health()
-            else:
-                health = {"status": "ok", "needs_setup": True}
-            headers = getattr(self, "headers", None)
-            challenge = (
-                headers.get("X-Rumi-Desktop-Health-Challenge", "")
-                if headers is not None
-                else ""
-            )
-            bootstrap_secret = os.environ.get("RUMI_PANEL_BOOTSTRAP_SECRET", "")
-            if challenge and bootstrap_secret:
-                health["desktop_challenge_response"] = hmac.new(
-                    bootstrap_secret.encode("utf-8"),
-                    challenge.encode("utf-8"),
-                    hashlib.sha256,
-                ).hexdigest()
-            self._send_response(APIResponse(True, data=health))
-            return True
-
-        if path == "/":
-            try:
-                self.send_response(302)
-                self.send_header("Location", "/panel/")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-            except self._CLIENT_DISCONNECT_EXCEPTIONS:
-                self.close_connection = True
-            return True
-
-        return False
-
-    def _handle_web_mount_get(self, path: str, web_mount: dict[str, Any]) -> None:
-        if web_mount.get("auth_required", True):
-            if self._check_web_mount_auth("GET", web_mount):
-                self._serve_static_file(path, web_mount)
-                return
-            if self._allows_public_bootstrap_page(path, web_mount):
-                self._serve_panel_bootstrap_page()
-                return
-            self._send_response(APIResponse(False, error="Unauthorized"), 401)
-            return
-        self._serve_static_file(path, web_mount)
-
-    def _handle_pre_auth_get(self, path: str) -> bool:
-        if path == "/api/setup/status":
-            alm = self.__class__.app_lifecycle_manager
-            if alm is not None:
-                setup_status = alm.check_setup_status()
-            else:
-                setup_status = {
-                    "needs_setup": True,
-                    "reason": "lifecycle_manager_unavailable",
-                }
-            self._send_response(APIResponse(True, data=setup_status))
-            return True
-
-        if path == "/api/setup/oauth/start":
-            try:
-                oauth_start_result = self._oauth_start()
-                self._send_response(APIResponse(True, data=oauth_start_result))
-            except Exception as exc:
-                _log_internal_error("oauth_start", exc)
-                self._send_response(APIResponse(False, error=_SAFE_ERROR_MSG), 500)
-            return True
-
-        if path == "/callback":
-            try:
-                callback_query = parse_qs(urlparse(self.path).query)
-                callback_result = self._oauth_callback(callback_query)
-                if callback_result is None:
-                    self._oauth_send_result_page(
-                        "Rumi account connected",
-                        "Sign-in completed successfully.",
-                        success=True,
-                    )
-                else:
-                    err_msg = callback_result.get("error", "unknown_error")
-                    self._oauth_send_result_page(
-                        "Rumi account connection failed",
-                        err_msg,
-                        success=False,
-                    )
-            except Exception as exc:
-                _log_internal_error("oauth_callback", exc)
-                self._oauth_send_result_page(
-                    "Rumi account connection failed",
-                    "internal_error",
-                    success=False,
-                )
-            return True
-
-        return False
-    
-    def _read_raw_body(self) -> Optional[bytes]:
-        """リクエストボディを読み取り、インスタンスに保持して返す。
-
-        サイズ超過時は 413 レスポンスを送信し None を返す。
-        Content-Length が不正な場合は 400 レスポンスを送信し None を返す。
-
-        Returns:
-            bytes: 読み取ったボディ。
-            None: サイズ超過 / ヘッダー不正（レスポンス送信済み）。
-        """
-        raw_cl = self.headers.get('Content-Length', '0')
+    def _setup_pre_auth_allowed(self) -> bool:
+        lifecycle = self.__class__.app_lifecycle_manager
+        if lifecycle is None:
+            return False
         try:
-            content_length = int(raw_cl)
-        except (ValueError, TypeError):
-            self._send_response(
-                APIResponse(False, error="Invalid Content-Length header"), 400
-            )
-            return None
-        if content_length < 0:
-            self._send_response(
-                APIResponse(False, error="Invalid Content-Length header"), 400
-            )
-            return None
-        if content_length == 0:
-            self._raw_body_bytes = b""
-            return b""
-        if content_length > MAX_REQUEST_BODY_BYTES:
-            self._send_response(
-                APIResponse(False, error="Request body too large"), 413
-            )
-            return None
-        raw = self.rfile.read(content_length)
-        self._raw_body_bytes = raw
-        return raw
+            return lifecycle.check_setup_status().get("needs_setup") is True
+        except (OSError, RuntimeError, ValueError):
+            logger.exception("Canonical setup state could not be verified")
+            return False
 
-    def _parse_body(self) -> Optional[dict]:
-        """リクエストボディをJSONとしてパースする。
+    def _handle_setup_status(self) -> None:
+        lifecycle = self.__class__.app_lifecycle_manager
+        state: dict[str, object] = (
+            lifecycle.check_setup_status()
+            if lifecycle is not None
+            else {
+                "needs_setup": True,
+                "reason": "lifecycle_manager_unavailable",
+            }
+        )
+        self._send_response(APIResponse(True, data=state))
 
-        Returns:
-            dict: パース結果。空ボディは {} を返す。
-            None: サイズ超過 / パース失敗（レスポンス送信済み）。
-        """
-        raw = self._read_raw_body()
-        if raw is None:
-            return None  # _read_raw_body がエラーレスポンスを送信済み
-        if not raw:
-            return {}
-        try:
-            return json.loads(raw.decode('utf-8'))
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            self._send_response(
-                APIResponse(False, error="Invalid JSON in request body"), 400
-            )
-            return None
-    
-
-    # --- Phase A: 静的ファイル配信メソッド ---
-    _MIME_TYPES = {
-        ".html": "text/html; charset=utf-8",
-        ".js": "application/javascript; charset=utf-8",
-        ".css": "text/css; charset=utf-8",
-        ".json": "application/json; charset=utf-8",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".svg": "image/svg+xml",
-        ".ico": "image/x-icon",
-        ".woff": "font/woff",
-        ".woff2": "font/woff2",
-        ".ttf": "font/ttf",
-        ".map": "application/json",
-    }
-
-    def _serve_static_file(
-        self,
-        request_path: str,
-        _wm: Optional[dict[str, Any]] = None,
-    ) -> None:
-        """Pack が提供する Web UI の静的ファイルを配信する（認証不要）。
-
-        パストラバーサル防止: Path.resolve() + relative_to() で web_root 内に制限。
-        テーブル駆動: _web_mounts テーブルからパスを解決する。
-        """
-        if _wm is None:
-            _wm = self._match_web_mount(request_path)
-        if _wm is None:
-            self._send_response(APIResponse(False, error="Not found"), 404)
-            return
-        if not self._is_pack_approved_for_runtime_routes(_wm.get("pack_id", "")):
-            self._send_response(APIResponse(False, error="Forbidden"), 403)
-            return
-
-        path_prefix = _wm["path_prefix"]
-        web_root = _wm["web_root"]
-        spa_fallback = _wm.get("spa_fallback", False)
-        index_file = _wm.get("index_file", "index.html")
-
-        sub_path = request_path[len(path_prefix):]
-        if not sub_path or sub_path == "/":
-            sub_path = "/" + index_file
-
-        # パストラバーサル防止
-        try:
-            target = (web_root / sub_path.lstrip("/")).resolve()
-            target.relative_to(web_root.resolve())
-        except (ValueError, OSError):
-            self._send_response(APIResponse(False, error="Forbidden"), 403)
-            return
-
-        if not target.is_file():
-            # SPA フォールバック: 拡張子のないパスは index.html に解決
-            index_fallback = web_root / index_file
-            if spa_fallback and index_fallback.is_file() and "." not in target.name:
-                target = index_fallback
-            else:
-                self._send_response(APIResponse(False, error="Not found"), 404)
-                return
-
-        # MIME type 判定
-        suffix = target.suffix.lower()
-        content_type = self._MIME_TYPES.get(suffix, "application/octet-stream")
-
-        try:
-            data = target.read_bytes()
-        except OSError:
-            self._send_response(APIResponse(False, error="Read error"), 500)
-            return
-
+    def _serve_panel_bootstrap_page(self) -> None:
+        document = b"""<!doctype html><meta charset=\"utf-8\"><title>Tobkiri</title>
+<script>
+const code=new URL(location.href).searchParams.get('code');
+if(!code){document.body.textContent='Tobkiri Launcher authentication required';}
+else fetch('/api/panel/auth/exchange',{method:'POST',credentials:'same-origin',
+headers:{'Content-Type':'application/json'},body:JSON.stringify({code})})
+.then(r=>{if(!r.ok)throw new Error('authentication failed');return r.json()})
+.then(v=>{sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);location.replace('/panel/')})
+.catch(()=>{document.body.textContent='Tobkiri Launcher authentication failed';});
+</script>"""
         try:
             self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(data)))
-            origin = self._get_cors_origin(self.headers.get("Origin", ""))
-            if origin:
-                self.send_header("Access-Control-Allow-Origin", origin)
-                self.send_header("Vary", "Origin")
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(document)))
             self.end_headers()
-            self.wfile.write(data)
+            self.wfile.write(document)
+        except self._CLIENT_DISCONNECT_EXCEPTIONS:
+            self.close_connection = True
+
+    def _serve_mount_bootstrap_page(self, target: str) -> None:
+        """Exchange a one-time desktop code before serving an authenticated mount."""
+
+        safe_target = target if target in {"/chat", "/panel/"} else "/panel/"
+        document = f"""<!doctype html><meta charset=\"utf-8\"><title>Tobkiri</title>
+<script>
+const code=new URL(location.href).searchParams.get('code');
+if(!code){{document.body.textContent='Tobkiri Launcher authentication required';}}
+else fetch('/api/panel/auth/exchange',{{method:'POST',credentials:'same-origin',
+headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{code}})}})
+.then(r=>{{if(!r.ok)throw new Error('authentication failed');return r.json()}})
+.then(v=>{{sessionStorage.setItem('rumi-panel-csrf',v.data.csrf_token);location.replace('{safe_target}')}})
+.catch(()=>{{document.body.textContent='Tobkiri Launcher authentication failed';}});
+</script>""".encode("utf-8")
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(document)))
+            self.end_headers()
+            self.wfile.write(document)
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
             self.close_connection = True
 
     def do_OPTIONS(self) -> None:
+        """Answer local panel preflight without widening the origin set."""
+
+        self._reset_request_state()
+        if self._is_retired_setup_complete_path():
+            self._handle_retired_setup_complete()
+            return
+        origin = self._get_cors_origin(self.headers.get("Origin", ""))
+        if not origin:
+            self._send_response(APIResponse(False, error="Forbidden origin"), 403)
+            return
         try:
-            self.send_response(200)
-            origin = self._get_cors_origin(self.headers.get('Origin', ''))
-            if origin:
-                self.send_header('Access-Control-Allow-Origin', origin)
-                self.send_header('Vary', 'Origin')
-            self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
-            self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Rumi-CSRF, X-Rumi-Desktop-Bootstrap')
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, X-Rumi-CSRF, X-Rumi-Desktop-Bootstrap, X-Tobkiri-Request-ID",
+            )
+            self.send_header("Content-Length", "0")
             self.end_headers()
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
             self.close_connection = True
 
-    @classmethod
-    def _get_allowed_origins(cls) -> list:
-        """
-        許可するオリジンリストを取得。
-        環境変数 RUMI_CORS_ORIGINS (カンマ区切り) でカスタマイズ可能。
-        未設定の場合は localhost の特定ポート(3000,5173,8080,8765)と
-        RUMI_PORT で指定された実行時ポートのみ許可。
-        ワイルドカードポート指定("http://localhost:*")は環境変数で
-        明示的に指定した場合のみ有効。
-        """
-        env_origins = os.environ.get("RUMI_CORS_ORIGINS", "")
-        runtime_port_raw = os.environ.get("RUMI_PORT", "")
-        cache_key = (env_origins, runtime_port_raw)
-        if cls._allowed_origins is not None and cls._allowed_origins_cache_key == cache_key:
-            return cls._allowed_origins
-
-        if env_origins.strip():
-            cls._allowed_origins = [o.strip() for o in env_origins.split(",") if o.strip()]
-            cls._allowed_origins_from_env = True
-        else:
-            cls._allowed_origins = [
-                "http://localhost:3000",    # 一般的なフロントエンド開発ポート
-                "http://localhost:5173",    # Vite デフォルト
-                "http://localhost:8080",    # 一般的な開発ポート
-                "http://localhost:8765",    # Pack API Server デフォルトポート
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:5173",
-                "http://127.0.0.1:8080",
-                "http://127.0.0.1:8765",
-            ]
-            if runtime_port_raw.strip():
-                port = resolve_runtime_port()
-                cls._allowed_origins.extend([
-                    f"http://localhost:{port}",
-                    f"http://127.0.0.1:{port}",
-                ])
-            cls._allowed_origins_from_env = False
-        cls._allowed_origins = list(dict.fromkeys(cls._allowed_origins))
-        cls._allowed_origins_cache_key = cache_key
-        return cls._allowed_origins
-
-    @classmethod
-    def _get_cors_origin(cls, request_origin: str) -> str:
-        """
-        リクエストの Origin が許可リストに含まれていれば返す。
-        含まれなければ空文字を返し、CORS ヘッダーを付与しない。
-        """
-        if not request_origin:
-            return ""
-        allowed = cls._get_allowed_origins()
-        for pattern in allowed:
-            if pattern == request_origin:
-                return request_origin
-            # "http://localhost:*" — ワイルドカードポート対応（環境変数で明示指定時のみ）
-            if cls._allowed_origins_from_env and pattern.endswith(":*"):
-                prefix = pattern[:-1]  # e.g. "http://localhost:"
-                if request_origin.startswith(prefix):
-                    return request_origin
-        return ""
-
-    
     def do_GET(self) -> None:
+        """Dispatch the finite read-only route set."""
+
+        self._reset_request_state()
         path = urlparse(self.path).path
-        if not self._check_rate_limit(path):
+        if self._handle_packvm_lifecycle("GET", path):
             return
-        self._reset_request_auth_state()
-
-        if self._handle_builtin_public_get(path):
+        if self._handle_contract_request("GET"):
             return
-
-        web_mount = self._match_web_mount(path)
-        if web_mount is not None:
-            self._handle_web_mount_get(path, web_mount)
+        if self._is_retired_setup_complete_path():
+            self._handle_retired_setup_complete()
             return
-
-        is_pre_auth = self._is_pre_auth_route("GET", path)
-        if is_pre_auth and self._handle_pre_auth_get(path):
+        if path == "/health":
+            self._handle_health()
             return
-
-        if not is_pre_auth and not self._check_auth("GET", path):
-            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+        if path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/panel/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
             return
-
-        query = self._parse_query()
-
-        try:
-            if path == "/api/auth/whoami":
-                self._auth_whoami()
+        if path == "/api/setup/status":
+            self._handle_setup_status()
+            return
+        if path == "/api/setup/packs":
+            if not self._setup_pre_auth_allowed() and not self._check_auth("GET", path):
+                self._send_response(APIResponse(False, error="Unauthorized"), 401)
                 return
-            if path == "/api/auth/access-tokens":
-                self._auth_list_access_tokens(query)
-                return
-
-            if self._dispatch_api_route("GET", path, query=query):
-                return
-            if self._dispatch_defaultspack_http_route("GET", path):
-                return
-            if not self._authorize_authenticated_route("GET", path):
-                return
-
-            if path == "/api/authority/requests":
-                status_filter = query.get("status", "all")
-                result = self._authority_requests(status_filter)
-                self._send_result(result)
-
-            elif path.startswith("/api/authority/requests/"):
-                parts = path.strip("/").split("/")
-                if len(parts) == 4:
-                    request_id = unquote(parts[3])
-                    result = self._authority_request(request_id)
-                    if result.get("success"):
-                        self._send_result(result.get("request", {}))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Authority request not found")), result.get("status_code", 404))
+            self._send_mapping_result(self._setup_list_packs())
+            return
+        if path == "/api/setup/migration/status":
+            self._send_mapping_result(self._setup_get_migration_status())
+            return
+        mount = self._match_web_mount(path)
+        if mount is not None:
+            if mount["auth_required"] and not self._check_auth("GET", path):
+                if mount["path_prefix"] == "/chat" and path in {"/chat", "/chat/"}:
+                    self._serve_mount_bootstrap_page("/chat")
+                elif mount["path_prefix"] == "/panel" and path in {
+                    "/panel",
+                    "/panel/",
+                    "/panel/index.html",
+                }:
+                    self._serve_panel_bootstrap_page()
                 else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
+                    self._send_response(APIResponse(False, error="Unauthorized"), 401)
+                return
+            self._serve_static_file(path, mount)
+            return
+        if self._retired_api_path(path):
+            self._send_retired_api(path)
+            return
+        self._send_not_found()
 
-            elif path == "/api/authority/grants":
-                principal_id = query.get("principal_id", "")
-                result = self._authority_grants(principal_id)
-                self._send_result(result)
-
-            elif path == "/api/authority/events":
-                try:
-                    limit = int(query.get("limit", "200") or 200)
-                except ValueError:
-                    limit = 200
-                result = self._authority_events(limit)
-                self._send_result(result)
-
-            elif path == "/api/packs":
-                result = self._get_all_packs()
-                self._send_result(result)
-
-            elif path == "/api/packs/pending":
-                result = self._get_pending_packs()
-                self._send_result(result)
-
-            elif path.startswith("/api/packs/") and path.endswith("/status"):
-                pack_id = path.split("/")[3]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                result = self._get_pack_status(pack_id)
-                if result:
-                    self._send_result(result)
-                else:
-                    self._send_response(APIResponse(False, error="Pack not found"), 404)
-
-            elif path.startswith("/api/packs/") and path.endswith("/dependencies"):
-                pack_id = path.split("/")[3]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                result = self._get_pack_dependencies(pack_id)
-                self._send_result(result)
-
-            elif path == "/api/runtime/available":
-                result = self._get_available_runtimes()
-                self._send_result(result)
-
-            # --- W19-B: Secret Grant GET endpoints ---
-            elif path == "/api/secrets/grants":
-                result = self._secrets_grants_list()
-                self._send_result(result)
-
-            elif path.startswith("/api/secrets/grants/"):
-                # GET /api/secrets/grants/{pack_id}
-                parts = path.strip("/").split("/")
-                # parts: ["api", "secrets", "grants", "{pack_id}"]
-                if len(parts) == 4:
-                    pack_id = unquote(parts[3])
-                    if not self._validate_pack_id(pack_id):
-                        self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                        return
-                    result = self._secrets_grants_get_pack(pack_id)
-                    self._send_result(result)
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-
-            else:
-                match = self._match_pack_route(path, "GET")
-                if match:
-                    self._handle_pack_route_request(path, {}, "GET", match)
-                else:
-                    logger.debug("Unmatched GET path: %s", path)
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-                
-        except Exception as e:
-            _log_internal_error("do_GET", e)
-            self._send_response(APIResponse(False, error=_SAFE_ERROR_MSG), 500)
-    
     def do_POST(self) -> None:
-        _pre_auth_path_post = urlparse(self.path).path
-        if not self._check_rate_limit(_pre_auth_path_post):
+        """Dispatch canonical setup/auth and exact Broker operations."""
+
+        self._reset_request_state()
+        path = urlparse(self.path).path
+        if self._handle_packvm_lifecycle("POST", path):
             return
-        self._reset_request_auth_state()
-        result: Any = None
-
-        # --- テーブル駆動: pre-auth API ルート ---
-        _is_pre_auth_post = self._is_pre_auth_route("POST", _pre_auth_path_post)
-
-        if _is_pre_auth_post:
-            # 認証不要ルート: ビジネスロジックはここで処理
-            if _pre_auth_path_post == "/api/panel/auth/bootstrap":
-                self._handle_panel_bootstrap()
+        if self._handle_contract_request("POST"):
+            return
+        if self._is_retired_setup_complete_path():
+            self._handle_retired_setup_complete()
+            return
+        if path == "/api/panel/auth/bootstrap":
+            self._handle_panel_bootstrap()
+            return
+        if path == "/api/panel/auth/exchange":
+            body = self._parse_object_body()
+            if body is not None:
+                self._handle_panel_exchange(body)
+            return
+        if path == "/api/setup/packs/install":
+            if not self._setup_pre_auth_allowed() and not self._check_auth("POST", path):
+                self._discard_request_body()
+                self._send_response(APIResponse(False, error="Unauthorized"), 401)
                 return
-
-            if _pre_auth_path_post == "/api/panel/auth/exchange":
-                _body_exchange = self._parse_body()
-                if _body_exchange is None:
-                    return
-                self._handle_panel_exchange(_body_exchange)
-                return
-
-            if _pre_auth_path_post == "/api/setup/complete":
-                _body_setup = self._parse_body()
-                if _body_setup is None:
-                    return
-                _alm = self.__class__.app_lifecycle_manager
-                if _alm is None:
-                    self._send_response(APIResponse(False, error="Lifecycle manager not initialized"), 500)
-                    return
-                _setup_result = _alm.complete_setup(_body_setup)
-                if _setup_result.get("success"):
-                    try:
-                        _k = self.__class__.kernel
-                        if _k and hasattr(_k, 'event_bus') and _k.event_bus:
-                            _k.event_bus.publish("setup.completed", {
-                                "username": _body_setup.get("username"),
-                                "language": _body_setup.get("language"),
-                            })
-                    except Exception:
-                        pass
-                    self._send_response(APIResponse(True, data=_setup_result))
-                else:
-                    _errors = _setup_result.get("errors", ["Setup failed"])
-                    self._send_response(APIResponse(False, error="; ".join(_errors)), 400)
-                return
-
-            # pre-auth テーブルにマッチしたが上記に該当しない場合
-            # → 認証スキップして通常ルーティングへ通過
-
-        # --- 認証チェック（pre-auth ルート以外）---
-        if not _is_pre_auth_post and not self._check_auth("POST", _pre_auth_path_post):
+            body = self._parse_object_body()
+            if body is not None:
+                result = self._setup_install_pack(body)
+                self._send_mapping_result(result)
+                try:
+                    self.wfile.flush()
+                except self._CLIENT_DISCONNECT_EXCEPTIONS:
+                    self.close_connection = True
+                self._refresh_setup_runtime_after_response(result)
+            return
+        if path == "/api/v4/dispatch":
             self._discard_request_body()
-            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+            self._send_retired_api(path)
             return
-        
-        try:
-            body = self._parse_body()
-            if body is None:
-                return  # レスポンス送信済み（サイズ超過 or JSONパース失敗）
-            parsed = urlparse(self.path)
-            path = parsed.path
-            query = {
-                key: values[-1]
-                for key, values in parse_qs(parsed.query, keep_blank_values=True).items()
-                if values
-            }
-
-            if path == "/api/auth/access-tokens":
-                self._auth_issue_access_token(body)
-                return
-
-            # --- api_routes テーブルディスパッチ (施策3) ---
-            if self._dispatch_api_route("POST", path, body, query=query):
-                return
-            if self._dispatch_defaultspack_http_route("POST", path, body):
-                return
-            route_authority = _HARDCODED_ROUTE_AUTHORITY.get(("POST", path))
-            if not self._authorize_authenticated_route("POST", path, route_authority):
-                return
-
-            if path == "/api/authority/check":
-                result = self._authority_check(body)
-                self._send_result(result)
-
-            elif path.startswith("/api/authority/requests/") and path.endswith("/approve"):
-                parts = path.strip("/").split("/")
-                if len(parts) == 5:
-                    request_id = unquote(parts[3])
-                    result = self._authority_approve(request_id, body)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Authority approve failed")), result.get("status_code", 400))
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-
-            elif path.startswith("/api/authority/requests/") and path.endswith("/challenge"):
-                parts = path.strip("/").split("/")
-                if len(parts) == 5:
-                    request_id = unquote(parts[3])
-                    result = self._authority_challenge(request_id, body)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Authority challenge failed")), result.get("status_code", 400))
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-
-            elif path.startswith("/api/authority/requests/") and path.endswith("/deny"):
-                parts = path.strip("/").split("/")
-                if len(parts) == 5:
-                    request_id = unquote(parts[3])
-                    result = self._authority_deny(request_id, body)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Authority deny failed")), result.get("status_code", 400))
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-
-            elif path == "/api/network/grant":
-                pack_id = body.get("pack_id", "")
-                allowed_domains = body.get("allowed_domains", [])
-                allowed_ports = body.get("allowed_ports", [])
-                if not pack_id:
-                    self._send_response(APIResponse(False, error="Missing pack_id"), 400)
-                elif not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                elif not allowed_domains and not allowed_ports:
-                    self._send_response(APIResponse(False, error="Must specify allowed_domains or allowed_ports"), 400)
-                else:
-                    result = self._network_grant(
-                        pack_id, allowed_domains, allowed_ports,
-                        granted_by=body.get("granted_by", "api_user"),
-                        notes=body.get("notes", ""),
-                    )
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Grant failed")), result.get("status_code", 400))
-
-            elif path == "/api/network/revoke":
-                pack_id = body.get("pack_id", "")
-                if not pack_id:
-                    self._send_response(APIResponse(False, error="Missing pack_id"), 400)
-                elif not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                else:
-                    result = self._network_revoke(pack_id, reason=body.get("reason", ""))
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Revoke failed")), result.get("status_code", 400))
-
-            elif path == "/api/network/check":
-                pack_id = body.get("pack_id", "")
-                domain = body.get("domain", "")
-                port = body.get("port")
-                if not pack_id or not domain or port is None:
-                    self._send_response(APIResponse(False, error="Missing pack_id, domain, or port"), 400)
-                elif not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                else:
-                    result = self._network_check(pack_id, domain, int(port))
-                    self._send_response(APIResponse(True, result))
-
-
-            elif path == "/api/packs/scan":
-                result = self._scan_packs()
-                self._send_result(result)
-
-            elif path == "/api/packs/import":
-                source_path = body.get("path", "")
-                notes = body.get("notes", "")
-                if not source_path:
-                    self._send_response(APIResponse(False, error="Missing 'path'"), 400)
-                else:
-                    # パストラバーサル防止: ecosystem/ 配下のみ許可
-                    from .paths import ECOSYSTEM_DIR as _ECOSYSTEM_DIR
-
-                    _eco_base = Path(_ECOSYSTEM_DIR).resolve()
-                    try:
-                        _resolved = Path(source_path).resolve()
-                        _resolved.relative_to(_eco_base)
-                    except (ValueError, OSError):
-                        self._send_response(
-                            APIResponse(False, error="Path must be within ecosystem directory"), 400
-                        )
-                        return
-                    result = self._pack_import(source_path, notes)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-
-            elif path == "/api/packs/apply":
-                staging_id = body.get("staging_id", "")
-                mode = body.get("mode", "replace")
-                if not staging_id:
-                    self._send_response(APIResponse(False, error="Missing 'staging_id'"), 400)
-                elif not _v_is_safe_staging_id(staging_id):
-                    self._send_response(APIResponse(False, error="Invalid staging_id"), 400)
-                else:
-                    result = self._pack_apply(
-                        staging_id,
-                        mode,
-                        actor=self._pack_apply_actor(),
-                    )
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-
-            elif path == "/api/secrets/set":
-                result = self._secrets_set(body)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-
-            elif path == "/api/secrets/delete":
-                result = self._secrets_delete(body)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-
-            # --- W19-B: Secret Grant POST endpoint ---
-            elif path.startswith("/api/secrets/grants/"):
-                # POST /api/secrets/grants/{pack_id}
-                parts = path.strip("/").split("/")
-                # parts: ["api", "secrets", "grants", "{pack_id}"]
-                if len(parts) == 4:
-                    pack_id = unquote(parts[3])
-                    if not self._validate_pack_id(pack_id):
-                        self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                        return
-                    # pack_id を body に注入して既存ハンドラを呼び出す
-                    body["pack_id"] = pack_id
-                    result = self._secrets_grant(body)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-
-
-            elif path == "/api/stores/create":
-                result = self._stores_create(body)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-
-            elif path == "/api/units/publish":
-                result = self._units_publish(body)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-
-            elif path == "/api/units/execute":
-                result = self._units_execute(body)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    status_code = 403 if result.get("error_type") in (
-                        "approval_denied", "grant_denied", "trust_denied"
-                    ) else 400
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", status_code))
-
-            elif path == "/api/pip/candidates/scan":
-                ecosystem_dir = body.get("ecosystem_dir", None)
-                result = self._pip_scan(ecosystem_dir)
-                self._send_result(result)
-
-            elif path.startswith("/api/pip/requests/") and path.endswith("/approve"):
-                candidate_key = self._extract_capability_key(path, "/api/pip/requests/", "/approve")
-                if candidate_key is None or not self._is_safe_id(candidate_key):
-                    self._send_response(APIResponse(False, error="Invalid candidate_key"), 400)
-                else:
-                    allow_sdist = body.get("allow_sdist", False)
-                    index_url = body.get("index_url", "https://pypi.org/simple")
-                    result = self._pip_approve(candidate_key, allow_sdist, index_url)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Approve failed")), result.get("status_code", 400))
-
-            elif path.startswith("/api/pip/requests/") and path.endswith("/reject"):
-                candidate_key = self._extract_capability_key(path, "/api/pip/requests/", "/reject")
-                if candidate_key is None or not self._is_safe_id(candidate_key):
-                    self._send_response(APIResponse(False, error="Invalid candidate_key"), 400)
-                else:
-                    reason = body.get("reason", "")
-                    result = self._pip_reject(candidate_key, reason)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Reject failed")), result.get("status_code", 400))
-
-            elif path.startswith("/api/pip/blocked/") and path.endswith("/unblock"):
-                candidate_key = self._extract_capability_key(path, "/api/pip/blocked/", "/unblock")
-                if candidate_key is None or not self._is_safe_id(candidate_key):
-                    self._send_response(APIResponse(False, error="Invalid candidate_key"), 400)
-                else:
-                    reason = body.get("reason", "")
-                    result = self._pip_unblock(candidate_key, reason)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Unblock failed")), result.get("status_code", 400))
-
-            elif path == "/api/capability/candidates/scan":
-                ecosystem_dir = body.get("ecosystem_dir", None)
-                result = self._capability_scan(ecosystem_dir)
-                self._send_result(result)
-
-            elif path.startswith("/api/capability/requests/") and path.endswith("/approve"):
-                candidate_key = self._extract_capability_key(path, "/api/capability/requests/", "/approve")
-                if candidate_key is None or not self._is_safe_id(candidate_key):
-                    self._send_response(APIResponse(False, error="Invalid candidate_key"), 400)
-                else:
-                    notes = body.get("notes", "")
-                    result = self._capability_approve(candidate_key, notes)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Approve failed")), result.get("status_code", 400))
-
-            elif path.startswith("/api/capability/requests/") and path.endswith("/reject"):
-                candidate_key = self._extract_capability_key(path, "/api/capability/requests/", "/reject")
-                if candidate_key is None or not self._is_safe_id(candidate_key):
-                    self._send_response(APIResponse(False, error="Invalid candidate_key"), 400)
-                else:
-                    reason = body.get("reason", "")
-                    result = self._capability_reject(candidate_key, reason)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Reject failed")), result.get("status_code", 400))
-
-            elif path.startswith("/api/capability/blocked/") and path.endswith("/unblock"):
-                candidate_key = self._extract_capability_key(path, "/api/capability/blocked/", "/unblock")
-                if candidate_key is None or not self._is_safe_id(candidate_key):
-                    self._send_response(APIResponse(False, error="Invalid candidate_key"), 400)
-                else:
-                    reason = body.get("reason", "")
-                    result = self._capability_unblock(candidate_key, reason)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Unblock failed")), result.get("status_code", 400))
-            
-
-            elif path == "/api/capability/grants/batch":
-                grants_list = body.get("grants", [])
-                result = self._capability_grants_batch(grants_list)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error", "Batch grant failed")), result.get("status_code", 400))
-
-            elif path == "/api/stores/shared/approve":
-                provider_pack_id = body.get("provider_pack_id", "")
-                consumer_pack_id = body.get("consumer_pack_id", "")
-                store_id = body.get("store_id", "")
-                result = self._stores_shared_approve(provider_pack_id, consumer_pack_id, store_id)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error", "Approve failed")), result.get("status_code", 400))
-
-            elif path == "/api/stores/shared/revoke":
-                provider_pack_id = body.get("provider_pack_id", "")
-                consumer_pack_id = body.get("consumer_pack_id", "")
-                store_id = body.get("store_id", "")
-                result = self._stores_shared_revoke(provider_pack_id, consumer_pack_id, store_id)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error", "Revoke failed")), result.get("status_code", 400))
-
-            elif path == "/api/capability/grants/grant":
-                principal_id = body.get("principal_id", "")
-                permission_id = body.get("permission_id", "")
-                config = body.get("config")
-                if not principal_id or not permission_id:
-                    self._send_response(APIResponse(False, error="Missing principal_id or permission_id"), 400)
-                else:
-                    result = self._capability_grants_grant(principal_id, permission_id, config)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Grant failed")), result.get("status_code", 400))
-
-            elif path == "/api/capability/grants/revoke":
-                principal_id = body.get("principal_id", "")
-                permission_id = body.get("permission_id", "")
-                if not principal_id or not permission_id:
-                    self._send_response(APIResponse(False, error="Missing principal_id or permission_id"), 400)
-                else:
-                    result = self._capability_grants_revoke(principal_id, permission_id)
-                    if result.get("success"):
-                        self._send_response(APIResponse(True, result))
-                    else:
-                        self._send_response(APIResponse(False, error=result.get("error", "Revoke failed")), result.get("status_code", 400))
-
-            elif path.startswith("/api/packs/") and path.endswith("/approve"):
-                pack_id = path.split("/")[3]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                result = self._approve_pack(pack_id)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-            
-            elif path.startswith("/api/packs/") and path.endswith("/approve-rule"):
-                pack_id = path.split("/")[3]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                result = self._approve_rule_pack(pack_id)
-                if isinstance(result, dict) and "error" in result:
-                    self._send_response(
-                        APIResponse(False, error=result["error"]),
-                        result.get("status_code", 400),
-                    )
-                else:
-                    self._send_response(APIResponse(True, data=result))
-
-            elif path.startswith("/api/packs/") and path.endswith("/reject"):
-                pack_id = path.split("/")[3]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                reason = body.get("reason", "User rejected")
-                result = self._reject_pack(pack_id, reason)
-                self._send_result(result)
-            
-            elif path.startswith("/api/containers/") and path.endswith("/start"):
-                pack_id = path.split("/")[3]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                result = self._start_container(pack_id)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-            
-            elif path.startswith("/api/containers/") and path.endswith("/stop"):
-                pack_id = path.split("/")[3]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                result = self._stop_container(pack_id)
-                self._send_result(result)
-            
-            elif path.startswith("/api/privileges/") and "/grant/" in path:
-                parts = path.split("/")
-                pack_id = parts[3]
-                privilege_id = parts[5]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                if not self._is_safe_id(privilege_id):
-                    self._send_response(APIResponse(False, error="Invalid privilege_id"), 400)
-                    return
-                result = self._grant_privilege(pack_id, privilege_id)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 400))
-            
-            elif path.startswith("/api/privileges/") and "/execute/" in path:
-                parts = path.split("/")
-                pack_id = parts[3]
-                privilege_id = parts[5]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                if not self._is_safe_id(privilege_id):
-                    self._send_response(APIResponse(False, error="Invalid privilege_id"), 400)
-                    return
-                params = body.get("params", {})
-                result = self._execute_privilege(pack_id, privilege_id, params)
-                if result.get("success"):
-                    self._send_response(APIResponse(True, result))
-                else:
-                    self._send_response(APIResponse(False, error=result.get("error")), result.get("status_code", 403))
-
-            # --- Route reload ---
-            elif path == "/api/routes/reload":
-                result = self._reload_pack_routes()
-                self._send_result(result)
-
-            # --- Flow execution API ---
-            elif path.startswith("/api/flows/") and path.endswith("/run"):
-                # flow_id バリデーション（flow_handlers 呼び出し前に検証）
-                _flow_parts = path.split("/")
-                if len(_flow_parts) >= 5:
-                    _flow_id_raw = unquote(_flow_parts[3])
-                    if not self._is_safe_id(_flow_id_raw):
-                        self._send_response(APIResponse(False, error="Invalid flow_id"), 400)
-                        return
-                self._handle_flow_run(path, body)
-
-            # --- Pack custom routes (POST) ---
-            else:
-                match = self._match_pack_route(path, "POST")
-                if match:
-                    self._handle_pack_route_request(path, body, "POST", match)
-                else:
-                    logger.debug("Unmatched POST path: %s", path)
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-                
-        except Exception as e:
-            _log_internal_error("do_POST", e)
-            self._send_response(APIResponse(False, error=_SAFE_ERROR_MSG), 500)
-    
+        if self._retired_api_path(path):
+            self._discard_request_body()
+            self._send_retired_api(path)
+            return
+        self._discard_request_body()
+        self._send_not_found()
 
     def do_PUT(self) -> None:
-        """PUT メソッド — Panel API + Pack独自ルート"""
-        _pre_auth_path_put = urlparse(self.path).path
-        if not self._check_rate_limit(_pre_auth_path_put):
+        """Retire historical mutation routes without parsing their payloads."""
+
+        self._reset_request_state()
+        path = urlparse(self.path).path
+        if self._handle_contract_request("PUT"):
             return
-        self._reset_request_auth_state()
-        # --- テーブル駆動: 認証チェック ---
-        if not self._is_pre_auth_route("PUT", _pre_auth_path_put) and not self._check_auth("PUT", _pre_auth_path_put):
-            self._discard_request_body()
-            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+        if self._is_retired_setup_complete_path():
+            self._handle_retired_setup_complete()
             return
-
-        try:
-            body = self._parse_body()
-            if body is None:
-                return  # レスポンス送信済み
-            parsed = urlparse(self.path)
-            path = parsed.path
-            query = {
-                key: values[-1]
-                for key, values in parse_qs(parsed.query, keep_blank_values=True).items()
-                if values
-            }
-
-            # --- api_routes テーブルディスパッチ (施策3) ---
-            if self._dispatch_api_route("PUT", path, body, query=query):
-                return
-            if self._dispatch_defaultspack_http_route("PUT", path, body):
-                return
-            if not self._authorize_authenticated_route("PUT", path):
-                return
-
-            match = self._match_pack_route(path, "PUT")
-            if match:
-                self._handle_pack_route_request(path, body, "PUT", match)
-            else:
-                logger.debug("Unmatched PUT path: %s", path)
-                self._send_response(APIResponse(False, error="Not found"), 404)
-
-        except Exception as e:
-            _log_internal_error("do_PUT", e)
-            self._send_response(APIResponse(False, error=_SAFE_ERROR_MSG), 500)
-
-    def do_PATCH(self) -> None:
-        _pre_auth_path_patch = urlparse(self.path).path
-        if not self._check_rate_limit(_pre_auth_path_patch):
-            return
-        self._reset_request_auth_state()
-        if not self._is_pre_auth_route("PATCH", _pre_auth_path_patch) and not self._check_auth("PATCH", _pre_auth_path_patch):
-            self._discard_request_body()
-            self._send_response(APIResponse(False, error="Unauthorized"), 401)
-            return
-
-        try:
-            body = self._parse_body()
-            if body is None:
-                return
-            parsed = urlparse(self.path)
-            path = parsed.path
-            query = {
-                key: values[-1]
-                for key, values in parse_qs(parsed.query, keep_blank_values=True).items()
-                if values
-            }
-            if self._dispatch_api_route("PATCH", path, body, query=query):
-                return
-            if self._dispatch_defaultspack_http_route("PATCH", path, body):
-                return
-            if not self._authorize_authenticated_route("PATCH", path):
-                return
-            logger.debug("Unmatched PATCH path: %s", path)
-            self._send_response(APIResponse(False, error="Not found"), 404)
-        except Exception as e:
-            _log_internal_error("do_PATCH", e)
-            self._send_response(APIResponse(False, error=_SAFE_ERROR_MSG), 500)
+        self._discard_request_body()
+        if self._retired_api_path(path):
+            self._send_retired_api(path)
+        else:
+            self._send_not_found()
 
     def do_DELETE(self) -> None:
-        _pre_auth_path_del = urlparse(self.path).path
-        if not self._check_rate_limit(_pre_auth_path_del):
+        """Retire historical deletion routes without manager access."""
+        self._reset_request_state()
+        if self._handle_contract_request("DELETE"):
             return
-        self._reset_request_auth_state()
-        result: Any = None
-        # --- テーブル駆動: 認証チェック ---
-        if not self._is_pre_auth_route("DELETE", _pre_auth_path_del) and not self._check_auth("DELETE", _pre_auth_path_del):
-            self._send_response(APIResponse(False, error="Unauthorized"), 401)
+        self.do_PUT()
+
+    def do_PATCH(self) -> None:
+        """Retire historical partial mutations without manager access."""
+        self._reset_request_state()
+        if self._handle_contract_request("PATCH"):
             return
-        
-        path = urlparse(self.path).path
-        
-        try:
-            parsed = urlparse(self.path)
-            path = parsed.path
-            query = {
-                key: values[-1]
-                for key, values in parse_qs(parsed.query, keep_blank_values=True).items()
-                if values
-            }
-            if path.startswith("/api/auth/access-tokens/"):
-                parts = path.strip("/").split("/")
-                if len(parts) == 4:
-                    self._auth_revoke_access_token(unquote(parts[3]))
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-                return
+        self.do_PUT()
 
-            # --- api_routes テーブルディスパッチ (施策3) ---
-            if self._dispatch_api_route("DELETE", path, query=query):
-                return
-            if self._dispatch_defaultspack_http_route("DELETE", path):
-                return
-            if not self._authorize_authenticated_route("DELETE", path):
-                return
+    def do_HEAD(self) -> None:
+        """Expose standard header-only semantics for the retired exact path."""
 
-            if path.startswith("/api/authority/grants/"):
-                parts = path.strip("/").split("/")
-                if len(parts) == 5:
-                    principal_id = unquote(parts[3])
-                    permission_id = unquote(parts[4])
-                    if not principal_id or not permission_id:
-                        self._send_response(APIResponse(False, error="Missing principal_id or permission_id"), 400)
-                        return
-                    result = self._authority_delete_grant(principal_id, permission_id)
-                    self._send_result(result)
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
+        self._reset_request_state()
+        if self._is_retired_setup_complete_path():
+            self._handle_retired_setup_complete(head_only=True)
+            return
+        self._send_not_found()
 
-            # --- W19-B: Secret Grant DELETE endpoints ---
-            elif path.startswith("/api/secrets/grants/"):
-                parts = path.strip("/").split("/")
-                # DELETE /api/secrets/grants/{pack_id}/{secret_key} (5 parts)
-                if len(parts) == 5:
-                    pack_id = unquote(parts[3])
-                    secret_key = unquote(parts[4])
-                    if not self._validate_pack_id(pack_id):
-                        self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                        return
-                    result = self._secrets_grants_delete_key(pack_id, secret_key)
-                    self._send_result(result)
-                # DELETE /api/secrets/grants/{pack_id} (4 parts)
-                elif len(parts) == 4:
-                    pack_id = unquote(parts[3])
-                    if not self._validate_pack_id(pack_id):
-                        self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                        return
-                    result = self._secrets_grants_delete_pack(pack_id)
-                    self._send_result(result)
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-
-            elif path.startswith("/api/containers/"):
-                pack_id = path.split("/")[3]
-                if not self._validate_pack_id(pack_id):
-                    self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    return
-                result = self._remove_container(pack_id)
-                self._send_result(result)
-
-            elif path.startswith("/api/packs/"):
-                parts = path.strip("/").split("/")
-                # DELETE /api/packs/{pack_id} (exactly 3 segments: api/packs/{id})
-                if len(parts) == 3:
-                    pack_id = parts[2]
-                    if not self._validate_pack_id(pack_id):
-                        self._send_response(APIResponse(False, error="Invalid pack_id"), 400)
-                    else:
-                        result = self._uninstall_pack(pack_id)
-                        self._send_result(result)
-                else:
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-
-            else:
-                # T-009: Pack独自ルートフォールバック
-                match = self._match_pack_route(path, "DELETE")
-                if match:
-                    body = self._parse_body()
-                    if body is None:
-                        return  # レスポンス送信済み
-                    self._handle_pack_route_request(path, body, "DELETE", match)
-                else:
-                    logger.debug("Unmatched DELETE path: %s", path)
-                    self._send_response(APIResponse(False, error="Not found"), 404)
-                
-        except Exception as e:
-            _log_internal_error("do_DELETE", e)
-            self._send_response(APIResponse(False, error=_SAFE_ERROR_MSG), 500)
-
-
-_PACK_API_HANDLER_CLASSMETHOD_MIXINS = (
-    (WebMountMixin, "load_web_mounts"),
-    (WebMountMixin, "load_pre_auth_routes"),
-    (APIRouteTableMixin, "load_api_routes"),
-)
-
-
-def _rebind_mixin_descriptor(target_cls, mixin_cls, method_name: str) -> None:
-    descriptor = mixin_cls.__dict__[method_name]
-    if isinstance(descriptor, classmethod):
-        rebound = classmethod(descriptor.__func__)
-    elif isinstance(descriptor, staticmethod):
-        rebound = staticmethod(descriptor.__func__)
-    else:
-        rebound = descriptor
-    setattr(target_cls, method_name, rebound)
-
-
-for _mixin_cls, _method_name in _PACK_API_HANDLER_CLASSMETHOD_MIXINS:
-    _rebind_mixin_descriptor(PackAPIHandler, _mixin_cls, _method_name)
-
-_PACK_API_HANDLER_METHOD_MIXINS = (
-    (WebMountMixin, "_match_web_mount"),
-    (WebMountMixin, "_serve_static_file"),
-    (APIRouteTableMixin, "_dispatch_api_route"),
-    (ResponseWriterMixin, "_send_response"),
-    (ResponseWriterMixin, "_send_raw_json"),
-    (ResponseWriterMixin, "_send_sse"),
-    (ResponseWriterMixin, "_send_defaultspack_http_result"),
-    (ResponseWriterMixin, "_send_result"),
-    (ResponseWriterMixin, "_sse_events_from_result"),
-    (AuthGateMixin, "_check_bearer_auth"),
-    (AuthGateMixin, "_parse_cookie_header"),
-    (AuthGateMixin, "_build_set_cookie"),
-    (AuthGateMixin, "_check_panel_origin"),
-    (AuthGateMixin, "_check_panel_session"),
-    (AuthGateMixin, "_check_auth"),
-    (AuthGateMixin, "_check_web_mount_auth"),
-    (AuthGateMixin, "_authorize_authenticated_route"),
-    (RequestBodyMixin, "_read_raw_body"),
-    (RequestBodyMixin, "_parse_body"),
-    (RequestBodyMixin, "_discard_request_body"),
-    (RequestBodyMixin, "_parse_query"),
-)
-for _mixin_cls, _method_name in _PACK_API_HANDLER_METHOD_MIXINS:
-    _rebind_mixin_descriptor(PackAPIHandler, _mixin_cls, _method_name)
-PackAPIHandler._MIME_TYPES = WebMountMixin._MIME_TYPES
 
 class PackAPIServer:
-    
+    """Own one verified loopback HTTP server and captured v4 handler."""
+
     def __init__(
         self,
         host: str = "127.0.0.1",
         port: int = 8765,
-        approval_manager = None,
-        container_orchestrator = None,
-        host_privilege_manager = None,
-        internal_token: Optional[str] = None,
-        kernel = None,
-        app_lifecycle_manager = None
-    ):
-        self.kernel = kernel
+        *,
+        panel_auth_manager: PanelAuthManager | None = None,
+        dispatch_session: DispatchSession | None = None,
+        app_lifecycle_manager: LifecyclePort | None = None,
+        contract_bindings: tuple[FrontendContractBinding, ...] = (),
+        web_mounts: tuple[WebMountEntry, ...] | None = None,
+        workspace_binding_resolver: WorkspaceBindingResolver | None = None,
+        packvm_lifecycle: PackVMLifecyclePort | None = None,
+    ) -> None:
+        self.config = RuntimeHTTPConfig.verify(host, port)
+        self.host = self.config.host
+        self.port = self.config.port
+        self._panel_auth_manager = panel_auth_manager or get_panel_auth_manager()
+        self._dispatch_session = dispatch_session
+        # A caller-provided session remains caller-owned.  Refreshes that the
+        # server captures itself become server-owned so their Broker,
+        # authority store, and provider close callbacks have a bounded owner.
+        self._dispatch_session_owned_by_server = False
         self.app_lifecycle_manager = app_lifecycle_manager
-        # Fix #3: bind address restriction — env var override + 0.0.0.0 warning
-        resolved_host = os.environ.get("RUMI_API_BIND_ADDRESS", host) or "127.0.0.1"
-        if resolved_host == "0.0.0.0":
-            logger.warning(
-                "SECURITY WARNING: API server binding to 0.0.0.0 (all interfaces). "
-                "This exposes the API to the network. Use 127.0.0.1 for local-only access."
-            )
-            try:
-                from .audit_logger import get_audit_logger
-                audit = get_audit_logger()
-                audit.log_system_event(
-                    event_type="api_bind_all_interfaces",
-                    success=True,
-                    details={"bind_address": "0.0.0.0", "warning": "Exposed to network"},
-                )
-            except Exception:
-                pass
-        self.host = resolved_host
-        self.port = port
-        self.approval_manager = approval_manager
-        self.container_orchestrator = container_orchestrator
-        self.host_privilege_manager = host_privilege_manager
-        
-        # HMAC鍵管理: HMACKeyManager を使用
-        self._hmac_key_manager = get_hmac_key_manager()
-        self._panel_auth_manager = get_panel_auth_manager()
-        
-        if internal_token is None:
-            # HMACKeyManager からアクティブ鍵を取得
-            internal_token = self._hmac_key_manager.get_active_key()
-            _persist_desktop_api_token(internal_token)
-            token_prefix = internal_token[:8] + "..." if internal_token and len(internal_token) >= 8 else internal_token or "(empty)"
-            logger.info("Using HMAC-managed API token (prefix): %s", token_prefix)
-            logger.warning("To retrieve the full token, inspect: user_data/hmac_keys.json")
-            logger.warning('  Or run: python3 -c "from core_runtime.hmac_key_manager import HMACKeyManager; m=HMACKeyManager(); print(m.get_active_key())"')
-            logger.warning("Set this token in client requests: Authorization: Bearer <your-token>")
-            logger.warning("Token rotation: set RUMI_HMAC_ROTATE=true and restart")
-        
-        self.internal_token = internal_token
-        self.server: Optional[_PackThreadingHTTPServer] = None
-        self.thread: Optional[threading.Thread] = None
-        self._routes_load_lock = threading.Lock()
-    
+        self._contract_routes = contract_binding_map(contract_bindings)
+        self._web_mounts = web_mounts
+        self._workspace_binding_resolver = workspace_binding_resolver
+        if packvm_lifecycle is None:
+            from .packvm_lifecycle_v4 import PackVMLifecycleV4
+
+            packvm_lifecycle = PackVMLifecycleV4()
+        self._packvm_lifecycle = packvm_lifecycle
+        self._replay_guard = _RequestReplayGuard()
+        from .bootstrap.profile_capture import runtime_user_data_root
+
+        self._operation_journal = ControlReconciliationStore(
+            runtime_user_data_root() / "control" / "reconciliation-v4.sqlite3",
+            instance_id=str(uuid.uuid4()),
+        )
+        self.server: _PackThreadingHTTPServer | None = None
+        self.thread: threading.Thread | None = None
+        self.handler_class: type[PackAPIHandler] | None = None
+        self._lifecycle_lock = threading.RLock()
+        self._lifecycle_generation = 0
+        self._runtime_refresh_sequence = 0
+        self._lifecycle_state = "stopped"
+        self._stop_complete = threading.Event()
+        self._stop_complete.set()
+        self._stop_failed = False
+
     def start(self) -> None:
-        PackAPIHandler.approval_manager = self.approval_manager
-        PackAPIHandler.container_orchestrator = self.container_orchestrator
-        PackAPIHandler.host_privilege_manager = self.host_privilege_manager
-        PackAPIHandler.internal_token = self.internal_token
-        PackAPIHandler._hmac_key_manager = self._hmac_key_manager
-        PackAPIHandler._panel_auth_manager = self._panel_auth_manager
-        PackAPIHandler.kernel = self.kernel
-        PackAPIHandler.app_lifecycle_manager = self.app_lifecycle_manager
+        """Start a fresh finite handler with no inherited route state."""
 
-        # BUG-20260306-02 fix: Pack ルートの読み込みを system.ready イベント後に遅延実行する。
-        # API サーバー自体は security phase で初期化し、Pack ルートは
-        # component setup 完了後にロードされる。
-        # event_bus が利用可能ならイベント駆動、なければ即時ロード。
-        self._routes_loaded = False
-        try:
-            from backend_core.ecosystem.registry import get_registry
+        with self._lifecycle_lock:
+            if self._lifecycle_state == "stopping":
+                raise RuntimeError("Pack v4 API server is stopping")
+            if self._lifecycle_state == "drain_failed":
+                raise RuntimeError("Pack v4 API server teardown is incomplete")
+            if self.is_running():
+                return
+            self._lifecycle_generation += 1
+            lifecycle_generation = self._lifecycle_generation
+            self._lifecycle_state = "starting"
+            self._stop_complete.clear()
+            self._stop_failed = False
+            try:
+                self._validate_contract_runtime()
+                handler = PackAPIHandler.canonical_v4_server_handler(
+                    panel_auth_manager=self._panel_auth_manager,
+                    dispatch_session=self._dispatch_session,
+                    app_lifecycle_manager=self.app_lifecycle_manager,
+                    contract_routes=self._contract_routes,
+                    replay_guard=self._replay_guard,
+                    operation_journal=self._operation_journal,
+                    web_mounts=self._web_mounts,
+                    runtime_refresh=self._runtime_refresh_callback(lifecycle_generation),
+                    workspace_binding_resolver=self._workspace_binding_resolver,
+                    packvm_lifecycle=self._packvm_lifecycle,
+                )
+                server = _PackThreadingHTTPServer((self.host, self.port), handler)
+            except Exception:
+                self._lifecycle_state = "stopped"
+                self._stop_complete.set()
+                raise
+            actual_port = int(server.server_address[1])
+            handler._runtime_port = actual_port
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            self.port = actual_port
+            self.handler_class = handler
+            self.server = server
+            self.thread = thread
+            self._lifecycle_state = "running"
+            thread.start()
+        logger.info("Pack v4 API server started on http://%s:%s", self.host, self.port)
 
-            reg = get_registry()
-            PackAPIHandler.load_web_mounts(reg, pack_ids={"core_control_panel"})
-            PackAPIHandler.load_pre_auth_routes(reg, pack_ids={"core_control_panel"})
-            PackAPIHandler.load_api_routes(
-                reg,
-                pack_ids={"core_control_panel"},
-                include_builtin_core_control_panel=True,
-            )
-            logger.info("Preloaded control panel shell and API routes before runtime-ready")
-        except Exception as e:
-            logger.warning("Failed to preload control panel shell routes: %s", e)
-        try:
-            if self.kernel and hasattr(self.kernel, 'event_bus') and self.kernel.event_bus:
-                def _deferred_load_routes(event_data=None):
-                    with self._routes_load_lock:
-                        if not self._routes_loaded:
-                            self._routes_loaded = True
-                            try:
-                                from backend_core.ecosystem.registry import get_registry
-                                reg = get_registry()
-                                PackAPIHandler.load_pack_routes(reg)
-                                PackAPIHandler.load_web_mounts(reg)
-                                PackAPIHandler.load_pre_auth_routes(reg)
-                                PackAPIHandler.load_api_routes(
-                                    reg,
-                                    include_builtin_core_control_panel=True,
-                                )
-                                logger.info("Pack routes loaded (deferred after system.ready)")
-                            except Exception as e:
-                                logger.warning("Failed to load pack routes (deferred): %s", e)
-                self.kernel.event_bus.subscribe("system.ready", _deferred_load_routes)
-            else:
-                # Fallback: event_bus なしの場合は即時ロード
-                try:
-                    from backend_core.ecosystem.registry import get_registry
-                    reg = get_registry()
-                    PackAPIHandler.load_pack_routes(reg)
-                    PackAPIHandler.load_web_mounts(reg)
-                    PackAPIHandler.load_pre_auth_routes(reg)
-                    PackAPIHandler.load_api_routes(
-                        reg,
-                        include_builtin_core_control_panel=True,
+    def _runtime_refresh_callback(
+        self,
+        lifecycle_generation: int,
+    ) -> Callable[[DispatchSession | None], None]:
+        """Bind handler publication to the lifecycle generation that created it."""
+
+        refresh_method = self._refresh_runtime_capture
+
+        def refresh(session: DispatchSession | None = None) -> None:
+            if getattr(refresh_method, "__func__", None) is PackAPIServer._refresh_runtime_capture:
+                refresh_method(
+                    session,
+                    lifecycle_generation=lifecycle_generation,
+                )
+                return
+            with self._lifecycle_lock:
+                if (
+                    self._lifecycle_state != "running"
+                    or lifecycle_generation != self._lifecycle_generation
+                ):
+                    return
+            override_refresh = cast(Callable[[DispatchSession | None], None], refresh_method)
+            override_refresh(session)
+
+        return refresh
+
+    def _validate_contract_runtime(self) -> None:
+        """Verify the exact capture and route ownership before binding a socket."""
+
+        self._validate_contract_capture(self._dispatch_session, self._contract_routes)
+
+    def _validate_contract_capture(
+        self,
+        session: DispatchSession | None,
+        routes: Mapping[tuple[str, str], FrontendContractBinding],
+    ) -> None:
+        """Validate a complete session/map pair before publishing either value."""
+
+        if not routes:
+            return
+        if session is None:
+            raise RuntimeError("frontend contracts require a captured v4 session")
+        session.assert_current()
+        if session.profile_id != "defaults" or not session.plan_digest.startswith("sha256:"):
+            raise RuntimeError("frontend contracts require the exact Defaults Profile")
+        for binding in routes.values():
+            for target in binding.targets:
+                providers = session.provider_metadata(target.contract_id)
+                exact = tuple(
+                    provider
+                    for provider in providers
+                    if provider.get("provider_id") == target.provider_id
+                    and provider.get("operation_id") == target.operation_id
+                    and provider.get("profile_id") == session.profile_id
+                    and provider.get("plan_digest") == session.plan_digest
+                )
+                if len(exact) != 1 or target.function_id != target.provider_id:
+                    raise RuntimeError("frontend contract Provider identity is unavailable")
+                if not _is_conversation_capability_target(target):
+                    session.assert_operation_ready(
+                        target.contract_id,
+                        target.operation_id,
                     )
-                    self._routes_loaded = True
-                except Exception as e:
-                    logger.warning("Failed to load pack routes: %s", e)
-        except Exception as e:
-            logger.warning("Failed to set up deferred route loading: %s", e)
-        
-        self.server = _PackThreadingHTTPServer((self.host, self.port), PackAPIHandler)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-        logger.info("Pack API server started on http://%s:%s", self.host, self.port)
-    
+        if self._web_mounts is not None:
+            for mount in self._web_mounts:
+                root = mount["web_root"]
+                if not root.is_dir() or not (root / mount["index_file"]).is_file():
+                    raise RuntimeError("frontend contract web mount is unavailable")
+
+    def _refresh_runtime_capture(
+        self,
+        activated_session: DispatchSession | None = None,
+        *,
+        lifecycle_generation: int,
+    ) -> None:
+        """Atomically publish a current Broker session and canonical route map."""
+
+        with self._lifecycle_lock:
+            if (
+                self._lifecycle_state != "running"
+                or lifecycle_generation != self._lifecycle_generation
+            ):
+                return
+            self._runtime_refresh_sequence += 1
+            refresh_sequence = self._runtime_refresh_sequence
+            base_session = self._dispatch_session
+
+        from tobkiri_host.runtime import install_dispatch_session
+
+        from .authority.v4 import AuthorityStore
+        from .bootstrap.production_v4 import capture_production_dispatch
+        from .bootstrap.profile_capture import (
+            capture_default_profile,
+            runtime_user_data_root,
+        )
+        from .di_container import get_container
+
+        session = activated_session
+        server_captured_session = session is None
+        try:
+            runtime_root, bundle_root, _catalog, bindings = (
+                _load_production_capture_inputs()
+            )
+            if session is None:
+                active = capture_default_profile()
+                authority = AuthorityStore(
+                    runtime_user_data_root() / "authority" / "v4.sqlite3"
+                )
+                try:
+                    session = capture_production_dispatch(
+                        active,
+                        bundle_root=bundle_root,
+                        ecosystem_root=runtime_root / "ecosystem",
+                        authority_store=authority,
+                        packvm_provisioner=self._packvm_lifecycle,
+                        packvm_readiness_reader=(
+                            self._packvm_lifecycle.readiness_snapshot
+                        ),
+                        frontend_contract_bindings=bindings,
+                    )
+                except Exception:
+                    authority.close()
+                    raise
+            routes = contract_binding_map(bindings)
+            self._validate_contract_capture(session, routes)
+        except Exception:
+            self._close_unpublished_session(session, base_session=base_session)
+            raise
+
+        previous: DispatchSession | None = None
+        with self._lifecycle_lock:
+            stale_refresh = (
+                self._lifecycle_state != "running"
+                or lifecycle_generation != self._lifecycle_generation
+                or refresh_sequence != self._runtime_refresh_sequence
+            )
+            if not stale_refresh:
+                previous = self._dispatch_session
+                published_generation = self._lifecycle_generation
+                handler = PackAPIHandler.canonical_v4_server_handler(
+                    panel_auth_manager=self._panel_auth_manager,
+                    dispatch_session=session,
+                    app_lifecycle_manager=self.app_lifecycle_manager,
+                    contract_routes=routes,
+                    replay_guard=self._replay_guard,
+                    operation_journal=self._operation_journal,
+                    web_mounts=self._web_mounts,
+                    runtime_refresh=self._runtime_refresh_callback(published_generation),
+                    workspace_binding_resolver=self._workspace_binding_resolver,
+                    packvm_lifecycle=self._packvm_lifecycle,
+                )
+                handler._runtime_port = self.port
+                self._dispatch_session = session
+                self._dispatch_session_owned_by_server = server_captured_session
+                self._contract_routes = routes
+                self.handler_class = handler
+                if self.server is not None:
+                    self.server.RequestHandlerClass = handler
+                install_dispatch_session(get_container(), session)
+        if stale_refresh:
+            self._close_unpublished_session(session, base_session=base_session)
+            return
+        if previous is not None and previous is not session:
+            close = getattr(previous, "close", None)
+            if callable(close):
+                close()
+
+    @staticmethod
+    def _close_unpublished_session(
+        session: DispatchSession | None,
+        *,
+        base_session: DispatchSession | None,
+    ) -> None:
+        """Close a discarded candidate without touching the captured base session."""
+
+        if session is None or session is base_session:
+            return
+        close = getattr(session, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                logger.exception("failed to close an unpublished dispatch session")
+
     def stop(self) -> None:
-        if self.server:
-            server = self.server
-            server.shutdown()
-            server.server_close()
-            self.server = None
-        if self.thread:
-            self.thread.join(timeout=THREAD_JOIN_TIMEOUT_SECONDS)
-            self.thread = None
-        logger.info("Pack API server stopped")
-    
+        """Stop the server and discard its captured handler bindings."""
+
+        owned_dispatch_session: DispatchSession | None = None
+
+        with self._lifecycle_lock:
+            if self._lifecycle_state == "stopped":
+                return
+            if self._lifecycle_state == "stopping":
+                stop_complete = self._stop_complete
+                owns_stop = False
+                server = None
+                thread = None
+            else:
+                self._lifecycle_state = "stopping"
+                self._lifecycle_generation += 1
+                self._stop_complete.clear()
+                self._stop_failed = False
+                stop_complete = self._stop_complete
+                owns_stop = True
+                server = self.server
+                thread = self.thread
+                if server is not None:
+                    server.stop_accepting_requests()
+                dispatch_session = self._dispatch_session
+                cancel_pending_reads = getattr(
+                    dispatch_session,
+                    "cancel_pending_reads",
+                    None,
+                )
+                if callable(cancel_pending_reads):
+                    cancel_pending_reads()
+
+        if not owns_stop:
+            if not stop_complete.wait(timeout=THREAD_JOIN_TIMEOUT_SECONDS):
+                raise RuntimeError("Pack v4 API server stop timed out")
+            if self._stop_failed:
+                raise RuntimeError("Pack v4 API server teardown incomplete")
+            return
+
+        deadline = time.monotonic() + THREAD_JOIN_TIMEOUT_SECONDS
+        if server is not None:
+            server.request_shutdown()
+        if thread is not None:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+        serving_thread_alive = thread is not None and thread.is_alive()
+        drained = True
+        diagnostics: dict[str, object] = {
+            "serving_thread_alive": serving_thread_alive,
+        }
+        if server is not None:
+            drained = server.wait_for_request_drain(max(0.0, deadline - time.monotonic()))
+            diagnostics.update(server.teardown_snapshot())
+
+        with self._lifecycle_lock:
+            if drained and not serving_thread_alive:
+                if server is not None:
+                    server.close_handler_slots()
+                    server.server_close()
+                self._operation_journal.close()
+                if self.server is server:
+                    self.server = None
+                if self.thread is thread:
+                    self.thread = None
+                self.handler_class = None
+                if self._dispatch_session_owned_by_server:
+                    owned_dispatch_session = self._dispatch_session
+                    self._dispatch_session = None
+                    self._dispatch_session_owned_by_server = False
+                self._lifecycle_state = "stopped"
+                self._stop_failed = False
+                self._stop_complete.set()
+            else:
+                self._lifecycle_state = "drain_failed"
+                self._stop_failed = True
+                self._stop_complete.set()
+
+        if not drained or serving_thread_alive:
+            logger.error("Pack v4 API server teardown incomplete: %s", diagnostics)
+            raise RuntimeError(f"Pack v4 API server teardown incomplete: {diagnostics}")
+        if owned_dispatch_session is not None:
+            close = getattr(owned_dispatch_session, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    logger.exception("failed to close server-owned dispatch session")
+        logger.info("Pack v4 API server stopped")
+
     def is_running(self) -> bool:
+        """Return whether the serving thread is alive."""
+
         return self.server is not None and self.thread is not None and self.thread.is_alive()
 
 
-_api_server: Optional[PackAPIServer] = None
+_api_server: PackAPIServer | None = None
 
 
-def get_pack_api_server() -> Optional[PackAPIServer]:
-    """
-    グローバルな PackAPIServer を取得する。
+def get_pack_api_server() -> PackAPIServer | None:
+    """Return the process-local Pack v4 HTTP server, if started."""
 
-    DI コンテナ経由で取得を試み、未初期化なら None を返す。
-    """
-    from .di_container import get_container
-    instance = get_container().get_or_none("pack_api_server")
-    if instance is not None:
-        return instance
     return _api_server
 
 
 def initialize_pack_api_server(
     host: str = "127.0.0.1",
     port: int = 8765,
-    approval_manager = None,
-    container_orchestrator = None,
-    host_privilege_manager = None,
-    internal_token: Optional[str] = None,
-    kernel = None,
-    app_lifecycle_manager = None
+    *,
+    panel_auth_manager: PanelAuthManager | None = None,
+    dispatch_session: DispatchSession | None = None,
+    app_lifecycle_manager: LifecyclePort | None = None,
+    contract_bindings: tuple[FrontendContractBinding, ...] = (),
+    web_mounts: tuple[WebMountEntry, ...] | None = None,
+    workspace_binding_resolver: WorkspaceBindingResolver | None = None,
+    packvm_lifecycle: PackVMLifecyclePort | None = None,
 ) -> PackAPIServer:
+    """Replace the process-local server with one verified v4 instance."""
+
     global _api_server
-    
     if _api_server is not None:
         _api_server.stop()
-    
-    _api_server = PackAPIServer(
+    server = PackAPIServer(
         host=host,
         port=port,
-        approval_manager=approval_manager,
-        container_orchestrator=container_orchestrator,
-        host_privilege_manager=host_privilege_manager,
-        internal_token=internal_token,
-        kernel=kernel,
-        app_lifecycle_manager=app_lifecycle_manager
+        panel_auth_manager=panel_auth_manager,
+        dispatch_session=dispatch_session,
+        app_lifecycle_manager=app_lifecycle_manager,
+        contract_bindings=contract_bindings,
+        web_mounts=web_mounts,
+        workspace_binding_resolver=workspace_binding_resolver,
+        packvm_lifecycle=packvm_lifecycle,
     )
-    _api_server.start()
-    # DI コンテナのキャッシュも更新
-    from .di_container import get_container
-    get_container().set_instance("pack_api_server", _api_server)
-    return _api_server
+    server.start()
+    _api_server = server
+    return server
 
 
 def shutdown_pack_api_server() -> None:
+    """Stop and forget the process-local Pack v4 HTTP server."""
+
     global _api_server
-    if _api_server:
+    if _api_server is not None:
         _api_server.stop()
         _api_server = None
-    # DI コンテナのキャッシュもクリア
-    try:
-        from .di_container import get_container
-        get_container().reset("pack_api_server")
-    except Exception:
-        pass
+
+
+__all__ = [
+    "PackAPIHandler",
+    "PackAPIServer",
+    "RuntimeHTTPConfig",
+    "get_pack_api_server",
+    "initialize_pack_api_server",
+    "shutdown_pack_api_server",
+]

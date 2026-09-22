@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import sys
 
@@ -17,12 +19,14 @@ import threading
 import http.server
 import urllib.parse
 from pathlib import Path
+from typing import Any, Callable, NoReturn
 
 from core_runtime.api.safe_headers import (
     RESERVED_REQUEST_CONTEXT_KEYS,
     sanitized_forwarded_headers,
     strip_reserved_request_context,
 )
+from core_runtime.host_contract import host_contract_value
 
 from bridge.block_adapter import invoke_block
 from domain.safety.local_guard import (
@@ -42,6 +46,18 @@ from transport.registry import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _removed_authority_boundary() -> NoReturn:
+    """Enter the retired authority boundary, which always fails closed."""
+    from core_runtime.legacy_runtime_removed import removed_authority_service
+
+    removed_authority_service()
+    raise RuntimeError("retired authority boundary unexpectedly returned")
+
+
+def _mapping_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 _SAFE_GET_FALLBACK_BLOCKS = {
@@ -90,7 +106,13 @@ _DIRECT_SAFE_GET_FALLBACK_BLOCKS = {
     "blocks.ui.provider_health",
     "blocks.ui.settings",
 }
-_DIRECT_SAFE_GET_FALLBACK_TIMEOUT_SECONDS = 10.0
+# The initial shell requests the catalog, settings, profiles, and command
+# protocol together.  On a cold runtime those read-only projections contend
+# for the same registries and can legitimately take a little over ten seconds.
+# Keep the fallback bounded, but allow the loading screen to wait for the
+# canonical startup data instead of turning a healthy cold start into a
+# BOOTSTRAP_API_TIMEOUT.
+_DIRECT_SAFE_GET_FALLBACK_TIMEOUT_SECONDS = 30.0
 
 _CHAT_TURN_HTTP_FALLBACKS = {
     ("POST", "/v1/chat/completions"): ("defaultspack.chat_turn", "blocks.chat.send"),
@@ -124,12 +146,15 @@ def _platform_release():
 
 class DefaultsHttpServer:
     def __init__(self, facade):
-        self.facade = facade
+        # Legacy kernel facades expose live InterfaceRegistry state.  The v4
+        # server accepts only the activation snapshot installed in DI.
+        del facade
+        self.facade = None
         self.host = os.environ.get("DEFAULTS_HTTP_HOST", "127.0.0.1")
         self.port = int(os.environ.get("DEFAULTS_HTTP_PORT", "8766"))
-        self._server = None
-        self._thread = None
-        self._routes = []
+        self._server: http.server.ThreadingHTTPServer | None = None
+        self._thread: threading.Thread | None = None
+        self._routes: list[Any] = []
         self._load_runtime_secrets()
         self._setup_routes()
 
@@ -163,7 +188,7 @@ class DefaultsHttpServer:
             try:
                 raw = self.facade.get_interface("io.http.route", strategy="all")
                 if raw and isinstance(raw, list):
-                    route_entries = []
+                    route_entries: list[tuple[Any, Any, Callable[..., Any], Any, Any, dict[str, Any]]] = []
                     for index, entry in enumerate(raw):
                         if not isinstance(entry, dict):
                             continue
@@ -190,7 +215,7 @@ class DefaultsHttpServer:
                         if not isinstance(defaults, dict):
                             defaults = entry.get("default_args")
                         route_defaults = dict(defaults) if isinstance(defaults, dict) else {}
-                        route_authority = {
+                        route_authority: dict[str, Any] = {
                             "permission_id": str(entry.get("permission_id") or "").strip(),
                             "owner_pack_id": str(entry.get("owner_pack_id") or entry.get("pack_id") or "defaultspack").strip(),
                             "provider_id": str(entry.get("provider_id") or "").strip(),
@@ -244,7 +269,7 @@ class DefaultsHttpServer:
                                     fallback_block_module=route_fallback_block_module,
                                 )
 
-                            _flow_handler._defaultspack_flow_route_handler = True
+                            setattr(_flow_handler, "_defaultspack_flow_route_handler", True)
                             try:
                                 setattr(_flow_handler, "__rumi_route_sensitive__", route_sensitive)
                                 setattr(_flow_handler, "__rumi_route_pre_auth__", route_pre_auth)
@@ -279,7 +304,7 @@ class DefaultsHttpServer:
                                     fallback_block_module=route_fallback_block_module,
                                 )
 
-                            _function_handler._defaultspack_flow_route_handler = True
+                            setattr(_function_handler, "_defaultspack_flow_route_handler", True)
                             try:
                                 setattr(_function_handler, "__rumi_route_sensitive__", route_sensitive)
                                 setattr(_function_handler, "__rumi_route_pre_auth__", route_pre_auth)
@@ -415,23 +440,15 @@ class DefaultsHttpServer:
 
     def _active_profile_policy(self):
         try:
-            from core_runtime.profile_paths import active_profile_id
-            from core_runtime.profile_workspace import ProfileWorkspaceManager
+            from core_runtime.resolved_profile_scope import persisted_resolved_profile
         except Exception:
             return None, {}
-        profile_id = str(active_profile_id() or "").strip()
-        if not profile_id:
+        plan = persisted_resolved_profile()
+        if plan is None:
             return None, {}
-        try:
-            profile = ProfileWorkspaceManager().load_profile_yaml(profile_id)
-        except Exception:
-            return profile_id, {}
-        policy = (
-            profile.get("policy")
-            if isinstance(profile, dict) and isinstance(profile.get("policy"), dict)
-            else {}
-        )
-        return profile_id, policy
+        # Route authority is enforced by v4 contract routing/Authority Kernel;
+        # mutable Profile YAML policy is deliberately not consulted here.
+        return str(plan.profile_id), {}
 
     def _route_allowed_by_active_profile(self, method, pattern):
         profile_id, policy = self._active_profile_policy()
@@ -505,6 +522,47 @@ class DefaultsHttpServer:
         _apply_authenticated_principal_context(context, payload)
         _apply_ambient_browser_qa_context(context, payload)
         _apply_defaultspack_local_ui_context(context, payload)
+        if module_name == "blocks.chat.send":
+            from core_runtime.di_container import get_container
+            from core_runtime.global_contract_dispatch import invoke_global_contract
+
+            session = get_container().get_or_none("v4_dispatch_session")
+            if session is None:
+                return error(
+                    "Captured Pack v4 session is unavailable",
+                    "V4_SESSION_UNAVAILABLE",
+                )
+            request = {
+                key: payload[key]
+                for key in (
+                    "model",
+                    "messages",
+                    "tools",
+                    "params",
+                    "context",
+                    "runtime_context",
+                    "timezone",
+                )
+                if key in payload
+            }
+            if not isinstance(request.get("messages"), list):
+                content = str(payload.get("content") or payload.get("message") or "")
+                if content:
+                    request["messages"] = [{"role": "user", "content": content}]
+            try:
+                return invoke_global_contract(
+                    session,
+                    "conversation.turn.v1",
+                    "complete",
+                    request,
+                )
+            except Exception as exc:
+                return error(str(exc), "V4_CONVERSATION_FAILED")
+        if module_name.startswith("blocks.chat."):
+            return error(
+                "Chat operation is absent from the captured Pack v4 catalog",
+                "V4_OPERATION_UNAVAILABLE",
+            )
         if module_name in _IN_PROCESS_HTTP_FALLBACK_BLOCKS:
             context["_defaultspack_http_route_adapter"] = True
             return invoke_block(module_name, payload, context)
@@ -522,61 +580,10 @@ class DefaultsHttpServer:
         # discover runtime services that do not exist. Call the block directly.
         if hasattr(self, "facade") and self.facade is None:
             return invoke_block(module_name, payload, context)
-        if module_name == "blocks.chat.stream":
-            return invoke_block(module_name, payload, context)
-        try:
-            from domain.function_runtime.bridge import invoke_function
-            from domain.function_runtime.registry import function_id_for_block_module
-
-            function_id = function_id_for_block_module(module_name)
-            if function_id:
-                context["_defaultspack_http_route_adapter"] = True
-                qualified_name = f"defaultspack:{function_id}"
-                timeout_seconds = self._fallback_function_timeout_seconds(module_name, payload)
-                payload = self._payload_with_fallback_timeout(payload, timeout_seconds)
-                result = invoke_function(
-                    qualified_name,
-                    payload,
-                    context,
-                    principal_id=_function_principal_from_context(context, "defaultspack"),
-                    timeout_seconds=timeout_seconds,
-                )
-                result = self._retry_after_dev_auto_approve(
-                    qualified_name,
-                    payload,
-                    context,
-                    result,
-                    invoke_function,
-                    timeout_seconds=timeout_seconds,
-                )
-                error_info = result.get("error", {}) if isinstance(result, dict) else {}
-                error_code = str(error_info.get("code") or "")
-                if error_code == "PACK_NOT_APPROVED":
-                    if self._safe_get_fallback_allowed(module_name, payload):
-                        pass
-                    else:
-                        return result
-                elif error_code == "PERMISSION_DENIED":
-                    if self._function_call_permission_fallback_allowed(
-                        module_name, payload, error_info
-                    ):
-                        pass
-                    else:
-                        return result
-                elif error_code == "TIMEOUT" and module_name in _LONG_RUNNING_FALLBACK_BLOCKS:
-                    pass
-                elif error_code == "GRANT_DENIED" and module_name in _GRANT_DENIED_DIRECT_FALLBACK_BLOCKS:
-                    pass
-                elif error_code not in {
-                    "FUNCTION_REGISTRY_UNAVAILABLE",
-                    "FUNCTION_NOT_FOUND",
-                    "CAPABILITY_RUNTIME_UNAVAILABLE",
-                    "CAPABILITY_EXECUTION_FAILED",
-                }:
-                    return result
-        except Exception:
-            pass
-        return invoke_block(module_name, payload, context)
+        return error(
+            "Operation is absent from the captured Pack v4 catalog",
+            "V4_OPERATION_UNAVAILABLE",
+        )
 
     def _invoke_flow_route(
         self,
@@ -587,6 +594,25 @@ class DefaultsHttpServer:
         *,
         fallback_block_module="",
     ):
+        # A live SSE iterator cannot cross the subprocess function boundary:
+        # serializing it either stringifies the generator or waits for the
+        # complete agent run before the HTTP response starts. Keep the
+        # declarative flow available to non-HTTP callers, while the HTTP
+        # adapter uses the compatibility block that preserves incremental
+        # tool-selection, tool-call, and assistant events.
+        if flow_id in {
+            "defaultspack.chat_turn",
+            "defaultspack.chat_stream_turn",
+        } and fallback_block_module in {
+            "blocks.chat.send",
+            "blocks.chat.stream",
+        }:
+            return self._invoke_fallback_block(
+                fallback_block_module,
+                request_data,
+                path_params,
+                inject,
+            )
         payload = dict(request_data or {})
         for source_key, dest_key in (inject or {}).items():
             payload[dest_key] = path_params.get(source_key, "")
@@ -657,61 +683,9 @@ class DefaultsHttpServer:
             return invoke_block(fallback_block_module, payload, context)
         if fallback_block_module and self._safe_get_fallback_allowed(fallback_block_module, payload):
             return self._invoke_safe_get_fallback_block(fallback_block_module, payload, context)
-        try:
-            from domain.function_runtime.bridge import invoke_function
-
-            timeout_seconds = self._fallback_function_timeout_seconds(
-                fallback_block_module,
-                payload,
-            )
-            payload = self._payload_with_fallback_timeout(payload, timeout_seconds)
-            result = invoke_function(
-                function_name,
-                payload,
-                context,
-                principal_id=_function_principal_from_context(context, "defaultspack"),
-                timeout_seconds=timeout_seconds,
-            )
-            result = self._retry_after_dev_auto_approve(
-                function_name,
-                payload,
-                context,
-                result,
-                invoke_function,
-                timeout_seconds=timeout_seconds,
-            )
-            if isinstance(result, dict) and result.get("status") != "error":
-                return result
-            if not fallback_block_module:
-                return result
-            error_info = result.get("error", {}) if isinstance(result, dict) else {}
-            error_code = str(error_info.get("code") or "")
-            if error_code not in {
-                "FUNCTION_REGISTRY_UNAVAILABLE",
-                "FUNCTION_NOT_FOUND",
-                "CAPABILITY_RUNTIME_UNAVAILABLE",
-                "CAPABILITY_EXECUTION_FAILED",
-            }:
-                if (
-                    error_code == "TIMEOUT"
-                    and fallback_block_module in _LONG_RUNNING_FALLBACK_BLOCKS
-                ):
-                    return invoke_block(fallback_block_module, payload, context)
-                elif (
-                    error_code == "GRANT_DENIED"
-                    and fallback_block_module in _GRANT_DENIED_DIRECT_FALLBACK_BLOCKS
-                ):
-                    return invoke_block(fallback_block_module, payload, context)
-                else:
-                    return result
-        except Exception as exc:
-            if not fallback_block_module:
-                return error(str(exc), "FUNCTION_ROUTE_FAILED")
-        return self._invoke_fallback_block(
-            fallback_block_module,
-            request_data,
-            path_params,
-            inject,
+        return error(
+            f"Operation {function_name!r} is absent from the captured v4 catalog",
+            "V4_OPERATION_UNAVAILABLE",
         )
 
     @staticmethod
@@ -722,36 +696,12 @@ class DefaultsHttpServer:
             fallback_block_module=fallback_block_module,
         )
 
-    def _retry_after_dev_auto_approve(
-        self,
-        qualified_name,
-        payload,
-        context,
-        result,
-        invoke_function,
-        *,
-        timeout_seconds=None,
-    ):
-        error_info = result.get("error", {}) if isinstance(result, dict) else {}
-        if str(error_info.get("code") or "") != "PACK_NOT_APPROVED":
-            return result
-        pack_id, _, _ = qualified_name.partition(":")
-        if not pack_id or not self._dev_auto_approve_pack(pack_id):
-            return result
-        return invoke_function(
-            qualified_name,
-            payload,
-            context,
-            principal_id=_function_principal_from_context(context, pack_id),
-            timeout_seconds=timeout_seconds,
-        )
-
     @staticmethod
     def _fallback_function_timeout_seconds(module_name, payload):
         explicit = payload.get("timeout_seconds") if isinstance(payload, dict) else None
         if explicit not in (None, ""):
             try:
-                return max(1.0, float(explicit))
+                return max(1.0, float(str(explicit)))
             except (TypeError, ValueError):
                 pass
         env_value = os.environ.get("RUMI_DEFAULTSPACK_HTTP_FALLBACK_TIMEOUT_SECONDS", "").strip()
@@ -788,7 +738,7 @@ class DefaultsHttpServer:
 
     def _invoke_safe_get_fallback_block(self, module_name, payload, context):
         timeout_seconds = self._safe_get_fallback_timeout_seconds()
-        result_queue = queue.Queue(maxsize=1)
+        result_queue: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=1)
 
         def _target():
             try:
@@ -818,28 +768,9 @@ class DefaultsHttpServer:
             return error(str(result), "BOOTSTRAP_API_FAILED")
         return result
 
-    def _dev_auto_approve_pack(self, pack_id):
-        rumi_env = os.environ.get("RUMI_ENVIRONMENT", "").lower()
-        auto_approve = os.environ.get("RUMI_AUTO_APPROVE_LOCAL", "").lower()
-        if rumi_env not in {"development", "dev"} or auto_approve != "true":
-            return False
-        try:
-            from core_runtime.approval_manager import get_approval_manager
-
-            manager = get_approval_manager()
-            manager.scan_packs()
-            result = manager.approve(pack_id)
-            return bool(getattr(result, "success", False))
-        except Exception:
-            return False
-
     def _safe_get_fallback_allowed(self, module_name, payload):
         actual_method = str(payload.get("_actual_method") or "").upper()
         return actual_method == "GET" and module_name in _SAFE_GET_FALLBACK_BLOCKS
-
-    def _function_call_permission_fallback_allowed(self, module_name, payload, error_info):
-        message = str((error_info or {}).get("message") or "")
-        return self._safe_get_fallback_allowed(module_name, payload) and "function.call" in message
 
     # ---- Chat Handlers (fallback) ----
 
@@ -1191,37 +1122,24 @@ class DefaultsHttpServer:
         return response
 
     def _handle_authority_requests(self, request_data, path_params):
-        del path_params
+        del request_data, path_params
         try:
-            from core_runtime.authority import get_authority_service
-
-            return ok(
-                get_authority_service().list_requests(
-                    str(request_data.get("status") or "all"),
-                    actor_principal=request_data.get("_authenticated_principal"),
-                )
-            )
+            _removed_authority_boundary()
         except Exception as exc:
             return error("authority service unavailable: " + str(exc), "AUTHORITY_UNAVAILABLE")
 
     def _handle_authority_request(self, request_data, path_params):
-        request_id = str((path_params or {}).get("request_id") or "").strip()
+        del request_data, path_params
         try:
-            from core_runtime.authority import get_authority_service
-
-            result = get_authority_service().get_request(
-                request_id,
-                actor_principal=request_data.get("_authenticated_principal"),
-            )
+            _removed_authority_boundary()
         except Exception as exc:
             return error("authority service unavailable: " + str(exc), "AUTHORITY_UNAVAILABLE")
-        if not result.get("success"):
-            return self._authority_http_error(result, "AUTHORITY_NOT_FOUND")
-        return ok(result.get("request"))
 
     def _handle_authority_test_request(self, request_data, path_params):
         del path_params
-        if str(os.environ.get("RUMI_AUTHORITY_TEST_ENDPOINT") or "").strip().lower() not in {
+        from core_runtime.host_contract import host_contract_value
+
+        if host_contract_value("authority_test_endpoint").strip().lower() not in {
             "1",
             "true",
             "yes",
@@ -1230,66 +1148,8 @@ class DefaultsHttpServer:
             response["_http_status"] = 404
             return response
 
-        def clean_string(key, fallback):
-            value = str(request_data.get(key) or fallback).strip()
-            return value or fallback
-
-        resource = {
-            "kind": "model",
-            "provider_id": clean_string("provider_id", "openai"),
-            "api_id": clean_string("api_id", "authority-window-smoke"),
-            "model_id": clean_string("model_id", "gpt-5.4-test"),
-            "stream": bool(request_data.get("stream", True)),
-        }
-        for key in (
-            "model_ref",
-            "pack_id",
-            "app_display_name",
-            "provider_display_name",
-            "model_display_name",
-            "credential_label",
-            "endpoint_url",
-            "endpoint_path",
-            "domain",
-            "transport",
-            "provider_transport",
-            "provider_kind",
-        ):
-            value = str(request_data.get(key) or "").strip()
-            if value:
-                resource[key] = value
-        if request_data.get("port") is not None:
-            try:
-                resource["port"] = int(request_data.get("port"))
-            except (TypeError, ValueError):
-                pass
-        if request_data.get("input_tokens") is not None:
-            try:
-                resource["input_tokens"] = max(0, int(request_data.get("input_tokens")))
-            except (TypeError, ValueError):
-                pass
-
-        profile_id = clean_string("profile_id", "authority-test")
-        node_id = clean_string("node_id", "approval-window")
-        conversation_id = str(request_data.get("conversation_id") or "").strip() or None
-        reason = str(request_data.get("reason") or "Authority approval window smoke test").strip()
         try:
-            from core_runtime.authority import get_authority_service
-
-            decision = get_authority_service().check(
-                principal_id="",
-                permission_id="model.invoke",
-                resource=resource,
-                reason=reason,
-                conversation_id=conversation_id,
-                profile_id=profile_id,
-                node_id=node_id,
-            )
-            data = decision.to_dict()
-            data["approval_url"] = (
-                f"/approval?request_id={decision.request_id}" if decision.request_id else None
-            )
-            return ok(data)
+            _removed_authority_boundary()
         except Exception as exc:
             return error("authority service unavailable: " + str(exc), "AUTHORITY_UNAVAILABLE")
 
@@ -1327,87 +1187,25 @@ class DefaultsHttpServer:
         )
 
     def _handle_authority_approve(self, request_data, path_params):
-        request_id = str((path_params or {}).get("request_id") or "").strip()
-        config = (
-            request_data.get("config") if isinstance(request_data.get("config"), dict) else None
-        )
-        ui_operator = (
-            request_data.get("ui_operator")
-            if isinstance(request_data.get("ui_operator"), dict)
-            else None
-        )
-        related_permissions = request_data.get("related_permissions")
-        if not isinstance(related_permissions, list):
-            related_permissions = []
-        approval_kwargs = {
-            "scope": str(request_data.get("scope") or "once"),
-            "config": config,
-            "expires_in_seconds": request_data.get("expires_in_seconds"),
-            "ui_operator": ui_operator,
-        }
-        if isinstance(request_data.get("attestation"), dict):
-            approval_kwargs["attestation"] = request_data.get("attestation")
-        if related_permissions:
-            approval_kwargs["related_permissions"] = [str(item) for item in related_permissions]
+        del request_data, path_params
         try:
-            from core_runtime.authority import get_authority_service
-
-            result = get_authority_service().approve_request(
-                request_id,
-                actor_principal=request_data.get("_authenticated_principal"),
-                **approval_kwargs,
-            )
+            _removed_authority_boundary()
         except Exception as exc:
             return error("authority service unavailable: " + str(exc), "AUTHORITY_UNAVAILABLE")
-        if not result.get("success"):
-            return self._authority_http_error(result)
-        return ok(result)
 
     def _handle_authority_challenge(self, request_data, path_params):
-        request_id = str((path_params or {}).get("request_id") or "").strip()
+        del request_data, path_params
         try:
-            from core_runtime.authority import get_authority_service
-
-            result = get_authority_service().create_approval_challenge(
-                request_id,
-                decision=str(request_data.get("decision") or "approve"),
-                scope=str(request_data.get("scope") or "once"),
-                expires_in_seconds=request_data.get("expires_in_seconds"),
-                actor_principal=request_data.get("_authenticated_principal"),
-            )
+            _removed_authority_boundary()
         except Exception as exc:
             return error("authority service unavailable: " + str(exc), "AUTHORITY_UNAVAILABLE")
-        if not result.get("success"):
-            return self._authority_http_error(result)
-        return ok(result)
 
     def _handle_authority_deny(self, request_data, path_params):
-        request_id = str((path_params or {}).get("request_id") or "").strip()
-        ui_operator = (
-            request_data.get("ui_operator")
-            if isinstance(request_data.get("ui_operator"), dict)
-            else None
-        )
+        del request_data, path_params
         try:
-            from core_runtime.authority import get_authority_service
-
-            result = get_authority_service().deny_request(
-                request_id,
-                reason=str(request_data.get("reason") or ""),
-                persist=bool(request_data.get("persist") or request_data.get("remember")),
-                ui_operator=ui_operator,
-                actor_principal=request_data.get("_authenticated_principal"),
-                **(
-                    {"attestation": request_data.get("attestation")}
-                    if isinstance(request_data.get("attestation"), dict)
-                    else {}
-                ),
-            )
+            _removed_authority_boundary()
         except Exception as exc:
             return error("authority service unavailable: " + str(exc), "AUTHORITY_UNAVAILABLE")
-        if not result.get("success"):
-            return self._authority_http_error(result)
-        return ok(result)
 
     def _handle_health(self, request_data, path_params):
         return ok(
@@ -1504,6 +1302,7 @@ class DefaultsHttpServer:
             ".wasm": "application/wasm",
         }
         ct = content_types.get(ext, "application/octet-stream")
+        body: str | bytes
         if ct.startswith("text/") or ct.startswith("application/j"):
             with open(file_path, "r", encoding="utf-8") as f:
                 body = f.read()
@@ -1542,8 +1341,14 @@ _SENSITIVE_CHAT_PATH_RE = re.compile(
 _SENSITIVE_HUMAN_OPERATOR_PATH_RE = re.compile(
     r"^/api/human-operator/conversations/[^/]+/sessions/[^/]+(?:/messages)?$"
 )
+_COMPOSER_TRANSCRIPTION_PATH = "/api/ambient/transcriptions"
+# A 25 MiB recording is approximately 33.4 MiB when base64 encoded.  Leave a
+# small envelope for JSON fields while rejecting large bodies before buffering
+# or decoding them in the HTTP handler.
+_COMPOSER_TRANSCRIPTION_MAX_REQUEST_BYTES = 36 * 1024 * 1024
 _AMBIENT_BROWSER_QA_CONTEXT_FLAG = "_ambient_browser_qa_pre_auth_approved"
 _LOCAL_UI_APPROVAL_CONTEXT_FLAG = "_defaultspack_local_ui_pre_auth_approved"
+_LOCAL_UI_AUTH_CONTEXT_FLAG = "_defaultspack_local_ui_authenticated"
 _LOCAL_UI_APPROVAL_METHOD_PATHS = {
     "/api/ai/provider-key": {"POST"},
     "/api/agent/subagent": {"POST"},
@@ -1649,6 +1454,67 @@ def _browser_api_origin_error(method, path, headers, client_address=None):
     return None
 
 
+def _normalized_host_and_port(value, *, scheme="http"):
+    """Parse a Host header or Origin and reject ambiguous authority values."""
+    raw_value = str(value or "").strip()
+    if not raw_value or raw_value.startswith("//"):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(raw_value if "://" in raw_value else "//" + raw_value)
+        port = parsed.port
+    except (TypeError, ValueError):
+        return None
+    if (
+        parsed.username is not None
+        or parsed.password is not None
+        or not parsed.hostname
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    normalized_scheme = str(parsed.scheme or scheme).lower()
+    if normalized_scheme != "http":
+        return None
+    hostname = str(parsed.hostname).lower()
+    if not _local_origin_allowed(f"http://{parsed.netloc or raw_value}"):
+        return None
+    return hostname, port if port is not None else 80
+
+
+def _composer_transcription_request_error(headers, client_address):
+    """Authorize the narrow, unauthenticated same-origin transcription route.
+
+    This is deliberately separate from privileged integration authorization:
+    the static composer needs to work when opened directly from the local
+    server, but a page hosted on a different localhost port must not be able to
+    consume CPU by submitting recordings.  A direct TCP caller must also be
+    loopback and the Host/Origin pair must be the exact same HTTP origin.
+    """
+    if not _local_is_loopback_request(
+        {str(key): str(value) for key, value in getattr(headers, "items", lambda: [])()},
+        client_address,
+    ):
+        return (403, "composer transcription requires a loopback client", "LOCAL_ONLY_REQUIRED")
+    origin = _header_value(headers, "Origin")
+    host = _header_value(headers, "Host")
+    origin_parts = _normalized_host_and_port(origin)
+    host_parts = _normalized_host_and_port(host)
+    if not origin_parts or not host_parts:
+        return (
+            403,
+            "composer transcription requires a valid loopback same-origin request",
+            "ORIGIN_DENIED",
+        )
+    if origin_parts != host_parts:
+        return (
+            403,
+            "composer transcription origin does not match the local server",
+            "ORIGIN_DENIED",
+        )
+    return None
+
+
 def _is_websocket_upgrade(headers):
     upgrade = _header_value(headers, "Upgrade").strip().lower()
     connection = _header_value(headers, "Connection").strip().lower()
@@ -1680,9 +1546,7 @@ def _configured_local_auth_tokens():
             seen.add(token)
             tokens.append(token)
 
-    for key in ("RUMI_DEFAULTSPACK_LOCAL_TOKEN", "RUMI_API_TOKEN", "RUMI_TOKEN"):
-        value = os.environ.get(key, "").strip()
-        add_token(value)
+    add_token(host_contract_value("desktop_api_token"))
     for path in _local_auth_token_file_candidates():
         try:
             add_token(path.read_text(encoding="utf-8"))
@@ -1948,6 +1812,8 @@ def _apply_ambient_browser_qa_context(context, payload):
 def _apply_defaultspack_local_ui_context(context, payload):
     if not isinstance(context, dict) or not isinstance(payload, dict):
         return
+    if payload.pop(_LOCAL_UI_AUTH_CONTEXT_FLAG, False) is True:
+        context[_LOCAL_UI_AUTH_CONTEXT_FLAG] = True
     if payload.pop(_LOCAL_UI_APPROVAL_CONTEXT_FLAG, False) is not True:
         return
     # This flag is only injected after a local bearer token has been verified
@@ -1967,9 +1833,9 @@ def _apply_mimo_company_profile_authority_context(context, payload):
         return
     if context.get("_tool_server_approved") is not True:
         return
-    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
-    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
-    tool_policy = payload.get("tool_policy") if isinstance(payload.get("tool_policy"), dict) else {}
+    metadata = _mapping_or_empty(payload.get("metadata"))
+    params = _mapping_or_empty(payload.get("params"))
+    tool_policy = _mapping_or_empty(payload.get("tool_policy"))
     profile_id = str(
         payload.get("profile_id")
         or metadata.get("profile_id")
@@ -1991,9 +1857,25 @@ def _apply_mimo_company_profile_authority_context(context, payload):
     context["principal_id"] = principal_id
 
 
+def _allow_local_pairing_start_without_token(method, path, headers):
+    if str(method or "").upper() != "POST" or path != "/api/p2p/pairing/start":
+        return False
+    origin = _header_value(headers, "Origin")
+    if not origin or not _is_allowed_sensitive_origin(origin):
+        return False
+    csrf = _header_value(headers, "X-Rumi-CSRF")
+    return bool(csrf.strip())
+
+
 def _apply_authenticated_principal_context(context, payload):
     if not isinstance(context, dict) or not isinstance(payload, dict):
         return
+    device_id = str(payload.get("_authenticated_device_id") or "").strip()
+    scopes = payload.get("_authenticated_scopes")
+    if device_id:
+        context["_authenticated_device_id"] = device_id
+    if isinstance(scopes, list):
+        context["_authenticated_scopes"] = [str(scope) for scope in scopes if str(scope or "").strip()]
     principal = payload.get("_authenticated_principal")
     if not isinstance(principal, dict):
         return
@@ -2012,20 +1894,21 @@ def _apply_authenticated_principal_context(context, payload):
 
 
 def _function_principal_from_context(context, default="defaultspack"):
+    candidate = ""
     if isinstance(context, dict):
         principal = context.get("_authenticated_principal")
         if isinstance(principal, dict) and not bool(principal.get("core_role")):
             candidate = str(principal.get("principal_id") or "").strip()
             if candidate:
                 return candidate
-        candidate = str(context.get("principal_id") or "").strip()
+            candidate = str(context.get("principal_id") or "").strip()
         if candidate:
             return candidate
     return default
 
 
 class _RequestHandler(http.server.BaseHTTPRequestHandler):
-    server_ref = None
+    server_ref: DefaultsHttpServer | None = None
     protocol_version = "HTTP/1.1"
 
     def do_GET(self):
@@ -2058,6 +1941,20 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             if origin_error:
                 self._send_json(origin_error[0], error(origin_error[1], origin_error[2]))
                 return
+            if method == "POST" and path == _COMPOSER_TRANSCRIPTION_PATH:
+                transcription_error = _composer_transcription_request_error(
+                    self.headers, self.client_address
+                )
+                if transcription_error:
+                    # Do not drain an attacker-controlled multi-megabyte body
+                    # after rejecting it.  Closing prevents its bytes from
+                    # being treated as a pipelined follow-up request.
+                    self.close_connection = True
+                    self._send_json(
+                        transcription_error[0],
+                        error(transcription_error[1], transcription_error[2]),
+                    )
+                    return
             if _header_value(
                 self.headers, "X-Rumi-Approval-Browser-Token"
             ).strip():
@@ -2105,8 +2002,8 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 ).items()
                 if values and str(key) not in RESERVED_REQUEST_CONTEXT_KEYS
             }
-            request_data = dict(query_params)
-            server_context = {
+            request_data: dict[str, Any] = dict(query_params)
+            server_context: dict[str, Any] = {
                 "_path": path,
                 "_query_params": dict(query_params),
                 "_headers": sanitized_forwarded_headers(self.headers),
@@ -2119,7 +2016,28 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                         + hashlib.sha256(bearer.encode("utf-8")).hexdigest()
                     }
             if method in ("POST", "PUT", "PATCH"):
-                content_length = int(self.headers.get("Content-Length", 0))
+                try:
+                    content_length = int(self.headers.get("Content-Length", 0))
+                except (TypeError, ValueError):
+                    self._send_json(400, error("invalid Content-Length", "INVALID_CONTENT_LENGTH"))
+                    return
+                if content_length < 0:
+                    self._send_json(400, error("invalid Content-Length", "INVALID_CONTENT_LENGTH"))
+                    return
+                if (
+                    method == "POST"
+                    and path == _COMPOSER_TRANSCRIPTION_PATH
+                    and content_length > _COMPOSER_TRANSCRIPTION_MAX_REQUEST_BYTES
+                ):
+                    self.close_connection = True
+                    self._send_json(
+                        413,
+                        error(
+                            "recorded audio request is too large to transcribe",
+                            "AUDIO_PAYLOAD_TOO_LARGE",
+                        ),
+                    )
+                    return
                 if content_length > 0:
                     raw_body = self.rfile.read(content_length)
                     raw_text = raw_body.decode("utf-8", errors="replace")
@@ -2151,16 +2069,20 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
             request_data["_method"] = method
             request_data["_actual_method"] = method
 
-            handler, path_params, source, path_inject, route_pattern = self.server_ref._match_route(
+            server = self.server_ref
+            if server is None:
+                self._send_json(503, error("HTTP server is not initialized", "SERVER_UNAVAILABLE"))
+                return
+            handler, path_params, source, path_inject, route_pattern = server._match_route(
                 method, path
             )
             if handler is None:
                 self._send_json(404, error("not found: " + method + " " + path))
                 return
-            if route_pattern and not self.server_ref._route_allowed_by_active_profile(
+            if route_pattern and not server._route_allowed_by_active_profile(
                 method, route_pattern
             ):
-                self.server_ref._record_profile_blocked_route(method, route_pattern)
+                server._record_profile_blocked_route(method, route_pattern)
                 self._send_json(
                     403,
                     error(
@@ -2178,6 +2100,9 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 return
             request_data.pop(_AMBIENT_BROWSER_QA_CONTEXT_FLAG, None)
             request_data.pop(_LOCAL_UI_APPROVAL_CONTEXT_FLAG, None)
+            request_data.pop(_LOCAL_UI_AUTH_CONTEXT_FLAG, None)
+            if _local_auth_token_authorized(self.headers):
+                request_data[_LOCAL_UI_AUTH_CONTEXT_FLAG] = True
             if _ambient_browser_test_token_authorized(method, path, self.headers, request_data):
                 request_data[_AMBIENT_BROWSER_QA_CONTEXT_FLAG] = True
             if _local_ui_approval_route_authorized(method, path, self.headers, request_data):
@@ -2192,7 +2117,7 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                         request_data[data_key] = path_params.get(url_param, "")
                 request_data["_method"] = method
                 request_data["_actual_method"] = method
-                result = self.server_ref._invoke_registry_handler(
+                result = server._invoke_registry_handler(
                     handler,
                     request_data,
                     path_params or {},
@@ -2375,6 +2300,17 @@ class _RequestHandler(http.server.BaseHTTPRequestHandler):
                 return (403, "CSRF header required for sensitive integration mutation", "CSRF_REQUIRED")
             return None
         if not _configured_local_auth_tokens():
+            if str(method or "").upper() == "POST" and path == "/api/p2p/pairing/start":
+                if not _local_is_loopback_request(
+                    {str(key): str(value) for key, value in self.headers.items()},
+                    self.client_address,
+                ):
+                    return (403, "sensitive local route requires a loopback client", "LOCAL_ONLY_REQUIRED")
+                if not self.headers.get("X-Rumi-CSRF", "").strip():
+                    return (403, "CSRF header required for sensitive integration mutation", "CSRF_REQUIRED")
+                return None
+            if _allow_local_pairing_start_without_token(method, path, self.headers):
+                return None
             return (403, "local auth token is not configured", "AUTH_REQUIRED")
         if not _local_auth_token_authorized(self.headers):
             return (401, "local auth token required", "AUTH_REQUIRED")

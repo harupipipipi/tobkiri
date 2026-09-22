@@ -11,6 +11,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
 jobs:
   root-python-tests:
     strategy:
@@ -39,7 +42,7 @@ jobs:
           if [ "${{ matrix.python-version }}" = "3.11" ]; then
             pytest tests/ -v 2>&1 | tee "$PYTEST_LOG"
           else
-            pytest tests/test_entrypoint_contracts.py tests/test_windows_compat.py -v 2>&1 | tee "$PYTEST_LOG"
+            pytest tests/test_entrypoint_contracts.py tests/test_windows_compat.py tests/test_ci_python_dependency_contract.py -v 2>&1 | tee "$PYTEST_LOG"
           fi
 
       - name: Upload root pytest log
@@ -90,27 +93,13 @@ jobs:
               )
           PY
 
-      # Keep the enforced cluster on current Host-owned boundaries. Historical
-      # Pack fixture contracts remain independently runnable with
-      # `pytest -m contract` while they migrate to the global owners.
       - name: Run active contract cluster pytest
         id: contract_pytest
         working-directory: tobkiri_runtime
         run: |
           set -o pipefail
           PYTEST_LOG="${RUNNER_TEMP}/contract-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
-          pytest -v \
-            tests/test_company_contract_facade.py \
-            tests/test_computer_host_contract.py \
-            tests/test_entrypoint_contracts.py \
-            tests/test_gateway_contract_client.py \
-            tests/test_model_catalog_contract.py \
-            tests/test_process_contract_runtime.py \
-            tests/test_tobkiri_config_contracts.py \
-            tests/test_defaultspack_template_contracts.py \
-            tests/test_defaultspack_tool_manifest_contract.py \
-            tests/test_defaultspack_tool_selection_settings_contract.py \
-            2>&1 | tee "$PYTEST_LOG"
+          pytest -m contract -v 2>&1 | tee "$PYTEST_LOG"
 
       - name: Upload contract pytest log
         if: failure() && steps.contract_pytest.outcome == 'failure'
@@ -149,7 +138,7 @@ jobs:
       - name: Run Task D smoke tests
         working-directory: tobkiri_runtime
         run: |
-          pytest tests/test_defaultspack_setup_pack.py tests/test_setup_pack_basepack.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py -v
+          pytest tests/test_canonical_artifact_checkout.py tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py tests/test_runtime_v4_durability.py tests/test_authority_v4_lifecycle.py::test_authority_store_close_is_idempotent_and_restartable tests/test_authority_v4_lifecycle.py::test_authority_store_releases_database_for_deletion tests/test_tobkiri_host_authority_v4_adapter.py::test_broker_close_is_idempotent_and_context_managed tests/test_packaged_runtime_bootstrap.py::test_clean_bootstrap_captures_and_restarts_without_legacy_profile -v
 
   tobkiri-security-audit:
     runs-on: ubuntu-latest
@@ -175,16 +164,106 @@ jobs:
           pip install -r requirements-dev.txt
           pip install -e .
 
+      - name: Guard dependency authority and requirements exports
+        working-directory: tobkiri_runtime
+        run: |
+          uv lock --locked
+          runtime_export="$(mktemp)"
+          dev_export="$(mktemp)"
+          arm_dry_run="$(mktemp -d)"
+          intel_dry_run="$(mktemp -d)"
+          trap 'rm -f "$runtime_export" "$dev_export"; rm -rf "$arm_dry_run" "$intel_dry_run"' EXIT
+          uv export --locked --no-dev --no-emit-project > "$runtime_export"
+          uv export --locked --extra dev --no-emit-project > "$dev_export"
+          diff -u requirements.txt "$runtime_export"
+          diff -u requirements-dev.txt "$dev_export"
+          python ../.github/scripts/generate_packaging_dependency_locks.py \
+            --target aarch64-apple-darwin \
+            --runtime-export requirements.txt \
+            --uv-lock uv.lock \
+            --output requirements-packaging-aarch64-apple-darwin.txt \
+            --check
+          uv pip install --dry-run --target "$arm_dry_run" \
+            --python-version 3.13 \
+            --python-platform aarch64-apple-darwin \
+            --require-hashes --only-binary :all: \
+            -r requirements-packaging-aarch64-apple-darwin.txt
+          if uv pip install --dry-run --target "$intel_dry_run" \
+            --python-version 3.13 \
+            --python-platform x86_64-apple-darwin \
+            --require-hashes --only-binary :all: \
+            -r requirements-packaging-aarch64-apple-darwin.txt; then
+            echo "ARM-only packaging lock unexpectedly resolved for macOS Intel" >&2
+            exit 1
+          fi
+
       - name: Audit Python dependencies
         working-directory: tobkiri_runtime
         run: |
           pip install pip-audit
-          pip-audit -r requirements.txt
+          for lock in \
+            requirements.txt \
+            requirements-packaging-aarch64-apple-darwin.txt; do
+            pip-audit --disable-pip -r "$lock"
+          done
 
-      - name: Run security/audit regression tests
+      - name: Run security and hardening regression tests
         working-directory: tobkiri_runtime
         run: |
-          pytest tests/test_approval_security.py tests/test_security_guards.py tests/test_defaultspack_integrity_scan.py tests/test_defaultspack_boundary_scan.py tests/test_defaultspack_shipped_bundle_hardening.py tests/test_capability_trust_store.py tests/test_defaultspack_tool_policy.py tests/test_defaultspack_capability_orchestrator.py tests/test_pack_signature.py -v
+          # Keep this list explicit. Keyword discovery pulled unrelated legacy
+          # tests into the authority gate and made the enforced set depend on
+          # test names instead of reviewed security ownership.
+          pytest -m "not live" -v \
+            tests/test_approval_security.py \
+            tests/test_security_guards.py \
+            tests/test_cryptography_dependency_security.py \
+            tests/test_defaultspack_integrity_scan.py \
+            tests/test_defaultspack_boundary_scan.py \
+            tests/test_defaultspack_shipped_bundle_hardening.py \
+            tests/test_capability_trust_store.py \
+            tests/test_defaultspack_tool_policy.py \
+            tests/test_defaultspack_capability_orchestrator.py \
+            tests/test_pack_signature.py \
+            tests/test_authority_security_hardening.py \
+            tests/test_bounded_process_runner.py \
+            tests/test_capability_binding_registration_security.py \
+            tests/test_capability_executor_security.py \
+            tests/test_defaultspack_adaptive_api.py \
+            tests/test_defaultspack_chat_run_request_contract.py \
+            tests/test_defaultspack_chat_turn_flow_contract.py \
+            tests/test_defaultspack_coding_approval_token_pack_reject.py \
+            tests/test_defaultspack_coding_authority_order.py \
+            tests/test_defaultspack_coding_hardening.py \
+            tests/test_defaultspack_command_protocol.py \
+            tests/test_defaultspack_execution_gate_parity.py \
+            tests/test_defaultspack_frontend_isolation.py \
+            tests/test_defaultspack_managed_ubuntu_provider.py \
+            tests/test_defaultspack_sandbox_coding_tools.py \
+            tests/test_defaultspack_terminal_policy.py \
+            tests/test_dependency_resolver.py \
+            tests/test_frontend_host.py \
+            tests/test_lima_runtime_security.py \
+            tests/test_managed_runtime_backend_contract.py \
+            tests/test_managed_sandbox_boundary.py \
+            tests/test_manifest_projection.py \
+            tests/test_module_state.py \
+            tests/test_pack_architecture_scan.py \
+            tests/test_pack_manifest_v3.py \
+            tests/test_pack_sdk.py \
+            tests/test_process_contract_runtime.py \
+            tests/test_prompt_studio_pack_runtime.py \
+            tests/test_registry_dependency_adapter.py \
+            tests/test_resolved_profile.py \
+            tests/test_rumi_artifact_app_runtime_pack_contract.py \
+            tests/test_rumi_customer_research_pack_contract.py \
+            tests/test_rumi_mcp_gateway_pack_contract.py \
+            tests/test_rumi_model_evals_pack_contract.py \
+            tests/test_rumi_office_authoring_pack_contract.py \
+            tests/test_rumi_prompt_studio_pack_contract.py \
+            tests/test_subagent_placement_repository_context.py \
+            tests/test_viewer_build_contract.py \
+            tests/test_wave25_5_user_function.py \
+            tests/test_wave31_dependency_resolver.py
 
       - name: Run defaultspack boundary scan
         working-directory: tobkiri_runtime
@@ -201,11 +280,16 @@ jobs:
             --inventory generated/pack_sdk/command_inventory.json \
             --check-inventory
           python scripts/tobkiri_pack.py generate generated/pack_sdk --check
-          pytest -q \
+          python scripts/tobkiri_pack.py project-legacy \
+            examples/pack_v3/minimal_service.json \
+            examples/pack_v3/minimal_service.ecosystem.json \
+            --check
+          pytest -q -m "not live" \
             tests/test_defaultspack_command_protocol.py \
             tests/test_defaultspack_command_protocol_stream.py \
             tests/test_defaultspack_invocation_events.py \
             tests/test_defaultspack_offline_queue.py \
+            tests/test_manifest_projection.py \
             tests/test_pack_sdk.py \
             tests/test_pack_signature.py
 
@@ -222,6 +306,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            tobkiri_runtime/requirements.txt
+            tobkiri_runtime/requirements-dev.txt
+
+      - name: Install locked runtime and test dependencies
+        run: |
+          python .github/scripts/install_locked_python_test_dependencies.py
+          python -m pip install --no-deps -e tobkiri_runtime
 
       - name: Run repository pack architecture boundary scan
         env:
@@ -240,9 +333,72 @@ jobs:
             git show "${BASE_SHA}:scripts/quality/pack_architecture_baseline.json" > "${reference}"
             python scripts/quality/scan_pack_architecture.py --reference-baseline "${reference}"
           else
-            echo "Bootstrapping pack architecture baseline; shrink-only comparison starts after merge"
+            echo "::warning::Bootstrap baseline: this reviewed candidate must exactly match its scan. Protected-base shrink-only enforcement starts after the baseline lands on the target branch."
             python scripts/quality/scan_pack_architecture.py
           fi
+
+      - name: Validate v4 schemas, provenance, and generated inventory
+        run: python scripts/quality/validate_pack_architecture.py
+
+      - name: Verify canonical Pack v4 and Defaultspack artifacts
+        working-directory: tobkiri_runtime
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -B scripts/migrate_pack_artifacts_v4.py --check
+          python -B scripts/generate_executable_catalogs_v4.py --check
+          python -B scripts/generate_defaultspack_v4_bundle.py --check
+          python -B scripts/quality/scan_defaultspack_integrity.py --strict
+
+      - name: Verify generated Tobkiri Launcher presentation catalog
+        run: python scripts/quality/generate_presentation_catalog.py --check
+
+      - name: Verify complete v4 migration evidence is fresh
+        run: >-
+          python tobkiri_runtime/scripts/quality/scan_complete_v4_migration.py
+          --output "${RUNNER_TEMP}/complete-v4-migration.json"
+          --check-against
+          tobkiri_runtime/scripts/quality/evidence/complete_v4_migration_red_64b2240e.json
+          --event-name "${{ github.event_name }}"
+          --pr-head-sha "${{ github.event.pull_request.head.sha || '' }}"
+
+      - name: Set up Node for Launcher panel gate
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tobkiri_launcher/frontend/package-lock.json
+
+      - name: Test, typecheck, and build Launcher panel
+        working-directory: tobkiri_launcher/frontend
+        env:
+          TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
+        run: |
+          npm ci
+          npm test
+          npm run lint
+          npm run build
+
+      - name: Scan copied Launcher panel routes
+        run: python scripts/quality/scan_launcher_frontend_routes.py
+
+      - name: Exercise Base Pack/Shell and structured CLI integration
+        run: |
+          PYTHONPATH=tobkiri_runtime python -m pytest -q \
+            tobkiri_runtime/tests/test_complete_v4_migration_gate.py \
+            tobkiri_runtime/tests/test_complete_v4_migration_evidence.py \
+            tobkiri_runtime/tests/test_production_frontend_contract_http.py \
+            tobkiri_runtime/tests/test_packaged_runtime_bootstrap.py \
+            tobkiri_runtime/tests/test_phase_a_setup_api.py::TestCompleteSetup::test_setup_complete_is_typed_retired_route_without_writes \
+            scripts/quality/test_launcher_frontend_routes.py \
+            scripts/quality/test_presentation_catalog_v4.py \
+            scripts/quality/test_release_controls.py \
+            tobkiri_launcher/scripts/tests/test_package_presentation_artifact.py \
+            tobkiri_launcher/scripts/tests/test_package_macos_dmg.py \
+            tobkiri_launcher/scripts/tests/test_verify_presentation_release.py \
+            tobkiri_runtime/tests/test_defaultspack_integrity_scan.py \
+            tobkiri_runtime/tests/test_tobkiri_host_v4_composition.py \
+            tobkiri_runtime/tests/test_cli_shell_protocol.py
 
   conversation-steer:
     name: Conversation steer
@@ -357,11 +513,23 @@ jobs:
           pip install -e .
 
       - name: Run Ruff/mypy non-regression guard
+        env:
+          PUSH_BASE_REF: ${{ github.event.before }}
         run: |
-          BASE_REF="${GITHUB_BASE_REF:-master}"
-          git fetch origin "$BASE_REF" --depth=1
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            git fetch origin "$GITHUB_BASE_REF" --depth=1
+            BASE_REF="origin/${GITHUB_BASE_REF}"
+          elif [ -n "${PUSH_BASE_REF:-}" ] && [ "$PUSH_BASE_REF" != "$ZERO_SHA" ]; then
+            BASE_REF="$PUSH_BASE_REF"
+            git cat-file -e "${BASE_REF}^{commit}" 2>/dev/null || \
+              git fetch origin "$BASE_REF" --depth=1
+          else
+            git fetch origin master --depth=1
+            BASE_REF="origin/master"
+          fi
           python .github/scripts/quality_gate_nonregression.py \
-            --base-ref "origin/${BASE_REF}" \
+            --base-ref "$BASE_REF" \
             --package-dir tobkiri_runtime \
             --ruff-target core_runtime \
             --ruff-target backend_core \
@@ -408,9 +576,9 @@ jobs:
           set -o pipefail
           PYTEST_LOG="${RUNNER_TEMP}/package-pytest-${GITHUB_JOB}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-py${{ matrix.python-version }}.log"
           if [ "${{ matrix.python-version }}" = "3.11" ]; then
-            pytest tests/test_defaultspack_setup_pack.py tests/test_setup_pack_basepack.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py tests/test_agent_engine_tools.py tests/test_company_contract_facade.py -v 2>&1 | tee "$PYTEST_LOG"
+            pytest tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py tests/test_agent_engine_tools.py tests/test_company_contract_facade.py -v 2>&1 | tee "$PYTEST_LOG"
           else
-            pytest tests/test_defaultspack_setup_pack.py tests/test_setup_pack_basepack.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py -v 2>&1 | tee "$PYTEST_LOG"
+            pytest tests/test_complete_v4_migration_gate.py tests/test_pack_control_v4.py tests/test_defaultspack_extension_registry.py tests/test_defaultspack_provider_foundation.py tests/test_defaultspack_provider_program.py tests/test_defaultspack_opencode_zen_provider.py tests/test_defaultspack_agent_run_store.py -v 2>&1 | tee "$PYTEST_LOG"
           fi
 
       - name: Upload package pytest log
@@ -526,6 +694,87 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Allocate packaging transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(/usr/bin/uuidgen | /usr/bin/tr -d '-' | /usr/bin/tr '[:upper:]' '[:lower:]')"
+          test "${#token}" -eq 32
+          echo "TOBKIRI_PACKAGING_TRANSACTION_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Resolve macOS host target
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            arm64) target="aarch64-apple-darwin" ;;
+            x86_64) target="x86_64-apple-darwin" ;;
+            *) exit 1 ;;
+          esac
+          echo "TOBKIRI_RUST_HOST_TARGET=$target" >> "$GITHUB_ENV"
+
+      - name: Build rootless sealed packaging Python for viewer build
+        shell: bash
+        env:
+          TOOLCHAIN_ENV: ${{ runner.temp }}/tobkiri-viewer-packaging-toolchain.env
+        run: |
+          set -euo pipefail
+          snapshot="$RUNNER_TEMP/tobkiri-viewer-packaging-python-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN"
+          uv_stage="$RUNNER_TEMP/tobkiri-viewer-packaging-uv-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN"
+          git_env="$RUNNER_TEMP/tobkiri-viewer-packaging-git-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN.env"
+          source_snapshot="$RUNNER_TEMP/tobkiri-viewer-packaging-source-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN"
+          source_env="$RUNNER_TEMP/tobkiri-viewer-packaging-source-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN.env"
+          umask 077
+          /usr/bin/python3 -B .github/scripts/packaging_toolchain_identity.py \
+            --bind-git-env --env-output "$git_env"
+          while IFS='=' read -r key value; do
+            case "$key" in
+              TOBKIRI_PACKAGING_GIT|TOBKIRI_PACKAGING_GIT_SHA256) export "$key=$value" ;;
+              *) exit 1 ;;
+            esac
+          done < "$git_env"
+          /usr/bin/python3 -B .github/scripts/packaging_toolchain_identity.py \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --provenance .github/toolchains/packaging-python-macos.v1.json \
+            --source-commit "$GITHUB_SHA" --git "$TOBKIRI_PACKAGING_GIT" \
+            --git-sha256 "$TOBKIRI_PACKAGING_GIT_SHA256" --smoke-git-authority
+          /usr/bin/python3 -B .github/scripts/packaging_toolchain_identity.py \
+            --repository-root "$GITHUB_WORKSPACE" --source-commit "$GITHUB_SHA" \
+            --git "$TOBKIRI_PACKAGING_GIT" --git-sha256 "$TOBKIRI_PACKAGING_GIT_SHA256" \
+            --snapshot-source --snapshot-root "$source_snapshot" --env-output "$source_env"
+          while IFS='=' read -r key value; do
+            case "$key" in
+              TOBKIRI_PACKAGING_SOURCE_SNAPSHOT|TOBKIRI_PACKAGING_SOURCE_TREE|TOBKIRI_PACKAGING_SOURCE_INVENTORY_SHA256|TOBKIRI_PACKAGING_RELEASE_DIGEST) export "$key=$value" ;;
+              *) exit 1 ;;
+            esac
+          done < "$source_env"
+          /usr/bin/python3 -B "$source_snapshot/.github/scripts/prepare_tauri_resources.py" \
+            --repo-root "$source_snapshot" \
+            --target "$TOBKIRI_RUST_HOST_TARGET" --uv-version 0.11.14 --stage-uv-only \
+            --uv-output-root "$uv_stage"
+          /usr/bin/python3 -B "$source_snapshot/.github/scripts/build_sealed_python_environment.py" \
+            --repo-root "$source_snapshot" \
+            --target "$TOBKIRI_RUST_HOST_TARGET" --output-root "$snapshot" \
+            --uv-path "$uv_stage/bundled/uv" --release-digest "$TOBKIRI_PACKAGING_RELEASE_DIGEST" \
+            --source-tree "$TOBKIRI_PACKAGING_SOURCE_TREE" \
+            --source-inventory-sha256 "$TOBKIRI_PACKAGING_SOURCE_INVENTORY_SHA256" \
+            --env-output "$TOOLCHAIN_ENV"
+          /usr/bin/python3 -B .github/scripts/packaging_toolchain_identity.py \
+            --bind-git-env --env-output "$TOOLCHAIN_ENV"
+          /bin/cat "$TOOLCHAIN_ENV" >> "$GITHUB_ENV"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            tobkiri_runtime/requirements.txt
+            tobkiri_runtime/requirements-dev.txt
+
+      - name: Install locked runtime and test dependencies
+        run: python .github/scripts/install_locked_python_test_dependencies.py
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -543,6 +792,8 @@ jobs:
 
       - name: Build panel frontend
         working-directory: tobkiri_launcher/frontend
+        env:
+          TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
         run: npm run build
 
       - name: Install Rust toolchain
@@ -596,9 +847,15 @@ jobs:
           echo "Bundled uv at:"
           ls -la tobkiri_runtime/bundled/
 
-      - name: Build rumi viewer
-        working-directory: tobkiri_launcher/src-tauri
-        run: cargo build --locked
+      - name: Build debug Pack Shell for viewer Rust checks
+        run: cargo build --locked --manifest-path pack-shell/Cargo.toml --target "$TOBKIRI_RUST_HOST_TARGET"
+
+      - name: Seal debug Pack Shell for viewer Rust checks
+        run: >-
+          python .github/scripts/seal_pack_shell.py
+          --repo-root .
+          --target "$TOBKIRI_RUST_HOST_TARGET"
+          --profile debug
 
       - name: Run rumi viewer tests
         working-directory: tobkiri_launcher/src-tauri
@@ -700,13 +957,35 @@ jobs:
       - name: Run Windows portability smoke tests
         working-directory: tobkiri_runtime
         run: |
-          pytest tests/test_windows_driver_skeleton.py tests/test_rumi_capability.py tests/test_defaultspack_tool_policy.py -v
+          pytest tests/test_windows_driver_skeleton.py tests/test_rumi_capability.py tests/test_defaultspack_tool_policy.py tests/test_bounded_process_runner.py tests/test_process_contract_runtime.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pytest tests/test_defaultspack_command_protocol.py -k windows_host_process_gets_required_curated_environment -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   tobkiri-launcher-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            tobkiri_runtime/requirements.txt
+            tobkiri_runtime/requirements-dev.txt
+
+      - name: Install locked runtime and test dependencies
+        run: python .github/scripts/install_locked_python_test_dependencies.py
+
+      - name: Test native Windows presentation artifact paths
+        run: |
+          python -m pytest -q .github/scripts/tests/test_packaging_cleanup.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tobkiri_launcher/scripts/tests/test_package_presentation_artifact.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -729,4 +1008,6 @@ jobs:
 
       - name: Build panel frontend
         working-directory: tobkiri_launcher/frontend
+        env:
+          TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
         run: npm run build

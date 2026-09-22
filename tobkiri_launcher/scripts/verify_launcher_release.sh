@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAUNCHER_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$LAUNCHER_ROOT/.." && pwd)"
 FRONTEND_ROOT="$LAUNCHER_ROOT/frontend"
 TAURI_MANIFEST="$LAUNCHER_ROOT/src-tauri/Cargo.toml"
 OUTPUT_DIR="$LAUNCHER_ROOT/artifacts/launcher-verification"
@@ -70,7 +71,7 @@ run_logged tauri-rust-tests cargo test --locked --manifest-path "$TAURI_MANIFEST
 
 if ((SKIP_TAURI == 0)); then
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    run_logged tauri-macos-production-build npm --prefix "$FRONTEND_ROOT" run tauri -- build
+    run_logged tauri-macos-production-build bash "$REPO_ROOT/scripts/build-and-sign.sh" --mode production --bundles app
   elif ((REQUIRE_MACOS == 1)); then
     echo "macOS is required for the requested Tauri app verification" >&2
     exit 3

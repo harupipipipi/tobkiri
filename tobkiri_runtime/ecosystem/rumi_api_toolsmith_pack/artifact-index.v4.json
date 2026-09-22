@@ -1,0 +1,27 @@
+{
+  "artifact_set_digest": "sha256:5df273279dbb520ef2d60d8343577af25b1d1329e59ced52eb09ff90a00de1cf",
+  "artifacts": [
+    {
+      "digest": "sha256:de94535c2f326fe5b06e0c6f068396b79795d912099eb64f52a3486fe68c3787",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:71f5936bcdd2bc64fd3408b3062274824f8fd49bf1d48137997d75cc32bda97f",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:cefd86c87339376635687d533e2309263befdccfa77882caddbd56edc10f794a",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:657655c22161dd0a3897c6fa31fe5ff515c355aac35621c8cef9fd24eeb89e5a"
+  },
+  "pack_id": "rumi_api_toolsmith_pack",
+  "source_identity": "sha256:a4baa7d7085ced06c4ecc1f3c2bc7872e898fabf7dc739fa84c7e3bc8472f69c"
+}

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tobkiri.dev/schemas/sealed-environment.v1.schema.json",
+  "title": "Tobkiri sealed Python environment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "environment_digest",
+    "platform",
+    "architecture",
+    "python_version",
+    "package_provenance",
+    "sentinels",
+    "files"
+  ],
+  "properties": {
+    "schema": { "const": "io.tobkiri.sealed-python-environment.v1" },
+    "environment_digest": { "$ref": "#/$defs/digest" },
+    "platform": { "enum": ["macos", "linux", "windows"] },
+    "architecture": { "enum": ["aarch64", "x86_64"] },
+    "python_version": { "type": "string", "pattern": "^3\\.[0-9]+\\.[0-9]+$" },
+    "package_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "package_id", "release_digest"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "apple-code-signature-v1",
+            "windows-authenticode-v1",
+            "linux-immutable-package-v1"
+          ]
+        },
+        "package_id": { "const": "dev.tobkiri.launcher" },
+        "release_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "sentinels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stdlib_sha256", "site_packages_sha256", "native_sha256"],
+      "properties": {
+        "stdlib_sha256": { "$ref": "#/$defs/digest" },
+        "site_packages_sha256": { "$ref": "#/$defs/digest" },
+        "native_sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size", "sha256", "executable"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^[^/\\\\][^\\\\]*$" },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "$ref": "#/$defs/digest" },
+          "executable": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

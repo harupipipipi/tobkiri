@@ -7,6 +7,9 @@ import {
   collectExternalProviderOptions,
   customProviderRegistrationPayload,
   filterApiProviderOptions,
+  filterApiProviderOptionsByScope,
+  filterRegisteredApiRowsByScope,
+  normalizeApiProviderScope,
   normalizeCustomProviderId,
   parseAllowedModels,
   summarizeApiKeySetupForDiagnostics,
@@ -39,6 +42,7 @@ test("collectApiProviderOptions includes builtins, custom providers, and OAuth m
   assert.equal(acme?.oauth_client_configured, true);
   assert.equal(searchapi?.kind, "custom");
   assert.equal(searchapi?.builtin, false);
+  assert.equal(options.find((option) => option.provider_id === "cloudflare")?.kind, "custom");
 });
 
 test("collectExternalProviderOptions keeps external providers custom", () => {
@@ -56,6 +60,33 @@ test("filterApiProviderOptions searches label and provider id", () => {
 
   assert.deepEqual(filterApiProviderOptions(options, "acme").map((option) => option.provider_id), ["acme-ai"]);
   assert(filterApiProviderOptions(options, "OpenAI").some((option) => option.provider_id === "openai"));
+});
+
+test("API provider scope keeps AI and non-AI credential surfaces separate", () => {
+  const options = collectApiProviderOptions([
+    { provider_id: "openai", label: "OpenAI", kind: "llm" },
+    { provider_id: "cloudflare", label: "Cloudflare", kind: "custom" },
+  ]);
+
+  assert.equal(filterApiProviderOptionsByScope(options, "llm").some((option) => option.provider_id === "openai"), true);
+  assert.equal(filterApiProviderOptionsByScope(options, "non_llm").some((option) => option.provider_id === "openai"), false);
+  assert.equal(filterApiProviderOptionsByScope(options, "non_llm").some((option) => option.provider_id === "cloudflare"), true);
+
+  const rows = [
+    { provider_id: "openai", api_id: "main", kind: "llm" },
+    { provider_id: "cloudflare", api_id: "work", kind: "custom" },
+  ];
+  assert.deepEqual(
+    filterRegisteredApiRowsByScope(rows, options, "non_llm").map((row) => row.provider_id),
+    ["cloudflare"],
+  );
+});
+
+test("normalizeApiProviderScope accepts declarative template aliases", () => {
+  assert.equal(normalizeApiProviderScope("ai"), "llm");
+  assert.equal(normalizeApiProviderScope("non-llm"), "non_llm");
+  assert.equal(normalizeApiProviderScope("external"), "non_llm");
+  assert.equal(normalizeApiProviderScope(undefined), "all");
 });
 
 test("custom provider registration normalizes provider ids", () => {

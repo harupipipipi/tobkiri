@@ -1,24 +1,54 @@
 {
-  "pack_id": "search_home_pack",
-  "pack_identity": "rumi:ecosystem/search_home_pack",
-  "version": "0.1.0",
-  "enabled": true,
-  "metadata": {
-    "name": "Search Home",
-    "description": "Local search surface that resolves the best destination URL before navigation.",
-    "category": "frontend"
-  },
   "desktop_app": {
     "command": "python desktop_app.py",
-    "working_dir": "",
     "env": {
       "SEARCH_HOME_HOST": "127.0.0.1",
       "SEARCH_HOME_PORT": "8777"
     },
     "window": {
+      "height": 780,
       "title": "Rumi Search Home",
-      "width": 1160,
-      "height": 780
-    }
+      "width": 1160
+    },
+    "working_dir": ""
+  },
+  "metadata": {
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:35aff0d1500e37bc0c5100022c92a8ad4c74c96bd6e8c1b4379eb24f197341ae",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:a09089fcf9d75186fdec0a7f7fef5228469e5ab3b81dfdaa25ac0807a69b84f7"
+    },
+    "category": "frontend",
+    "description": "Local search surface that resolves the best destination URL before navigation.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:a09089fcf9d75186fdec0a7f7fef5228469e5ab3b81dfdaa25ac0807a69b84f7"
+    },
+    "legacy_annotations": {
+      "enabled": true
+    },
+    "manifest_authority": "v4-authoritative",
+    "name": "Search Home",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "search_home_pack",
+  "pack_identity": "rumi:ecosystem/search_home_pack",
+  "provenance": {
+    "build_identity": "search_home_pack:0.1.0",
+    "content_hash": "sha256:35aff0d1500e37bc0c5100022c92a8ad4c74c96bd6e8c1b4379eb24f197341ae",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
   }
 }

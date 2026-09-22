@@ -1,12 +1,229 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.slack_connector","version":"1.0.0","kind":"provider","display_name":"Rumi Slack Connector","description":"Slack protocol verification, normalization, and delivery."},
-  "contracts":{"provides":[{"id":"rumi.service.connector.adapter.v1","version":"1.0.0","provider_instance_id":"connector.slack","instance_key":"slack","cardinality":"many","security":"critical","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.adapter.verify","connector.delivery.execute"]},{"id":"rumi.service.connector.oauth.provider.v1","version":"1.0.0","provider_instance_id":"connector-oauth.slack","instance_key":"slack","cardinality":"many","security":"critical","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":null},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.oauth.exchange"]}],"requires":[{"id":"rumi.service.credential.resolve.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
-  "entrypoints":[{"id":"slack-adapter","contract_id":"rumi.service.connector.adapter.v1","loader":"python","module":"ecosystem.rumi_slack_connector_pack.runtime.adapter","symbol":"create_connector_adapter","artifact_hash":"sha256:2e9afcd384ee5a6fcca521e1cc8445b5b6d3ba7f189a95a6250dc57f3cfc4048"},{"id":"slack-oauth-provider","contract_id":"rumi.service.connector.oauth.provider.v1","loader":"python","module":"ecosystem.rumi_slack_connector_pack.runtime.adapter","symbol":"create_oauth_provider","artifact_hash":"sha256:2e9afcd384ee5a6fcca521e1cc8445b5b6d3ba7f189a95a6250dc57f3cfc4048"}],
-  "resources":[],"storage":[],
-  "permissions":[{"capability":"connector.adapter.verify","access":"execute","approval_required":false},{"capability":"connector.delivery.execute","access":"execute","approval_required":true},{"capability":"connector.oauth.exchange","access":"execute","approval_required":false},{"capability":"credential.resolve","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:2e9afcd384ee5a6fcca521e1cc8445b5b6d3ba7f189a95a6250dc57f3cfc4048","build_identity":"rumi-slack-connector-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.external.adapters.slack","defaultspack.domain.gateway_channels.slack"],"compatibility_aliases":["slack"],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Disable Slack ingress and select one prior adapter after replay-ledger preservation."},
-  "extensions":{"rumi.connector_adapter.boundary":{"vendor":"slack","chat_imports":false,"company_imports":false,"credential_scope_bound":true,"inbound_signature":"slack-v0-hmac-sha256","replay_window_seconds":300,"outbound_receipt":true,"outbound_host":"slack.com","oauth":"pkce-s256","oauth_client_scope":"connector.oauth.client"}}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "many",
+        "failure": "isolate",
+        "id": "rumi.service.connector.adapter.v1",
+        "instance_key": "slack",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector.slack",
+        "required_capabilities": [
+          "connector.adapter.verify",
+          "connector.delivery.execute"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "failure": "isolate",
+        "id": "rumi.service.connector.oauth.provider.v1",
+        "instance_key": "slack",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector-oauth.slack",
+        "required_capabilities": [
+          "connector.oauth.exchange"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.credential.resolve.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+      "contract_id": "rumi.service.connector.adapter.v1",
+      "id": "slack-adapter",
+      "loader": "python",
+      "module": "ecosystem.rumi_slack_connector_pack.runtime.adapter",
+      "symbol": "create_connector_adapter"
+    },
+    {
+      "artifact_hash": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+      "contract_id": "rumi.service.connector.oauth.provider.v1",
+      "id": "slack-oauth-provider",
+      "loader": "python",
+      "module": "ecosystem.rumi_slack_connector_pack.runtime.adapter",
+      "symbol": "create_oauth_provider"
+    }
+  ],
+  "extensions": {
+    "rumi.connector_adapter.boundary": {
+      "chat_imports": false,
+      "company_imports": false,
+      "credential_scope_bound": true,
+      "inbound_signature": "slack-v0-hmac-sha256",
+      "oauth": "pkce-s256",
+      "oauth_client_scope": "connector.oauth.client",
+      "outbound_host": "slack.com",
+      "outbound_receipt": true,
+      "replay_window_seconds": 300,
+      "vendor": "slack"
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.connector.adapter.v1",
+            "rumi.service.connector.oauth.provider.v1"
+          ],
+          "requires": [
+            "rumi.service.credential.resolve.v1",
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Slack protocol verification, normalization, and delivery.",
+        "display_name": "Rumi Slack Connector",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:5945ccc4d51e973b0b2faa84af978049bc828131cbc7c8890d5bb81b44a93285",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:5467291ffda6ee3dda6a92bf16fc25bfdd72c4bd0759e1f6fa1b46b582bebcd3"
+          },
+          "owner_surfaces": [],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_slack_connector_pack",
+        "pack_identity": "rumi:ecosystem/rumi_slack_connector_pack",
+        "provenance": {
+          "build_identity": "rumi_slack_connector_pack:1.0.0",
+          "content_hash": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "connector.adapter.verify",
+          "connector.delivery.execute",
+          "connector.oauth.exchange",
+          "credential.resolve",
+          "host.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_slack_connector_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_slack_connector_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:5467291ffda6ee3dda6a92bf16fc25bfdd72c4bd0759e1f6fa1b46b582bebcd3"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.external.adapters.slack",
+      "defaultspack.domain.gateway_channels.slack"
+    ],
+    "removal_wave": 10,
+    "rollback": "Disable Slack ingress and select one prior adapter after replay-ledger preservation.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Slack protocol verification, normalization, and delivery.",
+    "display_name": "Rumi Slack Connector",
+    "id": "rumi.slack_connector",
+    "kind": "provider",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "connector.adapter.verify"
+    },
+    {
+      "access": "execute",
+      "approval_required": true,
+      "capability": "connector.delivery.execute"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "connector.oauth.exchange"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "credential.resolve"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_slack_connector_pack:1.0.0",
+    "content_hash": "sha256:b9e67d4e981adc16de2e398fe6f0c9fe3e6ce2568a9a57fffb3c4384afdc41c6",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }
-

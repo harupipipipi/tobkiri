@@ -1,43 +1,79 @@
 {
-  "pack_id": "rumi_document_intelligence_pack",
-  "pack_identity": "rumi:ecosystem/rumi_document_intelligence_pack",
-  "display_name": "Rumi Document Intelligence Pack",
-  "description": "Declarative PDF, contract, citation, redline, page-span, and privacy-aware document review workflow pack.",
-  "version": "0.1.0",
-  "license": "MIT",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "coordination",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
+  "dependencies": {},
+  "description": "Declarative PDF, contract, citation, redline, page-span, and privacy-aware document review workflow pack.",
+  "display_name": "Rumi Document Intelligence Pack",
+  "license": "MIT",
   "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
   "metadata": {
-    "runtime_type": "declarative_pack",
-    "network_policy": "none_by_default",
+    "asset_index": {
+      "catalog": [
+        "catalog/document_intelligence_workflows.yaml",
+        "catalog/citation_page_span_schema.json",
+        "catalog/redline_review_matrix.yaml",
+        "catalog/document_types.yaml",
+        "catalog/redline_operation_tests.yaml"
+      ],
+      "coordination": [
+        "coordination/subagent_review_roster.yaml"
+      ],
+      "docs": [
+        "README.md",
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "examples": [
+        "examples/contract_clause_review.example.yaml",
+        "examples/pdf_qa_trace.example.yaml",
+        "examples/redline_handoff.example.yaml",
+        "examples/page_span_citation_audit.example.yaml",
+        "examples/redline_privacy_review.example.yaml"
+      ],
+      "policies": [
+        "policies/document_privacy.policy.yaml",
+        "policies/citation_privacy_review.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/document_intelligence_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/document_intelligence_reviewer.system.md",
+        "prompts/citation_redline_privacy_reviewer.system.md"
+      ],
+      "schemas": [
+        "schemas/citation_trace.schema.json",
+        "schemas/redline_handoff.schema.json"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3bdecdcc2d4fdb6b972872a5f1246925d8aac33c8a5929f87ebb00106195d14f",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:7ccc85bacb791430ca0a753e3fa84529bc401d0fc6d13b85d52f692a6287ef27"
+    },
     "executable_code": false,
-    "required_secrets": [],
-    "owner_surfaces": [
-      "pdf_extraction",
-      "contract_clause_review",
-      "citation_traceability",
-      "redline_handoffs",
-      "page_span_mapping",
-      "privacy_review",
-      "multi_pass_specialist_review"
-    ],
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:7ccc85bacb791430ca0a753e3fa84529bc401d0fc6d13b85d52f692a6287ef27"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_workspace_pack",
@@ -56,51 +92,41 @@
         "reason": "Security review pack owns privacy, permission, and sensitive-data risk review."
       }
     ],
-    "asset_index": {
-      "catalog": [
-        "catalog/document_intelligence_workflows.yaml",
-        "catalog/citation_page_span_schema.json",
-        "catalog/redline_review_matrix.yaml",
-        "catalog/document_types.yaml",
-        "catalog/redline_operation_tests.yaml"
-      ],
-      "schemas": [
-        "schemas/citation_trace.schema.json",
-        "schemas/redline_handoff.schema.json"
-      ],
-      "policies": [
-        "policies/document_privacy.policy.yaml",
-        "policies/citation_privacy_review.policy.yaml"
-      ],
-      "coordination": [
-        "coordination/subagent_review_roster.yaml"
-      ],
-      "profiles": [
-        "profiles/document_intelligence_reviewer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/document_intelligence_reviewer.system.md",
-        "prompts/citation_redline_privacy_reviewer.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "examples": [
-        "examples/contract_clause_review.example.yaml",
-        "examples/pdf_qa_trace.example.yaml",
-        "examples/redline_handoff.example.yaml",
-        "examples/page_span_citation_audit.example.yaml",
-        "examples/redline_privacy_review.example.yaml"
-      ],
-      "docs": [
-        "README.md",
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ]
-    }
+    "owner_surfaces": [
+      "pdf_extraction",
+      "contract_clause_review",
+      "citation_traceability",
+      "redline_handoffs",
+      "page_span_mapping",
+      "privacy_review",
+      "multi_pass_specialist_review"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_pack"
+  },
+  "pack_id": "rumi_document_intelligence_pack",
+  "pack_identity": "rumi:ecosystem/rumi_document_intelligence_pack",
+  "provenance": {
+    "build_identity": "rumi_document_intelligence_pack:0.1.0",
+    "content_hash": "sha256:3bdecdcc2d4fdb6b972872a5f1246925d8aac33c8a5929f87ebb00106195d14f",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "coordination",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

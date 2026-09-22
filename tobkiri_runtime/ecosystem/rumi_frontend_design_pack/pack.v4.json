@@ -1,0 +1,66 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:03d425e16a4730297659756f7a8d27868d3031dfce21cfedf3528825f0538488",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:b70b6eed75958e98dd1c3a0f58529440e8f2b5c2d30b1911ef0a9620367c65ef",
+    "contract_catalog_digest": "sha256:fc33ba308628f4f46d9fc9b9abdeb6122171a1535553e909feb5f5312778892f",
+    "source_identity": "sha256:b496fa5123722eb84ddc6f28097f94fe6841b6750e699843fd0fc5eabaff4126"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_frontend_design_pack",
+      "rumi_frontend_design_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2099-01-01"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:b70b6eed75958e98dd1c3a0f58529440e8f2b5c2d30b1911ef0a9620367c65ef",
+    "display_name": "Rumi Frontend Design Pack",
+    "id": "rumi_frontend_design_pack",
+    "kind": "application",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:b496fa5123722eb84ddc6f28097f94fe6841b6750e699843fd0fc5eabaff4126",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:b496fa5123722eb84ddc6f28097f94fe6841b6750e699843fd0fc5eabaff4126",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_frontend_design_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

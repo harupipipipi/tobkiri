@@ -1,22 +1,7 @@
 {
-  "pack_id": "rumi_default_tools_pack",
-  "pack_identity": "rumi:ecosystem/rumi_default_tools_pack",
-  "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Default Tools Pack",
-    "description": "Concrete AI-facing default tools separated from defaultspack core.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
-  },
-  "runtime": {
-    "type": "python_host"
-  },
-  "dependencies": {
-    "rumi_browser_host_service_pack": ">=1.0.0,<2.0.0",
-    "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0",
-    "rumi_clipboard_host_service_pack": ">=1.0.0,<2.0.0"
-  },
+  "components": {},
   "connectivity": {
+    "provides": [],
     "requires": [
       "rumi.resource.browser.host.v1",
       "rumi.action.browser.host.v1",
@@ -24,18 +9,58 @@
       "rumi.action.desktop.host.v1",
       "rumi.resource.clipboard.v1",
       "rumi.action.clipboard.v1"
-    ],
-    "provides": []
+    ]
   },
+  "dependencies": {
+    "rumi_browser_host_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_clipboard_host_service_pack": ">=1.0.0,<2.0.0",
+    "rumi_desktop_host_service_pack": ">=1.0.0,<2.0.0"
+  },
+  "load_order": [],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:6b0e39494c9fa5edacbfc1fb8db1f5e391ab17f5e5983ad2b8412f15c0d9cbca",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:ba1ae57e498be426bb086f4cff172b109e1c51941a516c629be818d01fb709b3"
+    },
+    "description": "Concrete AI-facing default tools separated from defaultspack core.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:ba1ae57e498be426bb086f4cff172b109e1c51941a516c629be818d01fb709b3"
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Default Tools Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security_boundary": {
+      "client_approval_material": "discard",
+      "host_execution": false,
+      "role": "finite_tool_compatibility_adapter",
+      "self_approval": false
+    }
+  },
+  "pack_id": "rumi_default_tools_pack",
+  "pack_identity": "rumi:ecosystem/rumi_default_tools_pack",
+  "provenance": {
+    "build_identity": "rumi_default_tools_pack:1.0.0",
+    "content_hash": "sha256:6b0e39494c9fa5edacbfc1fb8db1f5e391ab17f5e5983ad2b8412f15c0d9cbca",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "runtime": {
+    "type": "python_host"
+  },
+  "version": "1.0.0",
   "vocabulary": {
-    "types": ["tool"]
-  },
-  "security_boundary": {
-    "host_execution": false,
-    "self_approval": false,
-    "client_approval_material": "discard",
-    "role": "finite_tool_compatibility_adapter"
-  },
-  "components": {},
-  "load_order": []
+    "types": [
+      "tool"
+    ]
+  }
 }

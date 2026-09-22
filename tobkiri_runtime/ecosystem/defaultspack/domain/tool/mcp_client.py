@@ -14,6 +14,7 @@ import time
 import queue
 import urllib.request
 import urllib.error
+from typing import Any
 
 
 _PROTOCOL_VERSION = "2024-11-05"
@@ -95,7 +96,7 @@ class _StdioTransport(_TransportBase):
         self._cwd = cwd
         self._proc = None
         self._reader_thread = None
-        self._queue = queue.Queue()
+        self._queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self._stop_event = threading.Event()
 
     def start(self):
@@ -177,7 +178,7 @@ class _SseTransport(_TransportBase):
         self._extra_headers = headers or {}
         self._post_url = None
         self._reader_thread = None
-        self._queue = queue.Queue()
+        self._queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self._stop_event = threading.Event()
         self._response = None
         self._ready_event = threading.Event()
@@ -450,6 +451,7 @@ class McpClient:
     """
 
     _instance = None
+    _initialized: bool
 
     def __new__(cls):
         if cls._instance is None:
@@ -513,7 +515,7 @@ class McpClient:
         """
         with self._lock:
             servers = list(self._servers.values())
-        result = []
+        result: list[dict[str, Any]] = []
         for conn in servers:
             tool_names = []
             for t in conn.tools:

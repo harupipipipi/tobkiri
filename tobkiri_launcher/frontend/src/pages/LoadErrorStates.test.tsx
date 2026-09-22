@@ -7,13 +7,16 @@ import {MemoryRouter, Route, Routes} from 'react-router';
 
 import type {Pack} from '@/src/store';
 import {useAppStore} from '@/src/store';
+import {setRuntimeDispatchStatus} from '@/src/lib/runtimeDispatchGate';
 import {PackDetail} from './PackDetail';
 import {Packs} from './Packs';
-import {ProfileWorkspace} from './ProfileWorkspace';
 
 const cachedPack: Pack = {
   id: 'cached', name: 'Cached Pack', version: '1.0.0', type: 'community', enabled: true,
+  installed: true,
   description: 'Previously loaded', approvalStatus: 'approved', approvalReason: null,
+  artifactDigest: 'sha256:cached-artifact', profileId: 'profile-a', workspaceId: 'workspace-a',
+  profileRevision: 'sha256:profile-a', planDigest: 'sha256:plan-a', catalogRevision: 'catalog-a',
   approved: true, hashValid: true, criticalChanged: false, approvalIssues: [],
   capabilities: [], flows: [], dependencies: [],
 };
@@ -37,10 +40,14 @@ async function renderPage(element: ReactNode) {
 }
 
 test('Packs retains cached data and marks it stale after a refresh failure', async () => {
+  setRuntimeDispatchStatus('runtime_ready');
   useAppStore.setState({packs: [cachedPack], apiError: null, isLoading: false});
-  globalThis.fetch = (async () => new Response(JSON.stringify({success: false, data: null, error: 'Runtime connection failed'}), {status: 503})) as typeof fetch;
+  const dispatchError = "('tobkiri.host.pack-control.v4', 'catalog.read')";
+  globalThis.fetch = (async () => new Response(JSON.stringify({success: false, data: null, error: dispatchError}), {status: 409})) as typeof fetch;
   const {dom, root} = await renderPage(<MemoryRouter><Packs /></MemoryRouter>);
   assert.match(document.body.textContent ?? '', /Packs could not be loaded/);
+  assert.match(document.body.textContent ?? '', /tobkiri\.host\.pack-control\.v4/);
+  assert.match(document.body.textContent ?? '', /catalog\.read/);
   assert.match(document.body.textContent ?? '', /Showing the last successfully loaded data/);
   assert.match(document.body.textContent ?? '', /Cached Pack/);
   await act(async () => root.unmount());
@@ -48,6 +55,7 @@ test('Packs retains cached data and marks it stale after a refresh failure', asy
 });
 
 test('PackDetail does not mislabel a failed catalog request as an unknown id', async () => {
+  setRuntimeDispatchStatus('runtime_ready');
   useAppStore.setState({packs: [], apiError: null, isLoading: false});
   globalThis.fetch = (async () => new Response(JSON.stringify({success: false, data: null, error: 'Service unavailable'}), {status: 503})) as typeof fetch;
   const {dom, root} = await renderPage(
@@ -57,16 +65,6 @@ test('PackDetail does not mislabel a failed catalog request as an unknown id', a
   );
   assert.match(document.body.textContent ?? '', /Pack details could not be loaded/);
   assert.doesNotMatch(document.body.textContent ?? '', /Pack not found/);
-  await act(async () => root.unmount());
-  dom.window.close();
-});
-
-test('ProfileWorkspace renders runtime-not-ready instead of a permanent loader', async () => {
-  useAppStore.setState({runtimeReady: false, runtimeStatus: 'error', runtimeError: 'Kernel exited'});
-  const {dom, root} = await renderPage(<ProfileWorkspace />);
-  assert.match(document.body.textContent ?? '', /Runtime failed to start/);
-  assert.match(document.body.textContent ?? '', /Kernel exited/);
-  assert.doesNotMatch(document.body.textContent ?? '', /Loading workspace/);
   await act(async () => root.unmount());
   dom.window.close();
 });

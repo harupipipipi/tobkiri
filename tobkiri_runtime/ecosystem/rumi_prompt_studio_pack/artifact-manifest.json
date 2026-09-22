@@ -1,14 +1,41 @@
 {
-  "version": "rumi.pack-artifacts.v1",
   "artifacts": [
-    {"path": "runtime/__init__.py", "sha256": "sha256:d90f2cd9fcdb2137fe94c6063de0c9cfbee5addce8ab9f5df74ef4b9f9188c81"},
-    {"path": "runtime/process.py", "sha256": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1"},
-    {"path": "runtime/service.py", "sha256": "sha256:d68139419887b4f96aa98bd2c99ccd70b57407b438c4c8e3498bbf5d10805a06"},
-    {"path": "runtime/store.py", "sha256": "sha256:85cff287cc0d35d5ba711a57f7aee7aeac75749828f5aadd90e1f1112cbc3204"},
-    {"path": "ui/index.html", "sha256": "sha256:edb498e8458041b47be2583e2c3be04d35978f0d16f6ebba55c05807b612b0c9"},
-    {"path": "ui/app.js", "sha256": "sha256:713c015f4cf70a1afc7e3a2916a5038ad1719c74da038d9b959564f03d23f075"},
-    {"path": "ui/style.css", "sha256": "sha256:0374bea6fead5abfd4f82f14203761fa63cd3a3616fa9dea3799c48160c623dd"},
-    {"path": "frontend/contributions/prompt-studio.json", "sha256": "sha256:7a21d786ce90d54f615b7e85a7317ff7556d82a49a79070407ac65a50b3c6484"},
-    {"path": "catalog/prompt_studio_prompt_library.yaml", "sha256": "sha256:75420fa0dc4632836135df7fe98686b5579beb822bcea5c3e447b6aa6a48627e"}
-  ]
+    {
+      "path": "runtime/__init__.py",
+      "sha256": "sha256:d90f2cd9fcdb2137fe94c6063de0c9cfbee5addce8ab9f5df74ef4b9f9188c81"
+    },
+    {
+      "path": "runtime/process.py",
+      "sha256": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1"
+    },
+    {
+      "path": "runtime/service.py",
+      "sha256": "sha256:d68139419887b4f96aa98bd2c99ccd70b57407b438c4c8e3498bbf5d10805a06"
+    },
+    {
+      "path": "runtime/store.py",
+      "sha256": "sha256:85cff287cc0d35d5ba711a57f7aee7aeac75749828f5aadd90e1f1112cbc3204"
+    },
+    {
+      "path": "ui/index.html",
+      "sha256": "sha256:edb498e8458041b47be2583e2c3be04d35978f0d16f6ebba55c05807b612b0c9"
+    },
+    {
+      "path": "ui/app.js",
+      "sha256": "sha256:713c015f4cf70a1afc7e3a2916a5038ad1719c74da038d9b959564f03d23f075"
+    },
+    {
+      "path": "ui/style.css",
+      "sha256": "sha256:0374bea6fead5abfd4f82f14203761fa63cd3a3616fa9dea3799c48160c623dd"
+    },
+    {
+      "path": "frontend/contributions/prompt-studio.json",
+      "sha256": "sha256:7a21d786ce90d54f615b7e85a7317ff7556d82a49a79070407ac65a50b3c6484"
+    },
+    {
+      "path": "catalog/prompt_studio_prompt_library.yaml",
+      "sha256": "sha256:75420fa0dc4632836135df7fe98686b5579beb822bcea5c3e447b6aa6a48627e"
+    }
+  ],
+  "version": "rumi.pack-artifacts.v1"
 }

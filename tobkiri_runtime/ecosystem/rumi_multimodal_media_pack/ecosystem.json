@@ -1,20 +1,31 @@
 {
-  "pack_id": "rumi_multimodal_media_pack",
-  "pack_identity": "rumi:ecosystem/rumi_multimodal_media_pack",
+  "components": {},
+  "dependencies": {},
   "display_name": "Rumi Multimodal Media Pack",
-  "version": "0.1.0",
-  "runtime": {
-    "type": "declarative_pack"
-  },
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:48bf045b23433409db5702202a72482c138ecbfa3ffca7db1c4dfcddedcf2df3",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:c1a780acd3cd61cfb78f43a4bc8a9778366abc5f78643ab3eb1cf4a8f57a5f01"
+    },
     "executable_code": false,
-    "owner_surfaces": [
-      "media_asset_ledger",
-      "visual_qa_checklists",
-      "ocr_review_contracts"
-    ],
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:c1a780acd3cd61cfb78f43a4bc8a9778366abc5f78643ab3eb1cf4a8f57a5f01"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_workspace_pack",
@@ -28,8 +39,28 @@
         "pack_id": "rumi_agent_services_pack",
         "reason": "Expose media review roles to service workflows."
       }
-    ]
+    ],
+    "owner_surfaces": [
+      "media_asset_ledger",
+      "visual_qa_checklists",
+      "ocr_review_contracts"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
   },
+  "pack_id": "rumi_multimodal_media_pack",
+  "pack_identity": "rumi:ecosystem/rumi_multimodal_media_pack",
+  "provenance": {
+    "build_identity": "rumi_multimodal_media_pack:0.1.0",
+    "content_hash": "sha256:48bf045b23433409db5702202a72482c138ecbfa3ffca7db1c4dfcddedcf2df3",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "runtime": {
+    "type": "declarative_pack"
+  },
+  "version": "0.1.0",
   "vocabulary": {
     "types": [
       "catalog",
@@ -40,10 +71,5 @@
       "example",
       "documentation"
     ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "components": {},
-  "load_order": []
+  }
 }

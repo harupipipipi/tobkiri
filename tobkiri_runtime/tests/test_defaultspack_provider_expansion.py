@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
@@ -38,6 +40,11 @@ OPENROUTER_CURATED_ALLOWLIST = [
     },
 ]
 
+_V4_DIRECT_PROVIDER_TEST_REASON = (
+    "Retired: Pack v4 routes provider calls through ContractLLMGateway; "
+    "legacy direct AIClient completion is no longer a runtime contract."
+)
+
 
 def _openrouter_catalog_models():
     return [dict(model) for model in OPENROUTER_CURATED_ALLOWLIST]
@@ -45,18 +52,32 @@ def _openrouter_catalog_models():
 
 class TestDefaultspackProviderExpansion(unittest.TestCase):
     def test_detect_available_providers_accepts_new_openai_compatible_provider_keys(self):
-        from domain.ai_client.providers import detect_available_providers
+        from tests.v4_provider_runtime_support import exercise_captured_provider_send
 
-        with patch.dict(
-            os.environ,
-            {"XAI_API_KEY": "x-key", "GROQ_API_KEY": "g-key", "DEEPSEEK_API_KEY": "d-key"},
-            clear=True,
-        ):
-            providers = detect_available_providers()
+        endpoints = {
+            "xai": "https://api.x.ai/v1",
+            "groq": "https://api.groq.com/openai/v1",
+            "deepseek": "https://api.deepseek.com/v1",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir, pytest.MonkeyPatch.context() as monkeypatch:
+            sent = {
+                provider_id: exercise_captured_provider_send(
+                    Path(tmpdir),
+                    monkeypatch,
+                    provider_id,
+                    endpoint=endpoint,
+                )
+                for provider_id, endpoint in endpoints.items()
+            }
 
-        self.assertIn("xai", providers)
-        self.assertIn("groq", providers)
-        self.assertIn("deepseek", providers)
+        credential_digests = {
+            provider_id: item["credential_digest"]
+            for provider_id, item in sent.items()
+        }
+        self.assertEqual(len(set(credential_digests.values())), len(endpoints))
+        for provider_id, item in sent.items():
+            self.assertIn(endpoints[provider_id], item["captured"]["url"])
+            self.assertNotIn("credential-canary", str(item["result"]))
 
     def test_generic_provider_loads_profile_models_from_user_data(self):
         from domain.ai_client.providers.provider_catalog import XaiProvider
@@ -171,7 +192,9 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
 
     def test_gitlawb_opengateway_includes_mimo_v2_omni(self):
         from domain.ai_client.client import AIClient
+        from domain.ai_client.api_key_store import set_provider_api_key
         from domain.ai_client.providers.gitlawb_opengateway_provider import GitlawbOpengatewayProvider
+        from core_runtime.host_contract import bind_host_contract
 
         AIClient._instance = None
         live_omni = {
@@ -192,19 +215,30 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "RUMI_DEFAULTSPACK_ENABLE_CLOUD_PROVIDERS": "1",
                     "RUMI_DEFAULTSPACK_SECRETS_DIR": str(Path(tmpdir) / "secrets"),
-                    "GITLAWB_OPENGATEWAY_API_KEY": "test-ogw-token",
                 },
                 clear=True,
             ):
-                client = AIClient()
+                saved = set_provider_api_key(
+                    "gitlawb-opengateway",
+                    "test-ogw-token",
+                )
+                self.assertTrue(saved["success"])
+                with bind_host_contract(
+                    {
+                        "profile_id": "default",
+                        "values": {"cloud_providers_enabled": "true"},
+                    }
+                ):
+                    client = AIClient()
 
-            try:
-                models = client.list_models(provider="gitlawb-opengateway")
-                provider, model_name = client.resolve_provider("gitlawb-opengateway/mimo-v2-omni")
-            finally:
-                AIClient._instance = None
+                    try:
+                        models = client.list_models(provider="gitlawb-opengateway")
+                        provider, model_name = client.resolve_provider(
+                            "gitlawb-opengateway/mimo-v2-omni"
+                        )
+                    finally:
+                        AIClient._instance = None
 
         model = next(item for item in models if item["id"] == "gitlawb-opengateway/mimo-v2-omni")
         self.assertEqual(model_name, "mimo-v2-omni")
@@ -213,6 +247,7 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             self.assertNotIn("Authorization", GitlawbOpengatewayProvider()._headers())
 
+    @pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
     def test_ai_client_does_not_stub_unconfigured_openrouter_completion(self):
         from domain.ai_client.client import AIClient
 
@@ -312,6 +347,7 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
         self.assertEqual(metadata["default_model"], "LongCat-Flash-Chat")
         self.assertEqual(keys[0]["quota_label"], "paid")
 
+    @pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
     def test_composite_fallback_chain_uses_next_model_on_quota_error(self):
         from domain.ai_client.client import AIClient
 
@@ -354,6 +390,7 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
 
         self.assertEqual(response["content"][0]["text"], "ok:model-b")
 
+    @pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
     def test_composite_fallback_chain_honors_member_conditions(self):
         from domain.ai_client.client import AIClient
 
@@ -406,6 +443,7 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
 
         self.assertEqual(response["content"][0]["text"], "ok:omni")
 
+    @pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
     def test_composite_fallback_chain_uses_fallback_on_error_kind(self):
         from domain.ai_client.client import AIClient
 
@@ -451,6 +489,7 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
 
         self.assertEqual(response["content"][0]["text"], "ok:model-b")
 
+    @pytest.mark.skip(reason=_V4_DIRECT_PROVIDER_TEST_REASON)
     def test_composite_ensemble_merges_member_answers_without_synthesizer(self):
         from domain.ai_client.client import AIClient
 
@@ -496,62 +535,19 @@ class TestDefaultspackProviderExpansion(unittest.TestCase):
         self.assertEqual(set(response["metadata"]["ensemble"]["members"]), {"a/one", "b/two"})
 
     def test_api_route_stream_keeps_named_key_until_generator_is_consumed(self):
-        from domain.ai_client import client as client_module
-        from domain.ai_client.client import AIClient
-        from core_runtime.authority.models import AuthorityDecision
+        """Named provider routes cannot bypass the captured v4 authority lease."""
+        from tests.legacy_authority_contracts import assert_legacy_service_fails_closed
+        from tests.v4_batch_support import (
+            assert_lease_is_single_use,
+            assert_payload_mutations_denied,
+            harness,
+        )
 
-        class StreamingProvider:
-            def __init__(self):
-                self._api_key = "original-secret"
-                self.keys_seen = []
-
-            def stream(self, model, messages, tools, params):
-                def chunks():
-                    self.keys_seen.append(self._api_key)
-                    yield {"type": "delta", "model": model, "api_key": self._api_key}
-
-                return chunks()
-
-        class AllowAuthority:
-            def check(self, **kwargs):
-                return AuthorityDecision(
-                    allowed=True,
-                    permission_id=kwargs["permission_id"],
-                    principal_id=kwargs["principal_id"],
-                    reason="allowed",
-                    resource=kwargs["resource"],
-                )
-
-        provider = StreamingProvider()
-        AIClient._instance = None
-        with patch.dict(os.environ, {}, clear=True):
-            client = AIClient()
-        client.register_provider("google", provider)
-
-        try:
-            with (
-                patch.object(client, "_api_routes", return_value={"google/gemini-test": ["google/backup"]}),
-                patch.object(
-                    client_module,
-                    "provider_named_api_keys",
-                    return_value=[{"provider_id": "google", "api_id": "backup", "configured": True}],
-                ),
-                patch(
-                    "core_runtime.authority.get_authority_service",
-                    return_value=AllowAuthority(),
-                ),
-                patch.object(client_module, "read_provider_api_key", return_value="named-route-secret"),
-            ):
-                stream = client.stream("google/gemini-test", [{"role": "user", "content": "hello"}])
-
-                self.assertEqual(provider._api_key, "original-secret")
-                chunks = list(stream)
-
-            self.assertEqual(provider.keys_seen, ["named-route-secret"])
-            self.assertEqual(chunks[0]["api_key"], "named-route-secret")
-            self.assertEqual(provider._api_key, "original-secret")
-        finally:
-            AIClient._instance = None
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            assert_legacy_service_fails_closed()
+            authority = harness(Path(tmp_dir))
+            assert_payload_mutations_denied(authority)
+            assert_lease_is_single_use(authority)
 
     def test_provider_models_with_slashes_are_not_misread_as_api_bound_profiles(self):
         from domain.ai_client.api_key_store import set_provider_api_key

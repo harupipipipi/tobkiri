@@ -18,6 +18,16 @@ from typing import Any
 from urllib.parse import urlparse
 
 _SETTINGS_MODEL_KEY = "preferred" + "_model"
+_SEARCH_HOME_CONTRACT_ROUTES = {
+    ("GET", "/api/health"): {"approval_required": False},
+    ("GET", "/api/models"): {"approval_required": False},
+    ("GET", "/api/settings"): {"approval_required": False},
+    ("GET", "/api/route-state"): {"approval_required": False},
+    ("POST", "/api/route"): {"approval_required": False},
+    ("POST", "/api/answer"): {"approval_required": False},
+    ("POST", "/api/settings/model"): {"approval_required": False},
+    ("POST", "/api/route-state"): {"approval_required": False},
+}
 
 
 def _pack_root() -> Path:
@@ -198,6 +208,10 @@ def _open_desktop_surface(url: str, title: str = "Rumi Search Home") -> str:
 
 
 def _make_handler(pack_root: Path):
+    from core_runtime.frontend_contract_routes import (
+        ContractRouteError,
+        resolve_contract_route,
+    )
     from ecosystem.search_home_pack.domain.defaultspack_bridge import DefaultspackBridge
     from ecosystem.search_home_pack.domain.search_target_resolver import SearchTargetResolver
 
@@ -207,12 +221,36 @@ def _make_handler(pack_root: Path):
 
     class SearchHomeHandler(BaseHTTPRequestHandler):
         server_version = "RumiSearchHome/0.2"
+        _contract_routes = _SEARCH_HOME_CONTRACT_ROUTES
 
         def log_message(self, _format: str, *_args: Any) -> None:
             return
 
+        def _resolve_contract_path(self, method: str, path: str) -> str | None:
+            try:
+                resolved = resolve_contract_route(
+                    self,
+                    method,
+                    path,
+                    pack_id="search_home_pack",
+                    route_families=(),
+                )
+            except ContractRouteError as exc:
+                self._json_response(
+                    {
+                        "status": "error",
+                        "error": {"code": exc.code, "message": str(exc)},
+                    },
+                    status=HTTPStatus(exc.status),
+                )
+                return None
+            return resolved.path if resolved is not None else path
+
         def do_GET(self) -> None:  # noqa: N802
             path = urlparse(self.path).path
+            path = self._resolve_contract_path("GET", path)
+            if path is None:
+                return
             if path in {"/health", "/api/health"}:
                 self._json_response(
                     {
@@ -235,6 +273,9 @@ def _make_handler(pack_root: Path):
 
         def do_POST(self) -> None:  # noqa: N802
             path = urlparse(self.path).path
+            path = self._resolve_contract_path("POST", path)
+            if path is None:
+                return
             try:
                 payload = self._read_json()
             except ValueError as exc:

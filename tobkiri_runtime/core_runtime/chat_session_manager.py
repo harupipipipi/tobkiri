@@ -8,8 +8,11 @@ Uses the singleton pattern consistent with ChatStore.
 Does NOT modify ChatStore itself.
 """
 
+from __future__ import annotations
+
 import time
 import copy
+import types
 import uuid
 from typing import Any, Callable
 
@@ -23,8 +26,10 @@ def _now_ms():
 
 
 class SessionManager:
-    _instance = None
+    _instance: SessionManager | None = None
     _chat_store_factory: Callable[[], Any] | None = None
+    _sessions: dict[str, dict[str, Any]]
+    _active_session_id: str | None
 
     def __new__(cls, *args, **kwargs):
         if cls.__dict__.get("_instance") is None:
@@ -49,11 +54,16 @@ class SessionManager:
             if value is not None
         }
 
-        class BoundSessionManager(cls):
-            def __init__(self, *args: Any, **kwargs: Any):
-                for key, value in dependencies.items():
-                    kwargs.setdefault(key, value)
-                super().__init__(*args, **kwargs)
+        def bound_init(self: SessionManager, *args: Any, **kwargs: Any) -> None:
+            for key, value in dependencies.items():
+                kwargs.setdefault(key, value)
+            cls.__init__(self, *args, **kwargs)
+
+        BoundSessionManager = types.new_class(
+            cls.__name__,
+            (cls,),
+            exec_body=lambda namespace: namespace.update({"__init__": bound_init}),
+        )
 
         BoundSessionManager.__name__ = cls.__name__
         BoundSessionManager.__qualname__ = cls.__qualname__

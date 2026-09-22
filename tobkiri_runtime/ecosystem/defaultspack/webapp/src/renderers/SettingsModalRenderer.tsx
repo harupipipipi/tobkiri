@@ -5,6 +5,8 @@ import { AlertTriangle, ArrowRight, Check, ChevronDown, Copy, Loader2, MessageCi
 import { cn } from "../lib/cn";
 import type { CodexAppServerConfig, ModelSearchItem, SettingsSection } from "../lib/api";
 import { PlacementHtmlRenderer } from "../components/PlacementHtmlRenderer";
+import { AppsSettingsPanel } from "../components/AppsSettingsPanel";
+import { CredentialTransferModal } from "../components/CredentialTransferModal";
 import { ToolExperienceSettingsPanel } from "../components/ToolExperienceSettingsPanel";
 import { MobilePairingApproval } from "../components/MobilePairingApproval";
 import { normalizeLocale, t } from "../lib/i18n";
@@ -14,7 +16,15 @@ import { settingsFieldSearchText, settingsSectionSearchText } from "../lib/setti
 import { reviewConnectionDraft, reviewOAuthDestination, type CredentialImportReview, type OAuthDestinationReview } from "../lib/oauthConnectionReview";
 import { settingsApiResources } from "../features/settings/resources/settingsApiResources";
 import { availabilityCopy, type ModelAvailabilityAfterKeySave } from "../features/settings/resources/useModelAvailability";
+import { providerBrandAsset } from "../features/connections/providerBrandAssets";
 import { ContinuitySettingsField } from "../features/continuity/ContinuitySettingsField";
+import {
+  ModelSearchPicker,
+  modelProviderOptions,
+  parseModelProviderQuery,
+  parseModelSelectorSchema,
+  type ModelSelectorSchema,
+} from "../features/models";
 import type { SettingsModalRendererProps, SettingsSaveState } from "./types";
 import type { DesktopPermissionStatus, DesktopSystemInfo } from "../lib/desktopSystemInfo";
 import {
@@ -783,11 +793,13 @@ function SettingsModelSearchSelect({
   options,
   onChange,
   placeholder = "モデルを検索",
+  selectorSchema,
 }: {
   value: string;
   options: SettingsModelOption[];
   onChange: (value: string) => void;
   placeholder?: string;
+  selectorSchema?: ModelSelectorSchema;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -796,13 +808,12 @@ function SettingsModelSearchSelect({
   const [error, setError] = useState("");
   const searchRequestSeq = useRef(0);
   const trimmedQuery = query.trim();
-  const remoteOptions = useMemo(
-    () => remoteResults.map(modelSearchItemToOption),
-    [remoteResults],
+  const resolvedSelectorSchema = selectorSchema ?? parseModelSelectorSchema(undefined);
+  const providerState = parseModelProviderQuery(
+    query,
+    modelProviderOptions(options),
+    resolvedSelectorSchema.layout.provider_trigger,
   );
-  const selected = options.find((option) => option.value === value || option.qualified_model_id === value)
-    ?? remoteOptions.find((option) => option.value === value || option.qualified_model_id === value)
-    ?? (value ? { value, label: value } : null);
 
   useEffect(() => {
     if (!open) return;
@@ -810,10 +821,20 @@ function SettingsModelSearchSelect({
     const requestSeq = searchRequestSeq.current;
     let disposed = false;
     setRemoteResults([]);
-    setBusy(true);
+    if (providerState.active) {
+      setBusy(false);
+      setError("");
+      return;
+    }
+    setBusy(Boolean(trimmedQuery));
     setError("");
     const timer = window.setTimeout(() => {
-      settingsApiResources.searchModels({ query: trimmedQuery, max_results: 30 })
+      if (!trimmedQuery) return;
+      settingsApiResources.searchModels({
+        query: providerState.providerId ? providerState.modelQuery : trimmedQuery,
+        max_results: 30,
+        ...(providerState.providerId ? { provider_id: providerState.providerId } : {}),
+      })
         .then((result) => {
           if (disposed || requestSeq !== searchRequestSeq.current) return;
           setRemoteResults(result.models ?? []);
@@ -826,106 +847,35 @@ function SettingsModelSearchSelect({
         .finally(() => {
           if (!disposed && requestSeq === searchRequestSeq.current) setBusy(false);
         });
-    }, trimmedQuery ? 160 : 0);
+    }, 160);
     return () => {
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [open, trimmedQuery]);
-
-  const visibleOptions = useMemo(() => {
-    return buildVisibleModelOptions({
-      options,
-      selected,
-      remoteOptions,
-      query: trimmedQuery,
-    });
-  }, [trimmedQuery, options, remoteOptions, selected]);
+  }, [
+    open,
+    providerState.active,
+    providerState.modelQuery,
+    providerState.providerId,
+    trimmedQuery,
+  ]);
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-left text-sm text-zinc-200 outline-none transition-colors hover:border-zinc-700 focus:border-emerald-500/70"
-      >
-        <span className="min-w-0">
-          <span className="block truncate">{selected?.label || value || "モデルを選択"}</span>
-          {(selected?.provider_id || selected?.model_id) && (
-            <span className="block truncate text-[11px] text-zinc-500">
-              {[selected.provider_id, selected.model_id].filter(Boolean).join(" / ")}
-            </span>
-          )}
-        </span>
-        <ChevronDown size={14} className={cn("shrink-0 text-zinc-500 transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <>
-          <button type="button" aria-label="モデル検索を閉じる" className="fixed inset-0 rumi-layer-panel cursor-default" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 right-0 top-[calc(100%+6px)] rumi-layer-local-popover overflow-hidden rumi-popover">
-            <label className="m-2 flex h-9 items-center gap-2 rounded-lg border border-zinc-800 bg-black/30 px-3 text-xs text-zinc-500 focus-within:border-zinc-600 focus-within:text-zinc-300">
-              <Search size={14} />
-              <input
-                autoFocus
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={placeholder}
-                className="min-w-0 flex-1 bg-transparent text-zinc-200 outline-none placeholder:text-zinc-600"
-              />
-              {busy && <Loader2 size={13} className="animate-spin text-zinc-500" />}
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => setQuery("")}
-                  className="rounded p-0.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-300"
-                  aria-label="モデル検索をクリア"
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </label>
-            {error && <div className="border-t border-zinc-800 px-3 py-2 text-[11px] text-rose-300">{error}</div>}
-            <div className="max-h-72 overflow-y-auto border-t border-zinc-800 p-1">
-              {visibleOptions.length > 0 ? visibleOptions.map((option) => {
-                const active = option.value === value || option.qualified_model_id === value;
-                const badges = modelOptionBadges(option);
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      onChange(option.value);
-                      setOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-start justify-between gap-3 rounded-md px-2.5 py-2 text-left transition-colors",
-                      active ? "bg-zinc-800 text-zinc-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200",
-                    )}
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-zinc-100">{option.label}</span>
-                      <span className="block truncate text-[11px] text-zinc-500">
-                        {[option.provider_id, option.model_id || option.qualified_model_id || option.value].filter(Boolean).join(" / ")}
-                      </span>
-                    </span>
-                    <span className="flex max-w-[160px] flex-wrap justify-end gap-1">
-                      {badges.map((badge) => (
-                        <span key={badge} className="rounded-full border border-zinc-700 px-1.5 py-0.5 text-[10px] text-zinc-400">
-                          {badge}
-                        </span>
-                      ))}
-                      {active && <Check size={13} className="mt-1 shrink-0 text-emerald-300" />}
-                    </span>
-                  </button>
-                );
-              }) : (
-                <div className="px-3 py-5 text-xs text-zinc-600">一致するモデルがありません。</div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <ModelSearchPicker
+      value={value}
+      options={options}
+      remoteResults={remoteResults}
+      query={query}
+      loading={busy}
+      error={error}
+      placeholder={placeholder}
+      selectorSchema={resolvedSelectorSchema}
+      surface="settings"
+      open={open}
+      onOpenChange={setOpen}
+      onChange={onChange}
+      onQueryChange={setQuery}
+    />
   );
 }
 
@@ -1617,7 +1567,7 @@ function PublicUrlField({
   const config = publicUrlConfig(value, field.default);
   const [providerId, setProviderId] = useState(String(config.provider_id ?? "cloudflare_quick_tunnel"));
   const [localUrl, setLocalUrl] = useState(String(config.local_url ?? "http://127.0.0.1:8766"));
-  const [routePath, setRoutePath] = useState(String(config.route_path ?? "/api/integrations/line/webhook"));
+  const [routePath, setRoutePath] = useState(String(config.route_path ?? settingsApiResources.canonicalRouteKey("api/integrations/line/webhook")));
   const [result, setResult] = useState<Record<string, unknown> | null>(
     config.result && typeof config.result === "object" ? config.result as Record<string, unknown> : null,
   );
@@ -1628,16 +1578,16 @@ function PublicUrlField({
     const next = publicUrlConfig(value, field.default);
     setProviderId(String(next.provider_id ?? "cloudflare_quick_tunnel"));
     setLocalUrl(String(next.local_url ?? "http://127.0.0.1:8766"));
-    setRoutePath(String(next.route_path ?? "/api/integrations/line/webhook"));
+    setRoutePath(String(next.route_path ?? settingsApiResources.canonicalRouteKey("api/integrations/line/webhook")));
     setResult(next.result && typeof next.result === "object" ? next.result as Record<string, unknown> : null);
   }, [field.default, value]);
 
   const routeOptions = [
-    { value: "/api/integrations/line/webhook", label: "LINE webhook" },
-    { value: "/api/integrations/discord/interactions", label: "Discord interactions" },
-    { value: "/api/integrations/discord/events", label: "Discord events" },
-    { value: "/api/integrations/slack/events", label: "Slack events" },
-    { value: "/api/webhooks/inbound/{webhook_id}", label: "Generic webhook" },
+    { value: settingsApiResources.canonicalRouteKey("api/integrations/line/webhook"), label: "LINE webhook" },
+    { value: settingsApiResources.canonicalRouteKey("api/integrations/discord/interactions"), label: "Discord interactions" },
+    { value: settingsApiResources.canonicalRouteKey("api/integrations/discord/events"), label: "Discord events" },
+    { value: settingsApiResources.canonicalRouteKey("api/integrations/slack/events"), label: "Slack events" },
+    { value: settingsApiResources.canonicalRouteKey("api/webhooks/inbound/{webhook_id}"), label: "Generic webhook" },
   ];
   const providerOptions = [
     { value: "cloudflare_quick_tunnel", label: "Cloudflare Quick Tunnel" },
@@ -1789,8 +1739,11 @@ const BUILTIN_API_PROVIDER_IDS: string[] = [
 ];
 
 const BUILTIN_EXTERNAL_PROVIDER_IDS: string[] = [
+  "cloudflare",
+  "codex",
   "discord",
   "generic",
+  "github",
   "line",
   "slack",
   "web",
@@ -1819,7 +1772,9 @@ function collectApiProviderOptions(providers: Array<Record<string, unknown>>): A
     const providerId = String(provider.provider_id ?? "").trim();
     if (!providerId) continue;
     const builtin = Boolean(provider.builtin) || BUILTIN_API_PROVIDER_IDS.includes(providerId) || BUILTIN_EXTERNAL_PROVIDER_IDS.includes(providerId);
-    const kind = normalizeProviderKind(provider.kind);
+    const kind = provider.kind == null && BUILTIN_EXTERNAL_PROVIDER_IDS.includes(providerId)
+      ? "custom"
+      : normalizeProviderKind(provider.kind);
     const label = String(provider.label ?? providerId);
     options.set(providerId, { provider_id: providerId, label, kind, builtin });
   }
@@ -2254,6 +2209,12 @@ function SettingsField({
   const [apiActionBusyKey, setApiActionBusyKey] = useState("");
   const [apiActionMessage, setApiActionMessage] = useState("");
   const [pendingApiDeleteKey, setPendingApiDeleteKey] = useState("");
+  const [credentialTransfer, setCredentialTransfer] = useState<{
+    providerId: string;
+    providerLabel?: string;
+    apiId?: string;
+    refreshOnClose?: boolean;
+  } | null>(null);
   const [tokenProvider, setTokenProvider] = useState("line");
   const [tokenName, setTokenName] = useState("main");
   const [tokenKind, setTokenKind] = useState("channel_access_token");
@@ -2276,6 +2237,13 @@ function SettingsField({
   const preferredRouteModel = field.type === "model_api_routes" ? String(sectionValues?.preferred_model ?? "").trim() : "";
   const [routeModel, setRouteModel] = useState(() => preferredRouteModel || String(routeOptions[0]?.value ?? ""));
   const [routeModelTouched, setRouteModelTouched] = useState(false);
+  useEffect(() => {
+    if (field.type !== "api_keys") return;
+    const connectionOptions = collectApiProviderOptions(apiProviderRows(value))
+      .filter((option) => option.kind === "custom");
+    if (connectionOptions.some((option) => option.provider_id === apiProvider)) return;
+    setApiProvider(connectionOptions[0]?.provider_id ?? "");
+  }, [apiProvider, field.type, value]);
   useEffect(() => {
     if (field.type !== "model_api_routes") return;
     if (!routeOptions.length) {
@@ -2325,7 +2293,8 @@ function SettingsField({
       const selectedProvider = routeProviderForOption(selectedOption, selectedModel);
       const isLocalModel = Boolean(selectedOption?.local) || selectedProvider === "stub";
       const providerRows = fieldApiProviderRows(field);
-      const providerOptionsForRoutes = collectApiProviderOptions(providerRows);
+      const providerOptionsForRoutes = collectApiProviderOptions(providerRows)
+        .filter((option) => option.kind === "llm");
       const allRegisteredApis = registeredApiRows(providerRows);
       // Hide non-LLM keys from the routes UI (they're not used for chat models).
       const llmRegisteredApis = allRegisteredApis.filter((apiRow) => normalizeProviderKind(apiRow.kind) !== "custom");
@@ -2362,11 +2331,12 @@ function SettingsField({
         <div className="space-y-4" data-settings-renderer="model_routing">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(180px,0.42fr)]">
             <label className="space-y-1.5">
-              <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-600">Model</span>
+              <span className="text-[11px] font-medium text-zinc-500">1. 設定するモデル</span>
               <SettingsModelSearchSelect
                 value={selectedModel}
                 options={routeOptions.map(modelFieldOptionToOption)}
                 placeholder="model/provider/notes で検索"
+                selectorSchema={parseModelSelectorSchema(field.selector_schema)}
                 onChange={(nextModel) => {
                   setRouteModelTouched(true);
                   setRouteModel(nextModel);
@@ -2374,19 +2344,15 @@ function SettingsField({
               />
             </label>
             <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-600">Provider</p>
+              <p className="text-[11px] font-medium text-zinc-500">接続プロバイダー</p>
               <p className="mt-1 font-mono text-sm text-zinc-300">{selectedProvider || "unknown"}</p>
             </div>
           </div>
 
-          {isLocalModel ? (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-3 text-sm text-zinc-400">
-              ローカル/StubモデルはAPIキーのルーティング不要です。
-            </div>
-          ) : (
+          {!isLocalModel && (
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-600">使用する API key</span>
+                <span className="text-[11px] font-medium text-zinc-500">2. 使用するAPIキー</span>
                 <span className="text-[11px] text-zinc-500">選んだ API key ごとに別 model 扱いになります</span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -2424,14 +2390,15 @@ function SettingsField({
                   type="button"
                   onClick={() => setRouteInlineAddOpen((current) => !current)}
                   className={cn(
-                    "rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
+                    "inline-flex min-h-11 items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition-colors",
                     routeInlineAddOpen
-                      ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
-                      : "border-zinc-800 bg-zinc-950/70 text-zinc-300 hover:border-zinc-700",
+                      ? "border-emerald-400/70 bg-emerald-400/20 text-emerald-100"
+                      : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100 hover:border-emerald-400/70 hover:bg-emerald-500/15",
                   )}
                   title="新しい API key を追加"
                 >
-                  + API key
+                  <Plus size={16} aria-hidden />
+                  API keyを追加
                 </button>
               </div>
               {routeInlineAddOpen && (
@@ -2524,8 +2491,12 @@ function SettingsField({
     }
     case "api_keys": {
       const providers = apiProviderRows(value);
-      const providerOptions = collectApiProviderOptions(providers);
-      const registeredApis = registeredApiRows(providers);
+      const allProviderOptions = collectApiProviderOptions(providers);
+      const providerOptions = allProviderOptions.filter((option) => option.kind === "custom");
+      const registeredApis = registeredApiRows(providers).filter((api) => {
+        const option = allProviderOptions.find((candidate) => candidate.provider_id === String(api.provider_id ?? ""));
+        return normalizeProviderKind(api.kind ?? option?.kind) === "custom";
+      });
       const selectedProviderOption = providerOptions.find((option) => option.provider_id === apiProvider);
       const selectedKind: "llm" | "custom" = selectedProviderOption?.kind ?? "llm";
       const isCustomProvider = !selectedProviderOption?.builtin;
@@ -2601,6 +2572,14 @@ function SettingsField({
             candidate_models: [],
             reason: "Saved, but the backend did not confirm model availability. Choose a model route before using this key.",
           });
+          const savedProviderId = apiProvider;
+          const savedApiId = apiName;
+          setCredentialTransfer({
+            providerId: savedProviderId,
+            providerLabel: selectedProviderOption?.label,
+            apiId: savedApiId,
+            refreshOnClose: true,
+          });
           setApiSecret("");
           setApiBaseUrl("");
           setApiAllowedModels("");
@@ -2608,7 +2587,6 @@ function SettingsField({
           setApiQuotaLabel("");
           setApiNotes("");
           setApiSaveState("saved");
-          refreshApiKeyField();
         } catch (saveError) {
           setApiSaveState("idle");
           setApiSaveError(saveError instanceof Error ? saveError.message : "API key save failed.");
@@ -3367,6 +3345,8 @@ function SettingsField({
       control = (
         <button
           type="button"
+          aria-label={field.label}
+          aria-pressed={Boolean(value)}
           onClick={() => onChange(sectionId, field.id, !Boolean(value))}
           className={cn("w-10 h-6 rounded-full relative transition-colors", Boolean(value) ? "bg-emerald-500" : "bg-zinc-700")}
         >
@@ -3480,6 +3460,22 @@ function SettingsField({
         {control}
       </div>
       {field.help && <p className="text-[11px] text-zinc-500">{field.help}</p>}
+      {credentialTransfer && (
+        <CredentialTransferModal
+          providerId={credentialTransfer.providerId}
+          providerLabel={credentialTransfer.providerLabel}
+          apiId={credentialTransfer.apiId}
+          onClose={() => {
+            const shouldRefresh = credentialTransfer.refreshOnClose;
+            setCredentialTransfer(null);
+            if (shouldRefresh) {
+              onChange(sectionId, field.id, {
+                action: "oauth_refresh",
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -4140,6 +4136,7 @@ export function SettingsModalRenderer({
   const settingsFieldAnchorId = (field: ControlCenterField) => `settings-field-${field.sourceSectionId}-${field.id}`.replace(/[^a-zA-Z0-9_-]/g, "-");
   const openSearchMatch = (sectionId: ControlCenterSection["id"], field: ControlCenterField) => {
     setActiveSectionId(sectionId);
+    onOpenSection?.(sectionId);
     requestAnimationFrame(() => {
       const target = document.getElementById(settingsFieldAnchorId(field));
       target?.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
@@ -4245,9 +4242,6 @@ export function SettingsModalRenderer({
         />
       );
     }
-    if (section.id === "models_api") {
-      return <ModelRoutingOverview workspace={profileWorkspace} locale={locale} onOpenSection={openSection} />;
-    }
     if (section.id === "quick_setup") {
       return (
         <section className="overflow-hidden rounded-2xl border border-indigo-300/15 bg-[#0b0d10] shadow-[0_24px_90px_rgba(0,0,0,0.28)]">
@@ -4347,14 +4341,24 @@ export function SettingsModalRenderer({
               const cloudflareFacts = card.providerId === "cloudflare" ? cloudflareProvisioningFacts(card.provisioning, isJapanese) : [];
               const cloudflareBlockers = card.providerId === "cloudflare" ? cloudflareProvisioningBlockers(card.provisioning, isJapanese) : [];
               const expanded = expandedConnectionProviderId === card.providerId;
+              const brandAsset = providerBrandAsset(card.providerId);
               return (
                 <article key={card.providerId} className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/55">
                   <div className="p-4 sm:p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex min-w-0 gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] bg-white/[0.04] text-xs font-semibold text-zinc-300">
-                          {card.label.slice(0, 2).toUpperCase()}
-                        </div>
+                        {brandAsset ? (
+                          <img
+                            src={brandAsset}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-9 w-9 shrink-0 rounded-lg border border-white/[0.09] bg-white object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.09] bg-white/[0.04] text-xs font-semibold text-zinc-300">
+                            {card.label.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <h4 className="text-sm font-semibold text-zinc-50">{card.label}</h4>
@@ -4846,7 +4850,7 @@ export function SettingsModalRenderer({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, scale: 0.98, y: 8 }}
             transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", stiffness: 360, damping: 34 }}
-            className="relative flex h-[min(920px,calc(100dvh-20px))] w-[min(1480px,calc(100vw-16px))] min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0d0f11] shadow-2xl shadow-black/60 max-sm:h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-x-0"
+            className="relative flex h-[min(920px,calc(100dvh-20px))] w-[min(1480px,calc(100vw-16px))] min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0d0f11] shadow-2xl shadow-black/60 max-sm:h-[calc(100dvh-4px)] max-sm:w-screen max-sm:rounded-none max-sm:border-x-0"
           >
             <header
               className="flex min-w-0 items-center justify-between gap-4 border-b border-zinc-800 px-4 py-2 sm:px-5"
@@ -4969,7 +4973,7 @@ export function SettingsModalRenderer({
                             <button
                               key={section.id}
                               type="button"
-                              onClick={() => setActiveSectionId(section.id)}
+                              onClick={() => openSection(section.id)}
                               aria-current={activeSection?.id === section.id ? "page" : undefined}
                               className={cn(
                                 "group relative mb-0 flex min-h-11 min-w-[154px] shrink-0 items-center justify-between gap-3 overflow-hidden border-l-2 px-3 py-2.5 text-left text-xs transition-colors lg:mb-0.5 lg:min-w-0 lg:w-full",

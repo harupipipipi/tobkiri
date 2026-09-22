@@ -7,6 +7,7 @@ import { CodingWorkspacePicker } from "../components/coding/CodingWorkspacePicke
 import { installKeyboardOnlyFocusRings } from "../lib/focusModality";
 import {
   atMentionMenuKeyAction,
+  atomicComposerMentionEdit,
   atMentionPalettePayload,
   commandPalettePayload,
   commandArgumentPalettePayload,
@@ -16,6 +17,7 @@ import {
   filterAtMentionFiles,
   insertAtMentionText,
   composerChromeWidgetStyle,
+  composerClipboardFiles,
   composerHelperCopy,
   composerModelControlWidth,
   composerPlaceholderCopy,
@@ -379,6 +381,7 @@ test("composer runtime state hides persistent toggle indicators while they are o
     inlineExtensions: [],
     belowExtensions: [],
     commands: [deepthink],
+    manualRuntimeModeSelectionEnabled: true,
     mode: "agent",
     thinkingLevel: "high",
     contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
@@ -431,6 +434,7 @@ test("composer runtime state updates the DeepThink SVG indicator when enabled", 
     inlineExtensions: [],
     belowExtensions: [],
     commands: [deepthink],
+    manualRuntimeModeSelectionEnabled: true,
     mode: "chat",
     thinkingLevel: null,
     contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
@@ -446,6 +450,33 @@ test("composer runtime state updates the DeepThink SVG indicator when enabled", 
   assert.match(html, /drop-shadow-/);
   assert.match(html, /role="tooltip"[^>]*>DeepThink: オン</);
   assert.match(html, /group-focus\/runtime:opacity-100/);
+});
+
+test("composer hides runtime mode state until manual selection is explicitly enabled", () => {
+  const html = renderToStaticMarkup(createElement(ComposerRenderer, {
+    input: "",
+    placeholder: "Message Tobkiri...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    mode: "agent",
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+  }));
+
+  assert.doesNotMatch(html, /data-composer-widget="runtime-option-states"/);
+  assert.doesNotMatch(html, /aria-label="現在の実行オプション"/);
 });
 
 test("selected mentions render inline while explicit tool toggles own their selected state", () => {
@@ -512,6 +543,23 @@ test("inline mention parts color only active exact semantic mentions", () => {
   assert.deepEqual(
     composerInlineMentionParts("\\@Browser Companion and @Browser CompanionX", [widget]),
     [{ mention: false, text: "\\@Browser Companion and @Browser CompanionX" }],
+  );
+});
+
+test("semantic mentions delete atomically from either edge or a partial selection", () => {
+  const widget = composerToolMentionWidget({ id: "browser_companion", label: "Browser Companion", category: "tool" });
+  const input = "Use @Browser Companion now";
+  assert.deepEqual(
+    atomicComposerMentionEdit(input, 22, 22, "Backspace", [widget]),
+    { value: "Use  now", cursor: 4 },
+  );
+  assert.deepEqual(
+    atomicComposerMentionEdit(input, 4, 4, "Delete", [widget]),
+    { value: "Use  now", cursor: 4 },
+  );
+  assert.deepEqual(
+    atomicComposerMentionEdit(input, 8, 12, "Backspace", [widget]),
+    { value: "Use  now", cursor: 4 },
   );
 });
 
@@ -1102,6 +1150,8 @@ test("composer renders action approval control and review card", () => {
       contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
       selectedToolIds: ["github.search_code"],
       actionApprovalMode: "ask",
+      projects: [{ id: "group-main", title: "Main Repo", workspaceRoot: "/repo/main" }],
+      selectedProjectId: "group-main",
       toolSelectionReview: {
         previewId: "sel_1",
         expiresAt: "2026-01-01T00:05:00Z",
@@ -1128,7 +1178,11 @@ test("composer renders action approval control and review card", () => {
   );
 
   assert.match(html, /data-composer-widget="action-approval-control"/);
+  assert.match(html, /data-composer-widget="project-picker"/);
+  assert.match(html, /aria-label="Project: Main Repo"/);
+  assert.match(html, />Main Repo</);
   assert.match(html, /アクションの承認方法/);
+  assert.doesNotMatch(html, /Codex アクションの承認方法/);
   assert.match(html, /承認/);
   assert.match(html, /使用する機能を確認/);
   assert.match(html, /この内容で続ける/);
@@ -1164,7 +1218,7 @@ test("new conversation composer input is not locked to one visual line", () => {
   );
 
   assert.doesNotMatch(html, /rumi-composer-input-new-overlay/);
-  assert.match(html, /rumi-composer-input-new[^"]*min-h-\[24px\]/);
+  assert.match(html, /rumi-composer-input-new[^"]*min-h-\[44px\]/);
   assert.match(html, /rumi-composer-input-new[^"]*max-h-\[240px\]/);
   assert.match(html, /rumi-composer-input-new[^"]*text-zinc-100/);
   assert.doesNotMatch(html, /rumi-composer-input-new[^"]*text-transparent/);
@@ -1391,6 +1445,150 @@ test("vision unsupported banner appears when image input exists and selected mod
   assert.match(html, /現在のモデルはVision非対応です/);
   assert.match(html, /Visionモデルへ切替/);
   assert.match(html, /Model設定/);
+});
+
+test("audio attachment card exposes focusable transcript replacement action", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isNewConversation: true,
+      isGenerating: false,
+      selectedProfile: {
+        profile_id: "opencode-zen/mimo-v2.5-free",
+        display_name: "MiMo",
+        provider_id: "opencode-zen",
+        model_id: "mimo-v2.5-free",
+        supports_audio_input: false,
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      attachedFiles: [{
+        id: "voice-1",
+        name: "voice.webm",
+        size: 19_000,
+        type: "audio/webm",
+        dataUrl: "data:audio/webm;base64,AAAA",
+      }],
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+      onFileAttach: () => undefined,
+      onFileRemove: () => undefined,
+    }),
+  );
+
+  assert.match(html, /h-24 w-24/);
+  assert.match(html, /tabindex="0"/);
+  assert.match(html, /文字起こしを作成/);
+  assert.match(html, /group-focus-within\/file:opacity-100/);
+});
+
+test("new and existing conversation composers keep square attachments inside the composer frame above the input", () => {
+  const commonProps = {
+    input: "",
+    placeholder: "メッセージを入力...",
+    isGenerating: false,
+    selectedProfile: {
+      profile_id: "stub/default",
+      display_name: "Stub Default",
+      provider_id: "stub",
+      model_id: "default",
+    },
+    favoriteProfiles: [],
+    inlineExtensions: [],
+    belowExtensions: [],
+    thinkingLevel: null,
+    contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+    attachedFiles: [
+      {
+        id: "image-1",
+        name: "reference.png",
+        size: 68,
+        type: "image/png",
+        dataUrl: "data:image/png;base64,AAAA",
+      },
+      {
+        id: "file-1",
+        name: "manifest.json",
+        size: 2048,
+        type: "application/json",
+        content: "{\n  \"name\": \"example\"\n}",
+      },
+    ],
+    onInputChange: () => undefined,
+    onSubmit: () => undefined,
+    onModelProfileSelect: () => undefined,
+    onThinkingLevelChange: () => undefined,
+    onFileRemove: () => undefined,
+  };
+  const newConversationHtml = renderToStaticMarkup(
+    createElement(ComposerRenderer, { ...commonProps, isNewConversation: true }),
+  );
+  const existingConversationHtml = renderToStaticMarkup(
+    createElement(ComposerRenderer, { ...commonProps, isNewConversation: false }),
+  );
+
+  const newPanelIndex = newConversationHtml.indexOf("rumi-composer-main-panel");
+  const newAttachmentIndex = newConversationHtml.indexOf("data-composer-attachment-region");
+  const newInputIndex = newConversationHtml.indexOf('aria-label="Rumiにメッセージを送信"');
+  assert.ok(newPanelIndex >= 0 && newPanelIndex < newAttachmentIndex);
+  assert.ok(newAttachmentIndex < newInputIndex);
+  assert.match(newConversationHtml, /data-attachment-state="expanded"/);
+  assert.equal((newConversationHtml.match(/h-24 w-24/g) ?? []).length, 2);
+
+  const existingFrameIndex = existingConversationHtml.indexOf("rumi-composer-frame");
+  const existingAttachmentIndex = existingConversationHtml.indexOf("data-composer-attachment-region");
+  const existingInputIndex = existingConversationHtml.indexOf('aria-label="Rumiにメッセージを送信"');
+  assert.ok(existingFrameIndex >= 0 && existingFrameIndex < existingAttachmentIndex);
+  assert.ok(existingAttachmentIndex < existingInputIndex);
+  assert.equal((existingConversationHtml.match(/h-24 w-24/g) ?? []).length, 2);
+});
+
+test("composer attachment region stays mounted and collapsed when empty for animated removal", () => {
+  const html = renderToStaticMarkup(
+    createElement(ComposerRenderer, {
+      input: "",
+      placeholder: "メッセージを入力...",
+      isNewConversation: true,
+      isGenerating: false,
+      selectedProfile: {
+        profile_id: "stub/default",
+        display_name: "Stub Default",
+        provider_id: "stub",
+        model_id: "default",
+      },
+      favoriteProfiles: [],
+      inlineExtensions: [],
+      belowExtensions: [],
+      thinkingLevel: null,
+      contextUsage: { ratio: 0, usedTokens: 0, maxContext: 0, label: "0%" },
+      onInputChange: () => undefined,
+      onSubmit: () => undefined,
+      onModelProfileSelect: () => undefined,
+      onThinkingLevelChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-composer-attachment-region/);
+  assert.match(html, /data-attachment-state="collapsed"/);
+  assert.match(html, /aria-hidden="true"/);
+});
+
+test("clipboard file fallback reads DataTransfer items when files is empty", () => {
+  const file = new File(["voice"], "voice.webm", { type: "audio/webm" });
+  const files = composerClipboardFiles({
+    files: [] as unknown as FileList,
+    items: [{
+      kind: "file",
+      getAsFile: () => file,
+    }] as unknown as DataTransferItemList,
+  });
+  assert.deepEqual(files, [file]);
 });
 
 test("composer asks for an API key when an unconfigured Gemini model is selected", () => {

@@ -2,12 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  aiInputRoute,
-  apiMapRoute,
+  isPanelRouteActive,
   panelRouteMeta,
   panelRoutes,
   panelRouteTitleKey,
-  profileGraphRoute,
   viewerNavGroups,
 } from './routes';
 
@@ -15,40 +13,11 @@ test('panel routes stay basename-relative', () => {
   assert.equal(panelRoutes.home, '/');
   assert.equal(panelRoutes.setup, '/setup');
   assert.equal(panelRoutes.packs, '/packs');
-  assert.equal(panelRoutes.nodes, '/nodes');
-  assert.equal(panelRoutes.graphEditor, '/graphs');
-  assert.equal(panelRoutes.profileGraph, '/profile-graph');
-  assert.equal(panelRoutes.aiInput, '/ai-input');
-  assert.equal(panelRoutes.apiMap, '/api-map');
-  assert.equal(panelRoutes.profileWorkspace, '/profile-workspace');
-  assert.equal(panelRoutes.startup, '/startup');
-  assert.equal(panelRoutes.flows, '/flows');
-  assert.equal(panelRoutes.settings, '/settings');
   assert.equal(panelRoutes.packDetail('defaultspack'), '/packs/defaultspack');
 });
 
-test('profile routes can carry focused profile context', () => {
-  assert.equal(profileGraphRoute('default-profile'), '/profile-graph?profile=default-profile');
-  assert.equal(aiInputRoute('default-profile'), '/ai-input?profile=default-profile');
-  assert.equal(apiMapRoute({ profileId: 'default-profile', focus: 'profile:default-profile' }), '/api-map?profile_id=default-profile&focus=profile%3Adefault-profile');
-  assert.equal(apiMapRoute({ profileId: 'default-profile' }), '/api-map?profile_id=default-profile');
-});
-
 test('registered panel routes expose stable header title metadata', () => {
-  const registeredRoutes = [
-    'home',
-    'setup',
-    'packs',
-    'nodes',
-    'graphEditor',
-    'profileGraph',
-    'aiInput',
-    'apiMap',
-    'profileWorkspace',
-    'startup',
-    'flows',
-    'settings',
-  ] as const;
+  const registeredRoutes = ['home', 'setup', 'packs'] as const;
 
   for (const route of registeredRoutes) {
     assert.equal(panelRouteTitleKey(panelRouteMeta[route].path), panelRouteMeta[route].titleKey);
@@ -61,7 +30,20 @@ test('registered panel routes expose stable header title metadata', () => {
 
 test('viewer navigation groups use route metadata and i18n keys', () => {
   const navRoutes = new Set<string>(viewerNavGroups.flatMap((group) => group.routes));
-  assert.ok(navRoutes.has('aiInput'));
+  assert.ok(navRoutes.has('packs'));
+  for (const route of [
+    'profile',
+    'settings',
+    'profileWiring',
+    'profileFiles',
+    'flow',
+    'graph',
+    'aiInput',
+    'apiMap',
+    'nodeManager',
+  ]) {
+    assert.ok(navRoutes.has(route));
+  }
   assert.ok(!navRoutes.has('startup'));
 
   for (const group of viewerNavGroups) {
@@ -70,4 +52,42 @@ test('viewer navigation groups use route metadata and i18n keys', () => {
       assert.match(panelRouteMeta[route].navKey || '', /^nav\./);
     }
   }
+});
+
+test('stable advanced panel paths map to rebuilt v4 surfaces', () => {
+  for (const path of [
+    '/nodes',
+    '/graphs',
+    '/profile-graph',
+    '/ai-input',
+    '/api-map',
+    '/profile-workspace',
+    '/flows',
+    '/settings',
+  ]) {
+    assert.match(panelRouteTitleKey(path), /^nav\./);
+  }
+
+  assert.deepEqual(Object.keys(panelRouteMeta), [
+    'home',
+    'setup',
+    'packs',
+    'profile',
+    'settings',
+    'profileWiring',
+    'profileFiles',
+    'flow',
+    'graph',
+    'aiInput',
+    'apiMap',
+    'nodeManager',
+  ]);
+  assert.equal(panelRouteTitleKey('/profile-unknown'), 'nav.unknown');
+});
+
+test('stable route activity does not confuse Profile with Profile Wiring or Profile Files', () => {
+  assert.equal(isPanelRouteActive('/profile', panelRoutes.profile), true);
+  assert.equal(isPanelRouteActive('/profile-graph', panelRoutes.profile), false);
+  assert.equal(isPanelRouteActive('/profile-workspace', panelRoutes.profile), false);
+  assert.equal(isPanelRouteActive('/packs/provider-pack', panelRoutes.packs), true);
 });

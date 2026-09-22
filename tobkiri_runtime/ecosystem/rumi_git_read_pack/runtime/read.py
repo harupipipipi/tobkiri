@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 from pathlib import Path
@@ -52,6 +53,26 @@ class GitReadService:
             )
         elif name == "remote":
             output = _git(repository, ["remote", "-v"])
+        elif name == "snapshot":
+            head = _git(repository, ["rev-parse", "HEAD"]).strip()
+            tree = _git(repository, ["rev-parse", "HEAD^{tree}"]).strip()
+            status = _git(
+                repository,
+                ["status", "--porcelain=v2", "--untracked-files=all"],
+            )
+            return {
+                "workspace_id": str(payload.get("workspace_id") or ""),
+                "repository_root": repository.relative_to(root).as_posix()
+                if repository != root
+                else ".",
+                "operation": name,
+                "expected_head": head,
+                "expected_tree": tree,
+                "expected_status_hash": hashlib.sha256(
+                    status.encode("utf-8")
+                ).hexdigest(),
+                "read_only": True,
+            }
         elif name == "root":
             output = str(repository) + "\n"
         else:
@@ -145,4 +166,3 @@ def _paths(value: Any) -> list[str]:
             raise PermissionError("Git path escapes workspace")
         result.append(path.as_posix())
     return result
-

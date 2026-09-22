@@ -72,10 +72,10 @@ export type CapabilityInvocation = {
   contributionId: string;
   ownerPackId: string;
   planHash: string;
+  catalogHash: string;
 };
 
 export type FrontendCapabilityClient = {
   invokeAction: (request: CapabilityInvocation) => Promise<unknown>;
   readDataSource: (request: CapabilityInvocation) => Promise<unknown>;
 };
-

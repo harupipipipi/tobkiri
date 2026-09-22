@@ -15,6 +15,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = 'rumi_agent_workroom_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 DEFAULTSPACK_RUN_STATUS_MODEL = ROOT / "ecosystem" / "defaultspack" / "domain" / "agent_runtime" / "models.py"
 REQUIRED_ASSETS = ['README.md', 'asset_index.json', 'asset_index.yaml', 'catalog/handoff_matrix.yaml', 'catalog/quality_matrix.yaml', 'catalog/taxonomy.yaml', 'catalog/workflows.yaml', 'checklists/review.checklist.yaml', 'docs/README.md', 'docs/architecture.md', 'docs/compatibility.md', 'docs/interfaces.md', 'docs/operations.md', 'examples/checkpoint_resume.example.yaml', 'examples/redirect_running_plan.example.yaml', 'examples/replay_divergence.example.yaml', 'examples/run_board_review.example.yaml', 'fixtures/contract_fixture.yaml', 'fixtures/negative_cases.yaml', 'frontend_extensions/run_board.ui.json', 'ledgers/evidence_ledger.schema.yaml', 'policies/handoff.policy.yaml', 'policies/safety.policy.yaml', 'presets/handoff_review.preset.yaml', 'presets/quality_gate.preset.yaml', 'presets/safe_default.preset.yaml', 'profiles/workroom_operator.profile.yaml', 'prompts/workroom_orchestrator.system.md', 'schemas/agent_run.schema.json', 'schemas/checkpoint.schema.json', 'schemas/control_request.schema.json', 'schemas/handoff_envelope.schema.json', 'schemas/intervention.schema.json', 'schemas/progress_event.schema.json', 'schemas/replay_index.schema.json', 'schemas/run_board_view.schema.json', 'schemas/run_event.schema.json', 'schemas/task_plan.schema.json', 'schemas/workroom_session.schema.json', 'templates/handoff.template.md', 'templates/review_report.template.md', 'templates/ui_contract.template.md']
@@ -57,7 +58,8 @@ def test_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["required_secrets"] == []
     assert ecosystem["required_network"] == []
     assert ecosystem["host_execution"] is False
@@ -78,7 +80,13 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert "tool execution" in optional_integrations["rumi_default_tools_pack"]
     assert "metrics" in optional_integrations["defaultspack"]
     assert "choreography" in optional_integrations["rumi_operations_company_pack"]
-    actual = {str(path.relative_to(PACK_DIR)) for path in PACK_DIR.rglob("*") if path.is_file() and path.name != "ecosystem.json"}
+    actual = {
+        str(path.relative_to(PACK_DIR))
+        for path in PACK_DIR.rglob("*")
+        if path.is_file()
+        and path.name not in {"ecosystem.json", "executables.v4.json"}
+    }
+    actual -= V4_AUTHORITY_ARTIFACTS
     indexed = {item for values in metadata["asset_index"].values() for item in values}
     assert actual == indexed == set(REQUIRED_ASSETS)
     asset_index = read_yaml(PACK_DIR / "asset_index.yaml")["asset_index"]

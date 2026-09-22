@@ -33,6 +33,20 @@ import {
   demoOperatingProfile,
 } from "./demoData";
 
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
+function requestTarget(input: RequestInfo | URL): string {
+  const raw = String(input);
+  const marker = "/api/contracts/defaultspack/";
+  const markerIndex = raw.indexOf(marker);
+  if (markerIndex < 0) return raw;
+  const operation = decodeURIComponent(raw.slice(markerIndex + marker.length));
+  const separator = operation.indexOf(" ");
+  return separator < 0 ? operation : operation.slice(separator + 1);
+}
+
 test("OnboardingShell renders the adaptive setup steps", () => {
   const html = renderToStaticMarkup(createElement(OnboardingShell, { initialState: demoOnboardingState }));
 
@@ -123,7 +137,7 @@ test("onboarding compile posts current draft answers to the API", async (t) => {
   );
   const result = await compileAdaptiveOnboardingAnswers(answers);
 
-  assert.equal(String(calls[0]?.input), "/api/onboarding/compile");
+  assert.equal(requestTarget(calls[0]?.input ?? ""), routeKey("api/onboarding/compile"));
   const body = JSON.parse(String(calls[0]?.init?.body));
   assert.equal(body.answers.preset_id, "discussion_only");
   assert.equal(body.answers.actions.terminal, "deny");
@@ -157,8 +171,8 @@ test("automation updates use the local automation route without high-risk prepar
   });
   globalThis.fetch = (async (input, init) => {
     calls.push({ input, init });
-    const url = String(input);
-    if (url === "/api/automations/automation_daily_context") {
+    const url = requestTarget(input);
+    if (url === routeKey("api/automations/automation_daily_context")) {
       return new Response(JSON.stringify({
         status: "ok",
         data: {
@@ -180,7 +194,7 @@ test("automation updates use the local automation route without high-risk prepar
 
   assert.equal(automation.enabled, true);
   assert.equal(calls.length, 1);
-  assert.equal(String(calls[0]?.input), "/api/automations/automation_daily_context");
+  assert.equal(requestTarget(calls[0]?.input ?? ""), routeKey("api/automations/automation_daily_context"));
   assert.equal(calls[0]?.init?.method, "PUT");
   assert.deepEqual(JSON.parse(String(calls[0]?.init?.body)), { patch: { enabled: true } });
 });

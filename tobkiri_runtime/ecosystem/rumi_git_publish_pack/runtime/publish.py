@@ -29,23 +29,31 @@ class GitPublishService:
             raise ValueError(f"unknown Git publish operation: {name}")
         arguments = _arguments(payload, dry_run=name == "dry_run")
         root, repository = self._roots(payload)
+        _assert_local_head(repository, arguments["expected_head"])
         remote_url = _git(repository, ["remote", "get-url", arguments["remote"]]).strip()
         remote_host = _remote_host(remote_url)
         remote_url_hash = hashlib.sha256(remote_url.encode("utf-8")).hexdigest()
         if arguments["expected_remote_url_hash"] != remote_url_hash:
             raise PermissionError("Git remote URL changed or was not preflighted")
         self._redeem(name, payload, arguments)
+        _assert_local_head(repository, arguments["expected_head"])
         current_url = _git(repository, ["remote", "get-url", arguments["remote"]]).strip()
         if hashlib.sha256(current_url.encode("utf-8")).hexdigest() != remote_url_hash:
             raise PermissionError("Git remote URL changed after authorization")
         args = ["push"]
         if arguments["dry_run"]:
             args.append("--dry-run")
-        if arguments["force_with_lease"]:
-            args.append("--force-with-lease")
+        args.append(
+            "--force-with-lease="
+            f"refs/heads/{arguments['branch']}:{arguments['expected_remote_oid']}"
+        )
         if arguments["set_upstream"]:
             args.append("--set-upstream")
-        args.extend(["--", arguments["remote"], arguments["branch"]])
+        exact_refspec = (
+            f"refs/heads/{arguments['branch']}:"
+            f"refs/heads/{arguments['branch']}"
+        )
+        args.extend(["--", arguments["remote"], exact_refspec])
         output = _git(repository, args, timeout=180)
         return {
             "workspace_id": str(payload.get("workspace_id") or ""),
@@ -70,6 +78,10 @@ class GitPublishService:
         mount = self.client.invoke(WORKSPACE, "get", common)
         if not isinstance(mount, Mapping):
             raise KeyError("workspace mount is unknown")
+        if int(mount.get("mount_revision") or 0) != int(
+            payload.get("expected_mount_revision") or -1
+        ):
+            raise PermissionError("workspace mount revision changed")
         root = Path(str(mount.get("root_path") or "")).resolve(strict=True)
         read = self.client.invoke(GIT_READ, "root", common)
         repository = (root / str(read.get("repository_root") or ".")).resolve(strict=True)
@@ -117,6 +129,14 @@ def _arguments(payload: Mapping[str, Any], *, dry_run: bool) -> dict[str, Any]:
         raise ValueError("Git remote name is invalid")
     if not _NAME.fullmatch(branch) or branch.startswith(('-', '/')) or ".." in branch:
         raise ValueError("Git branch is invalid")
+    expected_head = _oid(payload.get("expected_head"))
+    expected_remote_oid = _oid(
+        payload.get("expected_remote_oid"),
+        allow_zero=True,
+    )
+    expected_mount_revision = int(payload.get("expected_mount_revision") or -1)
+    if expected_mount_revision < 1:
+        raise ValueError("expected_mount_revision is required")
     return {
         "remote": remote,
         "branch": branch,
@@ -126,7 +146,25 @@ def _arguments(payload: Mapping[str, Any], *, dry_run: bool) -> dict[str, Any]:
         "expected_remote_url_hash": str(
             payload.get("expected_remote_url_hash") or ""
         ).strip(),
+        "expected_head": expected_head,
+        "expected_remote_oid": expected_remote_oid,
+        "expected_mount_revision": expected_mount_revision,
     }
+
+
+def _oid(value: Any, *, allow_zero: bool = False) -> str:
+    normalized = str(value or "").strip().lower()
+    if allow_zero and normalized == "0" * 40:
+        return normalized
+    if not re.fullmatch(r"[0-9a-f]{40,64}", normalized):
+        raise ValueError("Git object ID is invalid")
+    return normalized
+
+
+def _assert_local_head(repository: Path, expected_head: str) -> None:
+    current = _git(repository, ["rev-parse", "HEAD"]).strip()
+    if current != expected_head:
+        raise PermissionError("Git local ref changed after preflight")
 
 
 def _remote_host(remote_url: str) -> str:
@@ -162,4 +200,3 @@ def _git(repository: Path, args: list[str], *, timeout: int = 30) -> str:
 
 def _profile(payload: Mapping[str, Any]) -> str:
     return str(payload.get("profile_id") or "default")
-

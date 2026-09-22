@@ -26,7 +26,7 @@ class CapabilityCatalog:
             for pack_id in sorted(effective):
                 path = ecosystem_dir / pack_id
                 try:
-                    is_pack_root = path.is_dir() and (path / "ecosystem.json").is_file()
+                    is_pack_root = path.is_dir() and self._pack_id(path) == pack_id
                 except OSError:
                     continue
                 if is_pack_root:
@@ -36,20 +36,20 @@ class CapabilityCatalog:
         return roots
 
     def _ecosystem_root(self) -> Path:
-        if (self.pack_root / "ecosystem.json").exists() and self.pack_root.parent.name == "ecosystem":
+        if self._pack_id(self.pack_root) and self.pack_root.parent.name == "ecosystem":
             return self.pack_root.parent
         return Path(__file__).resolve().parents[3]
 
     @staticmethod
     def _pack_id(pack_root: Path) -> str:
         try:
-            raw = json.loads((pack_root / "ecosystem.json").read_text(encoding="utf-8"))
-            pack_id = str(raw.get("pack_id") or "").strip()
+            raw = json.loads((pack_root / "pack.v4.json").read_text(encoding="utf-8"))
+            pack_id = str((raw.get("pack") or {}).get("id") or "").strip()
             if pack_id:
                 return pack_id
         except Exception:
             pass
-        return pack_root.name
+        return ""
 
     def _load_yaml_dir_from_roots(
         self,

@@ -12,6 +12,7 @@ import {
   serializeSlashCommandDrafts,
   slashCommandDraftRowsFromValue,
 } from "./settings/renderers/slashCommandsField";
+import { allowCleartextMobileQr } from "../lib/mobileCleartextQr";
 import { apiKeySetupTargetFieldId } from "./settings/renderers/settingsFieldRendererUtils";
 import type { TemplateSettingsField } from "./template/settingsFieldMetadata";
 import type { SettingsSection } from "../lib/api";
@@ -208,6 +209,12 @@ test("api_key_setup renderer actions target the rendered template field", () => 
     label: "API Setup",
     type: "api_key_setup",
   } as TemplateSettingsField), "api_key_setup_template");
+});
+
+test("cleartext mobile QR flag only enables on explicit opt-in", () => {
+  assert.equal(allowCleartextMobileQr({}), false);
+  assert.equal(allowCleartextMobileQr({ VITE_RUMI_MOBILE_ALLOW_CLEARTEXT_QR: "0" }), false);
+  assert.equal(allowCleartextMobileQr({ VITE_RUMI_MOBILE_ALLOW_CLEARTEXT_QR: "1" }), true);
 });
 
 test("SettingsModalRenderer renders template model_select with searchable model selector surface", () => {
@@ -673,8 +680,187 @@ test("SettingsModalRenderer renders template api_key_setup with setup control", 
 
   assert.match(html, /data-settings-renderer="api_key_setup"/);
   assert.match(html, /openai:main:\*\*\*/);
+  assert.doesNotMatch(html, />APIキーを追加</);
   assert.match(html, /placeholder="openai API key"/);
   assert.match(html, />Save</);
+});
+
+test("Connections API credential template excludes AI provider keys", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "apis",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "apis",
+          label: "Connections",
+          fields: [
+            {
+              id: "api_key_setup_template",
+              label: "API Keys / Tokens",
+              type: "api_key_setup",
+              provider_id: "line",
+              provider_scope: "non_llm",
+            } as unknown as TemplateSettingsField,
+          ] as unknown as SettingsSection["fields"],
+        },
+      ],
+      settingsValues: {
+        apis: {
+          api_keys: [
+            {
+              provider_id: "openai",
+              label: "OpenAI",
+              kind: "llm",
+              apis: [{ api_id: "main", name: "AI key", kind: "llm", configured: true }],
+            },
+            {
+              provider_id: "line",
+              label: "LINE",
+              kind: "custom",
+              apis: [{ api_id: "channel", name: "LINE token", kind: "custom", configured: true }],
+            },
+          ],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-provider-scope="non_llm"/);
+  assert.match(html, /line:channel:\*\*\*/);
+  assert.doesNotMatch(html, /openai:main:\*\*\*/);
+});
+
+test("Models places AI API registration before model API connections", () => {
+  const html = renderToStaticMarkup(
+    createElement(SettingsModalRenderer, {
+      isOpen: true,
+      activeSectionId: "models",
+      catalog: {
+        sidebar: { filters: [], items: [] },
+        settings: { sections: [], values: {} },
+        chat_rendering: { renderers: [] },
+        extension_points: [],
+      },
+      health: null,
+      previewsCount: 0,
+      settingsSections: [
+        {
+          id: "models",
+          label: "Models",
+          fields: [
+            {
+              id: "main_model",
+              label: "Main Model",
+              type: "select",
+              options: [{ value: "openai/gpt-4.1", label: "GPT-4.1" }],
+            },
+            {
+              id: "model_api_routes",
+              label: "Model API Variants",
+              type: "model_api_routes",
+              renderer: "model_routing",
+              options: [{ value: "openai/gpt-4.1", label: "GPT-4.1", provider_id: "openai" }],
+              api_keys: [
+                {
+                  provider_id: "openai",
+                  label: "OpenAI",
+                  kind: "llm",
+                  apis: [{ api_id: "main", name: "AI key", kind: "llm", configured: true }],
+                },
+              ],
+            } as TemplateSettingsField,
+          ],
+        },
+        {
+          id: "apis",
+          label: "APIs",
+          fields: [
+            {
+              id: "api_keys",
+              label: "API Keys / Tokens",
+              type: "api_key_setup",
+              renderer: "api_key_setup",
+              provider_scope: "non_llm",
+              api_keys: [
+                {
+                  provider_id: "openai",
+                  label: "OpenAI",
+                  kind: "llm",
+                  apis: [{ api_id: "main", name: "AI key", kind: "llm", configured: true }],
+                },
+                {
+                  provider_id: "line",
+                  label: "LINE",
+                  kind: "custom",
+                  apis: [{ api_id: "channel", name: "LINE token", kind: "custom", configured: true }],
+                },
+              ],
+            } as unknown as TemplateSettingsField,
+          ] as unknown as SettingsSection["fields"],
+        },
+      ] as SettingsSection[],
+      settingsValues: {
+        models: {
+          main_model: "openai/gpt-4.1",
+          model_api_routes: "openai/gpt-4.1: openai/main",
+        },
+        apis: {
+          api_keys: [
+            {
+              provider_id: "openai",
+              label: "OpenAI",
+              kind: "llm",
+              apis: [{ api_id: "main", name: "AI key", kind: "llm", configured: true }],
+            },
+            {
+              provider_id: "line",
+              label: "LINE",
+              kind: "custom",
+              apis: [{ api_id: "channel", name: "LINE token", kind: "custom", configured: true }],
+            },
+          ],
+        },
+      },
+      onClose: () => undefined,
+      onSettingChange: () => undefined,
+    }),
+  );
+
+  assert.match(html, /data-provider-scope="llm"/);
+  assert.match(html, /openai:main:\*\*\*/);
+  assert.doesNotMatch(html, /line:channel:\*\*\*/);
+  assert.ok(
+    html.indexOf('data-settings-field="apis.api_keys"')
+      < html.indexOf('data-settings-field="models.model_api_routes"'),
+  );
+});
+
+test("CredentialTransferModal keeps transfer device-bound and credential-free", () => {
+  const html = renderToStaticMarkup(
+    createElement(CredentialTransferModal, {
+      providerId: "anthropic",
+      providerLabel: "Anthropic",
+      apiId: "main",
+      onClose: () => undefined,
+    }),
+  );
+
+  assert.match(html, /暗号化して端末へ転送/);
+  assert.match(html, /確認した1台だけ/);
+  assert.doesNotMatch(html, /Rumi Mobile QR/);
+  assert.doesNotMatch(html, /sk-ant-test/);
+  assert.match(html, /Anthropic/);
 });
 
 test("SettingsModalRenderer renders template model_api_routes through registered model routing renderer", () => {
@@ -732,8 +918,12 @@ test("SettingsModalRenderer renders template model_api_routes through registered
   );
 
   assert.match(html, /data-settings-renderer="model_routing"/);
+  assert.match(html, /data-model-search-picker="settings"/);
   assert.match(html, /Gemini 2\.5 Flash/);
   assert.match(html, /google\/main/);
+  assert.match(html, /min-h-11/);
+  assert.match(html, /API keyを追加/);
+  assert.doesNotMatch(html, /data-settings-routing-overview/);
 });
 
 test("SettingsModalRenderer renders continuity handoff controls", () => {
@@ -1368,6 +1558,7 @@ test("settings accounts prelude renders actionable Google and disabled Cloudflar
   assert.match(html, /Set RUMI_WRANGLER_COMMAND/);
   assert.match(html, /node_modules\/\.bin\/wrangler/);
   assert.match(html, /Cloudflare Containers require the Workers Paid plan/);
+  assert.match(html, /src="data:image\/svg\+xml,%3Csvg/);
   assert.doesNotMatch(html, />Not connected</);
 });
 

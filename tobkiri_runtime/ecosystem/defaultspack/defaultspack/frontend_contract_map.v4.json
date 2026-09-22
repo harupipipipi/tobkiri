@@ -1,0 +1,315 @@
+{
+  "schema": "io.tobkiri.frontend-contract-map.v4",
+  "pack_id": "defaultspack",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/home/dashboard",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.home.dashboard",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "dashboard.read",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/pack-control/catalog",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.catalog",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "catalog.read",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/install",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.install",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.install",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/approval-candidate",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.approval-candidate",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.candidate",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/approval-approve",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.approval-approve",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.approve",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["candidate_id", "pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/approval-revoke",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.approval-revoke",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.revoke",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/enable",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.enable",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.enable",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/disable",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.disable",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.disable",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/pack-control/restart",
+      "presentation": "broker_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.runtime.restart",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "runtime.restart",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/profile",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/profiles",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-catalog", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.catalog.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": []}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/operation-status",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.operation-status", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "operation.status.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["request_id"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/settings",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.settings", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "settings.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": []}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/topology/packs",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.packs", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "topology.packs.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/topology/contracts",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.contracts", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "topology.contracts.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/topology/operations",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.operations", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "topology.operations.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-surface/topology/principals",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.principals", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "topology.principals.read", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["expected_profile_revision", "expected_plan_digest"]}]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-surface/profile-change/resolve",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-change.resolve", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.change.resolve", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["profile_id", "expected_profile_revision", "expected_plan_digest", "desired_pack_ids", "profile_definition_digest", "profile_catalog_digest", "bundle_lock_digest"]}]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-surface/profile-change/review",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-change.review", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.change.review", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["candidate_id", "candidate_digest"]}]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-surface/profile-change/approve",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-change.approve", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.change.approve", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["candidate_id", "candidate_digest"]}]
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-surface/profile-change/activate",
+      "presentation": "broker_result",
+      "targets": [{"contribution_id": "defaults.runtime-surface.profile-change.activate", "contract_id": "tobkiri.host.control-presentation.v4", "operation_id": "profile.change.activate", "provider_id": "tobkiri.host.control-presentation", "function_id": "tobkiri.host.control-presentation", "allowed_payload_keys": ["approval_id", "approval_digest"]}]
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/catalog",
+      "presentation": "dynamic_pack_catalog",
+      "targets": [
+        {
+          "contribution_id": "defaults.pack.catalog",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "catalog.read",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/capability/invoke",
+      "presentation": "capability_result",
+      "targets": [
+        {
+          "contribution_id": "defaults.conversation.complete",
+          "contract_id": "conversation.turn.v1",
+          "operation_id": "complete",
+          "provider_id": "defaultspack.conversation",
+          "function_id": "defaultspack.conversation",
+          "allowed_payload_keys": ["messages"]
+        },
+        {
+          "contribution_id": "defaults.pack.install",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.install",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.approval-candidate",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.candidate",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.approval-approve",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.approve",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["candidate_id", "pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.approval-revoke",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "approval.revoke",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.enable",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.enable",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.status",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.status",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.pack.disable",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "pack.disable",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": ["pack_id"]
+        },
+        {
+          "contribution_id": "defaults.profile.reload",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "profile.reload",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        },
+        {
+          "contribution_id": "defaults.runtime.restart",
+          "contract_id": "tobkiri.host.pack-control.v4",
+          "operation_id": "runtime.restart",
+          "provider_id": "tobkiri.host.pack-control",
+          "function_id": "tobkiri.host.pack-control",
+          "allowed_payload_keys": []
+        }
+      ]
+    }
+  ]
+}

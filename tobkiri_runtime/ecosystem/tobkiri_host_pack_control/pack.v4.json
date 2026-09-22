@@ -1,0 +1,561 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:d065c92d016976b37cbcc1f34d15aef88ac0e36c6276d1ce825ce9b8e6a7917a",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+      "kind": "executable",
+      "path": "runtime/catalog.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.host.pack-control.v4",
+      "operations": [
+        "approval.approve",
+        "approval.candidate",
+        "approval.revoke",
+        "catalog.read",
+        "dashboard.read",
+        "pack.disable",
+        "pack.enable",
+        "pack.install",
+        "pack.status",
+        "profile.reload",
+        "runtime.restart"
+      ],
+      "revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e"
+    },
+    {
+      "contract_id": "tobkiri.host.control-presentation.v4",
+      "operations": [
+        "profile.change.activate",
+        "profile.change.approve",
+        "profile.change.resolve",
+        "profile.change.review",
+        "profile.catalog.read",
+        "operation.status.read",
+        "profile.read",
+        "settings.read",
+        "topology.contracts.read",
+        "topology.operations.read",
+        "topology.packs.read",
+        "topology.principals.read"
+      ],
+      "revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:83cbce7734a5026885e1c4012d4cf3e37ac7882d8dc8cb03bcb903257ddc8b02",
+      "id": "tobkiri.host.control-presentation",
+      "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+      "isolation": "dedicated_process",
+      "operations": [
+        "profile.change.activate",
+        "profile.change.approve",
+        "profile.change.resolve",
+        "profile.change.review",
+        "profile.catalog.read",
+        "operation.status.read",
+        "profile.read",
+        "settings.read",
+        "topology.contracts.read",
+        "topology.operations.read",
+        "topology.packs.read",
+        "topology.principals.read"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:715f2958c6b86db70ed0c7b1bd7b0c52f51d0b1c268de41383573ec5f2e7f37e",
+      "id": "tobkiri.host.pack-control",
+      "implementation_digest": "sha256:0d65cfd041a191408c1cabc98191647d950e0dd24c369c0a2bccdaa07049f0c7",
+      "isolation": "dedicated_process",
+      "operations": [
+        "approval.approve",
+        "approval.candidate",
+        "approval.revoke",
+        "catalog.read",
+        "dashboard.read",
+        "pack.disable",
+        "pack.enable",
+        "pack.install",
+        "pack.status",
+        "profile.reload",
+        "runtime.restart"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:fffbf39da451dd066338191b891e85667f25acfb2099eb6257baf75deb032777",
+    "contract_catalog_digest": "sha256:a05d93023c77632932ae4b85eaf8ce189e3c9e3abbd4a658016b97c820456c8b",
+    "source_identity": "sha256:2d568d178c7f9f6b790fc6224e3311f21e88c94cb3d44b7a06cb5b132f1a76fa"
+  },
+  "migration": {
+    "compatibility": "none",
+    "legacy_ids": [],
+    "removal_wave": 0,
+    "sunset_at": "2026-08-05"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "approval.approve",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "approval.candidate",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "approval.revoke",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "catalog.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "dashboard.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "operation.status.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "pack.disable",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "pack.enable",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "pack.install",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "pack.status",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "profile.catalog.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "profile.change.activate",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "profile.change.approve",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "profile.change.resolve",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "profile.change.review",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "profile.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "profile.reload",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "effect_ceiling": [
+        "capability:dashboard.read",
+        "capability:pack.approval.commit",
+        "capability:pack.approval.prepare",
+        "capability:pack.approval.revoke",
+        "capability:pack.catalog.read",
+        "capability:pack.disable",
+        "capability:pack.enable",
+        "capability:pack.install",
+        "capability:pack.status.read",
+        "capability:profile.reload",
+        "capability:runtime.restart",
+        "host:brokered-execution"
+      ],
+      "operation_id": "runtime.restart",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "settings.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "topology.contracts.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "topology.operations.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "topology.packs.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "effect_ceiling": [
+        "capability:control.presentation",
+        "host:brokered-execution"
+      ],
+      "operation_id": "topology.principals.read",
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:fffbf39da451dd066338191b891e85667f25acfb2099eb6257baf75deb032777",
+    "display_name": "Tobkiri Host Pack Control",
+    "id": "tobkiri_host_pack_control",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:2d568d178c7f9f6b790fc6224e3311f21e88c94cb3d44b7a06cb5b132f1a76fa",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:2d568d178c7f9f6b790fc6224e3311f21e88c94cb3d44b7a06cb5b132f1a76fa",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/tobkiri_host_pack_control"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.host.control-presentation.v4",
+      "operations": [
+        "profile.change.activate",
+        "profile.change.approve",
+        "profile.change.resolve",
+        "profile.change.review",
+        "profile.catalog.read",
+        "operation.status.read",
+        "profile.read",
+        "settings.read",
+        "topology.contracts.read",
+        "topology.operations.read",
+        "topology.packs.read",
+        "topology.principals.read"
+      ],
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.control-presentation"
+    },
+    {
+      "contract_reference": "tobkiri.host.pack-control.v4",
+      "operations": [
+        "approval.approve",
+        "approval.candidate",
+        "approval.revoke",
+        "catalog.read",
+        "dashboard.read",
+        "pack.disable",
+        "pack.enable",
+        "pack.install",
+        "pack.status",
+        "profile.reload",
+        "runtime.restart"
+      ],
+      "owner": "tobkiri_host_pack_control",
+      "provider_id": "tobkiri.host.pack-control"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "dashboard.read",
+      "pack.approval.commit",
+      "pack.approval.prepare",
+      "pack.approval.revoke",
+      "pack.catalog.read",
+      "pack.disable",
+      "pack.enable",
+      "pack.install",
+      "pack.status.read",
+      "control.presentation",
+      "profile.reload",
+      "runtime.restart"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

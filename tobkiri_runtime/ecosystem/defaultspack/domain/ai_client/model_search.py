@@ -126,6 +126,11 @@ def get_model_capabilities(profile_id: str, *, profiles: list[dict[str, Any]] | 
     return None
 
 
+def get_profile_catalog() -> list[dict[str, Any]]:
+    """Return the resolved model profile catalog for one runtime operation."""
+    return _profile_catalog()
+
+
 def recommend_model(request: dict[str, Any] | None = None, *, profiles: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     request = dict(request or {})
     filters = {

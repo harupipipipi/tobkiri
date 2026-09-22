@@ -1,33 +1,294 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {"id": "rumi.provider_adapters", "version": "1.0.0", "kind": "service", "display_name": "Rumi Provider Adapters", "description": "Provider-neutral protocol execution using scoped global resources."},
   "contracts": {
     "provides": [
-      {"id": "rumi.service.ai.provider.generate.v1", "version": "1.0.0", "provider_instance_id": "provider.compatibility.generate", "routing_keys": ["*"], "cardinality": "many", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_provider_adapters_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.provider.generate"]},
-      {"id": "rumi.service.ai.provider.stream.v1", "version": "1.0.0", "provider_instance_id": "provider.compatibility.stream", "routing_keys": ["*"], "cardinality": "many", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_provider_adapters_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.provider.stream"]},
-      {"id": "rumi.service.ai.provider.embedding.v1", "version": "1.0.0", "provider_instance_id": "provider.compatibility.embedding", "routing_keys": ["*"], "cardinality": "many", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_provider_adapters_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.provider.embedding"]},
-      {"id": "rumi.service.ai.provider.image.v1", "version": "1.0.0", "provider_instance_id": "provider.compatibility.image", "routing_keys": ["*"], "cardinality": "many", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_provider_adapters_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.provider.image"]}
+      {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.provider.generate.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_provider_adapters_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "provider.compatibility.generate",
+        "required_capabilities": [
+          "ai.provider.generate"
+        ],
+        "routing_keys": [
+          "*"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.provider.stream.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_provider_adapters_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "provider.compatibility.stream",
+        "required_capabilities": [
+          "ai.provider.stream"
+        ],
+        "routing_keys": [
+          "*"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.provider.embedding.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_provider_adapters_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "provider.compatibility.embedding",
+        "required_capabilities": [
+          "ai.provider.embedding"
+        ],
+        "routing_keys": [
+          "*"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "many",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.provider.image.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_provider_adapters_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "provider.compatibility.image",
+        "required_capabilities": [
+          "ai.provider.image"
+        ],
+        "routing_keys": [
+          "*"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
     ],
     "requires": [
-      {"id": "rumi.resource.ai.provider.registry.v1", "version_range": ">=1.0.0 <2.0.0", "cardinality": "one", "optional": false},
-      {"id": "rumi.service.credential.resolve.v1", "version_range": ">=1.0.0 <2.0.0", "cardinality": "one", "optional": true}
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.ai.provider.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
     ]
   },
   "entrypoints": [
-    {"id": "provider-generate", "contract_id": "rumi.service.ai.provider.generate.v1", "loader": "python", "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter", "symbol": "create_generate_operation", "artifact_hash": "sha256:113109a43c9bdba368b276b42df4fda750271b1bb7380815baca8ccac66640fa"},
-    {"id": "provider-stream", "contract_id": "rumi.service.ai.provider.stream.v1", "loader": "python", "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter", "symbol": "create_stream_operation", "artifact_hash": "sha256:113109a43c9bdba368b276b42df4fda750271b1bb7380815baca8ccac66640fa"},
-    {"id": "provider-embedding", "contract_id": "rumi.service.ai.provider.embedding.v1", "loader": "python", "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter", "symbol": "create_embedding_operation", "artifact_hash": "sha256:113109a43c9bdba368b276b42df4fda750271b1bb7380815baca8ccac66640fa"},
-    {"id": "provider-image", "contract_id": "rumi.service.ai.provider.image.v1", "loader": "python", "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter", "symbol": "create_image_operation", "artifact_hash": "sha256:113109a43c9bdba368b276b42df4fda750271b1bb7380815baca8ccac66640fa"}
+    {
+      "artifact_hash": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e",
+      "contract_id": "rumi.service.ai.provider.generate.v1",
+      "id": "provider-generate",
+      "loader": "python",
+      "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter",
+      "symbol": "create_generate_operation"
+    },
+    {
+      "artifact_hash": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e",
+      "contract_id": "rumi.service.ai.provider.stream.v1",
+      "id": "provider-stream",
+      "loader": "python",
+      "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter",
+      "symbol": "create_stream_operation"
+    },
+    {
+      "artifact_hash": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e",
+      "contract_id": "rumi.service.ai.provider.embedding.v1",
+      "id": "provider-embedding",
+      "loader": "python",
+      "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter",
+      "symbol": "create_embedding_operation"
+    },
+    {
+      "artifact_hash": "sha256:7b1b003017a5646e3285f7dcb17cc7d997eb1ed1e631f7a0a12b3b5c587ae90e",
+      "contract_id": "rumi.service.ai.provider.image.v1",
+      "id": "provider-image",
+      "loader": "python",
+      "module": "ecosystem.rumi_provider_adapters_pack.runtime.adapter",
+      "symbol": "create_image_operation"
+    }
   ],
-  "resources": [],
-  "storage": [],
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.ai.provider.embedding.v1",
+            "rumi.service.ai.provider.generate.v1",
+            "rumi.service.ai.provider.image.v1",
+            "rumi.service.ai.provider.stream.v1"
+          ],
+          "requires": [
+            "rumi.resource.ai.provider.registry.v1"
+          ]
+        },
+        "dependencies": {},
+        "description": "Provider-neutral protocol execution using scoped global resources.",
+        "display_name": "Rumi Provider Adapters",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:f1bd846662e32899413ef6e971a96fca2ff5da322d7c9c1d79bfb510de23c029",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:923b6baa2c4a19aad2e33895787bb62671fc08d9c37e0e4acf8c4a4d7bda3722"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "provider_protocol_execution"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "environment_secret_injection": false,
+            "opaque_credentials_only": true,
+            "provider_pack_id_branches": false,
+            "registry_selected_endpoints_only": true
+          }
+        },
+        "pack_id": "rumi_provider_adapters_pack",
+        "pack_identity": "rumi:ecosystem/rumi_provider_adapters_pack",
+        "provenance": {
+          "build_identity": "rumi_provider_adapters_pack:1.0.0",
+          "content_hash": "sha256:7dd19b90171d18fea7b2e0f7f787b8140823b38461c7c05e3c7fd850fbf48794",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.provider.embedding",
+          "ai.provider.generate",
+          "ai.provider.image",
+          "ai.provider.stream"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_provider_adapters_pack"
+    },
+    "rumi.provider_adapters.boundary": {
+      "catalog_owner": false,
+      "connection_owner": false,
+      "credential_owner": false,
+      "provider_additions": false,
+      "provider_pack_id_branches": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_provider_adapters_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:923b6baa2c4a19aad2e33895787bb62671fc08d9c37e0e4acf8c4a4d7bda3722"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "none",
+    "from": [
+      "defaultspack.domain.ai_client.providers"
+    ],
+    "removal_wave": 10,
+    "rollback": "Restore the pinned legacy provider execution owner and revoke adapter-bound handles.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Provider-neutral protocol execution using scoped global resources.",
+    "display_name": "Rumi Provider Adapters",
+    "id": "rumi.provider_adapters",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
   "permissions": [
-    {"capability": "ai.provider.generate", "access": "execute", "approval_required": false},
-    {"capability": "ai.provider.stream", "access": "execute", "approval_required": false},
-    {"capability": "ai.provider.embedding", "access": "execute", "approval_required": false},
-    {"capability": "ai.provider.image", "access": "execute", "approval_required": false}
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.provider.generate"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.provider.stream"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.provider.embedding"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.provider.image"
+    }
   ],
-  "provenance": {"content_hash": "sha256:586608639869c3a9f37d9283dfed48d295180fc1f9559a44670474d413bf82df", "build_identity": "rumi-provider-adapters-pack:1.0.0", "trust_class": "local", "signature": null},
-  "migration": {"from": ["defaultspack.domain.ai_client.providers"], "compatibility_aliases": [], "compatibility_projection": "none", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Restore the pinned legacy provider execution owner and revoke adapter-bound handles."},
-  "extensions": {"rumi.provider_adapters.boundary": {"catalog_owner": false, "credential_owner": false, "connection_owner": false, "provider_additions": false, "provider_pack_id_branches": false}}
+  "provenance": {
+    "build_identity": "rumi_provider_adapters_pack:1.0.0",
+    "content_hash": "sha256:7dd19b90171d18fea7b2e0f7f787b8140823b38461c7c05e3c7fd850fbf48794",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }

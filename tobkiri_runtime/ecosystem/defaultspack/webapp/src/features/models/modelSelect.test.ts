@@ -4,8 +4,12 @@ import assert from "node:assert/strict";
 import {
   buildVisibleModelOptions,
   findSelectedModelOption,
+  filterModelOptionsByProvider,
+  filterModelProviderOptions,
   modelOptionBadges,
+  modelProviderOptions,
   modelSearchItemToModelSelectOption,
+  parseModelProviderQuery,
   parseModelAllowlist,
   serializeModelAllowlist,
   type ModelSelectOption,
@@ -105,4 +109,52 @@ test("model allowlist parsing and serialization dedupe stable model ids", () => 
 
   assert.deepEqual(parsed, ["stub/default", "google/gemini"]);
   assert.equal(serializeModelAllowlist(parsed), "stub/default\ngoogle/gemini");
+});
+
+test("@provider query offers providers and scopes the following model search", () => {
+  const options: ModelSelectOption[] = [
+    {
+      value: "openai/gpt-4.1",
+      label: "GPT 4.1",
+      provider_id: "openai",
+      provider_display_name: "OpenAI",
+    },
+    {
+      value: "openrouter/anthropic/claude-sonnet-4",
+      label: "Claude Sonnet 4",
+      provider_id: "openrouter",
+      provider_display_name: "OpenRouter",
+    },
+    {
+      value: "openrouter/google/gemini-2.5-pro",
+      label: "Gemini 2.5 Pro",
+      provider_id: "openrouter",
+      provider_display_name: "OpenRouter",
+    },
+  ];
+  const providers = modelProviderOptions(options);
+
+  assert.deepEqual(
+    filterModelProviderOptions(providers, "router").map((provider) => provider.provider_id),
+    ["openrouter"],
+  );
+  assert.deepEqual(parseModelProviderQuery("@openr", providers), {
+    active: true,
+    providerQuery: "openr",
+    providerId: "",
+    modelQuery: "",
+  });
+  assert.deepEqual(parseModelProviderQuery("@openrouter gemini", providers), {
+    active: false,
+    providerQuery: "openrouter",
+    providerId: "openrouter",
+    modelQuery: "gemini",
+  });
+  assert.deepEqual(
+    filterModelOptionsByProvider(options, "openrouter").map((option) => option.value),
+    [
+      "openrouter/anthropic/claude-sonnet-4",
+      "openrouter/google/gemini-2.5-pro",
+    ],
+  );
 });

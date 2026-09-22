@@ -5,17 +5,18 @@ Last updated: 2026-07-10
 `defaultspack.*` is the canonical function vocabulary. `defaults.*` names are
 compatibility aliases and must not be used by new callers.
 
-## Authoritative Inventory
+## Runtime authority
 
-`ecosystem/defaultspack/compat_aliases.yaml` is the explicit, machine-checked
-allowlist and canonical replacement index. Every remaining alias is a key under
-`aliases`; its adjacent `replacement` value is the canonical name callers must
-adopt. Each entry also declares an owner, migration note (`reason`), and removal
-deadline. The integrity scan fails for an alias that is absent from this index,
-lacks a migration note, or points to a canonical alias on another function.
-The generated human-readable list of every alias and replacement is
-`docs/defaultspack-compat-alias-reference.md`; CI also checks that it matches the
-allowlist exactly.
+Protocol v4 does not use a compatibility-alias file, legacy Function Registry,
+or alias projection as runtime authority. The canonical Defaultspack identity
+and implementation set are the v4 Pack manifest, contract catalog,
+artifact-index, executable catalog, and bundle lock. Legacy aliases described
+on this page are offline migration vocabulary only; they cannot select a
+Function, provider, artifact, approval, or authority record.
+
+The strict integrity scan verifies those v4 documents and their real
+implementation bytes. It deliberately does not load an alias allowlist or
+compare legacy function manifests.
 
 No request arguments, user identifiers, prompt text, file paths, URLs, tokens,
 or other payload values are recorded by compatibility telemetry. Audit events
@@ -24,27 +25,23 @@ contain only the alias, canonical replacement, migration stage, caller class
 
 ## Stages
 
-1. **Inventory:** complete. Existing aliases and replacements are captured in
-   the allowlist; new aliases require ownership and migration metadata.
-2. **Warning:** active. Actual alias resolution writes a local audit event.
-   Non-internal callers receive one structured deprecation warning per alias and
-   process. Internal callers are measured without warning noise.
-3. **Enforcement:** planned for v2.4. Tests and integrity scans already reject
-   unallowlisted aliases; runtime enforcement will advance per alias after usage
-   evidence confirms callers have migrated.
-4. **Removal:** staged by each entry's `remove_after`. Removed aliases disappear
-   from both function manifests and the allowlist while canonical names remain.
+1. **Inventory:** retained as historical migration documentation only.
+2. **Warning:** compatibility callers may be measured by their owning migration
+   surface, but this is outside the v4 runtime authority boundary.
+3. **Enforcement:** new v4 callers must use canonical Function identities from
+   the executable catalog.
+4. **Removal:** legacy aliases may disappear from offline projections without
+   changing the v4 Pack catalog.
 
 ## First Removal
 
-The `defaults.model_runtime.*` compatibility group was removed after repository
-search found no callers outside generated manifests and the compatibility
-inventory. The canonical `defaultspack.ai.*` and
-`defaultspack.model_runtime.*` aliases remain supported.
+The `defaults.model_runtime.*` compatibility group is not a v4 Function
+identity. Canonical operation identities come from the v4 executable catalog;
+any remaining `defaults.*` spelling is an offline migration concern.
 
 Run the guard locally with:
 
 ```bash
 cd tobkiri_runtime
-python scripts/quality/scan_defaultspack_integrity.py
+python scripts/quality/scan_defaultspack_integrity.py --strict
 ```

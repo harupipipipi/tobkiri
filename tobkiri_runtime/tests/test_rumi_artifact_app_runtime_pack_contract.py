@@ -17,7 +17,15 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = 'rumi_artifact_app_runtime_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
+PACK_METADATA_FILES = {
+    "ecosystem.json",
+    "rumi.pack.v3.json",
+    "artifact-manifest.json",
+    "executables.v4.json",
+    "frontend/contributions/artifact-app-runtime.json",
+}
 REQUIRED_ASSETS = ['README.md', 'asset_index.json', 'asset_index.yaml', 'catalog/handoff_matrix.yaml', 'catalog/quality_matrix.yaml', 'catalog/renderer_capability_catalog.yaml', 'catalog/taxonomy.yaml', 'catalog/workflows.yaml', 'checklists/review.checklist.yaml', 'docs/README.md', 'docs/architecture.md', 'docs/interfaces.md', 'docs/operations.md', 'docs/security.md', 'examples/export_package.example.yaml', 'examples/mcp_approval_prompt.example.yaml', 'examples/sample_calculator_manifest.example.yaml', 'examples/version_rollback.example.yaml', 'fixtures/contract_fixture.yaml', 'fixtures/negative_cases.yaml', 'ledgers/evidence_ledger.schema.yaml', 'policies/handoff.policy.yaml', 'policies/safety.policy.yaml', 'policies/sandbox_renderer.policy.yaml', 'policies/tool_mcp_approval.policy.yaml', 'presets/handoff_review.preset.yaml', 'presets/quality_gate.preset.yaml', 'presets/safe_default.preset.yaml', 'profiles/artifact_runtime_reviewer.profile.yaml', 'prompts/artifact_runtime_reviewer.system.md', 'schemas/artifact_app_error.schema.json', 'schemas/artifact_app_manifest.schema.json', 'schemas/artifact_state_snapshot.schema.json', 'schemas/export_package.schema.json', 'schemas/renderer_sandbox_contract.schema.json', 'schemas/runtime_error_boundary.schema.json', 'schemas/share_package.schema.json', 'schemas/storage_version_selector.schema.json', 'schemas/tool_approval_prompt.schema.json', 'schemas/version_record.schema.json', 'templates/handoff.template.md', 'templates/review_report.template.md', 'templates/ui_contract.template.md']
 SCHEMA_EXPECTATIONS = {'schemas/artifact_app_error.schema.json': ['error_id', 'artifact_id', 'error_class', 'safe_message', 'stack_redacted', 'recovery_handoff', 'correlation_id', 'details_redacted', 'raw_stack_included', 'handoff_packet_required'], 'schemas/artifact_app_manifest.schema.json': ['app_id', 'artifact_id', 'name', 'schema_version', 'entrypoint', 'content_ref', 'permissions', 'state_schema_id', 'version_id', 'network_default', 'renderer', 'storage_selector', 'approval_policy', 'export_share', 'error_boundary'], 'schemas/artifact_state_snapshot.schema.json': ['snapshot_id', 'artifact_id', 'version_id', 'state_digest', 'created_from_event_ids', 'storage_handoff'], 'schemas/export_package.schema.json': ['export_id', 'artifact_id', 'version_id', 'included_files', 'excluded_capabilities', 'review_state', 'workspace_handoff', 'package_digest', 'package_contract_only', 'file_persistence_owner', 'zip_creation_owner', 'execution_effect'], 'schemas/renderer_sandbox_contract.schema.json': ['sandbox_id', 'artifact_id', 'csp', 'allowed_origins', 'runtime_owner', 'host_execution', 'sandbox_tokens', 'untrusted_forbidden_token_pairs', 'remote_modules_allowed', 'same_origin_required', 'trusted_renderer_prefixes'], 'schemas/runtime_error_boundary.schema.json': ['boundary_id', 'artifact_id', 'error_class', 'safe_fallback', 'captured_event_ids', 'handoff_owner', 'error_envelope_schema_id', 'raw_stack_included', 'fallback_mode'], 'schemas/share_package.schema.json': ['share_id', 'artifact_id', 'version_id', 'visibility', 'permission_scope', 'checksum', 'workspace_handoff', 'share_contract_only', 'link_creation_owner', 'file_persistence_owner', 'token_creation_allowed'], 'schemas/storage_version_selector.schema.json': ['selector_id', 'artifact_id', 'selector_kind', 'pinned_version_id', 'checksum', 'storage_owner', 'path_policy', 'source_owner', 'source_ref', 'read_only', 'allowed_sources', 'client_supplied_path_trusted'], 'schemas/tool_approval_prompt.schema.json': ['approval_id', 'artifact_id', 'tool_ref', 'scope', 'approval_state', 'first_call', 'receipt', 'approval_required', 'requires_approval', 'approval_request_id', 'operation', 'risk_level', 'args_hash', 'expires_at', 'display_summary', 'redacted_arguments', 'client_supplied_approved_trusted', 'tool_call_id', 'payload', 'execution_owner', 'trusted_authority', 'server_issued_approval_token_required'], 'schemas/version_record.schema.json': ['version_id', 'artifact_id', 'parent_version_id', 'change_summary', 'rollback_allowed', 'source_snapshot_id']}
 WORKFLOW_IDS = set(['manifest_validation', 'sandbox_render_contract', 'state_snapshot_versioning', 'tool_mcp_approval_gate', 'error_boundary_review', 'export_package_build'])
@@ -49,9 +57,13 @@ def test_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["required_secrets"] == []
-    assert ecosystem["required_network"] == []
+    assert ecosystem["required_network"] == {
+        "allowed_domains": [],
+        "allowed_ports": [],
+    }
     assert ecosystem["host_execution"] is False
     metadata = ecosystem["metadata"]
     assert metadata["runtime_type"] == "declarative_setup_pack"
@@ -70,7 +82,13 @@ def test_required_assets_and_ecosystem_contract() -> None:
     assert "UI" in optional_integrations["rumi_reference_ui_pack"]
     assert "sandbox" in optional_integrations["defaultspack"]
     assert "browser" in optional_integrations["rumi_default_tools_pack"]
-    actual = {path.relative_to(PACK_DIR).as_posix() for path in PACK_DIR.rglob("*") if path.is_file() and path.name != "ecosystem.json"}
+    actual = {
+        path.relative_to(PACK_DIR).as_posix()
+        for path in PACK_DIR.rglob("*")
+        if path.is_file()
+        and path.relative_to(PACK_DIR).as_posix() not in PACK_METADATA_FILES
+    }
+    actual -= V4_AUTHORITY_ARTIFACTS
     indexed = {item for values in metadata["asset_index"].values() for item in values}
     assert actual == indexed == set(REQUIRED_ASSETS)
     asset_index = read_yaml(PACK_DIR / "asset_index.yaml")["asset_index"]

@@ -13,7 +13,7 @@ import urllib.request
 import uuid
 from typing import Any, Mapping
 
-CATALOG_REVISION = "sha256:119a72a75968f56f12c3422ea07e1f2ef4860d7e03dfdd23520c4b9cdbb51788"
+CATALOG_REVISION = "sha256:23cd323554cef32f891827a9a6ddd9c75b7fd3c898d0b501c7e62b091a5001cd"
 _ROOT = Path(__file__).resolve().parents[1] / "catalog" / "providers"
 _EXTENSION_ROOT = Path(__file__).resolve().parents[1] / "extensions" / "llm" / "providers"
 _OPENROUTER_PROVIDER_ID = "openrouter"
@@ -31,7 +31,13 @@ def create_model_catalog_operation(client: Any):
     del client
 
     def operation(name: str, payload: Mapping[str, Any]) -> dict[str, Any]:
-        if name not in {"list", "get", "providers"}:
+        if name not in {
+            "list",
+            "get",
+            "providers",
+            "rumi_model_catalog_pack.bundled-model-catalog.generate",
+            "rumi_model_catalog_pack.bundled-model-catalog.stream",
+        }:
             raise ValueError(f"unknown model catalog operation: {name}")
         providers, models = _load_catalog()
         provider_id = str(payload.get("provider_id") or "").strip()
@@ -52,6 +58,31 @@ def create_model_catalog_operation(client: Any):
         }
 
     return operation
+
+
+def tobkiri_packvm_invoke(
+    operation_id: object,
+    payload: object,
+) -> dict[str, Any]:
+    """Execute only the sealed Catalog PackVM ABI operations.
+
+    This module intentionally depends only on the standard library. The
+    PackVM sandbox supplies no network and this entrypoint neither imports a
+    Host provider nor selects any non-catalog capability.
+    """
+
+    allowed_operations = {
+        "rumi_model_catalog_pack.bundled-model-catalog.generate",
+        "rumi_model_catalog_pack.bundled-model-catalog.stream",
+    }
+    if not isinstance(operation_id, str) or operation_id not in allowed_operations:
+        raise ValueError("PackVM model catalog operation is not permitted")
+    if not isinstance(payload, Mapping):
+        raise ValueError("PackVM model catalog payload must be an object")
+    result = create_model_catalog_operation(None)(operation_id, payload)
+    if not isinstance(result, dict):
+        raise ValueError("PackVM model catalog result must be an object")
+    return dict(result)
 
 
 def _load_catalog() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

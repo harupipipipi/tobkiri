@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -154,25 +155,42 @@ def test_runtime_desktop_launch_uses_scoped_capability_path(monkeypatch):
     direct_launch.assert_not_called()
 
 
-def test_defaultspack_ecosystem_registers_desktop_app_metadata(tmp_path):
-    from core_runtime.desktop_app_manager import DesktopAppManager
+def test_defaultspack_ecosystem_registers_desktop_app_metadata():
+    """The v4 authority artifacts replace legacy ecosystem metadata."""
+    manifest = json.loads(
+        (DEFAULTSPACK_ROOT / "pack.v4.json").read_text(encoding="utf-8")
+    )
+    artifact_index = json.loads(
+        (DEFAULTSPACK_ROOT / "artifact-index.v4.json").read_text(encoding="utf-8")
+    )
 
-    pack_shell = tmp_path / "pack-shell"
-    pack_shell.write_text("#!/bin/sh\n", encoding="utf-8")
-    pack_shell.chmod(0o755)
-    manager = DesktopAppManager(repo_dir=str(tmp_path / "repo"))
-
-    with mock.patch.dict(os.environ, {"RUMI_PACK_SHELL_PATH": str(pack_shell)}):
-        with mock.patch.object(manager, "_create_shortcut", return_value=str(tmp_path / "Defaultspack.app")):
-            result = manager.register_from_ecosystem(str(DEFAULTSPACK_ROOT / "ecosystem.json"))
-
-    assert result["success"] is True
-    meta_path = tmp_path / "repo" / "user_data" / "apps" / "defaultspack.json"
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    assert meta["pack_id"] == "defaultspack"
-    assert meta["command"] == "python defaultspack/desktop_app.py"
-    assert meta["pack_dir"] == str(DEFAULTSPACK_ROOT)
-    assert meta["env"]["RUMI_DEFAULTSPACK_PORT"] == "8766"
+    assert manifest["pack_api_version"] == "io.tobkiri.pack.v4"
+    assert manifest["pack"]["id"] == "defaultspack"
+    assert manifest["pack"]["artifact_digest"] == artifact_index["artifact_set_digest"]
+    assert artifact_index["pack_id"] == manifest["pack"]["id"]
+    assert artifact_index["integrity_seal"]["algorithm"] == "sha256-canonical-v1"
+    assert {
+        artifact["path"] for artifact in artifact_index["artifacts"]
+    } == {
+        "pack.v4.json",
+        "contracts.v4.json",
+        "executables.v4.json",
+        "runtime/conversation.py",
+    }
+    executable_sidecars = [
+        artifact
+        for artifact in artifact_index["artifacts"]
+        if artifact["path"] == "executables.v4.json"
+    ]
+    assert len(executable_sidecars) == 1
+    assert executable_sidecars[0]["role"] == "sidecar"
+    assert executable_sidecars[0]["digest"] == (
+        "sha256:"
+        + hashlib.sha256(
+            (DEFAULTSPACK_ROOT / "executables.v4.json").read_bytes()
+        ).hexdigest()
+    )
+    assert not (DEFAULTSPACK_ROOT / "ecosystem.json").exists()
 
 
 def test_desktop_capability_can_launch_registered_pack_with_issued_token():

@@ -1,6 +1,10 @@
 import { useDeferredValue, useEffect, useLayoutEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
-import { useAppStore } from '@/src/store';
+import {
+  cancelPackMutationReconciliation,
+  useAppStore,
+  type RuntimeStatus,
+} from '@/src/store';
 import { Layout } from '@/src/components/layout/Layout';
 import { Setup } from '@/src/pages/Setup';
 import { Dashboard } from '@/src/pages/Dashboard';
@@ -10,25 +14,27 @@ import { bootstrapPanelSession, hasPendingPanelBootstrapCode } from '@/src/lib/a
 import { applyAppearanceToRoot } from '@/src/lib/appearance';
 import { runtimeMonitorDelay } from '@/src/lib/runtimeHealth';
 import { panelRoutes } from '@/src/lib/routes';
-import { hasSelectedSetupPack } from '@/src/lib/setupPacks';
+import { RouteAnnouncer } from '@/src/components/layout/RouteAnnouncer';
+import {fetchDefaultsSetupState} from '@/src/lib/defaultsSetup';
 import {
-  LazyAiInputInspector,
+  LazyAiInput,
   LazyApiMap,
-  LazyFlows,
-  LazyGraphEditor,
-  LazyNodeManager,
+  LazyFlow,
+  LazyGraph,
   LazyPackDetail,
   LazyPacks,
-  LazyProfileGraphEditor,
-  LazyProfileWorkspace,
+  LazyNodeManager,
+  LazyProfile,
+  LazyProfileFiles,
+  LazyProfileWiring,
   LazySettings,
-  LazyStartupProfiles,
 } from '@/src/lib/routeModules';
 
 export default function App() {
   const theme = useAppStore(state => state.theme);
   const colorMode = useAppStore(state => state.colorMode);
   const isSetupDone = useAppStore(state => state.isSetupDone);
+  const runtimeStatus = useAppStore(state => state.runtimeStatus);
   const setSetupDone = useAppStore(state => state.setSetupDone);
   const addToast = useAppStore(state => state.addToast);
   const refreshRuntimeHealth = useAppStore(state => state.refreshRuntimeHealth);
@@ -36,6 +42,10 @@ export default function App() {
   useLayoutEffect(() => {
     applyAppearanceToRoot(document.documentElement, { theme, colorMode });
   }, [theme, colorMode]);
+
+  useEffect(() => () => {
+    cancelPackMutationReconciliation();
+  }, []);
 
   useEffect(() => {
     if (!hasPendingPanelBootstrapCode()) {
@@ -56,25 +66,25 @@ export default function App() {
     };
     const target = window as IdleWindow;
     let cancelled = false;
-    const verifySetupPack = () => {
-      void hasSelectedSetupPack()
-        .then((verified) => {
-          if (cancelled || verified) return;
-          addToast('The selected setup pack is no longer available. Setup must be completed again.', 'error');
+    const verifyDefaultsProfile = () => {
+      void fetchDefaultsSetupState()
+        .then((state) => {
+          if (cancelled || state.state === 'active') return;
+          addToast('The Defaults Profile activation is no longer available. Setup must be completed again.', 'error');
           setSetupDone(false);
         })
         .catch((error) => {
           if (cancelled) return;
-          addToast(error instanceof Error ? error.message : 'Setup pack verification failed', 'error');
+          addToast(error instanceof Error ? error.message : 'Defaults Profile verification failed', 'error');
         });
     };
 
     let cancelScheduled: () => void;
     if (typeof target.requestIdleCallback === 'function') {
-      const handle = target.requestIdleCallback(verifySetupPack, { timeout: 1_000 });
+      const handle = target.requestIdleCallback(verifyDefaultsProfile, { timeout: 1_000 });
       cancelScheduled = () => target.cancelIdleCallback?.(handle);
     } else {
-      const handle = window.setTimeout(verifySetupPack, 300);
+      const handle = window.setTimeout(verifyDefaultsProfile, 300);
       cancelScheduled = () => window.clearTimeout(handle);
     }
 
@@ -131,14 +141,20 @@ export default function App() {
 
   return (
     <BrowserRouter basename="/panel">
-      <DeferredRouteTree isSetupDone={isSetupDone} />
+      <DeferredRouteTree isSetupDone={isSetupDone} runtimeStatus={runtimeStatus} />
       <ToastContainer />
       <DialogContainer />
     </BrowserRouter>
   );
 }
 
-function DeferredRouteTree({ isSetupDone }: { isSetupDone: boolean }) {
+function DeferredRouteTree({
+  isSetupDone,
+  runtimeStatus,
+}: {
+  isSetupDone: boolean;
+  runtimeStatus: RuntimeStatus;
+}) {
   const location = useLocation();
   const deferredLocation = useDeferredValue(location);
   const routePending =
@@ -148,25 +164,28 @@ function DeferredRouteTree({ isSetupDone }: { isSetupDone: boolean }) {
 
   return (
     <>
+      <RouteAnnouncer pathname={deferredLocation.pathname} />
       <Routes location={deferredLocation}>
         <Route path={panelRoutes.setup} element={<Setup />} />
 
         <Route
           path={panelRoutes.home}
-          element={isSetupDone ? <Layout /> : <Navigate to={panelRoutes.setup} replace />}
+          element={isSetupDone && runtimeStatus !== 'profile_reconfirmation_required'
+            ? <Layout />
+            : <Navigate to={panelRoutes.setup} replace />}
         >
           <Route index element={<Dashboard />} />
           <Route path={panelRoutes.packs.slice(1)} element={<LazyPacks />} />
           <Route path={`${panelRoutes.packs.slice(1)}/:id`} element={<LazyPackDetail />} />
-          <Route path={panelRoutes.nodes.slice(1)} element={<LazyNodeManager />} />
-          <Route path={panelRoutes.graphEditor.slice(1)} element={<LazyGraphEditor />} />
-          <Route path={panelRoutes.profileGraph.slice(1)} element={<LazyProfileGraphEditor />} />
-          <Route path={panelRoutes.aiInput.slice(1)} element={<LazyAiInputInspector />} />
-          <Route path={panelRoutes.apiMap.slice(1)} element={<LazyApiMap />} />
-          <Route path={panelRoutes.profileWorkspace.slice(1)} element={<LazyProfileWorkspace />} />
-          <Route path={panelRoutes.startup.slice(1)} element={<LazyStartupProfiles />} />
-          <Route path={panelRoutes.flows.slice(1)} element={<LazyFlows />} />
+          <Route path={panelRoutes.profile.slice(1)} element={<LazyProfile />} />
           <Route path={panelRoutes.settings.slice(1)} element={<LazySettings />} />
+          <Route path={panelRoutes.profileWiring.slice(1)} element={<LazyProfileWiring />} />
+          <Route path={panelRoutes.profileFiles.slice(1)} element={<LazyProfileFiles />} />
+          <Route path={panelRoutes.flow.slice(1)} element={<LazyFlow />} />
+          <Route path={panelRoutes.graph.slice(1)} element={<LazyGraph />} />
+          <Route path={panelRoutes.aiInput.slice(1)} element={<LazyAiInput />} />
+          <Route path={panelRoutes.apiMap.slice(1)} element={<LazyApiMap />} />
+          <Route path={panelRoutes.nodeManager.slice(1)} element={<LazyNodeManager />} />
         </Route>
       </Routes>
       {routePending && (

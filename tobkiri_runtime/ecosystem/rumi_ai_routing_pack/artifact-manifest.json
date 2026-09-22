@@ -1,5 +1,4 @@
 {
-  "version": "rumi.pack-artifacts.v1",
   "artifacts": [
     {
       "path": "runtime/__init__.py",
@@ -7,7 +6,8 @@
     },
     {
       "path": "runtime/router.py",
-      "sha256": "sha256:3cf865a705af10d35702981ec38e8f838320a31530096dedd570df2218d2b220"
+      "sha256": "sha256:99fe1e1a126b8c0df54edb044461ecaf5efe33c55948e722c5216639cc230148"
     }
-  ]
+  ],
+  "version": "rumi.pack-artifacts.v1"
 }

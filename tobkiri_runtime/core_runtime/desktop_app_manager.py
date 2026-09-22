@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .host_contract import host_contract_value
 from .validation import check_path_within, validate_pack_id
 
 logger = logging.getLogger(__name__)
@@ -253,7 +254,7 @@ class DesktopAppManager:
 
         requires_api_token = meta.get("requires_api_token", True)
         issued_desktop_token = api_token
-        effective_api_token = api_token or os.environ.get(_PACK_API_TOKEN_ENV, "")
+        effective_api_token = api_token or host_contract_value("desktop_api_token")
         if requires_api_token and not effective_api_token:
             return {
                 "success": False,

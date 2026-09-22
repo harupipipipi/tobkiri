@@ -15,10 +15,10 @@ class ExtensionRegistry:
         *,
         strict: bool = False,
     ) -> None:
-        if isinstance(extensions_root, (list, tuple, set)):
-            self._roots = [Path(root) for root in extensions_root]
-        else:
+        if isinstance(extensions_root, (str, Path)):
             self._roots = [Path(extensions_root)]
+        else:
+            self._roots = [Path(root) for root in extensions_root]
         self._root = self._roots[0] if self._roots else Path(".")
         self._strict = strict
         self._items: Dict[str, Dict[str, Dict[str, Any]]] = {
@@ -368,6 +368,9 @@ class TransportRegistry:
 
     def list(self, *, enabled_only: bool = True) -> List[Dict[str, Any]]:
         return self._registry.list("transport", enabled_only=enabled_only)
+
+    def get(self, transport_id: str) -> Optional[Dict[str, Any]]:
+        return self._registry.get("transport", transport_id)
 
 
 class UISurfaceRegistry:

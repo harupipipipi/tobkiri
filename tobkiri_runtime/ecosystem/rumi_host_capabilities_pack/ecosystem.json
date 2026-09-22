@@ -1,70 +1,98 @@
 {
-  "pack_id": "rumi_host_capabilities_pack",
-  "pack_identity": "rumi:ecosystem/rumi_host_capabilities_pack",
-  "version": "0.1.0",
-  "metadata": {
-    "name": "Rumi Host Capabilities Pack",
-    "description": "Typed local host capability broker for OS-facing Rumi operations.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
-  },
-  "depends_on": [
-    {
-      "pack_id": "defaultspack",
-      "version": ">=2.0.0"
-    }
-  ],
-  "security_boundary": {
-    "host_executor": true,
-    "defaultspack_role": "ui_orchestration_and_authority_only",
-    "ordinary_pack_contract": "return_host_intent_json",
-    "approval_authority": "core_runtime.authority",
-    "approval_token_binding": [
-      "operation",
-      "args_hash",
-      "caller_pack_id",
-      "caller_function_id",
-      "stream_enabled"
-    ],
-    "unknown_host_function_policy": "critical_typed_confirmation_once"
-  },
   "capabilities": [
     "host.permission.status",
     "host.permission.open_settings"
   ],
-  "default_grants": {
-    "principal_id": "rumi_host_capabilities_pack",
-    "include": "implemented_host_permissions",
-    "exclude": []
-  },
-  "host_functions": {
-    "host_permission_open_settings": {
-      "operation": "host.permission.open_settings",
-      "stream": false,
-      "executor_owner": "tobkiri_launcher_host_broker"
+  "dependencies": {},
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:0bd4fca7423ab3df0a4899bbe6009a73b82eea6f46ca2114f6e9f265b7ac7fbe",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:1748289a3dab8d8afe2712a3f4d722e5c4c3a37abdb7905ac4b05b8ba2b49a28"
     },
-    "host_permission_status": {
-      "operation": "host.permission.status",
-      "stream": false,
-      "executor_owner": "tobkiri_launcher_host_broker"
-    }
+    "description": "Typed local host capability broker for OS-facing Rumi operations.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:1748289a3dab8d8afe2712a3f4d722e5c4c3a37abdb7905ac4b05b8ba2b49a28"
+    },
+    "legacy_annotations": {
+      "default_grants": {
+        "exclude": [],
+        "include": "implemented_host_permissions",
+        "principal_id": "rumi_host_capabilities_pack"
+      },
+      "host_functions": {
+        "host_permission_open_settings": {
+          "executor_owner": "tobkiri_launcher_host_broker",
+          "operation": "host.permission.open_settings",
+          "stream": false
+        },
+        "host_permission_status": {
+          "executor_owner": "tobkiri_launcher_host_broker",
+          "operation": "host.permission.status",
+          "stream": false
+        }
+      },
+      "permission_catalog": "permissions/host_permissions.json",
+      "policy": {
+        "audit": "host_intent_events_only_no_media_payloads",
+        "host_boundary": "policies/host_capability_boundary.policy.yaml"
+      },
+      "privacy": {
+        "audit_payloads": [
+          "operation",
+          "args_hash",
+          "caller_pack_id",
+          "caller_function_id",
+          "decision",
+          "os_permission_status"
+        ],
+        "store_camera_frames": false,
+        "store_microphone_audio": false,
+        "store_screen_images": false
+      },
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ],
+      "security_boundary": {
+        "approval_authority": "core_runtime.authority",
+        "approval_token_binding": [
+          "operation",
+          "args_hash",
+          "caller_pack_id",
+          "caller_function_id",
+          "stream_enabled"
+        ],
+        "defaultspack_role": "ui_orchestration_and_authority_only",
+        "host_executor": true,
+        "ordinary_pack_contract": "return_host_intent_json",
+        "unknown_host_function_policy": "critical_typed_confirmation_once"
+      }
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Host Capabilities Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
   },
-  "permission_catalog": "permissions/host_permissions.json",
-  "policy": {
-    "host_boundary": "policies/host_capability_boundary.policy.yaml",
-    "audit": "host_intent_events_only_no_media_payloads"
+  "pack_id": "rumi_host_capabilities_pack",
+  "pack_identity": "rumi:ecosystem/rumi_host_capabilities_pack",
+  "provenance": {
+    "build_identity": "rumi_host_capabilities_pack:0.1.0",
+    "content_hash": "sha256:0bd4fca7423ab3df0a4899bbe6009a73b82eea6f46ca2114f6e9f265b7ac7fbe",
+    "signature": null,
+    "trust_class": "local"
   },
-  "privacy": {
-    "store_microphone_audio": false,
-    "store_camera_frames": false,
-    "store_screen_images": false,
-    "audit_payloads": [
-      "operation",
-      "args_hash",
-      "caller_pack_id",
-      "caller_function_id",
-      "decision",
-      "os_permission_status"
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "service"
     ]
   }
 }

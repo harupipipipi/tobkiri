@@ -65,7 +65,25 @@ def test_rumi_devops_release_pack_required_docs_and_assets_exist():
     assert ecosystem["pack_identity"] == "rumi:ecosystem/rumi_devops_release_pack"
     assert ecosystem["components"] == {}
     assert ecosystem["load_order"] == []
-    assert ecosystem["network_policy"]["default"] == "none"
+    assert ecosystem["metadata"]["legacy_annotations"]["network_policy"]["default"] == "none"
+
+    manifest = _read_json(PACK_ROOT / "pack.v4.json")
+    setup = _read_json(SETUP_PACK_JSON)
+    setup_dependencies = {
+        item["pack_id"]: item["version"] for item in setup["depends_on"]
+    }
+    assert setup_dependencies == {
+        "defaultspack": ">=2.0.0",
+        "rumi_default_tools_pack": ">=1.0.0",
+    }
+    assert manifest["requirements"]["pack_dependencies"] == {
+        "rumi_default_tools_pack": ">=1.0.0",
+    }
+    assert manifest["requirements"]["network"] == {
+        "allowed_domains": [],
+        "allowed_ports": [],
+    }
+    assert manifest["requirements"]["secrets"] == []
 
 
 def test_rumi_devops_release_pack_json_and_yaml_assets_parse():

@@ -66,6 +66,28 @@ test('foreground response invalidated by a mutation is rejected instead of publi
   await assert.rejects(pending, RequestInvalidatedError);
 });
 
+test('session invalidation preserves only the request that performed the exchange', async () => {
+  const coordinator = new GetRequestCoordinator();
+  let resolveCurrent!: (value: string) => void;
+  let resolveStale!: (value: string) => void;
+  let currentSignal!: AbortSignal;
+  const current = request(coordinator, '/current', 'foreground', async (signal) => {
+    currentSignal = signal;
+    return new Promise<string>((resolve) => { resolveCurrent = resolve; });
+  });
+  const stale = request(coordinator, '/stale', 'foreground', async () => (
+    new Promise<string>((resolve) => { resolveStale = resolve; })
+  ));
+
+  await new Promise<void>((resolve) => queueMicrotask(resolve));
+  coordinator.invalidate({preserveSignal: currentSignal});
+  resolveCurrent('refreshed-session');
+  resolveStale('old-session');
+
+  assert.equal(await current, 'refreshed-session');
+  await assert.rejects(stale, RequestInvalidatedError);
+});
+
 test('consumer timeout does not cancel a shared request that a foreground consumer can join', async () => {
   const coordinator = new GetRequestCoordinator({hardTimeoutMs: 5_000});
   let resolve!: (value: string) => void;

@@ -1,27 +1,58 @@
 {
-  "pack_id": "rumi_connector_gateway_pack",
-  "pack_identity": "rumi:ecosystem/rumi_connector_gateway_pack",
+  "components": {},
+  "dependencies": {},
   "display_name": "Rumi Connector Gateway Pack",
-  "version": "0.1.0",
-  "runtime": {
-    "type": "declarative_pack"
-  },
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:7c08f69a6702c02d91ad608d5caaa4aaffd43e7a20389ecf0b490f480fb7ced0",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:21c5542259b43c2aeb18d47a9cadcbfb565ad11b84bd2a0d1423d7be01412092"
+    },
     "executable_code": false,
-    "owner_surfaces": [
-      "connector_namespace_policy",
-      "channel_handoff_contracts",
-      "scope_review_cards"
-    ],
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:21c5542259b43c2aeb18d47a9cadcbfb565ad11b84bd2a0d1423d7be01412092"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_local_agent_pack",
         "reason": "Route normalized connector handoffs into reusable local agent presets."
       }
-    ]
+    ],
+    "owner_surfaces": [
+      "connector_namespace_policy",
+      "channel_handoff_contracts",
+      "scope_review_cards"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
   },
+  "pack_id": "rumi_connector_gateway_pack",
+  "pack_identity": "rumi:ecosystem/rumi_connector_gateway_pack",
+  "provenance": {
+    "build_identity": "rumi_connector_gateway_pack:0.1.0",
+    "content_hash": "sha256:7c08f69a6702c02d91ad608d5caaa4aaffd43e7a20389ecf0b490f480fb7ced0",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "runtime": {
+    "type": "declarative_pack"
+  },
+  "version": "0.1.0",
   "vocabulary": {
     "types": [
       "catalog",
@@ -32,10 +63,5 @@
       "example",
       "documentation"
     ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "components": {},
-  "load_order": []
+  }
 }

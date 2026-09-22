@@ -1,2 +1,65 @@
-{"pack_id":"rumi_discord_connector_pack","pack_identity":"rumi:ecosystem/rumi_discord_connector_pack","display_name":"Rumi Discord Connector Pack","version":"1.0.0","description":"Discord Ed25519 verification, interaction normalization, and REST delivery.","dependencies":{"rumi_credential_broker_pack":">=1.0.0,<2.0.0","rumi_host_authority_bridge_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.service.credential.resolve.v1","rumi.service.host.authorize.v1"],"provides":["rumi.service.connector.adapter.v1"]},"required_secrets":[],"required_capabilities":["connector.adapter.verify","connector.delivery.execute","credential.resolve","host.authority.consume"],"required_network":{"allowed_domains":["discord.com"],"allowed_ports":[443]},"host_execution":true,"resources":[],"provenance":{"content_hash":"sha256:f2e4987bb84bb380c5006dcde831775087a71a8b474ec92e30237c985d2ed47f","build_identity":"rumi-discord-connector-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":false,"owner_surfaces":[]}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.connector.adapter.v1"
+    ],
+    "requires": [
+      "rumi.service.credential.resolve.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Discord protocol verification, normalization, and delivery.",
+  "display_name": "Rumi Discord Connector",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:53af2e7a34dfc424760db6162473a96474f15621a8893321b6a5c3c57269aeb5",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:ed73de2aa508b07be27fc52daf51dce5ff739ed303a3425bccb888ee1192311f"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:ed73de2aa508b07be27fc52daf51dce5ff739ed303a3425bccb888ee1192311f"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_discord_connector_pack",
+  "pack_identity": "rumi:ecosystem/rumi_discord_connector_pack",
+  "provenance": {
+    "build_identity": "rumi_discord_connector_pack:1.0.0",
+    "content_hash": "sha256:0fd8053263f22aefba603ba378966177239a6fe72a817b6ce6addc42e6176fe0",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.adapter.verify",
+    "connector.delivery.execute",
+    "credential.resolve",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

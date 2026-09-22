@@ -5,7 +5,19 @@ on:
   push:
     branches: [master, soon]
     paths:
+      - ".github/scripts/install_locked_python_test_dependencies.py"
+      - ".github/scripts/packaging_toolchain_identity.py"
+      - ".github/scripts/update_packaging_python_provenance.py"
+      - ".github/toolchains/packaging-python-macos.v1.json"
+      - "tobkiri_runtime/scripts/packaging_cleanup.py"
       - ".github/scripts/prepare_tauri_resources.py"
+      - ".github/scripts/build_sealed_python_environment.py"
+      - ".github/scripts/sealed_python_sources/**"
+      - ".github/schemas/sealed-python-*.json"
+      - "tobkiri_launcher/docs/sealed-python-environment.md"
+      - ".github/scripts/tests/test_packaging_cleanup.py"
+      - ".github/scripts/tests/test_packaging_toolchain_identity.py"
+      - ".github/scripts/tests/test_packaged_defaultspack_generator_relocation.py"
       - ".github/workflows/desktop-installers.yml"
       - "pack-shell/**"
       - "tobkiri_runtime/**"
@@ -14,7 +26,19 @@ on:
     branches: [master, soon, codex/pack-architecture-program-soon]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths:
+      - ".github/scripts/install_locked_python_test_dependencies.py"
+      - ".github/scripts/packaging_toolchain_identity.py"
+      - ".github/scripts/update_packaging_python_provenance.py"
+      - ".github/toolchains/packaging-python-macos.v1.json"
+      - "tobkiri_runtime/scripts/packaging_cleanup.py"
       - ".github/scripts/prepare_tauri_resources.py"
+      - ".github/scripts/build_sealed_python_environment.py"
+      - ".github/scripts/sealed_python_sources/**"
+      - ".github/schemas/sealed-python-*.json"
+      - "tobkiri_launcher/docs/sealed-python-environment.md"
+      - ".github/scripts/tests/test_packaging_cleanup.py"
+      - ".github/scripts/tests/test_packaging_toolchain_identity.py"
+      - ".github/scripts/tests/test_packaged_defaultspack_generator_relocation.py"
       - ".github/workflows/desktop-installers.yml"
       - "pack-shell/**"
       - "tobkiri_runtime/**"
@@ -30,17 +54,14 @@ permissions:
 env:
   CARGO_HTTP_MULTIPLEXING: "false"
   CARGO_NET_RETRY: "10"
+  PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
   build-installer:
-    if: >
-      github.event_name != 'pull_request' ||
-      (
-        github.event.pull_request.draft == false &&
-        contains(github.event.pull_request.labels.*.name, 'full-ci')
-      )
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/tobkiri_launcher/src-tauri/target/desktop-installers
     strategy:
       fail-fast: false
       matrix:
@@ -49,51 +70,252 @@ jobs:
             os: macos-latest
             target: aarch64-apple-darwin
             bundles: dmg
-            signing_args: "--no-sign"
+            shell_bundles: app
+            presentation_variant: shell.tauri.default.macos-arm64
+            presentation_platform: macos
+            presentation_architecture: arm64
+            signing_args: ""
             artifact_suffix: macos-arm64
-          - label: macOS Intel
-            os: macos-15-intel
-            target: x86_64-apple-darwin
-            bundles: dmg
-            signing_args: "--no-sign"
-            artifact_suffix: macos-x64
-          - label: Windows x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundles: nsis
-            signing_args: ""
-            artifact_suffix: windows-x64
-          - label: Linux x64
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            bundles: deb,appimage
-            signing_args: ""
-            artifact_suffix: linux-x64
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Allocate packaging transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(/usr/bin/uuidgen | /usr/bin/tr -d '-' | /usr/bin/tr '[:upper:]' '[:lower:]')"
+          test "${#token}" -eq 32
+          echo "TOBKIRI_PACKAGING_TRANSACTION_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Build rootless sealed packaging Python
+        shell: bash
+        env:
+          TOOLCHAIN_ENV: ${{ runner.temp }}/tobkiri-packaging-toolchain.env
+        run: |
+          set -euo pipefail
+          snapshot="$RUNNER_TEMP/tobkiri-packaging-python-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN"
+          uv_stage="$RUNNER_TEMP/tobkiri-packaging-uv-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN"
+          pre_git_env="$RUNNER_TEMP/tobkiri-packaging-git-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN.env"
+          source_snapshot="$RUNNER_TEMP/tobkiri-packaging-source-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN"
+          source_env="$RUNNER_TEMP/tobkiri-packaging-source-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN.env"
+          umask 077
+          formal_git="/Library/Developer/CommandLineTools/usr/bin/git"
+          identity_launcher="$RUNNER_TEMP/tobkiri-packaging-identity-$TOBKIRI_PACKAGING_TRANSACTION_TOKEN.py"
+          test "$(/usr/bin/stat -f '%Su:%Lp' "$formal_git")" = "root:755"
+          /usr/bin/codesign --verify --strict --all-architectures "$formal_git"
+          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -qx 'Identifier=com.apple.git'
+          /usr/bin/codesign -d --verbose=4 "$formal_git" 2>&1 | /usr/bin/grep -qx 'TeamIdentifier=59GAB85EFG'
+          export GIT_CONFIG=/dev/null GIT_CONFIG_GLOBAL=/dev/null
+          export GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1
+          export GIT_ATTR_NOSYSTEM=1 GIT_EXEC_PATH=/private/var/empty
+          export GIT_OPTIONAL_LOCKS=0 GIT_TERMINAL_PROMPT=0
+          identity_oid="$("$formal_git" --no-optional-locks --no-replace-objects -C "$GITHUB_WORKSPACE" rev-parse "$GITHUB_SHA:.github/scripts/packaging_toolchain_identity.py")"
+          test "$("$formal_git" -C "$GITHUB_WORKSPACE" cat-file -t "$identity_oid")" = blob
+          set -o noclobber
+          : > "$identity_launcher"
+          set +o noclobber
+          "$formal_git" -C "$GITHUB_WORKSPACE" cat-file blob "$identity_oid" > "$identity_launcher"
+          test "$("$formal_git" -C "$GITHUB_WORKSPACE" hash-object "$identity_launcher")" = "$identity_oid"
+          /bin/chmod 0400 "$identity_launcher"
+          formal_identity() {
+            local required_output="$1"
+            local required_output_size=0
+            local identity_status=0
+            shift
+            if test "$required_output" = "-"; then
+              :
+            elif test -e "$required_output" || test -L "$required_output"; then
+              required_output_size="$(/usr/bin/stat -f '%z' "$required_output")"
+            fi
+            exec 9< "$identity_launcher"
+            if PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -I -B - "$@" <&9; then
+              identity_status=0
+            else
+              identity_status=$?
+            fi
+            if test "$identity_status" -eq 0 && IFS= read -r -n 1 <&9; then
+              identity_status=1
+            fi
+            exec 9<&-
+            test "$identity_status" -eq 0
+            if test "$required_output" = "-"; then
+              test -s "$identity_launcher"
+            else
+              test -s "$required_output"
+              if test "$required_output_size" -gt 0; then
+                test "$(/usr/bin/stat -f '%z' "$required_output")" -gt "$required_output_size"
+              fi
+            fi
+          }
+          formal_identity "$pre_git_env" \
+            --bind-git-env --env-output "$pre_git_env"
+          while IFS='=' read -r key value; do
+            case "$key" in
+              TOBKIRI_PACKAGING_GIT|TOBKIRI_PACKAGING_GIT_SHA256) export "$key=$value" ;;
+              *) exit 1 ;;
+            esac
+          done < "$pre_git_env"
+          formal_identity "-" \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --provenance .github/toolchains/packaging-python-macos.v1.json \
+            --source-commit "$GITHUB_SHA" --git "$TOBKIRI_PACKAGING_GIT" \
+            --git-sha256 "$TOBKIRI_PACKAGING_GIT_SHA256" --smoke-git-authority
+          formal_identity "$source_env" \
+            --repository-root "$GITHUB_WORKSPACE" --source-commit "$GITHUB_SHA" \
+            --git "$TOBKIRI_PACKAGING_GIT" --git-sha256 "$TOBKIRI_PACKAGING_GIT_SHA256" \
+            --snapshot-source --snapshot-root "$source_snapshot" --env-output "$source_env"
+          while IFS='=' read -r key value; do
+            case "$key" in
+              TOBKIRI_PACKAGING_SOURCE_SNAPSHOT|TOBKIRI_PACKAGING_SOURCE_TREE|TOBKIRI_PACKAGING_SOURCE_INVENTORY_SHA256|TOBKIRI_PACKAGING_RELEASE_DIGEST) export "$key=$value" ;;
+              *) exit 1 ;;
+            esac
+          done < "$source_env"
+          /usr/bin/python3 -B "$source_snapshot/.github/scripts/prepare_tauri_resources.py" \
+            --repo-root "$source_snapshot" \
+            --target "${{ matrix.target }}" --uv-version 0.11.14 --stage-uv-only \
+            --uv-output-root "$uv_stage"
+          /usr/bin/python3 -B "$source_snapshot/.github/scripts/build_sealed_python_environment.py" \
+            --repo-root "$source_snapshot" \
+            --target "${{ matrix.target }}" --output-root "$snapshot" \
+            --uv-path "$uv_stage/bundled/uv" --release-digest "$TOBKIRI_PACKAGING_RELEASE_DIGEST" \
+            --source-tree "$TOBKIRI_PACKAGING_SOURCE_TREE" \
+            --source-inventory-sha256 "$TOBKIRI_PACKAGING_SOURCE_INVENTORY_SHA256" \
+            --env-output "$TOOLCHAIN_ENV"
+          formal_identity "$TOOLCHAIN_ENV" \
+            --bind-git-env --env-output "$TOOLCHAIN_ENV"
+          for marker in \
+            TOBKIRI_PACKAGING_PYTHON \
+            TOBKIRI_PACKAGING_PYTHON_SHA256 \
+            TOBKIRI_PACKAGING_GIT \
+            TOBKIRI_PACKAGING_GIT_SHA256 \
+            TOBKIRI_PACKAGING_PYTHON_SNAPSHOT \
+            TOBKIRI_PACKAGING_PYTHON_INVENTORY_SHA256 \
+            TOBKIRI_PACKAGING_SOURCE_SNAPSHOT \
+            TOBKIRI_PACKAGING_SOURCE_TREE \
+            TOBKIRI_PACKAGING_SOURCE_INVENTORY_SHA256 \
+            TOBKIRI_PACKAGING_RELEASE_DIGEST
+          do
+            /usr/bin/grep -q "^${marker}=" "$TOOLCHAIN_ENV"
+          done
+          /bin/cat "$TOOLCHAIN_ENV" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            tobkiri_runtime/requirements.txt
+            tobkiri_runtime/requirements-dev.txt
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
+      - name: Verify rootless sealed packaging Python
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
+          set -euo pipefail
+          TOBKIRI_SEALED_PYTHON_MANIFEST_SHA256="$TOBKIRI_PACKAGING_PYTHON_INVENTORY_SHA256" \
+            /usr/bin/python3 -B .github/scripts/build_sealed_python_environment.py \
+            --target "${{ matrix.target }}" --output-root "$TOBKIRI_PACKAGING_PYTHON_SNAPSHOT" --check
+
+      - name: Resolve checked-out source revision
+        id: checked_out_source
+        shell: python
+        run: |
+          import os
+          import subprocess
+
+          git = os.environ["TOBKIRI_PACKAGING_GIT"]
+          git_environment = {
+              "GIT_ATTR_NOSYSTEM": "1",
+              "GIT_CEILING_DIRECTORIES": os.environ["GITHUB_WORKSPACE"],
+              "GIT_CONFIG": os.devnull,
+              "GIT_CONFIG_GLOBAL": os.devnull,
+              "GIT_CONFIG_SYSTEM": os.devnull,
+              "GIT_CONFIG_NOSYSTEM": "1",
+              "GIT_EXEC_PATH": "/private/var/empty",
+              "GIT_OPTIONAL_LOCKS": "0",
+              "GIT_PAGER": "cat",
+              "GIT_TERMINAL_PROMPT": "0",
+              "HOME": "/private/var/empty",
+              "LC_ALL": "C",
+              "PATH": "/usr/bin:/bin",
+              "PAGER": "cat",
+              "XDG_CONFIG_HOME": "/private/var/empty",
+          }
+          git_arguments = [
+              git,
+              "--no-optional-locks",
+              "--no-replace-objects",
+              "-c", "core.fsmonitor=false",
+              "-c", "core.untrackedCache=false",
+              "-c", "core.hooksPath=/dev/null",
+              "-c", "core.attributesFile=/dev/null",
+              "-c", "diff.external=",
+              "-c", "core.excludesFile=/dev/null",
+              "-c", "core.sshCommand=false",
+              "-c", "core.pager=cat",
+              "-c", "pager.show=cat",
+          ]
+          source_revision = subprocess.check_output(
+              [*git_arguments, "rev-parse", "--verify", "HEAD"],
+              text=True,
+              env=git_environment,
+          ).strip()
+          if len(source_revision) != 40 or any(
+              character not in "0123456789abcdef" for character in source_revision
+          ):
+              raise SystemExit("checked-out source revision is not a full lowercase SHA")
+          source_tree = subprocess.check_output(
+              [*git_arguments, "rev-parse", "--verify", "HEAD^{tree}"],
+              text=True,
+              env=git_environment,
+          ).strip()
+          if len(source_tree) != 40 or any(
+              character not in "0123456789abcdef" for character in source_tree
+          ):
+              raise SystemExit("checked-out source tree is not a full lowercase SHA")
+          source_clean = subprocess.run(
+              [
+                  *git_arguments,
+                  "diff-index",
+                  "--cached",
+                  "--quiet",
+                  "--no-ext-diff",
+                  "--no-textconv",
+                  "--ignore-submodules=none",
+                  "HEAD",
+                  "--",
+              ],
+              env=git_environment,
+              check=False,
+          )
+          if source_clean.returncode != 0:
+              raise SystemExit("checked-out index must match HEAD")
+          # Pre-build workflow authority requires zero untracked paths. The
+          # later src-tauri/gen exception is Rust-owned and type-checked.
+          untracked = subprocess.check_output(
+              [
+                  *git_arguments,
+                  "ls-files",
+                  "--others",
+                  "-z",
+                  "--",
+              ],
+              env=git_environment,
+          )
+          if untracked:
+              raise SystemExit("checked-out source has untracked paths")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"source_revision={source_revision}\n")
+              output.write(f"source_tree={source_tree}\n")
+
+      - name: Install locked runtime and test dependencies
+        run: python .github/scripts/install_locked_python_test_dependencies.py
+
+      - name: Test macOS Launcher cold-boot verifier contract
+        run: >-
+          python -m pytest
+          tobkiri_launcher/scripts/tests/test_verify_macos_launcher_cold_boot.py -q
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -103,6 +325,7 @@ jobs:
       - name: Cache Rust builds
         uses: Swatinem/rust-cache@v2
         with:
+          cache-targets: "false"
           shared-key: desktop-installers-${{ matrix.target }}
           workspaces: |
             pack-shell -> target
@@ -151,63 +374,271 @@ jobs:
 
       - name: Build panel frontend
         working-directory: tobkiri_launcher/frontend
+        env:
+          TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
         run: npm run build
       - name: Build defaultspack frontend
         working-directory: tobkiri_runtime/ecosystem/defaultspack/webapp
         run: npm run build
 
+      - name: Build debug Pack Shell for viewer Rust tests
+        run: cargo build --locked --manifest-path pack-shell/Cargo.toml --target ${{ matrix.target }}
+
+      - name: Seal debug Pack Shell for viewer Rust tests
+        run: >-
+          python .github/scripts/seal_pack_shell.py
+          --repo-root .
+          --target ${{ matrix.target }}
+          --profile debug
+
       - name: Run rumi viewer Rust tests
         working-directory: tobkiri_launcher/src-tauri
         run: cargo test --locked
 
-      - name: Build desktop installer
+      - name: Build release Pack Shell for verified Tauri Shell artifact
+        run: cargo build --release --locked --manifest-path pack-shell/Cargo.toml --target ${{ matrix.target }}
+
+      - name: Seal release Pack Shell for verified Tauri Shell artifact
+        run: >-
+          python .github/scripts/seal_pack_shell.py
+          --repo-root .
+          --target ${{ matrix.target }}
+          --profile release
+
+      - name: Create ephemeral non-publishable macOS CI signing identity
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          material="$RUNNER_TEMP/tobkiri-ci-e2e-${TOBKIRI_PACKAGING_TRANSACTION_TOKEN}"
+          identity_json=$(python .github/scripts/macos_ci_artifact.py \
+            create-identity --output-dir "$material")
+          IDENTITY_JSON="$identity_json" MATERIAL="$material" python - <<'PY'
+          import json
+          import os
+
+          identity = json.loads(os.environ["IDENTITY_JSON"])
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write("TOBKIRI_MACOS_ARTIFACT_POLICY=ci-e2e-v1\n")
+              output.write(
+                  f"TOBKIRI_MACOS_CI_CERT_SHA256={identity['certificate_sha256']}\n"
+              )
+              output.write(f"TOBKIRI_MACOS_CI_PUBLIC_KEY={identity['public_key']}\n")
+              output.write(f"TOBKIRI_CI_PRIVATE_KEY={identity['private_key']}\n")
+              output.write(f"TOBKIRI_CI_CERTIFICATE={identity['certificate']}\n")
+              output.write(f"TOBKIRI_CI_SIGNING_MATERIAL={os.environ['MATERIAL']}\n")
+          PY
+
+      - name: Build verified Tauri Shell artifact
+        working-directory: tobkiri_launcher
+        run: cargo tauri build --target ${{ matrix.target }} --config src-tauri/tauri.shell.conf.json --bundles ${{ matrix.shell_bundles }} --ci
+
+      - name: Ad-hoc sign macOS Tauri Shell artifact
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="$(find "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -type d -name 'Tobkiri.app' -print -quit)"
+          test -n "$artifact"
+          /usr/bin/codesign --force --sign - "$artifact"
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$artifact"
+
+      - name: Build non-publishable macOS CI/E2E application
         if: runner.os == 'macOS'
         working-directory: tobkiri_launcher
-        run: cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --ci ${{ matrix.signing_args }}
+        env:
+          TOBKIRI_PANEL_BUILD_DIR: ${{ runner.temp }}/tobkiri-panel-build
+        run: cargo tauri build --target ${{ matrix.target }} --config src-tauri/tauri.macos.dev.conf.json --bundles app --ci ${{ matrix.signing_args }}
 
-      - name: Build desktop installer
-        if: runner.os == 'Windows'
-        working-directory: tobkiri_launcher
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Continue"
-          $PSNativeCommandUseErrorActionPreference = $false
-          foreach ($attempt in 1..3) {
-            cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --ci ${{ matrix.signing_args }}
-            $status = $LASTEXITCODE
-            if ($status -eq 0) {
-              exit 0
-            }
-            if ($attempt -eq 3) {
-              exit $status
-            }
-            Start-Sleep -Seconds ($attempt * 20)
-          }
-
-      - name: Build desktop installer
-        if: runner.os == 'Linux'
+      - name: Stage authenticated macOS PackVM VZ helper
+        if: runner.os == 'macOS'
         working-directory: tobkiri_launcher
         shell: bash
         run: |
-          for attempt in 1 2 3; do
-            if cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --ci ${{ matrix.signing_args }}; then
-              exit 0
-            else
-              status=$?
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              exit "$status"
-            fi
-            sleep $((attempt * 20))
-          done
+          set -euo pipefail
+          app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
+          test -d "$app"
+          bash scripts/build_packvm_vz_helper.sh \
+            --target '${{ matrix.target }}' --app-bundle "$app"
+          test -f "$app/Contents/MacOS/tobkiri-packvm-vz-helper"
+          test ! -L "$app/Contents/MacOS/tobkiri-packvm-vz-helper"
+          test -f "$app/Contents/Resources/packvm-vz-provisioning.v1.json"
+          test ! -L "$app/Contents/Resources/packvm-vz-provisioning.v1.json"
+
+      - name: Attest and ad-hoc sign macOS CI/E2E application
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
+          test -d "$app"
+          helper="$app/Contents/MacOS/tobkiri-packvm-vz-helper"
+          /usr/bin/codesign --force --sign - \
+            --identifier dev.tobkiri.launcher.packvm-vz-helper \
+            --options runtime --timestamp=none \
+            --entitlements tobkiri_launcher/packvm-vz-helper/Entitlements/tobkiri-packvm-vz-helper.entitlements \
+            "$helper"
+          /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$helper"
+          helper_details=$(/usr/bin/codesign -d -r- --verbose=4 "$helper" 2>&1)
+          /usr/bin/grep -Fqx 'Identifier=dev.tobkiri.launcher.packvm-vz-helper' <<<"$helper_details"
+          /usr/bin/grep -Fqx 'Signature=adhoc' <<<"$helper_details"
+          /usr/bin/grep -Eq '^# designated => cdhash H"[0-9a-fA-F]{40}"$' <<<"$helper_details"
+          /usr/bin/codesign -d --entitlements :- "$helper" 2>/dev/null \
+            | /usr/bin/plutil -extract 'com\.apple\.security\.virtualization' raw -o - - \
+            | /usr/bin/grep -qx true
+          python .github/scripts/macos_ci_artifact.py write-packvm-bundle-manifest \
+            --app-bundle "$app" \
+            --expected-signing-mode ad-hoc
+          python .github/scripts/macos_ci_artifact.py attest \
+            --app-bundle "$app" \
+            --private-key "$TOBKIRI_CI_PRIVATE_KEY" \
+            --certificate "$TOBKIRI_CI_CERTIFICATE"
+          /usr/bin/codesign --force --options runtime --timestamp=none \
+            --sign - "$app"
+          /usr/bin/codesign --verify --strict --all-architectures --verbose=2 "$app"
+          python .github/scripts/macos_ci_artifact.py verify \
+            --app-bundle "$app" \
+            --expected-certificate-sha256 "$TOBKIRI_MACOS_CI_CERT_SHA256"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+            "$app/Contents/Info.plist")" = 'dev.tobkiri.launcher.ci-e2e'
+
+      - name: Host-seal and launch-test packaged Python application resources
+        if: runner.os == 'macOS'
+        run: |
+          app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
+          packaged_manifest_sha="$(/usr/bin/shasum -a 256 "$app/Contents/Resources/app/python-runtime/sealed-environment.v1.json" | /usr/bin/awk '{print $1}')"
+          test "${#packaged_manifest_sha}" -eq 64
+          printf 'TOBKIRI_PACKAGED_PYTHON_INVENTORY_SHA256=%s\n' "$packaged_manifest_sha" >> "$GITHUB_ENV"
+          /usr/bin/python3 -B tobkiri_launcher/scripts/verify_packaged_python.py \
+            --repo-root "$GITHUB_WORKSPACE" \
+            --app-bundle "$app" \
+            --target '${{ matrix.target }}' \
+            --expected-manifest-sha256 "$packaged_manifest_sha" \
+            --seal-tauri-directories \
+            --native-smoke
+          test ! -e "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app/Contents/Resources/app/logs"
+          /usr/bin/codesign --verify --strict --all-architectures --verbose=2 \
+            "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
+          /usr/bin/codesign --verify --strict --all-architectures --verbose=2 \
+            "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app/Contents/MacOS/tobkiri-packvm-vz-helper"
+
+      - name: Cold-boot packaged macOS CI/E2E Launcher
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app"
+          app_data_dir="$HOME/Library/Application Support/dev.tobkiri.launcher.ci-e2e"
+          diagnostics_dir="$RUNNER_TEMP/tobkiri-launcher-cold-boot-${{ matrix.target }}"
+          test -d "$app"
+          test -d "$(dirname "$app_data_dir")"
+          test ! -e "$app_data_dir"
+          /bin/mkdir -m 700 "$diagnostics_dir"
+          /usr/bin/python3 -B tobkiri_launcher/scripts/verify_macos_launcher_cold_boot.py \
+            --app-bundle "$app" \
+            --app-data-dir "$app_data_dir" \
+            --diagnostics-dir "$diagnostics_dir" \
+            --kernel-port 8765 \
+            --timeout-seconds 180
+
+      - name: Build macOS DMG installer
+        if: runner.os == 'macOS'
+        working-directory: tobkiri_launcher
+        shell: bash
+        run: |
+          set -o pipefail
+          bash scripts/package_macos_dmg.sh \
+            --app-bundle "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/macos/Tobkiri Launcher CI E2E.app" \
+            --target '${{ matrix.target }}' \
+            --ci-e2e-cert-sha256 "$TOBKIRI_MACOS_CI_CERT_SHA256" \
+            --output-dir "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg" \
+            2>&1 | tee "$RUNNER_TEMP/tobkiri-macos-dmg-${{ matrix.target }}.log"
+
+      - name: Verify mounted macOS installer packaged Python
+        if: runner.os == 'macOS'
+        working-directory: tobkiri_launcher
+        run: |
+          dmg="$(find "$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          bash scripts/verify_packaged_python_dmg.sh \
+            --dmg "$dmg" \
+            --target '${{ matrix.target }}' \
+            --expected-manifest-sha256 "$TOBKIRI_PACKAGED_PYTHON_INVENTORY_SHA256"
 
       - name: Upload desktop installer
         uses: actions/upload-artifact@v4
         with:
-          name: tobkiri-${{ matrix.artifact_suffix }}-installer-${{ github.sha }}
+          name: tobkiri-non-publishable-ci-e2e-${{ matrix.artifact_suffix }}-${{ steps.checked_out_source.outputs.source_revision }}
           path: |
-            tobkiri_launcher/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            tobkiri_launcher/src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
-            tobkiri_launcher/src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
-            tobkiri_launcher/src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+            ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release/bundle/dmg/*.dmg
           if-no-files-found: error
+
+      - name: Destroy ephemeral macOS CI signing identity
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${TOBKIRI_CI_SIGNING_MATERIAL:-}" \
+             && "$TOBKIRI_CI_SIGNING_MATERIAL" == "$RUNNER_TEMP"/tobkiri-ci-e2e-* ]]; then
+            /usr/bin/find "$TOBKIRI_CI_SIGNING_MATERIAL" -depth -delete
+          fi
+
+      - name: Capture macOS installer diagnostics
+        if: failure() && runner.os == 'macOS'
+        working-directory: tobkiri_launcher
+        shell: bash
+        run: |
+          diagnostic="$RUNNER_TEMP/tobkiri-macos-dmg-${{ matrix.target }}-diagnostic.txt"
+          {
+            echo "target=${{ matrix.target }}"
+            echo "runner=${RUNNER_OS:-unknown}"
+            sw_vers || true
+            uname -a || true
+            df -h . || true
+            command -v hdiutil || true
+            hdiutil info || true
+            ps auxww | grep -E '[h]diutil|[d]iskimages' || true
+            bundle_dir="$CARGO_TARGET_DIR/${{ matrix.target }}/release/bundle"
+            find "$bundle_dir" -maxdepth 3 -type f -o -type d | sort || true
+            generated_script="$bundle_dir/dmg/bundle_dmg.sh"
+            if [[ -f "$generated_script" ]]; then
+              echo '--- generated bundle_dmg.sh (first 240 lines) ---'
+              sed -n '1,240p' "$generated_script"
+            fi
+          } > "$diagnostic" 2>&1
+
+      - name: Upload macOS installer diagnostics
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tobkiri-${{ matrix.artifact_suffix }}-installer-diagnostics-${{ steps.checked_out_source.outputs.source_revision }}
+          path: |
+            ${{ runner.temp }}/tobkiri-macos-dmg-${{ matrix.target }}.log
+            ${{ runner.temp }}/tobkiri-macos-dmg-${{ matrix.target }}-diagnostic.txt
+            ${{ runner.temp }}/tobkiri-launcher-cold-boot-${{ matrix.target }}/launcher-cold-boot.v1.json
+          if-no-files-found: warn
+
+      - name: Clean packaging Python installation
+        if: always() && env.TOBKIRI_PACKAGING_TRANSACTION_TOKEN != ''
+        env:
+          PRIMARY_JOB_STATUS: ${{ job.status }}
+        run: |
+          set +e
+          set -uo pipefail
+          cleanup_status=0
+          if test -n "${TOBKIRI_PACKAGING_PYTHON_SNAPSHOT:-}" && \
+             test -n "${TOBKIRI_PACKAGING_SOURCE_SNAPSHOT:-}"; then
+            TOBKIRI_SEALED_PYTHON_MANIFEST_SHA256="$TOBKIRI_PACKAGING_PYTHON_INVENTORY_SHA256" \
+              /usr/bin/python3 -B "$TOBKIRI_PACKAGING_SOURCE_SNAPSHOT/.github/scripts/build_sealed_python_environment.py" \
+              --target "${{ matrix.target }}" --output-root "$TOBKIRI_PACKAGING_PYTHON_SNAPSHOT" --cleanup
+            cleanup_status=$?
+          elif test -n "${TOBKIRI_PACKAGING_PYTHON_SNAPSHOT:-}"; then
+            echo "::warning::Committed cleanup authority is unavailable; residue retained"
+            cleanup_status=1
+          fi
+          if test "$cleanup_status" -ne 0; then
+            if test "$PRIMARY_JOB_STATUS" = success; then
+              exit "$cleanup_status"
+            fi
+            echo "::warning::Packaging cleanup failed after primary job failure; residue retained for diagnosis"
+          fi

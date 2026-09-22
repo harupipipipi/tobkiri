@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
+import { TobkiriLoadingScreen } from "./components/TobkiriLoadingScreen";
 import { HostBootstrap } from "./host/HostBootstrap";
 import {
   cleanupLegacyApprovalCredentialsEarly,
@@ -27,7 +28,7 @@ const route = window.location.pathname;
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <AppErrorBoundary>
-      <Suspense fallback={<main role="status">Loading selected interface…</main>}>
+      <Suspense fallback={<TobkiriLoadingScreen />}>
         <HostBootstrap route={route} fallback={React.createElement(compatibilitySurface)} />
       </Suspense>
     </AppErrorBoundary>

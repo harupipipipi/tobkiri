@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
+from ..host_contract import host_contract_value
 from ..host_permissions import load_host_permission_registry
 
 
@@ -27,7 +27,7 @@ HOST_BROKER_PERMISSIONS = (
     "host.permission.open_settings",
 )
 
-HOST_CAPABILITIES_PACK_DEFAULT_GRANT_EXCLUSIONS = frozenset()
+HOST_CAPABILITIES_PACK_DEFAULT_GRANT_EXCLUSIONS: frozenset[str] = frozenset()
 
 HOST_CAPABILITIES_PACK_PERMISSIONS = (
     "function.call",
@@ -60,11 +60,11 @@ DEFAULT_BUILTIN_GRANTS: tuple[dict[str, Any], ...] = (
 
 
 def default_builtin_grants_enabled() -> bool:
-    if os.environ.get("RUMI_DISABLE_DEFAULT_HOST_GRANTS") in {"1", "true", "TRUE"}:
+    if host_contract_value("disable_default_host_grants").lower() in {"1", "true", "yes"}:
         return False
-    if os.environ.get("RUMI_DISABLE_AUTHORITY_WINDOW") in {"1", "true", "TRUE"}:
+    if host_contract_value("disable_authority_window").lower() in {"1", "true", "yes"}:
         return False
-    if str(os.environ.get("RUMI_SECURITY_MODE") or "").strip().lower() in {"strict", "strict_untrusted"}:
+    if host_contract_value("security_mode").lower() in {"strict", "strict_untrusted"}:
         return False
     return True
 

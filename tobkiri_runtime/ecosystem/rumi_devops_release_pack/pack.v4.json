@@ -1,0 +1,68 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:84db4bbcb0b7d170a537ea0cfd967e1ac8a1e533c91db5ce02276115f5cd25d0",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:a292e8f063e2743c727943a418e14621829e6f73a9465bd0b1b17a7287072b7a",
+    "contract_catalog_digest": "sha256:215d5df40eb0fb5b6193bdde05006d93102063c3f4c15b8ced1a270519b5c7b2",
+    "source_identity": "sha256:0ed995ccc091d65fcaed1184eef362ec7e000a82c8dfe7a441c1f7a82809ff8e"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_devops_release_pack",
+      "rumi_devops_release_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2099-01-01"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:a292e8f063e2743c727943a418e14621829e6f73a9465bd0b1b17a7287072b7a",
+    "display_name": "rumi_devops_release_pack",
+    "id": "rumi_devops_release_pack",
+    "kind": "application",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:0ed995ccc091d65fcaed1184eef362ec7e000a82c8dfe7a441c1f7a82809ff8e",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:0ed995ccc091d65fcaed1184eef362ec7e000a82c8dfe7a441c1f7a82809ff8e",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_devops_release_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "none",
+    "capabilities": [],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_default_tools_pack": ">=1.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

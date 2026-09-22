@@ -17,7 +17,13 @@ def main() -> int:
         ):
             raise ValueError("request is invalid")
         operation = str(request.get("operation") or "")
-        if operation not in {"get", "list", "health"}:
+        if operation not in {
+            "get",
+            "list",
+            "health",
+            "rumi_provider_registry_pack.provider-registry-health.generate",
+            "rumi_provider_registry_pack.provider-registry-health.stream",
+        }:
             raise ValueError("provider health operation is invalid")
         value = ProviderRegistryService().invoke("health", request["payload"])
         response = {"status": "ok", "value": value}
@@ -35,4 +41,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

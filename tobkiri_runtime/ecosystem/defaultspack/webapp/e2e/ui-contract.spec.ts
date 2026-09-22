@@ -5,17 +5,97 @@ test.use({ viewport: { width: 1440, height: 900 } });
 // These specs exercise mocked UI contracts only. Live MCP proof is covered by
 // the Python integration tests that assert tool_logs and tool_call events.
 const now = 1_785_000_000_000;
+const approvalDigest = "a".repeat(64);
 const historyChatDropMime = "application/rumi-history-chat";
 
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
+function requestTarget(url: URL): string {
+  const marker = "/api/contracts/defaultspack/";
+  if (!url.pathname.startsWith(marker)) return url.pathname;
+  const operation = decodeURIComponent(url.pathname.slice(marker.length));
+  const separator = operation.indexOf(" ");
+  const target = separator < 0 ? operation : operation.slice(separator + 1);
+  const queryIndex = target.indexOf("?");
+  return queryIndex < 0 ? target : target.slice(0, queryIndex);
+}
+
+test("bootstrap loading state uses the Tobkiri Launcher animation and honors reduced motion", async ({ page }) => {
+  let releaseCatalogRequest: (() => void) | undefined;
+  const catalogGate = new Promise<void>((resolve) => {
+    releaseCatalogRequest = resolve;
+  });
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
+    await catalogGate;
+    await route.abort();
+  });
+
+  await page.goto("/");
+
+  const loader = page.locator("[data-tobkiri-loading-screen]");
+  await expect(loader).toBeVisible();
+  await expect(loader).toHaveAttribute("role", "status");
+  await expect(loader).toHaveAttribute("aria-live", "polite");
+  await expect(loader).toHaveAttribute("aria-label", "インターフェース本体を読み込んでいます…");
+  await expect(loader).toHaveCSS("background-color", "rgb(9, 9, 11)");
+
+  const animation = loader.locator('img[data-loading-scene="launcher"]');
+  await expect(animation).toBeVisible();
+  await expect(animation).toHaveAttribute(
+    "src",
+    /\/assets\/tobkiri-startup-blade-cut\.svg$/,
+  );
+  await expect.poll(
+    () => animation.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+  ).toBe(true);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(animation).toBeHidden();
+  await expect(loader.locator("[data-reduced-motion-wordmark]")).toBeVisible();
+
+  releaseCatalogRequest?.();
+});
+
+test("keeps the startup boundary until slash commands and mention sources are ready", async ({ page }) => {
+  let releaseCommands: (() => void) | undefined;
+  const commandGate = new Promise<void>((resolve) => {
+    releaseCommands = resolve;
+  });
+  await installDefaultspackApiMocks(page, {
+    beforeCommandCatalogResponse: () => commandGate,
+  });
+
+  await page.goto("/chat");
+
+  const loader = page.locator("[data-tobkiri-loading-screen]");
+  await expect(loader).toBeVisible();
+  await expect(loader.locator('[data-startup-step="commands"]')).toHaveAttribute("data-status", "loading");
+  await expect(page.locator("textarea.rumi-composer-textarea")).toHaveCount(0);
+
+  releaseCommands?.();
+
+  await expect(loader).toBeHidden();
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  await expect(composer).toBeVisible();
+
+  await composer.fill("/");
+  await expect(page.getByTestId("composer-slash-command-candidates")).toContainText("/coding");
+
+  await composer.fill("@web");
+  await expect(page.getByTestId("composer-at-mention-candidates")).toContainText("@Web Search");
+});
+
 type ApiMockOptions = {
+  beforeCommandCatalogResponse?: () => Promise<void> | void;
   beforeWorkspaceFileReadResponse?: (payload: Record<string, unknown>) => Promise<void> | void;
   initialSettingsValues?: Record<string, Record<string, unknown>>;
+  onConversationCreate?: (payload: Record<string, unknown>) => void;
   onStreamRequest?: (payload: Record<string, unknown>) => void;
   streamEvents?: (message: Record<string, unknown>) => Record<string, unknown>[];
   conversationMutator?: (conversation: ReturnType<typeof smokeConversation>) => void;
   onApprovalDecision?: (decision: "approve" | "deny", payload: Record<string, unknown>) => void;
-  onAuthorityRequest?: (requestId: string) => void;
-  authorityRequestStatus?: () => "pending" | "approved" | "denied";
   codingApprovalAfterTerminal?: boolean;
   codingApprovalAfterRestore?: boolean;
   structuredComposer?: boolean;
@@ -360,6 +440,19 @@ const settingsValues = {
 
 const settingsSections = [
   {
+    id: "general",
+    label: "General",
+    description: "App behavior.",
+    fields: [{
+      id: "manual_runtime_mode_selection",
+      label: "Manual Runtime Mode Selection",
+      type: "toggle",
+      default: false,
+      advanced: true,
+      control_center_section: "advanced",
+    }],
+  },
+  {
     id: "tools",
     label: "機能と接続",
     description: "機能の選定、接続、実行時権限を管理します。",
@@ -476,6 +569,41 @@ async function fulfillStreamEvents(route: Route, events: Record<string, unknown>
 async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions = {}) {
   await page.addInitScript(() => {
     localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "__TAURI__", {
+      configurable: true,
+      value: {
+        core: {
+          invoke: async (command: string, args?: Record<string, unknown>) => {
+            if (command === "get_desktop_system_info") {
+              return {
+                source: "viewer_tauri",
+                reliable: true,
+                app_name: "Tobkiri",
+                display_version: "ui-contract",
+                viewer_version: "ui-contract",
+                build_channel: "test",
+                platform: "linux",
+                platform_release: "ui-contract",
+                permission_subject: "Tobkiri Launcher",
+                permissions: [],
+              };
+            }
+            if (command !== "coding_approval_operator") {
+              throw new Error(`Unexpected native command: ${command}`);
+            }
+            return {
+              request_id: args?.requestId,
+              expected_digest: args?.expectedDigest,
+              decision: args?.decision,
+              operator: "ui-contract-fixture",
+            };
+          },
+        },
+      },
+    });
   });
 
   let currentSettingsValues: Record<string, Record<string, unknown>> = JSON.parse(JSON.stringify({
@@ -488,6 +616,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
   }));
   let conversationToolPreferences: Record<string, unknown> = {};
   let codingApprovalRequest: Record<string, unknown> | null = null;
+  const settledApprovalRequestIds = new Set<string>();
   const codingCheckpoints: Record<string, unknown>[] = options.codingApprovalAfterRestore
     ? [{ snapshot_id: "checkpoint-1", path: "/repo/.rumi/checkpoints/checkpoint-1" }]
     : [];
@@ -495,47 +624,62 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
     { server_id: "filesystem", name: "Filesystem MCP", transport: "stdio", connected: true, permissions: { approved: true }, tools: ["mcp_fs_read_file"] },
   ];
 
-  await page.route("**/api/**", async (route) => {
+  await page.route("**/api/contracts/defaultspack/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const path = url.pathname;
+    const path = requestTarget(url);
     const method = request.method();
     const conversation = smokeConversation();
     options.conversationMutator?.(conversation);
+    const conversationMessages = conversation.messages as Array<{ events?: Record<string, unknown>[] }>;
+    for (const message of conversationMessages) {
+      if (!message.events) continue;
+      message.events = message.events.filter((event) => (
+        !settledApprovalRequestIds.has(String(event.approval_request_id ?? "").trim())
+      ));
+    }
+    const approvalEvent = conversationMessages
+      .flatMap((message) => message.events ?? [])
+      .find((event) => String(event.approval_request_id ?? "").trim());
+    const approvalEventId = String(approvalEvent?.approval_request_id ?? "").trim();
+    if (!codingApprovalRequest && approvalEventId) {
+      codingApprovalRequest = {
+        request_id: approvalEventId,
+        operation: String(approvalEvent?.action ?? "browser.open_url"),
+        risk_level: String(approvalEvent?.risk_level ?? "medium"),
+        status: "pending",
+        display_summary: String(approvalEvent?.display_summary ?? "Browser action requires approval."),
+        created_at: now,
+        args_hash: approvalDigest,
+      };
+    }
 
-    if (path === "/api/health") {
+    if (path === routeKey("api/health")) {
       return fulfill(route, { status: "ok", pack: "defaultspack", ts: "2026-05-20T00:00:00Z" });
     }
 
-    if (path === "/api/ambient/status" || path === "/api/ambient/permissions/check") {
+    if (
+      path === routeKey("api/ambient/status")
+      || path === routeKey("api/ambient/permissions/check")
+    ) {
       return fulfill(route, {
         ambient_monitor: { enabled: false },
         services: {
           voice_wake_monitor: { enabled: false, status: "paused" },
           gesture_wake_monitor: { enabled: false, status: "paused" },
         },
-        permissions: { rumi: {}, os: {} },
-        routing: { mode: "selected_chat" },
+        permissions: {
+          rumi: {
+            "host.microphone.capture": { granted: false, status: "pending" },
+            "host.camera.capture": { granted: false, status: "pending" },
+            "ambient.trigger.dispatch": { granted: false, status: "pending" },
+          },
+          os: {},
+        },
       });
     }
 
-    if (path.startsWith("/api/authority/requests/") && method === "GET") {
-      const requestId = decodeURIComponent(path.slice("/api/authority/requests/".length));
-      options.onAuthorityRequest?.(requestId);
-      return fulfill(route, {
-        request_id: requestId,
-        status: options.authorityRequestStatus?.() ?? "pending",
-        principal_id: "browser-qa-principal",
-        permission_id: "ambient.trigger.dispatch",
-        resource: { pack_id: "rumi_ambient_trigger_pack" },
-        reason: "Browser QA",
-        risk_level: "medium",
-        created_at: "2026-07-19T00:00:00Z",
-        expires_at: "2099-07-19T00:05:00Z",
-      });
-    }
-
-    if (path === "/api/ui/catalog") {
+    if (path === routeKey("api/ui/catalog")) {
       return fulfill(route, {
         app: { id: "defaultspack", name: "Rumi", account: { display_name: "Smoke User", plan_label: "Local" } },
         agent_service: { profiles: [], capabilities: [], presets: [] },
@@ -567,19 +711,74 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/ui/settings" && method === "PUT") {
+    if (path === routeKey("api/ui/settings") && method === "PUT") {
       const payload = request.postDataJSON() as {
         values?: Record<string, Record<string, unknown>>;
+        patches?: Array<{ section: string; field: string; value: unknown }>;
       };
-      currentSettingsValues = JSON.parse(JSON.stringify(payload.values ?? currentSettingsValues));
+      if (payload.values) {
+        currentSettingsValues = JSON.parse(JSON.stringify(payload.values));
+      } else {
+        for (const patch of payload.patches ?? []) {
+          currentSettingsValues[patch.section] = {
+            ...(currentSettingsValues[patch.section] ?? {}),
+            [patch.field]: patch.value,
+          };
+        }
+      }
       return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
     }
 
-    if (path === "/api/ui/settings") {
+    if (path === routeKey("api/ui/settings")) {
       return fulfill(route, { sections: settingsSections, values: currentSettingsValues });
     }
 
-    if (path === "/api/ui/commands") {
+    if (path === routeKey("api/command-protocol/v1/catalog")) {
+      await options.beforeCommandCatalogResponse?.();
+      const protocolCommand = (
+        id: string,
+        label: string,
+        risk: "low" | "medium",
+        operationRef: string,
+      ) => ({
+        canonical_id: `defaultspack:${id}`,
+        pack_id: "defaultspack",
+        pack_generation: 1,
+        command_version: "1.0.0",
+        identity: { id, name: id, aliases: [] },
+        presentation: {
+          label: { fallback: label },
+          description: { fallback: `Toggle ${label}.` },
+          category: "mode",
+          visibility: "default",
+          input: { kind: "action" },
+          mounts: [],
+        },
+        execution: { kind: "host_operation", operation_ref: `host:${operationRef}` },
+        authorization: {
+          risk,
+          permissions: [],
+          approval_required: false,
+          approval_policy: "never",
+          executor_policy_ref: "defaultspack.e2e",
+        },
+        constraints: { modes: ["chat", "coding", "agent"] },
+        availability: { status: "available" },
+      });
+      return fulfill(route, {
+        api_version: "tobkiri.commands/v1",
+        kind: "ResolvedCommandCatalog",
+        catalog_revision: "e2e-revision-1",
+        commands: [
+          protocolCommand("coding", "Coding Mode", "low", "set_mode_coding"),
+          protocolCommand("yolo", "Full Access (YOLO)", "medium", "toggle_ultra_yolo"),
+        ],
+        state_snapshots: [],
+        diagnostics: [],
+      });
+    }
+
+    if (path === routeKey("api/ui/commands")) {
       return fulfill(route, {
         commands: [
           {
@@ -608,7 +807,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/ui/commands/execute" && method === "POST") {
+    if (path === routeKey("api/ui/commands/execute") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       return fulfill(route, {
         executed: true,
@@ -620,11 +819,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/ai/profiles") {
+    if (path === routeKey("api/ai/profiles")) {
       return fulfill(route, { profiles: [smokeProfile, googleProfile, opencodeProfile, opencodeZenProfile], count: 4 });
     }
 
-    if (path === "/api/ai/models/search" && method === "POST") {
+    if (path === routeKey("api/ai/models/search") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       const types = Array.isArray(payload.type)
         ? payload.type.map((item) => String(item).trim())
@@ -635,7 +834,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { models, count: models.length });
     }
 
-    if (path === "/api/tools/catalog") {
+    if (path === routeKey("api/tools/catalog")) {
       return fulfill(route, {
         services: toolCatalogServices,
         tools: toolCatalogTools,
@@ -643,7 +842,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/tools/selection/preview" && method === "POST") {
+    if (path === routeKey("api/tools/selection/preview") && method === "POST") {
       return fulfill(route, {
         preview_id: "preview-tool-selection",
         expires_at: "2026-05-20T00:05:00Z",
@@ -660,15 +859,23 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/chat/conversations" && method === "GET") {
+    if (path === routeKey("api/chat/conversations") && method === "GET") {
       return fulfill(route, { conversations: [{ ...conversation, messages: [] }], total: 1 });
     }
 
-    if (path === "/api/chat/conversations" && method === "POST") {
+    if (path === routeKey("api/chat/conversations") && method === "POST") {
+      options.onConversationCreate?.(request.postDataJSON() as Record<string, unknown>);
       return fulfill(route, conversation);
     }
 
-    if (path === "/api/chat/conversations/c-smoke/stream" && method === "POST") {
+    if (path === routeKey("api/command-protocol/v1/invocations/events/query") && method === "POST") {
+      return fulfill(route, {
+        api_version: "command-protocol/v1",
+        pending_approvals: [],
+      });
+    }
+
+    if (path === routeKey("api/chat/conversations/c-smoke/stream") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       options.onStreamRequest?.(payload);
       const message = {
@@ -695,11 +902,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfillStream(route, message);
     }
 
-    if (path === "/api/chat/conversations/c-smoke") {
+    if (path === routeKey("api/chat/conversations/c-smoke")) {
       return fulfill(route, conversation);
     }
 
-    if ((path === "/api/conversations/c-smoke/tool-preferences" || path === "/api/chat/conversations/c-smoke/tool-preferences") && method === "PUT") {
+    if ((path === routeKey("api/conversations/c-smoke/tool-preferences") || path === routeKey("api/chat/conversations/c-smoke/tool-preferences")) && method === "PUT") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       conversationToolPreferences = (payload.preferences && typeof payload.preferences === "object" && !Array.isArray(payload.preferences))
         ? payload.preferences as Record<string, unknown>
@@ -707,11 +914,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { conversation_id: "c-smoke", preferences: conversationToolPreferences });
     }
 
-    if (path === "/api/conversations/c-smoke/tool-preferences" || path === "/api/chat/conversations/c-smoke/tool-preferences") {
+    if (path === routeKey("api/conversations/c-smoke/tool-preferences") || path === routeKey("api/chat/conversations/c-smoke/tool-preferences")) {
       return fulfill(route, { conversation_id: "c-smoke", preferences: conversationToolPreferences });
     }
 
-    if (path === "/api/ui/conversations/c-smoke/preview") {
+    if (path === routeKey("api/ui/conversations/c-smoke/preview")) {
       return fulfill(route, {
         conversation_id: "c-smoke",
         previews: [
@@ -731,11 +938,11 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/chat/steer") {
+    if (path === routeKey("api/chat/steer")) {
       return fulfill(route, { items: [] });
     }
 
-    if (path === "/api/agent/schedules") {
+    if (path === routeKey("api/agent/schedules")) {
       return fulfill(route, {
         schedules: [
           { id: "nightly-review", name: "nightly-review", schedule: "every 1h", next_run_at: "2026-05-20T12:00:00Z" },
@@ -743,14 +950,14 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/workspaces") {
+    if (path === routeKey("api/coding/workspaces")) {
       return fulfill(route, {
         workspaces: [{ workspace_id: "ws-main", label: "Main Repo", root_path: "/repo", trusted: true }],
         selected_workspace_id: "ws-main",
       });
     }
 
-    if (path === "/api/coding/context") {
+    if (path === routeKey("api/coding/context")) {
       return fulfill(route, {
         branch: "main",
         root_folder: "/repo",
@@ -766,7 +973,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/files/read" && method === "POST") {
+    if (path === routeKey("api/coding/files/read") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       await options.beforeWorkspaceFileReadResponse?.(payload);
       return fulfill(route, {
@@ -779,21 +986,23 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/git/branch") {
+    if (path === routeKey("api/coding/git/branch")) {
       return fulfill(route, { branch: "main", branches: ["main", "codex/pr97"], workspace_id: "ws-main" });
     }
 
-    if (path === "/api/coding/git/status") {
+    if (path === routeKey("api/coding/git/status")) {
       return fulfill(route, { branch: "main", clean: false, modified: ["src/App.tsx"], untracked: [], staged: [] });
     }
 
-    if (path === "/api/coding/git/diff") {
+    if (path === routeKey("api/coding/git/diff")) {
       return fulfill(route, { diff: "-old\n+new", files_changed: 1, files: ["src/App.tsx"], workspace_id: "ws-main" });
     }
 
-    if (path === "/api/coding/approvals/approve" && method === "POST") {
+    if (path === routeKey("api/coding/approvals/approve") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       options.onApprovalDecision?.("approve", payload);
+      const requestId = String(payload.approval_request_id ?? "").trim();
+      if (requestId) settledApprovalRequestIds.add(requestId);
       if (codingApprovalRequest?.request_id === payload.approval_request_id) {
         codingApprovalRequest = { ...codingApprovalRequest, status: "approved" };
       }
@@ -804,13 +1013,18 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/approvals/deny" && method === "POST") {
+    if (path === routeKey("api/coding/approvals/deny") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       options.onApprovalDecision?.("deny", payload);
+      const requestId = String(payload.approval_request_id ?? "").trim();
+      if (requestId) settledApprovalRequestIds.add(requestId);
+      if (codingApprovalRequest?.request_id === requestId) {
+        codingApprovalRequest = { ...codingApprovalRequest, status: "denied" };
+      }
       return fulfill(route, { request_id: payload.approval_request_id, approved: false, status: "denied" });
     }
 
-    if (path === "/api/coding/terminal/exec" && method === "POST" && options.codingApprovalAfterTerminal) {
+    if (path === routeKey("api/coding/terminal/exec") && method === "POST" && options.codingApprovalAfterTerminal) {
       const payload = request.postDataJSON() as Record<string, unknown>;
       codingApprovalRequest = {
         request_id: "apr-terminal-write",
@@ -819,6 +1033,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         status: "pending",
         display_summary: "terminal.exec: write qa-file.txt",
         created_at: now,
+        args_hash: approvalDigest,
       };
       return fulfill(route, {
         command: String(payload.command ?? ""),
@@ -832,7 +1047,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/files/restore" && method === "POST" && options.codingApprovalAfterRestore) {
+    if (path === routeKey("api/coding/files/restore") && method === "POST" && options.codingApprovalAfterRestore) {
       const payload = request.postDataJSON() as Record<string, unknown>;
       const snapshotId = String(payload.snapshot_id ?? "checkpoint-1");
       if (payload.approval_token) {
@@ -845,6 +1060,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
         status: "pending",
         display_summary: `file.restore: ${snapshotId}`,
         created_at: now,
+        args_hash: approvalDigest,
       };
       return fulfill(route, {
         approval_required: true,
@@ -852,12 +1068,12 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/approvals") {
+    if (path === routeKey("api/coding/approvals")) {
       const requests = codingApprovalRequest ? [codingApprovalRequest] : [];
       return fulfill(route, { requests, pending: requests, count: requests.length });
     }
 
-    if (path === "/api/coding/checkpoints") {
+    if (path === routeKey("api/coding/checkpoints")) {
       if (method === "POST") {
         const checkpoint = {
           snapshot_id: "checkpoint-2",
@@ -873,7 +1089,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/coding/rumi-log") {
+    if (path === routeKey("api/coding/rumi-log")) {
       return fulfill(route, {
         rumi_dir: "/repo/.rumi",
         events_path: "/repo/.rumi/events.jsonl",
@@ -898,14 +1114,14 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/browser/artifacts") {
+    if (path === routeKey("api/browser/artifacts")) {
       return fulfill(route, {
         artifacts: [{ artifact_id: "browser-1", session_id: "s1", action: "browser.session", created_at: "2026-05-20T00:00:00Z", url: "https://example.com" }],
         count: 1,
       });
     }
 
-    if (path === "/api/tools/mcp" && method === "POST") {
+    if (path === routeKey("api/tools/mcp") && method === "POST") {
       const payload = request.postDataJSON() as { server?: Record<string, unknown> };
       const server = {
         server_id: String(payload.server?.server_id ?? "contract_digest"),
@@ -919,10 +1135,29 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       return fulfill(route, { server });
     }
 
-    if (path === "/api/tools/mcp/connect" && method === "POST") {
+    if (path === routeKey("api/tools/mcp/connect") && method === "POST") {
       const payload = request.postDataJSON() as Record<string, unknown>;
       const serverId = String(payload.server_id ?? payload.server_name ?? "contract_digest");
       if (!payload.approval_token) {
+        codingApprovalRequest = {
+          request_id: "apr-mcp-contract",
+          operation: "tool.mcp_connect",
+          risk_level: "high",
+          status: "pending",
+          display_summary: `Connect MCP server ${serverId}`,
+          created_at: now,
+          args_hash: approvalDigest,
+          details: {
+            mcp_review: {
+              executable: String(payload.command ?? "python"),
+              transport: "stdio",
+              args: Array.isArray(payload.args) ? payload.args : [],
+              cwd: "/repo",
+              redacted_env: [],
+              server_source: "Pack v4 UI contract fixture",
+            },
+          },
+        };
         return fulfill(route, {
           approval_required: true,
           approval_request_id: "apr-mcp-contract",
@@ -944,7 +1179,7 @@ async function installDefaultspackApiMocks(page: Page, options: ApiMockOptions =
       });
     }
 
-    if (path === "/api/tools/mcp") {
+    if (path === routeKey("api/tools/mcp")) {
       return fulfill(route, {
         servers: mcpServers,
         count: mcpServers.length,
@@ -972,6 +1207,69 @@ async function openCodingWidget(page: Page, options: ApiMockOptions = {}) {
   await expect(page.locator(".coding-cockpit")).toBeVisible();
   await page.getByRole("button", { name: "Workspace", exact: true }).click();
 }
+
+test("manual runtime mode control is hidden by default and available after explicit opt-in", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+  await expect(page.getByRole("status", { name: "現在の実行オプション" })).toHaveCount(0);
+
+  await page.getByTitle("Settings").last().click();
+  await page.getByRole("button", { name: "Advanced Settings" }).click();
+  await page.getByRole("button", { name: "Change settings display mode" }).click();
+  await page.locator("main#settings-content details summary").click();
+  await page.getByRole("button", { name: "Manual Runtime Mode Selection" }).click();
+  await page.getByRole("button", { name: "Close settings" }).click();
+
+  await expect(page.getByRole("status", { name: "現在の実行オプション" })).toBeVisible();
+});
+
+test("manual runtime mode control opens the mode selector when enabled", async ({ page }) => {
+  await openDefaultspack(page, "/chat", {
+    initialSettingsValues: {
+      general: { manual_runtime_mode_selection: true },
+    },
+  });
+
+  const runtimeOptions = page.getByRole("status", { name: "現在の実行オプション" });
+  await expect(runtimeOptions).toBeVisible();
+  await runtimeOptions.getByRole("button", { name: "実行モード: 自律エージェント" }).click();
+  await expect(page.getByText("モード選択")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Coding/ })).toBeVisible();
+  await page.getByRole("button", { name: /^Chat/ }).click();
+  await expect(runtimeOptions.getByRole("button", { name: "実行モード: 通常チャット" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-app-mode"))).toBe('"chat"');
+});
+
+test("projects replace New Group and are searchable from the composer", async ({ page }) => {
+  const conversationCreates: Record<string, unknown>[] = [];
+  await openDefaultspack(page, "/chat", {
+    onConversationCreate: (payload) => conversationCreates.push(payload),
+  });
+
+  await expect(page.getByText("Projects", { exact: true })).toBeVisible();
+  await expect(page.getByText("New Group", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "New Chat", exact: true }).click();
+  const projectButton = page.getByRole("button", { name: "Project: None" });
+  await expect(projectButton).toHaveCSS("min-height", "44px");
+  await projectButton.click();
+  await expect(page.getByRole("textbox", { name: "Search projects" })).toBeVisible();
+  await page.getByRole("button", { name: "New Project" }).last().click();
+  await page.getByPlaceholder("Project name").fill("E2E Project");
+  await page.getByRole("button", { name: "Create Project", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Project: E2E Project" })).toBeVisible();
+  const persistedProject = await page.evaluate(() => {
+    const projects = JSON.parse(localStorage.getItem("rumi-history-custom-groups") || "[]") as Array<Record<string, unknown>>;
+    return projects.find((project) => project.title === "E2E Project") ?? null;
+  });
+  expect(persistedProject).toMatchObject({ title: "E2E Project" });
+  expect(String(persistedProject?.id ?? "")).toMatch(/^group-\d+$/);
+
+  await page.getByRole("combobox", { name: "Rumiにメッセージを送信" }).fill("Project scoped message");
+  await page.locator(".rumi-send-button").click();
+  await expect.poll(() => conversationCreates.length).toBe(1);
+  expect(conversationCreates[0].group_id).toBe(persistedProject?.id);
+  expect((conversationCreates[0].metadata as Record<string, unknown>).group_id).toBe(persistedProject?.id);
+});
 
 test("document scroll fallback survives small and keyboard-like viewports", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 520 });
@@ -1024,7 +1322,7 @@ test("composer approval menu opens action permissions while selection modes live
 
   await page.getByRole("button", { name: "アクションの承認方法" }).click();
   const approvalMenu = page.getByRole("menu", { name: "アクションの承認方法" });
-  await expect(approvalMenu).toContainText("Codex アクションの承認方法");
+  await expect(approvalMenu).toHaveAccessibleName("アクションの承認方法");
   await expect(approvalMenu).toContainText("承認を求める");
   await expect(approvalMenu).toContainText("代理で承認");
   await expect(approvalMenu).toContainText("フルアクセス");
@@ -1033,13 +1331,12 @@ test("composer approval menu opens action permissions while selection modes live
 
   await approvalMenu.getByRole("button", { name: "詳細はこちら" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Tools & MCP" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Tools & MCP" }).first()).toBeVisible();
-  await expect(page.getByText("Installed tools, MCP servers, discovered tools, visibility, and approval policy.")).toBeVisible();
-  await expect(page.getByText("Tools are not logins")).toBeVisible();
+  await page.getByRole("button", { name: "Tools", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Tools", exact: true })).toBeVisible();
+  await expect(page.getByText("ツールとログインは別に管理されます")).toBeVisible();
+  await expect(page.getByText("MCP servers and tool sources define callable actions. Account login, OAuth tokens, and access tokens remain in Accounts & Connections.")).toBeVisible();
   await expect(page.getByText("Safety rules")).toBeVisible();
   await expect(page.getByText("Tool source → Tools & MCP")).toBeVisible();
-  await expect(page.getByText("MCP servers can require a connection")).toBeVisible();
 });
 
 test("slash yolo toggles Full Access back to Ask without a duplicate status chip", async ({ page }) => {
@@ -1188,67 +1485,6 @@ test("settings modal contains focus, dismisses nested layers in order, and resto
   expect(narrowBounds!.y + narrowBounds!.height).toBeLessThanOrEqual(640);
   await page.getByRole("button", { name: "Close settings" }).click();
   await expect(dialog).toBeHidden();
-});
-
-test("ambient approval return hints settle only after one-time correlation and backend verification", async ({ page }, testInfo) => {
-  let authorityStatus: "pending" | "approved" | "denied" = "pending";
-  const authorityRequests: string[] = [];
-  const consoleErrors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
-  });
-  await openDefaultspack(page, "/ambient-debug?authority_approved=1", {
-    authorityRequestStatus: () => authorityStatus,
-    onAuthorityRequest: (requestId) => authorityRequests.push(requestId),
-  });
-
-  const verificationFailure = page.getByText(
-    "承認結果を確認できませんでした。承認画面を開いたまま、もう一度確認してください。",
-    { exact: true },
-  );
-  await expect(verificationFailure).toBeVisible();
-  await expect.poll(() => page.url()).not.toContain("authority_approved");
-  expect(authorityRequests).toEqual([]);
-
-  const createReturnPath = () => page.evaluate(async () => {
-    const loadEvents = Function("return import('/src/lib/authorityApprovalEvents.ts')") as () => Promise<{
-      createAuthorityApprovalReturnPath: (requestId: string, currentHref: string) => string;
-    }>;
-    const events = await loadEvents();
-    return events.createAuthorityApprovalReturnPath("rumi_ambient_trigger_pack", window.location.href);
-  });
-
-  const pendingPath = await createReturnPath();
-  const pendingUrl = new URL(pendingPath, page.url()).href;
-  await page.goto(pendingUrl);
-  await expect.poll(() => authorityRequests.length).toBe(1);
-  await expect(verificationFailure).toBeVisible();
-  expect(authorityRequests).toEqual(["rumi_ambient_trigger_pack"]);
-  await expect.poll(() => page.url()).not.toContain("authority_return");
-  expect(await page.evaluate(() => sessionStorage.getItem("rumi.authority.approval.return.v1"))).toBeNull();
-
-  authorityStatus = "approved";
-  const approvedPath = await createReturnPath();
-  const approvedUrl = new URL(approvedPath, page.url()).href;
-  await page.goto(approvedUrl);
-  await expect(page.getByText(
-    "承認を確認しました。次にMacのマイク/カメラを確認します。",
-    { exact: true },
-  )).toBeVisible();
-  await expect.poll(() => authorityRequests.length).toBe(2);
-
-  await page.goto(approvedUrl);
-  await expect(verificationFailure).toBeVisible();
-  await page.waitForTimeout(100);
-  expect(authorityRequests).toHaveLength(2);
-
-  await page.setViewportSize({ width: 390, height: 720 });
-  const panelBounds = await page.locator('section[aria-label="指で録音"]').boundingBox();
-  expect(panelBounds).not.toBeNull();
-  expect(panelBounds!.x).toBeGreaterThanOrEqual(0);
-  expect(panelBounds!.x + panelBounds!.width).toBeLessThanOrEqual(390);
-  expect(consoleErrors).toEqual([]);
-  await page.screenshot({ path: testInfo.outputPath("authority-return-verification-mobile.png"), fullPage: true });
 });
 
 test("tool hub service selections can be scoped to the conversation and survive reload", async ({ page }) => {
@@ -1404,8 +1640,11 @@ test("composer removes semantic tool state after an escaped edit", async ({ page
   const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
 
   await composer.fill("Use @web");
+  await expect(page.getByRole("option", { name: /@web search/i })).toBeVisible();
   await composer.press("Enter");
   await composer.fill("Use \\@Web Search");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
   await expect.poll(() => escapedRequests.length).toBe(1);
 
@@ -1421,15 +1660,20 @@ test("composer removes semantic tool state after an escaped edit", async ({ page
   expect(escapedMetadata.dropped_widgets).toEqual([]);
 });
 
-test("composer removes semantic tool state after its chip is toggled off", async ({ page }) => {
+test("composer renders semantic tool mentions inline and clears state after an escaped edit", async ({ page }) => {
   const chipRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => chipRequests.push(payload),
   });
   const chipComposer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
   await chipComposer.fill("Use @web");
+  await expect(page.getByRole("option", { name: /@web search/i })).toBeVisible();
   await chipComposer.press("Enter");
-  await page.locator('.rumi-composer-frame button[title="Search the web."]').click();
+  await expect(chipComposer).toHaveValue("Use @Web Search ");
+  await expect(page.locator('[data-composer-inline-mentions] .rumi-composer-inline-mention')).toContainText("@Web Search");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe('["web_search"]');
+  await chipComposer.fill("Use \\@Web Search");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
     .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
@@ -1443,7 +1687,7 @@ test("composer removes semantic tool state after its chip is toggled off", async
   expect(chipMetadata.dropped_widgets).toEqual([]);
 });
 
-test("composer reconciles removed service tools before submit", async ({ page }) => {
+test("composer reconciles an escaped service mention before submit", async ({ page }) => {
   const serviceRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => serviceRequests.push(payload),
@@ -1451,8 +1695,16 @@ test("composer reconciles removed service tools before submit", async ({ page })
   const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
 
   await composer.fill("Use @gith");
-  await page.getByRole("option").filter({ hasText: "@GitHub" }).filter({ hasText: "service" }).click();
-  await page.getByRole("button", { name: "GitHub Issues の今回指定を解除" }).click();
+  const githubOption = page.getByRole("option").filter({ hasText: "@GitHub" }).filter({ hasText: "service" });
+  await expect(githubOption).toBeVisible();
+  await githubOption.click();
+  await expect(composer).toHaveValue("Use @GitHub ");
+  await expect(page.locator('[data-composer-inline-mentions] .rumi-composer-inline-mention')).toContainText("@GitHub");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe('["github_issue_search"]');
+  await composer.fill("Use \\@GitHub");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
+    .toBe("[]");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
   await expect.poll(() => serviceRequests.length).toBe(1);
   const serviceRequest = serviceRequests[0];
@@ -1532,7 +1784,7 @@ test("composer supplementary-plane mention keeps textarea and parser indices ali
   ]);
 });
 
-test("composer keeps a no-space mention disabled after its chip is toggled off", async ({ page }) => {
+test("composer removes a no-space mention atomically without leaving tool state", async ({ page }) => {
   const streamRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => streamRequests.push(payload),
@@ -1541,11 +1793,15 @@ test("composer keeps a no-space mention disabled after its chip is toggled off",
 
   await composer.fill("Use @𐐀");
   await composer.press("Enter");
-  await page.getByRole("button", { name: "𐐀tool", exact: true }).click();
+  await expect(composer).toHaveValue("Use @𐐀tool ");
+  await expect(page.getByRole("button", { name: "𐐀tool", exact: true })).toHaveCount(0);
+  await composer.press("End");
+  await composer.press("Backspace");
+  await composer.press("Backspace");
+  await expect(composer).toHaveValue("Use ");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rumi-selected-tool-ids")))
     .toBe("[]");
-  await composer.press("End");
-  await composer.pressSequentially(" and summarize the result");
+  await composer.pressSequentially("and summarize the result");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
   await expect.poll(() => streamRequests.length).toBe(1);
 
@@ -1557,7 +1813,7 @@ test("composer keeps a no-space mention disabled after its chip is toggled off",
   expect(metadata.dropped_widgets).toEqual([]);
 });
 
-test("editing and reselecting a dismissed no-space mention restores it", async ({ page }) => {
+test("editing and reselecting an atomically deleted no-space mention restores it", async ({ page }) => {
   const streamRequests: Record<string, unknown>[] = [];
   await openDefaultspack(page, "/chat", {
     onStreamRequest: (payload) => streamRequests.push(payload),
@@ -1566,7 +1822,10 @@ test("editing and reselecting a dismissed no-space mention restores it", async (
 
   await composer.fill("Use @𐐀");
   await composer.press("Enter");
-  await page.getByRole("button", { name: "𐐀tool", exact: true }).click();
+  await composer.press("End");
+  await composer.press("Backspace");
+  await composer.press("Backspace");
+  await expect(composer).toHaveValue("Use ");
   await composer.fill("Use again @𐐀");
   await composer.press("Enter");
   await page.getByRole("button", { name: "メッセージを送信" }).click();
@@ -1763,10 +2022,24 @@ test("composer mention keyboard and ARIA contracts stay predictable at Unicode a
   await expect(composer).not.toBeFocused();
 
   await composer.focus();
+  await composer.evaluate((element) => {
+    const end = element.value.length;
+    element.setSelectionRange(end, end);
+  });
+  await expect.poll(() => composer.evaluate((element) => element.selectionStart)).toBe(
+    "@this_candidate_does_not_exist".length,
+  );
   await composer.press("Escape");
   await expect(mentions).toBeHidden();
 
   await composer.fill("@this_candidate_does_not_exist");
+  await composer.evaluate((element) => {
+    const end = element.value.length;
+    element.setSelectionRange(end, end);
+  });
+  await expect.poll(() => composer.evaluate((element) => element.selectionStart)).toBe(
+    "@this_candidate_does_not_exist".length,
+  );
   await composer.press("Shift+Enter");
   await expect(composer).toHaveValue("@this_candidate_does_not_exist\n");
   expect(streamRequests).toHaveLength(0);
@@ -1838,10 +2111,110 @@ test("composer controls are keyboard reachable, visibly named, and at least 44px
     page.getByRole("button", { name: "メッセージを送信" }),
   ]) {
     const box = await control.boundingBox();
+    const label = await control.getAttribute("aria-label");
     expect(box).not.toBeNull();
-    expect(box!.width).toBeGreaterThanOrEqual(44);
-    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.width, `${label} width`).toBeGreaterThanOrEqual(44);
+    expect(box!.height, `${label} height`).toBeGreaterThanOrEqual(44);
   }
+});
+
+test("composer uses a leading plus menu and accepts clipboard and workspace file drops", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+  await page.getByTitle("New Chat").first().click();
+  await expect(page.locator(".rumi-composer-new")).toHaveCSS("filter", "blur(0px)");
+
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+  const attach = page.getByRole("button", { name: "ファイルを添付" });
+  const composerBox = await composer.boundingBox();
+  const attachBox = await attach.boundingBox();
+  expect(composerBox).not.toBeNull();
+  expect(attachBox).not.toBeNull();
+  expect(attachBox!.x).toBeLessThan(composerBox!.x);
+  const composerCenterY = composerBox!.y + composerBox!.height / 2;
+  const attachCenterY = attachBox!.y + attachBox!.height / 2;
+  expect(Math.abs(attachCenterY - composerCenterY)).toBeLessThanOrEqual(1);
+
+  await attach.click();
+  await expect(page.getByRole("menu", { name: "添付メニュー" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /写真とファイルを追加/ })).toBeVisible();
+  await attach.click();
+
+  await composer.evaluate((target) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["clipboard"], "clipboard.txt", { type: "text/plain" }));
+    target.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dataTransfer,
+    }));
+  });
+  const removeClipboardAttachment = page.getByRole("button", { name: "clipboard.txt を削除" });
+  await expect(removeClipboardAttachment).toBeVisible();
+  const removeAttachmentBox = await removeClipboardAttachment.boundingBox();
+  expect(removeAttachmentBox).not.toBeNull();
+  expect(removeAttachmentBox!.width).toBeGreaterThanOrEqual(44);
+  expect(removeAttachmentBox!.height).toBeGreaterThanOrEqual(44);
+  const attachmentRegion = page.locator("[data-composer-attachment-region]");
+  const composerPanel = page.locator(".rumi-composer-main-panel");
+  await expect(attachmentRegion).toHaveAttribute("data-attachment-state", "expanded");
+  await expect(composerPanel.locator("[data-composer-attachment-region]")).toHaveCount(1);
+  const regionBox = await attachmentRegion.boundingBox();
+  const inputBoxAfterAttachment = await composer.boundingBox();
+  expect(regionBox).not.toBeNull();
+  expect(inputBoxAfterAttachment).not.toBeNull();
+  expect(regionBox!.y).toBeLessThan(inputBoxAfterAttachment!.y);
+  const attachmentTransition = await attachmentRegion.evaluate(
+    (element) => getComputedStyle(element).transitionProperty,
+  );
+  expect(attachmentTransition).toContain("grid-template-rows");
+
+  await page.locator("main").evaluate((target) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["drop"], "workspace-drop.txt", { type: "text/plain" }));
+    target.dispatchEvent(new DragEvent("dragenter", {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    }));
+  });
+  await expect(page.getByRole("status", { name: "ファイルをここにドロップ" })).toBeVisible();
+  await page.locator("main").evaluate((target) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["drop"], "workspace-drop.txt", { type: "text/plain" }));
+    target.dispatchEvent(new DragEvent("drop", {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer,
+    }));
+  });
+  await expect(page.getByRole("status", { name: "ファイルをここにドロップ" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "workspace-drop.txt を削除" })).toBeVisible();
+  await removeClipboardAttachment.click();
+  await page.getByRole("button", { name: "workspace-drop.txt を削除" }).click();
+  await expect(attachmentRegion).toHaveAttribute("data-attachment-state", "collapsed");
+  await expect.poll(async () => (await attachmentRegion.boundingBox())?.height ?? -1).toBe(0);
+});
+
+test("composer mentions paste portably and delete as one semantic unit", async ({ page }) => {
+  await openDefaultspack(page, "/chat");
+  const composer = page.getByRole("combobox", { name: "Rumiにメッセージを送信" });
+
+  await composer.evaluate((target) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/plain", '[@Web Search](plugin://web_search@openai-bundled")');
+    target.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: dataTransfer,
+    }));
+  });
+  await expect(composer).toHaveValue("@Web Search");
+  await expect(page.locator("[data-composer-inline-mentions]")).toContainText("@Web Search");
+
+  await composer.press("End");
+  await composer.press("Backspace");
+  await expect(composer).toHaveValue("");
+  await expect(page.locator("[data-composer-inline-mentions]")).toHaveCount(0);
 });
 
 test("attachment remove and cancel actions expose 44px visible focus targets", async ({ page }) => {
@@ -2026,13 +2399,13 @@ test("model picker search supports @provider filters", async ({ page }) => {
   await openDefaultspack(page);
 
   await page.getByRole("button", { name: /Stub Default/ }).click();
-  const search = page.getByPlaceholder("モデルを検索... @google");
+  const search = page.getByPlaceholder(/モデルを検索/);
   await search.fill("@opencode");
-  await expect(page.getByText("Qwen3.5 Plus via OpenCode Go")).toBeVisible();
-  await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
+  await expect(page.getByRole("option", { name: /@OpenCode Go/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /@OpenCode Zen/ })).toBeVisible();
   await expect(page.getByText("Gemini 2.5 Flash")).toBeHidden();
 
-  await search.fill("@opencode zen");
+  await page.getByRole("option", { name: /@OpenCode Zen/ }).click();
   await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
   await expect(page.getByText("Qwen3.5 Plus via OpenCode Go")).toBeHidden();
 
@@ -2045,7 +2418,7 @@ test("model picker keeps unconfigured opencode zen visible for first-run setup",
   await openDefaultspack(page);
 
   await page.getByRole("button", { name: /Stub Default/ }).click();
-  const search = page.getByPlaceholder("モデルを検索... @google");
+  const search = page.getByPlaceholder(/モデルを検索/);
   await search.fill("minimax");
   await expect(page.getByText("MiniMax M3 Free via OpenCode Zen")).toBeVisible();
 });
@@ -2136,7 +2509,10 @@ test("calendar mode opens quick add and renders new tasks in blue", async ({ pag
   await expect(page.getByText("Range task")).toHaveCount(0);
 
   await page.getByTitle("Settings").last().click();
-  await expect(page.getByRole("heading", { name: "Rumi Control Center" })).toBeVisible();
+  const settingsDialog = page.getByRole("dialog", { name: "Settings" });
+  await expect(settingsDialog).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Settings categories" })).toBeVisible();
 });
 
 test("history card drag uses rumi history MIME and sends dropped_widgets metadata", async ({ page }) => {
@@ -2271,6 +2647,10 @@ test("mocked coding cockpit registers approves and connects an MCP server", asyn
   await page.getByTitle("Connect MCP server").click();
 
   const mcpServers = page.getByLabel("MCP servers");
+  const approvals = page.getByLabel("Approval queue");
+  await expect(approvals).toContainText("tool.mcp_connect");
+  await expect(approvals).toContainText("contract_digest");
+  await approvals.getByRole("button", { name: /許可|Approve/ }).click();
   await expect(mcpServers).toContainText("contract_digest");
   await expect(mcpServers).toContainText("approved");
   await expect(page.getByText("MCP connected: contract_digest (1 tools)")).toBeVisible();
@@ -2307,4 +2687,13 @@ test("checkpoint create selects the new snapshot and approved restore settles su
   await approvals.getByRole("button", { name: /許可|Approve/ }).click();
   await expect(checkpoints).toContainText("Restored checkpoint-2");
   await expect(checkpoints).not.toContainText("Approval required");
+});
+
+test("copied ambient approval return hint waits for authoritative status", async ({ page }) => {
+  await installDefaultspackApiMocks(page);
+  await page.goto("/finger-recording?authority_approved=1");
+
+  await expect(page).toHaveURL(/\/finger-recording$/, { timeout: 15_000 });
+  await expect(page.getByText("使えるようになりました。次にMacのマイク/カメラを確認します。")).toHaveCount(0);
+  await expect(page.getByText("許可はまだ確認できません。承認ウィンドウの状態を確認してください。")).toBeVisible();
 });

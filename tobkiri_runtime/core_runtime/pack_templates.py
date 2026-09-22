@@ -79,14 +79,12 @@ def render_template_files(
     selected = resolve_profile(profile, intent)
     if selected == "minimal":
         return {
-            "ecosystem.json": _json_text(_ecosystem(pack_id, display_name)),
             "README.md": _readme(pack_id, display_name, selected),
         }
     activity_id = f"{pack_id}.agent_work"
     skill_id = f"{pack_id}.task_operator"
     tool_id = f"{pack_id}.task_context"
     files = {
-        "ecosystem.json": _json_text(_ecosystem(pack_id, display_name)),
         "README.md": _readme(pack_id, display_name, selected),
         "AGENTS.md": _agents_md(selected),
         "template.contract.json": _json_text(
@@ -133,10 +131,12 @@ def scaffold_component(
     normalized_description = _single_line(description, "description")
     slug = normalized_id.rsplit(".", 1)[-1].rsplit("/", 1)[-1]
     root = Path(pack_root)
-    if not (root / "pack.json").is_file():
-        raise PackTemplateError(f"pack.json is required in Pack root: {root}")
+    if not (root / "pack.v4.json").is_file():
+        raise PackTemplateError(
+            f"pack.v4.json is required in Pack root: {root}"
+        )
     if normalized_kind == "activity":
-        files = {
+        files: dict[Path, dict[str, Any] | str] = {
             root / "extensions" / "activities" / slug / "manifest.json":
                 _activity_manifest(normalized_id, "", "")
         }
@@ -257,20 +257,6 @@ def _json_text(value: dict[str, Any]) -> str:
         indent=2,
         sort_keys=True,
     ) + "\n"
-
-
-def _ecosystem(pack_id: str, display_name: str) -> dict[str, Any]:
-    return {
-        "pack_id": pack_id,
-        "pack_identity": f"rumi:ecosystem/{pack_id}",
-        "version": "0.1.0",
-        "metadata": {
-            "name": display_name,
-            "generated_by": "tobkiri-pack",
-        },
-        "components": {},
-        "host_execution": False,
-    }
 
 
 def _template_contract(pack_id: str, profile: str) -> dict[str, Any]:

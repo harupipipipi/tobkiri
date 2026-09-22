@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
-from domain.tool import settings_tools
+from _defaultspack_test_isolation import is_pack_test_child, run_pack_test
 
 
 class _FakeFrontendRegistry:
@@ -46,6 +47,15 @@ class _FakeFrontendRegistry:
 
 
 def test_settings_inspect_excludes_protected_fields_and_redacts_nested_values() -> None:
+    if not is_pack_test_child():
+        run_pack_test(
+            Path(__file__),
+            "test_settings_inspect_excludes_protected_fields_and_redacts_nested_values",
+        )
+        return
+
+    from domain.tool import settings_tools
+
     with patch.object(settings_tools, "FrontendRegistry", _FakeFrontendRegistry):
         result = settings_tools.settings_inspect({"section_ids": ["general"]})
 
@@ -58,6 +68,15 @@ def test_settings_inspect_excludes_protected_fields_and_redacts_nested_values() 
 
 
 def test_settings_update_applies_only_valid_safe_fields() -> None:
+    if not is_pack_test_child():
+        run_pack_test(
+            Path(__file__),
+            "test_settings_update_applies_only_valid_safe_fields",
+        )
+        return
+
+    from domain.tool import settings_tools
+
     _FakeFrontendRegistry.updated_values = None
     with patch.object(settings_tools, "FrontendRegistry", _FakeFrontendRegistry):
         result = settings_tools.settings_update({
@@ -74,6 +93,15 @@ def test_settings_update_applies_only_valid_safe_fields() -> None:
 
 
 def test_settings_update_rejects_secret_fields_and_nested_secret_keys() -> None:
+    if not is_pack_test_child():
+        run_pack_test(
+            Path(__file__),
+            "test_settings_update_rejects_secret_fields_and_nested_secret_keys",
+        )
+        return
+
+    from domain.tool import settings_tools
+
     _FakeFrontendRegistry.updated_values = None
     with patch.object(settings_tools, "FrontendRegistry", _FakeFrontendRegistry):
         protected_field = settings_tools.settings_update({

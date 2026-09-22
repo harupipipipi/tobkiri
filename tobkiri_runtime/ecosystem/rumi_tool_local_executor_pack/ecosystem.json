@@ -1,1 +1,67 @@
-{"pack_id": "rumi_tool_local_executor_pack", "pack_identity": "rumi:ecosystem/rumi_tool_local_executor_pack", "display_name": "Rumi Tool Local Executor Pack", "version": "1.0.0", "description": "Generic selected local service adapter executor.", "dependencies": {}, "connectivity": {"requires": ["rumi.service.tool.local.operation.v1"], "provides": ["rumi.service.tool.execute.v1"]}, "required_secrets": [], "required_capabilities": ["tool.execute"], "required_network": {"allowed_domains": [], "allowed_ports": []}, "host_execution": true, "resources": [], "provenance": {"content_hash": "sha256:17da74993fe51e5582900b12bbca220ca765851eef634696ad9e308f9c7c0813", "build_identity": "rumi-tool-local-executor-pack:1.0.0", "trust_class": "local", "signature": null}, "metadata": {"authoritative_owner": true, "owner_surfaces": ["local_tool_execution"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"domain_service_imports": false, "exact_provider": true}}}
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.execute.v1"
+    ],
+    "requires": [
+      "rumi.service.tool.local.operation.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Generic selected local-service adapter executor.",
+  "display_name": "Rumi Tool Local Executor",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:bf397bb7e1b5891bad5176e7923898c961d9cea21d9c58925d614e53efa8bd46",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:34ece7a93b2c78c3c8134433c7300094f654e00037c84d63ace67ac91515ca8f"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:34ece7a93b2c78c3c8134433c7300094f654e00037c84d63ace67ac91515ca8f"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "local_tool_execution"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "domain_service_imports": false,
+      "exact_provider": true
+    }
+  },
+  "pack_id": "rumi_tool_local_executor_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_local_executor_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_local_executor_pack:1.0.0",
+    "content_hash": "sha256:73f7f02b71aa4b19c5ac19a35b159184b46ec2b5284f3c0c8e42f85195d77af1",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.execute"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

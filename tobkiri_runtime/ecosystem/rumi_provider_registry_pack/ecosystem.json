@@ -1,43 +1,73 @@
 {
-  "pack_id": "rumi_provider_registry_pack",
-  "pack_identity": "rumi:ecosystem/rumi_provider_registry_pack",
-  "display_name": "Rumi Provider Registry Pack",
-  "version": "1.0.0",
-  "description": "Authoritative provider connection registry with conservative health state.",
-  "dependencies": {},
   "connectivity": {
-    "requires": [],
     "provides": [
-      "rumi.resource.ai.provider.registry.v1",
       "rumi.action.ai.provider.registry.manage.v1",
-      "rumi.resource.ai.provider.health.v1"
-    ]
+      "rumi.resource.ai.provider.health.v1",
+      "rumi.resource.ai.provider.registry.v1"
+    ],
+    "requires": []
   },
-  "required_secrets": [],
-  "required_capabilities": [
-    "ai.provider.registry.read",
-    "ai.provider.registry.manage",
-    "ai.provider.health.read"
-  ],
-  "required_network": {"allowed_domains": [], "allowed_ports": []},
+  "dependencies": {},
+  "description": "Provider-neutral connection state, migration, rollback, and verified health evidence.",
+  "display_name": "Rumi Provider Registry",
   "host_execution": true,
-  "resources": [],
-  "provenance": {
-    "content_hash": "sha256:bbd2df336da60bf1f79dde082eb35c3615a2ba871544e03ef6d7d70ba067f404",
-    "build_identity": "rumi-provider-registry-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
-  },
   "metadata": {
     "authoritative_owner": true,
-    "storage_namespace": "rumi.provider_connections",
-    "owner_surfaces": ["provider_instances", "provider_connection_health"],
-    "integrity": {"artifact_manifest": "artifact-manifest.json"},
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:27813ca16ccc672ecaea3c0aeec65b711f9377914eb5113712c65e2328261c59",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:e39682b8605ff38baae47fdbca59535f481af9942f96ebf2180b246c42a7f7cd"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:e39682b8605ff38baae47fdbca59535f481af9942f96ebf2180b246c42a7f7cd"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "provider_instances",
+      "provider_connection_health"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
     "security": {
-      "opaque_credentials_only": true,
-      "remote_health_unknown_until_verified": true,
+      "adapter_owner": false,
       "catalog_owner": false,
-      "adapter_owner": false
-    }
+      "opaque_credentials_only": true,
+      "remote_health_unknown_until_verified": true
+    },
+    "storage_namespace": "rumi.provider_connections"
+  },
+  "pack_id": "rumi_provider_registry_pack",
+  "pack_identity": "rumi:ecosystem/rumi_provider_registry_pack",
+  "provenance": {
+    "build_identity": "rumi_provider_registry_pack:1.0.0",
+    "content_hash": "sha256:29ee31801cb8fa8ea0dd2accd96ba57acb268ded3f6fb1f23b2b31fde94d30ff",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "ai.provider.health.read",
+    "ai.provider.registry.manage",
+    "ai.provider.registry.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
   }
 }

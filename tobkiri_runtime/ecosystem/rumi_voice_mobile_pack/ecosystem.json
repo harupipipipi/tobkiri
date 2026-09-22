@@ -1,36 +1,77 @@
 {
-  "pack_id": "rumi_voice_mobile_pack",
-  "pack_identity": "rumi:ecosystem/rumi_voice_mobile_pack",
-  "display_name": "Rumi Voice Mobile Pack",
-  "version": "0.1.0",
-  "description": "Declarative voice, mobile, intent, consent, notification, and handoff receipt pack for on-the-go Rumi interactions.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "policy",
-      "profile",
-      "prompt",
-      "preset",
-      "example",
-      "spec",
-      "checklist",
-      "template",
-      "evidence"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative voice, mobile, intent, consent, notification, and handoff receipt pack for on-the-go Rumi interactions.",
+  "display_name": "Rumi Voice Mobile Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "asset_index": {
+      "catalogs": [
+        "catalog/voice_mobile_workflows.yaml"
+      ],
+      "checklists": [
+        "checklists/mobile_action_safety_checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "examples": [
+        "examples/voice_memo_task.example.yaml",
+        "examples/morning_brief.example.yaml",
+        "examples/mobile_followup.example.yaml"
+      ],
+      "policies": [
+        "policies/voice_mobile_safety.policy.yaml",
+        "policies/transcription_notification_consent.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/voice_mobile_operator.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/voice_mobile_operator.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "specs": [
+        "specs/intent_taxonomy.yaml",
+        "specs/handoff_receipt.schema.yaml"
+      ],
+      "templates": [
+        "templates/mobile_handoff_receipt.template.yaml"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3e513933f30e8e657cb6a5d97a69671a29c9e89d80ec6bbdd00c6663f1ba5378",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:aae7600fb944aa3e56f8964346a70913c3768badec32b2f15f2e23fed6d1f5a7"
+    },
     "executable_code": false,
-    "registers_tools": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:aae7600fb944aa3e56f8964346a70913c3768badec32b2f15f2e23fed6d1f5a7"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_connector_gateway_pack",
@@ -60,37 +101,34 @@
       "mobile_action_safety",
       "handoff_receipts"
     ],
-    "asset_index": {
-      "readme": ["README.md"],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalogs": ["catalog/voice_mobile_workflows.yaml"],
-      "policies": [
-        "policies/voice_mobile_safety.policy.yaml",
-        "policies/transcription_notification_consent.policy.yaml"
-      ],
-      "profiles": ["profiles/voice_mobile_operator.profile.yaml"],
-      "prompts": ["prompts/voice_mobile_operator.system.md"],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "examples": [
-        "examples/voice_memo_task.example.yaml",
-        "examples/morning_brief.example.yaml",
-        "examples/mobile_followup.example.yaml"
-      ],
-      "specs": [
-        "specs/intent_taxonomy.yaml",
-        "specs/handoff_receipt.schema.yaml"
-      ],
-      "checklists": ["checklists/mobile_action_safety_checklist.yaml"],
-      "templates": ["templates/mobile_handoff_receipt.template.yaml"]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "registers_tools": false,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_voice_mobile_pack",
+  "pack_identity": "rumi:ecosystem/rumi_voice_mobile_pack",
+  "provenance": {
+    "build_identity": "rumi_voice_mobile_pack:0.1.0",
+    "content_hash": "sha256:3e513933f30e8e657cb6a5d97a69671a29c9e89d80ec6bbdd00c6663f1ba5378",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "policy",
+      "profile",
+      "prompt",
+      "preset",
+      "example",
+      "spec",
+      "checklist",
+      "template",
+      "evidence"
+    ]
   }
 }

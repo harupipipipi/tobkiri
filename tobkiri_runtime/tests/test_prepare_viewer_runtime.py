@@ -151,13 +151,16 @@ def test_prepare_release_builds_pack_shell_then_runs_verified_resource_preparer(
     manifest.write_text("[package]\nname='pack-shell'\n", encoding="utf-8")
     preparer_path.write_text("# test\n", encoding="utf-8")
 
+    calls: list[tuple[list[str], Path | None]] = []
     fake_preparer = SimpleNamespace(
         UV_PINNED_VERSION="0.11.14",
         UV_SHA256_BY_TARGET={"x86_64-pc-windows-msvc": "sha"},
+        seal_pack_shell_binary=lambda root, target: calls.append(
+            (["seal-pack-shell", os.fspath(root), target], root)
+        ),
     )
-    monkeypatch.setattr(module, "load_resource_preparer", lambda _root: fake_preparer)
 
-    calls: list[tuple[list[str], Path | None]] = []
+    monkeypatch.setattr(module, "load_resource_preparer", lambda _root: fake_preparer)
 
     def fake_run(command, *, cwd=None, capture_output=False):
         del capture_output
@@ -170,10 +173,14 @@ def test_prepare_release_builds_pack_shell_then_runs_verified_resource_preparer(
 
     assert calls[0][0][:4] == ["cargo", "build", "--locked", "--release"]
     assert calls[0][0][4:6] == ["--target", "x86_64-pc-windows-msvc"]
-    assert calls[1][0][0] == os.fspath(module.sys.executable)
-    assert "--uv-version" in calls[1][0]
-    assert "0.11.14" in calls[1][0]
-    assert "--require-runtime-tools" in calls[1][0]
+    assert calls[1] == (
+        ["seal-pack-shell", os.fspath(tmp_path), "x86_64-pc-windows-msvc"],
+        tmp_path,
+    )
+    assert calls[2][0][0] == os.fspath(module.sys.executable)
+    assert "--uv-version" in calls[2][0]
+    assert "0.11.14" in calls[2][0]
+    assert "--require-runtime-tools" in calls[2][0]
 
 
 def test_prepare_release_rejects_target_without_pinned_checksum(tmp_path, monkeypatch):
@@ -205,6 +212,7 @@ def test_prepare_release_removes_read_only_dev_uv_before_verified_stage(tmp_path
     fake_preparer = SimpleNamespace(
         UV_PINNED_VERSION="0.0.0",
         UV_SHA256_BY_TARGET={target: "fixture"},
+        seal_pack_shell_binary=lambda _root, _target: None,
     )
     calls = []
     monkeypatch.setattr(module, "load_resource_preparer", lambda _root: fake_preparer)

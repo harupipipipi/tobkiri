@@ -1,44 +1,5 @@
 {
-  "pack_id": "rumi_observability_pack",
-  "pack_identity": "rumi:ecosystem/rumi_observability_pack",
-  "display_name": "Rumi Observability Pack",
-  "description": "Declarative local-first observability pack for run ledgers, event evidence, privacy-safe cost/latency summaries, and incident review handoffs.",
-  "version": "0.1.0",
-  "license": "MIT",
-  "vocabulary": {
-    "types": [
-      "manifest",
-      "documentation",
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "template",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ],
-    "custom_types": {
-      "schema": {
-        "description": "JSON Schema files for observability events and ledger records.",
-        "singleton": false
-      },
-      "checklist": {
-        "description": "Operational review checklist assets used before handoff or closure.",
-        "singleton": false
-      },
-      "template": {
-        "description": "Reusable local-first document templates for incident summaries and postmortems.",
-        "singleton": false
-      }
-    }
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
   "connectivity": {
     "provides": [
       "observability.run_ledger_contract",
@@ -49,23 +10,82 @@
       "defaultspack.grants"
     ]
   },
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative local-first observability pack for run ledgers, event evidence, privacy-safe cost/latency summaries, and incident review handoffs.",
+  "display_name": "Rumi Observability Pack",
   "host_execution": false,
+  "license": "MIT",
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
+    "asset_index": {
+      "catalog": [
+        "catalog/observability_events.yaml",
+        "catalog/run_ledger_contract.yaml"
+      ],
+      "checklists": [
+        "checklists/incident_review_checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "examples": [
+        "examples/agent_run_summary.example.yaml",
+        "examples/cost_latency_snapshot.example.yaml",
+        "examples/tool_call_postmortem.example.yaml"
+      ],
+      "manifest": [
+        "ecosystem.json"
+      ],
+      "policies": [
+        "policies/observability_privacy.policy.yaml",
+        "policies/privacy_cost_redaction.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/observability_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/observability_reviewer.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schemas": [
+        "schemas/observability_event.schema.json"
+      ],
+      "templates": [
+        "templates/postmortem_template.md"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:529760d065abf30951ada261dec751a1c8d72154ffff32de8288f0b1e10eaa81",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:3b07422abb075235ca8ebfa3e38b76391fbfe1f348110e3398510aaaf11ffc6c"
+    },
     "executable_code": false,
-    "runtime_type": "declarative_pack",
-    "owner_surfaces": [
-      "agent_run_ledgers",
-      "tool_call_evidence",
-      "cost_latency_summaries",
-      "postmortem_templates",
-      "observability_event_schema",
-      "privacy_cost_redaction",
-      "incident_review_checklists"
-    ],
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:3b07422abb075235ca8ebfa3e38b76391fbfe1f348110e3398510aaaf11ffc6c"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_model_evals_pack",
@@ -86,56 +106,62 @@
     ],
     "overlap_notes": {
       "defaultspack": "Owns active grants, pack selection, and runtime enforcement.",
+      "rumi_devops_release_pack": "Owns release gates and rollback execution; observability owns incident evidence packets.",
       "rumi_model_evals_pack": "Owns model scoring; observability owns run evidence and cost/latency summaries.",
-      "rumi_security_review_pack": "Owns vulnerability analysis; observability owns redacted incident records.",
-      "rumi_devops_release_pack": "Owns release gates and rollback execution; observability owns incident evidence packets."
+      "rumi_security_review_pack": "Owns vulnerability analysis; observability owns redacted incident records."
     },
-    "asset_index": {
-      "manifest": [
-        "ecosystem.json"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/observability_events.yaml",
-        "catalog/run_ledger_contract.yaml"
-      ],
-      "schemas": [
-        "schemas/observability_event.schema.json"
-      ],
-      "policies": [
-        "policies/observability_privacy.policy.yaml",
-        "policies/privacy_cost_redaction.policy.yaml"
-      ],
-      "checklists": [
-        "checklists/incident_review_checklist.yaml"
-      ],
-      "templates": [
-        "templates/postmortem_template.md"
-      ],
-      "profiles": [
-        "profiles/observability_reviewer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/observability_reviewer.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "examples": [
-        "examples/agent_run_summary.example.yaml",
-        "examples/cost_latency_snapshot.example.yaml",
-        "examples/tool_call_postmortem.example.yaml"
-      ]
-    }
+    "owner_surfaces": [
+      "agent_run_ledgers",
+      "tool_call_evidence",
+      "cost_latency_summaries",
+      "postmortem_templates",
+      "observability_event_schema",
+      "privacy_cost_redaction",
+      "incident_review_checklists"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_pack"
+  },
+  "pack_id": "rumi_observability_pack",
+  "pack_identity": "rumi:ecosystem/rumi_observability_pack",
+  "provenance": {
+    "build_identity": "rumi_observability_pack:0.1.0",
+    "content_hash": "sha256:529760d065abf30951ada261dec751a1c8d72154ffff32de8288f0b1e10eaa81",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "custom_types": {
+      "checklist": {
+        "description": "Operational review checklist assets used before handoff or closure.",
+        "singleton": false
+      },
+      "schema": {
+        "description": "JSON Schema files for observability events and ledger records.",
+        "singleton": false
+      },
+      "template": {
+        "description": "Reusable local-first document templates for incident summaries and postmortems.",
+        "singleton": false
+      }
+    },
+    "types": [
+      "manifest",
+      "documentation",
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "template",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

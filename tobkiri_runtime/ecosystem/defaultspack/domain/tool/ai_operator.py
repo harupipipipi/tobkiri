@@ -5,12 +5,11 @@ domain.tool.ai_operator — AI 操作ループ。
 import time
 import uuid
 import threading
-import traceback
+from typing import Any
 
 from domain.tool.container_manager import (
     get_container,
     exec_in_container,
-    is_docker_available,
 )
 from domain.tool.screen_controller import (
     take_screenshot,
@@ -35,7 +34,7 @@ _settings = {
     "step_delay": 1.0,
 }
 
-_tasks = {}
+_tasks: dict[str, "OperatorTask"] = {}
 _task_lock = threading.Lock()
 
 
@@ -244,7 +243,7 @@ def _run_operator_loop(task):
     max_steps = task.config.get("max_steps", _settings.get("max_steps", 50))
     step_delay = task.config.get("step_delay", _settings.get("step_delay", 1.0))
 
-    conversation = [
+    conversation: list[dict[str, Any]] = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": "Task: {}\n\nI will now show you screenshots. Decide the next action.".format(task.instruction)},
     ]

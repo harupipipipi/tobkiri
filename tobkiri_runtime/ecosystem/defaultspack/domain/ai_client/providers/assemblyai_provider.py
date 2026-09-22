@@ -24,12 +24,14 @@ class AssemblyAIProvider(OpenAICompatibleProvider):
         cls,
         manifest: Dict[str, Any],
         *,
+        api_key: str = "",
         model_manifests: List[Dict[str, Any]] | None = None,
         allow_declared_models: bool = True,
     ) -> "AssemblyAIProvider":
         del model_manifests
         del allow_declared_models
         return cls(
+            api_key=api_key,
             api_key_env=manifest.get("api_key_env") or "ASSEMBLYAI_API_KEY",
             base_url_env=manifest.get("base_url_env") or "ASSEMBLYAI_LLM_GATEWAY_BASE_URL",
             default_base_url=str(manifest.get("default_base_url") or cls.DEFAULT_BASE_URL),

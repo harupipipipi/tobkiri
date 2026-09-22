@@ -1,13 +1,211 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.qr_pairing_connector","version":"1.0.0","kind":"provider","display_name":"Rumi QR Pairing Connector","description":"One-time signed QR challenges and optional UI handoff."},
-  "contracts":{"provides":[{"id":"rumi.service.connector.adapter.v1","version":"1.0.0","provider_instance_id":"connector.qr_pairing","instance_key":"qr_pairing","cardinality":"many","security":"critical","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_qr_pairing_connector_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.adapter.verify","connector.delivery.execute"]}],"requires":[{"id":"rumi.service.credential.resolve.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},{"id":"rumi.ui.qr.present.v1","version":">=1.0.0,<2.0.0","cardinality":"optional","optional":true,"failure":"isolate"}]},
-  "entrypoints":[{"id":"qr-pairing-adapter","contract_id":"rumi.service.connector.adapter.v1","loader":"python","module":"ecosystem.rumi_qr_pairing_connector_pack.runtime.adapter","symbol":"create_connector_adapter","artifact_hash":"sha256:0b293ec52e79c1d964e753e394ae742108ca22c5f84a192ebfa99ea309f0ceeb"}],
-  "resources":[],
-  "storage":[{"namespace":"rumi.connector.qr_pairing_nonces","schema_version":"1.0.0","authoritative":true,"retention":"bounded 10000 consumed nonce hashes","export_import":false}],
-  "permissions":[{"capability":"connector.adapter.verify","access":"execute","approval_required":false},{"capability":"connector.delivery.execute","access":"execute","approval_required":true},{"capability":"credential.resolve","access":"execute","approval_required":false},{"capability":"qr.present","access":"execute","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:0b293ec52e79c1d964e753e394ae742108ca22c5f84a192ebfa99ea309f0ceeb","build_identity":"rumi-qr-pairing-connector-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.qr_pairing"],"compatibility_aliases":["qr_pairing"],"compatibility_projection":"finite","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Disable QR pairing and preserve consumed nonce hashes before selecting one prior adapter."},
-  "extensions":{"rumi.connector_adapter.boundary":{"vendor":"qr_pairing","chat_imports":false,"company_imports":false,"frontend_imports":false,"credential_scope_bound":true,"nonce_replay":"deny","replay_window_ms":300000,"outbound_receipt":true,"presentation":"optional_global_ui_contract"}}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "many",
+        "failure": "isolate",
+        "id": "rumi.service.connector.adapter.v1",
+        "instance_key": "qr_pairing",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_qr_pairing_connector_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector.qr_pairing",
+        "required_capabilities": [
+          "connector.adapter.verify",
+          "connector.delivery.execute"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.credential.resolve.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "optional",
+        "id": "rumi.ui.qr.present.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:d0df2f80a4ecc591507ba40b2864cfdcb1133d85ed76c1cc612ed89823b970d0",
+      "contract_id": "rumi.service.connector.adapter.v1",
+      "id": "qr-pairing-adapter",
+      "loader": "python",
+      "module": "ecosystem.rumi_qr_pairing_connector_pack.runtime.adapter",
+      "symbol": "create_connector_adapter"
+    }
+  ],
+  "extensions": {
+    "rumi.connector_adapter.boundary": {
+      "chat_imports": false,
+      "company_imports": false,
+      "credential_scope_bound": true,
+      "frontend_imports": false,
+      "nonce_replay": "deny",
+      "outbound_receipt": true,
+      "presentation": "optional_global_ui_contract",
+      "replay_window_ms": 300000,
+      "vendor": "qr_pairing"
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.service.connector.adapter.v1"
+          ],
+          "requires": [
+            "rumi.service.credential.resolve.v1",
+            "rumi.service.host.authorize.v1",
+            "rumi.ui.qr.present.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "One-time signed QR challenges and optional UI handoff.",
+        "display_name": "Rumi QR Pairing Connector",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:6e8244aad424a13d512394f589bf6663eed15f6c7c81c8d3414e0014bb3f61f9",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:ad05a27dc86febc0c820750b855c359281a69e2cd2e8e37bdbc2f6104429328f"
+          },
+          "owner_surfaces": [
+            "qr_pairing_nonce_ledger"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_qr_pairing_connector_pack",
+        "pack_identity": "rumi:ecosystem/rumi_qr_pairing_connector_pack",
+        "provenance": {
+          "build_identity": "rumi_qr_pairing_connector_pack:1.0.0",
+          "content_hash": "sha256:d0df2f80a4ecc591507ba40b2864cfdcb1133d85ed76c1cc612ed89823b970d0",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "connector.adapter.verify",
+          "connector.delivery.execute",
+          "credential.resolve",
+          "host.authority.consume",
+          "qr.present"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_qr_pairing_connector_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_qr_pairing_connector_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:ad05a27dc86febc0c820750b855c359281a69e2cd2e8e37bdbc2f6104429328f"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.qr_pairing"
+    ],
+    "removal_wave": 10,
+    "rollback": "Disable QR pairing and preserve consumed nonce hashes before selecting one prior adapter.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "One-time signed QR challenges and optional UI handoff.",
+    "display_name": "Rumi QR Pairing Connector",
+    "id": "rumi.qr_pairing_connector",
+    "kind": "provider",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "connector.adapter.verify"
+    },
+    {
+      "access": "execute",
+      "approval_required": true,
+      "capability": "connector.delivery.execute"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "credential.resolve"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "qr.present"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_qr_pairing_connector_pack:1.0.0",
+    "content_hash": "sha256:d0df2f80a4ecc591507ba40b2864cfdcb1133d85ed76c1cc612ed89823b970d0",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.connector.qr_pairing_nonces",
+      "retention": "bounded 10000 consumed nonce hashes",
+      "schema_version": "1.0.0"
+    }
+  ]
 }
-

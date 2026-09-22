@@ -1,90 +1,24 @@
 {
-  "pack_id": "rumi_browser_session_replay_pack",
-  "pack_identity": "rumi:ecosystem/rumi_browser_session_replay_pack",
-  "version": "1.0.0",
-  "display_name": "Rumi Browser Session Replay Pack",
-  "description": "Declarative browser session trace, evidence bundle, replay manifest, selector drift, and redaction contracts.",
   "author": {
     "name": "rumi-ai"
   },
-  "license": "MIT",
-  "vocabulary": {
-    "types": [
-      "capability_provider",
-      "policy_provider",
-      "profile_provider",
-      "schema_contract"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "runtime": {
-    "type": "declarative_pack"
-  },
+  "capabilities": [
+    "rumi_browser_session_replay_pack.browser_session_trace_contract",
+    "rumi_browser_session_replay_pack.dom_snapshot_evidence_bundle",
+    "rumi_browser_session_replay_pack.screenshot_evidence_bundle",
+    "rumi_browser_session_replay_pack.browser_event_evidence",
+    "rumi_browser_session_replay_pack.replay_manifest_contract",
+    "rumi_browser_session_replay_pack.selector_drift_report"
+  ],
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative browser session trace, evidence bundle, replay manifest, selector drift, and redaction contracts.",
+  "display_name": "Rumi Browser Session Replay Pack",
   "host_execution": false,
+  "license": "MIT",
+  "load_order": [],
   "metadata": {
-    "runtime_type": "declarative_setup_pack",
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
-    "consumes_existing_sources_only": true,
-    "output_effect": "replay_evidence_and_handoff_only",
-    "defaultspack_promotion_eligible": false,
-    "owner_surfaces": [
-      "browser_session_trace_contract",
-      "dom_snapshot_evidence_bundle",
-      "screenshot_evidence_bundle",
-      "browser_event_evidence",
-      "replay_manifest_contract",
-      "selector_drift_report",
-      "redaction_review_receipt"
-    ],
-    "non_owner_surfaces": [
-      "browser execution",
-      "semantic DOM interpretation",
-      "browser companion transport",
-      "form submission",
-      "defaultspack audit and grants",
-      "observability metric storage",
-      "connector retrieval"
-    ],
-    "optional_integrations": [
-      {
-        "pack_id": "rumi_browser_automation_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_browser_element_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_default_tools_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_browser_form_operator_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "defaultspack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_observability_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      }
-    ],
     "asset_index": {
-      "root": [
-        "README.md",
-        "asset_index.json",
-        "asset_index.yaml"
-      ],
       "catalog": [
         "catalog/evidence_bundle_contract.yaml",
         "catalog/handoff_matrix.yaml",
@@ -133,6 +67,11 @@
       "prompts": [
         "prompts/browser_session_replay.system.md"
       ],
+      "root": [
+        "README.md",
+        "asset_index.json",
+        "asset_index.yaml"
+      ],
       "schemas": [
         "schemas/browser_event_evidence.schema.json",
         "schemas/browser_session_trace.schema.json",
@@ -147,14 +86,101 @@
         "templates/review_report.template.md",
         "templates/ui_contract.template.md"
       ]
-    }
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:a027dbcd9a523ea85dc75b58246f7b1ac6f2c76ee484aaa18eafad6fd7fb1996",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:26015ade2b38867bf6e757f68bb75cc1476dbbb2773261c5d4c3afd435bbbc36"
+    },
+    "consumes_existing_sources_only": true,
+    "declarative_only": true,
+    "defaultspack_promotion_eligible": false,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:26015ade2b38867bf6e757f68bb75cc1476dbbb2773261c5d4c3afd435bbbc36"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
+    "non_owner_surfaces": [
+      "browser execution",
+      "semantic DOM interpretation",
+      "browser companion transport",
+      "form submission",
+      "defaultspack audit and grants",
+      "observability metric storage",
+      "connector retrieval"
+    ],
+    "optional_integrations": [
+      {
+        "pack_id": "rumi_browser_automation_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_browser_element_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_default_tools_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_browser_form_operator_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "defaultspack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_observability_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      }
+    ],
+    "output_effect": "replay_evidence_and_handoff_only",
+    "owner_surfaces": [
+      "browser_session_trace_contract",
+      "dom_snapshot_evidence_bundle",
+      "screenshot_evidence_bundle",
+      "browser_event_evidence",
+      "replay_manifest_contract",
+      "selector_drift_report",
+      "redaction_review_receipt"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "runtime_type": "declarative_setup_pack"
   },
-  "capabilities": [
-    "rumi_browser_session_replay_pack.browser_session_trace_contract",
-    "rumi_browser_session_replay_pack.dom_snapshot_evidence_bundle",
-    "rumi_browser_session_replay_pack.screenshot_evidence_bundle",
-    "rumi_browser_session_replay_pack.browser_event_evidence",
-    "rumi_browser_session_replay_pack.replay_manifest_contract",
-    "rumi_browser_session_replay_pack.selector_drift_report"
-  ]
+  "pack_id": "rumi_browser_session_replay_pack",
+  "pack_identity": "rumi:ecosystem/rumi_browser_session_replay_pack",
+  "provenance": {
+    "build_identity": "rumi_browser_session_replay_pack:1.0.0",
+    "content_hash": "sha256:a027dbcd9a523ea85dc75b58246f7b1ac6f2c76ee484aaa18eafad6fd7fb1996",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "runtime": {
+    "type": "declarative_pack"
+  },
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "capability_provider",
+      "policy_provider",
+      "profile_provider",
+      "schema_contract"
+    ]
+  }
 }

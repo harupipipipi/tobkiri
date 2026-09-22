@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 38766",
-    "build": "node scripts/clean-shell-bundle.mjs && vite build && node -e \"require('node:fs').rmSync('../ui/index.html', { force: true })\" && node scripts/check-shell-bundle-sync.mjs",
+    "build": "npm run check:vendored-assets -- --require-ui && node scripts/clean-shell-bundle.mjs && vite build && node -e \"require('node:fs').rmSync('../ui/index.html', { force: true })\" && node scripts/write-shell-bundle-manifest.mjs && node scripts/check-shell-bundle-sync.mjs && npm run check:vendored-assets -- --require-ui",
     "lint": "tsc --noEmit && npm run lint:layers && npm run lint:boundaries && npm run lint:local-fonts && npm run check:ui-security-guardrails",
     "lint:layers": "node scripts/forbid-raw-z-index.mjs",
     "lint:boundaries": "node scripts/forbid-renderer-api-imports.mjs",
@@ -22,8 +22,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui-contract": "playwright test e2e/ui-contract.spec.ts",
     "test:model-selector": "tsx --test src/features/models/modelSelectorSchema.test.ts",
-    "pretest": "tsx --test src/lib/untrustedImagePolicy.test.ts src/lib/untrustedImagePolicy.security.test.ts src/renderers/ChatMessagesRenderer.imageSecurity.test.tsx",
-    "test": "tsx --test src/adaptive/AdaptiveSurfaces.test.tsx src/ambient/ambientApprovalBoundary.test.ts src/ambient/ambientMedia.test.ts src/ambient/ambientMiniChat.test.ts src/ambient/ambientUiState.test.ts src/ambient/finalAnswerBridge.test.ts src/ambient/gesturePinchDetector.test.ts src/hostPermissions/hostPermissions.test.ts src/lib/api.test.ts src/lib/templateToolPolicyMerge.test.ts src/lib/attachments.test.ts src/lib/authorityApproval.test.ts src/lib/browserApproval.test.ts src/lib/browserState.test.ts src/lib/chat.test.ts src/lib/chatRouteLoading.test.ts src/lib/clientDiagnostics.test.ts src/lib/composerReferences.test.ts src/lib/composerWidgets.test.ts src/lib/conversationSpotlight.test.ts src/lib/defaultspackCssPolicy.test.ts src/lib/desktopSystemInfo.test.ts src/lib/focusModality.test.ts src/lib/i18n.test.ts src/lib/modelApiRoutes.test.ts src/lib/pendingChat.test.ts src/lib/placement.test.ts src/lib/settingsMode.test.ts src/lib/settingsSearch.test.ts src/lib/toolActivity.test.ts src/lib/toolPreviews.test.ts src/lib/toolStatus.test.ts src/lib/toolUi.test.ts src/lib/uiShell.test.ts src/lib/widgetContext.test.ts src/lib/workspaceAttachments.test.ts src/ui/layers/layerTokens.test.ts src/features/settings/resources/useModelAvailability.test.ts src/features/sandboxes/api.test.ts src/features/sandboxes/runtimeStatus.test.ts src/features/sandboxes/useDesktopControlLease.test.ts src/features/sandboxes/useDesktopFrames.test.ts src/settings/controlCenter.test.ts src/components/HistoryBoard.test.ts src/components/TitleBar.test.tsx src/components/TransientAlert.test.ts src/components/PlacementHtmlRenderer.test.tsx src/components/RightSidebar.test.tsx src/components/ToolPreview.test.ts src/components/ToolStatusWidgets.test.tsx src/components/WorkspaceTabs.test.tsx src/components/coding/CodingCockpit.test.tsx src/components/desktops/DesktopCreateDialog.test.tsx src/components/desktops/DesktopGrid.test.tsx src/components/desktops/DesktopInspector.test.tsx src/components/desktops/RuntimeSetupDialog.test.tsx src/components/kanban/KanbanWorkspacePanel.test.tsx src/pages/PromptStudio.test.ts src/pages/UiPrecisionComparator.test.tsx src/renderers/ChatMessagesRenderer.test.ts src/renderers/ComposerRenderer.test.ts src/renderers/SettingsModalRenderer.test.tsx src/renderers/defaultspackRenderers.test.ts src/renderers/trustedRendererLoader.test.ts src/lib/changeRequests.test.ts src/subagentTeam/subagentTeamData.test.ts src/subagentTeam/SubagentTeamWorkspaceApproval.test.ts"
+    "pretest": "tsx --test src/host/DynamicFrontendHost.test.tsx src/host/ConversationV4View.test.tsx src/host/HostBootstrap.test.tsx src/lib/untrustedImagePolicy.test.ts src/lib/untrustedImagePolicy.security.test.ts src/lib/chatScroll.test.ts src/renderers/ChatMessagesRenderer.imageSecurity.test.tsx",
+    "test": "tsx --test src/adaptive/AdaptiveSurfaces.test.tsx src/ambient/ambientApprovalBoundary.test.ts src/ambient/ambientMedia.test.ts src/ambient/ambientMiniChat.test.ts src/ambient/ambientUiState.test.ts src/ambient/finalAnswerBridge.test.ts src/ambient/gesturePinchDetector.test.ts src/hostPermissions/hostPermissions.test.ts src/lib/api.test.ts src/lib/templateToolPolicyMerge.test.ts src/lib/attachments.test.ts src/lib/authorityApproval.test.ts src/lib/browserApproval.test.ts src/lib/browserState.test.ts src/lib/chat.test.ts src/lib/chatRouteLoading.test.ts src/lib/clientDiagnostics.test.ts src/lib/composerReferences.test.ts src/lib/composerWidgets.test.ts src/lib/conversationSpotlight.test.ts src/lib/defaultspackCssPolicy.test.ts src/lib/desktopSystemInfo.test.ts src/lib/focusModality.test.ts src/lib/i18n.test.ts src/lib/modelApiRoutes.test.ts src/lib/pendingChat.test.ts src/lib/placement.test.ts src/lib/settingsMode.test.ts src/lib/settingsSearch.test.ts src/lib/toolActivity.test.ts src/lib/toolPreviews.test.ts src/lib/toolStatus.test.ts src/lib/toolUi.test.ts src/lib/uiShell.test.ts src/lib/widgetContext.test.ts src/lib/workspaceAttachments.test.ts src/ui/layers/layerTokens.test.ts src/features/apiKeys/apiKeySetup.test.ts src/features/connections/providerBrandAssets.test.ts src/features/models/modelSelect.test.ts src/features/models/modelSelectorSchema.test.ts src/features/runtimeMode/runtimeMode.test.ts src/features/voice/composerVoice.test.ts src/features/settings/resources/useModelAvailability.test.ts src/features/sandboxes/api.test.ts src/features/sandboxes/runtimeStatus.test.ts src/features/sandboxes/useDesktopControlLease.test.ts src/features/sandboxes/useDesktopFrames.test.ts src/settings/controlCenter.test.ts src/components/HistoryBoard.test.ts src/components/TitleBar.test.tsx src/components/TobkiriLoadingScreen.test.tsx src/components/TransientAlert.test.ts src/components/PlacementHtmlRenderer.test.tsx src/components/RightSidebar.test.tsx src/components/ToolPreview.test.ts src/components/ToolStatusWidgets.test.tsx src/components/WorkspaceTabs.test.tsx src/components/coding/CodingCockpit.test.tsx src/components/desktops/DesktopCreateDialog.test.tsx src/components/desktops/DesktopGrid.test.tsx src/components/desktops/DesktopInspector.test.tsx src/components/desktops/RuntimeSetupDialog.test.tsx src/components/kanban/KanbanWorkspacePanel.test.tsx src/pages/PromptStudio.test.ts src/pages/UiPrecisionComparator.test.tsx src/renderers/ChatMessagesRenderer.test.ts src/renderers/ComposerRenderer.test.ts src/renderers/SettingsModalRenderer.test.tsx src/renderers/defaultspackRenderers.test.ts src/renderers/trustedRendererLoader.test.ts src/lib/changeRequests.test.ts src/subagentTeam/subagentTeamData.test.ts src/subagentTeam/SubagentTeamWorkspaceApproval.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -31,9 +31,11 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@mediapipe/tasks-vision": "^0.10.35",
     "@tauri-apps/api": "^2.10.1",
+    "@types/qrcode": "^1.5.6",
     "clsx": "^2.1.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
@@ -43,7 +45,6 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@tailwindcss/vite": "^4.3.1",
-    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -51,7 +52,6 @@
     "tailwindcss": "^4.3.1",
     "tsx": "^4.22.4",
     "typescript": "~5.8.2",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.10"
+    "vite": "^8.0.16"
   }
 }

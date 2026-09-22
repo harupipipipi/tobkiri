@@ -11,11 +11,9 @@ import threading
 import time
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote
 
-from core_runtime.profile_graph_models import normalize_profile_graph_selected
-from core_runtime.profile_workspace import ProfileWorkspaceManager
 from domain.ai_client.client import AIClient
 from domain.ai_client.api_key_store import provider_key_status
 from domain.ai_client.model_runtime_settings import ModelRuntimeSettingsService
@@ -56,18 +54,32 @@ _KEYBOARD_NAVIGATION_SOURCE_LEGACY_MIGRATION = "legacy_default_migrated"
 _KEYBOARD_NAVIGATION_SOURCE_USER = "user"
 
 
+def _validated_dict(value: object) -> dict[str, object]:
+    """Return a dictionary value after validating its runtime container type."""
+    if isinstance(value, dict):
+        return dict(value)
+    return {}
+
+
+def _validated_dict_list(value: object) -> list[dict[str, object]]:
+    """Return only dictionary entries from a runtime list value."""
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
+
+
 class FrontendRegistry:
     """Registry for frontend catalog, settings, and chat preview metadata."""
 
     _selectable_model_profiles_lock = threading.Lock()
     _selectable_model_profiles_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
     _selectable_model_profiles_cache_ttl_seconds = 30.0
+    _load_diagnostics: list[dict[str, str]]
 
     def __init__(self, pack_root: Path | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        self._extensions_dir = self._pack_root / "user_data" / "shared" / "frontend_extensions"
-        self._shell_path = self._pack_root / "user_data" / "shared" / "frontend_shell.json"
-        self._settings_path = defaultspack_frontend_settings_path(self._pack_root)
+        settings_owner = pack_root if pack_root is not None else None
+        self._settings_path = defaultspack_frontend_settings_path(settings_owner)
         self._settings_store = FrontendSettingsStore(self._settings_path)
 
     def build_catalog(
@@ -77,7 +89,7 @@ class FrontendRegistry:
         lightweight: bool = False,
         include_skills: bool = False,
     ) -> dict[str, Any]:
-        self._load_diagnostics: list[dict[str, Any]] = []
+        self._load_diagnostics = []
         template_catalog = self._template_catalog_metadata()
         extensions = self._load_extensions()
         ui_surfaces = self._load_ui_surfaces()
@@ -328,7 +340,7 @@ class FrontendRegistry:
         ui_surfaces: list[dict[str, Any]],
         extensions: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        shell = {
+        shell: dict[str, object] = {
             "layout": {
                 "id": "default_chat_shell",
                 "regions": [
@@ -359,11 +371,13 @@ class FrontendRegistry:
             if not isinstance(config, dict):
                 continue
             if isinstance(config.get("shell_layout"), dict):
-                shell["layout"] = self._deep_merge(shell["layout"], config["shell_layout"])
+                current_layout = _validated_dict(shell.get("layout"))
+                shell["layout"] = self._deep_merge(current_layout, config["shell_layout"])
             renderers = config.get("shell_renderers")
             if isinstance(renderers, list):
+                current_renderers = _validated_dict_list(shell.get("renderers"))
                 shell["renderers"] = self._dedupe_by_key(
-                    [*shell["renderers"], *(item for item in renderers if isinstance(item, dict))],
+                    [*current_renderers, *[dict(item) for item in renderers if isinstance(item, dict)]],
                     "id",
                 )
         return shell
@@ -381,18 +395,18 @@ class FrontendRegistry:
 
         template_regions = template_catalog.get("shell_regions")
         if isinstance(template_regions, list):
-            regions = layout.get("regions") if isinstance(layout.get("regions"), list) else []
+            regions = _validated_dict_list(layout.get("regions"))
             layout["regions"] = self._merge_template_shell_items(
-                [item for item in regions if isinstance(item, dict)],
-                [item for item in template_regions if isinstance(item, dict)],
+                regions,
+                _validated_dict_list(template_regions),
             )
 
         template_renderers = template_catalog.get("shell_renderers")
         if isinstance(template_renderers, list):
-            renderers = merged.get("renderers") if isinstance(merged.get("renderers"), list) else []
+            renderers = _validated_dict_list(merged.get("renderers"))
             merged["renderers"] = self._merge_template_shell_items(
-                [item for item in renderers if isinstance(item, dict)],
-                [item for item in template_renderers if isinstance(item, dict)],
+                renderers,
+                _validated_dict_list(template_renderers),
             )
         return merged
 
@@ -547,20 +561,10 @@ class FrontendRegistry:
         return self._dedupe_by_key(bindings, "part_id")
 
     def _profile_frontend_selection(self, profile_id: str | None) -> set[str]:
-        candidate = str(profile_id or "").strip()
-        if not candidate:
-            return set()
-        try:
-            profile = ProfileWorkspaceManager().load_profile_yaml(candidate)
-        except Exception:
-            return set()
-        metadata = profile.get("metadata") if isinstance(profile, dict) and isinstance(profile.get("metadata"), dict) else {}
-        selected = normalize_profile_graph_selected(metadata.get("selected"))
-        return {
-            item_id
-            for item_id in (selected.get("frontend") if isinstance(selected.get("frontend"), list) else [])
-            if isinstance(item_id, str) and item_id.strip()
-        }
+        # Frontend attachment is resolved by v4 Shell/contract bindings.  The
+        # removed Profile YAML graph cannot filter the active Shell.
+        del profile_id
+        return set()
 
     def _filter_shell(self, shell: dict[str, Any], selected_frontend_ids: set[str]) -> dict[str, Any]:
         if not selected_frontend_ids:
@@ -580,7 +584,7 @@ class FrontendRegistry:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            visibility = item.get("profile_visibility") if isinstance(item.get("profile_visibility"), dict) else {}
+            visibility = _validated_dict(item.get("profile_visibility"))
             selected_ids = visibility.get("selected_frontend_ids")
             if isinstance(selected_ids, list):
                 normalized = {
@@ -923,11 +927,11 @@ class FrontendRegistry:
         lightweight: bool = False,
     ) -> list[dict[str, Any]]:
         external_template_catalog = self._external_io_template_catalog(template_catalog)
-        input_templates = external_template_catalog.get("input") if isinstance(external_template_catalog.get("input"), list) else []
-        output_templates = external_template_catalog.get("output") if isinstance(external_template_catalog.get("output"), list) else []
+        input_templates = _validated_dict_list(external_template_catalog.get("input"))
+        output_templates = _validated_dict_list(external_template_catalog.get("output"))
         input_profile_options = self._input_profile_options()
         output_profile_options = self._output_profile_options()
-        sections = [
+        sections: list[dict[str, object]] = [
             {
                 "id": "general",
                 "label": "General",
@@ -1000,6 +1004,18 @@ class FrontendRegistry:
                         "type": "toggle",
                         "default": False,
                         "help": "ON の時は入力文に「文字起こしして:」を付けて、モデルへ文字起こしタスクとして渡します。",
+                    },
+                    {
+                        "id": "manual_runtime_mode_selection",
+                        "label": "Manual Runtime Mode Selection",
+                        "type": "toggle",
+                        "default": False,
+                        "help": (
+                            "高度な設定: composerに実行モード選択を表示します。"
+                            "OFFでは自律エージェントを使用します。"
+                        ),
+                        "advanced": True,
+                        "control_center_section": "advanced",
                     },
                 ],
             },
@@ -2414,38 +2430,45 @@ class FrontendRegistry:
         ecosystem_root = self._ecosystem_root()
         selected_pack_ids = selected_extension_pack_ids(self._pack_root)
         if ecosystem_root.exists():
-            for pack_root in sorted(ecosystem_root.iterdir()):
-                if not pack_root.is_dir() or not (pack_root / "ecosystem.json").exists():
-                    continue
-                if selected_pack_ids is not None and pack_root.name not in selected_pack_ids:
+            for pack_id in sorted(selected_pack_ids):
+                pack_root = ecosystem_root / pack_id
+                if not pack_root.is_dir() or self._v4_pack_id(pack_root) != pack_id:
                     continue
                 dirs.append(pack_root / "frontend_extensions")
-        dirs.append(self._extensions_dir)
         return dirs
 
     def _ecosystem_root(self) -> Path:
-        if (self._pack_root / "ecosystem.json").exists() and self._pack_root.parent.name == "ecosystem":
+        if self._v4_pack_id(self._pack_root) and self._pack_root.parent.name == "ecosystem":
             return self._pack_root.parent
         return Path(__file__).resolve().parents[3]
 
     def _source_pack_id(self, path: Path) -> str:
         for parent in path.parents:
-            if (parent / "ecosystem.json").exists():
-                return parent.name
-        return "user_data"
+            pack_id = self._v4_pack_id(parent)
+            if pack_id:
+                return pack_id
+        return ""
+
+    @staticmethod
+    def _v4_pack_id(pack_root: Path) -> str:
+        candidates = (
+            pack_root / "pack.v4.json",
+            pack_root / "v4" / "packs" / f"{pack_root.name}.pack.v4.json",
+        )
+        for manifest_path in candidates:
+            try:
+                raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+                pack_id = str((raw.get("pack") or {}).get("id") or "").strip()
+                if pack_id:
+                    return pack_id
+            except (OSError, UnicodeError, ValueError, TypeError):
+                continue
+        return ""
 
     def _load_shell_config(self) -> dict[str, Any]:
-        if not self._shell_path.exists():
-            return {}
-        try:
-            config = json.loads(self._shell_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            self._add_diagnostic("warning", "frontend_shell_invalid_json", str(exc), str(self._shell_path))
-            return {}
-        if not isinstance(config, dict):
-            self._add_diagnostic("warning", "frontend_shell_not_object", "frontend_shell.json must contain a JSON object.", str(self._shell_path))
-            return {}
-        return config
+        # Shell selection is bound by the verified v4 Profile/ShellDefinition.
+        # Mutable user_data shell JSON is not a layout authority.
+        return {}
 
     def _template_catalog_metadata(self) -> dict[str, Any]:
         try:
@@ -2918,6 +2941,7 @@ class FrontendRegistry:
                 "spotlight_shortcut": "Ctrl+K",
                 "spotlight_shortcut_text_input": True,
                 "language": "ja",
+                "manual_runtime_mode_selection": False,
             },
             "preview": {"auto_open": False, "default_mode": "auto", "max_items": 12},
             "calendar": {
@@ -3119,25 +3143,54 @@ class FrontendRegistry:
             if not provider_id and "/" in profile_id:
                 provider_id, inferred_model = profile_id.split("/", 1)
                 model_id = model_id or inferred_model
-            availability = profile.get("availability") if isinstance(profile.get("availability"), dict) else {}
+            availability = _validated_dict(profile.get("availability"))
+            configured = bool(
+                availability.get("configured")
+                or availability.get("active")
+                or str(availability.get("status", "")).lower() in {"configured", "active"}
+            )
+            local = bool(
+                profile.get("local")
+                or availability.get("local")
+                or availability.get("offline")
+                or provider_id in {"stub", "ollama", "lmstudio", "vllm"}
+            )
+            requires_api_key = bool(
+                provider_id
+                and provider_id not in {"stub", "rumi"}
+                and not local
+                and not configured
+            )
             options.append(
                 {
                     "value": profile_id,
                     "label": self._model_option_label(profile),
                     "provider_id": provider_id,
+                    "provider_display_name": str(
+                        profile.get("provider_display_name") or provider_id
+                    ),
                     "model_id": model_id,
                     "qualified_model_id": str(profile.get("qualified_model_id") or profile_id),
-                    "configured": bool(
-                        availability.get("configured")
-                        or availability.get("active")
-                        or str(availability.get("status", "")).lower() in {"configured", "active"}
+                    "configured": configured,
+                    "local": local,
+                    "requires_api_key": requires_api_key,
+                    "api_key_required": requires_api_key,
+                    "api_key_configured": configured,
+                    "supports_vision": bool(profile.get("supports_vision")),
+                    "supports_image_input": bool(
+                        profile.get("supports_image_input")
+                        or profile.get("supports_vision")
                     ),
-                    "local": bool(
-                        profile.get("local")
-                        or availability.get("local")
-                        or availability.get("offline")
-                        or provider_id in {"stub", "ollama", "lmstudio", "vllm"}
-                    ),
+                    "supports_tool_calling": bool(profile.get("supports_tool_calling")),
+                    "supports_thinking": bool(profile.get("supports_thinking")),
+                    "supports_fast": bool(profile.get("supports_fast")),
+                    "speed_tier": str(profile.get("speed_tier") or ""),
+                    "quality_tier": str(profile.get("quality_tier") or ""),
+                    "cost_tier": str(profile.get("cost_tier") or ""),
+                    "knowledge_level": profile.get("knowledge_level"),
+                    "capability_tags": list(profile.get("capability_tags") or []),
+                    "recommended_roles": list(profile.get("recommended_roles") or []),
+                    "notes": str(profile.get("notes") or ""),
                 }
             )
         return options or [{"value": "stub/default", "label": "Stub Default", "provider_id": "stub", "model_id": "default", "local": True}]
@@ -3150,22 +3203,29 @@ class FrontendRegistry:
             if cached is not None and now - cached[0] < self._selectable_model_profiles_cache_ttl_seconds:
                 return deepcopy(cached[1])
 
+        list_profile_catalog_fn: Callable[[], list[dict[str, object]]] | None = None
         try:
-            from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_profile_catalog
+            from ecosystem.defaultspack.backend.ai_client.provider_catalog import (
+                list_profile_catalog as primary_catalog_loader,
+            )
+            list_profile_catalog_fn = primary_catalog_loader
         except ModuleNotFoundError:
             try:
-                from backend.ai_client.provider_catalog import list_profile_catalog
+                from backend.ai_client.provider_catalog import (
+                    list_profile_catalog as fallback_catalog_loader,
+                )
+                list_profile_catalog_fn = fallback_catalog_loader
             except ModuleNotFoundError:
-                list_profile_catalog = None
+                pass
 
         with self._selectable_model_profiles_lock:
             now = time.monotonic()
             cached = self._selectable_model_profiles_cache.get(cache_key)
             if cached is not None and now - cached[0] < self._selectable_model_profiles_cache_ttl_seconds:
                 return deepcopy(cached[1])
-            if list_profile_catalog is not None:
+            if list_profile_catalog_fn is not None:
                 try:
-                    profiles = list_profile_catalog()
+                    profiles = list_profile_catalog_fn()
                 except Exception:
                     profiles = self._fallback_selectable_model_profiles()
             else:
@@ -3193,7 +3253,7 @@ class FrontendRegistry:
         provider_id = str(profile.get("provider_id") or profile.get("provider") or "").strip()
         model_id = str(profile.get("model_id") or "").strip()
         model_type = str(profile.get("type") or "chat").strip().lower()
-        availability = profile.get("availability") if isinstance(profile.get("availability"), dict) else {}
+        availability = _validated_dict(profile.get("availability"))
 
         if model_type and model_type != "chat":
             return False
@@ -3216,8 +3276,8 @@ class FrontendRegistry:
         provider_id: str,
         availability: dict[str, Any],
     ) -> bool:
-        """Expose direct cloud models as selectable setup targets without enabling runtime calls."""
-        if provider_id not in {"openai", "anthropic", "google", "genspark"}:
+        """Expose every invokable catalog model as a setup target without enabling calls."""
+        if not provider_id:
             return False
         if availability.get("configured") or availability.get("active"):
             return False
@@ -3227,7 +3287,7 @@ class FrontendRegistry:
 
     def _model_profile_sort_key(self, profile: dict[str, Any]) -> tuple[int, int, str]:
         model_id = str(profile.get("model_id") or "").strip()
-        availability = profile.get("availability") if isinstance(profile.get("availability"), dict) else {}
+        availability = _validated_dict(profile.get("availability"))
         is_default = str(profile.get("profile_id") or "") == "stub/default"
         is_local = bool(profile.get("local") or availability.get("local") or availability.get("offline"))
         is_configured = bool(
@@ -3247,7 +3307,7 @@ class FrontendRegistry:
             or ""
         ).strip()
         name = str(profile.get("display_name") or profile.get("profile_id") or "").strip()
-        availability = profile.get("availability") if isinstance(profile.get("availability"), dict) else {}
+        availability = _validated_dict(profile.get("availability"))
         provider_id = str(profile.get("provider_id") or profile.get("provider") or "").strip()
         requires_key = (
             not (profile.get("local") or availability.get("local") or availability.get("offline"))
@@ -3282,7 +3342,7 @@ class FrontendRegistry:
             label = str(action.get("label") or "").strip()
             if not action_id or not label:
                 continue
-            item = {
+            item: dict[str, object] = {
                 "id": action_id,
                 "label": label,
             }
@@ -3375,11 +3435,13 @@ class FrontendRegistry:
         except ValueError:
             return 0
 
-    def _deep_merge(self, base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    def _deep_merge(self, base: dict[str, object], patch: dict[str, object]) -> dict[str, object]:
         result = deepcopy(base)
         for key, value in patch.items():
             if isinstance(value, dict) and isinstance(result.get(key), dict):
-                result[key] = self._deep_merge(result[key], value)
+                existing = result[key]
+                if isinstance(existing, dict):
+                    result[key] = self._deep_merge(existing, value)
             else:
                 result[key] = value
         return result
@@ -3471,12 +3533,15 @@ class FrontendRegistry:
         if not isinstance(general_patch, dict):
             return
         current_general = current.get("general")
+        current_version_value: object = (
+            current_general.get("settings_version")
+            if isinstance(current_general, dict)
+            else _GENERAL_SETTINGS_VERSION
+        )
         try:
-            current_version = int(
-                current_general.get("settings_version")
-                if isinstance(current_general, dict)
-                else _GENERAL_SETTINGS_VERSION
-            )
+            if not isinstance(current_version_value, (bool, int, float, str)):
+                raise TypeError("settings_version must be numeric")
+            current_version = int(current_version_value)
         except (TypeError, ValueError):
             current_version = _GENERAL_SETTINGS_VERSION
         general_patch["settings_version"] = max(
@@ -3549,6 +3614,9 @@ class FrontendRegistry:
         general["spotlight_shortcut_text_input"] = self._setting_bool(
             general.get("spotlight_shortcut_text_input"),
             True,
+        )
+        general["manual_runtime_mode_selection"] = (
+            general.get("manual_runtime_mode_selection") is True
         )
 
         tools = refreshed.setdefault("tools", {})
@@ -3836,8 +3904,8 @@ class FrontendRegistry:
         output_profiles = OutputProfileRegistry(self._pack_root).list_profiles()
         template_catalog = self._template_catalog_metadata()
         external_template_catalog = self._external_io_template_catalog(template_catalog)
-        input_templates = external_template_catalog.get("input") if isinstance(external_template_catalog.get("input"), list) else []
-        output_templates = external_template_catalog.get("output") if isinstance(external_template_catalog.get("output"), list) else []
+        input_templates = _validated_dict_list(external_template_catalog.get("input"))
+        output_templates = _validated_dict_list(external_template_catalog.get("output"))
         enabled_count = sum(1 for endpoint in endpoints if endpoint.get("enabled"))
         self._sync_external_input_selection(external_input, input_templates, endpoints=endpoints)
         self._sync_external_output_selection(external_output, output_templates)
@@ -3904,7 +3972,7 @@ class FrontendRegistry:
         external_output.setdefault("response_summary", "Prompt decisions create action plans; tools/adapters execute after policy checks.")
         external_output.setdefault("response_prompt_preset", "same_source_reply")
         external_output.setdefault("public_url_summary", "Providers: static, cloudflare_quick_tunnel")
-        extension_paths = external_template_catalog.get("extension_paths") if isinstance(external_template_catalog.get("extension_paths"), dict) else {}
+        extension_paths = _validated_dict(external_template_catalog.get("extension_paths"))
         external_custom["custom_template_path"] = str(extension_paths.get("templates") or external_custom.get("custom_template_path") or "")
         external_custom["custom_profile_paths"] = ", ".join(
             item
@@ -4075,7 +4143,7 @@ class FrontendRegistry:
         if endpoint is None and template.get("input_profile_id"):
             values["input_profile_id"] = str(template.get("input_profile_id"))
         if endpoint is None:
-            template_endpoint = template.get("endpoint") if isinstance(template.get("endpoint"), dict) else {}
+            template_endpoint = _validated_dict(template.get("endpoint"))
             if template_endpoint.get("id"):
                 values["input_endpoint_id"] = str(template_endpoint.get("id"))
 
@@ -4122,7 +4190,7 @@ class FrontendRegistry:
             return None
         provider = str(endpoint.get("kind") or "").strip()
         input_profile_id = str(endpoint.get("input_profile_id") or "").strip()
-        response = endpoint.get("response") if isinstance(endpoint.get("response"), dict) else {}
+        response = _validated_dict(endpoint.get("response"))
         response_mode = str(response.get("mode") or "").strip()
         candidates = [
             item
@@ -4135,7 +4203,8 @@ class FrontendRegistry:
             if (
                 input_profile_id
                 and str(item.get("input_profile_id") or "").strip() == input_profile_id
-                and str((item.get("response") or {}).get("mode") or "").strip() == response_mode
+                and str(_validated_dict(item.get("response")).get("mode") or "").strip()
+                == response_mode
             ):
                 return item
         for item in candidates:
@@ -4147,7 +4216,7 @@ class FrontendRegistry:
 
     @staticmethod
     def _template_route(template: dict[str, Any]) -> str:
-        endpoint = template.get("endpoint") if isinstance(template.get("endpoint"), dict) else {}
+        endpoint = _validated_dict(template.get("endpoint"))
         route = str(endpoint.get("route") or "").strip()
         if route:
             return route
@@ -4158,8 +4227,8 @@ class FrontendRegistry:
 
     @staticmethod
     def _output_mode_for_template(template: dict[str, Any]) -> str:
-        response = template.get("response") if isinstance(template.get("response"), dict) else {}
-        default_response = template.get("default_response") if isinstance(template.get("default_response"), dict) else {}
+        response = _validated_dict(template.get("response"))
+        default_response = _validated_dict(template.get("default_response"))
         return str(
             template.get("output_send_mode")
             or template.get("send_mode")

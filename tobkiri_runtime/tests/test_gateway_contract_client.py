@@ -13,6 +13,7 @@ from ecosystem.rumi_provider_adapters_pack.runtime.adapter import (
     _adapter,
     _connection,
     _provider_model_id,
+    _stream_result,
 )
 
 pytestmark = pytest.mark.contract
@@ -47,6 +48,160 @@ def test_contract_gateway_binds_active_startup_profile(monkeypatch) -> None:
 
     assert gateway_contract_client.stream({"messages": []}) == []
     assert captured["profile_id"] == "defaults-profile"
+
+
+def test_contract_gateway_projects_tool_intent_stream_to_chat_chunks(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        gateway_contract_client,
+        "_invoke",
+        lambda *_args, **_kwargs: {
+            "events": [
+                {
+                    "type": "tool_intent_delta",
+                    "tool_intent": {
+                        "intent_id": "call-1",
+                        "operation": "repository_context_prepare",
+                        "arguments": {"workspace_id": "tobkiri-pr1322"},
+                    },
+                },
+                {
+                    "type": "usage",
+                    "usage": {"input_tokens": 5, "output_tokens": 7},
+                    "usage_cost": {"amount": 0, "currency": "USD"},
+                },
+                {"type": "finish", "finish_reason": "tool_calls"},
+            ]
+        },
+    )
+
+    assert gateway_contract_client.stream({"messages": []}) == [
+        {
+            "type": "tool_use",
+            "id": "call-1",
+            "name": "repository_context_prepare",
+            "input": {"workspace_id": "tobkiri-pr1322"},
+        },
+        {
+            "type": "stream_end",
+            "finish_reason": "tool_calls",
+            "usage": {
+                "input_tokens": 5,
+                "output_tokens": 7,
+                "usage_cost": {"amount": 0, "currency": "USD"},
+            },
+        },
+    ]
+
+
+def test_contract_gateway_projects_tool_intents_to_legacy_content(
+    monkeypatch,
+) -> None:
+    intent = {
+        "intent_id": "call-1",
+        "operation": "repository_context_prepare",
+        "arguments": {"workspace_id": "tobkiri-pr1322"},
+    }
+    monkeypatch.setattr(
+        gateway_contract_client,
+        "_invoke",
+        lambda *_args, **_kwargs: {
+            "output": "Preparing context.",
+            "tool_intents": [intent],
+            "finish_reason": "tool_calls",
+        },
+    )
+
+    result = gateway_contract_client.generate({"messages": []})
+
+    assert result["content"] == [
+        {"type": "text", "text": "Preparing context."},
+        {
+            "type": "tool_use",
+            "id": "call-1",
+            "name": "repository_context_prepare",
+            "input": {"workspace_id": "tobkiri-pr1322"},
+        },
+    ]
+    assert result["tool_calls"] == [intent]
+
+
+def test_contract_gateway_stream_fails_closed_when_contract_is_unconfigured(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        gateway_contract_client,
+        "stream",
+        lambda _payload: (_ for _ in ()).throw(
+            gateway_contract_client.GlobalContractInvocationError(
+                "not_configured",
+                "provider connection is not configured",
+            )
+        ),
+    )
+
+    with pytest.raises(gateway_contract_client.GlobalContractInvocationError):
+        list(ContractLLMGateway().stream({"model": "opencode-zen/test"}))
+
+
+def test_contract_gateway_complete_fails_closed_when_contract_is_unconfigured(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        gateway_contract_client,
+        "generate",
+        lambda _payload: (_ for _ in ()).throw(
+            gateway_contract_client.GlobalContractInvocationError(
+                "not_configured",
+                "provider connection is not configured",
+            )
+        ),
+    )
+
+    with pytest.raises(gateway_contract_client.GlobalContractInvocationError):
+        ContractLLMGateway().complete({"model": "opencode-zen/test"})
+
+
+def test_contract_gateway_does_not_fallback_after_denial(monkeypatch) -> None:
+    monkeypatch.setattr(
+        gateway_contract_client,
+        "stream",
+        lambda _payload: (_ for _ in ()).throw(
+            gateway_contract_client.GlobalContractInvocationError(
+                "denied",
+                "provider access denied",
+            )
+        ),
+    )
+
+    with pytest.raises(gateway_contract_client.GlobalContractInvocationError):
+        list(ContractLLMGateway().stream({"model": "opencode-zen/test"}))
+
+
+def test_provider_adapter_stream_preserves_tool_intents() -> None:
+    intent = {
+        "id": "call-1",
+        "function": {
+            "name": "repository_context_prepare",
+            "arguments": '{"workspace_id":"tobkiri-pr1322"}',
+        },
+    }
+
+    assert _stream_result(
+        {
+            "output": "",
+            "tool_intents": [intent],
+            "usage": {"input_tokens": 2},
+            "finish_reason": "tool_calls",
+        }
+    ) == {
+        "events": [
+            {"type": "tool_intent_delta", "tool_intent": intent},
+            {"type": "usage", "usage": {"input_tokens": 2}},
+            {"type": "finish", "finish_reason": "tool_calls"},
+        ]
+    }
 
 
 def test_provider_adapter_instance_matches_catalog_execution_hint() -> None:

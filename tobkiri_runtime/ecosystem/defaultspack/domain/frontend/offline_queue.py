@@ -6,7 +6,7 @@ import os
 import sqlite3
 import threading
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -54,7 +54,7 @@ class OfflineOperationQueue:
         self._initialize()
         _restrict_sqlite_files(self.path)
         self._prune_terminal(
-            (datetime.now(UTC) - timedelta(days=retention_days)).isoformat()
+            (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
         )
 
     def enqueue(
@@ -132,7 +132,7 @@ class OfflineOperationQueue:
             raise OfflineQueueError("offline request exceeds the size limit")
         request_hash = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
         queue_id = f"offline_{uuid.uuid4().hex}"
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -224,7 +224,7 @@ class OfflineOperationQueue:
         if limit < 1 or limit > 1000:
             raise OfflineQueueError("limit must be between 1 and 1000")
         owner = _owner_key(owner_key)
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         expires = (now + timedelta(seconds=max(10, lease_seconds))).isoformat()
         lease_id = uuid.uuid4().hex
         with self._lock, self._connect() as connection:
@@ -292,7 +292,7 @@ class OfflineOperationQueue:
 
         if state not in {"completed", "conflicted", "cancelled", "failed"}:
             raise OfflineQueueError("invalid terminal queue state")
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         encoded_result = _canonical_json(_redact(result))
         with self._lock, self._connect() as connection:
             cursor = connection.execute(
@@ -353,7 +353,7 @@ class OfflineOperationQueue:
         lease_id: str,
         lease_seconds: int = 60,
     ) -> bool:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         expires = (
             now + timedelta(seconds=max(10, min(3600, lease_seconds)))
         ).isoformat()
@@ -377,7 +377,7 @@ class OfflineOperationQueue:
             return cursor.rowcount == 1
 
     def cancel(self, queue_id: str, *, owner_key: str) -> bool:
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._connect() as connection:
             cursor = connection.execute(
                 """

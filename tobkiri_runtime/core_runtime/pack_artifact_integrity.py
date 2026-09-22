@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from .pack_signature import PackSignatureError, verify_signed_pack
+from .paths import ECOSYSTEM_DIR
 
 
 def verify_declared_artifacts(
@@ -88,10 +89,14 @@ def _verify_declared_publisher_signature(
         "",
     ).strip()
     declared_relative = str(integrity.get("signed_manifest") or "").strip()
+    if _is_host_bundled_pack(root, ecosystem_manifest):
+        return ()
     if not trust_store_value:
-        if not declared_relative:
-            return ()
-        return ("signed Pack requires a configured publisher trust store",)
+        if declared_relative:
+            return ("signed Pack requires a configured publisher trust store",)
+        return (
+            "non-builtin Pack requires a Host install record and publisher trust store",
+        )
     unresolved_trust_store = Path(trust_store_value).expanduser()
     if unresolved_trust_store.is_symlink():
         return ("publisher trust store must not be a symbolic link",)
@@ -123,8 +128,8 @@ def _verify_declared_publisher_signature(
         install_record = (
             install_record if isinstance(install_record, Mapping) else {}
         )
-        if declared_relative and not install_record:
-            return ("signed Pack has no Host-owned install record",)
+        if not install_record:
+            return ("non-builtin Pack has no Host-owned install record",)
         required_record_fields = {
             "signature_required",
             "publisher_id",
@@ -136,7 +141,14 @@ def _verify_declared_publisher_signature(
         }
         if install_record and not required_record_fields.issubset(install_record):
             return ("Host install record is incomplete",)
+        developer_exception = (
+            install_record.get("developer_mode") is True
+            and os.environ.get("RUMI_PACK_DEVELOPER_MODE", "").strip().lower()
+            in {"1", "true", "yes"}
+        )
         signature_required = bool(install_record.get("signature_required"))
+        if not signature_required and not developer_exception:
+            return ("non-builtin Pack signature is required in normal mode",)
         relative = str(
             install_record.get("signed_manifest_path")
             or declared_relative
@@ -145,11 +157,7 @@ def _verify_declared_publisher_signature(
         if signature_required and not relative:
             return ("Host install record requires a signed Pack manifest",)
         if not relative:
-            if install_record and not (
-                install_record.get("developer_mode") is True
-                and os.environ.get("RUMI_PACK_DEVELOPER_MODE", "").strip()
-                in {"1", "true", "yes"}
-            ):
+            if not developer_exception:
                 return (
                     "unsigned installed Pack requires explicit Host developer mode",
                 )
@@ -238,6 +246,22 @@ def _verify_declared_publisher_signature(
     return ()
 
 
+def _is_host_bundled_pack(
+    pack_root: Path,
+    ecosystem_manifest: Mapping[str, Any],
+) -> bool:
+    """Recognize only Packs physically shipped in the immutable bundle root."""
+
+    try:
+        root = pack_root.resolve(strict=True)
+        bundled_root = Path(ECOSYSTEM_DIR).resolve(strict=True)
+        root.relative_to(bundled_root)
+    except (OSError, ValueError):
+        return False
+    pack_id, _ = _pack_identity(ecosystem_manifest, root)
+    return root.parent == bundled_root and root.name == pack_id
+
+
 def _read_json_nofollow(path: Path, max_bytes: int) -> Any:
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(path, flags)
@@ -290,20 +314,29 @@ def write_host_install_record(
         "contract_versions",
         "requested_capabilities",
     }
-    if set(record) != required:
+    if not set(record).issubset(required | {"developer_mode"}) or not required.issubset(
+        record
+    ):
         raise ValueError("Host install record fields are incomplete or unknown")
-    if record.get("signature_required") is not True:
+    developer_exception = record.get("developer_mode") is True
+    if record.get("signature_required") is not True and not developer_exception:
         raise ValueError("installed publisher Pack signatures must be required")
-    if any(
-        not str(record.get(field) or "").strip()
-        for field in (
+    identity_fields = (
+        ("installed_version",)
+        if developer_exception
+        else (
             "publisher_id",
             "key_id",
             "installed_version",
             "signed_manifest_path",
         )
-    ):
+    )
+    if any(not str(record.get(field) or "").strip() for field in identity_fields):
         raise ValueError("Host install record identity fields are required")
+    if developer_exception and str(record.get("signed_manifest_path") or "").strip():
+        raise ValueError(
+            "developer-mode unsigned install record must not declare a signed manifest"
+        )
     unresolved_target = trust_store_path.expanduser()
     if unresolved_target.is_symlink():
         raise ValueError("publisher trust store must not be a symbolic link")

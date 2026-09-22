@@ -70,6 +70,7 @@ def _profile(tmp_path: Path) -> dict:
         "profile_id": "research-profile",
         "name": "Research Profile",
         "base_pack": "defaultspack",
+        "system_prompt_id": "research.system",
         "graph_id": "defaultspack.startup",
         "graph_ports": [],
         "packs": ["defaultspack"],
@@ -207,7 +208,7 @@ def test_condition_gate_blocks_and_allows_segment(monkeypatch, tmp_path: Path) -
     assert "prompt:research.system" in allowed_ids
 
 
-def test_tool_allowlist_filters_provider_tools(monkeypatch, tmp_path: Path) -> None:
+def test_legacy_selected_tools_do_not_create_runtime_allowlist(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr("core_runtime.ai_input_segments.ToolRegistry", _FakeToolRegistry)
     monkeypatch.setattr("core_runtime.ai_input_segments.resolve_effective_prompt", _fake_prompt)
 
@@ -218,8 +219,8 @@ def test_tool_allowlist_filters_provider_tools(monkeypatch, tmp_path: Path) -> N
 
     tool_ids = [segment["tool_id"] for segment in payload["effective_input"]["tool_schemas"]]
     disabled_ids = [segment.get("tool_id") for segment in payload["effective_input"]["disabled_segments"]]
-    assert tool_ids == ["web_search"]
-    assert "computer_use" in disabled_ids
+    assert tool_ids == ["computer_use", "web_search"]
+    assert disabled_ids == []
 
 
 def test_api_route_and_memory_sources_connect_to_model_input(monkeypatch, tmp_path: Path) -> None:
@@ -253,5 +254,5 @@ def test_api_route_and_memory_sources_connect_to_model_input(monkeypatch, tmp_pa
     assert "memory:conversation.recalled_memory" in context_segment_ids
     assert ("retrieval:knowledge.results", "context") in edges
     assert ("memory:conversation.recalled_memory", "context") in edges
-    assert any(node_id.startswith("api_route:") and kind == "api_route" for node_id, kind in node_kinds.items())
-    assert any(segment_id.startswith("api_route:") for segment_id in policy_segment_ids)
+    assert not any(node_id.startswith("api_route:") for node_id in node_kinds)
+    assert not any(segment_id.startswith("api_route:") for segment_id in policy_segment_ids)

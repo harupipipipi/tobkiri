@@ -1,0 +1,7 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:e8870ae34a6cd268dcdcc7b567266f9fd726b9d51cb3d6f253e9c97484924a75",
+  "pack_id": "rumi_experiment_design_pack",
+  "source_identity": "sha256:a0c347c0a7dfa63d270ae0e4b6aec50788ee48f215ebcc3269b1ae2574b9f645",
+  "variants": []
+}

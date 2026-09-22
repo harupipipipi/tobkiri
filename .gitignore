@@ -58,6 +58,7 @@ deploy.py
 **/target/
 tobkiri_runtime/user_data/
 tobkiri_runtime/bundled/
+tobkiri_runtime/python-runtime/
 tobkiri_runtime/ecosystem/defaultspack/user_data/
 tobkiri_runtime/ecosystem/rumi_default_tools_pack/user_data/
 

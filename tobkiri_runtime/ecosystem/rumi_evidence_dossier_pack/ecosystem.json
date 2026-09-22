@@ -1,54 +1,108 @@
 {
-  "pack_id": "rumi_evidence_dossier_pack",
-  "pack_identity": "rumi:ecosystem/rumi_evidence_dossier_pack",
-  "display_name": "Rumi Evidence Dossier Pack",
-  "version": "0.1.0",
-  "description": "Declarative evidence dossier contracts for source registry, claim graphs, evidence links, contradiction review, citation ledgers, reviewer queues, quality labels, and export manifests.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "ledger",
-      "template",
-      "fixture",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "runtime": {
-    "type": "declarative_pack"
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative evidence dossier contracts for source registry, claim graphs, evidence links, contradiction review, citation ledgers, reviewer queues, quality labels, and export manifests.",
+  "display_name": "Rumi Evidence Dossier Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "runtime_type": "declarative_pack",
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
+    "asset_index": {
+      "catalog": [
+        "catalog/citation_styles.yaml",
+        "catalog/handoff_matrix.yaml",
+        "catalog/quality_matrix.yaml",
+        "catalog/source_quality_labels.yaml",
+        "catalog/taxonomy.yaml",
+        "catalog/workflows.yaml"
+      ],
+      "checklist": [
+        "checklists/review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md",
+        "docs/overlap_policy.md"
+      ],
+      "example": [
+        "examples/cited_research_brief.example.yaml",
+        "examples/contradiction_review.example.yaml",
+        "examples/source_quality_queue.example.yaml",
+        "examples/uncited_claim_block.example.yaml"
+      ],
+      "fixtures": [
+        "fixtures/contract_fixture.yaml",
+        "fixtures/negative_cases.yaml"
+      ],
+      "index": [
+        "asset_index.json",
+        "asset_index.yaml"
+      ],
+      "ledger": [
+        "ledgers/evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/handoff.policy.yaml",
+        "policies/safety.policy.yaml"
+      ],
+      "presets": [
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml",
+        "presets/safe_default.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/evidence_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/evidence_dossier_reviewer.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/citation_ledger.schema.json",
+        "schemas/claim_evidence_graph.schema.json",
+        "schemas/claim_record.schema.json",
+        "schemas/contradiction_detection_contract.schema.json",
+        "schemas/contradiction_record.schema.json",
+        "schemas/dossier_export_manifest.schema.json",
+        "schemas/evidence_link.schema.json",
+        "schemas/reviewer_queue.schema.json",
+        "schemas/source_quality_label.schema.json",
+        "schemas/source_registry.schema.json"
+      ],
+      "template": [
+        "templates/handoff.template.md",
+        "templates/review_report.template.md",
+        "templates/ui_contract.template.md"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:25d546f0bbf10dd1b8491148c6bf96cf1465c07d0ea2feb1ff97f2dd9b03c313",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:242c3710f27380bd7456260abc6e5ea2b3a800a706dcecf8a2244284d180bd12"
+    },
     "consumes_existing_sources_only": true,
-    "output_effect": "draft_and_handoff_only",
+    "declarative_only": true,
     "defaultspack_promotion_eligible": false,
-    "owner_surfaces": [
-      "source_registry",
-      "source_quality_label",
-      "claim_evidence_graph",
-      "evidence_link_contract",
-      "contradiction_review_contract",
-      "citation_ledger",
-      "reviewer_queue",
-      "dossier_export_manifest"
-    ],
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:242c3710f27380bd7456260abc6e5ea2b3a800a706dcecf8a2244284d180bd12"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "non_owner_surfaces": [
       "source retrieval",
       "connector access",
@@ -68,77 +122,49 @@
         "reason": "Supports manual browser review when a human needs to inspect visible source pages before accepting evidence."
       }
     ],
-    "asset_index": {
-      "index": [
-        "asset_index.json",
-        "asset_index.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md",
-        "docs/overlap_policy.md"
-      ],
-      "catalog": [
-        "catalog/citation_styles.yaml",
-        "catalog/handoff_matrix.yaml",
-        "catalog/quality_matrix.yaml",
-        "catalog/source_quality_labels.yaml",
-        "catalog/taxonomy.yaml",
-        "catalog/workflows.yaml"
-      ],
-      "policy": [
-        "policies/handoff.policy.yaml",
-        "policies/safety.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/handoff.template.md",
-        "templates/review_report.template.md",
-        "templates/ui_contract.template.md"
-      ],
-      "fixtures": [
-        "fixtures/contract_fixture.yaml",
-        "fixtures/negative_cases.yaml"
-      ],
-      "presets": [
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml",
-        "presets/safe_default.preset.yaml"
-      ],
-      "schema": [
-        "schemas/citation_ledger.schema.json",
-        "schemas/claim_evidence_graph.schema.json",
-        "schemas/claim_record.schema.json",
-        "schemas/contradiction_detection_contract.schema.json",
-        "schemas/contradiction_record.schema.json",
-        "schemas/dossier_export_manifest.schema.json",
-        "schemas/evidence_link.schema.json",
-        "schemas/reviewer_queue.schema.json",
-        "schemas/source_quality_label.schema.json",
-        "schemas/source_registry.schema.json"
-      ],
-      "profiles": [
-        "profiles/evidence_reviewer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/evidence_dossier_reviewer.system.md"
-      ],
-      "example": [
-        "examples/cited_research_brief.example.yaml",
-        "examples/contradiction_review.example.yaml",
-        "examples/source_quality_queue.example.yaml",
-        "examples/uncited_claim_block.example.yaml"
-      ]
-    }
+    "output_effect": "draft_and_handoff_only",
+    "owner_surfaces": [
+      "source_registry",
+      "source_quality_label",
+      "claim_evidence_graph",
+      "evidence_link_contract",
+      "contradiction_review_contract",
+      "citation_ledger",
+      "reviewer_queue",
+      "dossier_export_manifest"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_pack"
+  },
+  "pack_id": "rumi_evidence_dossier_pack",
+  "pack_identity": "rumi:ecosystem/rumi_evidence_dossier_pack",
+  "provenance": {
+    "build_identity": "rumi_evidence_dossier_pack:0.1.0",
+    "content_hash": "sha256:25d546f0bbf10dd1b8491148c6bf96cf1465c07d0ea2feb1ff97f2dd9b03c313",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "runtime": {
+    "type": "declarative_pack"
+  },
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "fixture",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

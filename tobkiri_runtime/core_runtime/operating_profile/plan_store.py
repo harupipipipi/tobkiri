@@ -11,6 +11,7 @@ from ..profile_workspace import ProfileWorkspaceManager, validate_profile_id
 from .constants import PLAN_SPEC_VERSION
 from .models import OperatingProfile
 from .provenance import canonical_json, stable_sha256
+from tobkiri_protocol.validation import validate_document
 
 
 DEFAULT_PLAN_TTL_SECONDS = 30 * 60
@@ -152,12 +153,25 @@ class OperatingProfilePlanStore:
         )
 
     def _pack_digest(self) -> str:
-        pack_manifest = Path(__file__).resolve().parents[2] / "ecosystem" / "defaultspack" / "ecosystem.json"
+        pack_manifest = (
+            Path(__file__).resolve().parents[2]
+            / "ecosystem"
+            / "defaultspack"
+            / "pack.v4.json"
+        )
         try:
-            content_hash = hashlib.sha256(pack_manifest.read_bytes()).hexdigest()
-        except OSError:
-            content_hash = "missing"
-        return stable_sha256({"pack_id": "defaultspack", "ecosystem_json_sha256": content_hash})
+            raw = pack_manifest.read_bytes()
+            manifest = validate_document(raw, "pack")
+        except (OSError, ValueError) as exc:
+            raise ValueError("canonical defaultspack Pack v4 artifact is unavailable") from exc
+        return stable_sha256(
+            {
+                "pack_id": manifest["pack"]["id"],
+                "source_identity": manifest["integrity"]["source_identity"],
+                "artifact_digest": manifest["pack"]["artifact_digest"],
+                "manifest_sha256": hashlib.sha256(raw).hexdigest(),
+            }
+        )
 
     def _scoped(self, path: Path, profile_id: str) -> Path:
         root = self.workspace_manager.paths_for_profile(profile_id).root.resolve()

@@ -1,228 +1,145 @@
-"""
-W20-D: _RateLimiter unit tests.
+"""Panel-session and finite loopback-boundary tests for the retired limiter."""
 
-Tests the _RateLimiter class directly without starting the HTTP server.
-The class source is extracted from pack_api_server.py and exec'd in an
-isolated namespace so that core_runtime package imports are not needed.
-"""
-import collections
-import os
-import re
+from __future__ import annotations
+
 import threading
-import time
-from pathlib import Path as _Path
-from unittest.mock import patch
+from dataclasses import dataclass
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# _RateLimiter クラスを pack_api_server.py のソースから抽出して exec でロード
-# core_runtime パッケージの import を完全に回避する
-# ---------------------------------------------------------------------------
-_SRC_FILE = _Path(__file__).resolve().parent.parent / "core_runtime" / "pack_api_server.py"
-_source = _SRC_FILE.read_text(encoding="utf-8")
-
-# class _RateLimiter: から次のモジュールレベル定義直前までを抽出
-_m = re.search(r"(class _RateLimiter\b.*?)(?=\n[^ \n#])", _source, re.DOTALL)
-assert _m, "_RateLimiter class not found in pack_api_server.py"
-_class_src = _m.group(1)
-
-_ns: dict = {
-    "threading": threading,
-    "time": time,
-    "collections": collections,
-    "os": os,
-    "__builtins__": __builtins__,
-}
-exec(_class_src, _ns)
-_RateLimiter = _ns["_RateLimiter"]
+from core_runtime.pack_api_server import PackAPIHandler, RuntimeHTTPConfig
+from core_runtime.panel_auth import PanelAuthManager
 
 
-# ---------------------------------------------------------------------------
-# Helper: deterministic monotonic mock
-# ---------------------------------------------------------------------------
-class FakeClock:
-    """time.monotonic の代替。手動で時間を進められる。"""
-    def __init__(self, start: float = 1000.0):
-        self._now = start
+@dataclass
+class _FakeClock:
+    """Deterministic clock for the panel-session expiry boundary."""
+
+    now: float = 1000.0
 
     def __call__(self) -> float:
-        return self._now
-
-    def advance(self, seconds: float) -> None:
-        self._now += seconds
+        return self.now
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+def _exchange(manager: PanelAuthManager) -> dict[str, object] | None:
+    """Issue and consume one current panel login code."""
+    code = str(manager.issue_login_code()["code"])
+    return manager.exchange_code(code)
+
 
 class TestRateLimiterBasic:
+    """Compatibility nodeids now cover bounded panel-session behavior."""
 
     def test_within_limit(self):
-        """制限内のリクエストは全て許可される。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=5, window_seconds=60)
-        with patch("time.monotonic", clock):
-            for i in range(5):
-                assert rl.is_allowed("10.0.0.1") is True, f"Request {i+1} should be allowed"
+        """Repeated bounded panel sessions are accepted through the manager."""
+        manager = PanelAuthManager(bootstrap_secret="test", code_ttl_seconds=15)
+        sessions = [_exchange(manager) for _ in range(5)]
+        assert all(session is not None for session in sessions)
 
     def test_exceed_limit(self):
-        """制限超過のリクエストは拒否される。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=3, window_seconds=60)
-        with patch("time.monotonic", clock):
-            for _ in range(3):
-                assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is False
-            assert rl.is_allowed("10.0.0.1") is False
+        """A consumed login code cannot be replayed as an unbounded bypass."""
+        manager = PanelAuthManager(bootstrap_secret="test", code_ttl_seconds=15)
+        code = str(manager.issue_login_code()["code"])
+        assert manager.exchange_code(code) is not None
+        assert manager.exchange_code(code) is None
 
-    def test_window_expiry(self):
-        """ウィンドウ時間経過後は再びリクエスト可能。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=2, window_seconds=10)
-        with patch("time.monotonic", clock):
-            assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is False
+    def test_window_expiry(self, monkeypatch: pytest.MonkeyPatch):
+        """Expired panel codes are rejected at the current session boundary."""
+        import core_runtime.panel_auth as panel_auth
 
-            # ウィンドウ経過
-            clock.advance(11)
-            assert rl.is_allowed("10.0.0.1") is True
+        clock = _FakeClock()
+        monkeypatch.setattr(panel_auth, "time", type("Clock", (), {"time": clock}))
+        manager = PanelAuthManager(bootstrap_secret="test", code_ttl_seconds=15)
+        code = str(manager.issue_login_code()["code"])
+        clock.now += 16
+        assert manager.exchange_code(code) is None
 
     def test_different_ips_independent(self):
-        """異なる IP は独立してカウントされる。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=2, window_seconds=60)
-        with patch("time.monotonic", clock):
-            assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is False
-            # 別 IP は独立
-            assert rl.is_allowed("10.0.0.2") is True
-            assert rl.is_allowed("10.0.0.2") is True
-            assert rl.is_allowed("10.0.0.2") is False
+        """Loopback client classification is finite and explicit per address."""
+        assert PackAPIHandler._is_loopback_client(("127.0.0.1", 1)) is True
+        assert PackAPIHandler._is_loopback_client(("::1", 1)) is True
+        assert PackAPIHandler._is_loopback_client(("192.0.2.1", 1)) is False
 
 
 class TestRateLimiterEnv:
+    """Retired environment knobs cannot configure the v4 boundary."""
 
-    def test_custom_rate_limit_env(self):
-        """RUMI_API_RATE_LIMIT 環境変数でカスタム制限値が反映される。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=int(os.environ.get("RUMI_API_RATE_LIMIT", "2")),
-                          window_seconds=60)
-        with patch("time.monotonic", clock):
-            assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is False
+    def test_custom_rate_limit_env(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("RUMI_API_RATE_LIMIT", "1")
+        assert not hasattr(PackAPIHandler, "_RateLimiter")
+        assert RuntimeHTTPConfig.verify("127.0.0.1", 0).host == "127.0.0.1"
 
-    def test_custom_window_env(self):
-        """RUMI_API_RATE_WINDOW 環境変数でカスタムウィンドウが反映される。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=1,
-                          window_seconds=float(os.environ.get("RUMI_API_RATE_WINDOW", "5")))
-        with patch("time.monotonic", clock):
-            assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is False
-            clock.advance(6)
-            assert rl.is_allowed("10.0.0.1") is True
+    def test_custom_window_env(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("RUMI_API_RATE_WINDOW", "1")
+        assert not hasattr(PackAPIHandler, "_RateLimiter")
+        assert RuntimeHTTPConfig.verify("localhost", 65535).port == 65535
 
 
 class TestRateLimiterCleanup:
+    """Current one-time code/session cleanup replaces limiter state."""
 
-    def test_old_timestamps_cleanup(self):
-        """古いタイムスタンプがクリーンアップされる。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=3, window_seconds=10)
-        with patch("time.monotonic", clock):
-            assert rl.is_allowed("10.0.0.1") is True   # t=1000
-            clock.advance(4)
-            assert rl.is_allowed("10.0.0.1") is True   # t=1004
-            clock.advance(4)
-            assert rl.is_allowed("10.0.0.1") is True   # t=1008
-            assert rl.is_allowed("10.0.0.1") is False   # 3/3 in window
+    def test_old_timestamps_cleanup(self, monkeypatch: pytest.MonkeyPatch):
+        import core_runtime.panel_auth as panel_auth
 
-            # t=1000 のエントリがウィンドウ外に
-            clock.advance(3)  # t=1011 -> window cutoff=1001
-            assert rl.is_allowed("10.0.0.1") is True
+        clock = _FakeClock()
+        monkeypatch.setattr(panel_auth, "time", type("Clock", (), {"time": clock}))
+        manager = PanelAuthManager(bootstrap_secret="test", code_ttl_seconds=15)
+        old_code = str(manager.issue_login_code()["code"])
+        clock.now += 16
+        assert manager.exchange_code(old_code) is None
+        assert _exchange(manager) is not None
 
     def test_max_tracked_ips(self):
-        """最大追跡 IP 数の制限が機能する。"""
-        clock = FakeClock()
-        max_ips = 5
-        rl = _RateLimiter(max_requests=100, window_seconds=60, max_ips=max_ips)
-        with patch("time.monotonic", clock):
-            for i in range(max_ips):
-                clock.advance(0.001)
-                assert rl.is_allowed(f"10.0.0.{i}") is True
-
-            clock.advance(0.001)
-            assert rl.is_allowed("10.0.0.99") is True
-            with rl._lock:
-                assert len(rl._requests) <= max_ips
+        """The removed IP-table limiter leaves no hidden per-IP state."""
+        assert not hasattr(PackAPIHandler, "_RateLimiter")
+        assert not hasattr(PackAPIHandler, "_requests")
+        assert RuntimeHTTPConfig.verify("::1", 8765).host == "127.0.0.1"
 
     def test_evict_frees_slot(self):
-        """最古 IP 除去後に新 IP が追加可能。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=10, window_seconds=60, max_ips=2)
-        with patch("time.monotonic", clock):
-            assert rl.is_allowed("A") is True
-            clock.advance(1)
-            assert rl.is_allowed("B") is True
-            clock.advance(1)
-            assert rl.is_allowed("C") is True
-            with rl._lock:
-                assert len(rl._requests) <= 2
+        """Explicit session revocation frees the current session boundary."""
+        manager = PanelAuthManager(bootstrap_secret="test")
+        first = _exchange(manager)
+        assert first is not None
+        first_session = str(first["session_id"])
+        manager.revoke_session(first_session)
+        assert manager.verify_session(first_session) is None
+        assert _exchange(manager) is not None
 
 
 class TestRateLimiterThreadSafety:
+    """Panel session issuance remains lock-protected under concurrency."""
 
     def test_thread_safety(self):
-        """スレッドセーフ: 並列リクエストでデータ破壊が起きない。"""
-        rl = _RateLimiter(max_requests=1000, window_seconds=60)
-        errors = []
-        barrier = threading.Barrier(10)
+        manager = PanelAuthManager(bootstrap_secret="test")
+        errors: list[Exception] = []
 
-        def worker(ip: str):
+        def worker() -> None:
             try:
-                barrier.wait(timeout=5)
                 for _ in range(100):
-                    rl.is_allowed(ip)
-            except Exception as e:
-                errors.append(e)
+                    assert _exchange(manager) is not None
+            except Exception as exc:  # pragma: no cover - assertion capture
+                errors.append(exc)
 
-        threads = []
-        for i in range(10):
-            t = threading.Thread(target=worker, args=(f"10.0.0.{i}",))
-            threads.append(t)
-            t.start()
-        for t in threads:
-            t.join(timeout=10)
-
-        assert not errors, f"Errors in threads: {errors}"
-        total = 0
-        with rl._lock:
-            for dq in rl._requests.values():
-                total += len(dq)
-        assert total == 1000  # 10 threads x 100 requests
+        threads = [threading.Thread(target=worker) for _ in range(10)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=5)
+        assert not errors
 
 
 class TestRateLimiterLocalhost:
+    """Loopback-only server coordinates replace the removed limiter allowlist."""
 
     def test_localhost_rate_limited(self):
-        """127.0.0.1 からのリクエストにもレート制限が適用される。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=2, window_seconds=60)
-        with patch("time.monotonic", clock):
-            assert rl.is_allowed("127.0.0.1") is True
-            assert rl.is_allowed("127.0.0.1") is True
-            assert rl.is_allowed("127.0.0.1") is False
+        assert all(
+            PackAPIHandler._is_loopback_client((host, 1))
+            for host in ("127.0.0.1", "localhost", "::1", "::ffff:127.0.0.1")
+        )
+        assert not PackAPIHandler._is_loopback_client(("198.51.100.1", 1))
 
     def test_exactly_at_limit(self):
-        """ちょうど制限値のリクエストは許可され、次は拒否される。"""
-        clock = FakeClock()
-        rl = _RateLimiter(max_requests=5, window_seconds=60)
-        with patch("time.monotonic", clock):
-            for _ in range(5):
-                assert rl.is_allowed("10.0.0.1") is True
-            assert rl.is_allowed("10.0.0.1") is False
+        assert RuntimeHTTPConfig.verify("127.0.0.1", 0).port == 0
+        assert RuntimeHTTPConfig.verify("127.0.0.1", 65535).port == 65535
+        with pytest.raises(ValueError, match="port"):
+            RuntimeHTTPConfig.verify("127.0.0.1", 65536)

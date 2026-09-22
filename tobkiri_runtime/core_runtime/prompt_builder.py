@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import copy
 import re
+import types
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -119,12 +120,20 @@ def evaluate_condition(condition: dict | None, variables: dict) -> bool:
         if operator == "neq":
             return actual != expected
         if operator == "gt":
+            if actual is None or expected is None:
+                return False
             return float(actual) > float(expected)
         if operator == "gte":
+            if actual is None or expected is None:
+                return False
             return float(actual) >= float(expected)
         if operator == "lt":
+            if actual is None or expected is None:
+                return False
             return float(actual) < float(expected)
         if operator == "lte":
+            if actual is None or expected is None:
+                return False
             return float(actual) <= float(expected)
         if operator == "contains":
             return str(expected) in str(actual)
@@ -195,11 +204,16 @@ class PromptBuilder:
             if value is not None
         }
 
-        class BoundPromptBuilder(cls):
-            def __init__(self, *args: Any, **kwargs: Any):
-                for key, value in dependencies.items():
-                    kwargs.setdefault(key, value)
-                super().__init__(*args, **kwargs)
+        def bound_init(self: PromptBuilder, *args: Any, **kwargs: Any) -> None:
+            for key, value in dependencies.items():
+                kwargs.setdefault(key, value)
+            cls.__init__(self, *args, **kwargs)
+
+        BoundPromptBuilder = types.new_class(
+            cls.__name__,
+            (cls,),
+            exec_body=lambda namespace: namespace.update({"__init__": bound_init}),
+        )
 
         BoundPromptBuilder.__name__ = cls.__name__
         BoundPromptBuilder.__qualname__ = cls.__qualname__

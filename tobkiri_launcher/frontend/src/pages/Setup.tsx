@@ -1,251 +1,287 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
-import { useAppStore } from '@/src/store';
-import { Button } from '@/src/components/ui/Button';
-import { useT } from '@/src/lib/i18n';
-import { panelRoutes } from '@/src/lib/routes';
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {useNavigate} from 'react-router';
+import {CheckCircle2} from 'lucide-react';
+import {useAppStore} from '@/src/store';
+import {Button} from '@/src/components/ui/Button';
+import {PresentationSelector} from '@/src/components/presentation/PresentationSelector';
+import {TobkiriLoadingMark} from '@/src/components/ui/TobkiriLoader';
+import {panelRoutes} from '@/src/lib/routes';
 import {
-  SETUP_PACK_RETURN_PARAM,
-  hasSelectedSetupPack,
-  setupPackSelectionUrl,
-} from '@/src/lib/setupPacks';
-import { ArrowRight, CheckCircle2 } from 'lucide-react';
-import { TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
-import { motion } from 'motion/react';
-import { LAUNCHER_DISPLAY_NAME } from '@/src/lib/launcherBrand';
-import tobkiriIconUrl from '../../../assets/app-icon/tobkiri-launcher-icon.png';
+  activateDefaultsProfile,
+  fetchDefaultsSetupState,
+  type DefaultsSetupState,
+} from '@/src/lib/defaultsSetup';
+import {
+  activateDefaultsWithRecovery,
+  recoverDefaultsActivation,
+} from '@/src/lib/defaultsActivationRecovery';
+import {
+  fetchPresentationState,
+  launchSelectedPresentation,
+  selectPresentation,
+} from '@/src/lib/api';
+import {refreshMountedRuntimeSurfaces} from '@/src/lib/runtimeSurfaceRefresh';
+import type {ApiPresentationSelection, ApiPresentationState} from '@/src/lib/apiTypes';
+import {
+  defaultPresentationSelection,
+  normalizePresentationSelection,
+} from '@/src/lib/presentation';
+import {LAUNCHER_DISPLAY_NAME} from '@/src/lib/launcherBrand';
+import {formatPackVMRecoveryError} from '@/src/lib/packvmLifecycle';
+import {DefaultsReview} from './DefaultsReview';
+
+function message(error: unknown, fallback: string): string {
+  if (typeof error === 'string' && error.trim()) return error;
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
+}
 
 export function Setup() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const setSetupDone = useAppStore(state => state.setSetupDone);
-  const connectAccount = useAppStore(state => state.connectAccount);
-  const loadProfile = useAppStore(state => state.loadProfile);
-  const profile = useAppStore(state => state.profile);
-  const addToast = useAppStore(state => state.addToast);
-  const t = useT();
-  const [loading, setLoading] = useState(false);
-  const [linked, setLinked] = useState(false);
-  const [setupPackError, setSetupPackError] = useState<string | null>(null);
+  const setSetupDone = useAppStore((state) => state.setSetupDone);
+  const addToast = useAppStore((state) => state.addToast);
+  const runtimeStatus = useAppStore((state) => state.runtimeStatus);
+  const refreshRuntimeHealth = useAppStore((state) => state.refreshRuntimeHealth);
+  const refreshPackVMDoctor = useAppStore((state) => state.refreshPackVMDoctor);
+  const loadPacks = useAppStore((state) => state.loadPacks);
+  const loadFrontendCatalog = useAppStore((state) => state.loadFrontendCatalog);
+  const [setup, setSetup] = useState<DefaultsSetupState | null>(null);
+  const [reviewed, setReviewed] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activationCommitted, setActivationCommitted] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [reconciliationError, setReconciliationError] = useState<string | null>(null);
+  const [presentation, setPresentation] = useState<ApiPresentationState | null>(null);
+  const [selection, setSelection] = useState<ApiPresentationSelection | null>(null);
+  const [presentationLoading, setPresentationLoading] = useState(false);
+  const [presentationSaving, setPresentationSaving] = useState(false);
+  const [presentationLaunching, setPresentationLaunching] = useState(false);
+  const [presentationError, setPresentationError] = useState<string | null>(null);
+  const [complete, setComplete] = useState(false);
+  const activationInFlightRef = useRef(false);
+  const profileReconfirmationRequired = runtimeStatus === 'profile_reconfirmation_required';
 
-  const finalizeSetup = async (): Promise<boolean> => {
-    if (!await hasSelectedSetupPack()) {
-      return false;
-    }
-    setSetupDone(true);
-    return true;
-  };
-
-  const openSetupPackSelection = () => {
-    const colorMode = document.documentElement.dataset.colorMode;
-    window.location.assign(setupPackSelectionUrl(undefined, colorMode));
-  };
-
-  useEffect(() => {
-    void loadProfile();
-  }, [loadProfile]);
-
-  useEffect(() => {
-    const refreshProfile = () => {
-      void loadProfile();
-    };
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') {
-        refreshProfile();
-      }
-    };
-
-    window.addEventListener('focus', refreshProfile);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-    return () => {
-      window.removeEventListener('focus', refreshProfile);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, [loadProfile]);
-
-  // Handle OAuth callback redirect params
-  useEffect(() => {
-    const isLinked = searchParams.get('linked');
-    const error = searchParams.get('error');
-
-    if (isLinked === 'true') {
-      let alive = true;
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      setLoading(true);
-      void finalizeSetup()
-        .then((completed) => {
-          if (!alive) return;
-          if (!completed) {
-            openSetupPackSelection();
-            return;
-          }
-          setLinked(true);
-          addToast(t('setup.link_success') || 'Account linked successfully!', 'success');
-          timer = setTimeout(() => {
-            navigate(panelRoutes.home);
-          }, 1500);
-        })
-        .catch((setupError) => {
-          if (!alive) return;
-          setSetupPackError(setupError instanceof Error ? setupError.message : 'Setup pack selection failed');
-          setLoading(false);
-        });
-      return () => {
-        alive = false;
-        if (timer) clearTimeout(timer);
-      };
-    }
-
-    if (error) {
-      addToast(`OAuth error: ${error}`, 'error');
-    }
-  }, [searchParams, addToast, navigate, t]);
-
-  useEffect(() => {
-    if (searchParams.get(SETUP_PACK_RETURN_PARAM) !== '1') {
-      return;
-    }
-
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    setLoading(true);
-    void finalizeSetup()
-      .then((completed) => {
-        if (!alive) return;
-        if (!completed) {
-          setSetupPackError('Choose and install a setup pack before opening the panel.');
-          setLoading(false);
-          return;
-        }
-        setLinked(true);
-        addToast(t('setup.link_success') || 'Account linked successfully!', 'success');
-        timer = setTimeout(() => {
-          navigate(panelRoutes.home);
-        }, 800);
-      })
-      .catch((setupError) => {
-        if (!alive) return;
-        setSetupPackError(setupError instanceof Error ? setupError.message : 'Setup pack selection failed');
-        setLoading(false);
-      });
-
-    return () => {
-      alive = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [searchParams, addToast, navigate, t]);
-
-  useEffect(() => {
-    if (!profile.connected || linked || searchParams.get(SETUP_PACK_RETURN_PARAM) === '1') {
-      return;
-    }
-
-    let alive = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    setLoading(true);
-    void finalizeSetup()
-      .then((completed) => {
-        if (!alive) return;
-        if (!completed) {
-          openSetupPackSelection();
-          return;
-        }
-        setLinked(true);
-        addToast(t('setup.link_success') || 'Account linked successfully!', 'success');
-        timer = setTimeout(() => {
-          navigate(panelRoutes.home);
-        }, 1500);
-      })
-      .catch(() => {
-        if (!alive) return;
-        addToast(t('setup.connect_failed') || 'Failed to connect', 'error');
-        setLoading(false);
-      });
-
-    return () => {
-      alive = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [profile.connected, linked, searchParams, addToast, navigate, t]);
-
-  const handleConnect = async () => {
-    setLoading(true);
+  const loadPresentation = useCallback(async () => {
+    setPresentationLoading(true);
+    setPresentationError(null);
     try {
-      await connectAccount();
-      addToast(
-        t('setup.connect_started') || 'Browser opened. Finish signing in there, then return.',
-        'success',
+      const next = await fetchPresentationState();
+      setPresentation(next);
+      setSelection(
+        normalizePresentationSelection(next.catalog, next.selection)
+          ?? defaultPresentationSelection(next.catalog),
       );
-    } catch {
-      addToast(t('setup.connect_failed') || 'Failed to connect', 'error');
+    } catch (error) {
+      setPresentationError(message(error, 'Presentation catalog could not be loaded.'));
     } finally {
-      setLoading(false);
+      setPresentationLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    void fetchDefaultsSetupState()
+      .then((next) => {
+        if (!live) return;
+        setSetup(next);
+        setActivationCommitted(next.state === 'active');
+        if (next.state === 'active') void loadPresentation();
+      })
+      .catch((error) => {
+        if (live) setSetupError(message(error, 'Defaults Profile could not be loaded.'));
+      });
+    return () => { live = false; };
+  }, [loadPresentation]);
+
+  const reconcileActiveRuntime = useCallback(async () => {
+    await refreshRuntimeHealth();
+    const runtimeState = useAppStore.getState();
+    if (runtimeState.runtimeStatus !== 'runtime_ready') {
+      throw new Error(formatPackVMRecoveryError(
+        runtimeState.runtimeError,
+        'Defaults activation completed without a verified runtime dispatch map.',
+      ));
+    }
+
+    // Setup owns the authoritative sequence below. The store's normal doctor
+    // refresh may hydrate projections for PackVM pages, but doing that here
+    // would issue a second load before this reconciliation has verified health.
+    const packVmDoctor = await refreshPackVMDoctor({reconcile: false});
+    if (!packVmDoctor) {
+      const currentState = useAppStore.getState();
+      throw new Error(formatPackVMRecoveryError(
+        currentState.packVmError,
+        'PackVM readiness could not be verified.',
+      ));
+    }
+
+    // A valid not-ready doctor is the expected fresh-install state before the
+    // user provisions PackVM from Packs.  Keep Pack operations fail-closed via
+    // the recorded doctor while allowing the authenticated provisioning UI to
+    // become reachable.
+
+    await loadPacks(false, {skipMutationReconciliation: true});
+    if (packVmDoctor.ready) {
+      await loadFrontendCatalog(false);
+    }
+    const refreshedState = useAppStore.getState();
+    const projectionError = refreshedState.packsError
+      || (packVmDoctor.ready ? refreshedState.frontendCatalogError : null);
+    if (projectionError) {
+      throw new Error(formatPackVMRecoveryError(
+        projectionError,
+        'Authoritative Pack projections could not be reconciled.',
+      ));
+    }
+    try {
+      await refreshMountedRuntimeSurfaces();
+    } catch (error) {
+      throw new Error(formatPackVMRecoveryError(
+        error,
+        'Mounted runtime surfaces could not be reconciled.',
+      ));
+    }
+  }, [loadFrontendCatalog, loadPacks, refreshMountedRuntimeSurfaces, refreshPackVMDoctor, refreshRuntimeHealth]);
+
+  const applyRecoveryResult = useCallback(async (
+    result: Awaited<ReturnType<typeof recoverDefaultsActivation>>,
+  ) => {
+    setSetup(result.state);
+    setReviewed(false);
+    setActivationCommitted(result.activationCommitted);
+    const failure = result.error
+      ? message(result.error, 'Defaults activation reconciliation failed.')
+      : null;
+    if (result.state?.state === 'active') {
+      setSetupError(null);
+      setReconciliationError(failure);
+      if (failure) {
+        addToast(failure, 'error');
+      } else {
+        await loadPresentation();
+      }
+      return;
+    }
+    setReconciliationError(null);
+    setSetupError(failure);
+    if (failure) addToast(failure, 'error');
+  }, [addToast, loadPresentation]);
+
+  const recoverActivation = useCallback(async () => {
+    if (activationInFlightRef.current) return;
+    activationInFlightRef.current = true;
+    setActivating(true);
+    setSetupError(null);
+    try {
+      const result = await recoverDefaultsActivation({
+        fetchAuthoritativeSetup: fetchDefaultsSetupState,
+        reconcileActiveRuntime,
+      });
+      await applyRecoveryResult(result);
+    } finally {
+      activationInFlightRef.current = false;
+      setActivating(false);
+    }
+  }, [applyRecoveryResult, reconcileActiveRuntime]);
+
+  const activate = async () => {
+    if (activationCommitted || !setup || setup.state !== 'review_required' || !reviewed) return;
+    if (activationInFlightRef.current) return;
+    activationInFlightRef.current = true;
+    setActivating(true);
+    setSetupError(null);
+    try {
+      const result = await activateDefaultsWithRecovery({
+        submitActivation: () => activateDefaultsProfile(setup.recommended_default_profile.confirmation),
+        fetchAuthoritativeSetup: fetchDefaultsSetupState,
+        reconcileActiveRuntime,
+      });
+      await applyRecoveryResult(result);
+    } finally {
+      activationInFlightRef.current = false;
+      setActivating(false);
     }
   };
 
-  const handleSkip = () => {
-    setSetupPackError(null);
-    openSetupPackSelection();
+  const savePresentation = async (nextSelection: ApiPresentationSelection) => {
+    setPresentationSaving(true);
+    setPresentationError(null);
+    try {
+      const next = await selectPresentation(nextSelection);
+      setPresentation(next);
+      setSelection(next.selection ?? nextSelection);
+      setSetupDone(true);
+      setComplete(true);
+      window.setTimeout(() => navigate(panelRoutes.home), 500);
+    } catch (error) {
+      setPresentationError(message(error, 'Presentation selection could not be saved.'));
+    } finally {
+      setPresentationSaving(false);
+    }
   };
 
-  if (linked) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-bg-main p-6">
-        <motion.div initial={{opacity: 0, scale: .96}} animate={{opacity: 1, scale: 1}} className="relative flex w-full max-w-sm flex-col items-center gap-6 text-center">
-          <motion.div initial={{scale: .8}} animate={{scale: 1}} transition={{type: 'spring', stiffness: 260, damping: 22}} className="flex h-14 w-14 items-center justify-center rounded-xl border border-border bg-bg-card">
-            <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-          </motion.div>
-          <div>
-            <h1 className="text-xl font-semibold text-text-main">{t('setup.linked_title') || 'Account Linked!'}</h1>
-            <p className="mt-2 text-sm text-text-muted">{t('setup.redirecting') || 'Redirecting to dashboard...'}</p>
-          </div>
-          <TobkiriLoadingMark scene="startup" />
-        </motion.div>
-      </div>
-    );
+  const launchPresentation = async () => {
+    setPresentationLaunching(true);
+    setPresentationError(null);
+    try {
+      const result = await launchSelectedPresentation();
+      addToast(result.message || 'Selected Shell launched.', 'success');
+    } catch (error) {
+      setPresentationError(message(error, 'Selected Shell launch was blocked.'));
+    } finally {
+      setPresentationLaunching(false);
+    }
+  };
+
+  if (complete) {
+    return <div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-bg-main text-center">
+      <CheckCircle2 className="h-12 w-12 text-emerald-500" />
+      <h1 className="text-xl font-semibold text-text-main">Runtime Ready</h1>
+      <TobkiriLoadingMark scene="startup" />
+    </div>;
   }
 
-  return (
-    <div className="flex min-h-screen bg-bg-main">
-      <div className="mx-auto grid w-full max-w-4xl items-center gap-10 px-6 py-10 lg:grid-cols-[1fr_400px]">
-        <motion.section initial={{opacity: 0, x: -18}} animate={{opacity: 1, x: 0}} transition={{duration: .45}} className="max-w-xl">
-          <div className="mb-10 flex items-center gap-3 text-sm font-semibold text-text-main">
-            <img
-              src={tobkiriIconUrl}
-              alt="Tobkiri"
-              className="h-9 w-9 rounded-lg border border-border bg-bg-card object-cover"
-            />
-            {LAUNCHER_DISPLAY_NAME}
-          </div>
-          <div>
-            <span className="text-xs font-medium text-text-muted">初期設定</span>
-            <h1 className="mt-3 text-3xl font-semibold tracking-[-.035em] text-text-main sm:text-4xl">Tobkiriをセットアップ</h1>
-            <p className="mt-4 max-w-md text-sm leading-7 text-text-muted">アカウントと起動時に読み込むpackを設定します。どちらもあとから変更できます。</p>
-          </div>
-          <div className="mt-9 space-y-3 border-l border-border pl-4 text-xs leading-5 text-text-muted">
-            <p>1. アカウントを接続</p>
-            <p>2. 起動時のpackと権限を確認</p>
-          </div>
-        </motion.section>
+  if (setup?.state === 'active') {
+    return <div className="min-h-screen bg-bg-main px-6 py-10"><div className="mx-auto max-w-4xl">
+      <Header />
+      {reconciliationError ? <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-500">
+        <p className="font-medium text-text-main">Activation is verified; runtime surfaces need reconciliation.</p>
+        <p className="mt-2">{reconciliationError}</p>
+        <div className="mt-4"><Button variant="outline" onClick={() => void recoverActivation()} loading={activating}>Retry runtime reconciliation</Button></div>
+      </div> : presentation ? <PresentationSelector
+        state={presentation}
+        selection={selection}
+        saving={presentationSaving}
+        launching={presentationLaunching}
+        error={presentationError}
+        onSelectionChange={setSelection}
+        onSave={savePresentation}
+        onLaunch={launchPresentation}
+      /> : <div role={presentationError ? 'alert' : 'status'} className="rounded-xl border border-border bg-bg-card p-6 text-sm text-text-muted">
+        {presentationError ?? 'Loading selected presentation…'}
+        {presentationError && <div className="mt-4"><Button variant="outline" onClick={() => void loadPresentation()} loading={presentationLoading}>Retry</Button></div>}
+      </div>}
+    </div></div>;
+  }
 
-        <motion.section initial={{opacity: 0, y: 14}} animate={{opacity: 1, y: 0}} transition={{delay: .06, duration: .36}} className="rounded-[18px] border border-border bg-bg-card p-6 shadow-lg sm:p-7">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-text-muted">初期セットアップ</span>
-            <span className="rounded-full border border-border bg-bg-main px-2.5 py-1 text-[10px] font-semibold text-text-muted">1 / 2</span>
-          </div>
-          <div className="mt-4 flex gap-1.5"><i className="h-1 flex-1 rounded-full bg-text-main" /><i className="h-1 flex-1 rounded-full bg-border" /></div>
-          <h2 className="mt-7 text-lg font-semibold text-text-main">アカウント</h2>
-          <p className="mt-2 text-sm leading-6 text-text-muted">接続するとプロファイルを同期できます。接続せずにpack選択へ進むこともできます。</p>
-          <div className="mt-7 flex flex-col gap-3">
-            <Button size="lg" className="w-full justify-between" onClick={handleConnect} disabled={loading} loading={loading}>
-              <span>{t('setup.connect_rumi')}</span>{!loading && <ArrowRight className="h-4 w-4" />}
-            </Button>
-            <Button variant="outline" size="lg" className="w-full" onClick={handleSkip} disabled={loading}>{t('setup.choose_packs')}</Button>
-          </div>
-          {setupPackError && <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-500">{setupPackError}</p>}
-          <p className="mt-6 border-t border-border pt-4 text-[11px] leading-5 text-text-muted">packごとの権限は次の画面で確認します。</p>
-        </motion.section>
-      </div>
-    </div>
-  );
+  return <div className="min-h-screen bg-bg-main px-6 py-10"><div className="mx-auto max-w-3xl">
+    <Header />
+    <DefaultsReview
+      setup={setup}
+      reviewed={reviewed}
+      activating={activating}
+      activationCommitted={activationCommitted}
+      error={setupError}
+      reconfirmationRequired={profileReconfirmationRequired}
+      onRecover={() => void recoverActivation()}
+      onReviewedChange={setReviewed}
+      onActivate={() => void activate()}
+    />
+  </div></div>;
+}
+
+function Header() {
+  return <div className="mb-8 flex items-center gap-3 text-sm font-semibold text-text-main">
+    <img src="/panel/assets/tobkiri-launcher-icon.png" alt="Tobkiri" data-asset-trust="bundled" className="h-9 w-9 rounded-lg border border-border" />
+    {LAUNCHER_DISPLAY_NAME}
+  </div>;
 }

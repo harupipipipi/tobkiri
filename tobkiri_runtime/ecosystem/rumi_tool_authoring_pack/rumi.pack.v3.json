@@ -1,51 +1,20 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {
-    "id": "rumi.tool_authoring",
-    "version": "1.0.0",
-    "kind": "service",
-    "display_name": "Rumi Tool Authoring",
-    "description": "Definition-only validation and revision-guarded publication."
-  },
   "contracts": {
     "provides": [
       {
-        "id": "rumi.service.tool.authoring.validate.v1",
-        "version": "1.0.0",
-        "provider_instance_id": "tool-authoring.validate",
         "cardinality": "one",
-        "security": "sensitive",
         "failure": "fail_closed",
-        "lifecycle": {
-          "introduced": "1.0.0",
-          "deprecated": false,
-          "data_owner": "caller"
-        },
-        "schemas": {
-          "input": {
-            "type": "object"
-          },
-          "output": {
-            "type": "object"
-          }
-        },
+        "id": "rumi.service.tool.authoring.validate.v1",
         "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "caller",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "tool-authoring.validate",
         "required_capabilities": [
           "tool.authoring.validate"
-        ]
-      },
-      {
-        "id": "rumi.action.tool.authoring.publish.v1",
-        "version": "1.0.0",
-        "provider_instance_id": "tool-authoring.publish",
-        "cardinality": "one",
-        "security": "restricted",
-        "failure": "fail_closed",
-        "lifecycle": {
-          "introduced": "1.0.0",
-          "deprecated": false,
-          "data_owner": "rumi_tool_registry_pack"
-        },
+        ],
         "schemas": {
           "input": {
             "type": "object"
@@ -54,76 +23,178 @@
             "type": "object"
           }
         },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.tool.authoring.publish.v1",
         "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_tool_registry_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "tool-authoring.publish",
         "required_capabilities": [
           "tool.authoring.publish"
-        ]
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
       }
     ],
     "requires": [
       {
-        "id": "rumi.action.tool.definition.manage.v1",
-        "version_range": "^1.0.0",
         "cardinality": "one",
-        "optional": false
+        "id": "rumi.action.tool.definition.manage.v1",
+        "optional": false,
+        "version_range": "^1.0.0"
       }
     ]
   },
   "entrypoints": [
     {
-      "id": "tool-authoring-validate",
+      "artifact_hash": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
       "contract_id": "rumi.service.tool.authoring.validate.v1",
+      "id": "tool-authoring-validate",
       "loader": "python",
       "module": "ecosystem.rumi_tool_authoring_pack.runtime.authoring",
-      "symbol": "create_validate_operation",
-      "artifact_hash": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860"
+      "symbol": "create_validate_operation"
     },
     {
-      "id": "tool-authoring-publish",
+      "artifact_hash": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860",
       "contract_id": "rumi.action.tool.authoring.publish.v1",
+      "id": "tool-authoring-publish",
       "loader": "python",
       "module": "ecosystem.rumi_tool_authoring_pack.runtime.authoring",
-      "symbol": "create_publish_operation",
-      "artifact_hash": "sha256:e2fbf8c21fdd892a500e9ffa5bf27835da0590103a517bdc92b14b60d7b3f860"
+      "symbol": "create_publish_operation"
     }
   ],
-  "resources": [],
-  "storage": [],
-  "permissions": [
-    {
-      "capability": "tool.authoring.validate",
-      "access": "execute",
-      "approval_required": false
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.tool.authoring.publish.v1",
+            "rumi.service.tool.authoring.validate.v1"
+          ],
+          "requires": [
+            "rumi.action.tool.definition.manage.v1"
+          ]
+        },
+        "dependencies": {},
+        "description": "Definition-only validation and revision-guarded publication.",
+        "display_name": "Rumi Tool Authoring",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:3b24f458f5c281843652aed4192cb82875fc4bb1d76c0adc33a6db2c88920f27",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:110aedd002865a99636ea79703f5ea62ea7fdd029c203db0265f2b35cbae1ecd"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "tool_definition_authoring"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "code_generation": false,
+            "execution": false
+          }
+        },
+        "pack_id": "rumi_tool_authoring_pack",
+        "pack_identity": "rumi:ecosystem/rumi_tool_authoring_pack",
+        "provenance": {
+          "build_identity": "rumi_tool_authoring_pack:1.0.0",
+          "content_hash": "sha256:c087e86dee58038320571e8422c4679cb49fd2650a0e058db4e4fa83adfc1f3a",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "tool.authoring.publish",
+          "tool.authoring.validate"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_tool_authoring_pack"
     },
-    {
-      "capability": "tool.authoring.publish",
-      "access": "control",
-      "approval_required": true
+    "rumi.tool_authoring.boundary": {
+      "code_generation": false,
+      "execution": false,
+      "publish_approval_required": true,
+      "registry_owner": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_tool_authoring_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:110aedd002865a99636ea79703f5ea62ea7fdd029c203db0265f2b35cbae1ecd"
     }
-  ],
-  "provenance": {
-    "content_hash": "sha256:d5b42c9c9a7abb40b6340cafe5040848f6bec0912b551b7ee8eeb19dc77d63cd",
-    "build_identity": "rumi-tool-authoring-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
   },
   "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
     "from": [
       "defaultspack.domain.tool.runtime_creator",
       "rumi_api_toolsmith_pack"
     ],
-    "compatibility_aliases": [],
-    "compatibility_projection": "legacy_to_v3_read_only",
     "removal_wave": 10,
-    "sunset_at": "2027-12-31",
-    "rollback": "Remove authored definitions at an exact registry revision."
+    "rollback": "Remove authored definitions at an exact registry revision.",
+    "sunset_at": "2027-12-31"
   },
-  "extensions": {
-    "rumi.tool_authoring.boundary": {
-      "code_generation": false,
-      "execution": false,
-      "registry_owner": false,
-      "publish_approval_required": true
+  "pack": {
+    "description": "Definition-only validation and revision-guarded publication.",
+    "display_name": "Rumi Tool Authoring",
+    "id": "rumi.tool_authoring",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "tool.authoring.validate"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "tool.authoring.publish"
     }
-  }
+  ],
+  "provenance": {
+    "build_identity": "rumi_tool_authoring_pack:1.0.0",
+    "content_hash": "sha256:c087e86dee58038320571e8422c4679cb49fd2650a0e058db4e4fa83adfc1f3a",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": []
 }

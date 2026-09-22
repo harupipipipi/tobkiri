@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "io.tobkiri.sealed-python-environment.v1",
+  "title": "Tobkiri sealed Python environment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "environment_digest",
+    "platform",
+    "architecture",
+    "python_version",
+    "package_provenance",
+    "sentinels",
+    "files"
+  ],
+  "properties": {
+    "schema": {
+      "const": "io.tobkiri.sealed-python-environment.v1"
+    },
+    "environment_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "platform": {
+      "enum": ["macos", "linux", "windows"]
+    },
+    "architecture": {
+      "enum": ["arm64", "aarch64", "x86_64"]
+    },
+    "python_version": {
+      "const": "3.13.13"
+    },
+    "package_provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "package_id", "release_digest"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "pinned-python-build-standalone-v1",
+            "windows-authenticode-v1",
+            "linux-immutable-package-v1"
+          ]
+        },
+        "package_id": {
+          "const": "dev.tobkiri.launcher"
+        },
+        "release_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sentinels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stdlib_sha256",
+        "site_packages_sha256",
+        "native_sha256"
+      ],
+      "properties": {
+        "stdlib_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "site_packages_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "native_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "size", "sha256", "executable"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^(?!sealed-environment\\.v1\\.json$)(?!/)(?!.*\\\\)(?!.*(^|/)\\.{1,2}(/|$)).+"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "$ref": "#/$defs/sha256"
+          },
+          "executable": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$comment": "files is sorted by path; environment_digest is SHA-256 over compact serde JSON bytes of that exact array. The complete directory inventory is exactly the transitive parent closure of files; empty or other extra directories are forbidden. sealed-directory-modes.v1.json, lease.v1, and the fixed runtime/app/entrypoint closure are required inventory entries. The directory-mode document is an inventoried file, preserving this v1 wire shape while binding exact 0555 directory modes into the raw manifest identity."
+}

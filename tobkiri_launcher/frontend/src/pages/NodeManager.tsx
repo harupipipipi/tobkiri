@@ -1,577 +1,154 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Boxes,
-  CheckCircle2,
-  ChevronRight,
-  Globe2,
-  Package,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  Unplug,
-} from 'lucide-react';
+import {useEffect} from 'react';
+import {Link} from 'react-router';
+import {Network, ShieldAlert, ShieldCheck} from 'lucide-react';
 
-import { Badge } from '@/src/components/ui/Badge';
-import { Button } from '@/src/components/ui/Button';
-import { InlineLoadError } from '@/src/components/ui/InlineLoadError';
-import { TobkiriLoader, TobkiriLoadingMark } from '@/src/components/ui/TobkiriLoader';
+import {AdvancedSurfaceFrame, EmptySurfacePanel} from '@/src/components/advanced/AdvancedSurfaceFrame';
+import {RuntimeEvidenceCard} from '@/src/components/advanced/RuntimeEvidenceCard';
+import {Badge} from '@/src/components/ui/Badge';
+import {Button} from '@/src/components/ui/Button';
+import {Card, CardContent, CardHeader, CardTitle} from '@/src/components/ui/Card';
+import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
+import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
+import {extractExactPackDescriptors, type RuntimePackDescriptor} from '@/src/lib/runtimeSurface';
+import {panelRoutes} from '@/src/lib/routes';
+import {useAppStore, type Pack} from '@/src/store';
 
-function NodeManagerSkeleton() {
-  return (
-    <div className="flex flex-1 flex-col gap-5 overflow-hidden bg-bg-main p-6" role="status" aria-label="Loading capability access">
-      <div className="h-8 w-56 animate-pulse rounded bg-bg-hover" />
-      <div className="grid flex-1 gap-3 lg:grid-cols-[minmax(220px,280px)_1fr_minmax(280px,360px)]">
-        {[0, 1, 2].map((item) => <div key={item} className="animate-pulse rounded-lg border border-border bg-bg-card" />)}
-      </div>
-    </div>
+/** Require the Pack control rows to stay bound to the accepted Profile snapshot. */
+export function exactPackControlCatalogBinding(
+  packs: readonly Pick<Pack, 'profileRevision' | 'planDigest'>[],
+  surface: {profile_revision: string; plan_digest: string} | null,
+): boolean {
+  return Boolean(
+    surface
+    && packs.length > 0
+    && packs.every((pack) => (
+      pack.profileRevision === surface.profile_revision
+      && pack.planDigest === surface.plan_digest
+    )),
   );
 }
-import {
-  approvePack,
-  disableCapabilityProfileNode,
-  enableCapabilityProfileNode,
-  fetchCapabilityProfileNodes,
-  fetchCapabilityProfiles,
-  fetchStartupProfiles,
-} from '@/src/lib/api';
-import type {
-  ApiCapabilityNode,
-  ApiCapabilityProfile,
-  ApiStartupProfile,
-} from '@/src/lib/apiTypes';
-import {
-  capabilityNodeDescription,
-  capabilityNodeLabel,
-  capabilityNodePorts,
-  capabilityPortLabel,
-  capabilityPortStandards,
-  normalizeCapabilityProfileNodes,
-} from '@/src/lib/nodeCatalog';
-import { cn } from '@/src/lib/utils';
-import { useAppStore } from '@/src/store';
 
-type CapabilityPackGroup = {
-  packId: string;
-  nodes: ApiCapabilityNode[];
-  enabledCount: number;
-  readyCount: number;
-};
-
-type CapabilityAccessCache = {
-  startupProfiles: ApiStartupProfile[];
-  capabilityProfiles: ApiCapabilityProfile[];
-  capabilityProfileId: string;
-  nodes: ApiCapabilityNode[];
-  selectedPackId: string;
-  selectedNodeId: string;
-};
-
-let capabilityAccessCache: CapabilityAccessCache | null = null;
-
-function recordValue(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function stringList(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-    : [];
-}
-
-export function capabilityPackId(node: ApiCapabilityNode): string {
-  const fromMetadata = node.metadata?.pack_id;
-  if (typeof fromMetadata === 'string' && fromMetadata.trim()) return fromMetadata;
-  return node.node_id.split('.')[0] ?? 'unknown';
-}
-
-export function capabilityDomains(node: ApiCapabilityNode): string[] {
-  const metadata = recordValue(node.metadata);
-  const requirements = recordValue(node.requirements);
-  const permissions = recordValue(node.permissions);
-  const requirementNetwork = recordValue(requirements.network);
-  const permissionNetwork = recordValue(permissions.network);
-  return [...new Set([
-    ...stringList(metadata.allowed_domains),
-    ...stringList(metadata.network_domains),
-    ...stringList(requirementNetwork.domains),
-    ...stringList(requirementNetwork.allowed_domains),
-    ...stringList(permissionNetwork.domains),
-    ...stringList(permissionNetwork.allowed_domains),
-  ])].sort();
-}
-
-export function capabilityProfileForStartup(
-  startupProfile: ApiStartupProfile | null,
-  capabilityProfiles: ApiCapabilityProfile[],
-): string {
-  const candidates = [
-    startupProfile?.capability_profile_id,
-    startupProfile?.default_graph,
-    startupProfile?.graph_id,
-  ].filter((value): value is string => Boolean(value));
-  return candidates.find((candidate) => (
-    capabilityProfiles.some((profile) => profile.profile_id === candidate)
-  )) ?? capabilityProfiles[0]?.profile_id ?? '';
-}
-
-function buildPackGroups(nodes: ApiCapabilityNode[]): CapabilityPackGroup[] {
-  const groups = new Map<string, ApiCapabilityNode[]>();
-  nodes.forEach((node) => {
-    const packId = capabilityPackId(node);
-    groups.set(packId, [...(groups.get(packId) ?? []), node]);
-  });
-  return [...groups.entries()]
-    .map(([packId, packNodes]) => ({
-      packId,
-      nodes: packNodes.sort((left, right) => capabilityNodeLabel(left).localeCompare(capabilityNodeLabel(right))),
-      enabledCount: packNodes.filter((node) => node.state?.enabled).length,
-      readyCount: packNodes.filter((node) => node.state?.status === 'ready').length,
-    }))
-    .sort((left, right) => left.packId.localeCompare(right.packId));
+/** Require an active Pack row to match the control catalog's exact artifact/state. */
+export function exactActivePackJoin(
+  pack: Pick<Pack, 'id' | 'version' | 'artifactDigest' | 'installed' | 'enabled' | 'approved' | 'required'>,
+  activeRow: Pick<RuntimePackDescriptor, 'pack_id' | 'version' | 'artifact_digest' | 'installed' | 'enabled' | 'approved' | 'required'> | undefined,
+): boolean {
+  return Boolean(
+    activeRow
+    && activeRow.pack_id === pack.id
+    && activeRow.version === pack.version
+    && activeRow.artifact_digest === pack.artifactDigest
+    && activeRow.installed === pack.installed
+    && activeRow.enabled === pack.enabled
+    && activeRow.approved === pack.approved
+    && activeRow.required === Boolean(pack.required),
+  );
 }
 
 export function NodeManager() {
-  const addToast = useAppStore((state) => state.addToast);
-  const selectedStartupProfileId = useAppStore((state) => state.selectedStartupProfileId);
-  const setSelectedStartupProfileId = useAppStore((state) => state.setSelectedStartupProfileId);
-  const [startupProfiles, setStartupProfiles] = useState<ApiStartupProfile[]>(
-    () => capabilityAccessCache?.startupProfiles ?? [],
-  );
-  const [capabilityProfiles, setCapabilityProfiles] = useState<ApiCapabilityProfile[]>(
-    () => capabilityAccessCache?.capabilityProfiles ?? [],
-  );
-  const [capabilityProfileId, setCapabilityProfileId] = useState(
-    () => capabilityAccessCache?.capabilityProfileId ?? '',
-  );
-  const [nodes, setNodes] = useState<ApiCapabilityNode[]>(
-    () => capabilityAccessCache?.nodes ?? [],
-  );
-  const [selectedPackId, setSelectedPackId] = useState(
-    () => capabilityAccessCache?.selectedPackId ?? '',
-  );
-  const [selectedNodeId, setSelectedNodeId] = useState(
-    () => capabilityAccessCache?.selectedNodeId ?? '',
-  );
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(() => capabilityAccessCache === null);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [initialError, setInitialError] = useState<string | null>(null);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  const [updating, setUpdating] = useState<string | null>(null);
-
-  const selectedStartupProfile = startupProfiles.find(
-    (profile) => profile.profile_id === selectedStartupProfileId,
-  ) ?? null;
-
-  const loadInitial = async () => {
-    const hasCachedContent = startupProfiles.length > 0 && capabilityProfiles.length > 0;
-    setLoading(!hasCachedContent);
-    try {
-      const [startupData, capabilityData] = await Promise.all([
-        fetchStartupProfiles(),
-        fetchCapabilityProfiles(),
-      ]);
-      setStartupProfiles(startupData.profiles);
-      setCapabilityProfiles(capabilityData.profiles);
-      const startupId = startupData.profiles.some(
-        (profile) => profile.profile_id === selectedStartupProfileId,
-      )
-        ? selectedStartupProfileId
-        : startupData.active_profile_id ?? startupData.profiles[0]?.profile_id ?? '';
-      setSelectedStartupProfileId(startupId);
-      const startupProfile = startupData.profiles.find((profile) => profile.profile_id === startupId) ?? null;
-      setCapabilityProfileId(capabilityProfileForStartup(startupProfile, capabilityData.profiles));
-      setInitialError(null);
-    } catch (error) {
-      if (!hasCachedContent) {
-        setInitialError(error instanceof Error ? error.message : 'Failed to load capability access');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const surface = useRuntimeSurface<unknown>('packs');
+  const descriptor = LAUNCHER_ADVANCED_VIEWS.nodeManager;
+  const activeRows = surface.data ? extractExactPackDescriptors(surface.data.data) : [];
+  const packs = useAppStore((state) => state.packs);
+  const packsLoading = useAppStore((state) => state.packsLoading);
+  const loadPacks = useAppStore((state) => state.loadPacks);
+  const installPack = useAppStore((state) => state.installPack);
+  const approvePack = useAppStore((state) => state.approvePack);
+  const revokePackApproval = useAppStore((state) => state.revokePackApproval);
+  const togglePack = useAppStore((state) => state.togglePack);
+  const pendingInstall = useAppStore((state) => state.packInstallPending);
+  const pendingApproval = useAppStore((state) => state.packApprovalPending);
+  const pendingToggle = useAppStore((state) => state.packTogglePending);
+  const packMutationUnknown = useAppStore((state) => state.packMutationUnknown);
 
   useEffect(() => {
-    void loadInitial();
-  }, []);
+    void loadPacks();
+  }, [loadPacks]);
 
-  useEffect(() => {
-    if (!selectedStartupProfile || capabilityProfiles.length === 0) return;
-    setCapabilityProfileId(capabilityProfileForStartup(selectedStartupProfile, capabilityProfiles));
-  }, [capabilityProfiles, selectedStartupProfile]);
+  const activeById = new Map(activeRows.map((row) => [row.pack_id, row]));
+  const controlCatalogRevisions = new Set(packs.map((pack) => pack.catalogRevision).filter(Boolean));
+  const controlCatalogStable = packs.length > 0 && controlCatalogRevisions.size === 1;
+  const profilePlanBound = exactPackControlCatalogBinding(packs, surface.data);
+  const runtimeReady = surface.status === 'ready' && !surface.stale;
+  const canUseLifecycle = runtimeReady && controlCatalogStable && profilePlanBound;
 
-  const loadProfileNodes = async (profileId: string) => {
-    if (!profileId) return;
-    setProfileLoading(true);
-    try {
-      const response = await fetchCapabilityProfileNodes(profileId);
-      const normalized = normalizeCapabilityProfileNodes(
-        response,
-        capabilityProfiles.find((profile) => profile.profile_id === profileId) ?? null,
-      );
-      setNodes(normalized.nodes);
-      const groups = buildPackGroups(normalized.nodes);
-      setSelectedPackId((current) => groups.some((group) => group.packId === current)
-        ? current
-        : groups[0]?.packId ?? '');
-      setSelectedNodeId((current) => normalized.nodes.some((node) => node.node_id === current)
-        ? current
-        : normalized.nodes[0]?.node_id ?? '');
-      setProfileError(null);
-    } catch (error) {
-      setProfileError(error instanceof Error ? error.message : 'Failed to load profile capability access');
-    } finally {
-      setProfileLoading(false);
-    }
+  const refresh = async () => {
+    await Promise.all([surface.refresh(true), loadPacks()]);
   };
-
-  useEffect(() => {
-    void loadProfileNodes(capabilityProfileId);
-  }, [capabilityProfileId]);
-
-  useEffect(() => {
-    if (!startupProfiles.length || !capabilityProfiles.length || !capabilityProfileId) return;
-    capabilityAccessCache = {
-      startupProfiles,
-      capabilityProfiles,
-      capabilityProfileId,
-      nodes,
-      selectedPackId,
-      selectedNodeId,
-    };
-  }, [startupProfiles, capabilityProfiles, capabilityProfileId, nodes, selectedPackId, selectedNodeId]);
-
-  const packGroups = useMemo(() => buildPackGroups(nodes), [nodes]);
-  const selectedPack = packGroups.find((group) => group.packId === selectedPackId) ?? null;
-  const visibleNodes = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const packNodes = selectedPack?.nodes ?? [];
-    if (!term) return packNodes;
-    return packNodes.filter((node) => [
-      node.node_id,
-      capabilityNodeLabel(node),
-      capabilityNodeDescription(node),
-      ...capabilityDomains(node),
-    ].join(' ').toLowerCase().includes(term));
-  }, [search, selectedPack]);
-  const selectedNode = nodes.find((node) => node.node_id === selectedNodeId)
-    ?? visibleNodes[0]
-    ?? null;
-
-  const refreshProfile = async () => {
-    await loadProfileNodes(capabilityProfileId);
-  };
-
-  const setNodeEnabled = async (node: ApiCapabilityNode, enabled: boolean) => {
-    if (!capabilityProfileId) return;
-    const previousNodes = nodes;
-    setUpdating(node.node_id);
-    setNodes((current) => current.map((candidate) => candidate.node_id === node.node_id
-      ? {...candidate, state: {...candidate.state, enabled}}
-      : candidate));
-    try {
-      if (enabled) {
-        await enableCapabilityProfileNode(capabilityProfileId, node.node_id);
-      } else {
-        await disableCapabilityProfileNode(capabilityProfileId, node.node_id);
-      }
-      await refreshProfile();
-      addToast(`${capabilityNodeLabel(node)} ${enabled ? 'enabled' : 'disabled'} for this profile.`, 'success');
-    } catch (error) {
-      setNodes(previousNodes);
-      addToast(error instanceof Error ? error.message : 'Capability access could not be updated', 'error');
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  const setPackEnabled = async (pack: CapabilityPackGroup, enabled: boolean) => {
-    const changeableNodes = pack.nodes.filter((node) => node.node_id !== 'rumi.start');
-    const changeableNodeIds = new Set(changeableNodes.map((node) => node.node_id));
-    const previousNodes = nodes;
-    setUpdating(`pack:${pack.packId}`);
-    setNodes((current) => current.map((node) => changeableNodeIds.has(node.node_id)
-      ? {...node, state: {...node.state, enabled}}
-      : node));
-    try {
-      await Promise.all(changeableNodes.map((node) => (
-        enabled
-          ? enableCapabilityProfileNode(capabilityProfileId, node.node_id)
-          : disableCapabilityProfileNode(capabilityProfileId, node.node_id)
-      )));
-      await refreshProfile();
-      addToast(`${pack.packId} ${enabled ? 'enabled' : 'disabled'} for this profile.`, 'success');
-    } catch (error) {
-      setNodes(previousNodes);
-      addToast(error instanceof Error ? error.message : 'Pack access could not be updated', 'error');
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  const approveCapabilityPack = async (packId: string) => {
-    setUpdating(`approve:${packId}`);
-    try {
-      await approvePack(packId);
-      await refreshProfile();
-      addToast(`${packId} approved.`, 'success');
-    } catch (error) {
-      addToast(error instanceof Error ? error.message : 'Pack approval failed', 'error');
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  if (loading) return <NodeManagerSkeleton />;
-  if (initialError) {
-    return (
-      <div className="flex flex-1 items-center justify-center bg-bg-main p-6">
-        <InlineLoadError message={initialError} onRetry={() => void loadInitial()} title="Capability access could not load" />
-      </div>
-    );
-  }
-
-  const packFullyEnabled = Boolean(selectedPack?.nodes.length)
-    && selectedPack?.nodes.every((node) => node.state?.enabled);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-bg-main p-5">
-      <header className="flex shrink-0 flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-text-main">Capability Access</h1>
-          <p className="mt-1 text-xs text-text-muted">
-            Choose a profile, then a Pack, then control each Node capability.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            aria-label="Capability profile"
-            className="rumi-select h-9 min-w-56 rounded-lg border border-border bg-bg-card px-3 pr-9 text-sm text-text-main"
-            onChange={(event) => setSelectedStartupProfileId(event.target.value)}
-            value={selectedStartupProfileId}
-          >
-            {startupProfiles.map((profile) => (
-              <option key={profile.profile_id} value={profile.profile_id}>{profile.name}</option>
-            ))}
-          </select>
-          <Button onClick={() => void refreshProfile()} size="sm" variant="outline">
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </Button>
-        </div>
-      </header>
-
-      {profileError ? (
-        <InlineLoadError message={profileError} onRetry={() => void refreshProfile()} title="Profile access could not load" />
-      ) : null}
-
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[220px_minmax(340px,1fr)_320px]">
-        <section className="min-h-0 overflow-y-auto rounded-xl border border-border bg-bg-card p-3">
-          <div className="mb-3 flex items-center gap-2 px-1">
-            <Package className="h-4 w-4 text-accent" />
-            <h2 className="text-sm font-semibold text-text-main">Packs</h2>
-          </div>
-          <div className="space-y-1.5">
-            {packGroups.map((pack) => (
-              <button
-                className={cn(
-                  'w-full rounded-lg border px-3 py-2.5 text-left transition',
-                  selectedPackId === pack.packId
-                    ? 'border-accent bg-accent/10'
-                    : 'border-transparent hover:border-border hover:bg-bg-hover',
-                )}
-                key={pack.packId}
-                onClick={() => {
-                  setSelectedPackId(pack.packId);
-                  setSelectedNodeId(pack.nodes[0]?.node_id ?? '');
-                }}
-                type="button"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-medium text-text-main">{pack.packId}</span>
-                  <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
-                </div>
-                <div className="mt-1 text-[11px] text-text-muted">
-                  {pack.enabledCount}/{pack.nodes.length} enabled · {pack.readyCount} ready
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <main className="flex min-h-0 min-w-0 flex-col rounded-xl border border-border bg-bg-card">
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border p-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <Boxes className="h-4 w-4 text-accent" />
-                <h2 className="text-sm font-semibold text-text-main">{selectedPackId || 'Select a Pack'}</h2>
-                {profileLoading && nodes.length > 0 ? <TobkiriLoadingMark /> : null}
-              </div>
-              <p className="mt-1 text-xs text-text-muted">Nodes are execution parts owned by this Pack.</p>
-            </div>
-            {selectedPack ? (
-              <Button
-                loading={updating === `pack:${selectedPack.packId}`}
-                onClick={() => void setPackEnabled(selectedPack, !packFullyEnabled)}
-                size="sm"
-                variant={packFullyEnabled ? 'outline' : 'default'}
-              >
-                {packFullyEnabled ? <Unplug className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                {packFullyEnabled ? 'Disable Pack access' : 'Enable Pack access'}
-              </Button>
-            ) : null}
-          </div>
-          <div className="shrink-0 border-b border-border p-3">
-            <label className="flex items-center gap-2 rounded-lg border border-border bg-bg-main px-3 py-2">
-              <Search className="h-4 w-4 text-text-muted" />
-              <input
-                aria-label="Search capabilities"
-                className="min-w-0 flex-1 bg-transparent text-sm text-text-main outline-none"
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search Nodes, capabilities, or domains"
-                value={search}
-              />
-            </label>
-          </div>
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-            {profileLoading && nodes.length === 0 ? (
-              <TobkiriLoader className="min-h-64" label="Loading profile capabilities" scope="inline" />
-            ) : null}
-            {visibleNodes.map((node) => {
-              const domains = capabilityDomains(node);
-              const enabled = node.state?.enabled === true;
-              const approved = node.state?.approved !== false;
+    <AdvancedSurfaceFrame
+      descriptor={descriptor}
+      state={{status: surface.status, stale: surface.stale, error: surface.error}}
+      onRetry={() => void refresh()}
+    >
+      {surface.data ? <RuntimeEvidenceCard envelope={surface.data} title="Pack lifecycle provenance" /> : null}
+      {surface.status === 'ready' && packs.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Network className="h-4 w-4" aria-hidden="true" />Pack control catalog</CardTitle>
+            <p className="text-sm leading-6 text-text-muted">The canonical Pack control catalog is the complete list. Active v4 rows are joined as evidence; missing or stale joins lock actions that would change active runtime state.</p>
+            {!canUseLifecycle ? <p className="mt-2 text-sm text-amber-700 dark:text-amber-300" role="alert">Pack lifecycle actions are locked until the control catalog is stable and bound to the accepted Profile revision and Plan digest.</p> : null}
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {packs.map((pack) => {
+              const activeRow = activeById.get(pack.id);
+              const activeJoinRequired = Boolean(activeRow) || (pack.installed && pack.approved);
+              const activeJoinValid = !activeJoinRequired || exactActivePackJoin(pack, activeRow);
+              const canAct = canUseLifecycle && (!activeJoinRequired || activeJoinValid);
+              const mutationResultUnknown = Object.values(packMutationUnknown).some((record) => record.metadata.pack_id === pack.id);
+              const shownName = activeRow?.display_name ?? pack.name;
+              const shownDigest = activeRow?.artifact_digest ?? pack.artifactDigest;
+              const joinWarning = activeJoinRequired && !activeRow
+                ? 'Active Pack evidence is not present in this snapshot; runtime actions remain locked.'
+                : activeJoinRequired && !activeJoinValid
+                  ? 'Active Pack evidence does not match this Pack artifact or lifecycle state; runtime actions remain locked.'
+                  : !activeRow
+                    ? 'Not in the active closure yet; install or approval can prepare it for Profile selection.'
+                    : null;
               return (
-                <article
-                  className={cn(
-                    'rounded-xl border p-3 transition',
-                    selectedNode?.node_id === node.node_id
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border bg-bg-main hover:bg-bg-hover/40',
-                  )}
-                  key={node.node_id}
-                  onClick={() => setSelectedNodeId(node.node_id)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedNodeId(node.node_id)} type="button">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-text-main">{capabilityNodeLabel(node)}</span>
-                        <Badge variant={node.state?.status === 'ready' ? 'success' : 'secondary'}>{node.state?.status ?? 'unknown'}</Badge>
-                      </div>
-                      <div className="mt-1 truncate font-mono text-[11px] text-text-muted">{node.node_id}</div>
-                      {domains.length ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {domains.slice(0, 4).map((domain) => <Badge key={domain} variant="outline">{domain}</Badge>)}
-                        </div>
-                      ) : null}
-                    </button>
-                    {approved ? (
-                      <button
-                        aria-checked={enabled}
-                        aria-label={`${enabled ? 'Disable' : 'Enable'} ${capabilityNodeLabel(node)}`}
-                        className={cn(
-                          'relative h-6 w-11 shrink-0 rounded-full transition',
-                          enabled ? 'bg-accent' : 'bg-bg-hover ring-1 ring-border',
-                        )}
-                        disabled={updating !== null}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void setNodeEnabled(node, !enabled);
-                        }}
-                        role="switch"
-                        type="button"
-                      >
-                        <span className={cn(
-                          'absolute left-0 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform',
-                          enabled ? 'translate-x-6' : 'translate-x-1',
-                        )} />
-                      </button>
+                <article key={pack.id} className="grid gap-3 rounded-lg border border-border bg-bg-main p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link to={panelRoutes.packDetail(pack.id)} className="break-all text-sm font-semibold text-text-main underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]">{shownName}</Link>
+                      <Badge variant="outline">{pack.type}</Badge>
+                      <Badge variant={pack.approved ? 'success' : 'warning'}>{pack.approved ? 'approved' : 'approval required'}</Badge>
+                      {pack.required ? <Badge variant="secondary">required</Badge> : null}
+                      {pack.installed ? <Badge variant={pack.enabled ? 'success' : 'secondary'}>{pack.enabled ? 'enabled' : 'disabled'}</Badge> : <Badge variant="outline">not installed</Badge>}
+                    </div>
+                    <p className="mt-1 break-all font-mono text-xs text-text-muted">{pack.id} · v{pack.version}</p>
+                    <p className="mt-1 break-all font-mono text-xs text-text-muted">{shownDigest}</p>
+                    {joinWarning ? <p className="mt-2 flex items-start gap-1 text-xs text-amber-700 dark:text-amber-300"><ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />{joinWarning}</p> : null}
+                    {mutationResultUnknown ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-300" role="alert">A mutation result is unknown. Refresh the authoritative catalog before trying again.</p> : null}
+                    {activeRow ? <p className="mt-2 text-xs text-text-muted">{activeRow.invokable_operations.length} exact invokable operation binding(s) in the active snapshot.</p> : null}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                    {!pack.installed ? (
+                      <Button type="button" size="sm" onClick={() => void installPack(pack.id)} disabled={!canAct || Boolean(pendingInstall[pack.id]) || mutationResultUnknown} loading={Boolean(pendingInstall[pack.id])}>Install</Button>
+                    ) : !pack.approved ? (
+                      <Button type="button" size="sm" onClick={() => void approvePack(pack.id)} disabled={!canAct || Boolean(pendingApproval[pack.id]) || mutationResultUnknown} loading={Boolean(pendingApproval[pack.id])}>Approve</Button>
                     ) : (
-                      <Button
-                        loading={updating === `approve:${capabilityPackId(node)}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void approveCapabilityPack(capabilityPackId(node));
-                        }}
-                        size="sm"
-                      >
-                        <ShieldCheck className="h-3.5 w-3.5" /> Approve Pack
-                      </Button>
+                      <>
+                        <Button type="button" size="sm" variant="outline" onClick={() => void togglePack(pack.id)} disabled={!canAct || pack.required || Boolean(pendingToggle[pack.id]) || mutationResultUnknown} loading={Boolean(pendingToggle[pack.id])}>{pack.enabled ? 'Disable' : 'Enable'}</Button>
+                        <Button type="button" size="sm" variant="destructive" onClick={() => void revokePackApproval(pack.id)} disabled={!canAct || pack.required || pack.type === 'core' || Boolean(pendingApproval[pack.id]) || mutationResultUnknown} loading={Boolean(pendingApproval[pack.id])}>Revoke</Button>
+                      </>
                     )}
+                    {pack.approved ? <ShieldCheck className="h-4 w-4 text-emerald-600" aria-label="Pack approved" /> : null}
                   </div>
                 </article>
               );
             })}
-            {!profileLoading && visibleNodes.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-text-muted">
-                No matching Nodes in this Pack.
-              </div>
-            ) : null}
-          </div>
-        </main>
-
-        <aside className="min-h-0 overflow-y-auto rounded-xl border border-border bg-bg-card p-4">
-          {selectedNode ? (
-            <div className="space-y-5">
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold text-text-main">Node details</h2>
-                  {updating === selectedNode.node_id ? <TobkiriLoadingMark /> : null}
-                </div>
-                <div className="mt-2 text-base font-semibold text-text-main">{capabilityNodeLabel(selectedNode)}</div>
-                <p className="mt-1 text-xs leading-5 text-text-muted">
-                  {capabilityNodeDescription(selectedNode) || 'No description declared.'}
-                </p>
-              </div>
-
-              <section>
-                <div className="mb-2 flex items-center gap-2">
-                  <Globe2 className="h-4 w-4 text-accent" />
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-text-muted">Connections</h3>
-                </div>
-                {capabilityDomains(selectedNode).length ? (
-                  <div className="space-y-2">
-                    {capabilityDomains(selectedNode).map((domain) => (
-                      <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-bg-main px-3 py-2" key={domain}>
-                        <span className="truncate font-mono text-xs text-text-main">{domain}</span>
-                        <Badge variant={selectedNode.state?.enabled ? 'success' : 'secondary'}>
-                          {selectedNode.state?.enabled ? 'Allowed by Node' : 'Blocked'}
-                        </Badge>
-                      </div>
-                    ))}
-                    <p className="text-[11px] leading-4 text-text-muted">
-                      Domain access is bounded by this Node. Disable the Node to stop its declared connections for this profile.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-border px-3 py-5 text-xs text-text-muted">
-                    This Node does not declare network domains.
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">Capability ports</h3>
-                <div className="space-y-2">
-                  {capabilityNodePorts(selectedNode).map((port) => (
-                    <div className="rounded-lg border border-border bg-bg-main px-3 py-2" key={port.id}>
-                      <div className="text-xs font-medium text-text-main">{capabilityPortLabel(port)}</div>
-                      <div className="mt-1 text-[11px] text-text-muted">
-                        {capabilityPortStandards(port).join(', ') || 'No standard declared'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          ) : (
-            <div className="flex min-h-64 items-center justify-center text-center text-sm text-text-muted">
-              Select a Node to inspect its capability access.
-            </div>
-          )}
-        </aside>
-      </div>
-    </div>
+          </CardContent>
+        </Card>
+      ) : packsLoading ? (
+        <div className="rounded-xl border border-border bg-bg-card px-4 py-5 text-sm text-text-muted" role="status">Loading the canonical Pack control catalog…</div>
+      ) : (
+        <EmptySurfacePanel
+          icon={<Network className="size-6" />}
+          title="Exact Pack catalog data is not available"
+          message="Node Manager maps only the verified Packs projection and existing Pack lifecycle actions. It does not restore a node registry or synthesize nodes from principals."
+        />
+      )}
+    </AdvancedSurfaceFrame>
   );
 }

@@ -18,6 +18,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_business_ops_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 
@@ -53,7 +54,8 @@ def test_pack_required_assets_and_metadata() -> None:
     assert "depends_on" not in ecosystem
     assert "optional_integrations" not in ecosystem
     assert "runtime" not in ecosystem
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert set(ecosystem["vocabulary"]["types"]) >= {
         "business_ops",
         "catalog",
@@ -93,8 +95,9 @@ def test_pack_required_assets_and_metadata() -> None:
     actual_assets = {
         path.relative_to(PACK_DIR).as_posix()
         for path in PACK_DIR.rglob("*")
-        if path.is_file()
+        if path.is_file() and path.name != "executables.v4.json"
     }
+    actual_assets -= V4_AUTHORITY_ARTIFACTS
     assert indexed_assets == actual_assets
 
 

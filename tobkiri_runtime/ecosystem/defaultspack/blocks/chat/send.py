@@ -14,6 +14,7 @@ from domain.chat.store import ChatStore
 from domain.chat.message_converter import convert_to_standard
 from domain.chat.message_builder import build_assistant_message
 from domain.dev.inspector import Inspector
+from domain.frontend_settings import frontend_settings_path
 from domain.prompt.manager import get_manager
 from blocks.chat._context_helpers import extract_user_text, enrich_messages
 from domain.tool.registry import ToolRegistry
@@ -94,7 +95,7 @@ _RETRYABLE_RATE_LIMIT_OVERRIDE_RE = re.compile(
 )
 _COMPUTER_USE_REQUEST_RE = re.compile(
     r"compute[\s_-]*use|compu?ter[\s_-]*use|computer\s+ツール|コンピューター操作|pc操作|"
-    r"(google\s*chrome|chrome|chatgpt|vivaldi|vivladi|line|ブラウザ|browser).{0,80}(操作|送信|入力|クリック|開いて|開く)",
+    r"(google\s*chrome|chrome|chatgpt|atlas|アトラス|vivaldi|vivladi|line|ブラウザ|browser).{0,80}(操作|送信|入力|クリック|開いて|開く)",
     re.IGNORECASE,
 )
 _COMPUTER_USE_CHROME_TARGET_RE = re.compile(r"google\s*chrome|chrome|グーグル\s*クローム|クローム", re.IGNORECASE)
@@ -104,8 +105,14 @@ _COMPUTER_USE_CHROME_NEGATED_RE = re.compile(
     re.IGNORECASE,
 )
 _COMPUTER_USE_VIVALDI_TARGET_RE = re.compile(r"vivaldi|vivladi|ヴィヴァルディ|ビバルディ", re.IGNORECASE)
+_COMPUTER_USE_ATLAS_TARGET_RE = re.compile(r"chat\s*gpt\s*atlas|chatgpt\s*atlas|atlas|ａｔｌａｓ|アトラス", re.IGNORECASE)
 _COMPUTER_USE_LINE_TARGET_RE = re.compile(r"(?<![A-Za-z])line(?![A-Za-z])|ライン", re.IGNORECASE)
 _COMPUTER_USE_CHATGPT_TARGET_RE = re.compile(r"chat\s*gpt|chatgpt", re.IGNORECASE)
+_COMPUTER_USE_PHYSICAL_INPUT_RE = re.compile(
+    r"mouse|keyboard|key\s*board|physical|real\s+(?:ui|mouse|keyboard|click)|foreground|"
+    r"マウス|キーボード|キー入力|物理|実操作|実際に|クリック|入力",
+    re.IGNORECASE,
+)
 
 
 def _conversation_system_prompt(conv, manager):
@@ -640,14 +647,21 @@ def _has_explicit_selected_tools(input_data):
 def _computer_use_preferences_from_text(user_text):
     text = user_text if isinstance(user_text, str) else ""
     preferences = {}
-    if _COMPUTER_USE_VIVALDI_TARGET_RE.search(text):
+    atlas_target = _COMPUTER_USE_ATLAS_TARGET_RE.search(text)
+    if atlas_target:
+        preferences["computer_use_target_app"] = "ChatGPT Atlas"
+        preferences["computer_use_foreground_preferred"] = True
+    elif _COMPUTER_USE_VIVALDI_TARGET_RE.search(text):
         preferences["computer_use_target_app"] = "Vivaldi"
     elif _COMPUTER_USE_CHROME_TARGET_RE.search(text) and not _COMPUTER_USE_CHROME_NEGATED_RE.search(text):
         preferences["computer_use_target_app"] = "Google Chrome"
     if _COMPUTER_USE_LINE_TARGET_RE.search(text):
         preferences["computer_use_target_title"] = "LINE"
-    elif _COMPUTER_USE_CHATGPT_TARGET_RE.search(text):
+    elif not atlas_target and _COMPUTER_USE_CHATGPT_TARGET_RE.search(text):
         preferences["computer_use_target_title"] = "ChatGPT"
+    if _COMPUTER_USE_PHYSICAL_INPUT_RE.search(text):
+        preferences["computer_use_mouse_keyboard_requested"] = True
+        preferences["computer_use_physical_clicks"] = True
     return preferences
 
 
@@ -686,6 +700,8 @@ def _available_tools(context, input_data):
 
 def _prefocus_computer_use_target_window(available_tools, base_context, *, call_handler=None):
     if not isinstance(base_context, dict) or not base_context.get("user_requested_computer_use"):
+        return None
+    if not _computer_use_prefocus_is_preapproved(base_context):
         return None
     target_app = str(base_context.get("computer_use_target_app") or "").strip()
     target_title = str(base_context.get("computer_use_target_title") or "").strip()
@@ -726,6 +742,19 @@ def _prefocus_computer_use_target_window(available_tools, base_context, *, call_
     from domain.tool.executor import ToolExecutor
 
     return ToolExecutor().execute(tool_name, arguments, invoke_context)
+
+
+def _computer_use_prefocus_is_preapproved(context):
+    if not isinstance(context, dict):
+        return False
+    try:
+        from domain.tool_policy.internal_context import (
+            internal_tool_decision_allows,
+            tool_server_approval_context_is_internal,
+        )
+    except Exception:
+        return False
+    return bool(tool_server_approval_context_is_internal(context) or internal_tool_decision_allows(context))
 
 
 def _tool_use_blocks(response):
@@ -893,6 +922,8 @@ def _tool_result_recovery_kind(result):
     if not _tool_result_is_error(result):
         return ""
     reason = _tool_result_reason(result).lower()
+    if "foregroundで作業しますか" in reason:
+        return "foreground_confirmation_required"
     if "visible window" in reason or "background computer-use is disabled" in reason:
         return "visible_window_required"
     return ""
@@ -920,7 +951,10 @@ def _tool_blocked_response(tool_name, result):
     if not kind:
         kind = _tool_result_recovery_kind(result)
     reason = _tool_result_reason(result)
-    if kind in {"visible_window_required", "focus_required"}:
+    if kind == "foreground_confirmation_required":
+        prompt = str(recovery.get("prompt") or "").strip()
+        message = prompt or reason or f"{tool_name} は background で実行できません。foregroundで作業しますか？"
+    elif kind in {"visible_window_required", "focus_required"}:
         message = (
             f"{tool_name} は現在表示されている画面だけを操作する設定のため停止しました。"
             + (f" reason: {reason}" if reason else "")
@@ -1061,67 +1095,14 @@ def _browser_screenshot_data_url(result):
     return ""
 
 
-def _browser_screenshot_guidance(result):
-    if not isinstance(result, dict):
-        return (
-            "Browser/computer screenshot attached for the vision model. "
-            "For point actions, pass only normalized_x and normalized_y values from 0 to 1000 relative to the attached image. "
-            "Do not return screen pixels or action coordinates, and do not do scale conversion. "
-            "The harness converts normalized attached-image coordinates to action/screen coordinates."
-        )
-    data = result.get("data", result)
-    if not isinstance(data, dict):
-        return (
-            "Browser/computer screenshot attached for the vision model. "
-            "For point actions, pass only normalized_x and normalized_y values from 0 to 1000 relative to the attached image. "
-            "Do not return screen pixels or action coordinates, and do not do scale conversion. "
-            "The harness converts normalized attached-image coordinates to action/screen coordinates."
-        )
-    widget = data.get("widget") if isinstance(data.get("widget"), dict) else {}
-    source = widget if (widget.get("coordinate_system") or widget.get("model_image_size")) else data
-    model_image_size = source.get("model_image_size") if isinstance(source.get("model_image_size"), dict) else {}
-    parts = ["Browser/computer screenshot attached for the vision model."]
-    active_window = _tool_window_details(result, "active_window")
-    selected_window = (
-        _tool_window_details(result, "selected_window")
-        or _tool_window_details(result, "target_window")
-    )
-    if active_window:
-        parts.append("Foreground window: {}.".format(active_window))
-    if selected_window:
-        parts.append("Selected target window: {}.".format(selected_window))
-        if active_window and selected_window != active_window:
-            parts.append(
-                "Foreground and selected target differ, so refocus the target window before typing, key presses, scrolling, or send actions."
-            )
-    if model_image_size.get("width") and model_image_size.get("height"):
-        parts.append(
-            "The attached model image size (model_image_size) is width={} height={}.".format(
-                model_image_size.get("width"),
-                model_image_size.get("height"),
-            )
-        )
-    else:
-        parts.append("Use the attached image itself as the coordinate reference.")
-    if isinstance(source.get("crop_reference"), dict) or isinstance(data.get("crop_reference"), dict):
-        parts.append(
-            "This is a cropped or zoomed screenshot; normalized coordinates are relative only to this attached crop, not the previous full screenshot."
-        )
-    parts.append(
-        "For point actions, pass only normalized_x and normalized_y values from 0 to 1000 relative to the attached image."
-    )
-    parts.append(
-        "Do not return screen pixels, image_size pixels, or action coordinates; do not use image_size, "
-        "action_coordinate_system, or model_to_action_scale; and do not do scale conversion."
-    )
-    parts.append("The harness converts normalized attached-image coordinates to action/screen coordinates.")
-    parts.append(
-        "If the target is small or ambiguous, call screenshot with crop/zoom first. "
-        "source=latest crops from the last full or selected-window screenshot so you do not get trapped inside a previous crop; "
-        "use source=current_crop only when you intentionally want to crop the current attached crop again. "
-        "After a zoomed/cropped view, request a fresh screenshot before unrelated actions."
-    )
-    return " ".join(parts)
+def _browser_screenshot_guidance(result, tool_call_id=""):
+    del result
+    call_id = str(tool_call_id or "").strip()
+    linkage = " for tool_call_id={}".format(call_id) if call_id else ""
+    return (
+        "Browser/computer screenshot tool-output evidence{}; "
+        "it belongs to the preceding tool result and is not a new user request."
+    ).format(linkage)
 
 
 def _tool_result_message_text(tool_name, result):
@@ -1165,7 +1146,7 @@ def _append_tool_result_message(messages, tool_name, result, tool_call_id="", *,
                     "content": [
                         {
                             "type": "text",
-                            "text": _browser_screenshot_guidance(result),
+                            "text": _browser_screenshot_guidance(result, tool_call_id),
                         },
                         {"type": "image_url", "image_url": {"url": screenshot}},
                     ],
@@ -1236,7 +1217,7 @@ def _truthy(value):
 
 def _frontend_debug_settings_enabled():
     try:
-        settings_path = Path(__file__).resolve().parents[2] / "user_data" / "shared" / "frontend_settings.json"
+        settings_path = frontend_settings_path()
         settings = json.loads(settings_path.read_text(encoding="utf-8"))
     except Exception:
         return False
@@ -1916,14 +1897,18 @@ def _complete_with_tools(model, messages, tools, context, call_handler, params):
                 model=model,
             )
             recovery_kind = _tool_result_recovery_kind(result)
-            if recovery_kind in {"visible_window_required", "focus_required"}:
+            if recovery_kind in {"visible_window_required", "focus_required", "foreground_confirmation_required"}:
                 blocked_response = _tool_blocked_response(tool_name, result)
                 _append_event(
                     events,
                     context,
                     _event(
                         "status",
-                        "可視画面外の tool 実行要求のため停止しました",
+                        (
+                            "foreground 実行の確認待ちです"
+                            if recovery_kind == "foreground_confirmation_required"
+                            else "可視画面外の tool 実行要求のため停止しました"
+                        ),
                         phase="tool_blocked",
                         tool_name=tool_name,
                         tool_call_id=tool_call_id,

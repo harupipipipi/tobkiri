@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
+from domain.frontend_settings import frontend_settings_path
 from domain.tool.service_catalog import (
     infer_action_class,
     infer_service_id,
     minimum_requires_confirm,
     more_restrictive_permission,
 )
-from domain.tool.schema_adapter import tool_name_from_definition
+from domain.tool.schema_adapter import mapping_or_empty, tool_name_from_definition
 
 
 PERMISSION_MODES = {"auto", "confirm", "block"}
@@ -33,7 +33,7 @@ class ToolPermissionResolver:
     def __init__(self, settings: dict[str, Any] | None = None, *, pack_root: Path | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
         self._settings = settings if isinstance(settings, dict) else read_frontend_settings(self._pack_root)
-        self._tool_settings = self._settings.get("tools") if isinstance(self._settings.get("tools"), dict) else {}
+        self._tool_settings = mapping_or_empty(self._settings.get("tools"))
 
     def resolve(self, tool: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any]:
         context = context if isinstance(context, dict) else {}
@@ -105,8 +105,7 @@ class ToolPermissionResolver:
 
 
 def _read_frontend_settings(pack_root: Path) -> dict[str, Any]:
-    env_path = os.environ.get("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH")
-    path = Path(env_path).expanduser() if env_path else pack_root / "user_data" / "shared" / "frontend_settings.json"
+    path = frontend_settings_path(pack_root)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -132,7 +131,7 @@ def _override_value(container: Any, target_id: str, action_class: str) -> str:
 
 
 def _hard_minimum_permission(tool: dict[str, Any], action_class: str) -> str:
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
     risk = str(tool.get("risk") or metadata.get("risk") or "").strip().lower()
     if bool(tool.get("requires_approval") or metadata.get("requires_approval")):
         return "confirm"
@@ -182,7 +181,7 @@ def _tool_id(tool: dict[str, Any]) -> str:
 
 
 def _write_approval_policy_applies(tool: dict[str, Any], action_class: str) -> bool:
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
     if action_class in WRITE_APPROVAL_ACTION_CLASSES:
         return True
     if bool(tool.get("write_action") or metadata.get("write_action")):
@@ -192,8 +191,8 @@ def _write_approval_policy_applies(tool: dict[str, Any], action_class: str) -> b
 
 
 def _high_risk_policy_applies(tool: dict[str, Any]) -> bool:
-    metadata = tool.get("metadata") if isinstance(tool.get("metadata"), dict) else {}
-    execution = tool.get("execution") if isinstance(tool.get("execution"), dict) else {}
+    metadata = mapping_or_empty(tool.get("metadata"))
+    execution = mapping_or_empty(tool.get("execution"))
     for container in (tool, metadata, execution):
         for key in ("risk", "risk_level"):
             if str(container.get(key) or "").strip().lower() in HIGH_RISK_LEVELS:

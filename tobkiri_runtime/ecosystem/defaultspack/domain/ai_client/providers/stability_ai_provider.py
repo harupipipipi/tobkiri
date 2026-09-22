@@ -26,9 +26,7 @@ class StabilityAIProvider(BaseProvider):
         self._api_key = self._configured_api_key(self._connection)
         self._base_url = (
             str(
-                self._connection.get("base_url")
-                or os.environ.get("STABILITY_API_BASE_URL")
-                or self.DEFAULT_BASE_URL
+                self._connection.get("base_url") or self.DEFAULT_BASE_URL
             )
             .strip()
             .rstrip("/")
@@ -44,9 +42,6 @@ class StabilityAIProvider(BaseProvider):
 
     @classmethod
     def _configured_api_key(cls, connection: Dict[str, Any]) -> str:
-        value = str(os.environ.get("STABILITY_API_KEY") or "").strip()
-        if value:
-            return value
         api_id = str(connection.get("api_id") or "").strip()
         return str(read_provider_api_key(cls.provider_id, api_id) or "").strip() if api_id else ""
 

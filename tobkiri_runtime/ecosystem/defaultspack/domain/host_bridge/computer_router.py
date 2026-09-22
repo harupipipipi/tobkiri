@@ -6,10 +6,33 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ecosystem.rumi_default_tools_pack.domain.tool.browser_computer import BrowserComputerController
 from ..tool_policy.internal_context import tool_server_approval_context_is_internal
-
+from core_runtime.defaultspack_host_contract_adapter import run_host_contract_action
 from .viewer_broker_client import ViewerBrokerClient
+
+_VIEWER_RECOVERY_MESSAGE = (
+    "Rumi Viewer が未接続です。foreground/on-screen 操作は承認と Rumi Viewer 接続後に利用できます。"
+    "承認してください。Rumi Viewer を起動または前面表示して macOS 権限を許可するか、表/前面で作業しますか?"
+)
+
+# Test and embedding callers may inject a controller explicitly.  Runtime
+# dispatch never populates this hook; it must use the captured v4 contract.
+BrowserComputerController: type[Any] | None = None
+_BROWSER_TEXT_INPUT_RECOMMENDED_NEXT_ACTIONS = (
+    "computer.type",
+    "computer.key",
+    "computer.click",
+    "computer.screenshot",
+    "computer.observe",
+)
+_BROWSER_TEXT_INPUT_GUIDANCE = (
+    "If the browser page or search field is ready, use computer.type for text input "
+    "and computer.key for Enter or shortcuts; normal approval gates still apply. "
+    "The computer.type text must be the literal user-requested URL, query, or form "
+    "text to enter; do not type the current URL, app name, or window title unless "
+    "that is exactly what the user asked to enter."
+)
+
 
 def should_route_to_viewer(action: str) -> bool:
     if os.environ.get("RUMI_COMPUTER_HOST_INTERNAL") == "1":
@@ -58,28 +81,16 @@ def run_computer_action(
                         result,
                         normalized_context,
                     )
-                return dict(result)
+                return _with_browser_text_input_recommendations(normalized_action, dict(result))
             except Exception as exc:
-                return {
-                    "action": normalized_action,
-                    "is_error": True,
-                    "reason": f"Rumi Viewer host broker is unavailable: {exc}",
-                    "recovery": {
-                        "kind": "open_tobkiri_launcher",
-                        "note": "Open Rumi Viewer and grant macOS permissions there.",
-                    },
-                    "permission_subject": "Rumi Viewer",
-                }
-        return {
-            "action": normalized_action,
-            "is_error": True,
-            "reason": "Rumi Viewer is required for computer control on macOS.",
-            "recovery": {
-                "kind": "open_tobkiri_launcher",
-                "note": "Open Rumi Viewer and grant macOS permissions there.",
-            },
-            "permission_subject": "Rumi Viewer",
-        }
+                return _viewer_connection_required_response(
+                    normalized_action,
+                    f"Rumi Viewer host broker is unavailable: {exc}",
+                )
+        return _viewer_connection_required_response(
+            normalized_action,
+            "Rumi Viewer is required for computer control on macOS.",
+        )
     return _run_local_controller(
         normalized_action,
         normalized_payload,
@@ -103,12 +114,32 @@ def _run_local_controller(
     context: dict[str, Any] | None,
     controller_cls: type[Any] | None = None,
 ) -> dict[str, Any]:
-    controller_type = controller_cls or BrowserComputerController
-    result = controller_type(artifact_root=artifact_root).run(
-        action,
-        payload,
-        yolo_mode=yolo_mode,
-    )
+    if controller_cls is None:
+        controller_cls = BrowserComputerController
+    if controller_cls is None:
+        try:
+            result = run_host_contract_action(
+                action,
+                {
+                    **payload,
+                    "artifact_root": str(artifact_root) if artifact_root else "",
+                    "yolo_mode": yolo_mode,
+                },
+                source_function_id="defaultspack.domain.host_bridge.computer_router",
+            )
+        except Exception as exc:
+            return {
+                "action": action,
+                "is_error": True,
+                "error_type": "v4_host_contract_unavailable",
+                "reason": str(exc),
+            }
+    else:
+        result = controller_cls(artifact_root=artifact_root).run(
+            action,
+            payload,
+            yolo_mode=yolo_mode,
+        )
     if not isinstance(result, dict):
         return {"action": action, "result": result}
     if _is_request_approval_needed(result):
@@ -127,6 +158,48 @@ def _approval_token_present(payload: dict[str, Any] | None) -> bool:
     if not isinstance(payload, dict):
         return False
     return bool(str(payload.get("approval_token") or "").strip())
+
+
+def _with_browser_text_input_recommendations(action: str, result: dict[str, Any]) -> dict[str, Any]:
+    normalized_action = str(result.get("action") or action or "").strip()
+    result.setdefault("action", normalized_action)
+    pending_approval = bool(result.get("requires_approval") or result.get("approval_required"))
+    if normalized_action in {"computer.observe", "computer.screenshot"} and not (
+        result.get("is_error") or pending_approval
+    ):
+        recommendations = list(result.get("recommended_next_actions") or [])
+        for next_action in _BROWSER_TEXT_INPUT_RECOMMENDED_NEXT_ACTIONS:
+            if next_action not in recommendations:
+                recommendations.append(next_action)
+        result["recommended_next_actions"] = recommendations
+        result.setdefault("input_guidance", _BROWSER_TEXT_INPUT_GUIDANCE)
+    return result
+
+
+def _viewer_connection_required_response(action: str, reason: str) -> dict[str, Any]:
+    return {
+        "action": action,
+        "is_error": True,
+        "reason": reason,
+        "message": _VIEWER_RECOVERY_MESSAGE,
+        "user_prompt": _VIEWER_RECOVERY_MESSAGE,
+        "recovery": {
+            "kind": "viewer_connection_required",
+            "requires_approval": True,
+            "requires_viewer_connection": True,
+            "prompt": _VIEWER_RECOVERY_MESSAGE,
+            "note": (
+                "Open Rumi Viewer and approve the request; foreground/on-screen operation is "
+                "available after a connected Rumi Viewer has macOS permissions."
+            ),
+            "recommended_next_actions": [
+                "approve_request",
+                "open_rumi_viewer",
+                "choose_foreground_work",
+            ],
+        },
+        "permission_subject": "Rumi Viewer",
+    }
 
 
 def _approval_token_from_context(
@@ -219,6 +292,7 @@ def _approval_required_response(
             "tool_name": safe_tool_name,
             "action": safe_action,
             "function_id": safe_action,
+            "arguments": dict(request_arguments or {}),
             "payload": dict(payload or {}),
             "pack_id": pack_id,
             "conversation_id": conversation_id,
@@ -246,6 +320,10 @@ def _approval_required_response(
     )
     if not wrapped.get("message") and wrapped.get("approval_hint"):
         wrapped["message"] = wrapped.get("approval_hint")
+    wrapped.setdefault("user_prompt", "承認してください")
+    wrapped.setdefault("message", "承認してください。表/前面で作業しますか?")
+    if isinstance(wrapped.get("recovery"), dict):
+        wrapped["recovery"].setdefault("prompt", wrapped["user_prompt"])
     warning = result.get("approval_warning")
     if isinstance(warning, str) and warning.strip():
         wrapped["approval_warning"] = warning
@@ -256,9 +334,7 @@ def _approval_required_response(
 
 
 def _request_arguments(tool_name: str, action: str, payload: dict[str, Any]) -> dict[str, Any]:
-    if tool_name == "browser_computer":
-        return {"action": action, "payload": dict(payload or {})}
-    return {"action": action, **dict(payload or {})}
+    return {"action": action, "payload": dict(payload or {})}
 
 
 def _approval_module():

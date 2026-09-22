@@ -1,0 +1,7 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:07ad2887ebd298f91964655aec452999ab5ca8da2e73495db140df0ba09375b5",
+  "pack_id": "rumi_agent_continuity_pack",
+  "source_identity": "sha256:b6d3f441a8520d6c1dc43219f8d538b5adb87ba076e63921ef15c87f87c18df1",
+  "variants": []
+}

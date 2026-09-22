@@ -1,0 +1,317 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:75420fa0dc4632836135df7fe98686b5579beb822bcea5c3e447b6aa6a48627e",
+      "kind": "executable",
+      "path": "catalog/prompt_studio_prompt_library.yaml"
+    },
+    {
+      "digest": "sha256:2b2a89f5c80be4fe21af5d64908c25bb48663a252a29f83b4178968b375bbaba",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:7a21d786ce90d54f615b7e85a7317ff7556d82a49a79070407ac65a50b3c6484",
+      "kind": "executable",
+      "path": "frontend/contributions/prompt-studio.json"
+    },
+    {
+      "digest": "sha256:d90f2cd9fcdb2137fe94c6063de0c9cfbee5addce8ab9f5df74ef4b9f9188c81",
+      "kind": "executable",
+      "path": "runtime/__init__.py"
+    },
+    {
+      "digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "kind": "executable",
+      "path": "runtime/process.py"
+    },
+    {
+      "digest": "sha256:d68139419887b4f96aa98bd2c99ccd70b57407b438c4c8e3498bbf5d10805a06",
+      "kind": "executable",
+      "path": "runtime/service.py"
+    },
+    {
+      "digest": "sha256:85cff287cc0d35d5ba711a57f7aee7aeac75749828f5aadd90e1f1112cbc3204",
+      "kind": "executable",
+      "path": "runtime/store.py"
+    },
+    {
+      "digest": "sha256:713c015f4cf70a1afc7e3a2916a5038ad1719c74da038d9b959564f03d23f075",
+      "kind": "executable",
+      "path": "ui/app.js"
+    },
+    {
+      "digest": "sha256:edb498e8458041b47be2583e2c3be04d35978f0d16f6ebba55c05807b612b0c9",
+      "kind": "executable",
+      "path": "ui/index.html"
+    },
+    {
+      "digest": "sha256:0374bea6fead5abfd4f82f14203761fa63cd3a3616fa9dea3799c48160c623dd",
+      "kind": "executable",
+      "path": "ui/style.css"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.action.prompt.author.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-runtime"
+      ],
+      "revision_digest": "sha256:27332f83287a0b22c85f08c8439ab2e110d4757fe32ce3ae576740e8ecc12503"
+    },
+    {
+      "contract_id": "tobkiri.action.prompt.migrate.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-migrate"
+      ],
+      "revision_digest": "sha256:91bf8d5b3e38a0721753f9d92e59b1067e818c6b0f98e14afd419196eee176c1"
+    },
+    {
+      "contract_id": "tobkiri.action.prompt.test.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-test"
+      ],
+      "revision_digest": "sha256:f19c73ddc2a6605a334c5246c59807893909d5f54bb9973cf98e35688846babb"
+    },
+    {
+      "contract_id": "tobkiri.action.prompt.version.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-version"
+      ],
+      "revision_digest": "sha256:9d0cf032fe65eb4cffca42d0c56eb29dc5d1aff310696611a3c7753307efd9e6"
+    },
+    {
+      "contract_id": "tobkiri.resource.prompt.studio.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-resource"
+      ],
+      "revision_digest": "sha256:3833768ada44eb152a859a21914cf394ed9a0edb0106f3f7a2a3c78daf7b6178"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:27332f83287a0b22c85f08c8439ab2e110d4757fe32ce3ae576740e8ecc12503",
+      "id": "rumi_prompt_studio_pack.prompt-studio.author",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-runtime"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:91bf8d5b3e38a0721753f9d92e59b1067e818c6b0f98e14afd419196eee176c1",
+      "id": "rumi_prompt_studio_pack.prompt-studio.migrate",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-migrate"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:3833768ada44eb152a859a21914cf394ed9a0edb0106f3f7a2a3c78daf7b6178",
+      "id": "rumi_prompt_studio_pack.prompt-studio.resource",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-resource"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:f19c73ddc2a6605a334c5246c59807893909d5f54bb9973cf98e35688846babb",
+      "id": "rumi_prompt_studio_pack.prompt-studio.test",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-test"
+      ],
+      "role": "host_capability_provider"
+    },
+    {
+      "contract_revision_digest": "sha256:9d0cf032fe65eb4cffca42d0c56eb29dc5d1aff310696611a3c7753307efd9e6",
+      "id": "rumi_prompt_studio_pack.prompt-studio.version",
+      "implementation_digest": "sha256:e09a71aa7591c9f9869863473e109e1498f017114c19f2d0964a445a2b3109b1",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-version"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:652e11404e1505379de22b7a511139a11780ca975d95183abffb1538f013183b",
+    "contract_catalog_digest": "sha256:c593d7337906b5fbdba45815ea31a2f28230e24886f0d219078db29d9b7f3ade",
+    "source_identity": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.action.prompt.author.v1",
+      "rumi.action.prompt.migrate.v1",
+      "rumi.action.prompt.test.v1",
+      "rumi.action.prompt.version.v1",
+      "rumi.resource.prompt.studio.v1",
+      "rumi:ecosystem/rumi_prompt_studio_pack",
+      "rumi_prompt_studio_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.action.prompt.migrate.v1",
+      "effect_ceiling": [
+        "capability:profile.prompt.author.migrate",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_prompt_studio_pack.prompt-studio-migrate",
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.migrate",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.resource.prompt.studio.v1",
+      "effect_ceiling": [
+        "capability:profile.prompt.author.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_prompt_studio_pack.prompt-studio-resource",
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.resource",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.prompt.author.v1",
+      "effect_ceiling": [
+        "capability:profile.prompt.author.write",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_prompt_studio_pack.prompt-studio-runtime",
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.author",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.prompt.test.v1",
+      "effect_ceiling": [
+        "capability:profile.prompt.author.read",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_prompt_studio_pack.prompt-studio-test",
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.test",
+      "source_kind": "canonical_v4_contract"
+    },
+    {
+      "contract_reference": "tobkiri.action.prompt.version.v1",
+      "effect_ceiling": [
+        "capability:profile.prompt.author.write",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_prompt_studio_pack.prompt-studio-version",
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.version",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:652e11404e1505379de22b7a511139a11780ca975d95183abffb1538f013183b",
+    "display_name": "Rumi Prompt Studio",
+    "id": "rumi_prompt_studio_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:7c17033a14efca12cec8b020366201a8c31126847d04ee2883be7667937fe2f6",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_prompt_studio_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.action.prompt.author.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-runtime"
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.author"
+    },
+    {
+      "contract_reference": "tobkiri.action.prompt.migrate.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-migrate"
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.migrate"
+    },
+    {
+      "contract_reference": "tobkiri.resource.prompt.studio.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-resource"
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.resource"
+    },
+    {
+      "contract_reference": "tobkiri.action.prompt.test.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-test"
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.test"
+    },
+    {
+      "contract_reference": "tobkiri.action.prompt.version.v1",
+      "operations": [
+        "rumi_prompt_studio_pack.prompt-studio-version"
+      ],
+      "owner": "rumi_prompt_studio_pack",
+      "provider_id": "rumi_prompt_studio_pack.prompt-studio.version"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "profile.prompt.author.migrate",
+      "profile.prompt.author.read",
+      "profile.prompt.author.write"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "fanout",
+        "contract_id": "tobkiri.event.audit.recorded.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.profile.workspace.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

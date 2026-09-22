@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/resolved-plan.v2.schema.json",
+  "title": "Tobkiri ResolvedPlan v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["plan_api_version", "profile_id", "profile_revision", "profile_definition_digest", "catalog_revision", "bundle_digest", "profile_authority_snapshot_digest", "security_epoch", "base", "shell", "application", "effective_set", "requested_edges_digest", "constraints_digest", "closure_digest", "provenance_digest", "bindings", "plan_digest"],
+  "properties": {
+    "plan_api_version": {"const": "io.tobkiri.resolved-plan.v2"},
+    "profile_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"},
+    "profile_revision": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "profile_definition_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "catalog_revision": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "bundle_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "profile_authority_snapshot_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "security_epoch": {"type": "integer", "minimum": 0},
+    "base": {"type": "object", "additionalProperties": false, "required": ["pack_id", "artifact_digest", "definition_digest"], "properties": {"pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "definition_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}},
+    "shell": {"type": "object", "additionalProperties": false, "required": ["provider_id", "pack_id", "artifact_digest", "executable_artifact_digest", "contract_id", "definition_digest"], "properties": {"provider_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "executable_artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "contract_id": {"const": "app.shell.v1"}, "definition_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}},
+    "application": {"oneOf": [{"type": "null"}, {"type": "object", "additionalProperties": false, "required": ["pack_id", "artifact_digest", "executable_artifact_digest", "definition_digest"], "properties": {"pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "executable_artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "definition_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}}]},
+    "effective_set": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["role", "identity", "artifact_digest"], "properties": {"role": {"enum": ["base", "shell", "pack"]}, "identity": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}}}},
+    "requested_edges_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "constraints_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "closure_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "provenance_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "bindings": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["caller_function_id", "pack_id", "artifact_digest", "function_principal", "contract_id", "operation_id", "domain_kind", "executable_catalog_digest", "variant_id", "platform", "architecture", "runtime_abi", "backend", "execution_kind", "authority_reference", "requested_scope_digest", "adapter_digests"], "properties": {"caller_function_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "pack_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "artifact_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "function_principal": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/function-principal.v1.schema.json"}, "contract_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*\\.v[1-9][0-9]*$"}, "operation_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "domain_kind": {"enum": ["wasm_component", "pack_vm", "dedicated_process", "remote"]}, "executable_catalog_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "variant_id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "platform": {"type": "string", "minLength": 1}, "architecture": {"type": "string", "minLength": 1}, "runtime_abi": {"type": "string", "minLength": 1}, "backend": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"}, "execution_kind": {"enum": ["wasm", "pack_vm", "host_extension", "remote"]}, "authority_reference": {"type": "string", "pattern": "^authority-ref:[a-z0-9][a-z0-9._-]{7,127}$"}, "requested_scope_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "provider_authority_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "adapter_digests": {"type": "array", "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "uniqueItems": true}}}},
+    "plan_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

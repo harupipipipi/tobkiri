@@ -29,8 +29,10 @@ def compile_effective_ai_input(
 ) -> EffectiveAiInput:
     context = dict(request_context or {})
     disabled_edge_ids = set(ai_input_config.get("disabled_edges") or [])
-    gates = ai_input_config.get("gates") if isinstance(ai_input_config.get("gates"), dict) else {}
-    budgets = ai_input_config.get("budgets") if isinstance(ai_input_config.get("budgets"), dict) else {}
+    raw_gates = ai_input_config.get("gates")
+    gates: dict[str, dict[str, Any]] = raw_gates if isinstance(raw_gates, dict) else {}
+    raw_budgets = ai_input_config.get("budgets")
+    budgets: dict[str, Any] = raw_budgets if isinstance(raw_budgets, dict) else {}
     node_by_id = {node.id: node for node in nodes}
     graph_edges = _apply_disabled_edges(edges, disabled_edge_ids, segments)
     outgoing: dict[str, list[AiInputEdge]] = defaultdict(list)
@@ -226,6 +228,8 @@ def _apply_prompt_budget(
     if not isinstance(budget, dict):
         return segments
     max_tokens = budget.get("max_tokens")
+    if max_tokens is None:
+        return segments
     try:
         max_tokens_int = int(max_tokens)
     except (TypeError, ValueError):
@@ -260,6 +264,8 @@ def _apply_tool_budget(
     if not isinstance(budget, dict):
         return segments
     max_tokens = budget.get("max_tokens")
+    if max_tokens is None:
+        return segments
     try:
         max_tokens_int = int(max_tokens)
     except (TypeError, ValueError):
@@ -301,8 +307,8 @@ def _summarize_tokens(
     by_node: dict[str, int] = {}
     for segment in [*system_segments, *context_segments, *policy_segments]:
         by_node[segment.id] = int(segment.tokens)
-    for segment in tool_schemas:
-        by_node[segment.id] = int(segment.tokens)
+    for tool_schema in tool_schemas:
+        by_node[tool_schema.id] = int(tool_schema.tokens)
     return {
         "total": sum(by_port.values()),
         "by_port": by_port,

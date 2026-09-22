@@ -1,62 +1,107 @@
 {
-  "pack_id": "rumi_customer_research_pack",
-  "pack_identity": "rumi:ecosystem/rumi_customer_research_pack",
-  "display_name": "Rumi Customer Research Pack",
-  "version": "0.1.0",
-  "description": "Declarative customer interview, survey, feedback evidence, consent/redaction, insight-card, and opportunity mapping pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "ledger",
-      "template",
-      "fixture",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "connectivity": {
-    "requires": [
-      "defaultspack"
-    ],
-    "provides": []
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": {
-    "allowed_domains": [],
-    "allowed_ports": []
+  "connectivity": {
+    "provides": [],
+    "requires": []
   },
+  "dependencies": {},
+  "description": "Customer research workflow and UI content without host authority.",
+  "display_name": "Rumi Customer Research Content",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "runtime_type": "declarative_setup_pack",
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
+    "asset_index": {
+      "catalog": [
+        "catalog/workflows.yaml",
+        "catalog/quality_matrix.yaml",
+        "catalog/taxonomy.yaml",
+        "catalog/handoff_matrix.yaml"
+      ],
+      "checklist": [
+        "checklists/review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/feedback_opportunity_card.example.yaml",
+        "examples/interview_synthesis.example.yaml",
+        "examples/revoked_consent_filter.example.yaml",
+        "examples/survey_theme_map.example.yaml"
+      ],
+      "fixtures": [
+        "fixtures/contract_fixture.yaml",
+        "fixtures/negative_cases.yaml"
+      ],
+      "index": [
+        "asset_index.yaml"
+      ],
+      "ledger": [
+        "ledgers/evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/safety.policy.yaml",
+        "policies/handoff.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/customer_researcher.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/insight_synthesizer.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/consent_record.schema.json",
+        "schemas/insight_card.schema.json",
+        "schemas/interview_evidence.schema.json",
+        "schemas/opportunity_map.schema.json",
+        "schemas/participant.schema.json",
+        "schemas/survey_response.schema.json"
+      ],
+      "template": [
+        "templates/handoff.template.md",
+        "templates/review_report.template.md",
+        "templates/artifact_card.template.md"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:9b87e30e1f08f998f37143b65c602c8ac76a95e99efd709b7270527d8f5afefb",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:cb16c518786a1b901e3a5650fa07d47e0cbe27965afd7bae1b1cdc4f882f7f6d"
+    },
     "consumes_existing_sources_only": true,
-    "output_effect": "draft_and_handoff_only",
+    "declarative_only": true,
     "defaultspack_promotion_eligible": false,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:cb16c518786a1b901e3a5650fa07d47e0cbe27965afd7bae1b1cdc4f882f7f6d"
+    },
     "integrity": {
       "artifact_manifest": "artifact-manifest.json"
     },
-    "owner_surfaces": [
-      "participant_consent_record",
-      "research_redaction_policy",
-      "interview_evidence",
-      "survey_synthesis",
-      "feedback_to_insight_card",
-      "opportunity_map",
-      "evidence_linked_research_brief"
-    ],
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "non_owner_surfaces": [
       "live recruiting",
       "email or CRM writes",
@@ -88,82 +133,52 @@
         "reason": "Raw call or meeting transcript normalization is meeting-intelligence-owned."
       }
     ],
-    "asset_index": {
-      "index": [
-        "asset_index.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/workflows.yaml",
-        "catalog/quality_matrix.yaml",
-        "catalog/taxonomy.yaml",
-        "catalog/handoff_matrix.yaml"
-      ],
-      "schema": [
-        "schemas/consent_record.schema.json",
-        "schemas/insight_card.schema.json",
-        "schemas/interview_evidence.schema.json",
-        "schemas/opportunity_map.schema.json",
-        "schemas/participant.schema.json",
-        "schemas/survey_response.schema.json"
-      ],
-      "policy": [
-        "policies/safety.policy.yaml",
-        "policies/handoff.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/handoff.template.md",
-        "templates/review_report.template.md",
-        "templates/artifact_card.template.md"
-      ],
-      "fixtures": [
-        "fixtures/contract_fixture.yaml",
-        "fixtures/negative_cases.yaml"
-      ],
-      "profiles": [
-        "profiles/customer_researcher.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/insight_synthesizer.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/feedback_opportunity_card.example.yaml",
-        "examples/interview_synthesis.example.yaml",
-        "examples/revoked_consent_filter.example.yaml",
-        "examples/survey_theme_map.example.yaml"
-      ]
-    }
+    "output_effect": "draft_and_handoff_only",
+    "owner_surfaces": [
+      "participant_consent_record",
+      "research_redaction_policy",
+      "interview_evidence",
+      "survey_synthesis",
+      "feedback_to_insight_card",
+      "opportunity_map",
+      "evidence_linked_research_brief"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_setup_pack"
   },
-  "resources": [
-    {
-      "id": "frontend/contributions/customer-research.json",
-      "kind": "ui.contribution",
-      "content_hash": "sha256:083b6a99b7b5cd6c59dbc1fa2af992d6cef024b34a641f592ea2d269910ee224"
-    }
-  ],
+  "pack_id": "rumi_customer_research_pack",
+  "pack_identity": "rumi:ecosystem/rumi_customer_research_pack",
   "provenance": {
-    "content_hash": "sha256:f5719438d89f5a429942c22844351e332a92fa8963dd0a00da643dffe7d78e81",
-    "build_identity": "rumi-customer-research-content-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
+    "build_identity": "rumi_customer_research_pack:1.0.0",
+    "content_hash": "sha256:17d8811e7cec99871443a75d69fb07bec5d220b6a2873ad19f8ed2e964bb5ba8",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [
+    "frontend/contributions/customer-research.json"
+  ],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "fixture",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

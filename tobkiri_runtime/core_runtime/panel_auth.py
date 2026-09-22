@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import os
 import secrets
 import threading
 import time
 from typing import Any, Dict, Optional
+
+from .host_contract import host_contract_value
 
 
 class PanelAuthManager:
@@ -122,6 +123,7 @@ class PanelAuthManager:
                 return None
             session_info["expires_at"] = now + self._session_ttl_seconds
             return {
+                "session_id": session_hash,
                 "csrf_token": session_info["csrf_token"],
                 "expires_in": self._session_ttl_seconds,
             }
@@ -140,7 +142,7 @@ _panel_auth_manager: Optional[PanelAuthManager] = None
 def get_panel_auth_manager() -> PanelAuthManager:
     global _panel_auth_manager
     if _panel_auth_manager is None:
-        bootstrap_secret = os.environ.get("RUMI_PANEL_BOOTSTRAP_SECRET", "")
+        bootstrap_secret = host_contract_value("panel_bootstrap_secret")
         _panel_auth_manager = PanelAuthManager(bootstrap_secret=bootstrap_secret)
     return _panel_auth_manager
 

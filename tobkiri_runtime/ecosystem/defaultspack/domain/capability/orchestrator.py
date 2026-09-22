@@ -22,6 +22,14 @@ from domain.mention import extract_mention_values
 from domain.skill_trigger import RuntimeSkillTriggerService
 
 
+def _mapping_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list_or_empty(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
 class CapabilityOrchestrator:
     """Compile one Capability Plan for runtime and dry-run consumers."""
 
@@ -187,6 +195,17 @@ class CapabilityOrchestrator:
         plan.selected_tools = selected_tools
         plan.hydrated_tools = list(selected_tools)
         plan.attached_tools = list(selected_tools)
+        plan.tool_schema_hashes = {
+            tool_id: stable_revision(_tool_schema(tool_by_id[tool_id]))
+            for tool_id in selected_tools
+            if tool_id in tool_by_id
+        }
+        plan.tool_capability_grants = {
+            tool_id: _tool_capability_grants(tool_by_id[tool_id])
+            for tool_id in selected_tools
+            if tool_id in tool_by_id
+        }
+        plan.provider_selections = _provider_selections(context)
 
         explicit_skills = [
             target.id for target in explicit_targets if target.kind == "skill"
@@ -329,6 +348,12 @@ class CapabilityOrchestrator:
             for tool in selected_tools
             if _tool_id(tool)
         }
+        plan.tool_capability_grants = {
+            _tool_id(tool): _tool_capability_grants(tool)
+            for tool in selected_tools
+            if _tool_id(tool)
+        }
+        plan.provider_selections = _provider_selections(context)
 
         expansion = self._activities.expand(activity_ids, eligible_tools)
         safety_skills = _unique(
@@ -430,9 +455,8 @@ def _select_tools(
         prefilter=len(tools) > limit,
     )
     recommendations = (
-        result.get("recommended_tools")
+        _list_or_empty(result.get("recommended_tools"))
         if isinstance(result, dict)
-        and isinstance(result.get("recommended_tools"), list)
         else []
     )
     selected = [
@@ -522,6 +546,93 @@ def _tool_id(tool: dict[str, Any]) -> str:
     return str(tool.get("tool_id") or tool.get("name") or tool.get("id") or "").strip()
 
 
+def _tool_capability_grants(tool: dict[str, Any]) -> list[str]:
+    direct = tool.get("capability_grants")
+    requirements = _mapping_or_empty(tool.get("capability_requirements"))
+    values = list(direct) if isinstance(direct, list) else []
+    for key in ("runtime", "connections"):
+        raw = requirements.get(key)
+        if isinstance(raw, list):
+            values.extend(raw)
+    normalized = {
+        str(item).strip()
+        for item in values
+        if str(item or "").strip()
+    }
+    connection_capabilities = {
+        "rumi.service.file.inspect.v1": "file.inspect",
+        "rumi.service.ai.generate.v1": "ai.gateway.generate",
+        "rumi.service.subagent.placement.compile.v1": (
+            "subagent.placement.compile"
+        ),
+        "rumi.service.subagent.topology.compile.v1": (
+            "subagent.topology.compile"
+        ),
+        "rumi.service.subagent.placement.patch.v1": (
+            "subagent.placement.patch"
+        ),
+        "rumi.service.subagent.runtime.assignment.v1": (
+            "subagent.runtime.assign"
+        ),
+    }
+    normalized.update(
+        connection_capabilities[item]
+        for item in tuple(normalized)
+        if item in connection_capabilities
+    )
+    if "rumi.service.repository.context.prepare.v1" in normalized:
+        normalized.update(
+            {
+                "file.inspect",
+                "ai.gateway.generate",
+                "subagent.placement.compile",
+                "repository.content.external_share",
+            }
+        )
+    return sorted(normalized)
+
+
+def _provider_selections(
+    context: dict[str, Any],
+) -> dict[str, list[str]]:
+    """Project Host-selected provider identities into the canonical plan."""
+
+    explicit = context.get("capability_provider_selections")
+    if isinstance(explicit, dict):
+        return {
+            str(contract_id): sorted(
+                {
+                    str(provider_id).strip()
+                    for provider_id in provider_ids
+                    if str(provider_id).strip()
+                }
+            )
+            for contract_id, provider_ids in explicit.items()
+            if str(contract_id).strip() and isinstance(provider_ids, list)
+        }
+    try:
+        from core_runtime.resolved_profile_scope import (
+            persisted_resolved_profile,
+        )
+
+        resolved = persisted_resolved_profile()
+        providers = getattr(resolved, "providers", ()) if resolved else ()
+        result: dict[str, list[str]] = {}
+        for provider in providers:
+            contract_id = str(getattr(provider, "contract_id", "")).strip()
+            provider_id = str(
+                getattr(provider, "provider_instance_id", "")
+            ).strip()
+            if contract_id and provider_id:
+                result.setdefault(contract_id, []).append(provider_id)
+        return {
+            key: sorted(set(value))
+            for key, value in sorted(result.items())
+        }
+    except Exception:
+        return {}
+
+
 def _unique(values: Iterable[str]) -> list[str]:
     result: list[str] = []
     for value in values:
@@ -574,16 +685,8 @@ def _capability_snapshot(
     diagnostics: list[tuple[str, str]] = []
     for activity in activities:
         activity_id = str(activity.get("id") or "").strip()
-        members = (
-            activity.get("members")
-            if isinstance(activity.get("members"), dict)
-            else {}
-        )
-        skill_members = (
-            members.get("skills")
-            if isinstance(members.get("skills"), dict)
-            else {}
-        )
+        members = _mapping_or_empty(activity.get("members"))
+        skill_members = _mapping_or_empty(members.get("skills"))
         required = _unique(
             [
                 *(skill_members.get("safety") or []),

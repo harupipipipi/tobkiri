@@ -1,17 +1,27 @@
 {
   "name": "tobkiri-launcher-frontend",
   "private": true,
-  "version": "1.0.0-beta.2",
+  "version": "1.0.0-beta.3",
   "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build && node scripts/measure-build.mjs && node scripts/copy-panel-build.mjs",
+    "prebuild": "npm run generate:contract-map:check && npm run generate:defaults-setup-contract:check",
     "preview": "vite preview",
     "clean": "node scripts/clean.mjs",
     "lint": "tsc --noEmit",
+    "prelint": "npm run generate:contract-map:check && npm run generate:defaults-setup-contract:check",
+    "generate:contract-map": "node scripts/generate-frontend-contract-map.mjs",
+    "generate:contract-map:check": "node scripts/generate-frontend-contract-map.mjs --check",
+    "generate:defaults-setup-contract": "node scripts/generate-defaults-setup-contract.mjs",
+    "generate:defaults-setup-contract:check": "node scripts/generate-defaults-setup-contract.mjs --check",
     "measure:build": "node scripts/measure-build.mjs",
-    "audit": "npm audit --audit-level=high",
-    "test": "node --import tsx --test src/components/layout/*.test.tsx src/components/ui/*.test.tsx src/lib/*.test.ts src/pages/*.test.tsx scripts/*.test.mjs",
+    "pretest": "npm run generate:contract-map:check && npm run generate:defaults-setup-contract:check",
+    "audit": "node scripts/audit.mjs",
+    "test": "node --test-concurrency=1 --import tsx --test \"src/**/*.test.ts\" \"src/**/*.test.tsx\" \"scripts/**/*.test.mjs\"",
     "tauri": "cd .. && npm exec --prefix frontend -- tauri"
   },
   "dependencies": {
@@ -20,7 +30,6 @@
     "@tauri-apps/api": "2.10.1",
     "@uiw/react-codemirror": "^4.25.8",
     "@vitejs/plugin-react": "^6.0.2",
-    "@xyflow/react": "^12.10.1",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "js-yaml": "^4.1.1",

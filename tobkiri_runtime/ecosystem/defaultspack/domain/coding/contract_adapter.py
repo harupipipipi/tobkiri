@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from core_runtime.di_container import get_container
-from core_runtime.global_contract_dispatch import invoke_global_contract
-from core_runtime.resolved_profile_scope import active_resolved_profile
+from core_runtime.global_contract_dispatch import (
+    captured_profile_id,
+    invoke_global_contract,
+)
 from domain.safety import approval
 from domain.tool_policy.internal_context import (
     tool_server_approval_context_is_internal,
@@ -29,6 +31,60 @@ GIT_WRITE = "rumi.service.git.write.v1"
 GIT_PUBLISH = "rumi.service.git.publish.v1"
 HOST_AUTHORITY = "rumi.service.host.authorize.v1"
 
+MutationGuard = Callable[
+    [str, Mapping[str, Any], Mapping[str, Any] | None, str],
+    Mapping[str, Any] | None,
+]
+
+
+def preflight_legacy_coding_operation(
+    *,
+    legacy_operation: str,
+    input_data: Mapping[str, Any],
+    context: Mapping[str, Any] | None,
+    selected_workspace_id: str,
+    mutation_guard: MutationGuard,
+    allow_without_approval: bool = False,
+) -> dict[str, Any]:
+    """Check approval and the adaptive lease without minting a receipt.
+
+    Coding adapters use this before reading a repository snapshot.  It keeps
+    approval and lease denials deterministic even when the workspace provider
+    or repository is unavailable, while leaving one-shot token consumption and
+    host receipt issuance to ``authorize_legacy_coding_operation``.
+    """
+
+    request = dict(input_data)
+    internal = tool_server_approval_context_is_internal(
+        dict(context) if isinstance(context, Mapping) else None
+    )
+    if not internal and not allow_without_approval:
+        token = _approval_token(request)
+        if not token:
+            return {"authorized": False, "reason": "approval_required"}
+        verification = approval.verify_execution_token(
+            token,
+            legacy_operation,
+            approval.hash_arguments(request),
+            consume=False,
+        )
+        if not verification.valid:
+            return {
+                "authorized": False,
+                "reason": "approval_invalid",
+                "code": verification.code or "APPROVAL_INVALID",
+                "message": verification.message or "approval token is invalid",
+            }
+    guard_denial = mutation_guard(
+        selected_workspace_id,
+        request,
+        context,
+        legacy_operation,
+    )
+    if guard_denial is not None:
+        return {"authorized": False, **dict(guard_denial)}
+    return {"authorized": True}
+
 
 def invoke_coding_contract(
     contract_id: str,
@@ -37,12 +93,11 @@ def invoke_coding_contract(
 ) -> dict[str, Any]:
     """Invoke exactly one selected coding provider for the active profile."""
 
-    registry = get_container().get_or_none("interface_registry")
-    plan = active_resolved_profile()
-    if registry is None or plan is None:
+    registry = get_container().get_or_none("v4_dispatch_session")
+    if registry is None:
         raise RuntimeError("global coding provider is unavailable")
     request = {
-        "profile_id": plan.profile_id,
+        "profile_id": captured_profile_id(registry),
         **dict(payload),
         "_contract_consumer_pack_id": "defaultspack",
     }
@@ -61,6 +116,37 @@ def workspace_id(input_data: Mapping[str, Any]) -> str:
     return value
 
 
+def git_snapshot(selected_workspace_id: str) -> dict[str, Any]:
+    """Read the exact Git and mount snapshot required by a write provider."""
+
+    workspace = invoke_coding_contract(
+        WORKSPACE_RESOURCE,
+        "get",
+        {"workspace_id": selected_workspace_id},
+    )
+    mount_revision = int(workspace.get("mount_revision") or 0)
+    if mount_revision < 1:
+        raise RuntimeError("workspace mount revision is unavailable")
+    snapshot = invoke_coding_contract(
+        GIT_READ,
+        "snapshot",
+        {"workspace_id": selected_workspace_id},
+    )
+    required = {
+        "expected_head",
+        "expected_tree",
+        "expected_status_hash",
+    }
+    if not required.issubset(snapshot):
+        raise RuntimeError("Git snapshot is incomplete")
+    return {
+        "expected_head": str(snapshot["expected_head"]),
+        "expected_tree": str(snapshot["expected_tree"]),
+        "expected_status_hash": str(snapshot["expected_status_hash"]),
+        "expected_mount_revision": mount_revision,
+    }
+
+
 def authorize_legacy_coding_operation(
     *,
     legacy_operation: str,
@@ -71,23 +157,49 @@ def authorize_legacy_coding_operation(
     input_data: Mapping[str, Any],
     context: Mapping[str, Any] | None,
     selected_workspace_id: str,
+    mutation_guard: MutationGuard,
     allow_without_approval: bool = False,
 ) -> dict[str, Any]:
-    """Consume one legacy approval and mint one exact service receipt."""
+    """Validate authority, gate the mutation, then mint one service receipt."""
 
     request = dict(input_data)
     internal = tool_server_approval_context_is_internal(
         dict(context) if isinstance(context, Mapping) else None
     )
     verification = None
+    token = ""
+    arguments_hash = ""
     if not internal and not allow_without_approval:
         token = _approval_token(request)
         if not token:
             return {"authorized": False, "reason": "approval_required"}
+        arguments_hash = approval.hash_arguments(request)
         verification = approval.verify_execution_token(
             token,
             legacy_operation,
-            approval.hash_arguments(request),
+            arguments_hash,
+            consume=False,
+        )
+        if not verification.valid:
+            return {
+                "authorized": False,
+                "reason": "approval_invalid",
+                "code": verification.code or "APPROVAL_INVALID",
+                "message": verification.message or "approval token is invalid",
+            }
+    guard_denial = mutation_guard(
+        selected_workspace_id,
+        request,
+        context,
+        legacy_operation,
+    )
+    if guard_denial is not None:
+        return {"authorized": False, **dict(guard_denial)}
+    if token:
+        verification = approval.verify_execution_token(
+            token,
+            legacy_operation,
+            arguments_hash,
             consume=True,
         )
         if not verification.valid:
@@ -154,7 +266,7 @@ def _approval_token(input_data: Mapping[str, Any]) -> str:
 
 
 def _profile_id() -> str:
-    plan = active_resolved_profile()
-    if plan is None:
+    session = get_container().get_or_none("v4_dispatch_session")
+    if session is None:
         raise RuntimeError("resolved profile is unavailable")
-    return plan.profile_id
+    return captured_profile_id(session)

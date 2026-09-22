@@ -110,5 +110,5 @@ def _trace_summary(trace: dict[str, Any]) -> dict[str, Any]:
         "profile_id": trace.get("profile_id"),
         "token_estimate": token_estimate,
         "provider_payload_summary": provider_summary,
-        "blocked_count": len(trace.get("blocked")) if isinstance(trace.get("blocked"), list) else 0,
+        "blocked_count": len(blocked) if isinstance((blocked := trace.get("blocked")), list) else 0,
     }

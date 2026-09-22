@@ -8,8 +8,10 @@ import uuid
 from typing import Any, Mapping
 
 from core_runtime.di_container import get_container
-from core_runtime.global_contract_dispatch import invoke_global_contract
-from core_runtime.resolved_profile_scope import active_resolved_profile
+from core_runtime.global_contract_dispatch import (
+    captured_profile_id,
+    invoke_global_contract,
+)
 from domain.safety import approval
 from domain.tool_policy.internal_context import tool_server_approval_context_is_internal
 
@@ -566,7 +568,11 @@ class CompanyContractFacade:
     def _append_inbound(self, company_id: str) -> dict[str, Any] | None:
         if self._raw_company(company_id) is None:
             return None
-        record = {"id": "inbound-" + uuid.uuid4().hex, "type": "inbound", "actor_id": str(self.input.get("sender_id") or "external"), "channel_id": str(self.input.get("channel_id") or ""), "text": str(self.input.get("content") or ""), "metadata": _object(self.input.get("metadata"), "metadata")}
+        metadata = _object(self.input.get("metadata"), "metadata")
+        route_id = str(self.input.get("route_id") or "").strip()
+        if route_id:
+            metadata["route_id"] = route_id
+        record = {"id": "inbound-" + uuid.uuid4().hex, "type": "inbound", "actor_id": str(self.input.get("sender_id") or "external"), "channel_id": str(self.input.get("channel_id") or ""), "text": str(self.input.get("content") or ""), "metadata": metadata}
         result = self._mutate("inbound.append", {"company_id": company_id, "record": record})
         return dict(result.get("inbound") or {})
 
@@ -628,6 +634,7 @@ class CompanyContractFacade:
         metadata["target_agent_ids"] = list(
             self.input.get("target_agent_ids") or []
         )
+        metadata["task_ids"] = list(self.input.get("task_ids") or [])
         record = {
             "id": "message-" + uuid.uuid4().hex,
             "type": "message",
@@ -713,15 +720,22 @@ class CompanyContractFacade:
             return None
         targets = list(resolution["resolved_agent_ids"])
         self.input["target_agent_ids"] = targets
+        task_ids = [
+            "mention-"
+            + hashlib.sha256(
+                f"{company_id}\0{self.input.get('content') or self.input.get('message') or ''}\0{agent_id}".encode(
+                    "utf-8"
+                )
+            ).hexdigest()[:40]
+            for agent_id in targets
+        ]
+        self.input["task_ids"] = task_ids
         message = self._append_message(company_id)
         if message is None:
             return None
         tasks: list[dict[str, Any]] = []
         content = str(self.input.get("content") or self.input.get("message") or "")
-        for agent_id in targets:
-            task_id = "mention-" + hashlib.sha256(
-                f"{company_id}\0{message['id']}\0{agent_id}".encode("utf-8")
-            ).hexdigest()[:40]
+        for agent_id, task_id in zip(targets, task_ids):
             result = self._mutate(
                 "task.upsert",
                 {
@@ -737,6 +751,12 @@ class CompanyContractFacade:
                         "metadata": {
                             "source": "company_mention",
                             "message_id": str(message.get("id") or ""),
+                            "legacy_task": {
+                                "company_id": company_id,
+                                "target_agent_ids": [agent_id],
+                                "source": "mention",
+                                "dispatches": [],
+                            },
                         },
                     },
                 },
@@ -776,11 +796,14 @@ class CompanyContractFacade:
         if isinstance(existing, Mapping):
             return dict(existing)
         metadata = _object(self.input.get("metadata"), "metadata")
+        employee_model = _conversation_employee_model(conversation_id, metadata)
         metadata = {
             "profile_id": "defaultspack.operations_company",
             **({"conversation_id": conversation_id, "source": "chat"} if conversation_id else {}),
             **metadata,
         }
+        if employee_model:
+            metadata["employee_model"] = employee_model
         result = self._mutate(
             "company.create",
             {
@@ -795,7 +818,11 @@ class CompanyContractFacade:
         company = result.get("company")
         if not isinstance(company, Mapping):
             raise CompanyFacadeError("COMPANY_OWNER_UNAVAILABLE", "Company creation returned invalid data", 503)
-        for agent in default_agents():
+        agents = default_agents()
+        if employee_model:
+            for agent in agents:
+                agent["model"] = employee_model
+        for agent in agents:
             self._upsert_agent(company_id, agent)
         value = self._raw_company(company_id)
         return dict(value) if isinstance(value, Mapping) else dict(company)
@@ -1157,18 +1184,40 @@ def _nonnegative_int(value: Any, default: int) -> int:
 
 
 def _profile_id() -> str:
-    plan = active_resolved_profile()
-    if plan is None:
+    session = get_container().get_or_none("v4_dispatch_session")
+    if session is None:
         raise CompanyFacadeError(
             "COMPANY_OWNER_UNAVAILABLE",
             "resolved profile is unavailable",
             503,
         )
-    return plan.profile_id
+    return captured_profile_id(session)
+
+
+def _conversation_employee_model(
+    conversation_id: str,
+    metadata: Mapping[str, Any] | None,
+) -> str:
+    """Resolve the employee model from the canonical conversation owner."""
+
+    supplied = metadata if isinstance(metadata, Mapping) else {}
+    for key in ("employee_model", "model", "preferred_model"):
+        candidate = str(supplied.get(key) or "").strip()
+        if candidate:
+            return candidate
+    if not conversation_id:
+        return ""
+    try:
+        from domain.chat.store import ChatStore
+
+        conversation = ChatStore().get_conversation(conversation_id) or {}
+    except Exception:
+        return ""
+    return str(conversation.get("model") or "").strip()
 
 
 def _invoke(contract: str, operation: str, payload: Mapping[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     if registry is None:
         raise CompanyFacadeError(
             "COMPANY_OWNER_UNAVAILABLE",

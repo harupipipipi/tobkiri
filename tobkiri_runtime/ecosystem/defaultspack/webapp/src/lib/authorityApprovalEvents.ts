@@ -4,9 +4,6 @@ const AUTHORITY_APPROVAL_CHANNEL = "rumi-authority-approval.v2";
 const AUTHORITY_APPROVAL_MESSAGE_TYPE = "rumi-authority-approval-hint";
 const LEGACY_AUTHORITY_APPROVAL_STORAGE_KEY = "rumi.authority.approval.settlement";
 const AUTHORITY_APPROVAL_HINT_MAX_AGE_MS = 30_000;
-const AUTHORITY_APPROVAL_RETURN_MAX_AGE_MS = 5 * 60_000;
-export const AUTHORITY_APPROVAL_RETURN_PARAM = "authority_return";
-export const AUTHORITY_APPROVAL_RETURN_STORAGE_KEY = "rumi.authority.approval.return.v1";
 
 export type AuthorityApprovalSettlement = {
   requestId: string;
@@ -21,18 +18,36 @@ export type AuthorityApprovalHint = {
   nonce: string;
 };
 
-type AuthorityRequestFetcher = (requestId: string) => Promise<AuthorityRequest>;
-type AuthorityApprovalReturnStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
-
-type AuthorityApprovalReturnRecord = {
-  requestId: string;
-  nonce: string;
-  createdAt: number;
+type SubscribeAuthorityApprovalSettlementOptions = {
+  replayStored?: boolean;
+  replayStoredRequestId?: string;
+  expected?: AuthorityApprovalVerificationBinding;
 };
+
+export type AuthorityApprovalVerificationBinding = {
+  requestId: string;
+  principalId?: string | null;
+  permissionId?: string | null;
+  conversationId?: string | null;
+  resource?: Record<string, unknown> | null;
+};
+
+type AuthorityRequestFetcher = (requestId: string) => Promise<AuthorityRequest>;
 
 function cleanString(value: unknown): string | null {
   const text = String(value ?? "").trim();
   return text || null;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 function createNonce(): string {
@@ -42,76 +57,6 @@ function createNonce(): string {
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   } catch {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
-  }
-}
-
-function browserSessionStorage(): AuthorityApprovalReturnStorage | null {
-  try {
-    return typeof sessionStorage === "undefined" ? null : sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-function samePagePath(currentHref: string): URL {
-  const origin = typeof window === "undefined" ? "http://tobkiri.local" : window.location.origin;
-  return new URL(currentHref, origin);
-}
-
-export function createAuthorityApprovalReturnPath(
-  requestId: string,
-  currentHref: string,
-  storage: AuthorityApprovalReturnStorage | null = browserSessionStorage(),
-  now = Date.now(),
-): string {
-  const url = samePagePath(currentHref);
-  url.searchParams.delete("authority_approved");
-  url.searchParams.delete(AUTHORITY_APPROVAL_RETURN_PARAM);
-  const normalizedRequestId = cleanString(requestId);
-  if (!normalizedRequestId || !storage) return `${url.pathname}${url.search}${url.hash}`;
-  const record: AuthorityApprovalReturnRecord = {
-    requestId: normalizedRequestId,
-    nonce: createNonce(),
-    createdAt: now,
-  };
-  try {
-    storage.setItem(AUTHORITY_APPROVAL_RETURN_STORAGE_KEY, JSON.stringify(record));
-    url.searchParams.set(AUTHORITY_APPROVAL_RETURN_PARAM, record.nonce);
-  } catch {
-    try {
-      storage.removeItem(AUTHORITY_APPROVAL_RETURN_STORAGE_KEY);
-    } catch {
-      // A locked session store leaves the return URL as a non-settling page reload.
-    }
-  }
-  return `${url.pathname}${url.search}${url.hash}`;
-}
-
-export function consumeAuthorityApprovalReturnHint(
-  search: string,
-  storage: AuthorityApprovalReturnStorage | null = browserSessionStorage(),
-  now = Date.now(),
-): string | null {
-  const nonce = cleanString(new URLSearchParams(search).get(AUTHORITY_APPROVAL_RETURN_PARAM));
-  if (!nonce || !storage) return null;
-  let serialized: string | null = null;
-  try {
-    serialized = storage.getItem(AUTHORITY_APPROVAL_RETURN_STORAGE_KEY);
-    storage.removeItem(AUTHORITY_APPROVAL_RETURN_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-  if (!serialized) return null;
-  try {
-    const value = JSON.parse(serialized) as Partial<AuthorityApprovalReturnRecord>;
-    const requestId = cleanString(value.requestId);
-    const storedNonce = cleanString(value.nonce);
-    const createdAt = Number(value.createdAt);
-    if (!requestId || !storedNonce || storedNonce !== nonce || !Number.isFinite(createdAt)) return null;
-    if (createdAt > now + 5_000 || now - createdAt > AUTHORITY_APPROVAL_RETURN_MAX_AGE_MS) return null;
-    return requestId;
-  } catch {
-    return null;
   }
 }
 
@@ -152,38 +97,51 @@ export function authorityApprovalHintMessage(
   };
 }
 
-export async function verifyAuthorityApprovalRequest(
-  requestId: string,
-  expectedConversationId: string | null = null,
+export async function verifyAuthorityApprovalHint(
+  hint: AuthorityApprovalHint,
   fetchRequest: AuthorityRequestFetcher = (requestId) => api.getAuthorityRequest(requestId),
   now = Date.now(),
+  expected?: AuthorityApprovalVerificationBinding,
 ): Promise<AuthorityApprovalSettlement | null> {
+  if (hint.emittedAt > now + 5_000 || now - hint.emittedAt > AUTHORITY_APPROVAL_HINT_MAX_AGE_MS) return null;
+  if (expected && expected.requestId !== hint.requestId) return null;
   let request: AuthorityRequest;
   try {
-    request = await fetchRequest(requestId);
+    request = await fetchRequest(hint.requestId);
   } catch {
     return null;
   }
-  if (String(request.request_id || "") !== requestId) return null;
+  if (String(request.request_id || "") !== hint.requestId) return null;
   if (request.status !== "approved" && request.status !== "denied") return null;
-  const expiresAt = Date.parse(String(request.expires_at ?? ""));
-  if (Number.isFinite(expiresAt) && expiresAt <= now) return null;
+  if (request.expires_at != null) {
+    const expiresAt = Date.parse(String(request.expires_at));
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) return null;
+  }
   const authoritativeConversationId = cleanString(request.conversation_id);
-  if (expectedConversationId && authoritativeConversationId !== expectedConversationId) return null;
+  if (hint.conversationId && authoritativeConversationId !== hint.conversationId) return null;
+  if (expected) {
+    if (
+      expected.principalId !== undefined
+      && cleanString(request.principal_id) !== cleanString(expected.principalId)
+    ) return null;
+    if (
+      expected.permissionId !== undefined
+      && cleanString(request.permission_id) !== cleanString(expected.permissionId)
+    ) return null;
+    if (
+      expected.conversationId !== undefined
+      && authoritativeConversationId !== cleanString(expected.conversationId)
+    ) return null;
+    if (
+      expected.resource !== undefined
+      && stableJson(request.resource ?? {}) !== stableJson(expected.resource ?? {})
+    ) return null;
+  }
   return {
     requestId: request.request_id,
     status: request.status,
     conversationId: authoritativeConversationId,
   };
-}
-
-export async function verifyAuthorityApprovalHint(
-  hint: AuthorityApprovalHint,
-  fetchRequest: AuthorityRequestFetcher = (requestId) => api.getAuthorityRequest(requestId),
-  now = Date.now(),
-): Promise<AuthorityApprovalSettlement | null> {
-  if (hint.emittedAt > now + 5_000 || now - hint.emittedAt > AUTHORITY_APPROVAL_HINT_MAX_AGE_MS) return null;
-  return verifyAuthorityApprovalRequest(hint.requestId, hint.conversationId ?? null, fetchRequest, now);
 }
 
 export function broadcastAuthorityApprovalSettlement(event: AuthorityApprovalSettlement): void {
@@ -220,6 +178,7 @@ export function readStoredAuthorityApprovalSettlement(
 
 export function subscribeAuthorityApprovalSettlements(
   handler: (event: AuthorityApprovalSettlement) => void,
+  options?: SubscribeAuthorityApprovalSettlementOptions,
 ): () => void {
   let active = true;
   let channel: BroadcastChannel | null = null;
@@ -233,7 +192,7 @@ export function subscribeAuthorityApprovalSettlements(
     seenNonces.add(hint.nonce);
     if (inFlightRequestIds.has(hint.requestId)) return;
     inFlightRequestIds.add(hint.requestId);
-    void verifyAuthorityApprovalHint(hint)
+    void verifyAuthorityApprovalHint(hint, undefined, Date.now(), options?.expected)
       .then((settlement) => {
         if (!active || !settlement) return;
         settledRequestIds.add(settlement.requestId);

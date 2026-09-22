@@ -1,12 +1,22 @@
+from collections.abc import Callable, Mapping
+from typing import Any, Protocol
+
 from .registry import ToolRegistry
 from .mcp_client import McpClient
 from .mcp_registry import McpRegistry
 from .autonomy import autonomous_tool_execution_allowed
 from .eligibility import rejection_result
 from .permission_resolver import ToolPermissionResolver
-from .schema_adapter import is_tool_rejected_by_policy, policy_from_context
+from .schema_adapter import (
+    is_tool_rejected_by_policy,
+    list_or_empty,
+    mapping_or_empty,
+    policy_from_context,
+)
 from .service_catalog import infer_action_class
 from .security import (
+    appears_write_or_execute_capable,
+    execution_type,
     is_sandbox_capability_tool,
     is_safe_first_party_memo_tool,
     is_trusted_pack_id,
@@ -24,13 +34,34 @@ from domain.tool_policy.internal_context import (
 )
 from domain.tool_policy.profile_permission import resolve_profile_tool_permission
 from domain.tool_policy.risk import resolve_tool_risk
+from core_runtime.capability_plan import (
+    CapabilityPlanValidationError,
+    validate_capability_plan,
+)
 from pathlib import Path
+import hashlib
 import inspect
 import json
 import logging
 import os
+import re
+import time
 
 logger = logging.getLogger(__name__)
+
+
+class SubagentRunner(Protocol):
+    """Typed boundary for the pack-owned nested-agent runner."""
+
+    def run(
+        self,
+        arguments: dict[str, Any],
+        context: dict[str, Any],
+    ) -> Mapping[str, Any]:
+        """Run a nested-agent request and return its structured result."""
+
+
+SubagentFactory = Callable[[], SubagentRunner]
 
 
 # P1-2: サンドボックス用の安全なビルトイン一覧
@@ -113,10 +144,165 @@ _FRONTEND_PERMISSION_FAIL_CLOSED_RISKS = {
     "capability_mutation",
     "pack_install",
 }
+_COMPUTER_APPROVAL_PROMPT = (
+    "承認してください。foreground/on-screen 操作も利用できます。"
+    "リクエストを承認するか、表/前面で作業しますか?"
+)
 
 
 def json_dumps(value):
     return json.dumps(value, ensure_ascii=False)
+
+
+def _capability_plan_tool_rejection(
+    tool_name,
+    tool_def,
+    context,
+    *,
+    require_plan=False,
+):
+    """Fail closed unless a canonical plan attaches this exact Tool.
+
+    The public Capability API owns persisted approval and owner binding.  The
+    executor still validates the detached plan at the last non-core boundary,
+    so a direct adapter call cannot use a legacy alias or an unsigned plan to
+    reach a reviewed pack function.
+    """
+
+    if not isinstance(context, dict):
+        if not require_plan:
+            return None
+        return {
+            "result": "CapabilityPlan is required for tool execution",
+            "is_error": True,
+            "widget": None,
+            "error_type": "capability_plan_required",
+        }
+    plan = context.get("capability_plan")
+    if not isinstance(plan, dict):
+        if not require_plan:
+            return None
+        return {
+            "result": "CapabilityPlan is required for tool execution",
+            "is_error": True,
+            "widget": None,
+            "error_type": "capability_plan_required",
+        }
+    try:
+        plan = validate_capability_plan(plan)
+    except (CapabilityPlanValidationError, TypeError, ValueError):
+        return {
+            "result": "CapabilityPlan authority is invalid",
+            "is_error": True,
+            "widget": None,
+            "error_type": "capability_plan_invalid",
+        }
+    tools = plan.get("tools")
+    if not isinstance(tools, dict):
+        return {
+            "result": "CapabilityPlan Tool authority is invalid",
+            "is_error": True,
+            "widget": None,
+            "error_type": "capability_plan_invalid",
+        }
+    attached = {
+        str(item).strip()
+        for item in tools.get("attached") or []
+        if str(item or "").strip()
+    }
+    canonical_name = str(
+        tool_def.get("tool_id")
+        or tool_def.get("name")
+        or tool_name
+        or ""
+    ).strip()
+    requested_name = str(tool_name or "").strip()
+    if requested_name != canonical_name:
+        return {
+            "result": "Legacy Tool aliases cannot authorize execution",
+            "is_error": True,
+            "widget": None,
+            "error_type": "legacy_tool_alias",
+        }
+    if canonical_name not in attached:
+        return {
+            "result": "Tool is not attached by the active CapabilityPlan",
+            "is_error": True,
+            "widget": None,
+            "error_type": "tool_not_attached",
+        }
+    schema_hashes = tools.get("schema_hashes")
+    expected_hash = (
+        str(schema_hashes.get(canonical_name) or "").strip()
+        if isinstance(schema_hashes, dict)
+        else ""
+    )
+    schema = tool_def.get("schema")
+    if not isinstance(schema, dict):
+        contract = tool_def.get("contract")
+        schema = (
+            contract.get("input_schema")
+            if isinstance(contract, dict)
+            and isinstance(contract.get("input_schema"), dict)
+            else {}
+        )
+    actual_hash = hashlib.sha256(
+        json.dumps(
+            schema,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    if not expected_hash or expected_hash != actual_hash:
+        return {
+            "result": "Tool schema does not match the active CapabilityPlan",
+            "is_error": True,
+            "widget": None,
+            "error_type": "tool_schema_revision_mismatch",
+        }
+    plan_owner = plan.get("owner") or plan.get("authority_owner")
+    if plan_owner is not None:
+        if not isinstance(plan_owner, dict):
+            return {
+                "result": "CapabilityPlan owner binding is invalid",
+                "is_error": True,
+                "widget": None,
+                "error_type": "capability_plan_owner_mismatch",
+            }
+        context_owner = context.get("capability_plan_owner")
+        if not isinstance(context_owner, dict):
+            context_owner = context
+        for field in ("principal_id", "workspace_id", "conversation_id", "profile_id"):
+            expected = str(plan_owner.get(field) or "").strip()
+            actual = str(context_owner.get(field) or "").strip()
+            if expected and actual != expected:
+                return {
+                    "result": "CapabilityPlan owner does not match execution scope",
+                    "is_error": True,
+                    "widget": None,
+                    "error_type": "capability_plan_owner_mismatch",
+                }
+    return None
+
+
+def _tool_requires_capability_plan(tool_def):
+    """Return whether this executor path is an authority-bearing action."""
+
+    if not isinstance(tool_def, dict):
+        return True
+    exec_type = execution_type(tool_def)
+    if exec_type in {
+        "capability",
+        "global_contract",
+        "handler",
+        "mcp",
+        "rumi_function",
+        "dynamic",
+    }:
+        return True
+    return appears_write_or_execute_capable(tool_def)
 
 
 def _approval_module():
@@ -128,7 +314,7 @@ def _approval_module():
 class ToolExecutor:
     """ツール実行エンジン"""
 
-    def __init__(self):
+    def __init__(self, *, subagent_factory: SubagentFactory | None = None):
         try:
             from domain.integrations.secrets import load_integration_secrets_into_env
 
@@ -137,6 +323,7 @@ class ToolExecutor:
             pass
         self._registry = ToolRegistry()
         self._mcp_client = McpClient()
+        self._subagent_factory = subagent_factory
 
     def execute(self, tool_name, arguments, context):
         """
@@ -160,6 +347,14 @@ class ToolExecutor:
                 "is_error": True,
                 "widget": None
             }
+        plan_rejection = _capability_plan_tool_rejection(
+            tool_name,
+            tool_def,
+            context,
+            require_plan=_tool_requires_capability_plan(tool_def),
+        )
+        if plan_rejection is not None:
+            return plan_rejection
         adaptive_decision = guard_tool_execution(
             tool_name,
             arguments if isinstance(arguments, dict) else {},
@@ -202,6 +397,15 @@ class ToolExecutor:
                 },
                 "rejected_by_security": True,
             }
+
+        context, delegated_review_response = _preflight_delegated_approval(
+            tool_name,
+            tool_def,
+            arguments,
+            context,
+        )
+        if delegated_review_response is not None:
+            return delegated_review_response
 
         context, permission_response = _preflight_profile_tool_permission(
             tool_name,
@@ -257,6 +461,9 @@ class ToolExecutor:
         if exec_type == "capability":
             return self._execute_capability(tool_def, arguments, context)
 
+        if exec_type == "global_contract":
+            return self._execute_global_contract(tool_def, arguments, context)
+
         if exec_type == "dynamic":
             return self._execute_dynamic(tool_def, arguments, context)
 
@@ -302,11 +509,15 @@ class ToolExecutor:
                 tool_def,
             )
         if _requires_rumi_api_request_approval(tool_def, arguments) and not _context_has_tool_server_approval(approved_context):
-            return _approval_required_tool_response(tool_def, arguments or {}, approved_context)
+            approval_arguments = _browser_computer_preflight_approval_arguments(
+                _tool_approval_tool_name(tool_def),
+                arguments,
+                approved_context,
+            )
+            return _approval_required_tool_response(tool_def, approval_arguments, approved_context)
         forwarded_context = _function_call_context(approved_context, tool_def)
         if forwarded_context:
             request["context"] = forwarded_context
-        self._ensure_shared_function_registered(qualified_name)
         return self._execute_capability_request(tool_def, request, approved_context)
 
     def _execute_capability(self, tool_def, arguments, context):
@@ -331,6 +542,518 @@ class ToolExecutor:
         if approval_error is not None:
             return approval_error
         return self._execute_capability_request(tool_def, request, approved_context)
+
+    def _execute_global_contract(self, tool_def, arguments, context):
+        """Invoke one selected global service without importing its provider."""
+
+        from core_runtime.di_container import get_container
+        from core_runtime.global_contract_dispatch import (
+            GlobalContractInvocationError,
+            GlobalContractUnavailable,
+            captured_profile_id,
+            invoke_global_contract,
+            invoke_selected_global_provider,
+        )
+
+        execution = (
+            tool_def.get("execution", {})
+            if isinstance(tool_def, dict)
+            else {}
+        )
+        contract_id = str(execution.get("contract_id") or "").strip()
+        operation = str(execution.get("operation") or "").strip()
+        provider_instance_id = str(
+            execution.get("provider_instance_id") or ""
+        ).strip()
+        if not contract_id or not operation:
+            return {
+                "result": "Global contract execution descriptor is incomplete",
+                "is_error": True,
+                "widget": None,
+            }
+        requirements = tool_def.get("capability_requirements")
+        requirements = (
+            requirements if isinstance(requirements, dict) else {}
+        )
+        declared_connections = {
+            str(item)
+            for item in requirements.get("connections") or []
+            if str(item).strip()
+        }
+        if contract_id not in declared_connections:
+            return {
+                "result": "Global contract was not declared by the Tool",
+                "is_error": True,
+                "widget": None,
+            }
+        registry = (
+            context.get("v4_dispatch_session")
+            if isinstance(context, dict)
+            else None
+        ) or get_container().get_or_none("v4_dispatch_session")
+        if registry is None:
+            return {
+                "result": "Global contract runtime is unavailable",
+                "is_error": True,
+                "widget": None,
+            }
+        arguments = dict(arguments or {})
+        requested_profile = str(arguments.get("profile_id") or "").strip()
+        profile_id = captured_profile_id(registry)
+        if requested_profile and requested_profile != profile_id:
+            return {
+                "result": "Tool requested an inactive profile",
+                "is_error": True,
+                "widget": None,
+            }
+        source_pack_id = str(
+            tool_def.get("source_pack_id")
+            or (
+                tool_def.get("metadata", {}).get("source_pack_id")
+                if isinstance(tool_def.get("metadata"), dict)
+                else ""
+            )
+            or ""
+        ).strip()
+        context_workspace_id = str(
+            (context.get("workspace_id") or "")
+            if isinstance(context, dict)
+            else ""
+        ).strip()
+        requested_workspace_id = str(
+            arguments.get("workspace_id") or ""
+        ).strip()
+        if requested_workspace_id and (
+            not context_workspace_id
+            or requested_workspace_id != context_workspace_id
+        ):
+            return {
+                "result": "Tool requested a workspace outside the active binding",
+                "is_error": True,
+                "widget": None,
+                "error_type": "workspace_binding_mismatch",
+            }
+        if "workspace_id" in arguments or context_workspace_id:
+            if not context_workspace_id:
+                return {
+                    "result": "Active workspace binding is required",
+                    "is_error": True,
+                    "widget": None,
+                    "error_type": "workspace_binding_missing",
+                }
+            arguments["workspace_id"] = context_workspace_id
+        workspace_binding = None
+        if context_workspace_id:
+            try:
+                workspace_snapshot = invoke_global_contract(
+                    registry,
+                    "rumi.resource.workspace.v1",
+                    "list",
+                    {"profile_id": profile_id},
+                )
+                selected_workspace_id = (
+                    str(workspace_snapshot.get("selected_workspace_id") or "").strip()
+                    if isinstance(workspace_snapshot, dict)
+                    else ""
+                )
+                if (
+                    not isinstance(workspace_snapshot, dict)
+                    or selected_workspace_id != context_workspace_id
+                ):
+                    raise ValueError(
+                        "selected workspace changed "
+                        f"(expected {context_workspace_id!r}, "
+                        f"active {selected_workspace_id!r})"
+                    )
+                workspace_mount = invoke_global_contract(
+                    registry,
+                    "rumi.resource.workspace.v1",
+                    "get",
+                    {
+                        "profile_id": profile_id,
+                        "workspace_id": context_workspace_id,
+                    },
+                )
+                if not isinstance(workspace_mount, dict):
+                    raise ValueError("workspace mount is unavailable")
+                root = Path(
+                    str(workspace_mount.get("root_path") or "")
+                ).resolve(strict=True)
+                root_stat = root.stat()
+                mount_revision = str(
+                    workspace_mount.get("revision")
+                    or workspace_mount.get("updated_at_ms")
+                    or workspace_mount.get("updated_at")
+                    or ""
+                )
+                workspace_binding = {
+                    "workspace_id": context_workspace_id,
+                    "access": "read_only",
+                    "mount_revision": mount_revision,
+                    "canonical_root": str(root),
+                    "root_st_dev": int(root_stat.st_dev),
+                    "root_st_ino": int(root_stat.st_ino),
+                }
+                workspace_binding["root_identity"] = hashlib.sha256(
+                    json.dumps(
+                        workspace_binding,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+            except (KeyError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                workspace_binding = _trusted_full_access_workspace_binding(
+                    context,
+                    context_workspace_id,
+                )
+                if workspace_binding is None:
+                    return {
+                        "result": f"Active workspace binding failed: {exc}",
+                        "is_error": True,
+                        "widget": None,
+                        "error_type": "workspace_binding_invalid",
+                    }
+        payload = {
+            **arguments,
+            "profile_id": profile_id,
+            "_contract_consumer_pack_id": source_pack_id,
+            "_contract_consumer_function_id": str(
+                tool_def.get("tool_id") or tool_def.get("name") or ""
+            ),
+        }
+        if isinstance(context, dict):
+            capability_plan = context.get("capability_plan")
+            if isinstance(capability_plan, dict):
+                payload["capability_plan"] = dict(capability_plan)
+            payload["registry_revision"] = str(
+                context.get("registry_revision")
+                or context.get("catalog_revision")
+                or (
+                    capability_plan.get("registry_revision")
+                    if isinstance(capability_plan, dict)
+                    else ""
+                )
+                or getattr(registry, "plan_digest", "")
+                or ""
+            )
+            if not payload["registry_revision"]:
+                return {
+                    "result": "Active registry revision is required",
+                    "is_error": True,
+                    "widget": None,
+                    "error_type": "registry_revision_missing",
+                }
+            payload["topology_revision"] = str(
+                context.get("topology_revision") or ""
+            )
+            timeout_ms = max(
+                1,
+                int(execution.get("timeout_ms") or 120_000),
+            )
+            payload["_deadline_epoch_ms"] = int(time.time() * 1000) + timeout_ms
+            payload["_cancellation_token"] = context.get(
+                "cancellation_token"
+            ) or context.get("is_cancelled")
+            payload["_host_enforcement"] = {
+                "tool_allowlist": "host_enforced",
+                "workspace_scope": "host_enforced",
+                "output_schema": "host_validated",
+                "system_prompt": "behavioral_only",
+            }
+            host_allowed = [
+                "file.inspect",
+                "ai.gateway.generate",
+                "subagent.placement.compile",
+            ]
+            tool_capability_grants = (
+                capability_plan.get("tools", {}).get(
+                    "capability_grants", {}
+                )
+                if isinstance(capability_plan, dict)
+                and isinstance(capability_plan.get("tools"), dict)
+                else {}
+            )
+            exact_tool_grants = (
+                tool_capability_grants.get(
+                    str(
+                        tool_def.get("tool_id")
+                        or tool_def.get("name")
+                        or ""
+                    ),
+                    [],
+                )
+                if isinstance(tool_capability_grants, dict)
+                else []
+            )
+            if "repository.content.external_share" in {
+                str(value) for value in exact_tool_grants
+            }:
+                host_allowed.append("repository.content.external_share")
+            host_denied = [
+                "file.write",
+                "git.publish",
+                "secret.read",
+                "terminal.execute",
+            ]
+            for target in (
+                "_profile_policy",
+                "_workspace_policy",
+                "_host_policy",
+                "_task_grant",
+            ):
+                payload[target] = {
+                    "allowed_capabilities": list(host_allowed),
+                    "denied_capabilities": list(host_denied),
+                }
+            if workspace_binding is None:
+                return {
+                    "result": "Active workspace binding is required",
+                    "is_error": True,
+                    "widget": None,
+                    "error_type": "workspace_binding_missing",
+                }
+            payload["_workspace_binding"] = workspace_binding
+            canonical_arguments = json.dumps(
+                arguments,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+            idempotency_dimensions = {
+                "query": str(arguments.get("query") or ""),
+                "model": str(
+                    arguments.get("model")
+                    or context.get("model")
+                    or context.get("selected_model")
+                    or ""
+                ),
+                "prompt_hash": str(
+                    context.get("prompt_hash")
+                    or context.get("prompt_revision")
+                    or ""
+                ),
+                "file_hashes": sorted(
+                    str(value)
+                    for value in (
+                        arguments.get("file_hashes")
+                        or context.get("file_hashes")
+                        or []
+                    )
+                    if str(value).strip()
+                ),
+                "batch": {
+                    "max_candidates": arguments.get("max_candidates"),
+                    "max_selected": arguments.get("max_selected"),
+                    "max_file_bytes": arguments.get("max_file_bytes"),
+                    "total_read_bytes": arguments.get("total_read_bytes"),
+                },
+                "budget": {
+                    "timeout_ms": timeout_ms,
+                    "maximum_cost": arguments.get("maximum_cost"),
+                },
+            }
+            payload["_invocation_key"] = hashlib.sha256(
+                json.dumps(
+                    {
+                        "profile_id": profile_id,
+                        "tool_id": tool_def.get("tool_id")
+                        or tool_def.get("name"),
+                        "arguments": arguments,
+                        "workspace": payload["_workspace_binding"],
+                        "capability_plan": (
+                            capability_plan.get("digest")
+                            if isinstance(capability_plan, dict)
+                            else ""
+                        ),
+                        "registry_revision": payload["registry_revision"],
+                        "dimensions": idempotency_dimensions,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+            payload["_invocation_digest"] = hashlib.sha256(
+                json.dumps(
+                    {
+                        "tool_id": tool_def.get("tool_id")
+                        or tool_def.get("name"),
+                        "arguments": arguments,
+                        "workspace": payload["_workspace_binding"],
+                        "capability_plan": (
+                            capability_plan.get("digest")
+                            if isinstance(capability_plan, dict)
+                            else ""
+                        ),
+                        "registry_revision": payload["registry_revision"],
+                        "dimensions": idempotency_dimensions,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest()
+            authority_arguments = {
+                "consumer_pack_id": source_pack_id,
+                "consumer_function_id": str(
+                    tool_def.get("tool_id") or tool_def.get("name") or ""
+                ),
+                "capability_plan_digest": (
+                    capability_plan.get("digest")
+                    if isinstance(capability_plan, dict)
+                    else ""
+                ),
+                "attached_tool_id": str(
+                    tool_def.get("tool_id") or tool_def.get("name") or ""
+                ),
+                "tool_definition_hash": hashlib.sha256(
+                    json.dumps(
+                        tool_def,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                    ).encode("utf-8")
+                ).hexdigest(),
+                "workspace_binding": payload["_workspace_binding"],
+                "external_share_granted": (
+                    "repository.content.external_share" in host_allowed
+                ),
+                "profile_policy": payload["_profile_policy"],
+                "workspace_policy": payload["_workspace_policy"],
+                "host_policy": payload["_host_policy"],
+                "task_grant": payload["_task_grant"],
+                "host_enforcement": payload["_host_enforcement"],
+                "registry_revision": payload["registry_revision"],
+                "arguments_hash": hashlib.sha256(
+                    canonical_arguments.encode("utf-8")
+                ).hexdigest(),
+                "deadline_epoch_ms": payload["_deadline_epoch_ms"],
+                "invocation_key": payload["_invocation_key"],
+                "invocation_digest": payload["_invocation_digest"],
+                "budget": {
+                    "timeout_ms": timeout_ms,
+                    "maximum_cost": arguments.get("maximum_cost"),
+                },
+            }
+            if not authority_arguments["external_share_granted"]:
+                return {
+                    "result": (
+                        "CapabilityPlan does not grant repository content "
+                        "external sharing"
+                    ),
+                    "is_error": True,
+                    "widget": None,
+                    "error_type": "external_share_not_granted",
+                }
+            authority = invoke_global_contract(
+                registry,
+                "rumi.service.host.authorize.v1",
+                "authorize",
+                {
+                    "_contract_consumer_pack_id": source_pack_id,
+                    "service_pack_id": source_pack_id,
+                    "operation": "repository.context.prepare",
+                    "authority": "repository.content.external_share",
+                    "caller_id": f"tool-executor:{profile_id}",
+                    "caller_pack_id": source_pack_id,
+                    "caller_function_id": str(
+                        tool_def.get("tool_id")
+                        or tool_def.get("name")
+                        or ""
+                    ),
+                    "profile_id": profile_id,
+                    "workspace_id": context_workspace_id,
+                    "session_id": str(
+                        context.get("conversation_id")
+                        or context.get("session_id")
+                        or ""
+                    ),
+                    "arguments": authority_arguments,
+                    "approval_required": False,
+                },
+            )
+            if (
+                not isinstance(authority, dict)
+                or not authority.get("authorized")
+                or not authority.get("receipt")
+            ):
+                return {
+                    "result": "Host authority denied repository context",
+                    "is_error": True,
+                    "widget": None,
+                    "error_type": "host_authority_denied",
+                }
+            payload["_authority_receipt"] = str(authority["receipt"])
+            payload["_authority_scope"] = {
+                "service_pack_id": source_pack_id,
+                "operation": "repository.context.prepare",
+                "authority": "repository.content.external_share",
+                "caller_id": f"tool-executor:{profile_id}",
+                "caller_pack_id": source_pack_id,
+                "caller_function_id": str(
+                    tool_def.get("tool_id") or tool_def.get("name") or ""
+                ),
+                "profile_id": profile_id,
+                "workspace_id": context_workspace_id,
+                "session_id": str(
+                    context.get("conversation_id")
+                    or context.get("session_id")
+                    or ""
+                ),
+                "arguments": authority_arguments,
+            }
+        try:
+            if provider_instance_id:
+                value = invoke_selected_global_provider(
+                    registry,
+                    contract_id,
+                    provider_instance_id,
+                    operation,
+                    payload,
+                )
+            else:
+                value = invoke_global_contract(
+                    registry,
+                    contract_id,
+                    operation,
+                    payload,
+                )
+        except (GlobalContractInvocationError, GlobalContractUnavailable) as exc:
+            return {
+                "result": str(exc),
+                "is_error": True,
+                "widget": None,
+            }
+        except (KeyError, RuntimeError, TypeError, ValueError) as exc:
+            return {
+                "result": "Global contract request failed: {}".format(exc),
+                "is_error": True,
+                "widget": None,
+            }
+        widget = None
+        if (
+            isinstance(value, dict)
+            and value.get("schema_version")
+            == "tobkiri.repository-evidence/v1"
+        ):
+            widget = {
+                "type": "repository_evidence",
+                "statistics": dict(value.get("statistics") or {}),
+                "selected_files": list(value.get("selected_files") or []),
+                "excluded_reason_counts": dict(
+                    value.get("excluded_reason_counts") or {}
+                ),
+                "excluded_sample": list(value.get("excluded_files") or []),
+                "excluded_artifact_ref": str(
+                    value.get("excluded_artifact_ref") or ""
+                ),
+            }
+        return {"result": value, "is_error": False, "widget": widget}
 
     def _execute_capability_request(self, tool_def, request, context):
         principal_id = self._principal_id(tool_def, context)
@@ -360,16 +1083,6 @@ class ToolExecutor:
                     str((context or {}).get("approval_id") or "") if isinstance(context, dict) else "",
                     sorted(str(key) for key in (context or {}).keys())[:40] if isinstance(context, dict) else [],
                 )
-            if (
-                isinstance(context, dict)
-                and tool_server_approval_context_is_internal(context)
-                and getattr(response, "error_type", "") == "pack_not_approved"
-                and str(request.get("type") or "").strip() == "function.call"
-            ):
-                qualified_name = str(request.get("qualified_name") or "").strip()
-                pack_id, _, _ = qualified_name.partition(":")
-                if pack_id and self._dev_auto_approve_pack(pack_id):
-                    response = executor.execute(principal_id, request)
         except Exception as exc:
             return {
                 "result": "Capability execution failed: {}".format(exc),
@@ -394,34 +1107,11 @@ class ToolExecutor:
             except Exception:
                 manager = None
         if manager is None:
-            return True, None
+            return False, "approval_manager_unavailable"
         approved = manager.is_pack_approved_and_verified(pack_id)
         if isinstance(approved, tuple):
             return bool(approved[0]), approved[1]
         return bool(approved), None
-
-    def _dev_auto_approve_pack(self, pack_id, capability_executor=None):
-        rumi_env = os.environ.get("RUMI_ENVIRONMENT", "").lower()
-        auto_approve = os.environ.get("RUMI_AUTO_APPROVE_LOCAL", "").lower()
-        if rumi_env not in {"development", "dev"} or auto_approve != "true":
-            return False
-        manager = getattr(capability_executor, "_approval_manager", None)
-        if manager is None:
-            try:
-                from core_runtime.approval_manager import get_approval_manager
-
-                manager = get_approval_manager()
-            except Exception:
-                manager = None
-        if manager is None:
-            return False
-        try:
-            if hasattr(manager, "scan_packs"):
-                manager.scan_packs()
-            result = manager.approve(pack_id)
-            return bool(getattr(result, "success", False))
-        except Exception:
-            return False
 
     def _consume_deferred_tool_approval(self, context):
         if not isinstance(context, dict):
@@ -468,9 +1158,9 @@ class ToolExecutor:
                 if is_trusted_pack_id(pack_id) and not _requires_approval(tool_def):
                     context["_tool_server_approved"] = True
                     return None
-                approved, reason = self._function_call_pack_approval_status(capability_executor, pack_id)
-                if not approved and self._dev_auto_approve_pack(pack_id, capability_executor):
-                    approved, reason = self._function_call_pack_approval_status(capability_executor, pack_id)
+                approved, reason = self._function_call_pack_approval_status(
+                    capability_executor, pack_id
+                )
                 if not approved:
                     return {
                         "result": "Pack not approved: {}".format(pack_id),
@@ -597,60 +1287,6 @@ class ToolExecutor:
         )
 
     @staticmethod
-    def _ensure_shared_function_registered(qualified_name):
-        try:
-            from core_runtime.di_container import get_container
-
-            registry = get_container().get("function_registry")
-        except Exception:
-            return
-        try:
-            if registry.get(qualified_name) is not None:
-                return
-        except Exception:
-            return
-        ToolExecutor._load_pack_functions_into_registry(registry)
-
-    @staticmethod
-    def _load_pack_functions_into_registry(registry):
-        from core_runtime.resolved_profile_scope import effective_pack_ids
-
-        ecosystem_dir = Path(__file__).resolve().parents[3]
-        effective = effective_pack_ids()
-        for pack_id in sorted(effective):
-            pack_root = ecosystem_dir / pack_id
-            if not pack_root.is_dir() or not (pack_root / "ecosystem.json").exists():
-                continue
-            try:
-                pack_manifest = json.loads((pack_root / "ecosystem.json").read_text(encoding="utf-8"))
-            except Exception:
-                pack_manifest = {}
-            pack_id = str(pack_manifest.get("pack_id") or pack_root.name).strip() or pack_root.name
-            functions_root = pack_root / "functions"
-            if not functions_root.exists():
-                continue
-            for function_dir in sorted(path for path in functions_root.iterdir() if path.is_dir()):
-                manifest_path = function_dir / "manifest.json"
-                if not manifest_path.is_file():
-                    continue
-                try:
-                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                except Exception:
-                    continue
-                function_id = str(manifest.get("function_id") or function_dir.name).strip()
-                if not function_id:
-                    continue
-                try:
-                    registry.register(
-                        pack_id=pack_id,
-                        function_id=function_id,
-                        manifest=manifest,
-                        function_dir=function_dir,
-                    )
-                except Exception:
-                    continue
-
-    @staticmethod
     def _principal_id(tool_def, context):
         if isinstance(context, dict):
             for key in ("principal_id", "pack_id", "_source_pack_id"):
@@ -690,7 +1326,7 @@ class ToolExecutor:
                         and context.get("user_requested_computer_use")
                     )
                 ):
-                    return _approval_required_tool_response(tool_def, arguments or {}, context)
+                    return _approval_required_tool_response_for_context(tool_def, arguments or {}, context)
                 result = {
                     "result": str(error or "Pack not approved"),
                     "is_error": True,
@@ -718,7 +1354,7 @@ class ToolExecutor:
                             "reason": str(error or "capability execution denied"),
                         },
                     }
-                return _approval_required_tool_response(tool_def, arguments or {}, context)
+                return _approval_required_tool_response_for_context(tool_def, arguments or {}, context)
             return {
                 "result": str(error or "Capability execution failed"),
                 "is_error": True,
@@ -795,7 +1431,7 @@ class ToolExecutor:
         elif _context_has_tool_server_approval(next_context):
             pass
         elif _requires_approval(tool_def):
-            return _approval_required_tool_response(tool_def, next_arguments, next_context)
+            return _approval_required_tool_response_for_context(tool_def, next_arguments, next_context)
 
         consume_error = self._consume_deferred_tool_approval(next_context)
         if consume_error is not None:
@@ -1019,14 +1655,43 @@ class ToolExecutor:
                 "is_error": False,
                 "widget": None
             }
+        elif tool_name == "subagent":
+            if self._subagent_factory is None:
+                return {
+                    "result": "Subagent runner is not configured",
+                    "is_error": True,
+                    "widget": {
+                        "type": "subagent",
+                        "error_type": "subagent_runner_unavailable",
+                    },
+                }
+            delegated = self._subagent_factory().run(
+                arguments if isinstance(arguments, dict) else {},
+                context if isinstance(context, dict) else {},
+            )
+            delegated = dict(delegated)
+            failed = bool(
+                delegated.get("is_error")
+                or delegated.get("status") == "error"
+            )
+            return {
+                "result": str(
+                    delegated.get("summary")
+                    or ("Subagent failed" if failed else "Subagent completed")
+                ),
+                "is_error": failed,
+                "widget": {"type": "subagent", **delegated},
+            }
         elif tool_name == "file_reader":
             from blocks.coding.file_read import run as file_read_run
 
             path = arguments.get("path", "")
             call_context = context if isinstance(context, dict) else {}
+            workspace_id = str(call_context.get("workspace_id") or "").strip()
             result = file_read_run(
                 {
                     "path": path,
+                    "workspace_id": workspace_id,
                     "start_line": arguments.get("start_line"),
                     "end_line": arguments.get("end_line"),
                     "max_chars": arguments.get("max_chars") or arguments.get("max_output_chars"),
@@ -1108,8 +1773,8 @@ def _filtered_tool_rejection(tool_name, context):
                 continue
             if str(entry.get("status") or "") in {"blocked", "hidden"}:
                 return rejection_result(str(tool_name or ""), entry)
-    capability_graph = context.get("capability_graph") if isinstance(context.get("capability_graph"), dict) else {}
-    connected = capability_graph.get("connected_tools") if isinstance(capability_graph.get("connected_tools"), list) else []
+    capability_graph = mapping_or_empty(context.get("capability_graph"))
+    connected = list_or_empty(capability_graph.get("connected_tools"))
     if connected and str(tool_name or "") not in {str(item) for item in connected if str(item or "").strip()}:
         return rejection_result(
             str(tool_name or ""),
@@ -1128,7 +1793,7 @@ def _safe_calculate(expression):
     import ast
     import operator
 
-    operators = {
+    operators: dict[type[ast.AST], Callable[..., Any]] = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
         ast.Mult: operator.mul,
@@ -1163,10 +1828,81 @@ def _safe_calculate(expression):
     return {"is_error": False, "result": result}
 
 
+_URL_IN_TEXT_RE = re.compile(r"(?:https?://|file://|www\.)[^\s\"'<>]+")
+
+
+def _browser_open_url_candidates(value):
+    if not isinstance(value, str):
+        return []
+    text = value.strip()
+    if not text:
+        return []
+    urls = []
+    seen = set()
+    for match in _URL_IN_TEXT_RE.finditer(text):
+        url = match.group(0).rstrip(".,;)")
+        if url.startswith("www."):
+            url = "https://" + url
+        if url and url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return urls
+
+
+def _browser_open_url_from_value(value):
+    candidates = _browser_open_url_candidates(value)
+    return candidates[0] if candidates else ""
+
+
+def _single_browser_open_url_from_context(context):
+    if not isinstance(context, dict):
+        return ""
+    urls = []
+    seen = set()
+    for key in ("user_text", "conversation_user_text"):
+        for url in _browser_open_url_candidates(context.get(key)):
+            if url not in seen:
+                seen.add(url)
+                urls.append(url)
+    return urls[0] if len(urls) == 1 else ""
+
+
+def _canonical_browser_computer_action(raw_action, action_map):
+    action = str(raw_action or "").strip()
+    if action in action_map:
+        return action_map[action]
+    first_token = action.split(maxsplit=1)[0] if action else ""
+    if first_token in action_map:
+        return action_map[first_token]
+    return action
+
+
+def _normalize_browser_open_url_payload(action, payload, *url_candidates):
+    payload = dict(payload or {})
+    if action != "browser.open_url" or payload.get("url"):
+        return payload
+    for key in ("value", "text", "target", "href", "link", "url_contains", "title", "title_contains"):
+        candidate = _browser_open_url_from_value(str(payload.get(key) or ""))
+        if candidate:
+            payload["url"] = candidate
+            return payload
+    for value in url_candidates:
+        candidate = _browser_open_url_from_value(value)
+        if candidate:
+            payload["url"] = candidate
+            return payload
+    return payload
+
+
 def _browser_computer_action_payload(tool_name, arguments):
     arguments = arguments if isinstance(arguments, dict) else {}
     if tool_name == "browser_computer":
-        return str(arguments.get("action", "browser.session")), dict(arguments.get("payload") or {})
+        action = str(arguments.get("action", "browser.session"))
+        return action, _normalize_browser_open_url_payload(
+            action,
+            dict(arguments.get("payload") or {}),
+            str(arguments.get("action") or ""),
+        )
 
     raw_payload = dict(arguments.get("payload") or {})
     raw_action = str(arguments.get("action") or "").strip()
@@ -1175,6 +1911,7 @@ def _browser_computer_action_payload(tool_name, arguments):
             "": "browser.session",
             "session": "browser.session",
             "open_url": "browser.open_url",
+            "browser_open_url": "browser.open_url",
             "open": "browser.open_url",
             "context/apps/windows": "computer.context",
             "context_apps_windows": "computer.context",
@@ -1209,10 +1946,16 @@ def _browser_computer_action_payload(tool_name, arguments):
             "windows": "computer.windows",
             "list_windows": "computer.windows",
         }
-        action = action_map.get(raw_action, raw_action)
+        action = _canonical_browser_computer_action(raw_action, action_map)
         for key in (
             "url",
             "url_contains",
+            "browser",
+            "browser_app",
+            "profile_id",
+            "session_id",
+            "persistent",
+            "target_app",
             "x",
             "y",
             "point",
@@ -1232,6 +1975,7 @@ def _browser_computer_action_payload(tool_name, arguments):
             "to_x",
             "to_y",
             "text",
+            "value",
             "key",
             "modifier",
             "modifiers",
@@ -1277,6 +2021,9 @@ def _browser_computer_action_payload(tool_name, arguments):
             "mode",
             "method",
             "driver",
+            "background",
+            "foreground",
+            "fallback",
         ):
             if key in arguments:
                 raw_payload[key] = arguments.get(key)
@@ -1284,6 +2031,7 @@ def _browser_computer_action_payload(tool_name, arguments):
         action_map = {
             "": "computer.screenshot",
             "open_url": "browser.open_url",
+            "browser_open_url": "browser.open_url",
             "open": "browser.open_url",
             "context/apps/windows": "computer.context",
             "context_apps_windows": "computer.context",
@@ -1318,10 +2066,16 @@ def _browser_computer_action_payload(tool_name, arguments):
             "windows": "computer.windows",
             "list_windows": "computer.windows",
         }
-        action = action_map.get(raw_action, raw_action)
+        action = _canonical_browser_computer_action(raw_action, action_map)
         for key in (
             "url",
             "url_contains",
+            "browser",
+            "browser_app",
+            "profile_id",
+            "session_id",
+            "persistent",
+            "target_app",
             "x",
             "y",
             "point",
@@ -1341,6 +2095,7 @@ def _browser_computer_action_payload(tool_name, arguments):
             "to_x",
             "to_y",
             "text",
+            "value",
             "key",
             "modifier",
             "modifiers",
@@ -1386,6 +2141,9 @@ def _browser_computer_action_payload(tool_name, arguments):
             "mode",
             "method",
             "driver",
+            "background",
+            "foreground",
+            "fallback",
         ):
             if key in arguments:
                 raw_payload[key] = arguments.get(key)
@@ -1393,7 +2151,95 @@ def _browser_computer_action_payload(tool_name, arguments):
         raw_payload["dry_run"] = arguments.get("dry_run")
     if "approval_token" in arguments:
         raw_payload["approval_token"] = arguments.get("approval_token")
+    raw_payload = _drop_redundant_background_flag(raw_payload)
+    raw_payload = _normalize_browser_open_url_payload(action, raw_payload, raw_action)
     return action, raw_payload
+
+
+_BROWSER_APP_ALIAS_KEYS = ("app", "application", "name", "browser", "browser_app", "target_app")
+_BROWSER_APP_ALIASES = {
+    "atlas",
+    "chatgpt",
+    "chatgptatlas",
+    "chrome",
+    "firefox",
+    "googlechrome",
+    "msedge",
+    "safari",
+    "vivaldi",
+}
+_COMPUTER_USE_FOREGROUND_APP_ALIASES = {
+    "atlas",
+    "chatgptatlas",
+}
+_COMPUTER_USE_FOREGROUND_DEFAULT_ACTIONS = {"computer.type", "computer.key", "computer.scroll"}
+
+
+def _normalized_app_alias(value):
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().casefold())
+
+
+def _is_browser_app_alias(value):
+    return _normalized_app_alias(value) in _BROWSER_APP_ALIASES
+
+
+def _computer_use_debug_foreground_enabled():
+    value = str(os.environ.get("RUMI_COMPUTER_USE_DEBUG_FOREGROUND") or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _computer_use_prefers_foreground(action, payload, context):
+    if action not in _COMPUTER_USE_FOREGROUND_DEFAULT_ACTIONS:
+        return False
+    if not isinstance(context, dict) or not _truthy(context.get("user_requested_computer_use")):
+        return False
+    if payload.get("physical") is True or payload.get("virtual_only") is True:
+        return False
+    if _truthy(context.get("computer_use_foreground_preferred")):
+        return True
+    if _computer_use_debug_foreground_enabled():
+        return True
+    target_alias = _normalized_app_alias(context.get("computer_use_target_app"))
+    return target_alias in _COMPUTER_USE_FOREGROUND_APP_ALIASES
+
+
+def _payload_with_computer_use_foreground_preference(action, payload, context):
+    next_payload = dict(payload or {})
+    if not _computer_use_prefers_foreground(action, next_payload, context):
+        return next_payload
+    next_payload.pop("background", None)
+    next_payload.setdefault("fallback", "foreground")
+    return next_payload
+
+
+def _drop_redundant_background_flag(payload):
+    payload = dict(payload or {})
+    if payload.get("background") is True:
+        mode = str(payload.get("mode") or payload.get("method") or payload.get("driver") or "").strip()
+        if mode:
+            payload.pop("background", None)
+    return payload
+
+
+def _payload_with_target_app_override(payload, target_app):
+    target = str(target_app or "").strip()
+    if not target:
+        return dict(payload or {})
+    next_payload = dict(payload or {})
+    target_alias = _normalized_app_alias(target)
+    existing_values = [
+        str(next_payload.get(key) or "").strip()
+        for key in _BROWSER_APP_ALIAS_KEYS
+        if str(next_payload.get(key) or "").strip()
+    ]
+    if any(_normalized_app_alias(value) == target_alias for value in existing_values):
+        return next_payload
+    if not existing_values or any(_is_browser_app_alias(value) for value in existing_values):
+        for key in _BROWSER_APP_ALIAS_KEYS:
+            if _is_browser_app_alias(next_payload.get(key)):
+                next_payload.pop(key, None)
+        next_payload["app"] = target
+    return next_payload
 
 
 def _computer_use_payload_with_context_defaults(action, payload, context):
@@ -1404,18 +2250,18 @@ def _computer_use_payload_with_context_defaults(action, payload, context):
     target_title = context.get("computer_use_target_title")
     physical_clicks = _truthy(context.get("computer_use_physical_clicks"))
     if action == "browser.open_url":
-        if isinstance(target_app, str) and target_app.strip() and not any(
-            payload.get(key) for key in ("app", "application", "browser", "browser_app")
-        ):
-            payload["app"] = target_app.strip()
+        payload = _payload_with_target_app_override(payload, target_app)
+        if not payload.get("url"):
+            inferred_url = _single_browser_open_url_from_context(context)
+            if inferred_url:
+                payload["url"] = inferred_url
         return payload
     if action.startswith("computer.") and action not in {"computer.windows", "computer.apps"}:
-        if isinstance(target_app, str) and target_app.strip():
-            if action in {"computer.select_app", "computer.show_app"}:
-                if not any(payload.get(key) for key in ("app", "application", "name")):
-                    payload["app"] = target_app.strip()
-            else:
-                payload.setdefault("app", target_app.strip())
+        if isinstance(target_app, str) and target_app.strip() and (
+            action not in {"computer.select_app", "computer.show_app"}
+            or _truthy(context.get("user_requested_computer_use"))
+        ):
+            payload = _payload_with_target_app_override(payload, target_app)
         if (
             isinstance(target_title, str)
             and target_title.strip()
@@ -1424,7 +2270,96 @@ def _computer_use_payload_with_context_defaults(action, payload, context):
             payload.setdefault("title", target_title.strip())
         if physical_clicks and action == "computer.click" and "physical" not in payload:
             payload["physical"] = True
+        payload = _payload_with_computer_use_foreground_preference(action, payload, context)
+        if _should_default_computer_use_background(action, payload, context):
+            payload["background"] = True
     return payload
+
+
+def _should_default_computer_use_background(action, payload, context):
+    if not _truthy(context.get("user_requested_computer_use")):
+        return False
+    if action not in {"computer.type", "computer.key", "computer.scroll", "computer.click"}:
+        return False
+    if payload.get("background") is not None:
+        return False
+    if payload.get("foreground") is not None:
+        return False
+    if payload.get("fallback") is not None:
+        return False
+    if payload.get("physical") is True or payload.get("virtual_only") is True:
+        return False
+    mode = str(payload.get("mode") or payload.get("method") or payload.get("driver") or "").strip()
+    return not mode
+
+
+def _controller_browser_open_url_approval_payload(payload):
+    payload = dict(payload or {})
+    url = str(payload.get("url") or "").strip()
+    if not url:
+        return payload
+    profile_id = _browser_profile_id(
+        payload.get("profile_id")
+        or payload.get("session_id")
+        or _active_browser_computer_profile_id()
+    )
+    target_app = _browser_app_name_from_payload(payload)
+    return {
+        "url": url,
+        "profile_id": profile_id,
+        "persistent": payload.get("persistent", True) is not False,
+        "target_app": target_app,
+    }
+
+
+def _browser_computer_controller_approval_payloads(action, payload, context=None):
+    payload = dict(payload or {})
+    if action != "browser.open_url":
+        return [payload]
+    payloads = []
+    for candidate in (
+        payload,
+        _computer_use_payload_with_context_defaults(action, payload, context),
+    ):
+        controller_payload = _controller_browser_open_url_approval_payload(candidate)
+        if controller_payload not in payloads:
+            payloads.append(controller_payload)
+    return payloads or [payload]
+
+
+def _browser_profile_id(value):
+    raw = str(value or "default").strip().lower()
+    cleaned = re.sub(r"[^a-z0-9._-]+", "-", raw).strip(".-_")
+    return (cleaned or "default")[:64]
+
+
+def _active_browser_computer_profile_id():
+    try:
+        sessions_path = (
+            Path(__file__).resolve().parents[3]
+            / "rumi_default_tools_pack"
+            / "user_data"
+            / "shared"
+            / "browser_sessions.json"
+        )
+        sessions = json.loads(sessions_path.read_text(encoding="utf-8"))
+        if isinstance(sessions, dict):
+            return _browser_profile_id(sessions.get("active_profile_id") or "default")
+    except Exception:
+        pass
+    return "default"
+
+
+def _browser_app_name_from_payload(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    return str(
+        payload.get("app")
+        or payload.get("application")
+        or payload.get("target_app")
+        or payload.get("browser")
+        or payload.get("browser_app")
+        or ""
+    ).strip()
 
 
 def _conversation_tool_artifact_root(context):
@@ -1556,7 +2491,12 @@ def _approval_hash_arguments(arguments):
             return {
                 key: sanitize(item)
                 for key, item in value.items()
-                if key not in {"approval_token", "approved"}
+                if key not in {
+                    "approval_token",
+                    "approved",
+                    "computer_use_haze_sequence_id",
+                    "computer_use_sequence_id",
+                }
             }
         if isinstance(value, list):
             return [sanitize(item) for item in value]
@@ -1565,12 +2505,18 @@ def _approval_hash_arguments(arguments):
     return sanitize(dict(arguments))
 
 
+def _tool_handles_deferred_approval_consumption(tool_def):
+    return _tool_approval_tool_name(tool_def) in {"browser_computer", "browser_use", "computer_use"}
+
+
 def _browser_computer_request_arguments(tool_name, action, payload):
-    if tool_name == "browser_computer":
-        return {
-            "action": str(action or "browser.session"),
-            "payload": dict(payload or {}),
-        }
+    return {
+        "action": str(action or "browser.session"),
+        "payload": dict(payload or {}),
+    }
+
+
+def _browser_computer_payload_only_request_arguments(action, payload):
     return dict(payload or {})
 
 
@@ -1580,6 +2526,13 @@ def _browser_computer_legacy_request_arguments(tool_name, action, payload):
     return {
         "action": str(action or ""),
         **dict(payload or {}),
+    }
+
+
+def _browser_computer_controller_request_arguments(action, payload):
+    return {
+        "action": str(action or ""),
+        "payload": dict(payload or {}),
     }
 
 
@@ -1662,10 +2615,162 @@ def _preflight_profile_tool_permission(tool_name, tool_def, arguments, context, 
             and approved_context.get("_tool_permission_policy_approved") is True
         ):
             return approved_context, None
-        return context, _approval_required_tool_response(tool_def, arguments or {}, context)
+        return context, _approval_required_tool_response_for_context(tool_def, arguments or {}, context)
     if status == "allowed":
         return _context_with_profile_tool_permission_allow(context, tool_def, arguments, decision)
     return context, None
+
+
+def _trusted_full_access_workspace_binding(
+    context,
+    workspace_id,
+):
+    """Create a scoped binding when the optional workspace provider is absent.
+
+    This compatibility path is only available to the authenticated local UI in
+    full-access mode. It never accepts a path supplied in tool arguments.
+    """
+
+    if not isinstance(context, dict):
+        return None
+    policy = policy_from_context(context)
+    if (
+        context.get("_defaultspack_local_ui_authenticated") is not True
+        or str(policy.get("action_approval_mode") or "").strip().lower()
+        != "full"
+        or not _truthy(policy.get("full_access"))
+    ):
+        return None
+    raw_root = str(context.get("workspace_root") or "").strip()
+    if not raw_root or not Path(raw_root).is_absolute():
+        return None
+    try:
+        root = Path(raw_root).resolve(strict=True)
+        if not root.is_dir():
+            return None
+        root_stat = root.stat()
+    except OSError:
+        return None
+    binding = {
+        "workspace_id": str(workspace_id),
+        "access": "read_only",
+        "mount_revision": "authenticated-local-ui-full-access",
+        "canonical_root": str(root),
+        "root_st_dev": int(root_stat.st_dev),
+        "root_st_ino": int(root_stat.st_ino),
+        "binding_source": "authenticated_local_ui_fallback",
+    }
+    binding["root_identity"] = hashlib.sha256(
+        json.dumps(
+            binding,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    return binding
+
+
+def _preflight_delegated_approval(
+    tool_name,
+    tool_def,
+    arguments,
+    context,
+):
+    """Resolve ``agent`` mode through an isolated reviewer, never blanket-yolo."""
+
+    from domain.tool.approval_reviewer import (
+        delegated_approval_requested,
+        review_tool_action,
+    )
+
+    next_context = dict(context or {}) if isinstance(context, dict) else {}
+    if not delegated_approval_requested(next_context):
+        return next_context, None
+    if isinstance(tool_def, dict) and (
+        is_safe_first_party_memo_tool(tool_def)
+        or is_sandbox_capability_tool(tool_def)
+    ):
+        return next_context, None
+    needs_review = bool(
+        _requires_approval(tool_def)
+        or _frontend_permission_resolver_failure_requires_approval(
+            tool_def,
+            tool_name,
+        )
+    )
+    if not needs_review:
+        try:
+            needs_review = (
+                ToolPermissionResolver().resolve(
+                    tool_def,
+                    context=next_context,
+                ).get("permission")
+                == "confirm"
+            )
+        except Exception:
+            needs_review = False
+    if not needs_review:
+        return next_context, None
+    review = review_tool_action(
+        tool_name,
+        tool_def if isinstance(tool_def, dict) else {},
+        arguments if isinstance(arguments, dict) else {},
+        next_context,
+    )
+    audit_tool_policy(
+        next_context,
+        "delegated_approval_review",
+        {
+            "tool_name": tool_name,
+            "decision": review.get("decision"),
+            "reason": review.get("reason"),
+            "review_id": review.get("review_id"),
+            "history_json_path": review.get("history_json_path"),
+        },
+    )
+    decision = str(review.get("decision") or "").strip().lower()
+    if decision == "approve":
+        sealed = seal_tool_context(
+            next_context,
+            {
+                "allowed": True,
+                "action": "allow",
+                "source": "approval_reviewer",
+                "review_id": review.get("review_id"),
+            },
+        )
+        mark_tool_server_approval_context(sealed)
+        sealed["_delegated_approval_review"] = dict(review)
+        return sealed, None
+    if decision == "deny":
+        return next_context, {
+            "result": "Delegated reviewer denied tool '{}': {}".format(
+                tool_name,
+                review.get("reason") or "unsafe action",
+            ),
+            "is_error": True,
+            "widget": {
+                "type": "tool_execution_denied",
+                "tool_name": tool_name,
+                "reason": review.get("reason"),
+                "delegated_review": review,
+            },
+            "error_type": "delegated_approval_denied",
+        }
+    response = _approval_required_tool_response(
+        tool_def,
+        arguments or {},
+        next_context,
+    )
+    if isinstance(response.get("widget"), dict):
+        response["widget"]["delegated_review"] = review
+        response["widget"]["display_summary"] = str(
+            review.get("reason")
+            or response["widget"].get("display_summary")
+            or "Delegated reviewer requested user approval."
+        )
+    return next_context, response
 
 
 def _preflight_frontend_tool_permission(tool_name, tool_def, arguments, context, policy):
@@ -1689,7 +2794,7 @@ def _preflight_frontend_tool_permission(tool_name, tool_def, arguments, context,
                 reason="confirmation required because Settings permission resolution failed",
             )
             _audit_frontend_tool_permission(context, decision, decision.get("resolution"))
-            return context, _approval_required_tool_response(tool_def, arguments or {}, context)
+            return context, _approval_required_tool_response_for_context(tool_def, arguments or {}, context)
         return context, None
     permission = str(resolution.get("permission") or "auto").strip().lower()
     if permission == "block":
@@ -1730,7 +2835,7 @@ def _preflight_frontend_tool_permission(tool_name, tool_def, arguments, context,
         return approved_context, approval_error
     if isinstance(approved_context, dict) and approved_context.get("_frontend_tool_permission_approved") is True:
         return approved_context, None
-    return context, _approval_required_tool_response(tool_def, arguments or {}, context)
+    return context, _approval_required_tool_response_for_context(tool_def, arguments or {}, context)
 
 
 def _frontend_permission_decision(tool_name, tool_def, resolution, permission, *, reason):
@@ -1780,7 +2885,7 @@ def _context_with_frontend_tool_permission_token(context, tool_def, arguments, d
         return _attach_tool_approval_token(approved_context, tool_def, token_result), None
     code = str(getattr(verification, "code", "") or "")
     if code in _STALE_APPROVAL_TOKEN_CODES:
-        response = _approval_required_tool_response(tool_def, arguments or {}, next_context)
+        response = _approval_required_tool_response_for_context(tool_def, arguments or {}, next_context)
         if isinstance(response.get("widget"), dict):
             response["widget"]["stale_approval_token"] = True
             response["widget"]["stale_approval_code"] = code
@@ -1822,7 +2927,7 @@ def _context_with_profile_tool_permission_token(context, tool_def, arguments, de
         return _attach_tool_approval_token(approved_context, tool_def, token_result), None
     code = str(getattr(verification, "code", "") or "")
     if code in _STALE_APPROVAL_TOKEN_CODES:
-        response = _approval_required_tool_response(tool_def, arguments or {}, next_context)
+        response = _approval_required_tool_response_for_context(tool_def, arguments or {}, next_context)
         if isinstance(response.get("widget"), dict):
             response["widget"]["stale_approval_token"] = True
             response["widget"]["stale_approval_code"] = code
@@ -1925,7 +3030,7 @@ def _attach_tool_approval_token(context, tool_def, token_result):
         return context
     next_context = dict(context or {}) if isinstance(context, dict) else {}
     operation = str(token_result.get("operation") or _tool_approval_operation(tool_def))
-    tokens = dict(next_context.get("tool_approval_tokens") if isinstance(next_context.get("tool_approval_tokens"), dict) else {})
+    tokens = mapping_or_empty(next_context.get("tool_approval_tokens"))
     for key in _dedupe_approval_token_keys(tool_def, operation):
         tokens.setdefault(key, token)
     next_context["tool_approval_tokens"] = tokens
@@ -2060,7 +3165,110 @@ def _preflight_user_requested_computer_approval(tool_name, tool_def, arguments, 
         return None
     if _approval_token_from_context(context, tool_def, arguments) or _approval_token_from_arguments(arguments):
         return None
-    return _approval_required_tool_response(tool_def, arguments or {}, context)
+    approval_arguments = _browser_computer_preflight_approval_arguments(tool_name, arguments, context)
+    invalid_response = _invalid_user_requested_computer_approval_response(tool_name, approval_arguments, context)
+    if invalid_response is not None:
+        return invalid_response
+    display_arguments = _browser_computer_preflight_display_arguments(tool_name, arguments, context)
+    return _approval_required_tool_response(
+        tool_def,
+        approval_arguments,
+        context,
+        display_arguments=display_arguments,
+    )
+
+
+def _invalid_user_requested_computer_approval_response(tool_name, approval_arguments, context):
+    if tool_name not in {"browser_computer", "browser_use", "computer_use"}:
+        return None
+    if not isinstance(context, dict) or not context.get("user_requested_computer_use"):
+        return None
+    if not isinstance(approval_arguments, dict):
+        return None
+    action = str(approval_arguments.get("action") or "").strip()
+    payload = mapping_or_empty(approval_arguments.get("payload"))
+    if action == "browser.open_url" and not str(payload.get("url") or "").strip():
+        return _computer_use_invalid_arguments_result(
+            tool_name,
+            action,
+            "browser.open_url requires a non-empty url. Retry with the required url argument, "
+            "or use context/apps/windows/screenshot first to inspect the target.",
+        )
+    if action in {"computer.select_app", "computer.show_app"} and not any(
+        str(payload.get(key) or "").strip() for key in ("app", "application", "name")
+    ):
+        return _computer_use_invalid_arguments_result(
+            tool_name,
+            action,
+            f"{action} requires a non-empty app, application, or name. Retry with the required "
+            "app argument, or use context/apps/windows/screenshot first to inspect available apps/windows.",
+        )
+    return None
+
+
+def _computer_use_invalid_arguments_result(tool_name, action, message):
+    return {
+        "result": f"Tool '{tool_name}' rejected invalid {action} arguments: {message}",
+        "is_error": True,
+        "widget": None,
+        "error_type": "invalid_computer_use_arguments",
+        "rejected_by_tool_validation": True,
+    }
+
+
+def _browser_computer_preflight_approval_arguments(tool_name, arguments, context):
+    if tool_name not in {"browser_computer", "browser_use", "computer_use"}:
+        return arguments or {}
+    if not isinstance(arguments, dict):
+        return {}
+    action, payload = _browser_computer_action_payload(tool_name, arguments)
+    if not str(action or "").startswith(("browser.", "computer.")):
+        return dict(arguments)
+    if action == "browser.open_url":
+        approval_payload = _computer_use_payload_with_context_defaults(action, payload, context)
+        if (
+            isinstance(context, dict)
+            and context.get("user_requested_computer_use")
+            and not any(key in approval_payload for key in ("persistent", "profile_id", "session_id"))
+        ):
+            approval_payload = dict(approval_payload)
+            approval_payload["persistent"] = False
+        approval_payload = _controller_browser_open_url_approval_payload(approval_payload)
+        return _browser_computer_controller_request_arguments(action, approval_payload)
+    payload = _computer_use_payload_with_context_defaults(action, payload, context)
+    return _browser_computer_controller_request_arguments(action, payload)
+
+
+def _browser_computer_preflight_display_arguments(tool_name, arguments, context):
+    if tool_name not in {"browser_use", "computer_use"} or not isinstance(arguments, dict):
+        return None
+    action, payload = _browser_computer_action_payload(tool_name, arguments)
+    if action != "browser.open_url":
+        return None
+    display_payload = _computer_use_payload_with_context_defaults(action, payload, context)
+    for key in ("profile_id", "persistent", "target_app"):
+        if key not in payload:
+            display_payload.pop(key, None)
+    return _browser_computer_controller_request_arguments(action, display_payload)
+
+
+def _approval_required_tool_response_for_context(tool_def, arguments, context=None):
+    tool_name = _tool_approval_tool_name(tool_def if isinstance(tool_def, dict) else {})
+    approval_arguments = _browser_computer_preflight_approval_arguments(
+        tool_name,
+        arguments if isinstance(arguments, dict) else {},
+        context,
+    )
+    invalid_response = _invalid_user_requested_computer_approval_response(tool_name, approval_arguments, context)
+    if invalid_response is not None:
+        return invalid_response
+    display_arguments = _browser_computer_preflight_display_arguments(tool_name, arguments, context)
+    return _approval_required_tool_response(
+        tool_def,
+        approval_arguments,
+        context,
+        display_arguments=display_arguments,
+    )
 
 
 def _context_with_tool_approval_token(context, tool_def, arguments, *extra_lookup_keys):
@@ -2091,14 +3299,44 @@ def _context_with_tool_approval_token(context, tool_def, arguments, *extra_looku
         and isinstance(arguments, dict)
     ):
         action, payload = _browser_computer_action_payload(_tool_approval_tool_name(tool_def), arguments)
-        legacy_scoped_args = _approval_hash_arguments(_browser_computer_legacy_request_arguments(
-            _tool_approval_tool_name(tool_def),
-            action,
-            payload,
-        ))
-        candidates.append(
-            (operation, approval.hash_arguments(legacy_scoped_args), pack_id, conversation_id),
-        )
+        if (
+            isinstance(next_context, dict)
+            and next_context.get("user_requested_computer_use")
+            and action == "browser.open_url"
+            and not any(key in payload for key in ("persistent", "profile_id", "session_id"))
+        ):
+            payload = dict(payload)
+            payload["persistent"] = False
+        payload_candidates = [payload]
+        context_payload = _computer_use_payload_with_context_defaults(action, payload, next_context)
+        if context_payload != payload:
+            payload_candidates.append(context_payload)
+        for candidate_payload in payload_candidates:
+            payload_only_args = _approval_hash_arguments(
+                _browser_computer_payload_only_request_arguments(action, candidate_payload)
+            )
+            candidates.append(
+                (operation, approval.hash_arguments(payload_only_args), pack_id, conversation_id),
+            )
+            for controller_payload in _browser_computer_controller_approval_payloads(
+                action,
+                candidate_payload,
+                next_context,
+            ):
+                controller_args = _approval_hash_arguments(
+                    _browser_computer_controller_request_arguments(action, controller_payload)
+                )
+                candidates.append(
+                    (operation, approval.hash_arguments(controller_args), pack_id, conversation_id),
+                )
+            legacy_scoped_args = _approval_hash_arguments(_browser_computer_legacy_request_arguments(
+                _tool_approval_tool_name(tool_def),
+                action,
+                candidate_payload,
+            ))
+            candidates.append(
+                (operation, approval.hash_arguments(legacy_scoped_args), pack_id, conversation_id),
+            )
         legacy_args_hash = approval.hash_arguments(_approval_replayable_arguments(arguments))
         legacy_operation = _tool_approval_operation(tool_def)
         candidates.extend(
@@ -2140,6 +3378,12 @@ def _context_with_tool_approval_token(context, tool_def, arguments, *extra_looku
             break
         if verification is None:
             verification = candidate_verification
+    if verification is None:
+        return next_context, {
+            "result": "approval token could not be verified",
+            "is_error": True,
+            "widget": None,
+        }
     if verification.valid:
         mark_tool_server_approval_context(next_context)
         next_context["_tool_server_approval_token"] = token
@@ -2149,7 +3393,7 @@ def _context_with_tool_approval_token(context, tool_def, arguments, *extra_looku
         next_context["_tool_server_approval_conversation_id"] = verified_conversation_id
         return next_context, None
     if _tool_approval_tool_name(tool_def) in {"browser_computer", "browser_use", "computer_use"}:
-        return next_context, _approval_required_tool_response(tool_def, arguments, next_context)
+        return next_context, _approval_required_tool_response_for_context(tool_def, arguments, next_context)
     if verification.code == "APPROVAL_TOKEN_USED":
         return next_context, {
             "result": verification.message or "approval token has already been used",
@@ -2157,7 +3401,7 @@ def _context_with_tool_approval_token(context, tool_def, arguments, *extra_looku
             "widget": None,
         }
     if verification.code in _STALE_APPROVAL_TOKEN_CODES:
-        return next_context, _approval_required_tool_response(tool_def, arguments, next_context)
+        return next_context, _approval_required_tool_response_for_context(tool_def, arguments, next_context)
     return next_context, {
         "result": verification.message or "approval token is invalid",
         "is_error": True,
@@ -2165,13 +3409,14 @@ def _context_with_tool_approval_token(context, tool_def, arguments, *extra_looku
     }
 
 
-def _approval_required_tool_response(tool_def, arguments, context=None):
+def _approval_required_tool_response(tool_def, arguments, context=None, *, display_arguments=None):
     tool_name = _tool_approval_tool_name(tool_def)
     operation, approval_args = _tool_approval_scope(tool_def, arguments)
     risk_level = _tool_approval_risk_level(tool_def)
     args = approval_args
-    display_args = _tool_approval_display_arguments(tool_def, arguments, approval_args)
-    display_payload = _tool_approval_display_payload(tool_def, arguments, approval_args)
+    visible_arguments = display_arguments if isinstance(display_arguments, dict) else arguments
+    display_args = _tool_approval_display_arguments(tool_def, visible_arguments, approval_args)
+    display_payload = _tool_approval_display_payload(tool_def, visible_arguments, approval_args)
     context = context if isinstance(context, dict) else {}
     request = _approval_module().create_approval_request(
         operation,
@@ -2183,11 +3428,27 @@ def _approval_required_tool_response(tool_def, arguments, context=None):
             "function_id": operation,
             "pack_id": str(context.get("owner_pack") or context.get("pack_id") or context.get("_source_pack_id") or "defaultspack"),
             "conversation_id": str(context.get("conversation_id") or context.get("conversation_turn_id") or ""),
-            "arguments": display_args,
+            "arguments": args,
         },
     )
+    is_computer_tool = tool_name in {"browser_computer", "browser_use", "computer_use"}
+    prompt = _COMPUTER_APPROVAL_PROMPT if is_computer_tool else ""
+    recovery = (
+        {
+            "kind": "approval_required",
+            "requires_approval": True,
+            "prompt": prompt,
+            "note": (
+                "foreground/on-screen operation is available after approval; "
+                "approve the request or choose foreground work."
+            ),
+            "recommended_next_actions": ["approve_request", "choose_foreground_work"],
+        }
+        if is_computer_tool
+        else None
+    )
     return {
-        "result": "Tool '{}' requires approval".format(tool_name),
+        "result": prompt or "Tool '{}' requires approval".format(tool_name),
         "is_error": False,
         "widget": {
             "type": "approval_request",
@@ -2203,7 +3464,11 @@ def _approval_required_tool_response(tool_def, arguments, context=None):
             "args_hash": request["args_hash"],
             "expires_at": request["expires_at"],
             "display_summary": request["display_summary"],
+            **({"message": prompt, "user_prompt": prompt} if prompt else {}),
+            **({"recovery": recovery} if recovery else {}),
         },
+        **({"message": prompt, "user_prompt": prompt} if prompt else {}),
+        **({"recovery": recovery} if recovery else {}),
     }
 
 
@@ -2340,6 +3605,8 @@ def _function_call_context(context, tool_def):
         "user_requested_computer_use",
         "computer_use_target_app",
         "computer_use_target_title",
+        "computer_use_foreground_preferred",
+        "computer_use_mouse_keyboard_requested",
         "computer_use_physical_clicks",
     ):
         if key in context and _json_safe_value(context.get(key)):

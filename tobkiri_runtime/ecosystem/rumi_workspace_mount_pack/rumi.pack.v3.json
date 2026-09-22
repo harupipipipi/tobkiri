@@ -1,17 +1,217 @@
 {
-  "pack_api_version":"rumi.pack.v3","pack":{"id":"rumi.workspace_mount","version":"1.0.0","kind":"service","display_name":"Rumi Workspace Mount","description":"Canonical workspace metadata and mount ownership."},
-  "contracts":{"provides":[
-    {"id":"rumi.resource.workspace.v1","version":"1.0.0","provider_instance_id":"workspace-mount.resource","cardinality":"one","security":"sensitive","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_workspace_mount_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["workspace.metadata.read"]},
-    {"id":"rumi.action.workspace.mount.v1","version":"1.0.0","provider_instance_id":"workspace-mount.manage","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_workspace_mount_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"in_process","required_capabilities":["workspace.mount.manage"]}
-  ],"requires":[{"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}]},
-  "entrypoints":[
-    {"id":"workspace-resource","contract_id":"rumi.resource.workspace.v1","loader":"python","module":"ecosystem.rumi_workspace_mount_pack.runtime.mounts","symbol":"create_workspace_resource","artifact_hash":"sha256:3d02b31a2dca00987e97efbcc6b3885d8179558cda9aacffbab233a68d6ded98"},
-    {"id":"workspace-mount","contract_id":"rumi.action.workspace.mount.v1","loader":"python","module":"ecosystem.rumi_workspace_mount_pack.runtime.mounts","symbol":"create_workspace_action","artifact_hash":"sha256:3d02b31a2dca00987e97efbcc6b3885d8179558cda9aacffbab233a68d6ded98"}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.workspace.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_workspace_mount_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "workspace-mount.resource",
+        "required_capabilities": [
+          "workspace.metadata.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.workspace.mount.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_workspace_mount_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "workspace-mount.manage",
+        "required_capabilities": [
+          "workspace.mount.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:7c339e5cd1716f30f264e3b0239344ed4f7a13415a544ff88f627d7202bb545b",
+      "contract_id": "rumi.resource.workspace.v1",
+      "id": "workspace-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_workspace_mount_pack.runtime.mounts",
+      "symbol": "create_workspace_resource"
+    },
+    {
+      "artifact_hash": "sha256:7c339e5cd1716f30f264e3b0239344ed4f7a13415a544ff88f627d7202bb545b",
+      "contract_id": "rumi.action.workspace.mount.v1",
+      "id": "workspace-mount",
+      "loader": "python",
+      "module": "ecosystem.rumi_workspace_mount_pack.runtime.mounts",
+      "symbol": "create_workspace_action"
+    }
   ],
-  "resources":[],"storage":[{"namespace":"rumi.workspace.mounts","schema_version":"1.0.0","authoritative":true,"retention":"until explicit unmount/profile removal","export_import":true}],
-  "permissions":[{"capability":"workspace.metadata.read","access":"read","approval_required":false},{"capability":"workspace.mount.manage","access":"control","approval_required":true},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:3d02b31a2dca00987e97efbcc6b3885d8179558cda9aacffbab233a68d6ded98","build_identity":"rumi-workspace-mount-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.coding.workspace_store","defaultspack.domain.coding.workspace_resolver"],"compatibility_aliases":[],"compatibility_projection":"read_only","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Restore prior mount metadata snapshot without deleting workspace files."},
-  "extensions":{"rumi.workspace_mount.boundary":{"file_read":false,"file_write":false,"shell":false,"git":false,"canonical_realpath":true,"mutation_receipt_required":true}}
+  "extensions": {
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.workspace.mount.v1",
+            "rumi.resource.workspace.v1"
+          ],
+          "requires": [
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "Canonical workspace metadata and mount ownership.",
+        "display_name": "Rumi Workspace Mount",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "authority": {
+            "control": "workspace.mount.manage",
+            "read": "workspace.metadata.read"
+          },
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:0eae94b5571c875c77b04de7135642efda677b8ccdf042601d2d20f43ca2811a",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:d54937b9d0981de53d29e74376d53a4272e8c75937349cdb510a94c7bf8f4f28"
+          },
+          "owner_surfaces": [
+            "workspace_mount_metadata"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_workspace_mount_pack",
+        "pack_identity": "rumi:ecosystem/rumi_workspace_mount_pack",
+        "provenance": {
+          "build_identity": "rumi_workspace_mount_pack:1.0.0",
+          "content_hash": "sha256:7c339e5cd1716f30f264e3b0239344ed4f7a13415a544ff88f627d7202bb545b",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "host.authority.consume",
+          "workspace.metadata.read",
+          "workspace.mount.manage"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_workspace_mount_pack"
+    },
+    "rumi.workspace_mount.boundary": {
+      "canonical_realpath": true,
+      "file_read": false,
+      "file_write": false,
+      "git": false,
+      "mutation_receipt_required": true,
+      "shell": false
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_workspace_mount_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:d54937b9d0981de53d29e74376d53a4272e8c75937349cdb510a94c7bf8f4f28"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.coding.workspace_store",
+      "defaultspack.domain.coding.workspace_resolver"
+    ],
+    "removal_wave": 10,
+    "rollback": "Restore prior mount metadata snapshot without deleting workspace files.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Canonical workspace metadata and mount ownership.",
+    "display_name": "Rumi Workspace Mount",
+    "id": "rumi.workspace_mount",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "workspace.metadata.read"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "workspace.mount.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_workspace_mount_pack:1.0.0",
+    "content_hash": "sha256:7c339e5cd1716f30f264e3b0239344ed4f7a13415a544ff88f627d7202bb545b",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": true,
+      "namespace": "rumi.workspace.mounts",
+      "retention": "until explicit unmount/profile removal",
+      "schema_version": "1.0.0"
+    }
+  ]
 }
-

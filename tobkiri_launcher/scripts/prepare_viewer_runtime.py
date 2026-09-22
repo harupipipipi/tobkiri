@@ -155,6 +155,7 @@ def copy_dev_uv(source: Path, destination: Path) -> None:
         if os.name != "nt":
             temporary.chmod(
                 temporary.stat().st_mode
+                | stat.S_IWUSR
                 | stat.S_IXUSR
                 | stat.S_IXGRP
                 | stat.S_IXOTH
@@ -241,6 +242,7 @@ def prepare_release(repo_root: Path, target: str) -> None:
         cwd=repo_root,
     )
 
+    preparer.seal_pack_shell_binary(repo_root, target)
     remove_existing_staged_uv(repo_root, target)
 
     run_command(

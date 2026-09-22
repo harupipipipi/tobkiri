@@ -150,9 +150,10 @@ class CommandProtocolRegistry:
         offline_queue: OfflineOperationQueue | None = None,
     ) -> None:
         self.pack_root = pack_root or Path(__file__).resolve().parents[2]
+        self._settings_owner = pack_root if pack_root is not None else None
         self.legacy = SlashCommandRegistry(self.pack_root)
         self.operations = CommandOperationRegistry(self.legacy, self.pack_root)
-        settings_path = defaultspack_frontend_settings_path(self.pack_root)
+        settings_path = defaultspack_frontend_settings_path(self._settings_owner)
         self._event_store = event_store
         self._offline_queue = offline_queue
         self._event_store_path = settings_path.with_name(
@@ -808,19 +809,24 @@ class CommandProtocolRegistry:
         )
         if authority_result is not None:
             return authority_result
+        operation_binding = {
+            "version": int(operation_plan.get("version") or 1),
+            "action": action,
+            "plan_sha256": str(operation_plan["plan_sha256"]),
+        }
         approval_args = {
             "command_ref": resolved["canonical_id"],
             "operation_id": resolved["execution"].get("operation_ref")
             or resolved["canonical_id"],
             "invocation_id": legacy_payload.get("invocation_id"),
-            "args": args,
+            "args_sha256": hash_arguments(args),
             "conversation_id": legacy_payload.get("conversation_id"),
             "mode": legacy_payload.get("mode"),
             "catalog_revision": self.catalog()["catalog_revision"],
             "pack_generation": resolved.get("pack_generation"),
             "owner_key": self._owner_key({}, context),
             "expected_revision": payload.get("expected_revision"),
-            "operation_plan": operation_plan,
+            "operation_binding": operation_binding,
         }
         operation = f"command:{resolved['canonical_id']}"
         approval_token = str(payload.get("approval_token") or "").strip()
@@ -856,11 +862,10 @@ class CommandProtocolRegistry:
                         [],
                     ),
                     "details": {
-                        "args": deepcopy(args),
                         "mode": legacy_payload.get("mode"),
                         "conversation_id": legacy_payload.get("conversation_id"),
                         "operation_ref": resolved["execution"].get("operation_ref"),
-                        "operation_plan": deepcopy(operation_plan),
+                        "operation_binding": deepcopy(operation_binding),
                     },
                 },
                 "message": "Approval is required before this command can resume.",
@@ -937,7 +942,7 @@ class CommandProtocolRegistry:
                     "message": "high-risk command executor policy is not registered",
                 },
             }
-        from core_runtime.authority import get_authority_service
+        from core_runtime.legacy_runtime_removed import removed_authority_service
 
         owner_key = self._owner_key({}, context)
         principal_id, _, profile_id = owner_key.partition(":")
@@ -951,11 +956,10 @@ class CommandProtocolRegistry:
                 "command_ref": resolved["canonical_id"],
                 "executor_policy_ref": policy_ref,
                 "operation_plan_sha256": operation_plan["plan_sha256"],
-                "cwd": operation_plan["cwd"],
             },
         }
         try:
-            decision = get_authority_service().check(
+            decision = removed_authority_service().check(
                 principal_id=principal_id,
                 permission_id="host.process.exec_guarded",
                 resource=resource,
@@ -1003,7 +1007,13 @@ class CommandProtocolRegistry:
                     "permission_ids": [decision.permission_id],
                     "details": {
                         "executor_policy_ref": policy_ref,
-                        "operation_plan": deepcopy(operation_plan),
+                        "operation_binding": {
+                            "version": int(operation_plan.get("version") or 1),
+                            "action": str(operation_plan.get("action") or ""),
+                            "plan_sha256": str(
+                                operation_plan.get("plan_sha256") or ""
+                            ),
+                        },
                     },
                 },
                 "message": decision.reason,
@@ -1444,7 +1454,7 @@ class CommandProtocolRegistry:
 
         digest = hashlib.sha256()
         for relative in (
-            Path("ecosystem.json"),
+            Path("pack.v4.json"),
             Path("commands/default_commands.json"),
             Path("schemas/command-protocol-v1.schema.json"),
         ):
@@ -1463,7 +1473,7 @@ class CommandProtocolRegistry:
 
     def _registered_settings_commands(self) -> list[dict[str, Any]]:
         settings = FrontendSettingsStore(
-            defaultspack_frontend_settings_path(self.pack_root)
+            defaultspack_frontend_settings_path(self._settings_owner)
         ).read()
         commands_section = settings.get("commands") if isinstance(settings.get("commands"), dict) else {}
         records = commands_section.get("registered_slash_commands") if isinstance(commands_section, dict) else []

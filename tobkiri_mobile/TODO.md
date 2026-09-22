@@ -12,15 +12,18 @@
 - [x] Add Flutter CI for formatting, analysis, and unit tests.
 - [x] Add unit coverage for API envelope handling, auth headers, URL
       normalization, module parsing, and action routes.
+- [x] Add QR-code pairing from the PC viewer so users do not type the URL and
+      token manually.
+- [x] Add authenticated PC chat transport on the mobile contract.
+- [x] Add PC chat controls for model display, model selection, composer **+**
+      actions, and PC slash commands discovered from the PC command
+      manifest/capabilities response.
+- [x] Add local/mobile model selection for on-device chat.
 
 ## Next Hardening
 
-- [ ] Add QR-code pairing from the PC viewer so users do not type the URL and
-      token manually.
 - [ ] Add optional HTTPS certificate pinning for reverse-proxy deployments.
 - [ ] Add read-only mode that hides mutation buttons unless explicitly enabled.
 - [ ] Add push/local notifications for defaultspack migration and pack request
       changes.
-- [ ] Add chat transport support only after a stable authenticated mobile
-      contract exists for the `8766` defaultspack surface.
 - [ ] Add screenshot-based golden tests after Flutter SDK is available locally.

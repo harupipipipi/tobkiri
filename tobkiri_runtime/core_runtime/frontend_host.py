@@ -14,6 +14,7 @@ except ImportError:  # Desktop runtime keeps third-party bootstrap minimal.
     Draft202012Validator = None  # type: ignore[assignment,misc]
 
 from .global_contracts.canonical import content_identity
+from .pack_artifact_integrity import verify_declared_artifacts
 from .paths import PackLocation, resolve_pack_locations
 from .resolved_profile import ResolvedProfile
 
@@ -26,6 +27,7 @@ _PACK_QUARANTINE_CODES = {
     "frontend_module_hash_mismatch",
     "frontend_module_path_unbound",
     "frontend_pack_hash_mismatch",
+    "frontend_pack_artifact_integrity_failed",
 }
 SCHEMA_PATH = (
     Path(__file__).resolve().parents[1]
@@ -139,11 +141,11 @@ class FrontendHostRegistry:
                 quarantined.add(location.pack_id)
             contributions.extend(loaded)
 
-        accepted, collision_diagnostics = _reject_collisions(contributions)
+        accepted_list, collision_diagnostics = _reject_collisions(contributions)
         diagnostics.extend(collision_diagnostics)
-        accepted = tuple(
+        sorted_accepted = tuple(
             sorted(
-                accepted,
+                accepted_list,
                 key=lambda item: (
                     item.kind,
                     -item.priority,
@@ -157,7 +159,7 @@ class FrontendHostRegistry:
             "profile_id": self.plan.profile_id,
             "profile_revision": self.plan.profile_revision,
             "plan_hash": self.plan.plan_hash,
-            "contributions": tuple(asdict(item) for item in accepted),
+            "contributions": tuple(asdict(item) for item in sorted_accepted),
             "diagnostics": tuple(asdict(item) for item in diagnostics),
             "quarantined_pack_ids": tuple(sorted(quarantined)),
         }
@@ -166,7 +168,7 @@ class FrontendHostRegistry:
             profile_id=self.plan.profile_id,
             profile_revision=self.plan.profile_revision,
             plan_hash=self.plan.plan_hash,
-            contributions=accepted,
+            contributions=sorted_accepted,
             diagnostics=tuple(diagnostics),
             quarantined_pack_ids=tuple(sorted(quarantined)),
             catalog_hash=content_identity(payload),
@@ -200,6 +202,20 @@ class FrontendHostRegistry:
                     "frontend_pack_hash_mismatch",
                     "error",
                     "Frontend pack provenance does not match the resolved plan",
+                    location.pack_id,
+                )
+            ]
+        integrity_ok, integrity_diagnostics = verify_declared_artifacts(
+            location.pack_subdir,
+            manifest,
+        )
+        if not integrity_ok:
+            return [], [
+                _diagnostic(
+                    "frontend_pack_artifact_integrity_failed",
+                    "error",
+                    "Frontend pack artifacts no longer match the resolved plan: "
+                    + "; ".join(integrity_diagnostics),
                     location.pack_id,
                 )
             ]

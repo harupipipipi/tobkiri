@@ -12,6 +12,11 @@ from domain.memory.store import MemoryStore
 
 def default_memory_dir() -> Path:
     """Return a nonauthoritative compatibility label path."""
+    import os
+
+    configured = os.environ.get("RUMI_DEFAULTSPACK_MEMORY2_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
     return Path("compatibility") / "memory-owner-contract"
 
 

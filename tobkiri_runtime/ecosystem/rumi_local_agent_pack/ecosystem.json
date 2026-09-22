@@ -1,16 +1,41 @@
 {
+  "components": {},
+  "load_order": [],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3c42743d0091c9904ce553ee98a4a47f940e2989e73f392f25c6327c8e23225e",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:fc8c78cc5d9866e4f44dc90b435f416bcb671d004c3e8e09d93aeab1f3aa452d"
+    },
+    "description": "Starter local agent profiles, prompts, presets, and examples.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:fc8c78cc5d9866e4f44dc90b435f416bcb671d004c3e8e09d93aeab1f3aa452d"
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Local Agent Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
   "pack_id": "rumi_local_agent_pack",
   "pack_identity": "rumi:ecosystem/rumi_local_agent_pack",
+  "provenance": {
+    "build_identity": "rumi_local_agent_pack:1.0.0",
+    "content_hash": "sha256:3c42743d0091c9904ce553ee98a4a47f940e2989e73f392f25c6327c8e23225e",
+    "signature": null,
+    "trust_class": "local"
+  },
   "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Local Agent Pack",
-    "description": "Starter local agent profiles, prompts, presets, and examples.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
-  },
   "vocabulary": {
-    "types": ["agent"]
-  },
-  "components": {},
-  "load_order": []
+    "types": [
+      "agent"
+    ]
+  }
 }

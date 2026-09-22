@@ -75,6 +75,26 @@ After starting, open http://localhost:8765/panel/ in your browser to access the 
 - MSVC Build Tools (`tobkiri_launcher` を Windows で触る場合)
 - Flutter SDK (`tobkiri_mobile` を触る場合)
 
+### Dockerless sandbox on macOS
+
+Docker is optional on macOS. Tobkiri uses a managed Lima VM for untrusted
+function, Pack process, and coding-terminal execution:
+
+```bash
+brew install lima
+```
+
+Open the runtime setup flow once after installation. Tobkiri creates an Ubuntu
+VM with no host mounts, SSH agent forwarding, proxy propagation, containerd, or
+guest port forwarding. Each untrusted operation then runs inside an additional
+Bubblewrap user/PID/filesystem/network namespace in that VM. Network is denied
+unless the calling tool explicitly receives an approved network policy.
+
+The first setup downloads an Ubuntu image and installs the guest packages.
+Desktop GUI applications share the managed guest identity, so the GUI desktop
+is not itself an untrusted application boundary; Pack and terminal commands use
+the per-operation boundary described above.
+
 ### Clone and install
 
 Windows PowerShell:

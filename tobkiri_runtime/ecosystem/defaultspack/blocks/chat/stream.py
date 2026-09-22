@@ -5,6 +5,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from blocks._common import error
+from domain.ai_client.gateway import AIClient
 from domain.ai_client.gateway_contract_client import ContractLLMGateway
 from domain.chat.run_request import validate_chat_run_input
 from domain.chat.idempotency import IdempotencyConflictError, reserve_chat_operation

@@ -1,16 +1,41 @@
 {
+  "components": {},
+  "load_order": [],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:f8a7e1466d14d27dfbf95a015a8981e3aafa1d07538af4978b34978d99674dad",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:6bce44d9b494f37d39eff2d0fdbfc55b1c8633fe50c92402baaaec43e6c4e795"
+    },
+    "description": "Reference shell/sidebar/settings UI declarations for default Rumi installs.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:6bce44d9b494f37d39eff2d0fdbfc55b1c8633fe50c92402baaaec43e6c4e795"
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Reference UI Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
   "pack_id": "rumi_reference_ui_pack",
   "pack_identity": "rumi:ecosystem/rumi_reference_ui_pack",
+  "provenance": {
+    "build_identity": "rumi_reference_ui_pack:1.0.0",
+    "content_hash": "sha256:f8a7e1466d14d27dfbf95a015a8981e3aafa1d07538af4978b34978d99674dad",
+    "signature": null,
+    "trust_class": "local"
+  },
   "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Reference UI Pack",
-    "description": "Reference shell/sidebar/settings UI declarations for default Rumi installs.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
-  },
   "vocabulary": {
-    "types": ["frontend"]
-  },
-  "components": {},
-  "load_order": []
+    "types": [
+      "frontend"
+    ]
+  }
 }

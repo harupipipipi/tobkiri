@@ -1,1 +1,74 @@
-{"pack_id": "rumi_default_tool_projection_pack", "pack_identity": "rumi:ecosystem/rumi_default_tool_projection_pack", "display_name": "Rumi Default Tool Projection Pack", "version": "1.0.0", "description": "Finite defaultspack tool compatibility projection.", "dependencies": {"defaultspack": ">=2.0.0"}, "connectivity": {"requires": [], "provides": ["rumi.resource.tool.migration.source.v1", "rumi.service.tool.local.operation.v1"]}, "required_secrets": [], "required_capabilities": ["tool.migration.source.read", "tool.local.operation", "service.invoke", "service.mutate"], "required_network": {"allowed_domains": [], "allowed_ports": []}, "host_execution": true, "resources": [], "provenance": {"content_hash": "sha256:a4035dbb1f6704ecaa65b27827c43d5544bbef666fd6f7c0a624bc69b8cb3af6", "build_identity": "rumi-default-tool-projection-pack:1.0.0", "trust_class": "local", "signature": null}, "metadata": {"authoritative_owner": false, "owner_surfaces": ["legacy_tool_projection"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"approval_bypass": false, "consumer_bound": true}}}
+{
+  "connectivity": {
+    "provides": [
+      "rumi.resource.tool.migration.source.v1",
+      "rumi.service.tool.local.operation.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Finite legacy definition migration source and local execution compatibility projection.",
+  "display_name": "Rumi Default Tool Projection",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:a1aad87241c11903383dd09232a682bcc6d58fb573ebfb5c4aff70331cd43b57",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:39748e508c7b15b53ec189953fddaf4389c9ff8ad9fbf87c14ef3f202e90812f"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:39748e508c7b15b53ec189953fddaf4389c9ff8ad9fbf87c14ef3f202e90812f"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "legacy_tool_projection"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "approval_bypass": false,
+      "consumer_bound": true
+    }
+  },
+  "pack_id": "rumi_default_tool_projection_pack",
+  "pack_identity": "rumi:ecosystem/rumi_default_tool_projection_pack",
+  "provenance": {
+    "build_identity": "rumi_default_tool_projection_pack:1.0.0",
+    "content_hash": "sha256:dba1e0d5467cea33ccb37fe0245fcdf19ca4930e014c1046992d9cd2e57180e4",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "service.invoke",
+    "service.mutate",
+    "tool.local.operation",
+    "tool.migration.source.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

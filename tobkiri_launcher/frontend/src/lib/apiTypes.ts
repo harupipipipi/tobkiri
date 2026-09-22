@@ -1,13 +1,11 @@
 /**
- * API Type definitions — aligned with backend APIResponse envelope.
+ * v4 frontend contract and Launcher command result types.
  *
- * Backend always returns: { success: boolean, data: T | null, error: string | null }
- * The apiFetch wrapper unwraps this envelope and returns data directly.
+ * HTTP calls unwrap the common envelope before returning these shapes. The
+ * browser-facing routes are defined by the v4 frontend contract map; the
+ * presentation and desktop-control shapes are returned by Launcher-owned
+ * Tauri commands.
  */
-
-// ============================================================
-// Generic API envelope
-// ============================================================
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -15,49 +13,186 @@ export interface ApiResponse<T> {
   error: string | null;
 }
 
-// ============================================================
-// Backend data types (as returned inside envelope's `data`)
-// ============================================================
+export interface PackControlBinding {
+  profile_id: string;
+  workspace_id: string;
+  profile_revision: string;
+  plan_digest: string;
+  catalog_revision: string;
+}
 
-/** GET /api/panel/packs → data.packs[] */
-export interface ApiPack {
+export interface ApiPackCapability {
+  name: string;
+  description: string;
+}
+
+export interface ApiPackOperation {
+  operation_id: string;
+  contract_id: string;
+  provider_id: string;
+  function_id?: string;
+  capabilities?: string[];
+  required_capabilities?: string[];
+  input_schema?: Record<string, unknown>;
+  invokable?: boolean;
+}
+
+export interface ApiPack extends PackControlBinding {
   pack_id: string;
   name: string;
   version: string;
   description: string;
   is_core: boolean;
+  required?: boolean;
+  installed: boolean;
   enabled: boolean;
+  artifact_digest: string;
   approval_status?: string;
   approval_reason?: string | null;
   approved?: boolean;
   hash_valid?: boolean | null;
   critical_changed?: boolean | null;
   approval_issues?: string[];
+  capabilities?: ApiPackCapability[];
+  operations?: ApiPackOperation[];
+  declared_operations?: ApiPackOperation[];
+  invokable_operations?: ApiPackOperation[];
+  flows?: string[];
+  dependencies?: string[];
 }
 
-/** GET /api/panel/flows → data.flows[] */
-export interface ApiFlow {
-  flow_id: string;
-  name: string;
-  pack_id: string;
-  filename: string;
+export interface ApiFrontendContribution {
+  contribution_id: string;
+  owner_pack_id: string;
+  label: string;
+  action_contract?: string | null;
+  operation_id?: string | null;
+  provider_id?: string | null;
+  function_id?: string | null;
+  kind?: string;
+  mode?: string;
+  route?: string;
+  owner_pack_hash?: string;
+  build_identity?: string;
+  resolved_profile_revision?: string;
+  resolved_plan_hash?: string;
+  descriptor_hash?: string;
+  view?: {type?: string} | null;
 }
 
-/** GET /api/panel/flows/{id} → data */
-export interface ApiFlowDetail {
-  flow_id: string;
-  name: string;
-  pack_id: string;
-  filename: string;
-  yaml_content: string;
+export interface ApiFrontendDiagnostic {
+  code: string;
+  severity?: string;
+  message: string;
+  owner_pack_id?: string | null;
+  contribution_id?: string | null;
+  pack_id?: string | null;
+  operation_id?: string | null;
 }
 
-/** GET /api/panel/dashboard → data */
+export interface ApiDynamicFrontendCatalog {
+  version: string;
+  profile_id: string;
+  profile_revision: string;
+  plan_hash: string;
+  contributions: ApiFrontendContribution[];
+  diagnostics: ApiFrontendDiagnostic[];
+  quarantined_pack_ids: string[];
+  catalog_hash: string;
+}
+
+export interface ApiUiCatalogData {
+  dynamic_host?: ApiDynamicFrontendCatalog | null;
+  packs?: ApiPack[];
+  count?: number;
+}
+
+export interface FrontendCapabilityInvocation {
+  profileId: string;
+  planHash: string;
+  catalogHash: string;
+  contributionId: string;
+  ownerPackId: string;
+  contractId: string;
+  payload: Record<string, unknown>;
+}
+
+export interface ApiPackVMProvisioningPlan {
+  backend_id: string;
+  instance: string;
+  launcher_reason: string | null;
+  runtime_path_status: 'ready' | 'unsafe';
+  architecture: string;
+  image_source: string;
+  image_digest: string;
+  image_size_bytes: number;
+  image_download_required: boolean;
+  config_digest: string;
+  guest_runner_digest: string;
+  host_build_digest: string;
+  ceremony_nonce: string;
+  plan_digest: string;
+  confirmation: string;
+}
+
+export interface ApiPackVMConsent {
+  consent_id: string;
+  plan_digest: string;
+  image_source: string;
+  image_digest: string;
+  image_size_bytes: number;
+  image_download_approved: boolean;
+}
+
+export type ApiPackVMOperationState =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
+
+export interface ApiPackVMOperation {
+  operation_id: string;
+  operation_kind: 'provision' | 'cleanup';
+  consent_digest?: string;
+  state: ApiPackVMOperationState;
+  plan_digest: string;
+  updated_unix: number;
+  doctor?: ApiPackVMDoctor;
+  error?: string;
+  error_type?: string;
+  diagnostic?: {
+    code: string;
+    stage: string;
+    kind: 'timeout' | 'exit';
+    exit_code: number | null;
+    stderr: string | null;
+  };
+  result?: ApiPackVMCleanupResult;
+}
+
+export interface ApiPackVMDoctor {
+  ready: boolean;
+  backend_id: string;
+  platform: string;
+  instance: string;
+  reason: string | null;
+  attestation_digest: string | null;
+}
+
+export interface ApiPackVMCleanupResult {
+  ready: false;
+  instance: string;
+  cleanup_confirmation: string;
+  missing: boolean;
+}
+
 export interface ApiDashboard {
-  packs: { total: number; enabled: number; disabled: number };
-  flows: { total: number };
-  kernel: { status: string; uptime: number | null };
-  profile: { username: string; language: string; icon: string | null } | null;
+  packs: {total: number; enabled: number; disabled: number};
+  flows: {total: number};
+  kernel: {status: string; uptime: number | null};
+  profile: {username: string; language: string; icon: string | null} | null;
   supervisor?: ApiSupervisorDashboard | null;
 }
 
@@ -151,28 +286,10 @@ export interface ApiSupervisorDashboard {
   sessions: ApiSupervisorSession[];
   selected_session: ApiSupervisorSession | null;
   recent_events: ApiSupervisorEvent[];
-  event_schema: Array<{ type: string; description: string }>;
+  event_schema: Array<{type: string; description: string}>;
   storage_targets: Record<string, string>;
   action_buttons: string[];
   security_guardrails: string[];
-}
-
-/** GET /api/panel/settings/profile → data.profile */
-export interface ApiProfile {
-  username: string;
-  language: string;
-  icon: string | null;
-  occupation: string | null;
-}
-
-/** GET /api/panel/version → data */
-export interface ApiVersion {
-  app_version?: string;
-  display_version?: string;
-  kernel_version: string;
-  python_version: string;
-  platform: string;
-  platform_release: string;
 }
 
 export interface DesktopPermissionStatus {
@@ -208,522 +325,53 @@ export interface DesktopSystemInfo {
   permissions: DesktopPermissionStatus[];
 }
 
-export type ApiUpdateTarget = 'tobkiri' | 'defaultspack';
+export type DebugApprovalState =
+  | 'disabled'
+  | 'pending'
+  | 'armed'
+  | 'active'
+  | 'expired'
+  | 'revoked';
 
-export interface ApiUpdateInfo {
-  target: ApiUpdateTarget;
-  current_version: string;
-  latest_version: string;
-  update_available: boolean;
-  release_url: string;
-  repo: string;
+export type DebugApprovalDuration = '1h' | '1d' | '1w' | '1mo' | 'permanent';
+
+export interface DebugApprovalStatus {
+  state: DebugApprovalState;
+  reason?: string | null;
+  armed_remaining_seconds?: number | null;
+  session_id?: string | null;
+  run_id?: string | null;
+  workspace?: string | null;
+  workspace_digest?: string | null;
+  pack_id?: string | null;
+  profile_id?: string | null;
+  guardian_owned?: boolean;
+  lease_epoch?: number | null;
+  expires_at?: number | null;
+  duration?: DebugApprovalDuration | null;
+  instance_nonce: string;
 }
 
-export interface ApiUpdateSettings {
-  auto_update: Record<ApiUpdateTarget, boolean>;
-  check_interval_hours: number;
-  last_checked_at: string | null;
-  last_results: Array<Record<string, unknown>>;
-  updated_at: string | null;
-}
-
-// ============================================================
-// Endpoint-specific response data shapes (inside envelope)
-// ============================================================
-
-export interface PacksResponseData {
+export interface PacksResponseData extends PackControlBinding {
   packs: ApiPack[];
   count: number;
 }
 
-export interface PackToggleResponseData {
+export interface PackInstallResponseData extends PackControlBinding {
+  pack_id: string;
+  installed: boolean;
+}
+
+export interface PackToggleResponseData extends PackControlBinding {
   pack_id: string;
   enabled: boolean;
 }
 
-export interface PackApprovalResponseData {
+export interface PackApprovalResponseData extends PackControlBinding {
   pack_id: string;
   approved: boolean;
   approval_status: string;
-}
-
-export interface UpdatesResponseData {
-  updates: ApiUpdateInfo[];
-}
-
-export interface UpdateApplyResponseData {
-  target: ApiUpdateTarget;
-  current_version: string;
-  latest_version: string;
-  release_url: string;
-  backup_dir: string;
-  applied_files: string[];
-  skipped_files: string[];
-  applied_count: number;
-  skipped_count: number;
-  restart_required?: boolean;
-  routes_reload_recommended?: boolean;
-}
-
-export interface ApiStartupNodePort {
-  id?: string;
-  port_id?: string;
-  label?: string;
-  display_name?: Record<string, string>;
-  direction: 'input' | 'output';
-  standards?: string[];
-  contracts?: string[];
-  multi?: boolean;
-  multiple?: boolean;
-}
-
-export interface ApiStartupNodeDefinition {
-  node_id: string;
-  ref?: string;
-  title?: string;
-  subtitle?: string;
-  kind: string;
-  component_id?: string;
-  component_type?: string;
-  metadata?: Record<string, unknown>;
-  character?: string;
-  display_name?: Record<string, string>;
-  ports: ApiStartupNodePort[];
-}
-
-export interface ApiStartupPack {
-  pack_id: string;
-  name: string;
-  description: string;
-  pack_identity: string;
-  available: boolean;
-  enabled: boolean;
-  approval_issues: string[];
-  graphs: Array<{
-    graph_id: string;
-    display_name?: Record<string, string>;
-    description?: Record<string, string>;
-    node_count?: number;
-    edge_count?: number;
-  }>;
-  nodes: ApiStartupNodeDefinition[];
-}
-
-export interface ApiStartupGraphPort {
-  port_key: string;
-  node_id: string;
-  port_id: string;
-  target_node_ref?: string;
-  target_port?: ApiStartupNodePort;
-  source_node_id: string;
-  source_node_ref?: string;
-  source_port_id?: string;
-  source_port?: ApiStartupNodePort;
-  source_ref: string;
-}
-
-export interface ApiStartupCatalog {
-  version: number;
-  packs: ApiStartupPack[];
-}
-
-export interface ApiProfileWorkspacePaths {
-  profile_id: string;
-  root: string;
-  profile_file: string;
-  user_data_dir: string;
-  database_dir?: string;
-  database_path: string;
-  startup_dir: string;
-  flows_dir: string;
-  prompts_dir: string;
-  ecosystem_dir?: string;
-  permissions_dir: string;
-  audit_dir?: string;
-  snapshots_dir?: string;
-}
-
-export interface ApiStartupProfile {
-  version: number;
-  profile_id: string;
-  name: string;
-  base_pack: string;
-  graph_id: string;
-  graph_ports: ApiStartupGraphPort[];
-  packs: string[];
-  node_overrides: Record<string, string>;
-  icon?: string | null;
-  created_at: number;
-  updated_at: number;
-  capability_profile_id?: string | null;
-  default_flow?: string | null;
-  default_graph?: string | null;
-  system_prompt_id?: string | null;
-  default_prompt_id?: string | null;
-  launch_capability_graph?: boolean;
-  surfaces?: Record<string, unknown>;
-  enabled_nodes?: string[];
-  disabled_nodes?: string[];
-  node_settings?: Record<string, Record<string, unknown>>;
-  policy?: Record<string, unknown>;
-  permissions?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-  profile_workspace?: ApiProfileWorkspacePaths;
-}
-
-export interface ApiProfileWorkspaceFile {
-  name: string;
-  path: string;
-  size: number;
-}
-
-export interface ApiProfileWorkspaceDetail {
-  profile: ApiStartupProfile;
-  profile_workspace: ApiProfileWorkspacePaths;
-  startup_config: Record<string, unknown>;
-  flows: ApiProfileWorkspaceFile[];
-  prompts: ApiProfileWorkspaceFile[];
-  resource_snapshot_manifest: Record<string, unknown>;
-  permissions: Record<string, { path: string; exists: boolean }>;
-  flow_yaml: {
-    path: string | null;
-    yaml_content: string;
-  };
-}
-
-export interface FlowsResponseData {
-  flows: ApiFlow[];
-  count: number;
-}
-
-export interface StartupProfilesResponseData {
-  profiles: ApiStartupProfile[];
-  active_profile_id: string | null;
-  last_launched_profile_id: string | null;
-  catalog: ApiStartupCatalog;
-}
-
-export interface StartupProfileMutationResponseData {
-  profile: ApiStartupProfile;
-  profile_workspace?: ApiProfileWorkspacePaths;
-  created?: boolean;
-  updated?: boolean;
-  pack_added?: string;
-  pack_removed?: string;
-  override_set?: { port_key: string; node_id: string };
-  override_cleared?: string;
-  duplicated?: boolean;
-  activated?: boolean;
-  launched?: boolean;
-  active_profile_id?: string;
-  restart_requested?: boolean;
-  handoff?: {
-    kind: string;
-    reason: string;
-    restart_requested: boolean;
-    exit_code?: number;
-    profile_id?: string;
-  };
-}
-
-export interface StartupProfileCompilePreviewResponseData {
-  ok: boolean;
-  profile_id: string;
-  profile: ApiStartupProfile;
-  capability_graph: {
-    ok: boolean;
-    skipped?: boolean;
-    reason?: string | null;
-    graph_id?: string | null;
-    capability_profile_id?: string | null;
-    runtime_profile_key?: string | null;
-    runtime_profile?: Record<string, unknown> | null;
-    surface_launch_target?: ApiSurfaceLaunchTarget | null;
-    diagnostics: ApiCapabilityDiagnostic[];
-  };
-  surface_launch_target?: ApiSurfaceLaunchTarget | null;
-  diagnostics: ApiCapabilityDiagnostic[];
-}
-
-export interface ApiProfileGraphNode {
-  id: string;
-  kind: string;
-  label: string;
-  ref: string;
-  metadata: Record<string, unknown>;
-}
-
-export interface ApiProfileGraphEdge {
-  id: string;
-  from_id: string;
-  to_id: string;
-  kind: string;
-  active: boolean;
-  from_port?: string;
-  to_port?: string;
-  gate_id?: string | null;
-  metadata: Record<string, unknown>;
-}
-
-export interface ApiProfileGraphSelected {
-  tools: string[];
-  webhooks: string[];
-  api_routes: string[];
-  prompts: string[];
-  frontend: string[];
-  flows: string[];
-  nodes: string[];
-  [key: string]: string[] | Record<string, unknown>;
-}
-
-export interface ApiProfileGraphDocument {
-  version: number;
-  profile_id: string;
-  nodes: ApiProfileGraphNode[];
-  edges: ApiProfileGraphEdge[];
-  selected: ApiProfileGraphSelected;
-}
-
-export interface ApiProfileGraphAvailableItem {
-  id: string;
-  label: string;
-  kind: string;
-  [key: string]: unknown;
-}
-
-export interface StartupProfileGraphResponseData {
-  profile_id: string;
-  profile: ApiStartupProfile;
-  graph: ApiProfileGraphDocument;
-  available: {
-    tools: ApiProfileGraphAvailableItem[];
-    webhooks: ApiProfileGraphAvailableItem[];
-    api_routes: ApiProfileGraphAvailableItem[];
-    prompts: ApiProfileGraphAvailableItem[];
-    frontend: ApiProfileGraphAvailableItem[];
-    flows: ApiProfileGraphAvailableItem[];
-    capability_nodes: ApiProfileGraphAvailableItem[];
-    input_profiles?: ApiProfileGraphAvailableItem[];
-  };
-  summary: {
-    selected_tool_count: number;
-    available_tool_count: number;
-    selected_webhook_count: number;
-    available_webhook_count: number;
-    api_route_count: number;
-    selected_frontend_count: number;
-    selected_prompt_count: number;
-  };
-  diagnostics: ApiCapabilityDiagnostic[];
-}
-
-export interface StartupProfileGraphCompilePreviewResponseData extends StartupProfileGraphResponseData {
-  compile_preview: StartupProfileCompilePreviewResponseData;
-  profile_graph_runtime_preview: {
-    selected: ApiProfileGraphSelected;
-    policy: Record<string, unknown>;
-    tool_filter_result: Array<Record<string, unknown>>;
-    prompt_resolution: Record<string, unknown>;
-    webhook_status: ApiProfileGraphAvailableItem[];
-    api_route_policy: Record<string, unknown>;
-    frontend_selection: ApiProfileGraphAvailableItem[];
-    diagnostics: ApiCapabilityDiagnostic[];
-  };
-}
-
-export interface ApiAiInputNode {
-  id: string;
-  kind: string;
-  label: string;
-  ref: string;
-  input_ports: string[];
-  output_ports: string[];
-  metadata: Record<string, unknown>;
-}
-
-export interface ApiAiInputEdge {
-  id: string;
-  from_id: string;
-  from_port: string;
-  to_id: string;
-  to_port: string;
-  kind: string;
-  active: boolean;
-  gate_id?: string | null;
-  metadata: Record<string, unknown>;
-}
-
-export interface ApiPromptSegment {
-  id: string;
-  text?: string;
-  preview?: string;
-  source: string;
-  source_type: string;
-  tokens: number;
-  priority: number;
-  enabled: boolean;
-  reason: string;
-  metadata: Record<string, unknown>;
-}
-
-export interface ApiToolSchemaSegment {
-  id: string;
-  tool_id: string;
-  name: string;
-  schema?: Record<string, unknown>;
-  tokens: number;
-  enabled: boolean;
-  reason: string;
-  metadata: Record<string, unknown>;
-}
-
-export interface ApiAiInputConfig {
-  version: number;
-  disabled_edges: string[];
-  gates: Record<string, Record<string, unknown>>;
-  inserted_edges: ApiAiInputEdge[];
-  budgets: Record<string, Record<string, unknown>>;
-}
-
-export interface StartupProfileAiInputResponseData {
-  profile_id: string;
-  profile: ApiStartupProfile;
-  ai_input: ApiAiInputConfig;
-  model_input: {
-    node_id: string;
-    provider?: string | null;
-    model?: string | null;
-  };
-  graph: {
-    nodes: ApiAiInputNode[];
-    edges: ApiAiInputEdge[];
-  };
-  effective_input: {
-    profile_id: string;
-    model_node_id: string;
-    system_segments: ApiPromptSegment[];
-    developer_segments: ApiPromptSegment[];
-    context_segments: ApiPromptSegment[];
-    tool_schemas: ApiToolSchemaSegment[];
-    policy: Record<string, unknown>;
-    disabled_segments: Array<Record<string, unknown>>;
-  };
-  token_estimate: {
-    total: number;
-    by_port: Record<string, number>;
-    by_node: Record<string, number>;
-  };
-  gate_decisions: Array<Record<string, unknown>>;
-  diagnostics: ApiCapabilityDiagnostic[];
-  diff?: {
-    before_tokens: number;
-    after_tokens: number;
-    removed_segments: string[];
-    added_segments: string[];
-  };
-}
-
-export interface ApiAiInputTraceSummary {
-  trace_id?: string | null;
-  created_at?: number | null;
-  conversation_id?: string | null;
-  run_id?: string | null;
-  profile_id?: string | null;
-  blocked_count?: number;
-  token_estimate?: {
-    total?: number;
-    by_port?: Record<string, number>;
-    by_node?: Record<string, number>;
-  };
-  provider_payload_summary?: Record<string, unknown>;
-}
-
-export interface StartupProfileAiInputTracesResponseData {
-  profile_id: string;
-  traces: ApiAiInputTraceSummary[];
-}
-
-export interface ApiMapResponseData {
-  nodes: ApiProfileGraphNode[];
-  edges: ApiProfileGraphEdge[];
-  summary: {
-    node_count: number;
-    edge_count: number;
-    route_count: number;
-    tool_count: number;
-    webhook_count: number;
-    flow_count?: number;
-    function_count?: number;
-    operation_count?: number;
-    implementation_count?: number;
-    selected_tool_count?: number;
-    selected_route_count?: number;
-  };
-  runtime_paths?: ApiMapRuntimePath[];
-  profile_runtime?: Record<string, unknown>;
-  diagnostics: ApiCapabilityDiagnostic[];
-}
-
-export interface ApiMapRuntimePath {
-  id: string;
-  label: string;
-  entrypoint: {
-    node_id: string;
-    method?: string;
-    path?: string;
-    source?: string;
-    source_type?: string;
-  };
-  primary?: ApiMapRuntimeTarget | null;
-  fallback?: ApiMapRuntimeTarget | null;
-  steps?: ApiMapRuntimeStep[];
-}
-
-export interface ApiMapRuntimeTarget {
-  kind?: string;
-  id?: string;
-  node_id?: string;
-  block_node_id?: string;
-  block_module?: string;
-  resolved?: boolean;
-}
-
-export interface ApiMapRuntimeStep {
-  kind?: string;
-  id: string;
-  node_id: string;
-  step_type?: string;
-  order?: number;
-  target?: ApiMapRuntimeTarget | null;
-}
-
-export interface StartupProfileDeleteResponseData {
-  deleted: boolean;
-  deleted_profile_id: string;
-  active_profile_id: string | null;
-  profile_workspace_orphaned?: boolean;
-}
-
-export interface FlowCreateResponseData {
-  flow_id: string;
-  filename: string;
-  created: boolean;
-}
-
-export interface FlowUpdateResponseData {
-  flow_id: string;
-  filename: string;
-  updated: boolean;
-}
-
-export interface FlowDeleteResponseData {
-  flow_id: string;
-  deleted: boolean;
-}
-
-export interface ProfileResponseData {
-  profile: ApiProfile;
-  updated?: boolean;
+  enabled?: boolean;
 }
 
 export interface KernelRestartResponseData {
@@ -731,27 +379,185 @@ export interface KernelRestartResponseData {
   message: string;
 }
 
-export interface OAuthStartResponseData {
-  authorize_url: string;
-  state: string;
+export type PresentationFamily = 'graphical' | 'terminal' | 'headless';
+export type PresentationKind =
+  | 'declarative'
+  | 'isolated_web'
+  | 'packaged_process'
+  | 'terminal_stdio'
+  | 'remote_ui';
+
+export type PresentationApprovalState =
+  | 'verified'
+  | 'pending'
+  | 'blocked'
+  | 'not_required';
+
+export interface ApiPresentationApproval {
+  state: PresentationApprovalState;
+  provider_trust: 'verified' | 'pending' | 'blocked' | 'not_required';
+  grant_state: 'not_minted' | 'available' | 'missing' | 'blocked';
+  authority_mode: 'lease_only' | 'os_entitlement' | 'none';
+  execution_domain: string;
+  effect_scope: string[];
+  blast_radius: string;
+  reason?: string | null;
 }
 
-export interface SetupStatusResponseData {
-  needs_setup: boolean;
-  reason?: string;
-  panel_ready?: boolean;
-  runtime_ready?: boolean;
-  runtime_status?: 'starting' | 'panel_ready' | 'runtime_ready' | 'error';
-  runtime_error?: string | null;
+export type PresentationArtifactStatus =
+  | 'verified'
+  | 'missing'
+  | 'unverified'
+  | 'digest_mismatch'
+  | 'development_only'
+  | 'unsupported_platform';
+
+export interface ApiPresentationArtifact {
+  artifact_id: string;
+  variant: string;
+  platform: string;
+  architecture: string;
+  path: string | null;
+  sha256: string | null;
+  prebuilt: boolean;
+  production: boolean;
+  development_command: string | null;
+  bundle_identifier: string | null;
+  status: PresentationArtifactStatus;
+  status_detail: string;
 }
+
+export interface ApiPresentationArtifactVariant {
+  artifact_id: string;
+  variant: string;
+  platform: string;
+  architecture: string;
+  artifact_ref: string;
+  entrypoint: string;
+  artifact_kind: string;
+  descriptor_digest: string;
+  path: string | null;
+  sha256: string | null;
+  prebuilt: boolean;
+  production: boolean;
+  development_command?: string | null;
+  bundle_identifier?: string | null;
+}
+
+export interface ApiPresentationContribution {
+  contribution_id: string;
+  owner_pack_id: string;
+  contract_id: string;
+  contract_revision_digest: string;
+  family: PresentationFamily;
+  label: string;
+  artifact_ref: string;
+  digest: string;
+  presentation_kind: PresentationKind;
+  technology: string;
+  host_authority: string;
+  materialization: 'selected_only' | string;
+}
+
+export interface ApiBasePackDescriptor {
+  pack_id: string;
+  display_name: string;
+  version: string;
+  artifact_digest: string;
+  backend_provider_ids: string[];
+  state_owners: string[];
+  backend_identity_digest: string;
+  required_capabilities: string[];
+  allowed_families: PresentationFamily[];
+  approval: ApiPresentationApproval;
+}
+
+export interface ApiShellProviderDescriptor {
+  provider_id: string;
+  display_name: string;
+  contract_id: 'app.shell.v1' | string;
+  contract_revision_digest: string;
+  experience_role: 'shell';
+  presentation_kind: PresentationKind;
+  presentation_family: PresentationFamily;
+  technology: string;
+  capabilities: string[];
+  consumes_contracts: string[];
+  contributions: ApiPresentationContribution[];
+  artifact_variants: ApiPresentationArtifactVariant[];
+  artifact: ApiPresentationArtifact | null;
+  approval: ApiPresentationApproval;
+  protocol_revision_digest?: string | null;
+}
+
+export interface ApiPresentationContractRevision {
+  contract_id: string;
+  revision: string;
+  digest: string;
+  source_path: string;
+}
+
+export interface ApiPresentationSelection {
+  base_pack_id: string;
+  shell_provider_id: string;
+}
+
+export interface ApiPresentationCatalog {
+  schema: 'io.tobkiri.launcher.presentation-catalog.v1' | string;
+  generator: string;
+  generator_version: string;
+  default_profile_id: string;
+  default_profile_source: string;
+  default_profile_digest: string;
+  default_selection: ApiPresentationSelection;
+  contract_revisions: ApiPresentationContractRevision[];
+  source_manifest_digests: Record<string, string>;
+  base_packs: ApiBasePackDescriptor[];
+  shell_providers: ApiShellProviderDescriptor[];
+  generated_at: number;
+}
+
+export type PresentationMaterializationStatus =
+  | 'not_selected'
+  | 'materialized'
+  | 'blocked';
+
+export interface ApiPresentationMaterialization {
+  status: PresentationMaterializationStatus;
+  base_pack_id: string | null;
+  shell_provider_id: string | null;
+  selected_contributions: ApiPresentationContribution[];
+  artifact: ApiPresentationArtifact | null;
+  reason: string | null;
+}
+
+export interface ApiPresentationState {
+  catalog: ApiPresentationCatalog;
+  selection: ApiPresentationSelection | null;
+  materialization: ApiPresentationMaterialization;
+}
+
+export interface PresentationLaunchResponse {
+  status: 'launched';
+  provider_id: string;
+  artifact_id: string;
+  message: string;
+}
+
+export type RuntimeStatus =
+  | 'starting'
+  | 'panel_ready'
+  | 'runtime_ready'
+  | 'profile_reconfirmation_required'
+  | 'error';
 
 export interface HealthResponseData {
   status: 'ok' | 'error';
-  needs_setup?: boolean;
-  panel_ready?: boolean;
-  runtime_ready?: boolean;
-  runtime_status?: 'starting' | 'panel_ready' | 'runtime_ready' | 'error';
-  runtime_error?: string | null;
+  needs_setup: boolean;
+  panel_ready: boolean;
+  runtime_ready: boolean;
+  runtime_status: RuntimeStatus;
+  runtime_error: string | null;
 }
 
 export interface WindowRuntimeSnapshot {
@@ -768,147 +574,4 @@ export interface BackgroundControlStatus {
   kernel_running: boolean;
   shutdown_requested: boolean;
   windows: WindowRuntimeSnapshot[];
-}
-
-export interface ApiCapabilityPort {
-  id: string;
-  label?: string | null;
-  direction: 'input' | 'output' | 'bidirectional';
-  standards?: string[];
-  aliases?: string[];
-  multiple?: boolean;
-  required?: boolean;
-  display_name?: Record<string, string>;
-  description?: Record<string, string>;
-}
-
-export interface ApiCapabilityNodeState {
-  node_id: string;
-  installed: boolean;
-  approved: boolean;
-  enabled: boolean;
-  configured: boolean;
-  status: string;
-  missing: string[];
-  credential_ref?: string | null;
-  profile_id?: string;
-}
-
-export interface ApiCapabilityNode {
-  node_id: string;
-  label?: string | null;
-  description_label?: string | null;
-  kind: string;
-  ports: ApiCapabilityPort[];
-  display_name?: Record<string, string>;
-  description?: Record<string, string> | string;
-  bindings: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  requirements?: Record<string, unknown>;
-  permissions?: Record<string, unknown>;
-  state?: ApiCapabilityNodeState;
-}
-
-export interface ApiCapabilityProfile {
-  profile_id: string;
-  label: string;
-  description_label: string;
-  locale?: string | null;
-  default_graph?: string | null;
-  default_flow?: string | null;
-  permissions: Record<string, unknown>;
-  enabled_nodes: string[];
-  disabled_nodes: string[];
-  node_settings: Record<string, Record<string, unknown>>;
-  policy: Record<string, unknown>;
-}
-
-export interface ApiCapabilityGraph {
-  graph_id: string;
-  label: string;
-  display_name?: Record<string, string>;
-  description?: Record<string, string>;
-  description_label: string;
-  nodes: Array<{id: string; ref: string; display_name?: Record<string, string>; metadata?: Record<string, unknown>}>;
-  edges: Array<{id: string; from: string; to: string; kind: string; metadata?: Record<string, unknown>}>;
-  metadata: Record<string, unknown>;
-}
-
-export interface ApiCapabilityDiagnostic {
-  level: string;
-  code: string;
-  message: string;
-  [key: string]: unknown;
-}
-
-export interface StartupProfileRelationship {
-  launch_time_source_of_truth: string;
-  capability_graph_profiles_role: string;
-  bridge_policy: string;
-  startup_profile_api: string;
-}
-
-export interface CapabilityProfilesResponseData {
-  profiles: ApiCapabilityProfile[];
-  count: number;
-  startup_profile_relationship: StartupProfileRelationship;
-}
-
-export interface CapabilityNodesResponseData {
-  nodes: ApiCapabilityNode[];
-  count: number;
-}
-
-export interface CapabilityProfileNodesResponseData {
-  profile: ApiCapabilityProfile;
-  nodes: ApiCapabilityNode[];
-  node_state: ApiCapabilityNodeState[];
-  palette_nodes: ApiCapabilityNode[];
-  count: number;
-  palette_count: number;
-}
-
-export interface CapabilityGraphsResponseData {
-  graphs: ApiCapabilityGraph[];
-  count: number;
-  diagnostics: ApiCapabilityDiagnostic[];
-}
-
-export interface CapabilityGraphResponseData {
-  graph: ApiCapabilityGraph;
-}
-
-export interface ApiSurfaceLaunchTarget {
-  kind: string;
-  pack_id: string;
-  principal_id?: string;
-  surface?: string;
-  node_instance_id?: string;
-  node_id?: string;
-  component_full_id?: string;
-  env?: Record<string, string>;
-  source?: string;
-}
-
-export interface CapabilityGraphCompileResponseData {
-  ok: boolean;
-  graph_id: string;
-  profile_id: string;
-  runtime_profile?: Record<string, unknown> | null;
-  surface_launch_target?: ApiSurfaceLaunchTarget | null;
-  diagnostics: ApiCapabilityDiagnostic[];
-}
-
-export interface CapabilityGraphSaveResponseData {
-  graph: ApiCapabilityGraph;
-  created: boolean;
-  path: string;
-  diagnostics: ApiCapabilityDiagnostic[];
-}
-
-export interface CapabilityProfileCloneResponseData {
-  profile: ApiCapabilityProfile;
-  created: boolean;
-  path: string;
-  diagnostics: ApiCapabilityDiagnostic[];
 }

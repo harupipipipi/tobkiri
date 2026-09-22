@@ -1,5 +1,4 @@
 {
-  "version": "rumi.pack-artifacts.v1",
   "artifacts": [
     {
       "path": "runtime/__init__.py",
@@ -7,19 +6,20 @@
     },
     {
       "path": "runtime/registry.py",
-      "sha256": "sha256:158458df2b9d81fdbcf79f53d30a1d896fc7c2787f2c6a17fa3c890cf1e9a23d"
+      "sha256": "sha256:825de1b62ebb90906c1c90de4cb0d0a6a50eed220d35d36a4c1c1f194d5d1615"
     },
     {
       "path": "runtime/service.py",
-      "sha256": "sha256:137b40681ea7d23cf171a4176b3f2e5978721a124a4e19825e28a5b79c69d787"
+      "sha256": "sha256:06da1bcfbd044b2d5404ac5590dbfaeb406f64298f656a17561a820be46f73bf"
     },
     {
       "path": "runtime/process.py",
-      "sha256": "sha256:0b1c688720b296ac8c48f7b43b491a210fbfbf0eac7c13f7d77e6c81e76f8d3f"
+      "sha256": "sha256:740c36b4d83fd920b1dccf6f3848f942838db624add1fae4e136e122c8fff286"
     },
     {
       "path": "runtime/health_process.py",
-      "sha256": "sha256:f2e3464ed467b6e85dae562a81fa3c0d5ac1c0fd338b96ff3159736f0320d537"
+      "sha256": "sha256:2f646d43d764cb5e7f410af2d1b5246f17412c98758583e285006c1063c81455"
     }
-  ]
+  ],
+  "version": "rumi.pack-artifacts.v1"
 }

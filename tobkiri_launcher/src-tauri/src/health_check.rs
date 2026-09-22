@@ -24,6 +24,7 @@ struct ApiEnvelope<T> {
 #[derive(Debug, Deserialize)]
 struct HealthPayload {
     panel_ready: Option<bool>,
+    runtime_ready: Option<bool>,
     desktop_challenge_response: Option<String>,
 }
 
@@ -81,11 +82,9 @@ fn health_client() -> &'static reqwest::blocking::Client {
     })
 }
 
-/// Send a health-check request that proves the listener knows the desktop
-/// bootstrap secret without disclosing that secret to an untrusted local port.
-pub fn check_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<bool> {
+fn fetch_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<Option<HealthPayload>> {
     if bootstrap_secret.is_empty() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let challenge = generate_health_challenge();
@@ -96,33 +95,50 @@ pub fn check_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<b
         .send()
     {
         Ok(resp) => resp,
-        Err(_) => return Ok(false),
+        Err(_) => return Ok(None),
     };
 
     if !resp.status().is_success() {
-        return Ok(false);
+        return Ok(None);
     }
 
     let envelope: ApiEnvelope<HealthPayload> = match resp.json() {
         Ok(payload) => payload,
-        Err(_) => return Ok(false),
+        Err(_) => return Ok(None),
     };
     if !envelope.success {
-        return Ok(false);
+        return Ok(None);
     }
 
     let Some(payload) = envelope.data else {
-        return Ok(false);
+        return Ok(None);
     };
     if payload.panel_ready == Some(false) {
-        return Ok(false);
+        return Ok(None);
     }
 
     let expected = hmac_sha256_hex(bootstrap_secret, &challenge);
-    Ok(payload
+    if !payload
         .desktop_challenge_response
         .as_deref()
-        .is_some_and(|actual| actual.eq_ignore_ascii_case(&expected)))
+        .is_some_and(|actual| actual.eq_ignore_ascii_case(&expected))
+    {
+        return Ok(None);
+    }
+    Ok(Some(payload))
+}
+
+/// Send a health-check request that proves the listener knows the desktop
+/// bootstrap secret without disclosing that secret to an untrusted local port.
+pub fn check_authenticated_health(port: u16, bootstrap_secret: &str) -> Result<bool> {
+    Ok(fetch_authenticated_health(port, bootstrap_secret)?.is_some())
+}
+
+/// Return whether an authenticated Kernel has completed runtime activation.
+pub fn check_authenticated_runtime_ready(port: u16, bootstrap_secret: &str) -> Result<bool> {
+    Ok(fetch_authenticated_health(port, bootstrap_secret)?
+        .and_then(|payload| payload.runtime_ready)
+        .unwrap_or(false))
 }
 
 /// Send a single health-check request.

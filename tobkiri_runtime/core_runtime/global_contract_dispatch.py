@@ -1,16 +1,13 @@
-"""Generic dispatch from legacy host adapters to activated global providers."""
+"""Finite adapter from typed consumers to one captured Pack v4 session."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
-
-from .interface_registry import InterfaceRegistry
-from .resolved_profile_scope import persisted_resolved_profile
+from typing import Any, Mapping, Protocol
 
 
 class GlobalContractUnavailable(RuntimeError):
-    """Raised when no unique active provider exists in the resolved plan."""
+    """Raised when an operation is absent from the captured ResolvedPlan."""
 
 
 class GlobalContractInvocationError(RuntimeError):
@@ -21,82 +18,121 @@ class GlobalContractInvocationError(RuntimeError):
         self.code = code
 
 
+class HostCredentialTransportError(RuntimeError):
+    """Fixed failure raised when a Host credential capability cannot complete."""
+
+    code = "host_credential_transport_failed"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
+class V4ContractDispatch(Protocol):
+    """Explicit Host adapter; implementations own an immutable activation."""
+
+    profile_id: str
+    plan_digest: str
+
+    def invoke(
+        self,
+        contract_id: str,
+        operation_id: str,
+        payload: Mapping[str, Any],
+        *,
+        version_range: str | None = None,
+    ) -> Mapping[str, Any]:
+        """Invoke one exact ResolvedPlan route."""
+
+    def provider_metadata(self, contract_id: str) -> tuple[Mapping[str, Any], ...]:
+        """Return non-executable metadata captured with the same activation."""
+
+
+class HostCredentialTransport(Protocol):
+    """Request-scoped Host capability that applies a credential at transport."""
+
+    def post_json(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> Mapping[str, Any]:
+        """Perform exactly one Host-bound credentialed JSON request."""
+
+
+def _require_v4_session(value: object) -> V4ContractDispatch:
+    if not callable(getattr(value, "invoke", None)) or not callable(
+        getattr(value, "provider_metadata", None)
+    ):
+        raise GlobalContractUnavailable(
+            "Pack v4 dispatch session is required; live registry lookup is disabled"
+        )
+    return value  # type: ignore[return-value]
+
+
 def invoke_global_contract(
-    interface_registry: InterfaceRegistry,
+    session: V4ContractDispatch,
     contract_id: str,
     operation: str,
     payload: Mapping[str, Any],
 ) -> Any:
-    """Invoke one activated provider without branching on an implementation pack."""
-    eligible, denied = _eligible_providers(interface_registry, contract_id)
-    if not eligible and denied:
-        raise GlobalContractInvocationError(
-            "denied",
-            f"active profile does not grant {contract_id}",
-        )
-    if len(eligible) != 1:
-        raise GlobalContractUnavailable(
-            f"expected one active provider for {contract_id}; found {len(eligible)}"
-        )
-    return eligible[0]["operation"](operation, dict(payload))
+    """Invoke only the operation pinned by the captured Pack v4 session."""
+    return _require_v4_session(session).invoke(contract_id, operation, payload)
 
 
 def selected_global_providers(
-    interface_registry: InterfaceRegistry,
+    session: V4ContractDispatch,
     contract_id: str,
 ) -> tuple[dict[str, Any], ...]:
-    """Return non-executable metadata for every selected provider."""
-    eligible, denied = _eligible_providers(interface_registry, contract_id)
-    if not eligible and denied:
-        raise GlobalContractInvocationError(
-            "denied",
-            f"active profile does not grant {contract_id}",
-        )
-    return tuple(
-        {
-            key: value
-            for key, value in item.items()
-            if key != "operation"
-        }
-        for item in eligible
-    )
+    """Return immutable provider metadata from the captured activation."""
+    return tuple(dict(item) for item in _require_v4_session(session).provider_metadata(contract_id))
+
+
+def captured_profile_id(session: V4ContractDispatch) -> str:
+    """Return the profile identity pinned to this exact activation snapshot."""
+    value = str(getattr(_require_v4_session(session), "profile_id", "")).strip()
+    if not value:
+        raise GlobalContractUnavailable("Pack v4 dispatch session has no captured profile identity")
+    return value
 
 
 def invoke_selected_global_provider(
-    interface_registry: InterfaceRegistry,
+    session: V4ContractDispatch,
     contract_id: str,
     provider_instance_id: str,
     operation: str,
     payload: Mapping[str, Any],
 ) -> Any:
-    """Invoke one exact provider already selected by the active plan."""
-    eligible, denied = _eligible_providers(interface_registry, contract_id)
+    """Invoke after exact provider identity confirmation from snapshot metadata."""
+    providers = selected_global_providers(session, contract_id)
     matches = [
-        item
-        for item in eligible
-        if str(item.get("provider_instance_id") or "") == provider_instance_id
+        item for item in providers if item.get("provider_instance_id") == provider_instance_id
     ]
-    if not matches and denied:
-        raise GlobalContractInvocationError("denied", "provider capability denied")
     if len(matches) != 1:
         raise GlobalContractUnavailable(
             f"selected provider is unavailable: {contract_id}/{provider_instance_id}"
         )
-    return matches[0]["operation"](operation, dict(payload))
+    return _require_v4_session(session).invoke(contract_id, operation, payload)
 
 
 @dataclass(frozen=True)
 class GlobalContractClient:
-    """Restricted typed consumer client for one activated provider pack."""
+    """Restricted typed consumer over one explicit Pack v4 session."""
 
-    interface_registry: InterfaceRegistry
+    session: V4ContractDispatch
     allowed_contract_ids: frozenset[str]
     consumer_pack_id: str
+    host_credential_transport: HostCredentialTransport | None = None
 
     def providers(self, contract_id: str) -> tuple[dict[str, Any], ...]:
         """List selected metadata only for a manifest-declared requirement."""
         self._require_declared(contract_id)
-        return selected_global_providers(self.interface_registry, contract_id)
+        return selected_global_providers(self.session, contract_id)
 
     def invoke(
         self,
@@ -106,80 +142,64 @@ class GlobalContractClient:
         *,
         provider_instance_id: str | None = None,
     ) -> Any:
-        """Invoke one selected requirement without exposing registry authority."""
+        """Invoke one declared requirement without registry or profile fallback."""
         self._require_declared(contract_id)
-        bound_payload = dict(payload)
-        bound_payload.pop("_contract_consumer_pack_id", None)
-        bound_payload["_contract_consumer_pack_id"] = self.consumer_pack_id
         if provider_instance_id is None:
-            return invoke_global_contract(
-                self.interface_registry,
-                contract_id,
-                operation,
-                bound_payload,
-            )
+            return invoke_global_contract(self.session, contract_id, operation, payload)
         return invoke_selected_global_provider(
-            self.interface_registry,
+            self.session,
             contract_id,
             provider_instance_id,
             operation,
-            bound_payload,
+            payload,
         )
+
+    def post_json_with_credential(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: Mapping[str, Any],
+        credential_handle: str,
+        provider_instance_id: str,
+        credential_scope: str,
+        credential_scheme: str,
+        deadline: float,
+    ) -> dict[str, Any]:
+        """Use the finite Host transport capability; never resolve material."""
+        if self.host_credential_transport is None:
+            raise PermissionError("Host credential transport is unavailable")
+        try:
+            value = self.host_credential_transport.post_json(
+                endpoint=endpoint,
+                headers=headers,
+                body=body,
+                credential_handle=credential_handle,
+                provider_instance_id=provider_instance_id,
+                credential_scope=credential_scope,
+                credential_scheme=credential_scheme,
+                deadline=deadline,
+            )
+            if not isinstance(value, Mapping):
+                raise HostCredentialTransportError
+            return dict(value)
+        except Exception:
+            pass
+        raise HostCredentialTransportError
 
     def _require_declared(self, contract_id: str) -> None:
         if contract_id not in self.allowed_contract_ids:
-            raise PermissionError(
-                f"contract was not declared by consumer: {contract_id}"
-            )
+            raise PermissionError(f"contract was not declared by consumer: {contract_id}")
 
 
-def _eligible_providers(
-    interface_registry: InterfaceRegistry,
-    contract_id: str,
-) -> tuple[list[dict[str, Any]], int]:
-    plan = persisted_resolved_profile()
-    if plan is None:
-        raise GlobalContractUnavailable("resolved profile is not active")
-    candidates = interface_registry.get(
-        f"global_contract.provider.{contract_id}",
-        strategy="all",
-    )
-    selected = {
-        (item.source_pack_id, item.provider_instance_id, item.content_hash)
-        for item in plan.providers
-        if item.contract_id == contract_id
-    }
-    eligible: list[dict[str, Any]] = []
-    denied = 0
-    for candidate in candidates if isinstance(candidates, list) else []:
-        if not isinstance(candidate, dict):
-            continue
-        source_pack_id = str(candidate.get("source_pack_id") or "").strip()
-        identity = (
-            source_pack_id,
-            str(candidate.get("provider_instance_id") or ""),
-            str(candidate.get("content_hash") or ""),
-        )
-        if (
-            source_pack_id not in plan.effective_pack_set
-            or str(candidate.get("contract_id") or "") != contract_id
-            or identity not in selected
-        ):
-            continue
-        required_capabilities = {
-            str(value)
-            for value in candidate.get("required_capabilities", [])
-            if str(value)
-        }
-        if not required_capabilities.issubset(set(plan.effective_permissions)):
-            denied += 1
-            continue
-        if callable(candidate.get("operation")):
-            eligible.append(candidate)
-    eligible.sort(
-        key=lambda item: (
-            str(item.get("provider_instance_id") or ""),
-            str(item.get("content_hash") or ""),
-        )
-    )
-    return eligible, denied
+__all__ = [
+    "GlobalContractClient",
+    "GlobalContractInvocationError",
+    "GlobalContractUnavailable",
+    "HostCredentialTransportError",
+    "V4ContractDispatch",
+    "captured_profile_id",
+    "invoke_global_contract",
+    "invoke_selected_global_provider",
+    "selected_global_providers",
+]

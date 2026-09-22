@@ -1,12 +1,28 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Optional
+import logging
+from typing import Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from http.server import BaseHTTPRequestHandler as _HTTPHandlerBase
+else:
+    _HTTPHandlerBase = object
 
 from .api_response import APIResponse
 
 
-class ResponseWriterMixin:
+class ResponseWriterMixin(_HTTPHandlerBase):
+    _panel_session_cookie: str | None
+    _CLIENT_DISCONNECT_EXCEPTIONS: tuple[type[OSError], ...]
+    _completed_access_logs: list[tuple[int, int]]
+    _completed_diagnostic_logs: list[
+        tuple[logging.Logger, int, str, tuple[object, ...], BaseException | None]
+    ]
+
+    if TYPE_CHECKING:
+        def _get_cors_origin(self, origin: str) -> str | None: ...
+
     def _send_response(
         self,
         response: APIResponse,
@@ -18,7 +34,13 @@ class ResponseWriterMixin:
         if self._panel_session_cookie:
             response_headers.append(("Set-Cookie", self._panel_session_cookie))
         try:
-            self.send_response(status)
+            # ``BaseHTTPRequestHandler.send_response`` calls ``log_request``
+            # before it emits the status line.  Keep access logging outside the
+            # response critical path so a slow diagnostic sink cannot prevent
+            # an otherwise complete bounded response from reaching the client.
+            self.send_response_only(status)
+            self.send_header("Server", self.version_string())
+            self.send_header("Date", self.date_time_string())
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             origin = self._get_cors_origin(self.headers.get("Origin", ""))
@@ -29,8 +51,49 @@ class ResponseWriterMixin:
                 self.send_header(header_name, header_value)
             self.end_headers()
             self.wfile.write(data)
+            # Complete delivery before callers perform diagnostics or other
+            # post-response cleanup that may contend under suite-wide load.
+            self.wfile.flush()
+            completed = getattr(self, "_completed_access_logs", None)
+            if completed is None:
+                completed = []
+                self._completed_access_logs = completed
+            completed.append((status, len(data)))
         except self._CLIENT_DISCONNECT_EXCEPTIONS:
             self.close_connection = True
+
+    def finish(self) -> None:
+        """Close the response before synchronous logging can contend."""
+
+        try:
+            super().finish()
+        finally:
+            diagnostics = getattr(self, "_completed_diagnostic_logs", ())
+            self._completed_diagnostic_logs = []
+            completed = getattr(self, "_completed_access_logs", ())
+            self._completed_access_logs = []
+            try:
+                for log, level, message, args, error in diagnostics:
+                    log.log(level, message, *args, exc_info=error)
+            finally:
+                for status, length in completed:
+                    self.log_request(status, length)
+
+    def _defer_response_log(
+        self,
+        log: logging.Logger,
+        level: int,
+        message: str,
+        *args: object,
+        exc_info: BaseException | None = None,
+    ) -> None:
+        """Guarantee one diagnostic synchronously after response close."""
+
+        completed = getattr(self, "_completed_diagnostic_logs", None)
+        if completed is None:
+            completed = []
+            self._completed_diagnostic_logs = completed
+        completed.append((log, level, message, args, exc_info))
 
     def _send_raw_json(
         self,

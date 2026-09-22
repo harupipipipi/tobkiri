@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import pytest
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +12,72 @@ DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
+
+
+def _write_v2_skill(skill_dir, *, skill_id, display_name, trigger, instruction):
+    """Write the smallest valid v2 skill fixture with a trusted SKILL.md."""
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "$schema": "https://schemas.tobkiri.dev/skill/v2.json",
+                "schema_version": "tobkiri.skill/v2",
+                "kind": "skill",
+                "category": "skill",
+                "id": skill_id,
+                "version": "2.0.0",
+                "enabled": True,
+                "display_name": display_name,
+                "description": display_name,
+                "instructions": {
+                    "path": "SKILL.md",
+                    "format": "agent-skills",
+                    "max_tokens": 800,
+                },
+                "activation": {
+                    "mode": "auto_or_explicit",
+                    "aliases": [skill_id.rsplit("/", 1)[-1]],
+                    "positive_examples": [trigger],
+                    "negative_examples": [],
+                },
+                "scope": {"activity_ids": [], "tool_ids": []},
+                "composition": {
+                    "class": "optional",
+                    "priority": 100,
+                    "requires": [],
+                    "conflicts_with": [],
+                },
+                "tool_policy": {
+                    "allowed_tool_ids": [],
+                    "denied_tool_ids": [],
+                },
+                "security": {
+                    "minimum_trust": "verified",
+                    "may_grant_permissions": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text(instruction, encoding="utf-8")
+
+
+def _inject_test_extension_roots(monkeypatch, *extra_roots: Path) -> None:
+    """Inject temporary roots through the explicit test-only builder seam."""
+    from domain.extensions import runtime as extension_runtime
+
+    roots = tuple(extra_roots)
+    monkeypatch.setattr(
+        extension_runtime,
+        "get_extensions_roots",
+        lambda: extension_runtime.build_extensions_roots(
+            DEFAULTSPACK_ROOT,
+            extra_roots=roots,
+        ),
+    )
+    extension_runtime.get_extension_registry(force_reload=True)
 
 
 def test_computer_use_action_suffix_tool_name_is_normalized():
@@ -438,8 +505,8 @@ def test_prepare_chat_run_promotes_profile_and_agent_ids_into_tool_context(tmp_p
         {"run_source": "scheduler"},
     )
 
-    assert prepared.request_context["profile_id"] == "defaultspack.mimo_coding_company"
-    assert prepared.tool_context["profile_id"] == "defaultspack.mimo_coding_company"
+    assert prepared.request_context["profile_id"] == "defaults"
+    assert prepared.tool_context["profile_id"] == "defaults"
     assert prepared.request_context["agent_id"] == "project_manager"
     assert prepared.tool_context["agent_id"] == "project_manager"
     ChatStore._instance = None
@@ -576,48 +643,29 @@ def test_approval_request_payload_preserves_original_tool_arguments():
     assert request["payload"] == {"action": "click", "x": 10, "y": 10}
     assert request["operation"] == "computer.click"
 def test_prepare_chat_run_injects_matched_skill_and_chat_references(tmp_path, monkeypatch):
-    import json
-
     from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     storage_path = tmp_path / "user_data" / "shared" / "chat" / "conversations.json"
     extensions_root = tmp_path / "extensions"
     skill_dir = extensions_root / "skills" / "line-mention"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "id": "feedback/line-mention",
-                "category": "skill",
-                "version": "1",
-                "enabled": True,
-                "display_name": "LINE mention skill",
-                "description": "Only respond to LINE groups when mentioned.",
-                "triggers": ["LINE", "mention"],
-                "instructions": "For LINE group chats, respond only when Rumi is mentioned.",
-            }
-        ),
-        encoding="utf-8",
+    _write_v2_skill(
+        skill_dir,
+        skill_id="feedback/line-mention",
+        display_name="LINE mention skill",
+        trigger="LINE",
+        instruction="For LINE group chats, respond only when Rumi is mentioned.",
     )
     unrelated_skill_dir = extensions_root / "skills" / "finance-only"
-    unrelated_skill_dir.mkdir(parents=True)
-    (unrelated_skill_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "id": "feedback/finance-only",
-                "category": "skill",
-                "version": "1",
-                "enabled": True,
-                "display_name": "Finance only",
-                "triggers": ["portfolio-rebalance"],
-                "instructions": "This must not appear in unrelated LINE prompts.",
-            }
-        ),
-        encoding="utf-8",
+    _write_v2_skill(
+        unrelated_skill_dir,
+        skill_id="feedback/finance-only",
+        display_name="Finance only",
+        trigger="portfolio-rebalance",
+        instruction="This must not appear in unrelated LINE prompts.",
     )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_EXTENSION_ROOTS", str(extensions_root))
+    _inject_test_extension_roots(monkeypatch, extensions_root)
     ChatStore._instance = None
 
     store = ChatStore()
@@ -673,32 +721,21 @@ def test_prepare_chat_run_injects_matched_skill_and_chat_references(tmp_path, mo
 
 
 def test_prepare_chat_run_leaves_unmatched_skills_out_of_system_context(tmp_path, monkeypatch):
-    import json
-
     from domain.chat.run_request import prepare_chat_run
     from domain.chat.store import ChatStore
 
     storage_path = tmp_path / "user_data" / "shared" / "chat" / "conversations.json"
     extensions_root = tmp_path / "extensions"
     skill_dir = extensions_root / "skills" / "line-mention"
-    skill_dir.mkdir(parents=True)
-    (skill_dir / "manifest.json").write_text(
-        json.dumps(
-            {
-                "id": "feedback/line-mention",
-                "category": "skill",
-                "version": "1",
-                "enabled": True,
-                "display_name": "LINE mention skill",
-                "description": "Only respond to LINE groups when mentioned.",
-                "triggers": ["LINE", "mention"],
-                "instructions": "For LINE group chats, respond only when Rumi is mentioned.",
-            }
-        ),
-        encoding="utf-8",
+    _write_v2_skill(
+        skill_dir,
+        skill_id="feedback/line-mention",
+        display_name="LINE mention skill",
+        trigger="LINE",
+        instruction="For LINE group chats, respond only when Rumi is mentioned.",
     )
     monkeypatch.setenv("RUMI_DEFAULTSPACK_CHAT_STORE_PATH", str(storage_path))
-    monkeypatch.setenv("RUMI_DEFAULTSPACK_EXTENSION_ROOTS", str(extensions_root))
+    _inject_test_extension_roots(monkeypatch, extensions_root)
     ChatStore._instance = None
 
     store = ChatStore()
@@ -1284,6 +1321,7 @@ def _run_text_tool_call_response(
     }
     if metadata:
         user_message["metadata"] = metadata
+    store.add_message(conversation["id"], user_message)
     provider_tools = [
         {
             "type": "function",
@@ -1573,8 +1611,9 @@ def test_stream_engine_treats_consumed_approval_followup_as_idempotent_duplicate
     )
 
     assert calls == []
-    assert len(gateway.complete_requests) == 1
-    assert stored["raw_text"] == raw_text
+    assert len(gateway.complete_requests) == 0
+    assert stored["raw_text"] != raw_text
+    assert "承認済みの操作はすでに処理済みです" in stored["raw_text"]
     assert not any(event.get("type") == "tool_call_started" for event in events)
     replay = approval.verify_execution_token(
         token,
@@ -2390,7 +2429,11 @@ def test_stream_engine_scheduled_replay_duplicate_ignores_echoed_approval_token(
     assert _text_tool_call_blocks_for_prepared(duplicate_text_response, prepared) == []
 
 
-def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_owner(tmp_path, monkeypatch):
+def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_owner(
+    tmp_path,
+    monkeypatch,
+    defaultspack_capability_plan_context,
+):
     from domain.chat.store import ChatStore
     from domain.chat.run_request import PreparedChatRun
     from domain.chat.stream_engine import ChatRunEngine
@@ -2451,6 +2494,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_ow
             },
         }
     ]
+    plan_context = defaultspack_capability_plan_context("desktop_frame")
     prepared = PreparedChatRun(
         conversation_id=conversation_id,
         conversation={"id": conversation_id, "messages": [user_message]},
@@ -2467,6 +2511,7 @@ def test_stream_engine_scheduled_desktop_frame_replay_uses_defaultspack_local_ow
         },
         tool_context=seal_tool_context(
             {
+                **plan_context,
                 "tool_approval_tokens": {"desktop_frame": token},
                 "owner_pack": "defaultspack",
                 "source": "scheduler_approval_followup",

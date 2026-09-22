@@ -1,1 +1,74 @@
-{"pack_id": "rumi_conversation_store_pack", "pack_identity": "rumi:ecosystem/rumi_conversation_store_pack", "display_name": "Rumi Conversation Store Pack", "version": "1.0.0", "description": "Atomic conversation and ordered-message owner.", "dependencies": {}, "connectivity": {"requires": [], "provides": ["rumi.resource.conversation.v1", "rumi.action.conversation.manage.v1", "rumi.resource.message.v1", "rumi.action.message.manage.v1", "rumi.action.conversation.migrate.v1"]}, "required_secrets": [], "required_capabilities": ["conversation.read", "conversation.manage", "message.read", "message.manage", "conversation.migrate"], "required_network": {"allowed_domains": [], "allowed_ports": []}, "host_execution": true, "resources": [], "provenance": {"content_hash": "sha256:06be778a32bbe8ae2e00031f51452ae61ec5adb773d4e1f3c38330873a633526", "build_identity": "rumi-conversation-store-pack:1.0.0", "trust_class": "local", "signature": null}, "metadata": {"authoritative_owner": true, "owner_surfaces": ["conversations", "messages"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"dual_write": false, "atomic_messages": true}}}
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.conversation.manage.v1",
+      "rumi.action.conversation.migrate.v1",
+      "rumi.action.message.manage.v1",
+      "rumi.resource.conversation.v1",
+      "rumi.resource.message.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Atomic authoritative conversation and ordered-message storage.",
+  "display_name": "Rumi Conversation Store",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:a50c8a495c9f97cae6ca53323b808c8642a27d4bef7c5adc730f68fed78da054",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:1848518fd6757555c22f379c080453be885d766d86bc80003432eb2e31b1343c"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:1848518fd6757555c22f379c080453be885d766d86bc80003432eb2e31b1343c"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "conversations",
+      "messages"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "atomic_messages": true,
+      "dual_write": false
+    }
+  },
+  "pack_id": "rumi_conversation_store_pack",
+  "pack_identity": "rumi:ecosystem/rumi_conversation_store_pack",
+  "provenance": {
+    "build_identity": "rumi_conversation_store_pack:1.0.0",
+    "content_hash": "sha256:a576561e08c153f28b62cd5c708e30c03eeb5184115b235a749c35ec038911cd",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "conversation.manage",
+    "conversation.migrate",
+    "conversation.read",
+    "message.manage",
+    "message.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

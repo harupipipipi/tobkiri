@@ -18,22 +18,27 @@ from .approval_state_json import (
     refresh_approval_state_mirrors,
 )
 from .approval_store import get_approval_store, persist_runtime_secret_for_broker
+from ..host_bridge.viewer_broker_client import ViewerBrokerClient
+from core_runtime.host_contract import host_contract_value
 
 
 _TOKEN_VERSION = "v1"
 _DEFAULT_EXPIRES_IN_SECONDS = 300
 _RUNTIME_SECRET = (
-    os.environ.get("RUMI_DEFAULTSPACK_APPROVAL_SECRET")
+    host_contract_value("approval_runtime_secret")
     or get_approval_store().get_or_create_runtime_secret()
 )
 persist_runtime_secret_for_broker(_RUNTIME_SECRET)
 _LOCK = threading.RLock()
+_DEBUG_RESUME_HANDLES: dict[str, dict[str, Any]] = {}
 _REQUESTS: dict[str, "ApprovalRequest"] = {}
 _USED_TOKEN_IDS: set[str] = set()
 
 _ARG_HASH_IGNORE_KEYS = {
     "approval_token",
     "approved",
+    "computer_use_haze_sequence_id",
+    "computer_use_sequence_id",
     "_headers",
     "_method",
     "_raw_body",
@@ -52,6 +57,14 @@ class ApprovalRequest:
     expires_at: int
     status: str = "pending"
     decision_at: int | None = None
+    debug_session_id: str = ""
+    lease_epoch: int = 0
+    debug_run_id: str = ""
+    workspace_identity_digest: str = ""
+    pack_id: str = ""
+    profile_id: str = ""
+    conversation_id: str = ""
+    operation_owner: str = ""
 
 
 @dataclass
@@ -85,6 +98,14 @@ def _request_from_mapping(value: dict[str, Any] | None) -> ApprovalRequest | Non
         expires_at=int(value.get("expires_at") or 0),
         status=str(value.get("status") or "pending"),
         decision_at=value.get("decision_at"),
+        debug_session_id=str(value.get("debug_session_id") or ""),
+        lease_epoch=int(value.get("lease_epoch") or 0),
+        debug_run_id=str(value.get("debug_run_id") or ""),
+        workspace_identity_digest=str(value.get("workspace_identity_digest") or ""),
+        pack_id=str(value.get("pack_id") or ""),
+        profile_id=str(value.get("profile_id") or ""),
+        conversation_id=str(value.get("conversation_id") or ""),
+        operation_owner=str(value.get("operation_owner") or ""),
     )
 
 
@@ -169,6 +190,63 @@ def _request_is_visible(
     return True
 
 
+def _active_debug_binding(details: dict[str, Any]) -> dict[str, Any]:
+    """Snapshot the active Launcher lease when a request is created.
+
+    Failure to read the broker leaves the request outside every debug session.
+    Such a request may still be handled by the native interactive UI, but the
+    debug CLI cannot discover or sign it.
+    """
+    try:
+        broker = ViewerBrokerClient.from_environment()
+        if not broker.available():
+            return {}
+        response = broker.debug_approval_status()
+    except Exception:
+        return {}
+    status = response.get("status") if isinstance(response, dict) else None
+    if not isinstance(status, dict) or status.get("state") != "active":
+        return {}
+    required = {
+        "debug_session_id": str(status.get("session_id") or ""),
+        "lease_epoch": int(status.get("lease_epoch") or 0),
+        "debug_run_id": str(status.get("run_id") or ""),
+        "workspace_identity_digest": str(status.get("workspace_digest") or ""),
+        "pack_id": str(status.get("pack_id") or ""),
+        "profile_id": str(status.get("profile_id") or ""),
+    }
+    if (
+        not required["debug_session_id"]
+        or required["lease_epoch"] <= 0
+        or not required["debug_run_id"]
+        or len(required["workspace_identity_digest"]) != 64
+        or not required["pack_id"]
+        or not required["profile_id"]
+    ):
+        return {}
+    declared_pack = str(details.get("pack_id") or details.get("owner_pack") or "")
+    declared_profile = str(details.get("profile_id") or "")
+    if declared_pack and declared_pack != required["pack_id"]:
+        return {}
+    if declared_profile and declared_profile != required["profile_id"]:
+        return {}
+    return {
+        **required,
+        "conversation_id": str(
+            details.get("conversation_owner")
+            or details.get("conversation_id")
+            or details.get("profile_id")
+            or required["profile_id"]
+        ),
+        "operation_owner": str(
+            details.get("operation_owner")
+            or details.get("owner_pack")
+            or details.get("pack_id")
+            or required["pack_id"]
+        ),
+    }
+
+
 def create_approval_request(
     operation: str,
     risk_level: str,
@@ -178,14 +256,17 @@ def create_approval_request(
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = _now()
+    request_details = dict(details or {})
+    debug_binding = _active_debug_binding(request_details)
     request = ApprovalRequest(
         request_id="apr_" + uuid.uuid4().hex,
         operation=str(operation),
         risk_level=str(risk_level or "high"),
         args_hash=hash_arguments(args if args is not None else (details or {})),
-        details=dict(details or {}),
+        details=request_details,
         created_at=now,
         expires_at=now + max(1, int(expires_in or _DEFAULT_EXPIRES_IN_SECONDS)),
+        **debug_binding,
     )
     with _LOCK:
         _REQUESTS[request.request_id] = request
@@ -321,7 +402,11 @@ def mark_obsolete(request_id: str, reason: str = "") -> dict[str, Any]:
         return asdict(ApprovalDecision(request.request_id, request.status, False, reason=reason))
 
 
-def approve(request_id: str) -> dict[str, Any]:
+def approve(
+    request_id: str,
+    *,
+    debug_operator: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     with _LOCK:
         request = _REQUESTS.get(str(request_id)) or _request_from_mapping(
             get_approval_store().get_request(str(request_id))
@@ -346,6 +431,29 @@ def approve(request_id: str) -> dict[str, Any]:
             return asdict(
                 ApprovalDecision(
                     request.request_id, request.status, False, reason="approval request denied"
+                )
+            )
+        if request.status == "approved" and isinstance(debug_operator, dict):
+            details = request.details if isinstance(request.details, dict) else {}
+            token = issue_execution_token(
+                request.request_id,
+                request.args_hash,
+                expires_at=request.expires_at,
+                operation=request.operation,
+                function_id=str(details.get("function_id") or details.get("action") or ""),
+                pack_id=str(details.get("pack_id") or ""),
+                conversation_id=str(details.get("conversation_id") or ""),
+                scope_digest=str(details.get("approval_scope_digest") or ""),
+                debug_binding=debug_operator,
+            )
+            return asdict(
+                ApprovalDecision(
+                    request.request_id,
+                    request.status,
+                    True,
+                    token=token,
+                    expires_at=request.expires_at,
+                    reason="idempotent debug approval retry",
                 )
             )
         if request.expires_at < now:
@@ -399,6 +507,7 @@ def approve(request_id: str) -> dict[str, Any]:
             pack_id=str(details.get("pack_id") or ""),
             conversation_id=str(details.get("conversation_id") or ""),
             scope_digest=str(details.get("approval_scope_digest") or ""),
+            debug_binding=debug_operator,
         )
         return asdict(
             ApprovalDecision(
@@ -409,6 +518,35 @@ def approve(request_id: str) -> dict[str, Any]:
                 expires_at=request.expires_at,
             )
         )
+
+def register_debug_resume_handle(
+    request_id: str,
+    token: str,
+    *,
+    operator: dict[str, Any],
+) -> str:
+    handle = "resume_" + uuid.uuid4().hex
+    with _LOCK:
+        _DEBUG_RESUME_HANDLES[handle] = {
+            "request_id": str(request_id),
+            "token": str(token),
+            "lease_epoch": int(operator.get("lease_epoch") or 0),
+            "expires_at": int(operator.get("expires_at") or 0),
+        }
+    return handle
+
+
+def resolve_debug_resume_handle(handle: str, request_id: str) -> str:
+    with _LOCK:
+        record = _DEBUG_RESUME_HANDLES.get(str(handle))
+        if not isinstance(record, dict):
+            return ""
+        if (
+            str(record.get("request_id") or "") != str(request_id)
+            or int(record.get("expires_at") or 0) <= _now()
+        ):
+            return ""
+        return str(record.get("token") or "")
 
 
 def approve_with_extended_expiry(
@@ -502,6 +640,7 @@ def issue_execution_token(
     pack_id: str = "",
     conversation_id: str = "",
     scope_digest: str = "",
+    debug_binding: dict[str, Any] | None = None,
 ) -> str:
     payload = {
         "version": _TOKEN_VERSION,
@@ -520,6 +659,10 @@ def issue_execution_token(
         payload["conversation_id"] = str(conversation_id)
     if scope_digest:
         payload["scope_digest"] = str(scope_digest)
+    if isinstance(debug_binding, dict):
+        payload["debug_lease_epoch"] = int(debug_binding.get("lease_epoch") or 0)
+        payload["debug_session_id"] = str(debug_binding.get("session_id") or "")
+        payload["debug_run_id"] = str(debug_binding.get("run_id") or "")
     body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     encoded = _b64url_encode(body)
     signature = hmac.new(
@@ -601,6 +744,31 @@ def verify_execution_token(
         )
     request_id = str(payload.get("request_id") or "")
     jti = str(payload.get("jti") or "")
+    debug_lease_epoch = int(payload.get("debug_lease_epoch") or 0)
+    if debug_lease_epoch and consume:
+        try:
+            from domain.host_bridge.viewer_broker_client import ViewerBrokerClient
+
+            broker = ViewerBrokerClient.from_environment()
+            result = broker.consume_debug_execution(
+                request_id=request_id,
+                lease_epoch=debug_lease_epoch,
+                execution_jti=jti,
+            )
+        except Exception:
+            return TokenVerification(
+                False,
+                "DEBUG_APPROVAL_REVOKED",
+                "Launcher debug approval was revoked or is unavailable",
+                request_id,
+            )
+        if result.get("ok") is not True or result.get("consumed") is not True:
+            return TokenVerification(
+                False,
+                "DEBUG_APPROVAL_REVOKED",
+                "Launcher debug approval was revoked or is unavailable",
+                request_id,
+            )
     with _LOCK:
         if jti in _USED_TOKEN_IDS or get_approval_store().is_token_used(jti):
             return TokenVerification(
@@ -699,7 +867,11 @@ def get_approval_request(request_id: str) -> dict[str, Any] | None:
 
 
 def list_approval_requests(
-    status: str | None = None, *, include_expired: bool = True, limit: int = 100
+    status: str | None = None,
+    *,
+    include_expired: bool = True,
+    limit: int = 100,
+    debug_binding: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     limit = max(1, min(500, int(limit or 100)))
     requests = get_approval_store().list_requests(include_expired=True, limit=500)
@@ -739,6 +911,23 @@ def list_approval_requests(
         for request in merged.values()
         if _request_is_visible(request, status, include_expired=include_expired, now=now)
     ]
+    if isinstance(debug_binding, dict):
+        expected = {
+            key: str(debug_binding.get(key) or "")
+            for key in (
+                "debug_session_id",
+                "lease_epoch",
+                "debug_run_id",
+                "workspace_identity_digest",
+                "pack_id",
+                "profile_id",
+            )
+        }
+        result = [
+            request
+            for request in result
+            if all(str(request.get(key) or "") == value for key, value in expected.items())
+        ]
     result.sort(
         key=lambda item: (int(item.get("created_at") or 0), str(item.get("request_id") or "")),
         reverse=True,

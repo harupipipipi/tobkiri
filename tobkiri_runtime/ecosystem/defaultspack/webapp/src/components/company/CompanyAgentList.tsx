@@ -48,7 +48,7 @@ export function CompanyAgentList({
   return (
     <section className="space-y-2 p-2">
       <div className="flex items-center justify-between gap-2">
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Employees</h4>
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Main Agent &amp; Subagents</h4>
         <span className="text-[10px] text-zinc-600">{displayedAgentCount}</span>
       </div>
       {onUpsertAgent && (
@@ -65,8 +65,12 @@ export function CompanyAgentList({
               display_name: agentId,
               model: newAgentModel.trim() || "stub/default",
               allowed_tools: [],
+              agent_kind: "subagent",
+              runtime_kind: "agent_run",
+              subagent_role: "custom",
+              placement_id: `${agentId}-subagent`,
               system_prompt:
-                "You are an employee delegated by the president in the main Rumi chat. Treat assigned tasks as direct user instructions. Do not infer external employment, credentials, or authorization from the team label.",
+                "You are a custom Subagent delegated by Tobkiri's Main Agent. Treat the assigned task as a bounded user instruction and use only the capabilities in your Effective Subagent Plan.",
             });
             setNewAgentId("");
           }}
@@ -75,7 +79,7 @@ export function CompanyAgentList({
             value={newAgentId}
             onChange={(event) => setNewAgentId(event.target.value)}
             disabled={busy}
-            placeholder="employee id"
+            placeholder="subagent id"
             className="h-8 min-w-0 rounded-md border border-zinc-800 bg-zinc-950 px-2 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
           />
           <input
@@ -89,8 +93,8 @@ export function CompanyAgentList({
             type="submit"
             disabled={busy || !newAgentId.trim()}
             className="flex h-8 w-8 items-center justify-center rounded-md bg-zinc-100 text-zinc-950 hover:bg-white disabled:opacity-30"
-            title="Create employee"
-            aria-label="Create employee"
+            title="Create Subagent"
+            aria-label="Create Subagent"
           >
             <Plus size={13} />
           </button>
@@ -110,6 +114,9 @@ export function CompanyAgentList({
                   <Bot size={13} className="flex-shrink-0 text-zinc-500" />
                   <span className="truncate text-[12px] font-medium text-zinc-200">
                     {agent.display_name || agent.agent_name || agent.agent_id}
+                  </span>
+                  <span className="flex-shrink-0 rounded border border-zinc-800 px-1 py-0.5 text-[8px] uppercase tracking-wide text-zinc-500">
+                    {agent.agent_kind === "main" ? "Main" : "Subagent"}
                   </span>
                 </div>
                 <span className="flex-shrink-0 rounded border border-zinc-800 px-1.5 py-0.5 text-[9px] text-zinc-500">
@@ -171,8 +178,8 @@ export function CompanyAgentList({
         {agents.length === 0 && (
           <div className="rounded-md border border-zinc-800/70 bg-zinc-950/40 px-2 py-2 text-[11px] text-zinc-500">
             {displayedAgentCount > 0
-              ? `${displayedAgentCount} employees configured. Refreshing employee details...`
-              : "No employees configured."}
+              ? `${displayedAgentCount} Agents configured. Refreshing Placement details...`
+              : "No Subagents configured."}
           </div>
         )}
       </div>

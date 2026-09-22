@@ -111,6 +111,37 @@ test("user messages restore human mention badges from semantic metadata", () => 
   assert.doesNotMatch(html, />@browser_computer</);
 });
 
+test("repository evidence widget renders trusted exact statistics", () => {
+  const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
+    error: null,
+    isMessagesRegionVisible: true,
+    isLoading: false,
+    isNewConversation: false,
+    isGenerating: false,
+    messages: [message({
+      widget: {
+        type: "repository_evidence",
+        statistics: { files_selected: 7, files_excluded: 93 },
+        excluded_reason_counts: {
+          secret_like_path: 3,
+          utility_model_not_selected: 90,
+        },
+        excluded_sample: [{ path: "never-render.ts", reason: "sample" }],
+      },
+    })],
+    messagesEndRef: { current: null },
+    unknownBlockStrategy: "hidden",
+    showActivityInMessages: true,
+    showWidgets: true,
+    onSuggestionClick: () => undefined,
+  }));
+
+  assert.match(html, /data-testid="repository-evidence-widget"/);
+  assert.match(html, />93</);
+  assert.match(html, /utility_model_not_selected/);
+  assert.doesNotMatch(html, /never-render\.ts/);
+});
+
 test("markdown links render as destination-aware review controls", () => {
   const html = renderToStaticMarkup(createElement(ChatMessagesRenderer, {
     error: null,

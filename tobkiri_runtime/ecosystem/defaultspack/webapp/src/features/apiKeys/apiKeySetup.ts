@@ -38,14 +38,18 @@ export const BUILTIN_API_PROVIDER_IDS: string[] = [
 ];
 
 export const BUILTIN_EXTERNAL_PROVIDER_IDS: string[] = [
+  "cloudflare",
+  "codex",
   "discord",
   "generic",
+  "github",
   "line",
   "slack",
   "web",
 ];
 
 export type ApiProviderKind = "llm" | "custom";
+export type ApiProviderScope = "all" | "llm" | "non_llm";
 
 export type ApiProviderOption = {
   provider_id: string;
@@ -164,7 +168,9 @@ export function collectApiProviderOptions(
     }
   }
   for (const provider of providers) {
-    const option = providerOptionFromRow(provider, builtinIds, "llm");
+    const providerId = String(provider.provider_id ?? "").trim();
+    const defaultKind: ApiProviderKind = builtinExternalProviderIds.includes(providerId) ? "custom" : "llm";
+    const option = providerOptionFromRow(provider, builtinIds, defaultKind);
     if (option) collected.set(option.provider_id, option);
   }
 
@@ -201,6 +207,36 @@ export function filterApiProviderOptions(options: ApiProviderOption[], query: st
     option.provider_id.toLowerCase().includes(trimmedQuery)
     || option.label.toLowerCase().includes(trimmedQuery),
   );
+}
+
+export function normalizeApiProviderScope(value: unknown): ApiProviderScope {
+  const normalized = String(value ?? "").trim().toLowerCase().replace(/-/g, "_");
+  if (normalized === "llm" || normalized === "ai") return "llm";
+  if (normalized === "non_llm" || normalized === "external" || normalized === "custom") return "non_llm";
+  return "all";
+}
+
+export function filterApiProviderOptionsByScope(
+  options: ApiProviderOption[],
+  scope: ApiProviderScope,
+): ApiProviderOption[] {
+  if (scope === "all") return options;
+  const expectedKind: ApiProviderKind = scope === "llm" ? "llm" : "custom";
+  return options.filter((option) => option.kind === expectedKind);
+}
+
+export function filterRegisteredApiRowsByScope(
+  rows: Array<Record<string, unknown>>,
+  options: ApiProviderOption[],
+  scope: ApiProviderScope,
+): Array<Record<string, unknown>> {
+  if (scope === "all") return rows;
+  const expectedKind: ApiProviderKind = scope === "llm" ? "llm" : "custom";
+  return rows.filter((row) => {
+    const providerId = String(row.provider_id ?? "").trim();
+    const option = options.find((candidate) => candidate.provider_id === providerId);
+    return normalizeProviderKind(row.kind ?? option?.kind) === expectedKind;
+  });
 }
 
 export function normalizeCustomProviderId(value: string): string {

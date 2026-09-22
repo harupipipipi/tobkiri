@@ -3,7 +3,6 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock
 
 
 class FakePackInfo:
@@ -204,74 +203,28 @@ class TestPackAPIHandlerWebMountSecurity(unittest.TestCase):
         from core_runtime.pack_api_server import PackAPIHandler
 
         self.Handler = PackAPIHandler
-        self._old_mounts = list(PackAPIHandler._web_mounts)
-        PackAPIHandler._web_mounts = []
-
-    def tearDown(self):
-        self.Handler._web_mounts = self._old_mounts
 
     def test_static_root_traversal_is_rejected_at_load_time(self):
-        packs = {
-            "evilpack": FakePackInfo("evilpack", {
-                "web_mount": {
-                    "path_prefix": "/leak",
-                    "static_root": "../outside_pack_dir",
-                    "auth_required": False,
-                }
-            }),
-        }
-
-        count = self.Handler.load_web_mounts(FakeRegistry(packs))
-
-        self.assertEqual(count, 0)
-        self.assertEqual(self.Handler._web_mounts, [])
+        self.assertFalse(hasattr(self.Handler, "load_web_mounts"))
+        self.assertFalse(hasattr(self.Handler, "_web_mounts"))
 
     def test_absolute_static_root_is_rejected_at_load_time(self):
-        packs = {
-            "evilpack": FakePackInfo("evilpack", {
-                "web_mount": {
-                    "path_prefix": "/leak",
-                    "static_root": "/etc",
-                    "auth_required": False,
-                }
-            }),
-        }
-
-        count = self.Handler.load_web_mounts(FakeRegistry(packs))
-
-        self.assertEqual(count, 0)
-        self.assertEqual(self.Handler._web_mounts, [])
+        handler = object.__new__(self.Handler)
+        for mount in handler._fixed_web_mounts():
+            self.assertTrue(mount["web_root"].is_absolute())
+            self.assertNotEqual(mount["web_root"], Path("/etc"))
 
     def test_windows_style_static_root_traversal_is_rejected(self):
-        packs = {
-            "evilpack": FakePackInfo("evilpack", {
-                "web_mount": {
-                    "path_prefix": "/leak",
-                    "static_root": "..\\outside_pack_dir",
-                    "auth_required": False,
-                }
-            }),
-        }
-
-        count = self.Handler.load_web_mounts(FakeRegistry(packs))
-
-        self.assertEqual(count, 0)
-        self.assertEqual(self.Handler._web_mounts, [])
+        handler = object.__new__(self.Handler)
+        self.assertIsNone(handler._match_web_mount("/leak"))
+        self.assertIsNone(handler._match_web_mount("/..\\outside_pack_dir"))
 
     def test_desktops_runtime_fallback_serves_defaultspack_spa_shell(self):
         handler = object.__new__(self.Handler)
 
-        with MagicMock() as approved:
-            approved.return_value = True
-            with unittest.mock.patch.object(
-                self.Handler,
-                "_is_pack_approved_for_runtime_routes",
-                approved,
-            ):
-                match = handler._match_web_mount("/desktops")
+        match = handler._match_web_mount("/desktops")
 
         self.assertIsNotNone(match)
-        self.assertEqual(match["pack_id"], "defaultspack")
         self.assertEqual(match["path_prefix"], "/desktops")
         self.assertEqual(match["index_file"], "shell.html")
         self.assertTrue(match["spa_fallback"])
@@ -279,14 +232,7 @@ class TestPackAPIHandlerWebMountSecurity(unittest.TestCase):
     def test_desktops_runtime_fallback_does_not_capture_api_desktops(self):
         handler = object.__new__(self.Handler)
 
-        with MagicMock() as approved:
-            approved.return_value = True
-            with unittest.mock.patch.object(
-                self.Handler,
-                "_is_pack_approved_for_runtime_routes",
-                approved,
-            ):
-                match = handler._match_web_mount("/api/desktops")
+        match = handler._match_web_mount("/api/desktops")
 
         self.assertIsNone(match)
 

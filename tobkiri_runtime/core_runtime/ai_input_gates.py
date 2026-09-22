@@ -56,7 +56,10 @@ class BudgetGateConfig:
 def evaluate_gate_config(gate_id: str, config: dict[str, Any], context: dict[str, Any]) -> GateDecision:
     kind = str(config.get("kind") or "condition_gate").strip()
     if kind == "condition_gate":
-        expression = config.get("expression") if isinstance(config.get("expression"), dict) else {}
+        raw_expression = config.get("expression")
+        expression: dict[str, Any] = (
+            raw_expression if isinstance(raw_expression, dict) else {}
+        )
         default = bool(config.get("default", False))
         return evaluate_condition_gate(
             ConditionGateConfig(id=gate_id, expression=expression, default=default),

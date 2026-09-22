@@ -1,69 +1,85 @@
+"""Workspace paths derived exclusively from a verified Profile v4 activation."""
+
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 
-from .profile_workspace import ProfileWorkspaceManager, validate_profile_id
+from .profile_workspace import validate_profile_id
 
 
 def _default_user_data_root() -> Path:
-    base_dir = Path(__file__).resolve().parent.parent
-    configured = os.environ.get("RUMI_USER_DATA")
-    return Path(configured) if configured else base_dir / "user_data"
+    from .bootstrap.profile_capture import runtime_user_data_root
 
-
-def _settings_path(user_data_root: Path) -> Path:
-    return user_data_root / "settings" / "startup_profiles.json"
+    return runtime_user_data_root()
 
 
 def active_profile_id(user_data_root: Path | None = None) -> str | None:
+    """Return the active verified Profile identity, never an ambient override."""
+
+    try:
+        from .bootstrap.profile_capture import capture_default_profile
+
+        captured = capture_default_profile(base_dir=user_data_root)
+    except Exception:
+        return None
+    profile_id = str(captured.resolved.profile["profile_id"])
+    return validate_profile_id(profile_id)
+
+
+def profile_workspace_dir(
+    profile_id: str,
+    user_data_root: Path | None = None,
+) -> Path:
+    """Return the sole workspace root bound to a Profile v4 activation."""
+
     root = Path(user_data_root) if user_data_root is not None else _default_user_data_root()
-    active_path = root / "profiles" / "active_profile.json"
-    for path in (active_path, _settings_path(root)):
-        if not path.exists():
-            continue
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        candidate = raw.get("active_profile_id") if isinstance(raw, dict) else None
-        if isinstance(candidate, str) and candidate.strip():
-            return validate_profile_id(candidate)
-    return None
+    return root / "workspaces" / validate_profile_id(profile_id)
 
 
-def profile_user_data_dir(profile_id: str, user_data_root: Path | None = None) -> Path:
-    return ProfileWorkspaceManager(user_data_root).profile_user_data_dir(profile_id)
-
-
-def profile_database_path(profile_id: str, user_data_root: Path | None = None) -> Path:
-    return ProfileWorkspaceManager(user_data_root).profile_database_path(profile_id)
-
-
-def resolve_runtime_user_data_dir(
-    *,
-    profile_id: str | None = None,
-    fallback_to_legacy: bool = True,
+def profile_user_data_dir(
+    profile_id: str,
+    user_data_root: Path | None = None,
 ) -> Path:
-    root = _default_user_data_root()
-    resolved_profile_id = profile_id or active_profile_id(root)
-    if resolved_profile_id:
-        return profile_user_data_dir(resolved_profile_id, root)
-    if fallback_to_legacy:
-        return root
-    raise ValueError("No active profile_id is available")
+    """Compatibility name for the v4 Profile workspace root."""
+
+    return profile_workspace_dir(profile_id, user_data_root)
 
 
-def resolve_runtime_database_path(
-    *,
-    profile_id: str | None = None,
-    fallback_to_legacy: bool = True,
+def profile_database_path(
+    profile_id: str,
+    user_data_root: Path | None = None,
 ) -> Path:
+    """Return the Profile-owned state database below its v4 workspace."""
+
+    return profile_workspace_dir(profile_id, user_data_root) / "state" / "rumi.sqlite"
+
+
+def _required_profile_id(profile_id: str | None, root: Path) -> str:
+    resolved = profile_id or active_profile_id(root)
+    if not resolved:
+        raise RuntimeError("verified Pack v4 Profile activation is required")
+    return validate_profile_id(resolved)
+
+
+def resolve_runtime_user_data_dir(*, profile_id: str | None = None) -> Path:
+    """Resolve runtime state to one verified v4 Profile workspace."""
+
     root = _default_user_data_root()
-    resolved_profile_id = profile_id or active_profile_id(root)
-    if resolved_profile_id:
-        return profile_database_path(resolved_profile_id, root)
-    if fallback_to_legacy:
-        return root / "rumi.sqlite"
-    raise ValueError("No active profile_id is available")
+    return profile_workspace_dir(_required_profile_id(profile_id, root), root)
+
+
+def resolve_runtime_database_path(*, profile_id: str | None = None) -> Path:
+    """Resolve the runtime database without a process-global fallback."""
+
+    root = _default_user_data_root()
+    return profile_database_path(_required_profile_id(profile_id, root), root)
+
+
+__all__ = [
+    "active_profile_id",
+    "profile_database_path",
+    "profile_user_data_dir",
+    "profile_workspace_dir",
+    "resolve_runtime_database_path",
+    "resolve_runtime_user_data_dir",
+]

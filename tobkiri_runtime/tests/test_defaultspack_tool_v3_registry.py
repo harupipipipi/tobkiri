@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from pathlib import Path
 
 
@@ -10,7 +11,7 @@ for item in (str(ROOT), str(PACK)):
     if item not in sys.path:
         sys.path.insert(0, item)
 
-from domain.tool.registry import ToolRegistry  # noqa: E402
+from domain.tool.registry import ToolRegistrationError, ToolRegistry  # noqa: E402
 
 
 def _manifest() -> dict:
@@ -120,3 +121,46 @@ def test_tool_v3_preserves_critical_risk() -> None:
     assert tool is not None
     assert tool["risk"] == "critical"
     assert tool["requires_approval"] is True
+
+
+def test_pack_discovery_deduplicates_only_the_same_manifest(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "same" / "manifest.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text("{}", encoding="utf-8")
+    other_path = tmp_path / "other" / "manifest.json"
+    other_path.parent.mkdir(parents=True)
+    other_path.write_text("{}", encoding="utf-8")
+
+    registry = object.__new__(ToolRegistry)
+    registry._tools = {
+        "same_tool": {
+            "tool_id": "same_tool",
+            "source_path": str(manifest_path),
+            "source_pack_id": "defaultspack",
+        }
+    }
+    registry._diagnostics = []
+    registry._lock = threading.Lock()
+
+    duplicate = {
+        "tool_id": "same_tool",
+        "source_path": str(manifest_path),
+        "source_pack_id": "defaultspack",
+        "display_name": "normalized differently",
+    }
+    shadow = {
+        "tool_id": "same_tool",
+        "source_path": str(other_path),
+        "source_pack_id": "defaultspack",
+    }
+
+    assert registry._already_loaded_from_manifest(duplicate) is True
+    assert registry._already_loaded_from_manifest(shadow) is False
+    try:
+        registry.register(shadow)
+    except ToolRegistrationError as exc:
+        assert "tool_id collision" in str(exc)
+    else:
+        raise AssertionError("a different manifest shadowed an existing Tool")

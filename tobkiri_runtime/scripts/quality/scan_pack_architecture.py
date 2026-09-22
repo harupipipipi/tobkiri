@@ -6,14 +6,38 @@ from __future__ import annotations
 import argparse
 import ast
 import datetime as dt
+import hashlib
 import json
 import re
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable
 
 SOURCE_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".dart"}
+IGNORED_SOURCE_DIRECTORY_NAMES = frozenset(
+    {
+        ".git",
+        ".mypy_cache",
+        ".next",
+        ".nox",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".tox",
+        ".venv",
+        "__pycache__",
+        "assets",
+        "build",
+        "dist",
+        "node_modules",
+        "site-packages",
+        "target",
+        "venv",
+    }
+)
+IGNORED_SOURCE_DIRECTORY_PATHS = (
+    Path("tobkiri_launcher") / "src-tauri" / "gen",
+)
 IMPORT_RE = re.compile(
     r"(?:import|export)\s+(?:[^'\"]+?\s+from\s+)?['\"]([^'\"]+)['\"]|"
     r"import\s*\(\s*['\"]([^'\"]+)['\"]\s*\)"
@@ -38,7 +62,7 @@ KERNEL_DOMAIN_RE = re.compile(
 
 @dataclass(frozen=True, order=True)
 class Violation:
-    """One stable architecture edge violation."""
+    """One architecture violation with a stable semantic fingerprint."""
 
     rule: str
     path: str
@@ -46,11 +70,15 @@ class Violation:
     source: str
     target: str
     guidance: str
+    fingerprint: str = ""
 
     @property
     def identity(self) -> str:
-        """Return the exact shrink-only baseline identity."""
-        return f"{self.rule}|{self.path}|{self.line}|{self.source}|{self.target}"
+        """Return the line-independent shrink-only baseline identity."""
+        return (
+            f"{self.rule}|{self.path}|{self.fingerprint}|"
+            f"{self.source}|{self.target}"
+        )
 
 
 class BaselineError(ValueError):
@@ -82,12 +110,12 @@ def load_baseline(path: Path) -> dict[str, dict[str, Any]]:
     except (OSError, json.JSONDecodeError) as exc:
         raise BaselineError(f"baseline is unreadable: {exc}") from exc
     if (
-        payload.get("schema_version") != 1
+        payload.get("schema_version") != 2
         or payload.get("policy") != "shrink_only_exact_edges"
         or not isinstance(payload.get("exceptions"), list)
     ):
         raise BaselineError(
-            "baseline must use schema_version 1, shrink_only_exact_edges, "
+            "baseline must use schema_version 2, shrink_only_exact_edges, "
             "and exceptions[]"
         )
     required = {
@@ -95,12 +123,13 @@ def load_baseline(path: Path) -> dict[str, dict[str, Any]]:
         "rule",
         "path",
         "line",
+        "fingerprint",
         "source",
         "target",
         "owner",
         "reason",
         "introduced_at",
-        "removal_wave",
+        "fix_by_wave",
         "sunset_at",
         "violation_category",
     }
@@ -108,7 +137,7 @@ def load_baseline(path: Path) -> dict[str, dict[str, Any]]:
     for index, item in enumerate(payload["exceptions"]):
         if not isinstance(item, dict) or not required <= set(item):
             raise BaselineError(f"baseline exception {index} lacks required metadata")
-        for field in required - {"line", "removal_wave"}:
+        for field in required - {"line", "fix_by_wave"}:
             value = str(item[field]).strip()
             if not value or any(marker in value for marker in ("*", "?", "[", "]")):
                 raise BaselineError(
@@ -116,17 +145,15 @@ def load_baseline(path: Path) -> dict[str, dict[str, Any]]:
                 )
         identity = str(item["identity"])
         expected = (
-            f"{item['rule']}|{item['path']}|{item['line']}|"
+            f"{item['rule']}|{item['path']}|{item['fingerprint']}|"
             f"{item['source']}|{item['target']}"
         )
         if identity != expected or identity in result:
             raise BaselineError(f"invalid or duplicate baseline identity: {identity}")
         if not isinstance(item["line"], int) or item["line"] < 1:
             raise BaselineError(f"invalid line for {identity}")
-        if not isinstance(item["removal_wave"], int) or not (
-            0 <= item["removal_wave"] <= 10
-        ):
-            raise BaselineError(f"invalid removal_wave for {identity}")
+        if not isinstance(item["fix_by_wave"], int) or item["fix_by_wave"] < 1:
+            raise BaselineError(f"invalid fix_by_wave for {identity}")
         if str(item["violation_category"]) != str(item["rule"]):
             raise BaselineError(
                 f"violation_category must equal rule for {identity}"
@@ -146,17 +173,64 @@ def verify_shrink_only_baseline(
     baseline: dict[str, dict[str, Any]],
     reference: dict[str, dict[str, Any]],
 ) -> None:
-    """Reject new or mutated exceptions relative to an approved baseline."""
+    """Reject new or changed exceptions while allowing line relocation."""
     additions = sorted(set(baseline) - set(reference))
     if additions:
         raise BaselineError(
-            "shrink-only baseline contains new identities: " + ", ".join(additions)
+            "shrink-only baseline contains new identities: "
+            + ", ".join(additions)
         )
     for identity, item in baseline.items():
-        if item != reference[identity]:
+        if _relocation_stable_metadata(item) != _relocation_stable_metadata(
+            reference[identity]
+        ):
             raise BaselineError(
                 f"shrink-only baseline metadata changed for {identity}"
             )
+
+
+def find_unbaselined_violations(
+    violations: Iterable[Violation],
+    baseline: dict[str, dict[str, Any]],
+) -> list[Violation]:
+    """Return violations absent from the exact semantic baseline."""
+    return [item for item in violations if item.identity not in baseline]
+
+
+def find_stale_baseline_exceptions(
+    violations: Iterable[Violation],
+    baseline: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return exceptions whose exact semantic edge no longer exists."""
+    active_identities = {item.identity for item in violations}
+    return [
+        item
+        for identity, item in baseline.items()
+        if identity not in active_identities
+    ]
+
+
+def _relocation_stable_metadata(item: dict[str, Any]) -> str:
+    return json.dumps(
+        {
+            key: value
+            for key, value in item.items()
+            if key not in {"identity", "line"}
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def find_expired_baseline_exceptions(
+    baseline: dict[str, dict[str, Any]], *, today: dt.date
+) -> list[dict[str, Any]]:
+    """Return exceptions whose sunset date has passed."""
+    return [
+        item
+        for item in baseline.values()
+        if dt.date.fromisoformat(str(item["sunset_at"])) < today
+    ]
 
 
 def scan_repository(root: Path) -> list[Violation]:
@@ -197,29 +271,36 @@ def scan_repository(root: Path) -> list[Violation]:
                         source_pack,
                         match.group(1),
                         "Consume a global action or data-source contract.",
+                        match.group(0),
                     )
                 )
-    return sorted(violations)
+    return _disambiguate_fingerprints(violations)
 
 
 def _source_files(root: Path) -> Iterable[Path]:
-    ignored = {
-        ".git",
-        "node_modules",
-        "target",
-        "dist",
-        "build",
-        "assets",
-        "__pycache__",
-    }
     for path in root.rglob("*"):
-        if path.suffix not in SOURCE_SUFFIXES or any(
-            part in ignored for part in path.parts
-        ):
+        if path.suffix not in SOURCE_SUFFIXES:
+            continue
+        if _is_ignored_source_path(root, path):
             continue
         if "/tests/" in path.as_posix() or "/fixtures/" in path.as_posix():
             continue
         yield path
+
+
+def _is_ignored_source_path(root: Path, path: Path) -> bool:
+    """Return whether a source belongs to an explicit dependency/generated tree."""
+    relative = path.relative_to(root)
+    directory_parts = relative.parts[:-1]
+    if any(
+        part in IGNORED_SOURCE_DIRECTORY_NAMES
+        for part in directory_parts
+    ):
+        return True
+    return any(
+        relative.is_relative_to(ignored_path)
+        for ignored_path in IGNORED_SOURCE_DIRECTORY_PATHS
+    )
 
 
 def _scan_manifest_graph(
@@ -255,6 +336,13 @@ def _scan_manifest_graph(
                         "unknown_manifest_dependency",
                         pack_id,
                         target,
+                        _value_fingerprint(
+                            "manifest-v1",
+                            json.dumps(
+                                {"pack": pack_id, "dependency": dependency},
+                                sort_keys=True,
+                            ),
+                        ),
                     )
                 )
     return found
@@ -301,6 +389,7 @@ def _scan_python(
                             "cross_pack_import",
                             source_pack,
                             target_pack,
+                            _ast_fingerprint(node),
                         )
                     )
         elif isinstance(node, ast.Call):
@@ -320,6 +409,7 @@ def _scan_python(
                         "cross_pack_import",
                         source_pack,
                         target_pack,
+                        _ast_fingerprint(node),
                     )
                 )
         if isinstance(node, ast.Compare) and "pack_id" in ast.unparse(node.left):
@@ -334,6 +424,7 @@ def _scan_python(
                             "foreign_pack_id_branch",
                             source_pack,
                             target,
+                            _ast_fingerprint(node),
                         )
                     )
     return found
@@ -364,6 +455,7 @@ def _scan_script_imports(
                     source_pack,
                     target_pack,
                     "Import a generated global-contract binding instead.",
+                    match.group(0),
                 )
             )
     return found
@@ -390,6 +482,7 @@ def _scan_literal_paths(
                     source_pack,
                     target,
                     "Resolve the resource through a global contract handle.",
+                    match.group(0),
                 )
             )
     return found
@@ -417,6 +510,7 @@ def _scan_runtime_policy(
                     source_pack,
                     "all-installed-packs",
                     "Discover only the resolved profile effective pack set.",
+                    match.group(0),
                 )
             )
         for match in KERNEL_DOMAIN_RE.finditer(text):
@@ -430,6 +524,7 @@ def _scan_runtime_policy(
                     source_pack,
                     match.group(0).strip(),
                     "Resolve behavior through a typed global contract.",
+                    match.group(0),
                 )
             )
     if "provider_compiler" not in normalized and "secret" not in normalized:
@@ -444,6 +539,7 @@ def _scan_runtime_policy(
                     source_pack,
                     "process-environment",
                     "Request a profile- and provider-scoped credential handle.",
+                    match.group(0),
                 )
             )
     return found
@@ -463,6 +559,79 @@ def _literal_string(node: ast.AST) -> str | None:
     return None
 
 
+def _ast_fingerprint(node: ast.AST) -> str:
+    """Return a location-independent Python AST fingerprint for one edge."""
+    try:
+        dumped = ast.dump(
+            node,
+            annotate_fields=True,
+            include_attributes=False,
+            show_empty=False,
+        )
+    except TypeError:
+        # Python 3.13 added ``show_empty`` and stopped rendering empty list
+        # fields by default. Normalize older runtimes to that representation
+        # so exact-edge identities remain stable across the supported CI
+        # Python versions.
+        dumped = ast.dump(
+            node,
+            annotate_fields=True,
+            include_attributes=False,
+        )
+        previous = None
+        while dumped != previous:
+            previous = dumped
+            dumped = re.sub(r"(?<=\()\w+=\[\], ", "", dumped)
+            dumped = re.sub(r", \w+=\[\](?=[,)])", "", dumped)
+    return _value_fingerprint(
+        "ast-v1",
+        dumped,
+    )
+
+
+def _text_fingerprint(text: str, offset: int, matched_text: str) -> str:
+    """Return a location-independent fingerprint for a non-Python edge."""
+    line_start = text.rfind("\n", 0, offset) + 1
+    line_end = text.find("\n", offset)
+    if line_end < 0:
+        line_end = len(text)
+    statement = text[line_start:line_end]
+    normalized = re.sub(r"\s+", "", statement)
+    if not normalized:
+        normalized = re.sub(r"\s+", "", matched_text)
+    return _value_fingerprint("text-v1", normalized)
+
+
+def _value_fingerprint(kind: str, value: str) -> str:
+    """Return a short, namespaced SHA-256 fingerprint for stable identities."""
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
+    return f"{kind}:{digest}"
+
+
+def _disambiguate_fingerprints(
+    violations: Iterable[Violation],
+) -> list[Violation]:
+    """Disambiguate repeated identical edges without reintroducing line IDs."""
+    grouped: dict[str, list[Violation]] = {}
+    for item in violations:
+        grouped.setdefault(item.identity, []).append(item)
+    result: list[Violation] = []
+    for items in grouped.values():
+        if len(items) == 1:
+            result.extend(items)
+            continue
+        for occurrence, item in enumerate(sorted(items), start=1):
+            result.append(
+                replace(
+                    item,
+                    fingerprint=(
+                        f"{item.fingerprint}:occurrence-v1-{occurrence}"
+                    ),
+                )
+            )
+    return sorted(result)
+
+
 def _line_violation(
     root: Path,
     path: Path,
@@ -470,6 +639,7 @@ def _line_violation(
     rule: str,
     source: str,
     target: str,
+    fingerprint: str,
 ) -> Violation:
     return Violation(
         rule,
@@ -478,6 +648,7 @@ def _line_violation(
         source,
         target,
         "Replace the concrete edge with a typed global contract.",
+        fingerprint,
     )
 
 
@@ -490,6 +661,7 @@ def _violation(
     source: str,
     target: str,
     guidance: str,
+    matched_text: str,
 ) -> Violation:
     return Violation(
         rule,
@@ -498,6 +670,7 @@ def _violation(
         source,
         target,
         guidance,
+        _text_fingerprint(text, offset, matched_text),
     )
 
 
@@ -544,6 +717,12 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=Path(__file__).parents[3])
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--reference-baseline", type=Path)
+    parser.add_argument(
+        "--today",
+        type=dt.date.fromisoformat,
+        default=dt.date.today(),
+        help="ISO date used to enforce exception sunset dates (default: today)",
+    )
     parser.add_argument("--format", choices=("text", "json", "sarif"), default="text")
     args = parser.parse_args()
     root = args.root.resolve()
@@ -558,8 +737,26 @@ def main() -> int:
     except BaselineError as exc:
         print(f"pack-architecture: {exc}", file=sys.stderr)
         return 2
+    expired = find_expired_baseline_exceptions(baseline, today=args.today)
+    if expired:
+        identities = ", ".join(str(item["identity"]) for item in expired)
+        print(
+            "pack-architecture: baseline contains expired exceptions; "
+            f"remove or renew them through review: {identities}",
+            file=sys.stderr,
+        )
+        return 2
     violations = scan_repository(root)
-    active = [item for item in violations if item.identity not in baseline]
+    stale = find_stale_baseline_exceptions(violations, baseline)
+    if stale:
+        identities = ", ".join(str(item["identity"]) for item in stale)
+        print(
+            "pack-architecture: baseline contains resolved identities; "
+            f"remove them to preserve shrink-only enforcement: {identities}",
+            file=sys.stderr,
+        )
+        return 2
+    active = find_unbaselined_violations(violations, baseline)
     if args.format == "json":
         print(
             json.dumps(

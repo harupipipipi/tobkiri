@@ -9,12 +9,15 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+import pytest
 
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULTSPACK_ROOT = ROOT / "ecosystem" / "defaultspack"
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DEFAULTSPACK_ROOT))
+
+pytestmark = pytest.mark.usefixtures("defaultspack_conversation_owner")
 
 from domain.external.adapters import line as line_adapter_module  # noqa: E402
 from domain.external.adapters.line import LineResponseAdapter  # noqa: E402
@@ -58,7 +61,20 @@ def _install_line_endpoint(
     monkeypatch.setenv("RUMI_DEFAULTSPACK_EXTERNAL_SOURCES_PATH", str(tmp_path / "external_sources.json"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_SECRETS_DIR", str(tmp_path / "secrets"))
     monkeypatch.setenv("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", str(tmp_path / "frontend_settings.json"))
-    monkeypatch.setenv("LINE_CHANNEL_SECRET", SECRET)
+    from domain.external.token_store import set_external_token
+
+    assert set_external_token(
+        "line",
+        SECRET,
+        token_id="channel-secret",
+        kind="channel_secret",
+    )["success"]
+    assert set_external_token(
+        "line",
+        "line-access-token",
+        token_id="channel-access",
+        kind="channel_access_token",
+    )["success"]
     store = WebhookEndpointStore(endpoint_path)
     store.upsert(
         {

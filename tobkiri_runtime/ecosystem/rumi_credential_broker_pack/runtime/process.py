@@ -17,10 +17,12 @@ def main() -> int:
             dict,
         ):
             raise ValueError("request is invalid")
-        value = CredentialBrokerService().invoke(
-            str(request.get("operation") or ""),
-            request["payload"],
-        )
+        operation = str(request.get("operation") or "")
+        if operation == "resolve":
+            raise PermissionError(
+                "credential resolution requires the bound Host broker channel"
+            )
+        value = CredentialBrokerService().invoke(operation, request["payload"])
         response = {"status": "ok", "value": value}
         code = 0
     except PermissionError:
@@ -50,4 +52,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -1,1 +1,67 @@
-{"pack_id": "rumi_tool_mcp_executor_pack", "pack_identity": "rumi:ecosystem/rumi_tool_mcp_executor_pack", "display_name": "Rumi Tool MCP Executor Pack", "version": "1.0.0", "description": "Namespace-bound MCP gateway executor.", "dependencies": {}, "connectivity": {"requires": ["rumi.service.mcp.tool.call.v1"], "provides": ["rumi.service.tool.execute.v1"]}, "required_secrets": [], "required_capabilities": ["tool.execute"], "required_network": {"allowed_domains": [], "allowed_ports": []}, "host_execution": true, "resources": [], "provenance": {"content_hash": "sha256:10c572bbcfe04ba189dfc836656b81710d3d783fb87eef605e71f38243a3481e", "build_identity": "rumi-tool-mcp-executor-pack:1.0.0", "trust_class": "local", "signature": null}, "metadata": {"authoritative_owner": true, "owner_surfaces": ["mcp_tool_execution"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"namespace_required": true, "exact_gateway": true}}}
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.tool.execute.v1"
+    ],
+    "requires": [
+      "rumi.service.mcp.tool.call.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Namespace-bound selected MCP gateway executor.",
+  "display_name": "Rumi Tool MCP Executor",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:2ad98e930afb6fd41a88c3eba17f2a26a9300c27c768f8ee08ebba016622b90a",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:334b4f2904fb4688e5dc5896746c34602da5050de6b1a53173c2798451d70bed"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:334b4f2904fb4688e5dc5896746c34602da5050de6b1a53173c2798451d70bed"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "mcp_tool_execution"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "exact_gateway": true,
+      "namespace_required": true
+    }
+  },
+  "pack_id": "rumi_tool_mcp_executor_pack",
+  "pack_identity": "rumi:ecosystem/rumi_tool_mcp_executor_pack",
+  "provenance": {
+    "build_identity": "rumi_tool_mcp_executor_pack:1.0.0",
+    "content_hash": "sha256:5c3ade7f2f98e1a652e38ca8738a5683f979687173a5bae12b94f9238e13d0cf",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.execute"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

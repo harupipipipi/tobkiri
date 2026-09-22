@@ -2,6 +2,7 @@ import json
 import os
 import threading
 from pathlib import Path
+from typing import Any
 
 from ..components.registry import DomainComponentRegistry, build_domain_component_roots
 from ..extensions.runtime import get_extension_registry
@@ -14,6 +15,7 @@ from .security import (
     unsupported_execution_reason,
 )
 from .loading import normalize_tool_loading_mode
+from .schema_adapter import list_or_empty, mapping_or_empty
 from core_runtime.resolved_profile_scope import effective_pack_ids
 
 _TOOL_SEARCH_METADATA_KEYS = {
@@ -33,11 +35,7 @@ class ToolRegistrationError(ValueError):
 
 
 def _tool_source(tool_def: dict) -> str:
-    metadata = (
-        tool_def.get("metadata")
-        if isinstance(tool_def.get("metadata"), dict)
-        else {}
-    )
+    metadata = mapping_or_empty(tool_def.get("metadata"))
     return str(
         tool_def.get("source_path")
         or metadata.get("manifest_path")
@@ -48,10 +46,10 @@ def _tool_source(tool_def: dict) -> str:
 
 
 def _search_metadata_from_manifest(manifest: dict, config: dict) -> dict:
-    metadata = {}
+    metadata: dict[str, Any] = {}
     for container in (
-        manifest.get("metadata") if isinstance(manifest.get("metadata"), dict) else {},
-        config.get("metadata") if isinstance(config.get("metadata"), dict) else {},
+        mapping_or_empty(manifest.get("metadata")),
+        mapping_or_empty(config.get("metadata")),
     ):
         for key in _TOOL_SEARCH_METADATA_KEYS:
             if key in container:
@@ -62,11 +60,7 @@ def _search_metadata_from_manifest(manifest: dict, config: dict) -> dict:
         if key in config:
             metadata[key] = config[key]
     if manifest.get("schema_version") == "tobkiri.tool/v3":
-        config_metadata = (
-            config.get("metadata")
-            if isinstance(config.get("metadata"), dict)
-            else {}
-        )
+        config_metadata = mapping_or_empty(config.get("metadata"))
         for key in ("schema_version", "effects", "security", "activity_ids"):
             if key in config_metadata:
                 metadata[key] = config_metadata[key]
@@ -95,36 +89,13 @@ def _localized_text(value) -> str:
 def _v3_tool_config(manifest: dict) -> dict:
     """Project a strict Tool v3 manifest into the canonical registry shape."""
 
-    discovery = (
-        manifest.get("discovery")
-        if isinstance(manifest.get("discovery"), dict)
-        else {}
-    )
-    contract = (
-        manifest.get("contract")
-        if isinstance(manifest.get("contract"), dict)
-        else {}
-    )
-    risk = (
-        manifest.get("risk")
-        if isinstance(manifest.get("risk"), dict)
-        else {}
-    )
-    approval = (
-        manifest.get("approval")
-        if isinstance(manifest.get("approval"), dict)
-        else {}
-    )
-    requirements = (
-        manifest.get("requirements")
-        if isinstance(manifest.get("requirements"), dict)
-        else {}
-    )
-    effects = [
-        item
-        for item in (manifest.get("effects") or [])
-        if isinstance(item, dict)
-    ]
+    discovery = mapping_or_empty(manifest.get("discovery"))
+    contract = mapping_or_empty(manifest.get("contract"))
+    risk = mapping_or_empty(manifest.get("risk"))
+    approval = mapping_or_empty(manifest.get("approval"))
+    requirements = mapping_or_empty(manifest.get("requirements"))
+    raw_effects = manifest.get("effects")
+    effects = [item for item in raw_effects if isinstance(item, dict)] if isinstance(raw_effects, list) else []
     effect_operations = {
         str(item.get("operation") or "").strip().casefold()
         for item in effects
@@ -150,35 +121,23 @@ def _v3_tool_config(manifest: dict) -> dict:
     )
     minimum = str(approval.get("minimum") or "auto").strip()
     default = str(approval.get("default") or "inherit").strip()
-    activity_ids = [
-        str(item)
-        for item in discovery.get("activity_ids", [])
-        if str(item).strip()
-    ]
-    aliases = [
-        str(item)
-        for item in discovery.get("aliases", [])
-        if str(item).strip()
-    ]
-    keywords = [
-        str(item)
-        for item in discovery.get("keywords", [])
-        if str(item).strip()
-    ]
+    activity_ids = [str(item) for item in discovery.get("activity_ids", []) or [] if str(item).strip()]
+    aliases = [str(item) for item in discovery.get("aliases", []) or [] if str(item).strip()]
+    keywords = [str(item) for item in discovery.get("keywords", []) or [] if str(item).strip()]
     return {
         "tool_id": str(manifest.get("id") or "").strip(),
         "name": str(manifest.get("id") or "").strip(),
         "display_name": _localized_text(manifest.get("display_name")),
         "summary": _localized_text(manifest.get("description")),
         "schema": {
-            "parameters": dict(contract.get("input_schema") or {}),
+            "parameters": mapping_or_empty(contract.get("input_schema")),
             **(
-                {"returns": dict(contract.get("output_schema") or {})}
+                {"returns": mapping_or_empty(contract.get("output_schema"))}
                 if isinstance(contract.get("output_schema"), dict)
                 else {}
             ),
         },
-        "execution": dict(manifest.get("execution") or {}),
+        "execution": mapping_or_empty(manifest.get("execution")),
         "risk": str(risk.get("level") or "medium"),
         "requires_approval": (
             minimum in {"confirm", "deny"}
@@ -212,24 +171,33 @@ def _v3_tool_config(manifest: dict) -> dict:
             "connections": list(requirements.get("connections") or []),
             "env": list(requirements.get("env") or []),
         },
-        "ui": dict(manifest.get("ui") or {}),
+        "ui": mapping_or_empty(manifest.get("ui")),
         "metadata": {
             "aliases": aliases,
             "keywords": keywords,
             "activity_ids": activity_ids,
             "schema_version": "tobkiri.tool/v3",
             "effects": effects,
-            "security": dict(manifest.get("security") or {}),
+            "security": mapping_or_empty(manifest.get("security")),
         },
     }
 
 
 class ToolRegistry:
     """ツール定義の登録・管理（シングルトン・インメモリ + 永続化）"""
-    _instance = None
+    _instance: "ToolRegistry | None" = None
     _instance_lock = threading.Lock()
+    _initialized: bool
+    _initializing: bool
+    _initializing_thread_id: int | None
+    _initialization_condition: threading.Condition
+    _tools: dict[str, dict[str, Any]]
+    _diagnostics: list[dict[str, Any]]
+    _mcp_servers: dict[str, Any]
+    _lock: threading.Lock
+    _tools_dir: str
 
-    def __new__(cls):
+    def __new__(cls) -> "ToolRegistry":
         with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
@@ -301,14 +269,33 @@ class ToolRegistry:
             return [self._pack_root()]
         roots: list[Path] = []
         effective = effective_pack_ids()
-        for pack_id in sorted(effective):
+        candidate_pack_ids = set(effective)
+        for pack_id in sorted(candidate_pack_ids):
             path = ecosystem_dir / pack_id
             if (
                 path.is_dir()
-                and (path / "ecosystem.json").is_file()
+                and self._has_selected_pack_manifest(path, pack_id)
             ):
                 roots.append(path)
         return roots
+
+    @staticmethod
+    def _has_selected_pack_manifest(pack_root: Path, pack_id: str) -> bool:
+        """Accept only a finite selected Pack with a matching canonical manifest."""
+
+        candidates = (
+            pack_root / "pack.v4.json",
+            pack_root / "v4" / "packs" / f"{pack_id}.pack.v4.json",
+        )
+        for manifest_path in candidates:
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                declared = str((manifest.get("pack") or {}).get("id") or "").strip()
+            except (OSError, UnicodeError, ValueError, TypeError):
+                continue
+            if declared == pack_id:
+                return True
+        return False
 
     def _load_pack_tools(self):
         loaded = self._load_extension_tools()
@@ -342,19 +329,55 @@ class ToolRegistry:
         for manifest_path in sorted((pack_root / "tools").glob("*/manifest.json")):
             tool_def = self._tool_from_path_manifest(manifest_path, pack_root, pack_id)
             if tool_def is not None:
+                if self._already_loaded_from_manifest(tool_def):
+                    continue
                 self.register(tool_def)
                 loaded += 1
         for manifest_path in sorted((pack_root / "tools").glob("*/tool.json")):
             tool_def = self._tool_from_path_manifest(manifest_path, pack_root, pack_id)
             if tool_def is not None:
+                if self._already_loaded_from_manifest(tool_def):
+                    continue
                 self.register(tool_def)
                 loaded += 1
         for manifest_path in sorted((pack_root / "extensions" / "tools").glob("*/manifest.json")):
             tool_def = self._tool_from_path_manifest(manifest_path, pack_root, pack_id)
             if tool_def is not None:
+                if self._already_loaded_from_manifest(tool_def):
+                    continue
                 self.register(tool_def)
                 loaded += 1
         return loaded
+
+    def _already_loaded_from_manifest(self, tool_def: dict) -> bool:
+        """Return whether discovery already registered this exact manifest.
+
+        Extension discovery and active-pack discovery can legitimately expose
+        the same first-party manifest. Only that identical canonical source is
+        idempotent; the registry still rejects the same Tool ID from a
+        different file or pack.
+        """
+
+        tool_id = str(tool_def.get("tool_id") or "").strip()
+        existing = self.get(tool_id) if tool_id else None
+        if existing is None:
+            return False
+
+        existing_source = _tool_source(existing)
+        incoming_source = _tool_source(tool_def)
+        if not existing_source or not incoming_source:
+            return False
+        try:
+            same_source = Path(existing_source).resolve() == Path(
+                incoming_source
+            ).resolve()
+        except (OSError, RuntimeError):
+            same_source = existing_source == incoming_source
+
+        return same_source and (
+            source_pack_id_from_manifest(existing)
+            == source_pack_id_from_manifest(tool_def)
+        )
 
     def _load_component_tools(self) -> int:
         loaded = 0
@@ -370,10 +393,24 @@ class ToolRegistry:
             if tool_def.get("tool_id") != component.id:
                 continue
             existing = self.get(tool_def["tool_id"])
-            if existing is not None and not self._component_may_annotate_existing_tool(
-                existing,
-                component.source_pack_id,
-            ):
+            if existing is not None:
+                if not self._component_may_annotate_existing_tool(
+                    existing,
+                    component.source_pack_id,
+                ):
+                    continue
+                metadata = dict(existing.get("metadata", {}))
+                metadata["component_category"] = "tools"
+                metadata["component_id"] = component.id
+                metadata["component_manifest_path"] = manifest.get(
+                    "source_path",
+                    "",
+                )
+                annotated = dict(existing)
+                annotated["metadata"] = metadata
+                with self._lock:
+                    self._tools[tool_def["tool_id"]] = annotated
+                loaded += 1
                 continue
             metadata = dict(tool_def.get("metadata", {}))
             metadata["source"] = "pack"
@@ -441,13 +478,18 @@ class ToolRegistry:
 
     @staticmethod
     def _pack_id_from_root(pack_root: Path) -> str:
-        try:
-            raw = json.loads((pack_root / "ecosystem.json").read_text(encoding="utf-8"))
-            pack_id = str(raw.get("pack_id") or "").strip()
-            if pack_id:
-                return pack_id
-        except Exception:
-            pass
+        candidates = (
+            pack_root / "pack.v4.json",
+            pack_root / "v4" / "packs" / f"{pack_root.name}.pack.v4.json",
+        )
+        for manifest_path in candidates:
+            try:
+                raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+                pack_id = str((raw.get("pack") or {}).get("id") or "").strip()
+                if pack_id:
+                    return pack_id
+            except (OSError, UnicodeError, ValueError, TypeError):
+                continue
         return pack_root.name
 
     def _load_extension_tools(self):
@@ -520,7 +562,7 @@ class ToolRegistry:
         if manifest.get("schema_version") == "tobkiri.tool/v3":
             config = _v3_tool_config(manifest)
         else:
-            config = manifest.get("config", {}) or {}
+            config = mapping_or_empty(manifest.get("config"))
         tool_id = str(config.get("tool_id", manifest.get("id", ""))).strip()
         if not tool_id:
             return None
@@ -534,7 +576,7 @@ class ToolRegistry:
             or manifest.get("display_name")
             or ""
         )
-        execution = dict(config.get("execution", {}))
+        execution = mapping_or_empty(config.get("execution"))
         handler = str(config.get("handler", "")).strip()
         write_action = bool(config.get("write_action", False))
         requires_approval = bool(config.get("requires_approval", False))
@@ -547,29 +589,25 @@ class ToolRegistry:
             capability_grants = [raw_capability_grants.strip()]
         else:
             capability_grants = []
-        capability_requirements = (
-            dict(config.get("capability_requirements"))
-            if isinstance(config.get("capability_requirements"), dict)
-            else {}
-        )
+        capability_requirements = mapping_or_empty(config.get("capability_requirements"))
         requires_model_capabilities = [
             str(item).strip()
-            for item in (config.get("requires_model_capabilities") if isinstance(config.get("requires_model_capabilities"), list) else [])
+            for item in list_or_empty(config.get("requires_model_capabilities"))
             if str(item or "").strip()
         ]
         requires_input_modalities = [
             str(item).strip()
-            for item in (config.get("requires_input_modalities") if isinstance(config.get("requires_input_modalities"), list) else [])
+            for item in list_or_empty(config.get("requires_input_modalities"))
             if str(item or "").strip()
         ]
         requires_runtime_capabilities = [
             str(item).strip()
-            for item in (config.get("requires_runtime_capabilities") if isinstance(config.get("requires_runtime_capabilities"), list) else [])
+            for item in list_or_empty(config.get("requires_runtime_capabilities"))
             if str(item or "").strip()
         ]
         attachment_policy = str(config.get("attachment_policy") or "").strip()
         supports_attachments = config.get("supports_attachments") if isinstance(config.get("supports_attachments"), bool) else None
-        tags = list(config.get("tags", manifest.get("tags", [])) or [])
+        tags = list_or_empty(config.get("tags") or manifest.get("tags"))
         extra_metadata = _search_metadata_from_manifest(manifest, config)
         loading = normalize_tool_loading_mode(
             config.get("loading")
@@ -588,7 +626,7 @@ class ToolRegistry:
         # untrusted legacy execution path via unsupported_execution_reason().
         legacy_compat = bool(allow_legacy_compat or not pack_id)
         raw_risk = config.get("risk", manifest.get("risk", ""))
-        provisional = {
+        provisional: dict[str, Any] = {
             "tool_id": tool_id,
             "name": str(config.get("name", tool_id)),
             "display_name": display_name,
@@ -674,7 +712,7 @@ class ToolRegistry:
             provisional["metadata"]["security_rejection"] = rejection_reason
         elif rejection_reason is not None:
             return None
-        legacy_compat_metadata = {}
+        legacy_compat_metadata: dict[str, Any] = {}
         if provisional["metadata"].get("legacy_compat_unexecutable"):
             legacy_compat_metadata = {
                 "legacy_compat_unexecutable": True,
@@ -929,11 +967,7 @@ class ToolRegistry:
             for key, value in tool_def.items()
             if key != "handler_code"
         }
-        execution = (
-            export.get("execution")
-            if isinstance(export.get("execution"), dict)
-            else {}
-        )
+        execution = mapping_or_empty(export.get("execution"))
         if execution.get("type") == "dynamic":
             export["enabled"] = False
             export["migration_required"] = True

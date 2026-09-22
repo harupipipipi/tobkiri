@@ -205,40 +205,20 @@ def test_tags_are_set(func_name):
 # ---------------------------------------------------------------------------
 
 def test_function_registry_mock_registration():
-    """
-    FunctionRegistry をインスタンス化して、functions/ のスキャンを
-    シミュレートし、全 5 function が登録されることを確認する。
-    """
-    project_root = Path(__file__).resolve().parent.parent
-    if str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
+    """The v4 catalog, not a process-global FunctionRegistry, owns functions."""
+    from ecosystem.defaultspack.domain.runtime_v4 import BundledCatalog
+    from tests.legacy_authority_contracts import assert_retired_module_absent
 
-    from core_runtime.function_registry import FunctionRegistry
-
-    reg = FunctionRegistry()
-    pack_id = "core_docker_capability"
-
-    for func_name in FUNCTION_NAMES:
-        func_dir = FUNC_BASE / func_name
-        manifest_path = func_dir / "manifest.json"
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            manifest = json.load(f)
-
-        result = reg.register(
-            pack_id=pack_id,
-            function_id=manifest["function_id"],
-            manifest=manifest,
-            function_dir=func_dir,
-        )
-        assert result is True, "Failed to register function: " + func_name
-
-    assert reg.count() == 5, "Expected 5 registered functions, got " + str(reg.count())
-
-    for func_name in FUNCTION_NAMES:
-        entry = reg.get(pack_id + ":" + func_name)
-        assert entry is not None, "Cannot retrieve " + pack_id + ":" + func_name
-        assert entry.function_id == func_name
-        assert entry.pack_id == pack_id
+    catalog = BundledCatalog.load(
+        Path(__file__).resolve().parents[1] / "ecosystem" / "defaultspack" / "v4"
+    )
+    assert catalog.packs
+    assert all(
+        manifest["functions"]
+        for manifest in catalog.packs.values()
+        if manifest["pack"]["kind"] not in {"base", "shell"}
+    )
+    assert_retired_module_absent("core_runtime.function_registry")
 
 
 # ---------------------------------------------------------------------------

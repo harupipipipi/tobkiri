@@ -1,10 +1,12 @@
 import {
   defaultspackApiFetch,
+  defaultspackContractRoute,
   explainDefaultspackApiError,
   type KanbanBoardResponse,
   type KanbanBoardScope,
   type KanbanImportConversationPayload,
   type KanbanMovePayload,
+  type DefaultspackContractRoute,
 } from "../../../lib/api";
 
 export class KanbanApiError extends Error {
@@ -18,7 +20,7 @@ export class KanbanApiError extends Error {
 }
 
 type RequestCandidate = {
-  path: string;
+  path: DefaultspackContractRoute;
   method?: string;
   body?: Record<string, unknown>;
 };
@@ -119,9 +121,9 @@ export const kanbanResources: KanbanDataSource = {
   async loadBoard(scope) {
     const query = boardQuery(scope);
     const payload = await requestCandidates<unknown>([
-      { path: `/api/kanban/boards?${query}` },
-      { path: `/api/kanban/board?${query}` },
-      { path: `/api/kanban?${query}` },
+      { path: defaultspackContractRoute(`api/kanban/boards?${query}`) },
+      { path: defaultspackContractRoute(`api/kanban/board?${query}`) },
+      { path: defaultspackContractRoute(`api/kanban?${query}`) },
     ]);
     return normalizeBoardResponse(payload);
   },
@@ -129,9 +131,9 @@ export const kanbanResources: KanbanDataSource = {
   async ensureBoard(scope, title) {
     const body = { scope_type: scope.type, scope_id: scope.id, title };
     const payload = await requestCandidates<unknown>([
-      { path: "/api/kanban/boards", method: "POST", body },
-      { path: "/api/kanban/board", method: "POST", body },
-      { path: "/api/kanban", method: "POST", body: { action: "ensure", ...body } },
+      { path: defaultspackContractRoute("api/kanban/boards"), method: "POST", body },
+      { path: defaultspackContractRoute("api/kanban/board"), method: "POST", body },
+      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "ensure", ...body } },
     ]);
     return normalizeBoardResponse(payload);
   },
@@ -139,35 +141,35 @@ export const kanbanResources: KanbanDataSource = {
   async createCard(boardId, columnId, input) {
     const body = { board_id: boardId, column_id: columnId, ...input };
     await requestCandidates<unknown>([
-      { path: `/api/kanban/boards/${encode(boardId)}/cards`, method: "POST", body },
-      { path: "/api/kanban/cards", method: "POST", body },
-      { path: "/api/kanban", method: "POST", body: { action: "create_card", ...body } },
+      { path: defaultspackContractRoute(`api/kanban/boards/${encode(boardId)}/cards`), method: "POST", body },
+      { path: defaultspackContractRoute("api/kanban/cards"), method: "POST", body },
+      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "create_card", ...body } },
     ]);
   },
 
   async moveCard(boardId, cardId, payload) {
     const body = { board_id: boardId, card_id: cardId, ...payload };
     await requestCandidates<unknown>([
-      { path: `/api/kanban/cards/${encode(cardId)}/move`, method: "POST", body },
-      { path: `/api/kanban/boards/${encode(boardId)}/cards/${encode(cardId)}/move`, method: "POST", body },
-      { path: "/api/kanban", method: "POST", body: { action: "move_card", ...body } },
+      { path: defaultspackContractRoute(`api/kanban/cards/${encode(cardId)}/move`), method: "POST", body },
+      { path: defaultspackContractRoute(`api/kanban/boards/${encode(boardId)}/cards/${encode(cardId)}/move`), method: "POST", body },
+      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "move_card", ...body } },
     ]);
   },
 
   async deleteCard(boardId, cardId) {
     await requestCandidates<unknown>([
-      { path: `/api/kanban/cards/${encode(cardId)}?board_id=${encode(boardId)}`, method: "DELETE" },
-      { path: `/api/kanban/boards/${encode(boardId)}/cards/${encode(cardId)}`, method: "DELETE" },
-      { path: "/api/kanban", method: "POST", body: { action: "delete_card", board_id: boardId, card_id: cardId } },
+      { path: defaultspackContractRoute(`api/kanban/cards/${encode(cardId)}?board_id=${encode(boardId)}`), method: "DELETE" },
+      { path: defaultspackContractRoute(`api/kanban/boards/${encode(boardId)}/cards/${encode(cardId)}`), method: "DELETE" },
+      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "delete_card", board_id: boardId, card_id: cardId } },
     ]);
   },
 
   async importConversation(boardId, payload) {
     const body = { board_id: boardId, ...payload };
     await requestCandidates<unknown>([
-      { path: `/api/kanban/boards/${encode(boardId)}/import-conversation`, method: "POST", body },
-      { path: "/api/kanban/import-conversation", method: "POST", body },
-      { path: "/api/kanban", method: "POST", body: { action: "import_conversation", ...body } },
+      { path: defaultspackContractRoute(`api/kanban/boards/${encode(boardId)}/import-conversation`), method: "POST", body },
+      { path: defaultspackContractRoute("api/kanban/import-conversation"), method: "POST", body },
+      { path: defaultspackContractRoute("api/kanban"), method: "POST", body: { action: "import_conversation", ...body } },
     ]);
   },
 };

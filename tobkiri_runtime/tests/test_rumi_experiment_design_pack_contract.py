@@ -17,6 +17,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = 'rumi_experiment_design_pack'
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 REQUIRED_ASSETS = ['README.md', 'asset_index.yaml', 'catalog/handoff_matrix.yaml', 'catalog/quality_matrix.yaml', 'catalog/taxonomy.yaml', 'catalog/workflows.yaml', 'checklists/review.checklist.yaml', 'docs/README.md', 'docs/architecture.md', 'docs/interfaces.md', 'docs/operations.md', 'examples/ab_test_checkout_copy.example.yaml', 'examples/instrumentation_request.example.yaml', 'examples/quasi_experiment_pricing.example.yaml', 'examples/rollout_guardrail_plan.example.yaml', 'fixtures/contract_fixture.yaml', 'fixtures/negative_cases.yaml', 'ledgers/evidence_ledger.schema.yaml', 'policies/handoff.policy.yaml', 'policies/safety.policy.yaml', 'presets/handoff_review.preset.yaml', 'presets/quality_gate.preset.yaml', 'presets/safe_default.preset.yaml', 'profiles/experiment_designer.profile.yaml', 'prompts/experiment_planner.system.md', 'schemas/assignment_plan.schema.json', 'schemas/decision_record.schema.json', 'schemas/guardrail_plan.schema.json', 'schemas/hypothesis.schema.json', 'schemas/instrumentation_request.schema.json', 'schemas/metric_plan.schema.json', 'schemas/sample_size_plan.schema.json', 'templates/artifact_card.template.md', 'templates/handoff.template.md', 'templates/review_report.template.md']
@@ -54,7 +55,8 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["required_secrets"] == []
     assert ecosystem["required_network"] == []
     assert ecosystem["host_execution"] is False
@@ -72,7 +74,13 @@ def test_pack_required_assets_and_ecosystem_contract() -> None:
     assert {item["pack_id"] for item in ecosystem["metadata"]["optional_integrations"]} <= available
 
     metadata_indexed = {item for values in ecosystem["metadata"]["asset_index"].values() for item in values}
-    actual = {str(path.relative_to(PACK_DIR)) for path in PACK_DIR.rglob("*") if path.is_file() and path.name != "ecosystem.json"}
+    actual = {
+        str(path.relative_to(PACK_DIR))
+        for path in PACK_DIR.rglob("*")
+        if path.is_file()
+        and path.name not in {"ecosystem.json", "executables.v4.json"}
+    }
+    actual -= V4_AUTHORITY_ARTIFACTS
     assert metadata_indexed == actual
     assert set(REQUIRED_ASSETS) == actual
 

@@ -1,27 +1,350 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {"id": "rumi.model_evals", "version": "2.0.0", "kind": "service", "display_name": "Rumi Model Evals", "description": "Local-first evaluation catalog, approved execution plans, and deterministic scoring."},
   "contracts": {
     "provides": [
-      {"id": "rumi.resource.ai.eval.catalog.v1", "version": "1.0.0", "provider_instance_id": "ai-eval.catalog", "cardinality": "one", "security": "public", "failure": "isolate", "lifecycle": {"introduced": "2.0.0", "deprecated": false, "data_owner": "rumi_model_evals_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.eval.catalog.read"]},
-      {"id": "rumi.action.ai.eval.plan.v1", "version": "1.0.0", "provider_instance_id": "ai-eval.plan", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "2.0.0", "deprecated": false, "data_owner": "rumi_model_evals_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.eval.plan"]},
-      {"id": "rumi.service.ai.eval.score.v1", "version": "1.0.0", "provider_instance_id": "ai-eval.score", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "2.0.0", "deprecated": false, "data_owner": "rumi_model_evals_pack"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["ai.eval.score"]}
+      {
+        "cardinality": "one",
+        "failure": "isolate",
+        "id": "rumi.resource.ai.eval.catalog.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_model_evals_pack",
+          "deprecated": false,
+          "introduced": "2.0.0"
+        },
+        "provider_instance_id": "ai-eval.catalog",
+        "required_capabilities": [
+          "ai.eval.catalog.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "public",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.ai.eval.plan.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_model_evals_pack",
+          "deprecated": false,
+          "introduced": "2.0.0"
+        },
+        "provider_instance_id": "ai-eval.plan",
+        "required_capabilities": [
+          "ai.eval.plan"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.service.ai.eval.score.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_model_evals_pack",
+          "deprecated": false,
+          "introduced": "2.0.0"
+        },
+        "provider_instance_id": "ai-eval.score",
+        "required_capabilities": [
+          "ai.eval.score"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      }
     ],
     "requires": []
   },
   "entrypoints": [
-    {"id": "ai-eval-catalog", "contract_id": "rumi.resource.ai.eval.catalog.v1", "loader": "python", "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator", "symbol": "create_catalog_operation", "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a"},
-    {"id": "ai-eval-plan", "contract_id": "rumi.action.ai.eval.plan.v1", "loader": "python", "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator", "symbol": "create_plan_operation", "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a"},
-    {"id": "ai-eval-score", "contract_id": "rumi.service.ai.eval.score.v1", "loader": "python", "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator", "symbol": "create_score_operation", "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a"}
+    {
+      "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+      "contract_id": "rumi.resource.ai.eval.catalog.v1",
+      "id": "ai-eval-catalog",
+      "loader": "python",
+      "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator",
+      "symbol": "create_catalog_operation"
+    },
+    {
+      "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+      "contract_id": "rumi.action.ai.eval.plan.v1",
+      "id": "ai-eval-plan",
+      "loader": "python",
+      "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator",
+      "symbol": "create_plan_operation"
+    },
+    {
+      "artifact_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+      "contract_id": "rumi.service.ai.eval.score.v1",
+      "id": "ai-eval-score",
+      "loader": "python",
+      "module": "ecosystem.rumi_model_evals_pack.runtime.evaluator",
+      "symbol": "create_score_operation"
+    }
   ],
-  "resources": [{"id": "catalog/provider_eval_catalog.json", "kind": "ai.eval_catalog", "content_hash": "sha256:e4cf593b4abb244b809e652f9272dea7f30439d5e65b1b887d0ca8b29d4c7efb"}],
-  "storage": [],
+  "extensions": {
+    "rumi.ai_eval.boundary": {
+      "promotion_requires_complete_evidence": true,
+      "provider_execution": false,
+      "self_approval": false,
+      "unknown_evidence_as_failure": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "components": {
+          "eval_capabilities": {
+            "connectivity": {
+              "provides": [
+                "rumi.model_evals.capability_catalog"
+              ],
+              "requires": [
+                "rumi.resource.ai.model.catalog.v1",
+                "rumi.local_agent.profiles"
+              ]
+            },
+            "id": "model_eval_capabilities",
+            "path": "catalog/capabilities.yaml",
+            "type": "capability_catalog"
+          },
+          "eval_examples": {
+            "connectivity": {
+              "provides": [
+                "rumi.model_evals.examples"
+              ]
+            },
+            "id": "model_eval_examples",
+            "path": "examples",
+            "type": "example"
+          },
+          "eval_presets": {
+            "connectivity": {
+              "provides": [
+                "rumi.model_evals.presets"
+              ]
+            },
+            "id": "model_eval_presets",
+            "path": "presets",
+            "type": "eval_preset"
+          },
+          "eval_profiles": {
+            "connectivity": {
+              "provides": [
+                "rumi.model_evals.profiles"
+              ],
+              "requires": [
+                "rumi.local_agent.profiles"
+              ]
+            },
+            "id": "model_eval_profiles",
+            "path": "profiles",
+            "type": "eval_profile"
+          },
+          "eval_prompts": {
+            "connectivity": {
+              "provides": [
+                "rumi.model_evals.prompts"
+              ]
+            },
+            "id": "model_eval_prompts",
+            "path": "prompts",
+            "type": "eval_prompt"
+          },
+          "eval_recipes": {
+            "connectivity": {
+              "provides": [
+                "rumi.model_evals.provider_smoke_recipes",
+                "rumi.model_evals.routing_recipes"
+              ]
+            },
+            "id": "model_eval_recipes",
+            "path": "recipes",
+            "type": "eval_recipe"
+          },
+          "eval_specs": {
+            "connectivity": {
+              "provides": [
+                "rumi.model_evals.layered_eval_contract",
+                "rumi.model_evals.metrics_schema",
+                "rumi.model_evals.fit_matrix_schema",
+                "rumi.model_evals.promotion_gate_schema"
+              ]
+            },
+            "id": "model_eval_specs",
+            "path": "specs",
+            "type": "eval_spec"
+          },
+          "provider_catalog_overlay": {
+            "connectivity": {
+              "provides": [
+                "rumi.model_evals.provider_eval_catalog"
+              ],
+              "requires": [
+                "rumi.resource.ai.model.catalog.v1"
+              ]
+            },
+            "id": "model_eval_provider_catalog_overlay",
+            "path": "catalog/provider_eval_catalog.json",
+            "type": "provider_catalog_overlay"
+          }
+        },
+        "connectivity": {
+          "provides": [
+            "rumi.action.ai.eval.plan.v1",
+            "rumi.resource.ai.eval.catalog.v1",
+            "rumi.service.ai.eval.score.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Local-first evaluation catalog, approved execution plans, and deterministic scoring.",
+        "display_name": "Rumi Model Evals",
+        "host_execution": true,
+        "load_order": [
+          "capability_catalog:model_eval_capabilities",
+          "provider_catalog_overlay:model_eval_provider_catalog_overlay",
+          "eval_spec:model_eval_specs",
+          "eval_recipe:model_eval_recipes",
+          "eval_profile:model_eval_profiles",
+          "eval_prompt:model_eval_prompts",
+          "eval_preset:model_eval_presets",
+          "example:model_eval_examples"
+        ],
+        "metadata": {
+          "author": "Rumi AI Team",
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:3c95192605c14a05852b406713d03220a6ee7d26d465b83169d940a511ac8c07",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:48a947d62f69a656709a55e268e7aa13c967b6cbca3e4e7fc50b7cafadecd3b4"
+          },
+          "description": "Declarative, local-first model evaluation and routing evidence pack for provider smoke tests, pass@k, flakiness, fit matrices, and promotion gates.",
+          "legacy_annotations": {
+            "runtime": {
+              "artifact_manifest": "artifact-manifest.json",
+              "type": "verified_hybrid_pack"
+            }
+          },
+          "license": "MIT",
+          "name": "Rumi Model Evals Pack",
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_model_evals_pack",
+        "pack_identity": "rumi:ecosystem/rumi_model_evals_pack",
+        "provenance": {
+          "build_identity": "rumi_model_evals_pack:2.0.0",
+          "content_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "ai.eval.catalog.read",
+          "ai.eval.plan",
+          "ai.eval.score"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [
+          "catalog/provider_eval_catalog.json"
+        ],
+        "version": "2.0.0",
+        "vocabulary": {
+          "types": [
+            "eval_profile",
+            "eval_prompt",
+            "eval_preset",
+            "eval_recipe",
+            "provider_smoke_spec",
+            "model_fit_matrix",
+            "promotion_gate"
+          ]
+        }
+      },
+      "pack_id": "rumi_model_evals_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_model_evals_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:48a947d62f69a656709a55e268e7aa13c967b6cbca3e4e7fc50b7cafadecd3b4"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "rumi_model_evals_pack.declarative_pack",
+      "defaultspack.ai_client.eval"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove runtime contracts and retain the pinned declarative evidence catalog.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Local-first evaluation catalog, approved execution plans, and deterministic scoring.",
+    "display_name": "Rumi Model Evals",
+    "id": "rumi.model_evals",
+    "kind": "service",
+    "version": "2.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
   "permissions": [
-    {"capability": "ai.eval.catalog.read", "access": "read", "approval_required": false},
-    {"capability": "ai.eval.plan", "access": "execute", "approval_required": false},
-    {"capability": "ai.eval.score", "access": "execute", "approval_required": false}
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "ai.eval.catalog.read"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.eval.plan"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "ai.eval.score"
+    }
   ],
-  "provenance": {"content_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a", "build_identity": "rumi-model-evals-pack:2.0.0", "trust_class": "local", "signature": null},
-  "migration": {"from": ["rumi_model_evals_pack.declarative_pack", "defaultspack.ai_client.eval"], "compatibility_aliases": [], "compatibility_projection": "read_only", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Remove runtime contracts and retain the pinned declarative evidence catalog."},
-  "extensions": {"rumi.ai_eval.boundary": {"provider_execution": false, "self_approval": false, "unknown_evidence_as_failure": false, "promotion_requires_complete_evidence": true}}
+  "provenance": {
+    "build_identity": "rumi_model_evals_pack:2.0.0",
+    "content_hash": "sha256:73cee4d7024199cbcc312fedc7012ac3614528bcbce79522a29c59861c38df4a",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [
+    {
+      "content_hash": "sha256:e4cf593b4abb244b809e652f9272dea7f30439d5e65b1b887d0ca8b29d4c7efb",
+      "id": "catalog/provider_eval_catalog.json",
+      "kind": "ai.eval_catalog"
+    }
+  ],
+  "storage": []
 }

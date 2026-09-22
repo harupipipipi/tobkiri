@@ -1,16 +1,73 @@
 {
+  "connectivity": {
+    "provides": [
+      "rumi.action.tool.definition.manage.v1",
+      "rumi.action.tool.definition.migrate.v1",
+      "rumi.resource.tool.definition.v1"
+    ],
+    "requires": [
+      "rumi.resource.tool.definition.contribution.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "Authoritative provider-neutral tool definitions and aliases.",
+  "display_name": "Rumi Tool Registry",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:7b0615e152b420a371c65d3aaea8ca5d48a0f247a79253c2bb25f009ee0d1fc7",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:67163f0e228ac98fa1f243ff1b6a43318dd2615abe825566cbfd75dba6a1542c"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:67163f0e228ac98fa1f243ff1b6a43318dd2615abe825566cbfd75dba6a1542c"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "tool_definitions",
+      "tool_aliases"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "executes_tools": false,
+      "grants_authority": false
+    }
+  },
   "pack_id": "rumi_tool_registry_pack",
   "pack_identity": "rumi:ecosystem/rumi_tool_registry_pack",
-  "display_name": "Rumi Tool Registry Pack",
-  "version": "1.0.0",
-  "description": "Authoritative provider-neutral tool definitions and aliases.",
-  "dependencies": {},
-  "connectivity": {"requires": ["rumi.resource.tool.definition.contribution.v1"], "provides": ["rumi.resource.tool.definition.v1", "rumi.action.tool.definition.manage.v1", "rumi.action.tool.definition.migrate.v1"]},
+  "provenance": {
+    "build_identity": "rumi_tool_registry_pack:1.0.0",
+    "content_hash": "sha256:caff1d99b89277f67e83d0e3cfb8cf3c568f2c262cf32e9cae4bd1e3e9bc4fc1",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "tool.definition.contribution.read",
+    "tool.definition.manage",
+    "tool.definition.migrate",
+    "tool.definition.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
   "required_secrets": [],
-  "required_capabilities": ["tool.definition.read", "tool.definition.manage", "tool.definition.migrate", "tool.definition.contribution.read"],
-  "required_network": {"allowed_domains": [], "allowed_ports": []},
-  "host_execution": true,
   "resources": [],
-  "provenance": {"content_hash": "sha256:c244ace51133c9f44d8c74a106904834813629b10b57c0cad1265011884471d9", "build_identity": "rumi-tool-registry-pack:1.0.0", "trust_class": "local", "signature": null},
-  "metadata": {"authoritative_owner": true, "owner_surfaces": ["tool_definitions", "tool_aliases"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"executes_tools": false, "grants_authority": false}}
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
 }

@@ -1,2 +1,74 @@
-{"pack_id":"rumi_company_coordinator_pack","pack_identity":"rumi:ecosystem/rumi_company_coordinator_pack","display_name":"Rumi Company Coordinator Pack","version":"1.0.0","description":"Contract-only Company routing, task dispatch, supervision, handoff, and cancellation.","dependencies":{"rumi_company_state_store_pack":">=1.0.0,<2.0.0","rumi_host_authority_bridge_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.resource.company.v1","rumi.action.company.state.v1","rumi.action.company.work.v1","rumi.service.host.authorize.v1"],"provides":["rumi.resource.company.runtime.v1","rumi.action.company.coordinator.v1","rumi.action.job.adapter.v1"]},"required_secrets":[],"required_capabilities":["company.runtime.observe","company.coordinate","company.state.read","company.state.manage","company.work","host.authority.consume","job.adapter.invoke"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":false,"resources":[],"provenance":{"content_hash":"sha256:2cbc9e52e3ee88fc1d59ea1e83e98252d45c2c394c94d46c756e06a9a686ce0b","build_identity":"rumi-company-coordinator-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":false,"owner_surfaces":["company_coordination_process_state"]}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.action.company.coordinator.v1",
+      "rumi.action.job.adapter.v1",
+      "rumi.resource.company.runtime.v1"
+    ],
+    "requires": [
+      "rumi.action.company.state.v1",
+      "rumi.action.company.work.v1",
+      "rumi.resource.company.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_company_state_store_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Contract-only Company routing, work dispatch, and supervision.",
+  "display_name": "Rumi Company Coordinator",
+  "host_execution": false,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:390bc0fc7f34296533ae1b7fcf47febda08667d86455e7e439e84f1e1dd75264",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:517548b669d73830c1425181e987ed41384ef3281b1a45591cd79ce7428ac438"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:517548b669d73830c1425181e987ed41384ef3281b1a45591cd79ce7428ac438"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "company_coordination_process_state"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_company_coordinator_pack",
+  "pack_identity": "rumi:ecosystem/rumi_company_coordinator_pack",
+  "provenance": {
+    "build_identity": "rumi_company_coordinator_pack:1.0.0",
+    "content_hash": "sha256:fc3a98c75d5d974220d0b113dba59915cc57f20bd1025c6e3d5ed45bd95f6c36",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "company.coordinate",
+    "company.runtime.observe",
+    "company.state.manage",
+    "company.state.read",
+    "company.work",
+    "host.authority.consume",
+    "job.adapter.invoke"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -8,6 +8,8 @@ from .ai_input_models import (
     AiInputEdge,
     AiInputNode,
     AiInputSegmentRegistry,
+    PromptSegment,
+    ToolSchemaSegment,
     edge_from_dict,
     normalize_ai_input_config,
 )
@@ -18,7 +20,6 @@ from .ai_input_segments import (
     collect_prompt_segments,
     collect_tool_schema_segments,
 )
-from .profile_runtime_selection import apply_profile_graph_selection
 from .profile_workspace import ProfileWorkspaceManager
 
 
@@ -32,9 +33,12 @@ def build_ai_input_graph_response(
     request_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     del startup_catalog, ecosystem_dir
-    normalized_profile = apply_profile_graph_selection(profile)
+    # The caller must pass a projection of the verified v4 activation.  Do not
+    # reinterpret mutable Profile graph/YAML data into runtime permissions.
+    normalized_profile = copy.deepcopy(profile)
     profile_id = str(normalized_profile.get("profile_id") or "").strip()
-    metadata = normalized_profile.get("metadata") if isinstance(normalized_profile.get("metadata"), dict) else {}
+    raw_metadata = normalized_profile.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
     ai_input_config = normalize_ai_input_config(metadata.get("ai_input"))
     manager = profile_workspace_manager or ProfileWorkspaceManager()
 
@@ -60,7 +64,8 @@ def build_ai_input_graph_response(
         policy_segment=policy_segment,
         ai_input_config=ai_input_config,
     )
-    policy = normalized_profile.get("policy") if isinstance(normalized_profile.get("policy"), dict) else {}
+    raw_policy = normalized_profile.get("policy")
+    policy: dict[str, Any] = raw_policy if isinstance(raw_policy, dict) else {}
     registry = AiInputSegmentRegistry(
         prompt_segments={segment.id: segment for segment in input_segments},
         tool_schemas={segment.id: segment for segment in tool_segments},
@@ -113,9 +118,14 @@ def build_runtime_ai_input_trace(
         include_text=include_text,
         request_context=context,
     )
-    effective = response.get("effective_input") if isinstance(response.get("effective_input"), dict) else {}
-    tool_schemas = effective.get("tool_schemas") if isinstance(effective.get("tool_schemas"), list) else []
-    context_segments = effective.get("context_segments") if isinstance(effective.get("context_segments"), list) else []
+    raw_effective = response.get("effective_input")
+    effective: dict[str, Any] = raw_effective if isinstance(raw_effective, dict) else {}
+    raw_tool_schemas = effective.get("tool_schemas")
+    tool_schemas: list[Any] = raw_tool_schemas if isinstance(raw_tool_schemas, list) else []
+    raw_context_segments = effective.get("context_segments")
+    context_segments: list[Any] = (
+        raw_context_segments if isinstance(raw_context_segments, list) else []
+    )
     allowed_tool_ids = [
         str(item.get("tool_id") or item.get("name") or "").strip()
         for item in tool_schemas
@@ -134,7 +144,9 @@ def build_runtime_ai_input_trace(
         "gate_decisions": response.get("gate_decisions") if isinstance(response.get("gate_decisions"), list) else [],
         "diagnostics": response.get("diagnostics") if isinstance(response.get("diagnostics"), list) else [],
         "provider_payload_summary": {
-            "system_segment_count": len(effective.get("system_segments") or []),
+            "system_segment_count": len(
+                value if isinstance((value := effective.get("system_segments")), list) else []
+            ),
             "context_segment_count": len(context_segments),
             "tool_schema_count": len(tool_schemas),
         },
@@ -144,9 +156,9 @@ def build_runtime_ai_input_trace(
 def _build_graph(
     *,
     profile_id: str,
-    prompt_segments: list[Any],
-    tool_segments: list[Any],
-    policy_segment: Any,
+    prompt_segments: list[PromptSegment],
+    tool_segments: list[ToolSchemaSegment],
+    policy_segment: PromptSegment,
     ai_input_config: dict[str, Any],
 ) -> tuple[list[AiInputNode], list[AiInputEdge]]:
     nodes: dict[str, AiInputNode] = {
@@ -162,37 +174,47 @@ def _build_graph(
     }
     edges: dict[str, AiInputEdge] = {}
 
-    for segment in prompt_segments:
-        node_kind = _node_kind_for_prompt_segment(segment)
-        output_port = _output_port_for_prompt_segment(segment)
-        to_port = _target_port_for_prompt_segment(segment)
-        nodes[segment.id] = AiInputNode(
-            id=segment.id,
+    for prompt_segment in prompt_segments:
+        node_kind = _node_kind_for_prompt_segment(prompt_segment)
+        output_port = _output_port_for_prompt_segment(prompt_segment)
+        to_port = _target_port_for_prompt_segment(prompt_segment)
+        nodes[prompt_segment.id] = AiInputNode(
+            id=prompt_segment.id,
             kind=node_kind,
-            label=_segment_label(segment),
-            ref=str(segment.metadata.get("prompt_id") or segment.metadata.get("route_id") or ""),
+            label=_segment_label(prompt_segment),
+            ref=str(
+                prompt_segment.metadata.get("prompt_id")
+                or prompt_segment.metadata.get("route_id")
+                or ""
+            ),
             output_ports=[output_port],
-            metadata=segment.to_dict(include_text=False),
+            metadata=prompt_segment.to_dict(include_text=False),
         )
         edge = _segment_edge(
-            segment.id,
+            prompt_segment.id,
             to_port,
-            _edge_kind_for_prompt_segment(segment),
+            _edge_kind_for_prompt_segment(prompt_segment),
             from_port=output_port,
-            active=segment.enabled,
+            active=prompt_segment.enabled,
         )
         edges[edge.id] = edge
 
-    for segment in tool_segments:
-        nodes[segment.id] = AiInputNode(
-            id=segment.id,
+    for tool_segment in tool_segments:
+        nodes[tool_segment.id] = AiInputNode(
+            id=tool_segment.id,
             kind="tool_schema",
-            label=segment.name,
-            ref=segment.tool_id,
+            label=tool_segment.name,
+            ref=tool_segment.tool_id,
             output_ports=["schema"],
-            metadata=segment.to_dict(include_schema=False),
+            metadata=tool_segment.to_dict(include_schema=False),
         )
-        edge = _segment_edge(segment.id, "tools", "provides_schema", from_port="schema", active=segment.enabled)
+        edge = _segment_edge(
+            tool_segment.id,
+            "tools",
+            "provides_schema",
+            from_port="schema",
+            active=tool_segment.enabled,
+        )
         edges[edge.id] = edge
 
     nodes[policy_segment.id] = AiInputNode(
@@ -206,7 +228,8 @@ def _build_graph(
     policy_edge = _segment_edge(policy_segment.id, "policy", "provides_policy", from_port="rules")
     edges[policy_edge.id] = policy_edge
 
-    gates = ai_input_config.get("gates") if isinstance(ai_input_config.get("gates"), dict) else {}
+    raw_gates = ai_input_config.get("gates")
+    gates: dict[str, Any] = raw_gates if isinstance(raw_gates, dict) else {}
     for gate_id, gate in gates.items():
         if not isinstance(gate, dict):
             continue
@@ -224,9 +247,9 @@ def _build_graph(
     for raw_edge in ai_input_config.get("inserted_edges") or []:
         if not isinstance(raw_edge, dict):
             continue
-        edge = edge_from_dict(raw_edge)
-        if edge is not None:
-            edges[edge.id] = edge
+        inserted_edge = edge_from_dict(raw_edge)
+        if inserted_edge is not None:
+            edges[inserted_edge.id] = inserted_edge
 
     return (
         sorted(nodes.values(), key=lambda item: (item.kind, item.label, item.id)),
@@ -255,7 +278,7 @@ def _segment_edge(
     )
 
 
-def _node_kind_for_prompt_segment(segment: Any) -> str:
+def _node_kind_for_prompt_segment(segment: PromptSegment) -> str:
     if segment.source_type in {"memory_source", "retrieval_source"}:
         return segment.source_type
     if segment.source_type == "api_route":
@@ -263,7 +286,7 @@ def _node_kind_for_prompt_segment(segment: Any) -> str:
     return "prompt_segment"
 
 
-def _output_port_for_prompt_segment(segment: Any) -> str:
+def _output_port_for_prompt_segment(segment: PromptSegment) -> str:
     if segment.source_type in {"memory_source", "retrieval_source"}:
         return "context"
     if segment.source_type == "api_route":
@@ -271,7 +294,7 @@ def _output_port_for_prompt_segment(segment: Any) -> str:
     return "output"
 
 
-def _target_port_for_prompt_segment(segment: Any) -> str:
+def _target_port_for_prompt_segment(segment: PromptSegment) -> str:
     if segment.source_type in {"memory_source", "retrieval_source"}:
         return "context"
     if segment.source_type == "api_route":
@@ -279,7 +302,7 @@ def _target_port_for_prompt_segment(segment: Any) -> str:
     return "system"
 
 
-def _edge_kind_for_prompt_segment(segment: Any) -> str:
+def _edge_kind_for_prompt_segment(segment: PromptSegment) -> str:
     if segment.source_type in {"memory_source", "retrieval_source"}:
         return "provides_context"
     if segment.source_type == "api_route":
@@ -287,7 +310,7 @@ def _edge_kind_for_prompt_segment(segment: Any) -> str:
     return "contributes_to"
 
 
-def _segment_label(segment: Any) -> str:
+def _segment_label(segment: PromptSegment) -> str:
     if segment.source_type == "api_route":
         return str(segment.metadata.get("route_id") or segment.id.removeprefix("api_route:"))
     if segment.source_type in {"memory_source", "retrieval_source"}:
@@ -304,6 +327,7 @@ def _profile_provider(profile: dict[str, Any]) -> str | None:
 
 def _profile_model(profile: dict[str, Any], request_context: dict[str, Any] | None) -> str | None:
     context = request_context if isinstance(request_context, dict) else {}
-    params = context.get("chat_params") if isinstance(context.get("chat_params"), dict) else {}
+    raw_params = context.get("chat_params")
+    params: dict[str, Any] = raw_params if isinstance(raw_params, dict) else {}
     model = params.get("model") or context.get("model") or profile.get("model")
     return str(model).strip() if isinstance(model, str) and model.strip() else None

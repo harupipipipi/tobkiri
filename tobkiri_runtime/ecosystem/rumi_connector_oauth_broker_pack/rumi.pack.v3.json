@@ -1,26 +1,306 @@
 {
-  "pack_api_version":"rumi.pack.v3",
-  "pack":{"id":"rumi.connector_oauth_broker","version":"1.0.0","kind":"service","display_name":"Rumi Connector OAuth Broker","description":"PKCE-bound one-shot connector OAuth coordination over global contracts."},
-  "contracts":{"provides":[
-    {"id":"rumi.resource.connector.oauth.v1","version":"1.0.0","provider_instance_id":"connector-oauth.resource","cardinality":"one","security":"sensitive","failure":"isolate","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_connector_oauth_broker_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.oauth.read"]},
-    {"id":"rumi.action.connector.oauth.v1","version":"1.0.0","provider_instance_id":"connector-oauth.action","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_connector_oauth_broker_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.oauth.manage"]},
-    {"id":"rumi.transport.connector.oauth.callback.v1","version":"1.0.0","provider_instance_id":"connector-oauth.callback","cardinality":"one","security":"critical","failure":"fail_closed","lifecycle":{"introduced":"1.0.0","deprecated":false,"data_owner":"rumi_connector_oauth_broker_pack"},"schemas":{"input":{"type":"object"},"output":{"type":"object"}},"isolation":"process","required_capabilities":["connector.oauth.callback"]}
-  ],"requires":[
-    {"id":"rumi.resource.connector.registry.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.action.connector.registry.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.action.credential.manage.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"},
-    {"id":"rumi.service.connector.oauth.provider.v1","version":">=1.0.0,<2.0.0","cardinality":"many","optional":true,"failure":"isolate","selection":"exact_instance_key"},
-    {"id":"rumi.service.host.authorize.v1","version":">=1.0.0,<2.0.0","cardinality":"one","failure":"fail_closed"}
-  ]},
-  "entrypoints":[
-    {"id":"connector-oauth-resource","contract_id":"rumi.resource.connector.oauth.v1","loader":"python","module":"ecosystem.rumi_connector_oauth_broker_pack.runtime.broker","symbol":"create_oauth_resource","artifact_hash":"sha256:232f0139e61435f512285da496e312d591da0d0455ae46b6e4de55e31ad3a42f"},
-    {"id":"connector-oauth-action","contract_id":"rumi.action.connector.oauth.v1","loader":"python","module":"ecosystem.rumi_connector_oauth_broker_pack.runtime.broker","symbol":"create_oauth_action","artifact_hash":"sha256:232f0139e61435f512285da496e312d591da0d0455ae46b6e4de55e31ad3a42f"},
-    {"id":"connector-oauth-callback","contract_id":"rumi.transport.connector.oauth.callback.v1","loader":"python","module":"ecosystem.rumi_connector_oauth_broker_pack.runtime.broker","symbol":"create_oauth_transport","artifact_hash":"sha256:232f0139e61435f512285da496e312d591da0d0455ae46b6e4de55e31ad3a42f"}
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "isolate",
+        "id": "rumi.resource.connector.oauth.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_connector_oauth_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector-oauth.resource",
+        "required_capabilities": [
+          "connector.oauth.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.connector.oauth.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_connector_oauth_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector-oauth.action",
+        "required_capabilities": [
+          "connector.oauth.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.transport.connector.oauth.callback.v1",
+        "isolation": "process",
+        "lifecycle": {
+          "data_owner": "rumi_connector_oauth_broker_pack",
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_instance_id": "connector-oauth.callback",
+        "required_capabilities": [
+          "connector.oauth.callback"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": [
+      {
+        "cardinality": "one",
+        "id": "rumi.resource.connector.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.connector.registry.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.action.credential.manage.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "many",
+        "id": "rumi.service.connector.oauth.provider.v1",
+        "optional": true,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "id": "rumi.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ]
+  },
+  "entrypoints": [
+    {
+      "artifact_hash": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "contract_id": "rumi.resource.connector.oauth.v1",
+      "id": "connector-oauth-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_connector_oauth_broker_pack.runtime.broker",
+      "symbol": "create_oauth_resource"
+    },
+    {
+      "artifact_hash": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "contract_id": "rumi.action.connector.oauth.v1",
+      "id": "connector-oauth-action",
+      "loader": "python",
+      "module": "ecosystem.rumi_connector_oauth_broker_pack.runtime.broker",
+      "symbol": "create_oauth_action"
+    },
+    {
+      "artifact_hash": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+      "contract_id": "rumi.transport.connector.oauth.callback.v1",
+      "id": "connector-oauth-callback",
+      "loader": "python",
+      "module": "ecosystem.rumi_connector_oauth_broker_pack.runtime.broker",
+      "symbol": "create_oauth_transport"
+    }
   ],
-  "resources":[],"storage":[{"namespace":"rumi.connector.oauth.pending","schema_version":"1.0.0","authoritative":true,"retention":"hashed state and PKCE verifier for at most ten minutes","export_import":false}],
-  "permissions":[{"capability":"connector.oauth.read","access":"read","approval_required":false},{"capability":"connector.oauth.manage","access":"control","approval_required":true},{"capability":"connector.oauth.callback","access":"execute","approval_required":false},{"capability":"connector.registry.read","access":"read","approval_required":false},{"capability":"connector.registry.manage","access":"control","approval_required":false},{"capability":"credential.manage","access":"control","approval_required":false},{"capability":"host.authority.consume","access":"control","approval_required":false}],
-  "provenance":{"content_hash":"sha256:232f0139e61435f512285da496e312d591da0d0455ae46b6e4de55e31ad3a42f","build_identity":"rumi-connector-oauth-broker-pack:1.0.0","trust_class":"local","signature":null},
-  "migration":{"from":["defaultspack.domain.ai_client.oauth_store","defaultspack.domain.gateway.auth"],"compatibility_aliases":[],"compatibility_projection":"finite_oauth_facade","removal_wave":10,"sunset_at":"2027-12-31","rollback":"Cancel pending states and revoke only handles created by recorded failed bindings."},
-  "extensions":{"rumi.connector_oauth.boundary":{"vendor_imports":false,"network_exchange":false,"state_hash_persisted":true,"code_persisted":false,"secret_values_persisted":false,"exact_provider_selection":true,"pkce":"S256","callback_state":"one_shot","credential_handle_visible":false}}
+  "extensions": {
+    "rumi.connector_oauth.boundary": {
+      "callback_state": "one_shot",
+      "code_persisted": false,
+      "credential_handle_visible": false,
+      "exact_provider_selection": true,
+      "network_exchange": false,
+      "pkce": "S256",
+      "secret_values_persisted": false,
+      "state_hash_persisted": true,
+      "vendor_imports": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {
+        "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0",
+        "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+        "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+      },
+      "host_execution": false,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.connector.oauth.v1",
+            "rumi.resource.connector.oauth.v1",
+            "rumi.transport.connector.oauth.callback.v1"
+          ],
+          "requires": [
+            "rumi.action.connector.registry.v1",
+            "rumi.action.credential.manage.v1",
+            "rumi.resource.connector.registry.v1",
+            "rumi.service.connector.oauth.provider.v1",
+            "rumi.service.host.authorize.v1"
+          ]
+        },
+        "dependencies": {
+          "rumi_connector_registry_service_pack": ">=1.0.0,<2.0.0",
+          "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+          "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+        },
+        "description": "PKCE-bound one-shot connector OAuth coordination over global contracts.",
+        "display_name": "Rumi Connector OAuth Broker",
+        "host_execution": false,
+        "metadata": {
+          "authoritative_owner": false,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:b5b637c3e820787d55f2eb5d87247bf1158c4eabbabaff6bd9684c8d853ca353",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:27512b8664810eb4db7e39616d0e62da64e16359815b176a8130e2b513cdf5ea"
+          },
+          "owner_surfaces": [
+            "oauth_pending_flow_state"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py"
+        },
+        "pack_id": "rumi_connector_oauth_broker_pack",
+        "pack_identity": "rumi:ecosystem/rumi_connector_oauth_broker_pack",
+        "provenance": {
+          "build_identity": "rumi_connector_oauth_broker_pack:1.0.0",
+          "content_hash": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "connector.oauth.callback",
+          "connector.oauth.manage",
+          "connector.oauth.read",
+          "connector.registry.manage",
+          "connector.registry.read",
+          "credential.manage",
+          "host.authority.consume"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_connector_oauth_broker_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_connector_oauth_broker_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:27512b8664810eb4db7e39616d0e62da64e16359815b176a8130e2b513cdf5ea"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.ai_client.oauth_store",
+      "defaultspack.domain.gateway.auth"
+    ],
+    "removal_wave": 10,
+    "rollback": "Cancel pending states and revoke only handles created by recorded failed bindings.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "PKCE-bound one-shot connector OAuth coordination over global contracts.",
+    "display_name": "Rumi Connector OAuth Broker",
+    "id": "rumi.connector_oauth_broker",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "connector.oauth.read"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "connector.oauth.manage"
+    },
+    {
+      "access": "execute",
+      "approval_required": false,
+      "capability": "connector.oauth.callback"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "connector.registry.read"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "connector.registry.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "credential.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": false,
+      "capability": "host.authority.consume"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_connector_oauth_broker_pack:1.0.0",
+    "content_hash": "sha256:60e25867b283ab9f353d9d87db70d9f877fa5549f7cbc3a1d997dc5deb8de15e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "resources": [],
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": false,
+      "namespace": "rumi.connector.oauth.pending",
+      "retention": "hashed state and PKCE verifier for at most ten minutes",
+      "schema_version": "1.0.0"
+    }
+  ]
 }
-

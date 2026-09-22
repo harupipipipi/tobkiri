@@ -1,0 +1,27 @@
+{
+  "artifact_set_digest": "sha256:69c822841d21f08b412311f65a02b95c5d128a68a7b9630178f5a055215372be",
+  "artifacts": [
+    {
+      "digest": "sha256:9c607a96f12f0a9c2d6a97b85fb35a35c61aa06ccb96cfdcdf5b0eb691a9c074",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:2d2b438b11b3fae05b4eb621ca5672d567c68b76aea095e275990e60582bc2a5",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:08127a507e1e01821b8ef2663bbbde82525b92d0b10a20d94e3f0c805ef255d0",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:b1643ccc5bc4b09f263d724dcbf0e7f0edf8ecc33ebdbbb02fc20936f5d9f5f6"
+  },
+  "pack_id": "rumi_telephony_delegate_pack",
+  "source_identity": "sha256:c12d134bcc7c29656c44237fc17c509d35f08d44d4fd87235e3ed6e2e5b76d74"
+}

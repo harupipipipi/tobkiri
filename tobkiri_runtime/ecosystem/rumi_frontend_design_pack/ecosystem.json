@@ -1,33 +1,78 @@
 {
-  "pack_id": "rumi_frontend_design_pack",
-  "pack_identity": "rumi:ecosystem/rumi_frontend_design_pack",
-  "display_name": "Rumi Frontend Design Pack",
-  "version": "0.1.0",
-  "description": "Declarative frontend, UI design, responsive QA, and component acceptance workflow pack.",
-  "vocabulary": {
-    "types": [
-      "frontend_design",
-      "catalog",
-      "policy",
-      "profile",
-      "prompt",
-      "preset",
-      "example",
-      "schema",
-      "checklist",
-      "template"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
+  "dependencies": {},
+  "description": "Declarative frontend, UI design, responsive QA, and component acceptance workflow pack.",
+  "display_name": "Rumi Frontend Design Pack",
   "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
+    "asset_index": {
+      "catalog": [
+        "catalog/frontend_workflows.yaml",
+        "catalog/design_system_fit_rubric.yaml",
+        "catalog/responsive_qa_matrix.yaml"
+      ],
+      "checklist": [
+        "checklists/component_acceptance.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/component_brief.example.yaml",
+        "examples/dashboard_review.example.yaml",
+        "examples/mobile_visual_qa.example.yaml"
+      ],
+      "manifest": [
+        "ecosystem.json"
+      ],
+      "policy": [
+        "policies/frontend_quality.policy.yaml"
+      ],
+      "preset": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profile": [
+        "profiles/frontend_design_reviewer.profile.yaml"
+      ],
+      "prompt": [
+        "prompts/frontend_design_reviewer.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/component_acceptance.schema.yaml"
+      ],
+      "template": []
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:b70b6eed75958e98dd1c3a0f58529440e8f2b5c2d30b1911ef0a9620367c65ef",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:b496fa5123722eb84ddc6f28097f94fe6841b6750e699843fd0fc5eabaff4126"
+    },
     "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:b496fa5123722eb84ddc6f28097f94fe6841b6750e699843fd0fc5eabaff4126"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_code_ide_pack",
@@ -56,50 +101,31 @@
       "component_acceptance_schema",
       "component_acceptance_checklist"
     ],
-    "asset_index": {
-      "manifest": [
-        "ecosystem.json"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/frontend_workflows.yaml",
-        "catalog/design_system_fit_rubric.yaml",
-        "catalog/responsive_qa_matrix.yaml"
-      ],
-      "policy": [
-        "policies/frontend_quality.policy.yaml"
-      ],
-      "profile": [
-        "profiles/frontend_design_reviewer.profile.yaml"
-      ],
-      "prompt": [
-        "prompts/frontend_design_reviewer.system.md"
-      ],
-      "preset": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/component_brief.example.yaml",
-        "examples/dashboard_review.example.yaml",
-        "examples/mobile_visual_qa.example.yaml"
-      ],
-      "schema": [
-        "schemas/component_acceptance.schema.yaml"
-      ],
-      "checklist": [
-        "checklists/component_acceptance.checklist.yaml"
-      ],
-      "template": []
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_frontend_design_pack",
+  "pack_identity": "rumi:ecosystem/rumi_frontend_design_pack",
+  "provenance": {
+    "build_identity": "rumi_frontend_design_pack:0.1.0",
+    "content_hash": "sha256:b70b6eed75958e98dd1c3a0f58529440e8f2b5c2d30b1911ef0a9620367c65ef",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "frontend_design",
+      "catalog",
+      "policy",
+      "profile",
+      "prompt",
+      "preset",
+      "example",
+      "schema",
+      "checklist",
+      "template"
+    ]
   }
 }

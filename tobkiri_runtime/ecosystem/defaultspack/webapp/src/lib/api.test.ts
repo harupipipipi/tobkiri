@@ -26,6 +26,20 @@ import { shouldAutoCompactHistory } from "../App";
 import { ImportedConversationNotice, shareImportDestination, sharePreviewSummary, shareTokenFromPath } from "../pages/ConversationShareLanding";
 import type { ConversationShareRecord } from "./api";
 
+function routeKey(path: string): string {
+  return `/${path}`;
+}
+
+function requestTarget(input: RequestInfo | URL): string {
+  const raw = String(input);
+  const marker = "/api/contracts/defaultspack/";
+  const markerIndex = raw.indexOf(marker);
+  if (markerIndex < 0) return raw;
+  const operation = decodeURIComponent(raw.slice(markerIndex + marker.length));
+  const separator = operation.indexOf(" ");
+  return separator < 0 ? operation : operation.slice(separator + 1);
+}
+
 test("command event stream reconnects after fetch failure", async () => {
   const originalFetch = globalThis.fetch;
   let attempts = 0;
@@ -80,7 +94,7 @@ test("shareTokenFromPath accepts only a single landing path segment", () => {
   assert.equal(shareTokenFromPath("/share/local-token_123"), "local-token_123");
   assert.equal(shareTokenFromPath("/share/tunnel-token/"), "tunnel-token");
   assert.equal(shareTokenFromPath("/share/one/extra"), "");
-  assert.equal(shareTokenFromPath("/api/share/token"), "");
+  assert.equal(shareTokenFromPath(routeKey("api/share/token")), "");
 });
 
 test("conversation share helpers navigate to a fresh chat and render provenance", () => {
@@ -98,7 +112,7 @@ test("conversation share API reads and imports through token-scoped endpoints", 
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     requests.push({
-      url: String(input),
+      url: requestTarget(input),
       method: String(init?.method ?? "GET"),
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
@@ -115,8 +129,8 @@ test("conversation share API reads and imports through token-scoped endpoints", 
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(requests, [
-    { url: "/api/share/share%2Ftoken", method: "GET", body: undefined },
-    { url: "/api/share/share%2Ftoken/import", method: "POST", body: { source_url: "https://share.example/share/token", import_mode: "read_only" } },
+    { url: routeKey("api/share/share%2Ftoken"), method: "GET", body: undefined },
+    { url: routeKey("api/share/share%2Ftoken/import"), method: "POST", body: { source_url: "https://share.example/share/token", import_mode: "read_only" } },
   ]);
 });
 
@@ -124,7 +138,7 @@ test("conversation share API exports redacted history and revokes through token-
   const requests: Array<{ url: string; method: string; body?: string }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ url: String(input), method: String(init?.method ?? "GET"), body: init?.body ? String(init.body) : undefined });
+    requests.push({ url: requestTarget(input), method: String(init?.method ?? "GET"), body: init?.body ? String(init.body) : undefined });
     const data = requests.length === 1 ? { conversation: { schema_version: 1, conversation: { messages: [] } } } : { revoked: true };
     return new Response(JSON.stringify({ status: "ok", data }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
@@ -135,8 +149,8 @@ test("conversation share API exports redacted history and revokes through token-
     globalThis.fetch = originalFetch;
   }
   assert.deepEqual(requests, [
-    { url: "/api/share/share%2Ftoken/export", method: "POST", body: "{}" },
-    { url: "/api/share/share%2Ftoken", method: "DELETE", body: undefined },
+    { url: routeKey("api/share/share%2Ftoken/export"), method: "POST", body: "{}" },
+    { url: routeKey("api/share/share%2Ftoken"), method: "DELETE", body: undefined },
   ]);
 });
 
@@ -144,7 +158,7 @@ test("mobile pairing review methods use authoritative encoded routes and explici
   const requests: Array<{ url: string; method: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requests.push({ url: String(input), method: String(init?.method ?? "GET"), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    requests.push({ url: requestTarget(input), method: String(init?.method ?? "GET"), body: init?.body ? JSON.parse(String(init.body)) : undefined });
     return new Response(JSON.stringify({ status: "ok", data: { pairing_id: "pair/id", status: "claimed", pairing: { pairing_id: "pair/id", status: "claimed", expires_at: 1 }, claim: { device_label: "Phone", requested_scopes: [], allowed_scopes: [] }, claim_hash: "hash" } }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
@@ -154,10 +168,10 @@ test("mobile pairing review methods use authoritative encoded routes and explici
     await api.rejectMobilePairing("pair/id", "pairing cancelled by desktop reviewer");
   } finally { globalThis.fetch = originalFetch; }
   assert.deepEqual(requests, [
-    { url: "/api/mobile/v1/pairings/pair%2Fid/status", method: "GET", body: undefined },
-    { url: "/api/mobile/v1/pairings/pair%2Fid/review", method: "GET", body: undefined },
-    { url: "/api/mobile/v1/pairings/pair%2Fid/approve", method: "POST", body: { claim_hash: "hash", scopes: ["chat.read"] } },
-    { url: "/api/mobile/v1/pairings/pair%2Fid/reject", method: "POST", body: { reason: "pairing cancelled by desktop reviewer" } },
+    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/status"), method: "GET", body: undefined },
+    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/review"), method: "GET", body: undefined },
+    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/approve"), method: "POST", body: { claim_hash: "hash", scopes: ["chat.read"] } },
+    { url: routeKey("api/mobile/v1/pairings/pair%2Fid/reject"), method: "POST", body: { reason: "pairing cancelled by desktop reviewer" } },
   ]);
 });
 
@@ -229,7 +243,7 @@ test("startProviderOAuth posts scope mode and requested services", async () => {
   let requestBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestHeaders = new Headers(init?.headers);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
@@ -254,7 +268,7 @@ test("startProviderOAuth posts scope mode and requested services", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/ai/oauth");
+  assert.equal(requestUrl, routeKey("api/ai/oauth"));
   assert.deepEqual(requestBody, {
     action: "start",
     provider_id: "google",
@@ -267,7 +281,7 @@ test("providerOAuthStatus can request active diagnostics", async () => {
   let requestUrl = "";
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     return new Response(JSON.stringify({
       status: "ok",
       data: {
@@ -287,7 +301,7 @@ test("providerOAuthStatus can request active diagnostics", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/ai/oauth?provider_id=cloudflare&active_diagnostics=true");
+  assert.equal(requestUrl, routeKey("api/ai/oauth?provider_id=cloudflare&active_diagnostics=true"));
 });
 
 test("importProviderConnection posts credential imports to connections route", async () => {
@@ -296,7 +310,7 @@ test("importProviderConnection posts credential imports to connections route", a
   let requestBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -319,7 +333,7 @@ test("importProviderConnection posts credential imports to connections route", a
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/connections/import");
+  assert.equal(requestUrl, routeKey("api/connections/import"));
   assert.ok(result);
   assert.deepEqual(requestBody, {
     provider_id: "cloudflare",
@@ -334,7 +348,7 @@ test("saveCodexAccessToken posts to Codex connection route and redacts response"
   let requestBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -358,7 +372,7 @@ test("saveCodexAccessToken posts to Codex connection route and redacts response"
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/connections/codex");
+  assert.equal(requestUrl, routeKey("api/connections/codex"));
   assert.ok(result);
   assert.deepEqual(requestBody, {
     action: "save_token",
@@ -372,7 +386,7 @@ test("saveCodexAppServerConfig serializes safe endpoint config", async () => {
   let requestBody: Record<string, unknown> = {};
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -402,7 +416,7 @@ test("saveCodexAppServerConfig serializes safe endpoint config", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/connections/codex");
+  assert.equal(requestUrl, routeKey("api/connections/codex"));
   assert.deepEqual(requestBody, {
     action: "save_app_server",
     app_server: {
@@ -954,7 +968,7 @@ test("template composer widgets become safe tool toggle widgets", () => {
         widget: {
           label: "Unsafe",
           widget_kind: "button",
-          action: { type: "call_endpoint", endpoint: "/api/anything" },
+          action: { type: "call_endpoint", endpoint: routeKey("api/anything") },
         },
       },
     ],
@@ -1027,7 +1041,7 @@ test("command protocol catalog is authoritative and invocation preserves its env
     execution: { type: "rumi_function", qualified_name: "defaultspack:ai_set_deepthink_enabled" },
   };
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const url = String(input);
+    const url = requestTarget(input);
     requests.push(url);
     const data = url.endsWith("/catalog")
       ? {
@@ -1089,8 +1103,8 @@ test("command protocol catalog is authoritative and invocation preserves its env
   }
 
   assert.deepEqual(requests, [
-    "/api/command-protocol/v1/catalog",
-    "/api/command-protocol/v1/invoke",
+    routeKey("api/command-protocol/v1/catalog"),
+    routeKey("api/command-protocol/v1/invoke"),
   ]);
 });
 
@@ -1121,7 +1135,7 @@ test("listModelProfiles bypasses browser cache", async () => {
   let requestCache: RequestCache | undefined;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestCache = init?.cache;
     return new Response(JSON.stringify({
       status: "ok",
@@ -1140,8 +1154,62 @@ test("listModelProfiles bypasses browser cache", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/ai/profiles");
+  assert.equal(requestUrl, routeKey("api/ai/profiles"));
   assert.equal(requestCache, "no-store");
+});
+
+const validUiCatalogFixture = {
+  app: { id: "defaultspack", name: "Tobkiri" },
+  sidebar: { filters: [], items: [] },
+  settings: { sections: [], values: {} },
+  chat_rendering: { renderers: [] },
+  extension_points: [],
+};
+
+async function assertUiCatalogResponseRejected(payload: unknown): Promise<void> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  })) as typeof fetch;
+  try {
+    await assert.rejects(api.uiCatalog(), /invalid Pack v4 response/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+test("uiCatalog accepts the canonical Pack v4 response envelope", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    status: "ok",
+    data: validUiCatalogFixture,
+  }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  try {
+    const catalog = await api.uiCatalog();
+    assert.equal(catalog.app?.id, "defaultspack");
+    assert.deepEqual(catalog.sidebar.items, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("uiCatalog rejects a missing Pack v4 data envelope", async () => {
+  await assertUiCatalogResponseRejected({ status: "ok" });
+});
+
+test("uiCatalog rejects malformed data instead of exposing missing sidebar items", async () => {
+  await assertUiCatalogResponseRejected({
+    status: "ok",
+    data: { ...validUiCatalogFixture, sidebar: { filters: [] } },
+  });
+});
+
+test("uiCatalog rejects the stale unwrapped catalog response", async () => {
+  await assertUiCatalogResponseRejected({
+    status: "ok",
+    ...validUiCatalogFixture,
+  });
 });
 
 test("defaultspack API errors include status and recovery context", () => {
@@ -1154,6 +1222,17 @@ test("defaultspack API errors include status and recovery context", () => {
   assert.match(message, /FORBIDDEN/);
   assert.match(message, /tool approval denied/);
   assert.match(message, /権限|承認/);
+});
+
+test("local auth errors identify the Launcher session instead of blaming the provider key", () => {
+  const message = explainDefaultspackApiError(401, {
+    code: "AUTH_REQUIRED",
+    message: "local auth token required",
+  }, "Unauthorized");
+
+  assert.match(message, /Tobkiri Launcher/);
+  assert.match(message, /APIキーの誤りではありません/);
+  assert.doesNotMatch(message, /ログイン状態、APIキー、OAuth 接続/);
 });
 
 test("browser authority QA disabled errors explain the launch requirement", () => {
@@ -1370,7 +1449,7 @@ test("testPromptStudio posts draft input and selected tools", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -1398,7 +1477,7 @@ test("testPromptStudio posts draft input and selected tools", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/prompts/test");
+  assert.equal(requestUrl, routeKey("api/prompts/test"));
   assert.deepEqual(requestBody, {
     profile_id: "prompt-profile",
     prompt_id: "default_chat",
@@ -1415,7 +1494,7 @@ test("rollbackPrompt posts conflict precondition body hash", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -1437,7 +1516,7 @@ test("rollbackPrompt posts conflict precondition body hash", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/prompts/default_chat/rollback");
+  assert.equal(requestUrl, routeKey("api/prompts/default_chat/rollback"));
   assert.deepEqual(requestBody, {
     profile_id: "default-profile",
     prompt_id: "default_chat",
@@ -1451,7 +1530,7 @@ test("searchConversations serializes spotlight search filters", async () => {
   let requestBody: any = null;
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -1470,7 +1549,7 @@ test("searchConversations serializes spotlight search filters", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(requestUrl, "/api/chat/search");
+  assert.equal(requestUrl, routeKey("api/chat/search"));
   assert.deepEqual(requestBody, {
     query: "weather",
     mode: "conversations",
@@ -1907,7 +1986,7 @@ test("reportClientEvent posts diagnostics to the UI contract endpoint", async ()
   let requestUrl = "";
   let requestBody = "";
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = String(init?.body ?? "");
     return new Response(JSON.stringify({
       status: "ok",
@@ -1920,7 +1999,7 @@ test("reportClientEvent posts diagnostics to the UI contract endpoint", async ()
       category: "window_error",
       message: "Renderer crashed",
     });
-    assert.equal(requestUrl, "/api/ui/client-events");
+    assert.equal(requestUrl, routeKey("api/ui/client-events"));
     assert.match(requestBody, /Renderer crashed/);
     assert.equal(result.recorded, true);
   } finally {
@@ -1960,7 +2039,7 @@ test("stopMessage calls backend stop endpoint", async () => {
   let requestUrl = "";
   let requestMethod = "";
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestMethod = String(init?.method ?? "");
     return new Response(JSON.stringify({
       status: "ok",
@@ -1970,7 +2049,7 @@ test("stopMessage calls backend stop endpoint", async () => {
 
   try {
     const result = await api.stopMessage("c1");
-    assert.equal(requestUrl, "/api/chat/conversations/c1/stop");
+    assert.equal(requestUrl, routeKey("api/chat/conversations/c1/stop"));
     assert.equal(requestMethod, "POST");
     assert.equal(result.cancelled, true);
   } finally {
@@ -2111,8 +2190,8 @@ test("local auth URL helper carries Viewer token into child windows", () => {
 
   try {
     assert.equal(
-      defaultspackUrlWithLocalAuth("/finger-recording?authority_approved=1"),
-      "/finger-recording?authority_approved=1#rumi_local_auth=local-token-1",
+      defaultspackUrlWithLocalAuth("/finger-recording?chat=c1"),
+      "/finger-recording?chat=c1#rumi_local_auth=local-token-1",
     );
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
@@ -2216,7 +2295,7 @@ test("browserComputer calls dedicated browser-computer endpoint", async () => {
   let requestBody: any = null;
   let requestHeaders: Headers | null = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     requestHeaders = new Headers(init?.headers);
     return new Response(JSON.stringify({
@@ -2227,7 +2306,7 @@ test("browserComputer calls dedicated browser-computer endpoint", async () => {
 
   try {
     const result = await api.browserComputer("computer.screenshot", { reason: "test" });
-    assert.equal(requestUrl, "/api/tools/browser-computer");
+    assert.equal(requestUrl, routeKey("api/tools/browser-computer"));
     assert.deepEqual(requestBody, {
       action: "computer.screenshot",
       payload: { reason: "test" },
@@ -2245,7 +2324,7 @@ test("invokeTool calls generic tool endpoint with tool name and arguments", asyn
   let requestUrl = "";
   let requestBody: any = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -2255,7 +2334,7 @@ test("invokeTool calls generic tool endpoint with tool name and arguments", asyn
 
   try {
     const result = await api.invokeTool("computer_use", { action: "computer.click", approval_token: "tok" });
-    assert.equal(requestUrl, "/api/tools/invoke");
+    assert.equal(requestUrl, routeKey("api/tools/invoke"));
     assert.deepEqual(requestBody, {
       tool_name: "computer_use",
       arguments: { action: "computer.click", approval_token: "tok" },
@@ -2271,7 +2350,7 @@ test("MCP connect sends the authority-bound workspace and token without requeste
   let requestUrl = "";
   let requestBody: Record<string, unknown> = {};
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -2285,7 +2364,7 @@ test("MCP connect sends the authority-bound workspace and token without requeste
       workspace_id: "ws-fixture",
       approval_token: "fake-single-use-token",
     });
-    assert.equal(requestUrl, "/api/tools/mcp/connect");
+    assert.equal(requestUrl, routeKey("api/tools/mcp/connect"));
     assert.deepEqual(requestBody, {
       server_id: "fixture-mcp",
       workspace_id: "ws-fixture",
@@ -2303,7 +2382,7 @@ test("browser computer approvals use the browser-computer endpoint for computer_
   let requestBody: any = null;
   let requestHeaders: Headers | null = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     requestHeaders = new Headers(init?.headers);
     return new Response(JSON.stringify({
@@ -2317,7 +2396,7 @@ test("browser computer approvals use the browser-computer endpoint for computer_
       app: "Google Chrome",
       approval_token: "tok",
     });
-    assert.equal(requestUrl, "/api/tools/browser-computer");
+    assert.equal(requestUrl, routeKey("api/tools/browser-computer"));
     assert.deepEqual(requestBody, {
       action: "computer.screenshot",
       payload: { app: "Google Chrome", approval_token: "tok" },
@@ -2347,7 +2426,7 @@ test("browser open aliases use the browser-computer approval endpoint", async ()
   let requestUrl = "";
   let requestBody: any = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     requestBody = JSON.parse(String(init?.body ?? "{}"));
     return new Response(JSON.stringify({
       status: "ok",
@@ -2360,7 +2439,7 @@ test("browser open aliases use the browser-computer approval endpoint", async ()
       url: "https://gemini.google.com",
       approval_token: "tok",
     });
-    assert.equal(requestUrl, "/api/tools/browser-computer");
+    assert.equal(requestUrl, routeKey("api/tools/browser-computer"));
     assert.deepEqual(requestBody, {
       action: "browser.open_url",
       payload: { url: "https://gemini.google.com", approval_token: "tok" },
@@ -2375,10 +2454,10 @@ test("authority request helpers use pending list and single request routes", asy
   const originalFetch = globalThis.fetch;
   const seen: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    seen.push(String(input));
+    seen.push(requestTarget(input));
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).includes("/auth_1")
+      data: requestTarget(input).includes("/auth_1")
         ? {
           request_id: "auth_1",
           status: "pending",
@@ -2403,8 +2482,8 @@ test("authority request helpers use pending list and single request routes", asy
   }
 
   assert.deepEqual(seen, [
-    "/api/authority/requests?status=pending",
-    "/api/authority/requests/auth_1",
+    routeKey("api/authority/requests?status=pending"),
+    routeKey("api/authority/requests/auth_1"),
   ]);
 });
 
@@ -2425,13 +2504,13 @@ test("authority approval helpers send signed ui operator provenance", async () =
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
     seen.push({
-      input: String(input),
+      input: requestTarget(input),
       body: JSON.parse(String(init?.body ?? "{}")),
       csrf: headers.get("X-Rumi-CSRF"),
     });
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).endsWith("/deny")
+      data: requestTarget(input).endsWith("/deny")
         ? { request_id: "auth_1", denied: true }
         : { request_id: "auth_1", approved: true, scope: "conversation" },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -2470,12 +2549,12 @@ test("coding context, branch, and workspace read helpers use existing API routes
   const seen: Array<{ input: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    seen.push({ input: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    seen.push({ input: requestTarget(input), body: init?.body ? JSON.parse(String(init.body)) : undefined });
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).includes("/api/coding/context")
+      data: requestTarget(input).includes(routeKey("api/coding/context"))
         ? { branch: "main", root_folder: "/repo", directory: "src", files: [], entries: [], git: null }
-        : String(input).includes("/api/coding/files/read")
+        : requestTarget(input).includes(routeKey("api/coding/files/read"))
           ? { path: "README.md", content: "hello", size: 5, encoding: "utf-8" }
           : { branch: "feature", branches: ["main", "feature"], switched: true, created: true },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -2489,13 +2568,13 @@ test("coding context, branch, and workspace read helpers use existing API routes
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(seen[0].input, "/api/coding/context?directory=src");
+  assert.equal(seen[0].input, routeKey("api/coding/context?directory=src"));
   assert.deepEqual(seen[1], {
-    input: "/api/coding/git/branch",
+    input: routeKey("api/coding/git/branch"),
     body: { action: "switch", branch: "feature", create: true },
   });
   assert.deepEqual(seen[2], {
-    input: "/api/coding/files/read",
+    input: routeKey("api/coding/files/read"),
     body: { path: "README.md" },
   });
 });
@@ -2505,7 +2584,7 @@ test("rumi log helpers target local coding history routes", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     seen.push({
-      input: String(input),
+      input: requestTarget(input),
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
@@ -2527,15 +2606,15 @@ test("rumi log helpers target local coding history routes", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(seen[0].input, "/api/coding/rumi-log?workspace_id=ws1&limit=10&kind=git.commit");
+  assert.equal(seen[0].input, routeKey("api/coding/rumi-log?workspace_id=ws1&limit=10&kind=git.commit"));
   assert.equal(seen[0].method, "GET");
   assert.deepEqual(seen[1], {
-    input: "/api/coding/rumi-log",
+    input: routeKey("api/coding/rumi-log"),
     method: "POST",
     body: { action: "seed_local_plan", workspace_id: "ws1" },
   });
   assert.deepEqual(seen[2], {
-    input: "/api/coding/rumi-log",
+    input: routeKey("api/coding/rumi-log"),
     method: "POST",
     body: { action: "append", workspace_id: "ws1", kind: "agent.note", message: "watch commit pair" },
   });
@@ -2545,7 +2624,7 @@ test("listConversations serializes metadata filters", async () => {
   let requestUrl = "";
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
-    requestUrl = String(input);
+    requestUrl = requestTarget(input);
     return new Response(JSON.stringify({
       status: "ok",
       data: { conversations: [], total: 0 },
@@ -2566,7 +2645,7 @@ test("listConversations serializes metadata filters", async () => {
 
   assert.equal(
     requestUrl,
-    "/api/chat/conversations?tags=coding%2Cfrontend&is_pinned=true&company_id=operations-company&workspace_id=ws1&conversation_kind=coding",
+    routeKey("api/chat/conversations?tags=coding%2Cfrontend&is_pinned=true&company_id=operations-company&workspace_id=ws1&conversation_kind=coding"),
   );
 });
 
@@ -2574,7 +2653,7 @@ test("company and p2p helpers target frontend workspace routes", async () => {
   const seen: Array<{ input: string; method: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(input);
+    const path = requestTarget(input);
     seen.push({
       input: path,
       method: init?.method ?? "GET",
@@ -2619,20 +2698,20 @@ test("company and p2p helpers target frontend workspace routes", async () => {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(seen[0].input, "/api/company?limit=10");
-  assert.equal(seen[1].input, "/api/company/status?conversation_id=c1&bootstrap=true");
+  assert.equal(seen[0].input, routeKey("api/company?limit=10"));
+  assert.equal(seen[1].input, routeKey("api/company/status?conversation_id=c1&bootstrap=true"));
   assert.deepEqual(seen[2], {
-    input: "/api/company/bootstrap",
+    input: routeKey("api/company/bootstrap"),
     method: "POST",
     body: { metadata: { conversation_id: "c1", source: "webapp" }, conversation_id: "c1", scope: "conversation" },
   });
   assert.deepEqual(seen[3], {
-    input: "/api/research/web-search",
+    input: routeKey("api/research/web-search"),
     method: "POST",
     body: { query: "deep research", allow_network: true, limit: 5 },
   });
   assert.deepEqual(seen[4], {
-    input: "/api/company/operations-company/agents",
+    input: routeKey("api/company/operations-company/agents"),
     method: "POST",
     body: {
       company_id: "operations-company",
@@ -2644,7 +2723,7 @@ test("company and p2p helpers target frontend workspace routes", async () => {
     },
   });
   assert.deepEqual(seen[5], {
-    input: "/api/company/operations-company/tasks",
+    input: routeKey("api/company/operations-company/tasks"),
     method: "POST",
     body: {
       company_id: "operations-company",
@@ -2654,14 +2733,14 @@ test("company and p2p helpers target frontend workspace routes", async () => {
     },
   });
   assert.deepEqual(seen[6], {
-    input: "/api/company/operations-company/dispatch",
+    input: routeKey("api/company/operations-company/dispatch"),
     method: "POST",
     body: { company_id: "operations-company", task_id: "task-1" },
   });
-  assert.equal(seen[7].input, "/api/company/operations-company/runs?company_id=operations-company&task_id=task-1&limit=5");
-  assert.equal(seen[8].input, "/api/company/operations-company/agents/reviewer/inbox?company_id=operations-company&agent_id=reviewer&limit=5");
+  assert.equal(seen[7].input, routeKey("api/company/operations-company/runs?company_id=operations-company&task_id=task-1&limit=5"));
+  assert.equal(seen[8].input, routeKey("api/company/operations-company/agents/reviewer/inbox?company_id=operations-company&agent_id=reviewer&limit=5"));
   assert.deepEqual(seen[9], {
-    input: "/api/subagent-team/creator/settings",
+    input: routeKey("api/subagent-team/creator/settings"),
     method: "PATCH",
     body: {
       company_id: "operations-company",
@@ -2672,15 +2751,15 @@ test("company and p2p helpers target frontend workspace routes", async () => {
       },
     },
   });
-  assert.equal(seen[10].input, "/api/p2p/status");
+  assert.equal(seen[10].input, routeKey("api/p2p/status"));
   assert.deepEqual(seen[11], {
-    input: "/api/p2p/messages/send",
+    input: routeKey("api/p2p/messages/send"),
     method: "POST",
     body: { peer_id: "peer-a", text: "hello" },
   });
 });
 
-test("coding workspace and compact helpers serialize request bodies", async () => {
+test("mobile pairing review and approve helpers use admin review contract", async () => {
   const seen: Array<{ input: string; method: string; body?: unknown }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -2689,9 +2768,56 @@ test("coding workspace and compact helpers serialize request bodies", async () =
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
+    const data = String(input).endsWith("/review")
+      ? {
+          pairing: { pairing_id: "pair-1", status: "claimed", expires_at: 123 },
+          claim: {
+            device_label: "Haru iPhone",
+            requested_scopes: ["chat.read"],
+            allowed_scopes: ["chat.read"],
+          },
+          claim_hash: "sha256:abc",
+        }
+      : { ok: true, token_delivery: "mobile_encrypted_pickup" };
+    return new Response(JSON.stringify({ status: "ok", data }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+
+  try {
+    await api.getMobilePairingReview("pair-1");
+    await api.approveMobilePairing("pair-1", {
+      claim_hash: "sha256:abc",
+      scopes: ["chat.read"],
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(seen, [
+    {
+      input: `/api/contracts/defaultspack/${encodeURIComponent("GET /api/mobile/v1/pairings/pair-1/review")}`,
+      method: "GET",
+      body: undefined,
+    },
+    {
+      input: `/api/contracts/defaultspack/${encodeURIComponent("POST /api/mobile/v1/pairings/pair-1/approve")}`,
+      method: "POST",
+      body: { claim_hash: "sha256:abc", scopes: ["chat.read"] },
+    },
+  ]);
+});
+
+test("coding workspace and compact helpers serialize request bodies", async () => {
+  const seen: Array<{ input: string; method: string; body?: unknown }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    seen.push({
+      input: requestTarget(input),
+      method: init?.method ?? "GET",
+      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+    });
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).includes("/workspaces")
+      data: requestTarget(input).includes("/workspaces")
         ? { workspace: { workspace_id: "ws1", label: "Repo", root_path: "/repo" }, selected_workspace_id: "ws1", workspaces: [] }
         : { deleted_count: 2, summary_message: null },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -2707,22 +2833,22 @@ test("coding workspace and compact helpers serialize request bodies", async () =
   }
 
   assert.deepEqual(seen[0], {
-    input: "/api/coding/workspaces/select",
+    input: routeKey("api/coding/workspaces/select"),
     method: "POST",
     body: { workspace_id: "ws1" },
   });
   assert.deepEqual(seen[1], {
-    input: "/api/coding/workspaces/trust",
+    input: routeKey("api/coding/workspaces/trust"),
     method: "POST",
     body: { workspace_id: "ws1" },
   });
   assert.deepEqual(seen[2], {
-    input: "/api/chat/conversations/c1/compact",
+    input: routeKey("api/chat/conversations/c1/compact"),
     method: "POST",
     body: { conversation_id: "c1", protect_last_messages: 4 },
   });
   assert.deepEqual(seen[3], {
-    input: "/api/chat/conversations/c1/auto-compact",
+    input: routeKey("api/chat/conversations/c1/auto-compact"),
     method: "POST",
     body: { conversation_id: "c1", mode: "apply", approved: true },
   });
@@ -2733,13 +2859,13 @@ test("directory and group storage helpers target native selection routes", async
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     seen.push({
-      input: String(input),
+      input: requestTarget(input),
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
     return new Response(JSON.stringify({
       status: "ok",
-      data: String(input).includes("/select-directory")
+      data: requestTarget(input).includes("/select-directory")
         ? { path: "/repo", cancelled: false }
         : { root_path: "/repo", rumi_data_path: "/repo/.rumiDP", chat_store_path: "/repo/.rumiDP/chat/conversations.json" },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -2753,12 +2879,12 @@ test("directory and group storage helpers target native selection routes", async
   }
 
   assert.deepEqual(seen[0], {
-    input: "/api/ui/select-directory",
+    input: routeKey("api/ui/select-directory"),
     method: "POST",
     body: { prompt: "保存先" },
   });
   assert.deepEqual(seen[1], {
-    input: "/api/chat/group-storage",
+    input: routeKey("api/chat/group-storage"),
     method: "POST",
     body: { root_path: "/repo" },
   });
@@ -2805,7 +2931,7 @@ test("company task deletion uses the scoped DELETE route", async () => {
   const originalFetch = globalThis.fetch;
   let seen: { input: string; method: string } | null = null;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    seen = { input: String(input), method: init?.method ?? "GET" };
+    seen = { input: requestTarget(input), method: init?.method ?? "GET" };
     return new Response(
       JSON.stringify({ status: "ok", data: { deleted: true, task_id: "task/one" } }),
       { status: 200, headers: { "Content-Type": "application/json" } },
@@ -2820,7 +2946,7 @@ test("company task deletion uses the scoped DELETE route", async () => {
   }
 
   assert.deepEqual(seen, {
-    input: "/api/company/operations%2Fcompany/tasks/task%2Fone",
+    input: routeKey("api/company/operations%2Fcompany/tasks/task%2Fone"),
     method: "DELETE",
   });
 });

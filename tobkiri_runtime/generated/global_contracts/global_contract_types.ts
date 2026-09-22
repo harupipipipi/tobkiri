@@ -9,4 +9,3 @@ export interface ContractResult<T = unknown> {
   diagnostics?: string[];
   value?: T;
 }
-

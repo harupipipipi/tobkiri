@@ -1,30 +1,30 @@
 {
-  "schema_version": "rumi.artifact-manifest.v1",
   "artifacts": [
     {
       "path": "frontend/contributions/connections-route.json",
-      "sha256": "fa8c19cbc42474a90474f4879873b285698936dbedea75b70667220f18c35784",
-      "role": "ui_contribution"
+      "role": "ui_contribution",
+      "sha256": "sha256:fa8c19cbc42474a90474f4879873b285698936dbedea75b70667220f18c35784"
     },
     {
       "path": "frontend/contributions/connections-settings.json",
-      "sha256": "f8e70d99a69db1bbe03ef0bb298ce4bc86abb34965092965e22d98997327e9fe",
-      "role": "ui_contribution"
+      "role": "ui_contribution",
+      "sha256": "sha256:f8e70d99a69db1bbe03ef0bb298ce4bc86abb34965092965e22d98997327e9fe"
     },
     {
       "path": "ui/app.js",
-      "sha256": "a011c47573faf147dc79a7bb6ef9bb92f18a07eb27dc24b680055638302255db",
-      "role": "isolated_ui"
+      "role": "isolated_ui",
+      "sha256": "sha256:a011c47573faf147dc79a7bb6ef9bb92f18a07eb27dc24b680055638302255db"
     },
     {
       "path": "ui/index.html",
-      "sha256": "754ae26aa606582d574f9993d49d10742358d6b344331443078db828e3bb41f0",
-      "role": "isolated_ui"
+      "role": "isolated_ui",
+      "sha256": "sha256:754ae26aa606582d574f9993d49d10742358d6b344331443078db828e3bb41f0"
     },
     {
       "path": "ui/style.css",
-      "sha256": "b9d378f1c75cd3ff6977660deb62c9de5bc23100968de08d91daf46a8a0ad3d2",
-      "role": "isolated_ui"
+      "role": "isolated_ui",
+      "sha256": "sha256:b9d378f1c75cd3ff6977660deb62c9de5bc23100968de08d91daf46a8a0ad3d2"
     }
-  ]
+  ],
+  "schema_version": "rumi.artifact-manifest.v1"
 }

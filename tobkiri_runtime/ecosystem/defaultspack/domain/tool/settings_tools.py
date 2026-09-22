@@ -7,6 +7,7 @@ from typing import Any
 from domain.frontend.registry import FrontendRegistry
 
 from ._agent_os_common import err, ok
+from .schema_adapter import list_or_empty
 
 
 _BLOCKED_FIELD_TYPES = {
@@ -76,7 +77,7 @@ def _field_index(sections: list[dict[str, Any]]) -> dict[tuple[str, str], dict[s
     index: dict[tuple[str, str], dict[str, Any]] = {}
     for section in sections:
         section_id = str(section.get("id") or "").strip()
-        fields = section.get("fields") if isinstance(section.get("fields"), list) else []
+        fields = list_or_empty(section.get("fields"))
         for field in fields:
             if isinstance(field, dict) and _safe_field(section_id, field):
                 index[(section_id, str(field.get("id") or "").strip())] = field
@@ -84,7 +85,7 @@ def _field_index(sections: list[dict[str, Any]]) -> dict[tuple[str, str], dict[s
 
 
 def _option_values(field: dict[str, Any]) -> list[str]:
-    options = field.get("options") if isinstance(field.get("options"), list) else []
+    options = list_or_empty(field.get("options"))
     return [str(option.get("value")) for option in options if isinstance(option, dict) and "value" in option]
 
 

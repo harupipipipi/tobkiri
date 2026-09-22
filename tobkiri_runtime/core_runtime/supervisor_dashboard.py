@@ -359,10 +359,10 @@ def _unique_runs(runs: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 def _session_grid(runs: list[dict[str, Any]], *, capabilities: dict[str, bool]) -> list[dict[str, Any]]:
     sessions: list[dict[str, Any]] = []
     for run in runs[:12]:
-        execution = run.get("execution_json") if isinstance(run.get("execution_json"), dict) else {}
-        artifacts = execution.get("artifacts") if isinstance(execution.get("artifacts"), dict) else {}
-        screen = execution.get("screen") if isinstance(execution.get("screen"), dict) else {}
-        replay = execution.get("replay") if isinstance(execution.get("replay"), dict) else {}
+        execution = _string_object_dict(run.get("execution_json"))
+        artifacts = _string_object_dict(execution.get("artifacts"))
+        screen = _string_object_dict(execution.get("screen"))
+        replay = _string_object_dict(execution.get("replay"))
         live_screen_available = bool(
             capabilities.get("live_screen")
             and (screen.get("available") or screen.get("url") or screen.get("stream_url"))
@@ -402,8 +402,8 @@ def _session_grid(runs: list[dict[str, Any]], *, capabilities: dict[str, bool]) 
 
 
 def _runtime_risk(run: dict[str, Any]) -> str:
-    runtime_profile = run.get("runtime_profile_json") if isinstance(run.get("runtime_profile_json"), dict) else {}
-    policy = runtime_profile.get("policy") if isinstance(runtime_profile.get("policy"), dict) else {}
+    runtime_profile = _string_object_dict(run.get("runtime_profile_json"))
+    policy = _string_object_dict(runtime_profile.get("policy"))
     value = str(policy.get("risk") or policy.get("risk_level") or "").strip().lower()
     if value:
         return value
@@ -412,18 +412,30 @@ def _runtime_risk(run: dict[str, Any]) -> str:
 
 
 def _provider_from_runtime(run: dict[str, Any]) -> str | None:
-    runtime_profile = run.get("runtime_profile_json") if isinstance(run.get("runtime_profile_json"), dict) else {}
-    sandbox = runtime_profile.get("sandbox") if isinstance(runtime_profile.get("sandbox"), dict) else {}
+    runtime_profile = _string_object_dict(run.get("runtime_profile_json"))
+    sandbox = _string_object_dict(runtime_profile.get("sandbox"))
     provider = str(sandbox.get("provider") or runtime_profile.get("sandbox_provider") or "").strip()
     return provider or None
 
 
-def _artifact_count(artifacts: dict[str, Any], key: str) -> int:
+def _string_object_dict(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: item
+        for key, item in value.items()
+        if isinstance(key, str)
+    }
+
+
+def _artifact_count(artifacts: dict[str, object], key: str) -> int:
     value = artifacts.get(key)
     if isinstance(value, list):
         return len(value)
     if isinstance(value, dict):
         return len(value)
+    if not isinstance(value, (str, int, float)):
+        return 0
     try:
         return max(0, int(value or 0))
     except (TypeError, ValueError):
@@ -459,34 +471,27 @@ def _recent_events(store: Any, sessions: list[dict[str, Any]], *, limit: int) ->
 
 
 def _computer_driver_order() -> dict[str, list[str]]:
-    try:
-        _ensure_import_roots()
-        from ecosystem.rumi_default_tools_pack.domain.computer.registry import (
-            MAC_DRIVER_ORDER,
-            WINDOWS_DRIVER_ORDER,
-        )
+    """Return the finite driver order advertised by the v4 host catalog."""
 
-        return {"darwin": list(MAC_DRIVER_ORDER), "win32": list(WINDOWS_DRIVER_ORDER)}
-    except Exception:
-        return {
-            "darwin": [
-                "browser_cdp",
-                "browser_companion",
-                "mac_accessibility",
-                "mac_apple_events",
-                "mac_cgevent_pid",
-                "mac_screen_capture",
-                "mac_foreground",
-            ],
-            "win32": [
-                "browser_cdp",
-                "browser_companion",
-                "windows_uia",
-                "windows_postmessage",
-                "windows_foreground",
-                "local_visible",
-            ],
-        }
+    return {
+        "darwin": [
+            "browser_cdp",
+            "browser_companion",
+            "mac_accessibility",
+            "mac_apple_events",
+            "mac_cgevent_pid",
+            "mac_screen_capture",
+            "mac_foreground",
+        ],
+        "win32": [
+            "browser_cdp",
+            "browser_companion",
+            "windows_uia",
+            "windows_postmessage",
+            "windows_foreground",
+            "local_visible",
+        ],
+    }
 
 
 def _truncate(value: str, max_length: int) -> str:

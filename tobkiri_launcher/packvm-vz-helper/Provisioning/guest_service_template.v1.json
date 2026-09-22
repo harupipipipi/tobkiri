@@ -1,0 +1,6 @@
+{
+  "guest_runner_sha256": "sha256:d1556134b146265169d7fcd80f122c9d9a06a8dd2537ece6ae478e12ee911c86",
+  "protocol": "io.tobkiri.macos-vz-supervisor.v1",
+  "schema": "io.tobkiri.packvm-vz-guest-service-template.v1",
+  "service_unit": "[Unit]\nDescription=Tobkiri PackVM authenticated guest supervisor\nAfter=multi-user.target\n\n[Service]\nType=simple\nUser=root\nGroup=root\nExecStart=/usr/local/lib/tobkiri-packvm/packvm_guest_runner.py --serve-vsock\nRestart=on-failure\nRestartSec=1\nNoNewPrivileges=true\nPrivateTmp=true\nProtectHome=true\n\n[Install]\nWantedBy=multi-user.target\n"
+}

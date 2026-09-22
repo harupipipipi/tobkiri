@@ -21,6 +21,20 @@ _DELEGATE_RUNTIME_CONTEXT_KEYS = (
     "company_id",
     "timezone",
 )
+_TRUSTED_PLACEMENT_CONTEXT_KEYS = (
+    "agent_kind",
+    "runtime_kind",
+    "subagent_role",
+    "placement_id",
+    "placement_revision",
+    "placement_map_id",
+    "protocol_membership",
+    "effective_subagent_plan",
+    "effective_plan_hash",
+    "root_scope_id",
+    "parent_run_id",
+    "root_run_id",
+)
 
 
 def handle(envelope: RumiInputEnvelope, context: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -125,6 +139,32 @@ def _delegate_context(envelope: RumiInputEnvelope, context: dict[str, Any]) -> d
             updated.setdefault("principal_id", principal_id)
         if profile_id and not principal_id:
             updated["principal_id"] = "profile:" + profile_id
+        # Placement identity is accepted only from the trusted dispatcher
+        # context. Client payloads cannot select or forge an Effective Plan.
+        for key in _TRUSTED_PLACEMENT_CONTEXT_KEYS:
+            value = context.get(key)
+            if value not in ("", None, [], {}):
+                updated[key] = value
+        parent_run_id = str(
+            context.get("agent_run_id")
+            or context.get("run_id")
+            or context.get("parent_run_id")
+            or ""
+        ).strip()
+        if parent_run_id:
+            updated.setdefault("parent_run_id", parent_run_id)
+            updated.setdefault(
+                "root_run_id",
+                str(context.get("root_run_id") or parent_run_id),
+            )
+            updated.setdefault(
+                "root_scope_id",
+                str(
+                    context.get("root_scope_id")
+                    or context.get("root_run_id")
+                    or parent_run_id
+                ),
+            )
     if metadata:
         updated.setdefault("delegate_metadata", dict(metadata))
     if target:

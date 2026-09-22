@@ -2,61 +2,52 @@ import {lazy, type ComponentType, type LazyExoticComponent} from 'react';
 
 import type {PanelRouteKey} from './routes';
 
-export type AdvancedRouteModuleKey =
+export type RouteModuleKey =
   | 'packs'
   | 'packDetail'
-  | 'nodes'
-  | 'graphEditor'
-  | 'profileGraph'
+  | 'profile'
+  | 'settings'
+  | 'profileWiring'
+  | 'profileFiles'
+  | 'flow'
+  | 'graph'
   | 'aiInput'
   | 'apiMap'
-  | 'profileWorkspace'
-  | 'startup'
-  | 'flows'
-  | 'settings';
+  | 'nodeManager';
 
 type RouteModuleLoader = () => Promise<unknown>;
 
-const rawRouteModuleLoaders: Record<AdvancedRouteModuleKey, RouteModuleLoader> = {
+const rawRouteModuleLoaders: Record<RouteModuleKey, RouteModuleLoader> = {
   packs: () => import('../pages/Packs'),
   packDetail: () => import('../pages/PackDetail'),
-  nodes: () => import('../pages/NodeManager'),
-  graphEditor: () => Promise.all([
-    import('@xyflow/react/dist/style.css'),
-    import('../pages/GraphEditor'),
-  ]).then(([, routeModule]) => routeModule),
-  profileGraph: () => Promise.all([
-    import('@xyflow/react/dist/style.css'),
-    import('../pages/ProfileGraphEditor'),
-  ]).then(([, routeModule]) => routeModule),
-  aiInput: () => import('../pages/AiInputInspector'),
-  apiMap: () => import('../pages/ApiMap'),
-  profileWorkspace: () => import('../pages/ProfileWorkspace'),
-  startup: () => import('../pages/StartupProfiles'),
-  flows: () => Promise.all([
-    import('@xyflow/react/dist/style.css'),
-    import('../pages/Flows'),
-  ]).then(([, routeModule]) => routeModule),
+  profile: () => import('../pages/Profile'),
   settings: () => import('../pages/Settings'),
+  profileWiring: () => import('../pages/ProfileWiring'),
+  profileFiles: () => import('../pages/ProfileFiles'),
+  flow: () => import('../pages/Flow'),
+  graph: () => import('../pages/Graph'),
+  aiInput: () => import('../pages/AiInput'),
+  apiMap: () => import('../pages/ApiMap'),
+  nodeManager: () => import('../pages/NodeManager'),
 };
 
-export const advancedRouteModuleSources: Record<AdvancedRouteModuleKey, string> = {
+export const routeModuleSources: Record<RouteModuleKey, string> = {
   packs: 'src/pages/Packs.tsx',
   packDetail: 'src/pages/PackDetail.tsx',
-  nodes: 'src/pages/NodeManager.tsx',
-  graphEditor: 'src/pages/GraphEditor.tsx',
-  profileGraph: 'src/pages/ProfileGraphEditor.tsx',
-  aiInput: 'src/pages/AiInputInspector.tsx',
-  apiMap: 'src/pages/ApiMap.tsx',
-  profileWorkspace: 'src/pages/ProfileWorkspace.tsx',
-  startup: 'src/pages/StartupProfiles.tsx',
-  flows: 'src/pages/Flows.tsx',
+  profile: 'src/pages/Profile.tsx',
   settings: 'src/pages/Settings.tsx',
+  profileWiring: 'src/pages/ProfileWiring.tsx',
+  profileFiles: 'src/pages/ProfileFiles.tsx',
+  flow: 'src/pages/Flow.tsx',
+  graph: 'src/pages/Graph.tsx',
+  aiInput: 'src/pages/AiInput.tsx',
+  apiMap: 'src/pages/ApiMap.tsx',
+  nodeManager: 'src/pages/NodeManager.tsx',
 };
 
-const routeModulePromises = new Map<AdvancedRouteModuleKey, Promise<unknown>>();
+const routeModulePromises = new Map<RouteModuleKey, Promise<unknown>>();
 
-export function preloadRouteModule(key: AdvancedRouteModuleKey): Promise<unknown> {
+export function preloadRouteModule(key: RouteModuleKey): Promise<unknown> {
   const existing = routeModulePromises.get(key);
   if (existing) return existing;
 
@@ -68,17 +59,17 @@ export function preloadRouteModule(key: AdvancedRouteModuleKey): Promise<unknown
   return promise;
 }
 
-const panelRouteToModule: Partial<Record<PanelRouteKey, AdvancedRouteModuleKey>> = {
+const panelRouteToModule: Partial<Record<PanelRouteKey, RouteModuleKey>> = {
   packs: 'packs',
-  nodes: 'nodes',
-  graphEditor: 'graphEditor',
-  profileGraph: 'profileGraph',
+  profile: 'profile',
+  settings: 'settings',
+  profileWiring: 'profileWiring',
+  profileFiles: 'profileFiles',
+  flow: 'flow',
+  graph: 'graph',
   aiInput: 'aiInput',
   apiMap: 'apiMap',
-  profileWorkspace: 'profileWorkspace',
-  startup: 'startup',
-  flows: 'flows',
-  settings: 'settings',
+  nodeManager: 'nodeManager',
 };
 
 export function preloadPanelRoute(route: PanelRouteKey): Promise<unknown> | null {
@@ -87,7 +78,7 @@ export function preloadPanelRoute(route: PanelRouteKey): Promise<unknown> | null
 }
 
 function lazyNamedRoute(
-  key: AdvancedRouteModuleKey,
+  key: RouteModuleKey,
   exportName: string,
 ): LazyExoticComponent<ComponentType> {
   return lazy(async () => {
@@ -102,12 +93,12 @@ function lazyNamedRoute(
 
 export const LazyPacks = lazyNamedRoute('packs', 'Packs');
 export const LazyPackDetail = lazyNamedRoute('packDetail', 'PackDetail');
-export const LazyNodeManager = lazyNamedRoute('nodes', 'NodeManager');
-export const LazyGraphEditor = lazyNamedRoute('graphEditor', 'GraphEditor');
-export const LazyProfileGraphEditor = lazyNamedRoute('profileGraph', 'ProfileGraphEditor');
-export const LazyAiInputInspector = lazyNamedRoute('aiInput', 'AiInputInspector');
-export const LazyApiMap = lazyNamedRoute('apiMap', 'ApiMap');
-export const LazyProfileWorkspace = lazyNamedRoute('profileWorkspace', 'ProfileWorkspace');
-export const LazyStartupProfiles = lazyNamedRoute('startup', 'StartupProfiles');
-export const LazyFlows = lazyNamedRoute('flows', 'Flows');
+export const LazyProfile = lazyNamedRoute('profile', 'Profile');
 export const LazySettings = lazyNamedRoute('settings', 'Settings');
+export const LazyProfileWiring = lazyNamedRoute('profileWiring', 'ProfileWiring');
+export const LazyProfileFiles = lazyNamedRoute('profileFiles', 'ProfileFiles');
+export const LazyFlow = lazyNamedRoute('flow', 'Flow');
+export const LazyGraph = lazyNamedRoute('graph', 'Graph');
+export const LazyAiInput = lazyNamedRoute('aiInput', 'AiInput');
+export const LazyApiMap = lazyNamedRoute('apiMap', 'ApiMap');
+export const LazyNodeManager = lazyNamedRoute('nodeManager', 'NodeManager');

@@ -2,52 +2,40 @@ import assert from 'node:assert/strict';
 import {beforeEach, test} from 'node:test';
 
 import {
-  addPackToStartupProfile,
   apiFetch,
+  approvePack,
   bootstrapPanelSession,
+  checkHealth,
   clearApiPrefetchCache,
-  clearStartupProfileNodeOverride,
-  compileStartupProfileGraphPreview,
-  compileStartupProfileAiInputPreview,
-  compileStartupProfilePreview,
-  createStartupProfile,
-  fetchApiMap,
-  fetchBackgroundControlStatus,
-  fetchStartupProfileAiInput,
-  fetchStartupProfileAiInputTraces,
-  fetchStartupProfileGraph,
-  fetchDesktopSystemInfo,
-  hasPendingPanelBootstrapCode,
-  isDesktopShellAvailable,
-  launchDefaultspackDesktop,
-  openExternalUrl,
-  prefetchApiGet,
-  sendToBackground,
-  setStartupProfileNodeOverride,
-  showAppWindow,
-  updateStartupProfile,
-  updateStartupProfileAiInput,
-  updateStartupProfileGraph,
+  disablePack,
+  enablePack,
+  fetchDashboard,
+  fetchFrontendContractOperation,
+  fetchFrontendCatalog,
+  fetchRuntimeOperationStatus,
+  fetchPacks,
+  fetchPresentationState,
+  installPack,
+  invokeFrontendCapability,
+  launchSelectedPresentation,
+  revokePackApproval,
+  restartKernel,
+  selectPresentation,
+  parseHealthResponse,
+  setRuntimeDispatchStatus,
 } from './api.ts';
-import { RUMI_DISPLAY_VERSION } from './version.ts';
+import {
+  extractExactOperationDescriptors,
+  invokeRuntimeOperation,
+  RUNTIME_SURFACE_API_VERSION,
+} from './runtimeSurface.ts';
+import {GENERATED_FRONTEND_CONTRACT_MAP} from './generatedFrontendContractMap.ts';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
 
-  get length(): number {
-    return this.values.size;
-  }
-
-  clear(): void {
-    this.values.clear();
-  }
-
   getItem(key: string): string | null {
     return this.values.get(key) ?? null;
-  }
-
-  key(index: number): string | null {
-    return Array.from(this.values.keys())[index] ?? null;
   }
 
   removeItem(key: string): void {
@@ -59,162 +47,123 @@ class MemoryStorage {
   }
 }
 
-let lastFetchInit: RequestInit | undefined;
 let lastFetchUrl = '';
-let lastReplacedUrl = '';
-let panelExchangeCount = 0;
-let tauriReauthorizeCount = 0;
-let tauriOpenExternalCount = 0;
-let tauriSendToBackgroundCount = 0;
-let tauriShowAppWindowCount = 0;
-let tauriDesktopInfoCount = 0;
-let tauriDesktopLaunchCount = 0;
-let sessionStorageRef: MemoryStorage;
+let lastFetchInit: RequestInit | undefined;
+let exchangeCount = 0;
+let presentationCatalogCount = 0;
+let presentationSelection: Record<string, unknown> | undefined;
+let presentationLaunchCount = 0;
 let fetchHandler: ((input: string | URL | Request, init?: RequestInit) => Promise<Response>) | null = null;
 
-function installBrowser(href: string): MemoryStorage {
+function installBrowser(href = 'http://127.0.0.1:8765/panel/'): void {
   const storage = new MemoryStorage();
   const windowMock = {
     __TAURI__: {
       core: {
-        invoke: async (command: string) => {
-          if (command === 'reauthorize_panel_session') {
-            tauriReauthorizeCount += 1;
-            return 'desktop-refresh-code';
-          }
-          if (command === 'open_external_url') {
-            tauriOpenExternalCount += 1;
-            return undefined;
-          }
-          if (command === 'send_to_background') {
-            tauriSendToBackgroundCount += 1;
-            return undefined;
-          }
-          if (command === 'show_app_window') {
-            tauriShowAppWindowCount += 1;
-            return undefined;
-          }
-          if (command === 'get_background_control_status') {
+        invoke: async (command: string, args?: Record<string, unknown>) => {
+          if (command === 'reauthorize_panel_session') return 'desktop-refresh-code';
+          if (command === 'get_presentation_catalog') {
+            presentationCatalogCount += 1;
             return {
-              app_visible: false,
-              enabled: true,
-              foreground_window: null,
-              kernel_running: true,
-              shutdown_requested: false,
-              windows: [
-                {
-                  focused: false,
-                  label: 'main',
-                  minimized: false,
-                  visible: false,
-                },
-              ],
+              catalog: {base_packs: [], shell_providers: []},
+              selection: null,
+              materialization: {status: 'not_selected'},
             };
           }
-          if (command === 'get_desktop_system_info') {
-            tauriDesktopInfoCount += 1;
+          if (command === 'select_presentation') {
+            presentationSelection = args?.selection as Record<string, unknown>;
             return {
-              app_name: 'Tobkiri',
-              display_version: RUMI_DISPLAY_VERSION,
-              viewer_version: '1.0.0-beta.1',
-              build_channel: 'beta',
-              platform: 'macos',
-              platform_release: '15.0',
-              permission_subject: 'Tobkiri Launcher',
-              host_broker: {
-                enabled: true,
-                available: true,
-                status: 'running',
-                url: 'http://127.0.0.1:8770',
-              },
-              permissions: [
-                {
-                  id: 'accessibility',
-                  label: 'Accessibility',
-                  status: 'granted',
-                  granted: true,
-                  detail: 'Allows UI control.',
-                  settings_hint: 'System Settings > Privacy & Security > Accessibility',
-                },
-              ],
+              catalog: {base_packs: [], shell_providers: []},
+              selection: args?.selection,
+              materialization: {status: 'blocked'},
             };
           }
-          if (command === 'launch_defaultspack_desktop') {
-            tauriDesktopLaunchCount += 1;
-            return 'http://127.0.0.1:8766';
+          if (command === 'launch_selected_presentation') {
+            presentationLaunchCount += 1;
+            return {
+              status: 'launched',
+              provider_id: 'shell.tauri.default',
+              artifact_id: 'fixture-shell',
+              message: 'fixture launched',
+            };
           }
-          throw new Error(`Unknown command: ${command}`);
+          return undefined;
         },
       },
     },
     history: {
       replaceState: (_state: unknown, _title: string, url?: string | URL | null) => {
-        const nextUrl = String(url ?? '');
-        lastReplacedUrl = nextUrl;
-        windowMock.location.href = new URL(nextUrl, windowMock.location.href).toString();
+        windowMock.location.href = new URL(String(url ?? ''), windowMock.location.href).toString();
       },
     },
-    location: {
-      href,
-    },
+    location: {href},
   };
 
   Object.defineProperty(globalThis, 'document', {
     configurable: true,
-    value: {title: 'Tobkiri'} as Pick<Document, 'title'>,
+    value: {title: 'Tobkiri'},
     writable: true,
   });
   Object.defineProperty(globalThis, 'sessionStorage', {
     configurable: true,
-    value: storage as Storage,
+    value: storage,
     writable: true,
   });
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: windowMock as unknown as Pick<Window, 'history' | 'location'>,
+    value: windowMock,
     writable: true,
   });
-  sessionStorageRef = storage;
-  return storage;
 }
 
 function installFetchMock(): void {
-  fetchHandler = async (input: string | URL | Request, init?: RequestInit) => {
+  fetchHandler = async (input, init) => {
     lastFetchUrl = String(input);
     lastFetchInit = init;
-
     if (lastFetchUrl === '/api/panel/auth/exchange') {
-      panelExchangeCount += 1;
-      return new Response(
-        JSON.stringify({
-          data: {csrf_token: 'csrf-from-server'},
-          success: true,
-        }),
-        {
-          headers: {'Content-Type': 'application/json'},
-          status: 200,
-        },
-      );
-    }
-
-    return new Response(
-      JSON.stringify({
-        data: {ok: true},
+      exchangeCount += 1;
+      return new Response(JSON.stringify({
+        data: {csrf_token: 'csrf-from-server'},
         success: true,
-      }),
-      {
-        headers: {'Content-Type': 'application/json'},
-        status: 200,
-      },
-    );
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    if (lastFetchUrl === '/health') {
+      return new Response(JSON.stringify({
+        data: {
+          needs_setup: false,
+          panel_ready: true,
+          runtime_ready: true,
+          runtime_status: 'runtime_ready',
+          runtime_error: null,
+          status: 'ok',
+        },
+        success: true,
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    const route = decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', ''));
+    const data = route === 'POST /api/pack-control/approval-candidate'
+      ? {candidate_id: 'candidate-one', pack_id: 'pack-a', snapshot_digest: `sha256:${'a'.repeat(64)}`}
+      : route === 'GET /api/pack-control/catalog'
+        ? {packs: [], count: 0}
+        : {
+          pack_id: 'pack-a',
+          enabled: true,
+          approved: true,
+          approval_status: 'approved',
+          profile_id: 'profile-a',
+          workspace_id: 'workspace-a',
+          profile_revision: 'sha256:profile',
+          plan_digest: 'sha256:plan',
+          catalog_revision: 'catalog-a',
+        };
+    return new Response(JSON.stringify({data, success: true}), {
+      headers: {'Content-Type': 'application/json'},
+    });
   };
-
   Object.defineProperty(globalThis, 'fetch', {
     configurable: true,
     value: (async (input: string | URL | Request, init?: RequestInit) => {
-      if (!fetchHandler) {
-        throw new Error('Missing fetch handler');
-      }
+      if (!fetchHandler) throw new Error('Missing fetch handler');
       return fetchHandler(input, init);
     }) as typeof fetch,
     writable: true,
@@ -223,453 +172,663 @@ function installFetchMock(): void {
 
 beforeEach(() => {
   clearApiPrefetchCache();
-  lastFetchInit = undefined;
+  setRuntimeDispatchStatus('runtime_ready');
   lastFetchUrl = '';
-  lastReplacedUrl = '';
-  panelExchangeCount = 0;
-  tauriReauthorizeCount = 0;
-  tauriOpenExternalCount = 0;
-  tauriSendToBackgroundCount = 0;
-  tauriShowAppWindowCount = 0;
-  tauriDesktopInfoCount = 0;
-  tauriDesktopLaunchCount = 0;
-  installBrowser('http://127.0.0.1:8765/panel/');
+  lastFetchInit = undefined;
+  exchangeCount = 0;
+  presentationCatalogCount = 0;
+  presentationSelection = undefined;
+  presentationLaunchCount = 0;
+  installBrowser();
   installFetchMock();
 });
 
-test('prefetchApiGet warms exactly the next matching page request', async () => {
-  let requestCount = 0;
-  fetchHandler = async () => {
-    requestCount += 1;
-    return new Response(JSON.stringify({data: {ok: true}, success: true}), {
+test('Home and Packs use only exact v4 frontend contract routes', async () => {
+  const operations: string[] = [];
+  fetchHandler = async (input, init) => {
+    lastFetchUrl = String(input);
+    lastFetchInit = init;
+    const route = decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', ''));
+    operations.push(route);
+    const data = route === 'POST /api/pack-control/approval-candidate'
+      ? {candidate_id: 'candidate-one', pack_id: 'pack-a', snapshot_digest: `sha256:${'a'.repeat(64)}`}
+      : route === 'GET /api/pack-control/catalog'
+        ? {packs: [], count: 0}
+        : {
+          pack_id: 'pack-a',
+          enabled: true,
+          approved: true,
+          approval_status: 'approved',
+          profile_id: 'profile-a',
+          workspace_id: 'workspace-a',
+          profile_revision: 'sha256:profile',
+          plan_digest: 'sha256:plan',
+          catalog_revision: 'catalog-a',
+        };
+    return new Response(JSON.stringify({data, success: true}), {
       headers: {'Content-Type': 'application/json'},
-      status: 200,
     });
   };
 
-  await prefetchApiGet('/api/panel/flows');
-  await apiFetch('/api/panel/flows');
-  assert.equal(requestCount, 1);
+  await fetchDashboard();
+  await fetchPacks();
+  await installPack('pack-a');
+  await approvePack('pack-a');
+  await enablePack('pack-a');
+  await disablePack('pack-a');
 
-  await apiFetch('/api/panel/flows');
-  assert.equal(requestCount, 2);
+  assert.deepEqual(operations, [
+    'GET /api/home/dashboard',
+    'GET /api/pack-control/catalog',
+    'POST /api/pack-control/install',
+    'POST /api/pack-control/approval-candidate',
+    'POST /api/pack-control/approval-approve',
+    'POST /api/pack-control/enable',
+    'POST /api/pack-control/disable',
+  ]);
+  assert.equal(lastFetchInit?.method, 'POST');
 });
 
-test('bootstrapPanelSession exchanges code and strips it from the URL', async () => {
-  const storage = installBrowser('http://127.0.0.1:8765/panel/?code=one-time-code&v=42#ready');
+test('Pack approval rejects a candidate or approval response for a different state', async () => {
+  const operations: string[] = [];
+  fetchHandler = async (input, init) => {
+    const route = decodeURIComponent(String(input).replace('/api/contracts/defaultspack/', ''));
+    operations.push(route);
+    if (route === 'POST /api/pack-control/approval-candidate') {
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          candidate_id: 'candidate-one',
+          pack_id: 'pack-b',
+          snapshot_digest: `sha256:${'a'.repeat(64)}`,
+        },
+      }), {headers: {'Content-Type': 'application/json'}});
+    }
+    throw new Error(`unexpected route ${route}`);
+  };
+
+  await assert.rejects(approvePack('pack-a'), /different Pack/);
+  assert.deepEqual(operations, ['POST /api/pack-control/approval-candidate']);
+});
+
+test('dynamic catalog and capability invocation use the exact canonical v4 routes', async () => {
+  const operations: string[] = [];
+  let invocationBody: Record<string, unknown> | undefined;
+  fetchHandler = async (input, init) => {
+    lastFetchUrl = String(input);
+    lastFetchInit = init;
+    const route = decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', ''));
+    operations.push(route);
+    if (route === 'POST /api/ui/capability/invoke') {
+      invocationBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({success: true, data: {kind: 'stat', size: 12}}), {
+        headers: {'Content-Type': 'application/json'},
+      });
+    }
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        dynamic_host: {
+          version: 'rumi.ui.contribution.v1',
+          profile_id: 'profile-a',
+          profile_revision: 'sha256:profile-a',
+          plan_hash: 'sha256:plan-a',
+          contributions: [{
+            contribution_id: 'file-inspect',
+            owner_pack_id: 'rumi_file_inspect_pack',
+            label: 'rumi_file_inspect_pack.file-inspect',
+            action_contract: 'tobkiri.service.file.inspect.v1',
+            operation_id: 'rumi_file_inspect_pack.file-inspect',
+          }],
+          diagnostics: [],
+          quarantined_pack_ids: [],
+          catalog_hash: 'sha256:catalog-a',
+        },
+      },
+    }), {headers: {'Content-Type': 'application/json'}});
+  };
+
+  const catalog = await fetchFrontendCatalog();
+  assert.equal(lastFetchInit?.cache, 'no-store');
+  const result = await invokeFrontendCapability({
+    profileId: catalog.profile_id,
+    planHash: catalog.plan_hash,
+    catalogHash: catalog.catalog_hash,
+    contributionId: 'file-inspect',
+    ownerPackId: 'rumi_file_inspect_pack',
+    contractId: 'tobkiri.service.file.inspect.v1',
+    payload: {name: 'stat', path: 'docs/example.txt'},
+  });
+
+  assert.deepEqual(operations, [
+    'GET /api/ui/catalog',
+    'POST /api/ui/capability/invoke',
+  ]);
+  assert.equal(typeof invocationBody?.request_id, 'string');
+  assert.equal(typeof invocationBody?.expires_at, 'number');
+  assert.deepEqual(invocationBody, {
+    request_id: invocationBody?.request_id,
+    expires_at: invocationBody?.expires_at,
+    profile_id: 'profile-a',
+    plan_hash: 'sha256:plan-a',
+    catalog_hash: 'sha256:catalog-a',
+    contribution_id: 'file-inspect',
+    owner_pack_id: 'rumi_file_inspect_pack',
+    contract_id: 'tobkiri.service.file.inspect.v1',
+    payload: {name: 'stat', path: 'docs/example.txt'},
+  });
+  assert.deepEqual(result, {kind: 'stat', size: 12});
+  assert.doesNotMatch(lastFetchUrl, /api\/v4\/dispatch/);
+});
+
+test('capability invocation keeps the supplied request identity in both body and replay-protection header', async () => {
+  const requestId = '11111111-1111-4111-8111-111111111111';
+  fetchHandler = async (input, init) => {
+    lastFetchUrl = String(input);
+    lastFetchInit = init;
+    return new Response(JSON.stringify({success: true, data: {accepted: true}}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  };
+
+  await invokeFrontendCapability({
+    profileId: 'profile-a',
+    planHash: 'sha256:plan-a',
+    catalogHash: 'sha256:catalog-a',
+    contributionId: 'contribution-a',
+    ownerPackId: 'pack-a',
+    contractId: 'contract-a',
+    payload: {},
+  }, {requestId});
+
+  const headers = lastFetchInit?.headers as Record<string, string>;
+  const body = JSON.parse(String(lastFetchInit?.body)) as Record<string, unknown>;
+  assert.equal(headers['X-Tobkiri-Request-ID'], requestId);
+  assert.equal(body.request_id, requestId);
+});
+
+test('operation status uses the canonical GET target and a fresh authenticated request identity', async () => {
+  const requestId = '22222222-2222-4222-8222-222222222222';
+  fetchHandler = async (input, init) => {
+    lastFetchUrl = String(input);
+    lastFetchInit = init;
+    return new Response(JSON.stringify({success: true, data: {state: 'pending'}}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  };
+
+  const result = await fetchRuntimeOperationStatus(requestId);
+
+  assert.deepEqual(result, {state: 'pending'});
+  assert.equal(
+    decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')),
+    `GET /api/runtime-surface/operation-status?request_id=${requestId}`,
+  );
+  const headers = lastFetchInit?.headers as Record<string, string>;
+  assert.match(headers['X-Tobkiri-Request-ID'], /^[0-9a-f-]{36}$/i);
+  assert.notEqual(headers['X-Tobkiri-Request-ID'], requestId);
+});
+
+test('runtime operation invocation uses only its exact invocation contribution and catalog hash', async () => {
+  let body: Record<string, unknown> | undefined;
+  fetchHandler = async (input, init) => {
+    lastFetchUrl = String(input);
+    lastFetchInit = init;
+    body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({success: true, data: {accepted: true}}), {
+      headers: {'Content-Type': 'application/json'},
+    });
+  };
+  const digest = (character: string): string => `sha256:${character.repeat(64)}`;
+  const envelope = {
+    runtime_surface_api_version: RUNTIME_SURFACE_API_VERSION,
+    surface: 'operations' as const,
+    state: 'ready' as const,
+    profile_id: 'defaults',
+    profile_revision: digest('a'),
+    plan_digest: digest('b'),
+    catalog_revision: digest('c'),
+    records: {
+      profile_lock: {digest: digest('d'), source_ref: 'profile-lock-v4://defaults/lock'},
+      resolved_plan: {digest: digest('b'), source_ref: 'resolved-plan-v1://defaults/plan'},
+      activation_record: {digest: digest('1'), source_ref: 'activation-record-v1://defaults/activation'},
+      authority_snapshot: {digest: digest('e'), source_ref: 'authority-snapshot-v4://defaults/snapshot'},
+    },
+    data: {},
+  };
+  const operation = {
+    operation_id: 'operation.one',
+    contract_id: 'contract.one.v1',
+    owner_pack_id: 'provider-pack',
+    contribution_id: 'catalog-only-contribution',
+    target_provider_id: 'provider.one',
+    artifact_digest: digest('1'),
+    invocation_contribution_id: 'invocation-contribution',
+    invocation_owner_pack_id: 'provider-pack',
+    invocation_catalog_hash: digest('c'),
+    invocation_reason: null,
+    invokable: true,
+    catalog_digest: digest('c'),
+    function_id: 'function.one',
+    function_principal_id: 'principal.function.one',
+    caller_function_id: 'caller.function.one',
+    authority_reference: 'authority://one',
+    route: {
+      contract_id: 'contract.one.v1',
+      operation_id: 'operation.one',
+      function_id: 'function.one',
+      provider_pack_id: 'provider-pack',
+    },
+    schema: {
+      input_schema: {
+        type: 'object',
+        properties: {prompt: {type: 'string'}},
+      },
+    },
+    input_schema: {
+      type: 'object',
+      properties: {prompt: {type: 'string'}},
+    },
+  };
+  envelope.data = {
+    operations: [operation],
+    packs: [{
+      pack_id: 'provider-pack',
+      role: 'provider',
+      kind: 'normal',
+      version: '1.0.0',
+      display_name: 'Provider Pack',
+      artifact_digest: digest('1'),
+      artifact_ref: `pack-v4://provider-pack@${digest('1')}`,
+      installed: true,
+      enabled: true,
+      approved: true,
+      required: false,
+      invokable_operations: ['contract.one.v1::operation.one'],
+    }],
+  };
+  const [acceptedOperation] = extractExactOperationDescriptors(envelope.data);
+  assert.ok(acceptedOperation);
+  assert.equal(acceptedOperation.invocation_catalog_hash, digest('c'));
+  assert.equal(acceptedOperation.invocation_contribution_id, 'invocation-contribution');
+  assert.equal(acceptedOperation.function_principal_id, 'principal.function.one');
+  assert.equal(acceptedOperation.caller_function_id, 'caller.function.one');
+  assert.equal(acceptedOperation.authority_reference, 'authority://one');
+  assert.equal(acceptedOperation.target_provider_id, 'provider.one');
+  assert.deepEqual(acceptedOperation.route, {
+    contract_id: 'contract.one.v1',
+    operation_id: 'operation.one',
+    function_id: 'function.one',
+    provider_pack_id: 'provider-pack',
+  });
+  assert.deepEqual(Object.keys(acceptedOperation.input_schema?.properties ?? {}), ['prompt']);
+
+  const result = await invokeRuntimeOperation({
+    envelope,
+    operation: acceptedOperation,
+    payload: {prompt: 'hello'},
+  });
+  assert.deepEqual(result, {accepted: true});
+  assert.equal(decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')), 'POST /api/ui/capability/invoke');
+  assert.equal(body?.contribution_id, 'invocation-contribution');
+  assert.equal(body?.catalog_hash, digest('c'));
+  assert.equal(body?.plan_hash, digest('b'));
+  assert.equal(Object.prototype.hasOwnProperty.call(body ?? {}, 'catalog_revision'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(body ?? {}, 'operation_digest'), false);
+  assert.deepEqual(body?.payload, {prompt: 'hello'});
+  await assert.rejects(
+    invokeRuntimeOperation({
+      envelope,
+      operation: acceptedOperation,
+      payload: {prompt: 'hello', unexpected: true},
+    }),
+    (error: unknown) => error instanceof Error && /not declared by the accepted operation schema/.test(error.message),
+  );
+});
+
+test('approval revocation uses the exact typed v4 contract route and payload', async () => {
+  fetchHandler = async (input, init) => {
+    lastFetchUrl = String(input);
+    lastFetchInit = init;
+    return new Response(JSON.stringify({
+      data: {
+        pack_id: 'pack-a',
+        approved: false,
+        enabled: false,
+        approval_status: 'revoked',
+      },
+      success: true,
+    }), {headers: {'Content-Type': 'application/json'}});
+  };
+
+  const response = await revokePackApproval('pack-a');
+
+  assert.equal(
+    decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')),
+    'POST /api/pack-control/approval-revoke',
+  );
+  assert.deepEqual(JSON.parse(String(lastFetchInit?.body)), {pack_id: 'pack-a'});
+  assert.deepEqual(response, {
+    pack_id: 'pack-a',
+    approved: false,
+    enabled: false,
+    approval_status: 'revoked',
+  });
+});
+
+test('kernel restart uses the exact typed v4 contract route', async () => {
+  fetchHandler = async (input, init) => {
+    lastFetchUrl = String(input);
+    lastFetchInit = init;
+    return new Response(JSON.stringify({
+      data: {restarting: true, message: 'Kernel restart requested.'},
+      success: true,
+    }), {headers: {'Content-Type': 'application/json'}});
+  };
+
+  const response = await restartKernel();
+
+  assert.equal(
+    decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')),
+    'POST /api/pack-control/restart',
+  );
+  assert.equal(lastFetchInit?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(lastFetchInit?.body)), {});
+  assert.deepEqual(response, {restarting: true, message: 'Kernel restart requested.'});
+});
+
+test('v4 contract failure is surfaced and never treated as a successful fallback', async () => {
+  fetchHandler = async (input) => {
+    lastFetchUrl = String(input);
+    return new Response(JSON.stringify({success: false, data: null, error: 'retired'}), {status: 410});
+  };
+
+  await assert.rejects(fetchPacks(), /retired/);
+  assert.match(lastFetchUrl, /^\/api\/contracts\/defaultspack\//);
+});
+
+test('unsafe frontend requests time out and reject instead of leaving lifecycle controls pending', async () => {
+  fetchHandler = async () => new Promise<Response>(() => {});
+
+  await assert.rejects(
+    apiFetch('/api/v4/packvm/prepare', {method: 'POST'}, {timeoutMs: 1}),
+    /POST request timed out after 1ms: \/api\/v4\/packvm\/prepare/,
+  );
+});
+
+test('presentation wrappers use Launcher-owned Tauri commands', async () => {
+  await fetchPresentationState();
+  await selectPresentation({
+    base_pack_id: 'defaults-basepack',
+    shell_provider_id: 'shell.tauri.default',
+  });
+  const result = await launchSelectedPresentation();
+
+  assert.equal(presentationCatalogCount, 1);
+  assert.deepEqual(presentationSelection, {
+    base_pack_id: 'defaults-basepack',
+    shell_provider_id: 'shell.tauri.default',
+  });
+  assert.equal(presentationLaunchCount, 1);
+  assert.equal(result.status, 'launched');
+});
+
+test('presentation wrappers fail closed outside Launcher instead of using a retired HTTP route', async () => {
+  const windowValue = window as Window & {__TAURI__?: unknown; __TAURI_INTERNALS__?: unknown};
+  delete windowValue.__TAURI__;
+  delete windowValue.__TAURI_INTERNALS__;
+
+  await assert.rejects(fetchPresentationState(), /only available in Tobkiri Launcher/);
+  assert.equal(lastFetchUrl, '');
+});
+
+test('panel bootstrap exchanges its session code before setup requests', async () => {
+  installBrowser('http://127.0.0.1:8765/panel/setup?code=one-time-code');
+  installFetchMock();
 
   await bootstrapPanelSession();
 
+  assert.equal(exchangeCount, 1);
   assert.equal(lastFetchUrl, '/api/panel/auth/exchange');
-  assert.equal((lastFetchInit?.credentials as string | undefined), 'same-origin');
-  assert.equal(storage.getItem('rumi-panel-csrf'), 'csrf-from-server');
-  assert.equal(lastReplacedUrl, '/panel/?v=42#ready');
-  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/?v=42#ready');
+  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/setup');
 });
 
-test('bootstrapPanelSession deduplicates concurrent exchanges for the same code', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/?code=one-time-code');
-
-  await Promise.all([bootstrapPanelSession(), bootstrapPanelSession()]);
-
-  assert.equal(panelExchangeCount, 1);
-  assert.equal(sessionStorageRef.getItem('rumi-panel-csrf'), 'csrf-from-server');
-});
-
-test('hasPendingPanelBootstrapCode only reports true when the URL includes a code', () => {
-  assert.equal(hasPendingPanelBootstrapCode('http://127.0.0.1:8765/panel/?code=abc'), true);
-  assert.equal(hasPendingPanelBootstrapCode('http://127.0.0.1:8765/panel/'), false);
-});
-
-test('apiFetch adds the panel CSRF header for unsafe methods', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/?v=42');
-  sessionStorageRef.setItem('rumi-panel-csrf', 'persisted-csrf');
-
-  await apiFetch<{ok: boolean}>('/api/panel/flows', {method: 'POST', body: '{}'});
-
-  assert.equal(lastFetchUrl, '/api/panel/flows');
-  assert.equal(
-    (lastFetchInit?.headers as Record<string, string>)?.['X-Rumi-CSRF'],
-    'persisted-csrf',
-  );
-  assert.equal((lastFetchInit?.credentials as string | undefined), 'same-origin');
-});
-
-test('apiFetch waits for panel bootstrap before unsafe requests when code is pending', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/?code=one-time-code');
-
-  await apiFetch<{ok: boolean}>('/api/panel/flows', {method: 'POST', body: '{}'});
-
-  assert.equal(panelExchangeCount, 1);
-  assert.equal(lastFetchUrl, '/api/panel/flows');
-  assert.equal(
-    (lastFetchInit?.headers as Record<string, string>)?.['X-Rumi-CSRF'],
-    'csrf-from-server',
-  );
-  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/');
-});
-
-test('apiFetch leaves GET requests free of CSRF headers', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/?v=42');
-  sessionStorageRef.setItem('rumi-panel-csrf', 'persisted-csrf');
-
-  await apiFetch<{ok: boolean}>('/api/panel/dashboard');
-
-  assert.equal(lastFetchUrl, '/api/panel/dashboard');
-  assert.equal(
-    (lastFetchInit?.headers as Record<string, string>)?.['X-Rumi-CSRF'],
-    undefined,
-  );
-});
-
-test('apiFetch waits for panel bootstrap before GET requests to panel APIs when code is pending', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/?code=one-time-code');
-
-  await apiFetch<{ok: boolean}>('/api/panel/dashboard');
-
-  assert.equal(panelExchangeCount, 1);
-  assert.equal(lastFetchUrl, '/api/panel/dashboard');
-  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/');
-});
-
-test('apiFetch waits for panel bootstrap before GET requests to setup APIs when code is pending', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/?code=one-time-code');
-
-  await apiFetch<{ok: boolean}>('/api/setup/packs');
-
-  assert.equal(panelExchangeCount, 1);
+test('setup and health requests remain separate from Pack contract dispatch', async () => {
+  await apiFetch('/api/setup/packs');
   assert.equal(lastFetchUrl, '/api/setup/packs');
-  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/');
-});
-
-test('apiFetch does not bootstrap non-panel GET requests when code is pending', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/?code=one-time-code');
-
-  await apiFetch<{ok: boolean}>('/health');
-
-  assert.equal(panelExchangeCount, 0);
+  await checkHealth();
   assert.equal(lastFetchUrl, '/health');
-  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/?code=one-time-code');
+  await apiFetch('/api/setup/packs/install', {method: 'POST'});
+  assert.equal(lastFetchUrl, '/api/setup/packs/install');
+  await assert.rejects(
+    apiFetch('/api/setup/packs/install'),
+    /exact method\/path allowlist/,
+  );
+  await assert.rejects(
+    apiFetch('/api/pack-control/disable', {method: 'POST'}),
+    /exact method\/path allowlist/,
+  );
 });
 
-test('apiFetch deduplicates concurrent GET requests for the same URL', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/?v=42');
-
-  let requestCount = 0;
-  const pendingFetch = new Promise<Response>((resolve) => {
-    Object.defineProperty(globalThis, 'fetch', {
-      configurable: true,
-      value: (async (input: string | URL | Request, init?: RequestInit) => {
-        requestCount += 1;
-        lastFetchUrl = String(input);
-        lastFetchInit = init;
-        return pendingFetch;
-      }) as typeof fetch,
-      writable: true,
-    });
-
-    queueMicrotask(() => {
-      resolve(new Response(
-        JSON.stringify({
-          data: {ok: true},
-          success: true,
-        }),
-        {
-          headers: {'Content-Type': 'application/json'},
-          status: 200,
-        },
-      ));
-    });
+test('health parsing recognizes reconfirmation and preserves the typed setup path', async () => {
+  const health = parseHealthResponse({
+    status: 'ok',
+    needs_setup: true,
+    panel_ready: true,
+    runtime_ready: false,
+    runtime_status: 'profile_reconfirmation_required',
+    runtime_error: 'internal denial detail is not surfaced by the UI',
   });
+  assert.equal(health.runtime_status, 'profile_reconfirmation_required');
+  assert.equal(health.runtime_ready, false);
 
-  const [first, second] = await Promise.all([
-    apiFetch<{ok: boolean}>('/api/panel/flows'),
-    apiFetch<{ok: boolean}>('/api/panel/flows'),
-  ]);
-
-  assert.equal(requestCount, 1);
-  assert.deepEqual(first, {ok: true});
-  assert.deepEqual(second, {ok: true});
+  setRuntimeDispatchStatus('profile_reconfirmation_required');
+  await apiFetch('/api/setup/packs');
+  assert.equal(lastFetchUrl, '/api/setup/packs');
+  await assert.rejects(
+    fetchDashboard(),
+    /Profile reconfirmation is required.*Setup first/,
+  );
+  assert.equal(lastFetchUrl, '/api/setup/packs');
 });
 
-test('apiFetch recovers an expired panel session through the desktop shell and retries once', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/packs?v=42');
+test('dispatch gate releases only after the Host publishes runtime_ready', async () => {
+  setRuntimeDispatchStatus('profile_reconfirmation_required');
+  await assert.rejects(
+    fetchFrontendContractOperation('POST', '/api/runtime-surface/profile-change/activate', {
+      approval_id: 'approval',
+      approval_digest: `sha256:${'a'.repeat(64)}`,
+    }),
+    /Profile reconfirmation is required/,
+  );
+  assert.equal(lastFetchUrl, '');
 
-  let requestCount = 0;
-  fetchHandler = async (input: string | URL | Request, init?: RequestInit) => {
-    lastFetchUrl = String(input);
-    lastFetchInit = init;
+  setRuntimeDispatchStatus('runtime_ready');
+  await fetchFrontendContractOperation('GET', '/api/home/dashboard');
+  assert.equal(
+    decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')),
+    'GET /api/home/dashboard',
+  );
+});
 
-    if (lastFetchUrl === '/api/panel/auth/exchange') {
-      panelExchangeCount += 1;
-      return new Response(
-        JSON.stringify({
-          data: {csrf_token: 'csrf-from-server'},
-          success: true,
-        }),
-        {
-          headers: {'Content-Type': 'application/json'},
-          status: 200,
-        },
-      );
+test('health parsing rejects an unknown or tampered runtime status', () => {
+  assert.throws(
+    () => parseHealthResponse({status: 'ok', runtime_status: 'runtime_ready_with_empty_map'}),
+    /runtime_status is invalid/,
+  );
+  assert.throws(
+    () => parseHealthResponse({
+      status: 'ok',
+      needs_setup: false,
+      panel_ready: true,
+      runtime_ready: 'yes',
+      runtime_status: 'runtime_ready',
+      runtime_error: null,
+    }),
+    /runtime_ready is invalid/,
+  );
+});
+
+test('health parsing accepts only coherent lifecycle relationships across all permutations', () => {
+  const statuses = [
+    'starting',
+    'panel_ready',
+    'profile_reconfirmation_required',
+    'runtime_ready',
+    'error',
+  ] as const;
+  const booleans = [false, true];
+  const errors = [null, 'denied'];
+
+  for (const runtimeStatus of statuses) {
+    for (const status of ['ok', 'error'] as const) {
+      for (const needsSetup of booleans) {
+        for (const panelReady of booleans) {
+          for (const runtimeReady of booleans) {
+            for (const runtimeError of errors) {
+              const candidate = {
+                status,
+                needs_setup: needsSetup,
+                panel_ready: panelReady,
+                runtime_ready: runtimeReady,
+                runtime_status: runtimeStatus,
+                runtime_error: runtimeError,
+              };
+              const coherent = runtimeStatus === 'starting'
+                ? status === 'ok' && !panelReady && !runtimeReady && runtimeError === null
+                : runtimeStatus === 'panel_ready'
+                  ? status === 'ok' && panelReady && !runtimeReady && runtimeError === null
+                  : runtimeStatus === 'profile_reconfirmation_required'
+                    ? status === 'ok' && needsSetup && panelReady && !runtimeReady
+                      && runtimeError === 'denied'
+                    : runtimeStatus === 'runtime_ready'
+                      ? status === 'ok' && !needsSetup && panelReady && runtimeReady
+                        && runtimeError === null
+                      : status === 'error' && panelReady && !runtimeReady
+                        && runtimeError === 'denied';
+              if (coherent) {
+                assert.doesNotThrow(() => parseHealthResponse(candidate));
+              } else {
+                assert.throws(
+                  () => parseHealthResponse(candidate),
+                  /contradictory|invalid|empty/,
+                  JSON.stringify(candidate),
+                );
+              }
+            }
+          }
+        }
+      }
     }
+  }
+});
 
-    requestCount += 1;
-    if (requestCount === 1) {
-      return new Response(
-        JSON.stringify({
-          error: 'Invalid or expired code',
-          success: false,
-        }),
-        {
-          headers: {'Content-Type': 'application/json'},
-          status: 401,
-        },
-      );
-    }
+test('exact route allowlist rejects legacy, map-external, wildcard, and malformed host paths', async () => {
+  await apiFetch('/api/contracts/defaultspack/GET%20%2Fapi%2Fhome%2Fdashboard');
+  assert.equal(lastFetchUrl, '/api/contracts/defaultspack/GET%20%2Fapi%2Fhome%2Fdashboard');
+  await apiFetch('/api/v4/packvm/progress?operation_id=one%20two');
+  const lastAllowedRequest = lastFetchUrl;
 
-    return new Response(
-      JSON.stringify({
-        data: {ok: true},
-        success: true,
-      }),
-      {
-        headers: {'Content-Type': 'application/json'},
-        status: 200,
-      },
+  const invalidRequests: Array<[string, RequestInit?]> = [
+    ['/api/contracts/defaultspack/POST%20%2Fapi%2Fhome%2Fdashboard', {method: 'POST'}],
+    ['/api/contracts/defaultspack/GET%20%2Fapi%2Fpanel%2Fdashboard'],
+    ['/api/contracts/defaultspack/GET%20%2Fapi%2Fruntime-recovery%2Fv4%2Fprofile'],
+    ['/api/panel/dashboard'],
+    ['/api/panel/startup/profiles'],
+    ['/api/panel/auth/exchange'],
+    ['/api/runtime-recovery/v4/profile'],
+    ['/api/registry/default'],
+    ['/api/setup/packs?unexpected=1'],
+    ['/api/setup/packs', {method: 'POST'}],
+    ['/api/v4/packvm/prepare?unexpected=1', {method: 'POST'}],
+    ['/api/v4/packvm/doctor', {method: 'POST'}],
+    ['/api/v4/packvm/progress?operation_id=one&unexpected=two'],
+    ['/api/v4/packvm/progress?operation_id=one=two'],
+    ['/api/v4/packvm/progress?operation_id=one', {method: 'POST'}],
+    ['/health', {method: 'POST'}],
+  ];
+  for (const [path, options] of invalidRequests) {
+    await assert.rejects(
+      apiFetch(path, options),
+      /exact method\/path allowlist/,
+      path,
     );
-  };
-
-  const response = await apiFetch<{ok: boolean}>('/api/panel/packs');
-
-  assert.deepEqual(response, {ok: true});
-  assert.equal(requestCount, 2);
-  assert.equal(tauriReauthorizeCount, 1);
-  assert.equal(panelExchangeCount, 1);
-  assert.equal(sessionStorageRef.getItem('rumi-panel-csrf'), 'csrf-from-server');
-  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/packs?v=42');
+  }
+  assert.equal(lastAllowedRequest, '/api/v4/packvm/progress?operation_id=one%20two');
+  assert.equal(lastFetchUrl, lastAllowedRequest);
 });
 
-test('apiFetch recovers an expired panel session for setup APIs and retries once', async () => {
-  installBrowser('http://127.0.0.1:8765/panel/setup?v=42');
+test('runtime surface GET guards stay outside the encoded contract operation key', async () => {
+  await fetchFrontendContractOperation('GET', '/api/runtime-surface/profile', {
+    expected_profile_revision: 'revision-one',
+    expected_plan_digest: 'sha256:plan-one',
+  });
 
-  let requestCount = 0;
-  fetchHandler = async (input: string | URL | Request, init?: RequestInit) => {
-    lastFetchUrl = String(input);
-    lastFetchInit = init;
+  assert.equal(
+    lastFetchUrl,
+    '/api/contracts/defaultspack/GET%20%2Fapi%2Fruntime-surface%2Fprofile?expected_profile_revision=revision-one&expected_plan_digest=sha256%3Aplan-one',
+  );
+  assert.equal(
+    decodeURIComponent(lastFetchUrl.slice('/api/contracts/defaultspack/'.length).split('?')[0]),
+    'GET /api/runtime-surface/profile',
+  );
+  assert.doesNotMatch(lastFetchUrl.split('?')[0], /expected_profile/);
+});
 
-    if (lastFetchUrl === '/api/panel/auth/exchange') {
-      panelExchangeCount += 1;
-      return new Response(
-        JSON.stringify({
-          data: {csrf_token: 'csrf-from-server'},
-          success: true,
-        }),
-        {
-          headers: {'Content-Type': 'application/json'},
-          status: 200,
-        },
-      );
-    }
+test('runtime surface settings target has no guard query and unknown GET keys fail before dispatch', async () => {
+  await fetchFrontendContractOperation('GET', '/api/runtime-surface/settings');
+  assert.equal(lastFetchUrl, '/api/contracts/defaultspack/GET%20%2Fapi%2Fruntime-surface%2Fsettings');
 
-    requestCount += 1;
-    if (requestCount === 1) {
-      return new Response(
-        JSON.stringify({
-          error: 'Invalid or expired code',
-          success: false,
-        }),
-        {
-          headers: {'Content-Type': 'application/json'},
-          status: 401,
-        },
-      );
-    }
+  assert.throws(
+    () => fetchFrontendContractOperation('GET', '/api/runtime-surface/profile', {surface: 'profile'}),
+    /unknown key/,
+  );
+  assert.throws(
+    () => fetchFrontendContractOperation('GET', '/api/runtime-surface/profile?surface=profile'),
+    /target is invalid/,
+  );
+  assert.equal(lastFetchUrl, '/api/contracts/defaultspack/GET%20%2Fapi%2Fruntime-surface%2Fsettings');
+});
 
-    return new Response(
-      JSON.stringify({
-        data: {ok: true},
-        success: true,
-      }),
-      {
-        headers: {'Content-Type': 'application/json'},
-        status: 200,
-      },
+test('frontend contract transport rejects map-external targets, method mismatches, and retired recovery paths', async () => {
+  const before = lastFetchUrl;
+  assert.throws(
+    () => fetchFrontendContractOperation('GET', '/api/not-in-the-map'),
+    /not declared by the verified frontend Contract Map|no exact route/i,
+  );
+  assert.throws(
+    () => fetchFrontendContractOperation('POST', '/api/runtime-surface/profile'),
+    /not declared by the verified frontend Contract Map|no exact route/i,
+  );
+  assert.throws(
+    () => fetchFrontendContractOperation('GET', '/api/runtime-recovery/v4/profile'),
+    /not declared by the verified frontend Contract Map|no exact route/i,
+  );
+  assert.equal(lastFetchUrl, before);
+});
+
+test('every single-target product route is dispatched through the generated map', async () => {
+  const singleTargetRoutes = GENERATED_FRONTEND_CONTRACT_MAP.routes.filter(
+    (route) => route.targets.length === 1,
+  );
+  assert.ok(singleTargetRoutes.length > 10);
+  for (const route of singleTargetRoutes) {
+    await fetchFrontendContractOperation(route.method, route.path);
+    assert.equal(
+      decodeURIComponent(lastFetchUrl.replace('/api/contracts/defaultspack/', '')).split('?')[0],
+      `${route.method} ${route.path}`,
+      route.path,
     );
-  };
-
-  const response = await apiFetch<{ok: boolean}>('/api/setup/packs');
-
-  assert.deepEqual(response, {ok: true});
-  assert.equal(requestCount, 2);
-  assert.equal(tauriReauthorizeCount, 1);
-  assert.equal(panelExchangeCount, 1);
-  assert.equal(sessionStorageRef.getItem('rumi-panel-csrf'), 'csrf-from-server');
-  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/setup?v=42');
+  }
 });
 
-test('openExternalUrl uses the desktop shell when Tauri is available', async () => {
-  await openExternalUrl('https://example.com/oauth');
-
-  assert.equal(tauriOpenExternalCount, 1);
-  assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/');
-});
-
-test('launchDefaultspackDesktop delegates launch to the viewer shell', async () => {
-  const url = await launchDefaultspackDesktop();
-
-  assert.equal(url, 'http://127.0.0.1:8766');
-  assert.equal(tauriDesktopLaunchCount, 1);
-});
-
-test('desktop shell helpers expose background control commands', async () => {
-  assert.equal(isDesktopShellAvailable(), true);
-
-  const status = await fetchBackgroundControlStatus();
-  await sendToBackground();
-  await showAppWindow();
-
-  assert.equal(status?.enabled, true);
-  assert.equal(status?.app_visible, false);
-  assert.equal(status?.kernel_running, true);
-  assert.equal(status?.windows[0]?.label, 'main');
-  assert.equal(tauriSendToBackgroundCount, 1);
-  assert.equal(tauriShowAppWindowCount, 1);
-});
-
-test('fetchDesktopSystemInfo reads viewer version and macOS permissions from Tauri', async () => {
-  const info = await fetchDesktopSystemInfo();
-
-  assert.equal(tauriDesktopInfoCount, 1);
-  assert.equal(info?.display_version, RUMI_DISPLAY_VERSION);
-  assert.equal(info?.viewer_version, '1.0.0-beta.1');
-  assert.equal(info?.permission_subject, 'Tobkiri Launcher');
-  assert.equal(info?.host_broker?.status, 'running');
-  assert.equal(info?.permissions[0]?.id, 'accessibility');
-  assert.equal(info?.permissions[0]?.granted, true);
-});
-
-test('startup profile wrappers use v3 payloads and endpoints', async () => {
-  await createStartupProfile({name: 'V3', base_pack: 'defaultspack'});
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles');
-  assert.equal(lastFetchInit?.method, 'POST');
-  assert.equal(lastFetchInit?.body, JSON.stringify({name: 'V3', base_pack: 'defaultspack'}));
-
-  await addPackToStartupProfile('profile-1', 'coolpack');
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/packs');
-  assert.equal(lastFetchInit?.method, 'POST');
-  assert.equal(lastFetchInit?.body, JSON.stringify({pack_id: 'coolpack'}));
-
-  await setStartupProfileNodeOverride('profile-1', 'agent.ai', 'coolpack.ai_client');
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/overrides');
-  assert.equal(lastFetchInit?.method, 'PUT');
-  assert.equal(lastFetchInit?.body, JSON.stringify({port_key: 'agent.ai', node_id: 'coolpack.ai_client'}));
-
-  await clearStartupProfileNodeOverride('profile-1', 'agent.ai');
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/overrides/agent.ai');
-  assert.equal(lastFetchInit?.method, 'DELETE');
-
-  await compileStartupProfilePreview('profile-1', {
-    version: 3,
-    profile_id: 'profile-1',
-    name: 'Preview',
-    base_pack: 'defaultspack',
-    graph_id: 'defaultspack.startup',
-    graph_ports: [],
-    packs: ['defaultspack'],
-    node_overrides: {},
-    created_at: 1,
-    updated_at: 1,
-  });
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/compile-preview');
-  assert.equal(lastFetchInit?.method, 'POST');
-  assert.equal(lastFetchInit?.body, JSON.stringify({
-    profile: {
-      version: 3,
-      profile_id: 'profile-1',
-      name: 'Preview',
-      base_pack: 'defaultspack',
-      graph_id: 'defaultspack.startup',
-      graph_ports: [],
-      packs: ['defaultspack'],
-      node_overrides: {},
-      created_at: 1,
-      updated_at: 1,
-    },
-  }));
-});
-
-test('profile graph wrappers call the graph endpoints and support metadata fields', async () => {
-  await updateStartupProfile('profile-1', {
-    name: 'Research',
-    system_prompt_id: 'research.system',
-    metadata: {selected: {tools: ['web_search']}},
-    policy: {tool_allowlist: ['web_search']},
-  });
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1');
-  assert.equal(lastFetchInit?.method, 'PUT');
-  assert.equal(lastFetchInit?.body, JSON.stringify({
-    name: 'Research',
-    system_prompt_id: 'research.system',
-    metadata: {selected: {tools: ['web_search']}},
-    policy: {tool_allowlist: ['web_search']},
-  }));
-
-  await fetchStartupProfileGraph('profile-1');
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/graph');
-  assert.equal(lastFetchInit?.method, 'GET');
-
-  await updateStartupProfileGraph('profile-1', {
-    graph: {version: 1, nodes: [], edges: []},
-    selected: {tools: ['web_search']},
-  });
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/graph');
-  assert.equal(lastFetchInit?.method, 'PUT');
-  assert.equal(lastFetchInit?.body, JSON.stringify({
-    graph: {version: 1, nodes: [], edges: []},
-    selected: {tools: ['web_search']},
-  }));
-
-  await compileStartupProfileGraphPreview('profile-1', {
-    graph: {version: 1, nodes: [], edges: []},
-    selected: {prompts: ['research.system']},
-  });
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/graph/compile-preview');
-  assert.equal(lastFetchInit?.method, 'POST');
-  assert.equal(lastFetchInit?.body, JSON.stringify({
-    graph: {version: 1, nodes: [], edges: []},
-    selected: {prompts: ['research.system']},
-  }));
-
-  await fetchApiMap({profile_id: 'profile-1', focus: 'tool:web_search'});
-  assert.equal(lastFetchUrl, '/api/panel/api-map?profile_id=profile-1&focus=tool%3Aweb_search');
-});
-
-test('ai input wrappers call graph, preview, update, and trace endpoints', async () => {
-  await fetchStartupProfileAiInput('profile-1', {include_text: false});
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/ai-input?include_text=false');
-  assert.equal(lastFetchInit?.method, 'GET');
-
-  await updateStartupProfileAiInput('profile-1', {
-    version: 1,
-    disabled_edges: ['edge:prompt->model.system'],
-  });
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/ai-input');
-  assert.equal(lastFetchInit?.method, 'PUT');
-  assert.equal(lastFetchInit?.body, JSON.stringify({
-    ai_input: {
-      version: 1,
-      disabled_edges: ['edge:prompt->model.system'],
-    },
-  }));
-
-  await compileStartupProfileAiInputPreview('profile-1', {
-    ai_input: {disabled_edges: ['edge:prompt->model.system']},
-    message: 'preview this',
-  });
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/ai-input/compile-preview');
-  assert.equal(lastFetchInit?.method, 'POST');
-
-  await fetchStartupProfileAiInputTraces('profile-1');
-  assert.equal(lastFetchUrl, '/api/panel/startup/profiles/profile-1/ai-input/traces');
+test('all generated map bindings use the exact method/path and reject ambiguous capability dispatch', () => {
+  assert.throws(
+    () => fetchFrontendContractOperation('POST', '/api/ui/capability/invoke'),
+    /multiple operations/i,
+  );
+  assert.throws(
+    () => fetchFrontendContractOperation('PUT' as never, '/api/pack-control/catalog'),
+    /unsupported|not declared/i,
+  );
 });

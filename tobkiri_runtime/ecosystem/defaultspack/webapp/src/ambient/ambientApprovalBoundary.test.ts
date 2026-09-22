@@ -59,16 +59,25 @@ test("ambient mini authority browser fallback is debug-only and opens credential
 
   assert.match(source, /const browserApprovalQaEnabled = standalone && debugMode/);
   assert.match(source, /browserApprovalQaEnabled && miniAuthorityApproval && !hasNativeAuthorityApprovalWindow\(\)/);
-  assert.match(source, /ambientAuthorityApprovalReturnPath\(resolvedApproval\.requestId\)/);
-  assert.match(source, /ambientAuthorityApprovalReturnPath\(miniAuthorityApproval\.requestId\)/);
-  assert.match(source, /function ambientAuthorityApprovalReturnPath\(requestId: string\)/);
-  assert.match(source, /createAuthorityApprovalReturnPath\(requestId, window\.location\.href\)/);
-  assert.doesNotMatch(source, /searchParams\.set\("authority_approved"/);
+  assert.match(source, /browserAuthorityApprovalPath\(resolvedApproval\.requestId, ambientAuthorityApprovalReturnPath\(\)\)/);
+  assert.match(source, /browserAuthorityApprovalPath\(miniAuthorityApproval\.requestId, ambientAuthorityApprovalReturnPath\(\)\)/);
+  assert.match(source, /function ambientAuthorityApprovalReturnPath\(\)/);
+  assert.doesNotMatch(source, /url\.searchParams\.set\("authority_approved", "1"\)/);
+  assert.match(source, /url\.searchParams\.delete\("authority_approved"\)/);
   assert.match(source, /window\.open\(approvalUrl/);
   assert.doesNotMatch(source, /browserApprovalToken|browser_approval_token/);
   assert.doesNotMatch(source, /window\.open\(["'`]\/approval\?request_id/);
   assert.doesNotMatch(helperSource, /params\.set\("browser_approval_token"/);
   assert.match(helperSource, /params\.set\("return_to", safeReturnTo\)/);
+});
+
+test("copied ambient approval return parameters are cleanup hints only", () => {
+  const source = readSource("ambient", "AmbientTriggerPanel.tsx");
+
+  assert.doesNotMatch(source, /params\.get\("authority_approved"\) !== "1"/);
+  assert.doesNotMatch(source, /setRumiApprovalOpen\(false\)[\s\S]{0,180}params\.delete\("authority_approved"\)/);
+  assert.doesNotMatch(source, /setMessage\("使えるようになりました。次にMacのマイク\/カメラを確認します。"\)[\s\S]{0,180}params\.delete\("authority_approved"\)/);
+  assert.match(source, /function verifyRumiPermissionStatus\(\): void \{[\s\S]*loadStatus\(\{ probeOs: true \}\)[\s\S]*hasAllRumiPermissions\(latest\)[\s\S]*setRumiApprovalOpen\(false\)/);
 });
 
 test("authority approval route does not render ambient gesture overlay", () => {
@@ -128,27 +137,8 @@ test("ambient authority settlement subscribers cannot replay stored settlements"
   assert.doesNotMatch(eventSource, /AUTHORITY_APPROVAL_STORAGE_MAX_AGE_MS/);
   assert.match(eventSource, /window\.localStorage\.removeItem\(LEGACY_AUTHORITY_APPROVAL_STORAGE_KEY\)/);
   assert.match(eventSource, /readStoredAuthorityApprovalSettlement[\s\S]*clearStoredAuthorityApprovalSettlement\(\);[\s\S]*return null/);
-  assert.doesNotMatch(source, /replayStored/);
-  assert.match(source, /subscribeAuthorityApprovalSettlements\(\(event\) => \{[\s\S]*miniAuthorityApproval/);
-  assert.match(source, /subscribeAuthorityApprovalSettlements\(\(event\) => \{[\s\S]*AMBIENT_AUTHORITY_REQUEST_ID/);
-});
-
-test("ambient return parameters are one-time wake-up hints verified by the backend", () => {
-  const source = readSource("ambient", "AmbientTriggerPanel.tsx");
-  const eventSource = readSource("lib", "authorityApprovalEvents.ts");
-  const approvalWindowSource = readSource("components", "AuthorityApprovalWindow.tsx");
-
-  assert.match(source, /consumeAuthorityApprovalReturnHint\(window\.location\.search\)/);
-  assert.match(source, /verifyAuthorityApprovalRequest\(requestId\)/);
-  assert.match(source, /setMessage\("承認結果を確認しています…"\)/);
-  assert.match(source, /requestId !== AMBIENT_AUTHORITY_REQUEST_ID/);
-  assert.doesNotMatch(source, /params\.get\("authority_approved"\) !== "1"/);
-  assert.match(eventSource, /sessionStorage/);
-  assert.match(eventSource, /storage\.removeItem\(AUTHORITY_APPROVAL_RETURN_STORAGE_KEY\)/);
-  assert.match(eventSource, /storedNonce !== nonce/);
-  assert.match(eventSource, /verifyAuthorityApprovalRequest/);
-  assert.doesNotMatch(approvalWindowSource, /finger-recording\?authority_approved=1/);
-  assert.match(approvalWindowSource, /createAuthorityApprovalReturnPath/);
+  assert.match(source, /expected:\s*\{[\s\S]*requestId: miniAuthorityApproval\.requestId,[\s\S]*principalId: miniAuthorityApproval\.principalId,[\s\S]*permissionId: miniAuthorityApproval\.permissionId,[\s\S]*resource: miniAuthorityApproval\.resource/);
+  assert.match(source, /expected: \{ requestId: AMBIENT_AUTHORITY_REQUEST_ID \}/);
 });
 
 test("generic authority approval stale post failure refetches and settles before error", () => {

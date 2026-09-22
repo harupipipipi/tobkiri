@@ -526,7 +526,17 @@ class ConversationStore:
             or not isinstance(value.get("conversations"), dict)
         ):
             raise ValueError("conversation store is invalid")
-        return value
+        conversations: dict[str, Any] = {}
+        for conversation_id, raw in value["conversations"].items():
+            if not isinstance(raw, Mapping):
+                conversations[conversation_id] = raw
+                continue
+            conversation = dict(raw)
+            conversation["metadata"] = _conversation_metadata(
+                conversation.get("metadata")
+            )
+            conversations[conversation_id] = conversation
+        return {**value, "conversations": conversations}
 
     def _write(self, state: Mapping[str, Any]) -> None:
         _atomic_json(self.path, state)
@@ -829,7 +839,9 @@ def _assert_conversation_revision(value: Mapping[str, Any], expected: int) -> No
 
 
 def _safe(value: Any) -> Any:
-    return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+    normalized = _utf8_safe(value)
+    serialized = json.dumps(normalized, ensure_ascii=False, default=str)
+    return _utf8_safe(json.loads(serialized))
 
 
 def _copy(value: Any) -> Any:
@@ -845,6 +857,20 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _utf8_safe(value: Any) -> Any:
+    """Replace lone surrogates recursively while retaining valid Unicode."""
+    if isinstance(value, str):
+        return value.encode("utf-8", errors="replace").decode("utf-8")
+    if isinstance(value, Mapping):
+        return {
+            _utf8_safe(key) if isinstance(key, str) else key: _utf8_safe(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_utf8_safe(item) for item in value]
+    return value
+
+
 def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
@@ -853,7 +879,12 @@ def _atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(value, handle, ensure_ascii=False, sort_keys=True)
+            json.dump(
+                _utf8_safe(value),
+                handle,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temporary, 0o600)

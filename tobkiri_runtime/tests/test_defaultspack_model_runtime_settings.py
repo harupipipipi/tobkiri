@@ -67,6 +67,55 @@ def test_model_runtime_settings_preferred_model_and_thinking_level(tmp_path):
     assert service.get_thinking_level()["level"] == "high"
 
 
+def test_model_runtime_settings_cache_reuses_resolution_and_invalidates_on_update(
+    tmp_path, monkeypatch
+):
+    calls = 0
+    original_read_all = ModelRuntimeSettingsService._read_all
+
+    def counted_read_all(service):
+        nonlocal calls
+        calls += 1
+        return original_read_all(service)
+
+    monkeypatch.setattr(ModelRuntimeSettingsService, "_read_all", counted_read_all)
+    service = ModelRuntimeSettingsService(tmp_path)
+
+    first = service.get_settings()
+    second = ModelRuntimeSettingsService(tmp_path).get_settings()
+
+    assert first == second
+    assert calls == 1
+
+    service.update_settings({"preferred_model": "stub/fast"})
+    refreshed = ModelRuntimeSettingsService(tmp_path).get_settings()
+
+    assert refreshed["preferred_model"] == "stub/fast"
+    assert calls == 2
+
+
+def test_model_runtime_settings_cache_invalidates_on_credential_store_change(
+    tmp_path, monkeypatch
+):
+    from domain.ai_client.api_key_store import set_provider_api_key
+
+    service = ModelRuntimeSettingsService(tmp_path)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    assert service.get_settings()["google_api_key_configured"] is False
+    result = set_provider_api_key(
+        "google",
+        "test-only-key",
+        pack_root=tmp_path,
+    )
+    assert result["success"] is True
+
+    refreshed = ModelRuntimeSettingsService(tmp_path).get_settings()
+
+    assert refreshed["google_api_key_configured"] is True
+
+
 def test_model_runtime_settings_deepthink_toggle_warns(tmp_path):
     service = ModelRuntimeSettingsService(tmp_path)
 

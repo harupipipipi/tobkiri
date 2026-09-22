@@ -22,7 +22,7 @@ class ContractToolCatalog:
         try:
             snapshot = _invoke("list", {})
         except GlobalContractUnavailable:
-            return _legacy().list_tools(filter_dict)
+            return []
         definitions = (
             snapshot.get("definitions") if isinstance(snapshot, Mapping) else []
         )
@@ -45,7 +45,7 @@ class ContractToolCatalog:
         try:
             value = _invoke("resolve", {"tool_id": tool_name})
         except GlobalContractUnavailable:
-            return _legacy().get(tool_name)
+            return None
         definition = value.get("definition") if isinstance(value, Mapping) else None
         return _legacy_shape(definition) if isinstance(definition, Mapping) else None
 
@@ -56,7 +56,7 @@ class ContractToolCatalog:
 
 
 def _invoke(operation: str, payload: Mapping[str, Any]) -> Any:
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     plan = active_resolved_profile()
     if registry is None or plan is None:
         raise GlobalContractUnavailable("global tool registry is unavailable")
@@ -95,9 +95,3 @@ def _legacy_shape(value: Mapping[str, Any]) -> dict[str, Any]:
             "source_adapter_id": value.get("source_adapter_id"),
         },
     }
-
-
-def _legacy():
-    from domain.tool.registry import ToolRegistry
-
-    return ToolRegistry()

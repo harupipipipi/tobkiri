@@ -1,0 +1,7 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:fc0468ef1e9e0bf69f8107d8a93f0be8b90b2658c1a54ed617469532d09836c8",
+  "pack_id": "search_home_pack",
+  "source_identity": "sha256:a09089fcf9d75186fdec0a7f7fef5228469e5ab3b81dfdaa25ac0807a69b84f7",
+  "variants": []
+}

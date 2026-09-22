@@ -2,10 +2,12 @@
 
 from blocks._common import ok, error
 from blocks.coding._approval import approval_required
+from blocks.coding._workspace import canonical_mutation_guard
 from domain.coding.contract_adapter import (
     GIT_READ,
     GIT_WRITE,
     authorize_legacy_coding_operation,
+    git_snapshot,
     invoke_coding_contract,
     service_payload,
     workspace_id,
@@ -58,7 +60,7 @@ def run(input_data, context=None):
         record_attempt(operation, "high", audit_args)
         service_name = "branch_create" if create else "branch_switch"
         service_operation = "git.branch_create" if create else "git.branch_switch"
-        arguments = {"branch": str(name)}
+        arguments = {"branch": str(name), **git_snapshot(selected_workspace_id)}
         authorization = authorize_legacy_coding_operation(
             legacy_operation=operation,
             service_pack_id="rumi_git_write_pack",
@@ -68,6 +70,7 @@ def run(input_data, context=None):
             input_data=input_data,
             context=context,
             selected_workspace_id=selected_workspace_id,
+            mutation_guard=canonical_mutation_guard,
         )
         if not authorization.get("authorized"):
             if authorization.get("reason") == "approval_required":

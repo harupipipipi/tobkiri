@@ -90,41 +90,49 @@ def test_configured_zen_fallback_joins_nonempty_global_catalog(monkeypatch):
     assert MINIMAX_PROFILE_ID in profile_ids
 
 
-def _catalog_model() -> dict:
+def _catalog_model() -> dict | None:
     from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_model_catalog
 
-    return next(item for item in list_model_catalog(provider="opencode-zen") if item["id"] == MINIMAX_PROFILE_ID)
+    return next(
+        (
+            item
+            for item in list_model_catalog(provider="opencode-zen")
+            if item["id"] == MINIMAX_PROFILE_ID
+        ),
+        None,
+    )
 
 
-def _catalog_profile() -> dict:
+def _catalog_profile() -> dict | None:
     from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_profile_catalog
 
-    return next(item for item in list_profile_catalog() if item["profile_id"] == MINIMAX_PROFILE_ID)
+    return next(
+        (
+            item
+            for item in list_profile_catalog()
+            if item["profile_id"] == MINIMAX_PROFILE_ID
+        ),
+        None,
+    )
 
 
-def test_defaultspack_catalog_exposes_minimax_m3_free_capability_metadata():
+def test_defaultspack_catalog_hides_unconfigured_minimax_static_snapshot(monkeypatch):
+    # External providers publish account-visible inventory only.  The checked-in
+    # MiniMax example is intentionally not a public catalog fallback.
+    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
     model = _catalog_model()
     profile = _catalog_profile()
 
-    assert model["model_id"] == "minimax-m3-free"
-    assert profile["qualified_model_id"] == MINIMAX_PROFILE_ID
-
-    for item in (model, profile):
-        assert item["supports_tool_calling"] is False
-        assert item["supports_thinking"] is True
-        assert item["supports_vision"] is True
-        assert item["metadata"]["supports_tool_calling"] is False
-        assert item["metadata"]["supports_thinking"] is True
-        assert item["metadata"]["supports_vision"] is True
-        assert item["model_capabilities"]["capabilities"]["tool_calling"] is False
-        assert item["model_capabilities"]["capabilities"]["thinking"] is True
-        assert item["model_capabilities"]["capabilities"]["vision"] is True
-
-    assert {"thinking", "vision"}.issubset(model["capability_tags"])
-    assert {"deep_reasoning", "vision_ocr"}.issubset(profile["recommended_roles"])
+    assert model is None
+    assert profile is None
 
 
-def test_defaultspack_model_search_returns_minimax_m3_free_for_capability_query():
+def test_defaultspack_model_search_does_not_synthesize_minimax_static_snapshot(
+    monkeypatch,
+):
+    # A capability query cannot mint a model/profile from a checked-in external
+    # snapshot; a configured live adapter must first publish the model.
+    monkeypatch.delenv("OPENCODE_ZEN_API_KEY", raising=False)
     from ecosystem.defaultspack.backend.ai_client.provider_catalog import list_profile_catalog
     from domain.ai_client.model_search import search_models
 
@@ -138,7 +146,4 @@ def test_defaultspack_model_search_returns_minimax_m3_free_for_capability_query(
         profiles=list_profile_catalog(),
     )
 
-    assert [item["profile_id"] for item in result["models"]] == [MINIMAX_PROFILE_ID]
-    assert result["models"][0]["supports_tool_calling"] is False
-    assert result["models"][0]["supports_thinking"] is True
-    assert result["models"][0]["supports_vision"] is True
+    assert result["models"] == []

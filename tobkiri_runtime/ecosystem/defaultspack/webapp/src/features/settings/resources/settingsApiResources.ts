@@ -1,4 +1,4 @@
-import { api } from "../../../lib/api";
+import { api, defaultspackCanonicalRouteKey } from "../../../lib/api";
 import type { CodexAppServerConfig, ModelSearchResponse } from "../../../lib/api";
 import { createProviderApiKeyResources, type ProviderKeySaveResult } from "../../apiKeys";
 import { createModelSearchResources } from "../../models";
@@ -7,7 +7,11 @@ const modelSearchResources = createModelSearchResources(api);
 const providerApiKeyResources = createProviderApiKeyResources<Parameters<typeof api.saveProviderApiKey>[2]>(api);
 
 export const settingsApiResources = {
-  searchModels(payload: { query: string; max_results: number }) {
+  canonicalRouteKey(apiPath: string) {
+    return defaultspackCanonicalRouteKey(apiPath);
+  },
+
+  searchModels(payload: { query: string; max_results: number; provider_id?: string }) {
     return modelSearchResources.searchModels(payload) as Promise<ModelSearchResponse>;
   },
 

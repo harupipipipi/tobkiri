@@ -1,55 +1,113 @@
 {
-  "pack_id": "rumi_omnichannel_agent_inbox_pack",
-  "pack_identity": "rumi:ecosystem/rumi_omnichannel_agent_inbox_pack",
-  "display_name": "Rumi Omnichannel Agent Inbox Pack",
-  "version": "0.1.0",
-  "description": "Declarative omnichannel agent inbox contracts for channel payloads, identity mapping, ACL gates, thread routing, outbound draft approvals, notification preferences, and inbox UI review.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "ledger",
-      "template",
-      "fixture",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative omnichannel agent inbox contracts for channel payloads, identity mapping, ACL gates, thread routing, outbound draft approvals, notification preferences, and inbox UI review.",
+  "display_name": "Rumi Omnichannel Agent Inbox Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "runtime_type": "declarative_setup_pack",
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
+    "asset_index": {
+      "catalog": [
+        "catalog/handoff_matrix.yaml",
+        "catalog/quality_matrix.yaml",
+        "catalog/taxonomy.yaml",
+        "catalog/workflows.yaml"
+      ],
+      "checklist": [
+        "checklists/review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/migration.md",
+        "docs/operations.md",
+        "docs/overlap_policy.md"
+      ],
+      "example": [
+        "examples/notification_preference.example.yaml",
+        "examples/outbound_draft_approval.example.yaml",
+        "examples/slack_gmail_identity.example.yaml",
+        "examples/unauthorized_channel_block.example.yaml"
+      ],
+      "fixtures": [
+        "fixtures/contract_fixture.yaml",
+        "fixtures/negative_cases.yaml"
+      ],
+      "frontend": [
+        "frontend_extensions/omnichannel_inbox.ui.json"
+      ],
+      "index": [
+        "asset_index.json",
+        "asset_index.yaml"
+      ],
+      "ledger": [
+        "ledgers/evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/handoff.policy.yaml",
+        "policies/safety.policy.yaml"
+      ],
+      "presets": [
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml",
+        "presets/safe_default.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/inbox_router.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/inbox_router.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/channel_acl.schema.json",
+        "schemas/channel_message.schema.json",
+        "schemas/channel_payload.schema.json",
+        "schemas/connector_handoff.schema.json",
+        "schemas/draft_approval.schema.json",
+        "schemas/identity_map.schema.json",
+        "schemas/inbox_item.schema.json",
+        "schemas/inbox_thread.schema.json",
+        "schemas/inbox_ui_view.schema.json",
+        "schemas/notification_preference.schema.json",
+        "schemas/outbound_draft.schema.json",
+        "schemas/routing_rule.schema.json",
+        "schemas/thread_route.schema.json"
+      ],
+      "template": [
+        "templates/handoff.template.md",
+        "templates/review_report.template.md",
+        "templates/ui_contract.template.md"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:cbdd7570eebeaafd9bf3df8f1731fc5b0cb8d71d348654d3fc260355b3d298dc",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:d08ddf0bdcd132176a325cb7722f468c2bb58b5c00d2bc85df289d9efb0c911f"
+    },
     "consumes_existing_sources_only": true,
-    "output_effect": "draft_and_handoff_only",
+    "declarative_only": true,
     "defaultspack_promotion_eligible": false,
-    "provider_clients": [],
-    "pre_auth_routes": [],
-    "remote_input_authority": false,
-    "secrets_policy": "no_provider_tokens_or_secrets",
-    "owner_surfaces": [
-      "channel_payload_contract",
-      "identity_mapping",
-      "channel_acl",
-      "thread_to_agent_routing",
-      "outbound_draft_approval",
-      "notification_preferences",
-      "inbox_thread_state",
-      "inbox_ui_contract"
-    ],
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:d08ddf0bdcd132176a325cb7722f468c2bb58b5c00d2bc85df289d9efb0c911f"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "non_owner_surfaces": [
       "actual app connectors",
       "Slack client",
@@ -86,82 +144,50 @@
         "reason": "Owns mobile voice and notification surfaces."
       }
     ],
-    "asset_index": {
-      "index": [
-        "asset_index.json",
-        "asset_index.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/migration.md",
-        "docs/operations.md",
-        "docs/overlap_policy.md"
-      ],
-      "catalog": [
-        "catalog/handoff_matrix.yaml",
-        "catalog/quality_matrix.yaml",
-        "catalog/taxonomy.yaml",
-        "catalog/workflows.yaml"
-      ],
-      "policy": [
-        "policies/handoff.policy.yaml",
-        "policies/safety.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/handoff.template.md",
-        "templates/review_report.template.md",
-        "templates/ui_contract.template.md"
-      ],
-      "fixtures": [
-        "fixtures/contract_fixture.yaml",
-        "fixtures/negative_cases.yaml"
-      ],
-      "presets": [
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml",
-        "presets/safe_default.preset.yaml"
-      ],
-      "schema": [
-        "schemas/channel_acl.schema.json",
-        "schemas/channel_message.schema.json",
-        "schemas/channel_payload.schema.json",
-        "schemas/connector_handoff.schema.json",
-        "schemas/draft_approval.schema.json",
-        "schemas/identity_map.schema.json",
-        "schemas/inbox_item.schema.json",
-        "schemas/inbox_thread.schema.json",
-        "schemas/inbox_ui_view.schema.json",
-        "schemas/notification_preference.schema.json",
-        "schemas/outbound_draft.schema.json",
-        "schemas/routing_rule.schema.json",
-        "schemas/thread_route.schema.json"
-      ],
-      "profiles": [
-        "profiles/inbox_router.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/inbox_router.system.md"
-      ],
-      "frontend": [
-        "frontend_extensions/omnichannel_inbox.ui.json"
-      ],
-      "example": [
-        "examples/notification_preference.example.yaml",
-        "examples/outbound_draft_approval.example.yaml",
-        "examples/slack_gmail_identity.example.yaml",
-        "examples/unauthorized_channel_block.example.yaml"
-      ]
-    }
+    "output_effect": "draft_and_handoff_only",
+    "owner_surfaces": [
+      "channel_payload_contract",
+      "identity_mapping",
+      "channel_acl",
+      "thread_to_agent_routing",
+      "outbound_draft_approval",
+      "notification_preferences",
+      "inbox_thread_state",
+      "inbox_ui_contract"
+    ],
+    "pre_auth_routes": [],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "provider_clients": [],
+    "read_only_projection": true,
+    "remote_input_authority": false,
+    "required_secrets": [],
+    "runtime_type": "declarative_setup_pack",
+    "secrets_policy": "no_provider_tokens_or_secrets"
+  },
+  "pack_id": "rumi_omnichannel_agent_inbox_pack",
+  "pack_identity": "rumi:ecosystem/rumi_omnichannel_agent_inbox_pack",
+  "provenance": {
+    "build_identity": "rumi_omnichannel_agent_inbox_pack:0.1.0",
+    "content_hash": "sha256:cbdd7570eebeaafd9bf3df8f1731fc5b0cb8d71d348654d3fc260355b3d298dc",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "fixture",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

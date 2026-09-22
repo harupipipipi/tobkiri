@@ -1,0 +1,70 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:7b6c8bf2b0a6870f7f42d55af3644104d8a617f514197b16c3734bc348e358cf",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    }
+  ],
+  "contracts": [],
+  "functions": [],
+  "integrity": {
+    "artifact_set_digest": "sha256:d35f856acc3b01b96eefc77b9a405d6d48c2df3ccf0191d2aef8aeed58d57835",
+    "contract_catalog_digest": "sha256:f75102549e8ae9e5848081d999d9e97ff080642b018b6143dac6115dd2b8bcba",
+    "source_identity": "sha256:fb3398b1e0d6a950fd9cb76e1e65f0c7c9994543968d13a7a3af2ee676e9954d"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi:ecosystem/rumi_ambient_trigger_pack",
+      "rumi_ambient_trigger_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2099-01-01"
+  },
+  "operation_catalog": [],
+  "pack": {
+    "artifact_digest": "sha256:d35f856acc3b01b96eefc77b9a405d6d48c2df3ccf0191d2aef8aeed58d57835",
+    "display_name": "rumi_ambient_trigger_pack",
+    "id": "rumi_ambient_trigger_pack",
+    "kind": "application",
+    "version": "0.1.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:fb3398b1e0d6a950fd9cb76e1e65f0c7c9994543968d13a7a3af2ee676e9954d",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:fb3398b1e0d6a950fd9cb76e1e65f0c7c9994543968d13a7a3af2ee676e9954d",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_ambient_trigger_pack"
+  },
+  "provider_catalog": [],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "ambient.trigger.dispatch",
+      "host.camera.capture",
+      "host.microphone.capture"
+    ],
+    "contract_dependencies": [],
+    "execution_boundary": "declarative_only",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {},
+    "secrets": [],
+    "workspace_boundary": "pack_local"
+  }
+}

@@ -22,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Literal, Mapping, Optional
 
+from .host_contract import host_contract_value
+
 
 UpdateTarget = Literal["tobkiri", "defaultspack"]
 UpdateTargetInput = Literal["tobkiri", "rumiai", "defaultspack"]
@@ -430,7 +432,7 @@ class GitHubUpdateManager:
             "Accept": "application/vnd.github+json",
             "User-Agent": f"tobkiri-updater/{self.current_version('tobkiri')}",
         }
-        token = os.environ.get("RUMI_UPDATE_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        token = host_contract_value("github_update_token", provider_id="github")
         if token:
             headers["Authorization"] = f"Bearer {token}"
         return urllib.request.Request(url, headers=headers)

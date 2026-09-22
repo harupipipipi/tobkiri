@@ -1,16 +1,44 @@
 {
+  "components": {},
+  "load_order": [],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:34fbd3b655a6b8c7c905a03f7ce58d87d7c51f74791fc5f15ed050084ac08dde",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:9ee1ecf98b99f64512deaa4fd6cf471cc123c00abfa1ebc569bd0c283e790a6b"
+    },
+    "description": "Semantic DOM and browser-use style element recognition profiles for the Rumi Browser Companion extension.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:9ee1ecf98b99f64512deaa4fd6cf471cc123c00abfa1ebc569bd0c283e790a6b"
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Browser Element Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
   "pack_id": "rumi_browser_element_pack",
   "pack_identity": "rumi:ecosystem/rumi_browser_element_pack",
+  "provenance": {
+    "build_identity": "rumi_browser_element_pack:1.0.0",
+    "content_hash": "sha256:34fbd3b655a6b8c7c905a03f7ce58d87d7c51f74791fc5f15ed050084ac08dde",
+    "signature": null,
+    "trust_class": "local"
+  },
   "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Browser Element Pack",
-    "description": "Semantic DOM and browser-use style element recognition profiles for the Rumi Browser Companion extension.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
-  },
   "vocabulary": {
-    "types": ["browser", "vision", "tool", "agent"]
-  },
-  "components": {},
-  "load_order": []
+    "types": [
+      "browser",
+      "vision",
+      "tool",
+      "agent"
+    ]
+  }
 }

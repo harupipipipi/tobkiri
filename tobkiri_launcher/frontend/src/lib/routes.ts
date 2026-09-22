@@ -2,16 +2,16 @@ export const panelRoutes = {
   home: '/',
   setup: '/setup',
   packs: '/packs',
-  packDetail: (id: string) => `/packs/${id}`,
-  nodes: '/nodes',
-  graphEditor: '/graphs',
-  profileGraph: '/profile-graph',
+  profile: '/profile',
+  settings: '/settings',
+  profileWiring: '/profile-graph',
+  profileFiles: '/profile-workspace',
+  flow: '/flows',
+  graph: '/graphs',
   aiInput: '/ai-input',
   apiMap: '/api-map',
-  profileWorkspace: '/profile-workspace',
-  startup: '/startup',
-  flows: '/flows',
-  settings: '/settings',
+  nodeManager: '/nodes',
+  packDetail: (id: string) => `/packs/${id}`,
 } as const;
 
 export type PanelRouteKey = Exclude<keyof typeof panelRoutes, 'packDetail'>;
@@ -26,15 +26,27 @@ export const panelRouteMeta: Record<PanelRouteKey, PanelRouteMeta> = {
   home: { path: panelRoutes.home, titleKey: 'nav.home', navKey: 'nav.home' },
   setup: { path: panelRoutes.setup, titleKey: 'nav.setup' },
   packs: { path: panelRoutes.packs, titleKey: 'nav.packs', navKey: 'nav.packs' },
-  nodes: { path: panelRoutes.nodes, titleKey: 'nav.nodes', navKey: 'nav.nodes' },
-  graphEditor: { path: panelRoutes.graphEditor, titleKey: 'nav.graphs', navKey: 'nav.graphs' },
-  profileGraph: { path: panelRoutes.profileGraph, titleKey: 'nav.profile_graph', navKey: 'nav.profile_graph' },
+  profile: { path: panelRoutes.profile, titleKey: 'nav.profile', navKey: 'nav.profile' },
+  settings: { path: panelRoutes.settings, titleKey: 'nav.settings', navKey: 'nav.settings' },
+  profileWiring: {
+    path: panelRoutes.profileWiring,
+    titleKey: 'nav.profile_wiring',
+    navKey: 'nav.profile_wiring',
+  },
+  profileFiles: {
+    path: panelRoutes.profileFiles,
+    titleKey: 'nav.profile_files',
+    navKey: 'nav.profile_files',
+  },
+  flow: { path: panelRoutes.flow, titleKey: 'nav.flow', navKey: 'nav.flow' },
+  graph: { path: panelRoutes.graph, titleKey: 'nav.graph', navKey: 'nav.graph' },
   aiInput: { path: panelRoutes.aiInput, titleKey: 'nav.ai_input', navKey: 'nav.ai_input' },
   apiMap: { path: panelRoutes.apiMap, titleKey: 'nav.api_map', navKey: 'nav.api_map' },
-  profileWorkspace: { path: panelRoutes.profileWorkspace, titleKey: 'nav.profile_workspace', navKey: 'nav.profile_workspace' },
-  startup: { path: panelRoutes.startup, titleKey: 'nav.startup', navKey: 'nav.startup' },
-  flows: { path: panelRoutes.flows, titleKey: 'nav.flows', navKey: 'nav.flows' },
-  settings: { path: panelRoutes.settings, titleKey: 'nav.settings', navKey: 'nav.settings' },
+  nodeManager: {
+    path: panelRoutes.nodeManager,
+    titleKey: 'nav.node_manager',
+    navKey: 'nav.node_manager',
+  },
 };
 
 export const viewerNavGroups = [
@@ -46,7 +58,17 @@ export const viewerNavGroups = [
   {
     id: 'advanced',
     labelKey: 'nav.group.advanced',
-    routes: ['flows', 'nodes', 'graphEditor', 'profileGraph', 'aiInput', 'apiMap', 'profileWorkspace', 'settings'] satisfies PanelRouteKey[],
+    routes: [
+      'profile',
+      'settings',
+      'profileWiring',
+      'profileFiles',
+      'flow',
+      'graph',
+      'aiInput',
+      'apiMap',
+      'nodeManager',
+    ] satisfies PanelRouteKey[],
   },
 ] as const;
 
@@ -59,29 +81,10 @@ export function panelRouteTitleKey(pathname: string): string {
   return match?.titleKey ?? 'nav.unknown';
 }
 
-function withQuery(path: string, params: Record<string, string | null | undefined>): string {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    const normalized = String(value || '').trim();
-    if (normalized) {
-      search.set(key, normalized);
-    }
-  });
-  const query = search.toString();
-  return query ? `${path}?${query}` : path;
-}
-
-export function profileGraphRoute(profileId?: string | null): string {
-  return withQuery(panelRoutes.profileGraph, {profile: profileId});
-}
-
-export function apiMapRoute(options?: {profileId?: string | null; focus?: string | null}): string {
-  return withQuery(panelRoutes.apiMap, {
-    profile_id: options?.profileId,
-    focus: options?.focus,
-  });
-}
-
-export function aiInputRoute(profileId?: string | null): string {
-  return withQuery(panelRoutes.aiInput, {profile: profileId});
+/** Match stable panel routes without treating Profile Files/Wiring as Profile. */
+export function isPanelRouteActive(pathname: string, routePath: string): boolean {
+  if (routePath === panelRoutes.packs) {
+    return pathname === routePath || pathname.startsWith(`${routePath}/`);
+  }
+  return pathname === routePath;
 }

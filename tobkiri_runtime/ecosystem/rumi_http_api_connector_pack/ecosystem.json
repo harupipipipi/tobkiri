@@ -1,2 +1,65 @@
-{"pack_id":"rumi_http_api_connector_pack","pack_identity":"rumi:ecosystem/rumi_http_api_connector_pack","display_name":"Rumi HTTP API Connector Pack","version":"1.0.0","description":"Bearer-authenticated inbound API and receipt-gated HTTPS callback delivery.","dependencies":{"rumi_credential_broker_pack":">=1.0.0,<2.0.0","rumi_host_authority_bridge_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.service.credential.resolve.v1","rumi.service.host.authorize.v1"],"provides":["rumi.service.connector.adapter.v1"]},"required_secrets":[],"required_capabilities":["connector.adapter.verify","connector.delivery.execute","credential.resolve","host.authority.consume"],"required_network":{"allowed_domains":["connector-configured-callback-host"],"allowed_ports":[443]},"host_execution":true,"resources":[],"provenance":{"content_hash":"sha256:26a12d4a2400757ccf22c0678f570afca759a725375ed7487046bc430580c28c","build_identity":"rumi-http-api-connector-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":false,"owner_surfaces":[]}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.connector.adapter.v1"
+    ],
+    "requires": [
+      "rumi.service.credential.resolve.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Bearer-authenticated API normalization and HTTPS callbacks.",
+  "display_name": "Rumi HTTP API Connector",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:f1cb6df246cc67570b1842ee32359aed3b597517b34a0631982bbd756e6a134c",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:255099f5d40bc9dcb1feeb0867da610fbfb026b6634cce552d67412a20ec84a3"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:255099f5d40bc9dcb1feeb0867da610fbfb026b6634cce552d67412a20ec84a3"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_http_api_connector_pack",
+  "pack_identity": "rumi:ecosystem/rumi_http_api_connector_pack",
+  "provenance": {
+    "build_identity": "rumi_http_api_connector_pack:1.0.0",
+    "content_hash": "sha256:9a7d6328fff037b6366a47998ceadf38649fe080b8c5b3e32e7480f431a311c6",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.adapter.verify",
+    "connector.delivery.execute",
+    "credential.resolve",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -117,7 +117,7 @@ CLOUDFLARE_PROVIDER = ConnectionProvider(
         ProviderCapability(
             id="cloudflare.runner.deploy",
             display_name="Deploy Rumi runner",
-            description="Create or update Rumi runner resources such as Worker, Workflow, D1, R2, Queue, and secrets.",
+            description="Create or update Cloudflare Sandbox Bridge and PC Tool Bridge runner resources.",
             risk="high",
         ),
     ],

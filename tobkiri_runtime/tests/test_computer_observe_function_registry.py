@@ -10,10 +10,11 @@ _funcs_dir = str(
 )
 
 
-def test_computer_observe_uses_factory():
-    """computer_observe should use the host-backed factory, not an empty registry."""
+def test_computer_observe_uses_host_contract_adapter():
+    """computer_observe should project through the selected host contract."""
     source = (Path(_funcs_dir) / "computer_observe" / "main.py").read_text(encoding="utf-8")
-    assert "create_default_computer_tool_service" in source
+    assert "run_host_contract_action" in source
+    assert "create_default_computer_tool_service" not in source
     assert "DriverRegistry()" not in source
 
 

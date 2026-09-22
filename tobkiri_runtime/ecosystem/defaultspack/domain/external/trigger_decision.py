@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 from domain.external.event import ExternalEvent
+from domain.frontend_settings import frontend_settings_path
 from domain.input.envelope import RumiInputEnvelope
 
 
@@ -277,8 +276,7 @@ def _public_settings(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 def _frontend_trigger_config() -> dict[str, Any]:
-    override = os.environ.get("RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH", "").strip()
-    path = Path(override) if override else Path(__file__).resolve().parents[2] / "user_data" / "shared" / "frontend_settings.json"
+    path = frontend_settings_path()
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

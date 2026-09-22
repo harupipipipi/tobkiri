@@ -6,12 +6,11 @@
 //! - Detect exit-code 42 to signal "please restart me".
 //! - Auto-restart on unexpected exit (max 3 times).
 
-use std::ffi::OsString;
 use std::fs;
 #[cfg(unix)]
 use std::io::ErrorKind;
 use std::path::Path;
-use std::process::{Child, Stdio};
+use std::process::Stdio;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -50,15 +49,18 @@ fn kernel_working_dir(config: &AppConfig) -> &Path {
     }
 }
 
-pub(crate) fn python_path_with_runtime(
-    runtime_root: &Path,
-    current: Option<OsString>,
-) -> Result<OsString> {
-    let mut paths = vec![runtime_root.to_path_buf()];
-    if let Some(current) = current {
-        paths.extend(std::env::split_paths(&current));
+fn require_development_venv(config: &AppConfig) -> Result<()> {
+    if !config.is_dev_workspace() {
+        return Ok(());
     }
-    std::env::join_paths(paths).context("failed to build PYTHONPATH for bundled runtime")
+    let venv_python = config.venv_python();
+    if !venv_python.exists() {
+        bail!(
+            "venv Python not found at {} -- run environment setup first",
+            venv_python.display()
+        );
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,17 +72,17 @@ pub(crate) struct PortListener {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListenerIdentity {
-    MatchingWorkingDirectory,
-    MatchingEntrypointPath,
-    MatchingVenvPython,
+    WorkingDirectory,
+    EntrypointPath,
+    VenvPython,
 }
 
 impl ListenerIdentity {
     fn description(self) -> &'static str {
         match self {
-            Self::MatchingWorkingDirectory => "matched the configured RUMI_HOME working directory",
-            Self::MatchingEntrypointPath => "matched the configured Kernel entrypoint path",
-            Self::MatchingVenvPython => "matched the configured venv Python path",
+            Self::WorkingDirectory => "matched the configured RUMI_HOME working directory",
+            Self::EntrypointPath => "matched the configured Kernel entrypoint path",
+            Self::VenvPython => "matched the configured venv Python path",
         }
     }
 }
@@ -96,7 +98,7 @@ impl PortListener {
 
 /// Manages a single Kernel child process.
 pub struct KernelManager {
-    child: Option<Child>,
+    child: Option<crate::python_env::PythonChild>,
     config: AppConfig,
     panel_bootstrap_secret: String,
     /// Stores the exit code from the most recent child exit.
@@ -118,9 +120,9 @@ impl KernelManager {
 
     /// Start the Kernel process.
     ///
-    /// Runs `{venv}/bin/python -m app`. Bundled builds use the writable app
-    /// data root as cwd while importing code from the signed runtime through
-    /// PYTHONPATH, preventing relative user_data writes inside the app bundle.
+    /// Runs the sealed runtime module with isolated Python. Bundled builds use
+    /// the writable app data root as cwd and an explicit verified resource
+    /// root, preventing ambient imports and writes inside the app bundle.
     /// Stdout and stderr are redirected to `{log_dir}/kernel.log`.
     pub fn start(&mut self) -> Result<()> {
         if self.is_running() {
@@ -132,20 +134,18 @@ impl KernelManager {
             warn!("{message}");
         }
 
-        let venv_python = self.config.venv_python();
-
-        if !venv_python.exists() {
-            bail!(
-                "venv Python not found at {} -- run environment setup first",
-                venv_python.display()
-            );
-        }
+        require_development_venv(&self.config)?;
         if !self.config.rumi_home.exists() {
             bail!(
                 "Kernel directory not found: {}",
                 self.config.rumi_home.display()
             );
         }
+        // Packaged outer-runtime and sealed-environment verification is
+        // intentionally centralized in `spawn_packaged_role`. It binds the
+        // full outer manifest to the sealed snapshot immediately before
+        // execution; hashing `app_dir` here would repeat that work without
+        // improving the fail-closed launch boundary.
 
         fs::create_dir_all(&self.config.log_dir)?;
         let log_file = fs::File::create(self.config.log_dir.join("kernel.log"))
@@ -156,85 +156,74 @@ impl KernelManager {
 
         let working_dir = kernel_working_dir(&self.config);
         fs::create_dir_all(working_dir)?;
-        let python_path =
-            python_path_with_runtime(&self.config.app_dir, std::env::var_os("PYTHONPATH"))?;
-
         info!(
-            "Starting Kernel: {} -m app (cwd={})",
-            venv_python.display(),
+            "Starting Kernel from {} (cwd={})",
+            if self.config.is_dev_workspace() {
+                self.config.venv_python().display().to_string()
+            } else {
+                "build-bound sealed Python snapshot".to_string()
+            },
             working_dir.display()
         );
 
         let dev_environment = cfg!(debug_assertions) || self.config.is_dev_workspace();
-        let auto_approve_local = dev_environment
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
+        let host_contract_path = crate::host_contract::write_contract(
+            &self.config,
+            crate::host_contract::DEFAULT_PROFILE_ID,
+            [(
+                "panel_bootstrap_secret",
+                self.panel_bootstrap_secret.clone(),
+            )],
+        )?;
 
-        let pack_shell_path = if self.config.is_dev_workspace() {
-            Some(
-                self.config
-                    .ensure_pack_shell_path()
-                    .context("failed to prepare pack-shell for dev Defaultspack launches")?,
-            )
-        } else {
-            self.config.pack_shell_path()
-        };
-        if let Some(ref path) = pack_shell_path {
-            info!("Kernel will use pack-shell at {}", path.display());
-        } else {
-            warn!("pack-shell was not found; Defaultspack desktop launch will be unavailable");
-        }
-
-        let mut command = process_utils::command(&venv_python);
-        command
-            .args(["-m", "app"])
-            .current_dir(working_dir)
-            .env("PYTHONPATH", python_path)
-            .env("RUMI_HOME", &self.config.rumi_home)
-            .env("RUMI_APP_DIR", &self.config.app_dir)
-            .env("RUMI_USER_DATA", &self.config.user_data_dir)
-            .env(
-                "RUMI_DEFAULTSPACK_SECRETS_DIR",
-                self.config.user_data_dir.join("secrets"),
-            )
-            .env(
-                "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
-                self.config
-                    .user_data_dir
-                    .join("defaultspack")
-                    .join("shared")
-                    .join("frontend_settings.json"),
-            )
-            .env("RUMI_LOG_DIR", &self.config.log_dir)
-            .env("RUMI_PORT", self.config.kernel_port.to_string())
-            .env("RUMI_PANEL_BOOTSTRAP_SECRET", &self.panel_bootstrap_secret)
-            .env(
-                "RUMI_VIEWER_HOST_BROKER_CONNECTION",
-                self.config.host_broker_connection_path(),
-            )
-            .env("RUMI_MACOS_PERMISSION_HOST", "tobkiri_launcher")
-            .envs(python_runtime_env_vars())
-            .env(
-                "RUMI_ENVIRONMENT",
-                if dev_environment {
-                    "development"
-                } else {
-                    "production"
-                },
-            )
-            .env(
-                "RUMI_AUTO_APPROVE_LOCAL",
-                if auto_approve_local { "true" } else { "false" },
-            )
-            .stdout(Stdio::from(log_file))
-            .stderr(Stdio::from(log_stderr));
-
-        if let Some(ref path) = pack_shell_path {
-            command.env("RUMI_PACK_SHELL_PATH", path);
-        }
-
-        let child = command.spawn().context("failed to spawn Kernel process")?;
+        let child = crate::python_env::spawn_python_role(
+            &self.config,
+            crate::python_env::PythonRole::Kernel,
+            crate::python_env::RoleArguments::default(),
+            |command| {
+                if self.config.is_dev_workspace() {
+                    command.env("RUMI_APP_DIR", &self.config.app_dir);
+                }
+                command
+                    .current_dir(working_dir)
+                    .env_remove("PYTHONPATH")
+                    .env("RUMI_HOME", &self.config.rumi_home)
+                    .env("RUMI_USER_DATA", &self.config.user_data_dir)
+                    .env(
+                        "RUMI_DEFAULTSPACK_SECRETS_DIR",
+                        self.config.user_data_dir.join("secrets"),
+                    )
+                    .env(
+                        "RUMI_DEFAULTSPACK_FRONTEND_SETTINGS_PATH",
+                        self.config
+                            .user_data_dir
+                            .join("defaultspack")
+                            .join("shared")
+                            .join("frontend_settings.json"),
+                    )
+                    .env("RUMI_LOG_DIR", &self.config.log_dir)
+                    .env("RUMI_PORT", self.config.kernel_port.to_string())
+                    .env(crate::host_contract::CONTRACT_ENV, &host_contract_path)
+                    .env(
+                        "RUMI_VIEWER_HOST_BROKER_CONNECTION",
+                        self.config.host_broker_connection_path(),
+                    )
+                    .env("RUMI_MACOS_PERMISSION_HOST", "tobkiri_launcher")
+                    .envs(python_runtime_env_vars())
+                    .env(
+                        "RUMI_ENVIRONMENT",
+                        if dev_environment {
+                            "development"
+                        } else {
+                            "production"
+                        },
+                    )
+                    .stdout(Stdio::from(log_file))
+                    .stderr(Stdio::from(log_stderr));
+                Ok(())
+            },
+        )
+        .context("failed to verify and spawn Kernel process")?;
 
         info!("Kernel started (pid {})", child.id());
         self.child = Some(child);
@@ -243,7 +232,7 @@ impl KernelManager {
     }
 
     pub fn current_pid(&self) -> Option<u32> {
-        self.child.as_ref().map(Child::id)
+        self.child.as_ref().map(|child| child.id())
     }
 
     pub fn recover_port_conflict(&mut self) -> Result<Option<String>> {
@@ -381,7 +370,7 @@ impl KernelManager {
     }
 
     #[cfg(unix)]
-    fn unix_stop(child: &mut Child) -> Result<()> {
+    fn unix_stop(child: &mut crate::python_env::PythonChild) -> Result<()> {
         use std::thread;
         use std::time::Duration;
 
@@ -569,18 +558,18 @@ fn identify_owned_listener(
         .as_deref()
         .is_some_and(|cwd| observed_path_matches(cwd, &config.rumi_home))
     {
-        return Some(ListenerIdentity::MatchingWorkingDirectory);
+        return Some(ListenerIdentity::WorkingDirectory);
     }
 
     let entrypoint = config.rumi_home.join("app.py");
     if command_mentions_path(&listener.command, &entrypoint)
         || command_mentions_path(&listener.command, &config.rumi_home)
     {
-        return Some(ListenerIdentity::MatchingEntrypointPath);
+        return Some(ListenerIdentity::EntrypointPath);
     }
 
     if command_mentions_path(&listener.command, &config.venv_python()) {
-        return Some(ListenerIdentity::MatchingVenvPython);
+        return Some(ListenerIdentity::VenvPython);
     }
 
     None
@@ -626,7 +615,7 @@ pub(crate) fn terminate_external_listener(pid: u32, port: u16) -> Result<()> {
             .args(["-TERM", &pid_str])
             .status();
         wait_for_port_to_clear(port, pid, Duration::from_secs(KILL_TIMEOUT_SECS))?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(windows)]
@@ -706,12 +695,7 @@ impl Drop for KernelManager {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        ENV_LOCK.get_or_init(|| Mutex::new(()))
-    }
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn test_config() -> AppConfig {
         AppConfig::detect_for_tauri(
@@ -719,6 +703,19 @@ mod tests {
             PathBuf::from("/tmp/test_appdata"),
         )
         .unwrap()
+    }
+
+    fn temporary_packaged_config(label: &str) -> (PathBuf, AppConfig) {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tobkiri-{label}-{unique}"));
+        let resource_dir = root.join("resources");
+        fs::create_dir_all(resource_dir.join("app")).unwrap();
+        let config = AppConfig::detect_for_tauri(resource_dir, root.join("appdata")).unwrap();
+        assert!(!config.is_dev_workspace());
+        (root, config)
     }
 
     #[test]
@@ -766,40 +763,6 @@ mod tests {
     }
 
     #[test]
-    fn explicit_auto_approve_opt_in_is_required() {
-        let _guard = env_lock().lock().unwrap();
-        std::env::remove_var("RUMI_AUTO_APPROVE_LOCAL");
-
-        let dev_environment = true;
-        let auto_approve_local = dev_environment
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-        assert!(!auto_approve_local);
-    }
-
-    #[test]
-    fn explicit_auto_approve_opt_in_only_applies_in_dev() {
-        let _guard = env_lock().lock().unwrap();
-        std::env::set_var("RUMI_AUTO_APPROVE_LOCAL", "true");
-
-        let production_auto_approve = false
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-        let development_auto_approve = true
-            && std::env::var("RUMI_AUTO_APPROVE_LOCAL")
-                .map(|value| value.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-
-        assert!(!production_auto_approve);
-        assert!(development_auto_approve);
-
-        std::env::remove_var("RUMI_AUTO_APPROVE_LOCAL");
-    }
-
-    #[test]
     fn python_runtime_env_forces_utf8_output() {
         let envs = python_runtime_env_vars();
 
@@ -817,16 +780,37 @@ mod tests {
     }
 
     #[test]
-    fn python_path_keeps_runtime_first() {
-        let value = python_path_with_runtime(
-            Path::new("/runtime/app"),
-            Some(OsString::from("/existing/modules")),
+    fn bundled_kernel_does_not_require_legacy_writable_venv() {
+        let config = test_config();
+
+        assert!(!config.is_dev_workspace());
+        assert!(!config.venv_python().exists());
+        require_development_venv(&config).unwrap();
+    }
+
+    #[test]
+    fn packaged_kernel_defers_outer_verification_to_authoritative_role_spawn() {
+        let (root, mut config) = temporary_packaged_config("kernel-spawn-authority");
+        config.kernel_port = 0;
+        fs::write(
+            config
+                .app_dir
+                .join(crate::runtime_resource_integrity::MANIFEST_NAME),
+            b"not a resource manifest",
         )
         .unwrap();
-        let paths = std::env::split_paths(&value).collect::<Vec<_>>();
 
-        assert_eq!(paths[0], PathBuf::from("/runtime/app"));
-        assert_eq!(paths[1], PathBuf::from("/existing/modules"));
+        let error = KernelManager::new(&config, "test-bootstrap".into())
+            .start()
+            .unwrap_err()
+            .to_string();
+
+        // A preflight `runtime_resource_integrity::verify` would fail on the
+        // malformed outer manifest before role spawn. The only failure path is
+        // now the authoritative packaged role spawn, which still fails closed.
+        assert!(error.contains("failed to verify and spawn Kernel process"));
+        assert!(!error.contains("packaged runtime integrity verification failed"));
+        fs::remove_dir_all(root).ok();
     }
 
     #[test]
@@ -840,7 +824,7 @@ mod tests {
 
         assert_eq!(
             identify_owned_listener(&listener, &config),
-            Some(ListenerIdentity::MatchingWorkingDirectory),
+            Some(ListenerIdentity::WorkingDirectory),
         );
     }
 
@@ -855,7 +839,7 @@ mod tests {
 
         assert_eq!(
             identify_owned_listener(&listener, &config),
-            Some(ListenerIdentity::MatchingVenvPython),
+            Some(ListenerIdentity::VenvPython),
         );
     }
 
@@ -873,7 +857,7 @@ mod tests {
 
         assert_eq!(
             identify_owned_listener(&listener, &config),
-            Some(ListenerIdentity::MatchingEntrypointPath),
+            Some(ListenerIdentity::EntrypointPath),
         );
     }
 

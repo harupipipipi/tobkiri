@@ -1,2 +1,63 @@
-{"pack_id":"rumi_git_read_pack","pack_identity":"rumi:ecosystem/rumi_git_read_pack","display_name":"Rumi Git Read Pack","version":"1.0.0","description":"Finite read-only Git inspection under a workspace mount.","dependencies":{"rumi_workspace_mount_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.resource.workspace.v1"],"provides":["rumi.service.git.read.v1"]},"required_secrets":[],"required_capabilities":["git.read","workspace.metadata.read"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":true,"resources":[],"provenance":{"content_hash":"sha256:8c95cb91b7580cd83e7ff7cd765f9570ece8391108f0d270faaf2c997dea7c7b","build_identity":"rumi-git-read-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authority":"read","mutation":false,"network":false,"tool_or_ui_registry_imports":false}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.git.read.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Finite read-only Git inspection under a workspace mount.",
+  "display_name": "Rumi Git Read",
+  "host_execution": true,
+  "metadata": {
+    "authority": "read",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3eb22659cc6df47ce109abe7a6a0b0500b81d5216f22e18ec4f4d8fdbba05f6b",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:5c8ae1efd0bfe6a847b2b3db070225fca4b0901ee80544c48d544663acb79882"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:5c8ae1efd0bfe6a847b2b3db070225fca4b0901ee80544c48d544663acb79882"
+    },
+    "manifest_authority": "v4-authoritative",
+    "mutation": false,
+    "network": false,
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_git_read_pack",
+  "pack_identity": "rumi:ecosystem/rumi_git_read_pack",
+  "provenance": {
+    "build_identity": "rumi_git_read_pack:1.0.0",
+    "content_hash": "sha256:9f79fddc4bb747277a0623bb2ba6cab74944d20e4fdf35005f4d355c06d6f932",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "git.read",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

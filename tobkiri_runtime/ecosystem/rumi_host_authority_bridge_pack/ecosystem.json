@@ -1,2 +1,62 @@
-{"pack_id":"rumi_host_authority_bridge_pack","pack_identity":"rumi:ecosystem/rumi_host_authority_bridge_pack","display_name":"Rumi Host Authority Bridge Pack","version":"1.0.0","description":"Core-authority one-shot token and service receipt binding.","dependencies":{},"connectivity":{"requires":[],"provides":["rumi.service.host.authorize.v1"]},"required_secrets":[],"required_capabilities":["host.authority.consume"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":false,"resources":[],"provenance":{"content_hash":"sha256:2762a42e090f478f9c7fc1cdb41c3e06a84d21c3157cd96c0ab8313286c9f9ea","build_identity":"rumi-host-authority-bridge-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authority_owner":"core_runtime.authority","self_approval":false,"receipt":{"ttl_seconds":30,"replay":"redeem_once"}}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.host.authorize.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Core-authority one-shot token and service receipt binding.",
+  "display_name": "Rumi Host Authority Bridge",
+  "host_execution": true,
+  "metadata": {
+    "authority_owner": "core_runtime.authority",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:40153fa9d0c9ee52b8b2618c4d183aa156899f15a2f2ef06d1d5a95940a2ac90",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:9f041603183f52eac0b4f4e63abeb9c9a3ac40b8be18c067b95723d52793f168"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:9f041603183f52eac0b4f4e63abeb9c9a3ac40b8be18c067b95723d52793f168"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "receipt": {
+      "replay": "redeem_once",
+      "ttl_seconds": 30
+    },
+    "self_approval": false
+  },
+  "pack_id": "rumi_host_authority_bridge_pack",
+  "pack_identity": "rumi:ecosystem/rumi_host_authority_bridge_pack",
+  "provenance": {
+    "build_identity": "rumi_host_authority_bridge_pack:1.0.0",
+    "content_hash": "sha256:d19bcba1e195378e41b21ee7543192a2922223afcbc73bce9999f52db86c4955",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "host",
+      "authority",
+      "service"
+    ]
+  }
+}

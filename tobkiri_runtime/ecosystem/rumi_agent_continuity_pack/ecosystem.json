@@ -1,94 +1,24 @@
 {
-  "pack_id": "rumi_agent_continuity_pack",
-  "pack_identity": "rumi:ecosystem/rumi_agent_continuity_pack",
-  "version": "1.0.0",
-  "display_name": "Rumi Agent Continuity Pack",
-  "description": "Declarative continuity packets for long-running agent restarts, compaction handoffs, attention drift recovery, and resume evidence.",
   "author": {
     "name": "rumi-ai"
   },
-  "license": "MIT",
-  "vocabulary": {
-    "types": [
-      "capability_provider",
-      "policy_provider",
-      "profile_provider",
-      "schema_contract"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
-  "runtime": {
-    "type": "declarative_pack"
-  },
+  "capabilities": [
+    "rumi_agent_continuity_pack.continuity_packet_contract",
+    "rumi_agent_continuity_pack.restart_evidence_packet",
+    "rumi_agent_continuity_pack.compaction_handoff_packet",
+    "rumi_agent_continuity_pack.attention_drift_recovery_note",
+    "rumi_agent_continuity_pack.run_summary_for_resume",
+    "rumi_agent_continuity_pack.continuity_artifact_manifest"
+  ],
   "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": [],
+  "dependencies": {},
+  "description": "Declarative continuity packets for long-running agent restarts, compaction handoffs, attention drift recovery, and resume evidence.",
+  "display_name": "Rumi Agent Continuity Pack",
   "host_execution": false,
+  "license": "MIT",
+  "load_order": [],
   "metadata": {
-    "runtime_type": "declarative_setup_pack",
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
-    "consumes_existing_sources_only": true,
-    "output_effect": "restart_evidence_and_handoff_only",
-    "defaultspack_promotion_eligible": false,
-    "owner_surfaces": [
-      "continuity_packet_contract",
-      "restart_evidence_packet",
-      "compaction_handoff_packet",
-      "attention_drift_recovery_note",
-      "run_summary_for_resume",
-      "continuity_artifact_manifest",
-      "branch_resume_packet",
-      "agent_health_note"
-    ],
-    "non_owner_surfaces": [
-      "run boards live run events checkpoints interventions replay indexes",
-      "memory objects recall storage knowledge updates skill learning",
-      "metrics telemetry run ledgers cost latency postmortems",
-      "schedules monitors wakeups retries recurring follow-ups",
-      "file artifact persistence and export",
-      "git branch creation switching push"
-    ],
-    "optional_integrations": [
-      {
-        "pack_id": "rumi_agent_workroom_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_memory_knowledge_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_observability_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_workflow_scheduler_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_workspace_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "defaultspack",
-        "reason": "Adjacent owner named by handoff policy."
-      },
-      {
-        "pack_id": "rumi_code_ide_pack",
-        "reason": "Adjacent owner named by handoff policy."
-      }
-    ],
     "asset_index": {
-      "root": [
-        "README.md",
-        "asset_index.json",
-        "asset_index.yaml"
-      ],
       "catalog": [
         "catalog/handoff_matrix.yaml",
         "catalog/quality_matrix.yaml",
@@ -136,6 +66,11 @@
       "prompts": [
         "prompts/continuity_reviewer.system.md"
       ],
+      "root": [
+        "README.md",
+        "asset_index.json",
+        "asset_index.yaml"
+      ],
       "schemas": [
         "schemas/attention_drift_recovery.schema.json",
         "schemas/branch_resume_packet.schema.json",
@@ -151,14 +86,105 @@
         "templates/review_report.template.md",
         "templates/ui_contract.template.md"
       ]
-    }
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:7bed61d6291481cec605fd474ed925cebe7bb43bead54caf9570e4624d994714",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:b6d3f441a8520d6c1dc43219f8d538b5adb87ba076e63921ef15c87f87c18df1"
+    },
+    "consumes_existing_sources_only": true,
+    "declarative_only": true,
+    "defaultspack_promotion_eligible": false,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:b6d3f441a8520d6c1dc43219f8d538b5adb87ba076e63921ef15c87f87c18df1"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
+    "non_owner_surfaces": [
+      "run boards live run events checkpoints interventions replay indexes",
+      "memory objects recall storage knowledge updates skill learning",
+      "metrics telemetry run ledgers cost latency postmortems",
+      "schedules monitors wakeups retries recurring follow-ups",
+      "file artifact persistence and export",
+      "git branch creation switching push"
+    ],
+    "optional_integrations": [
+      {
+        "pack_id": "rumi_agent_workroom_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_memory_knowledge_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_observability_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_workflow_scheduler_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_workspace_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "defaultspack",
+        "reason": "Adjacent owner named by handoff policy."
+      },
+      {
+        "pack_id": "rumi_code_ide_pack",
+        "reason": "Adjacent owner named by handoff policy."
+      }
+    ],
+    "output_effect": "restart_evidence_and_handoff_only",
+    "owner_surfaces": [
+      "continuity_packet_contract",
+      "restart_evidence_packet",
+      "compaction_handoff_packet",
+      "attention_drift_recovery_note",
+      "run_summary_for_resume",
+      "continuity_artifact_manifest",
+      "branch_resume_packet",
+      "agent_health_note"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "runtime_type": "declarative_setup_pack"
   },
-  "capabilities": [
-    "rumi_agent_continuity_pack.continuity_packet_contract",
-    "rumi_agent_continuity_pack.restart_evidence_packet",
-    "rumi_agent_continuity_pack.compaction_handoff_packet",
-    "rumi_agent_continuity_pack.attention_drift_recovery_note",
-    "rumi_agent_continuity_pack.run_summary_for_resume",
-    "rumi_agent_continuity_pack.continuity_artifact_manifest"
-  ]
+  "pack_id": "rumi_agent_continuity_pack",
+  "pack_identity": "rumi:ecosystem/rumi_agent_continuity_pack",
+  "provenance": {
+    "build_identity": "rumi_agent_continuity_pack:1.0.0",
+    "content_hash": "sha256:7bed61d6291481cec605fd474ed925cebe7bb43bead54caf9570e4624d994714",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "runtime": {
+    "type": "declarative_pack"
+  },
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "capability_provider",
+      "policy_provider",
+      "profile_provider",
+      "schema_contract"
+    ]
+  }
 }

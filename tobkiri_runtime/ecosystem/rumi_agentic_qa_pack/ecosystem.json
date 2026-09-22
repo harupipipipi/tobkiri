@@ -1,33 +1,79 @@
 {
-  "pack_id": "rumi_agentic_qa_pack",
-  "pack_identity": "rumi:ecosystem/rumi_agentic_qa_pack",
-  "display_name": "Rumi Agentic QA Pack",
-  "version": "0.1.0",
-  "description": "Declarative end-to-end agent QA, scenario replay, acceptance, and regression triage pack.",
-  "vocabulary": {
-    "types": [
-      "qa",
-      "catalog",
-      "policy",
-      "profile",
-      "prompt",
-      "preset",
-      "example",
-      "checklist",
-      "ledger",
-      "template"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
   "components": {},
+  "dependencies": {},
+  "description": "Declarative end-to-end agent QA, scenario replay, acceptance, and regression triage pack.",
+  "display_name": "Rumi Agentic QA Pack",
   "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
+    "asset_index": {
+      "catalog": [
+        "catalog/agentic_qa_scenarios.yaml",
+        "catalog/qa_routing_matrix.yaml",
+        "catalog/acceptance_rubric.yaml",
+        "catalog/scenario_catalog.yaml"
+      ],
+      "checklist": [
+        "checklists/qa_replay.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/agent_regression_case.example.yaml",
+        "examples/cross_pack_acceptance.example.yaml",
+        "examples/failure_triage.example.yaml"
+      ],
+      "ledger": [
+        "ledgers/qa_evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/agentic_qa_gate.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/agentic_qa_reviewer.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/agentic_qa_reviewer.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "spec": [],
+      "template": [
+        "templates/regression_triage_report.template.yaml"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:23d32224137fbea17938bc33e80e34f40723f26275edee9cb6610d755e8e2688",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:5528318966b9842e6f3c7ebc797efd698d84132a60bcfe94bb59b439f5eea1bb"
+    },
     "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:5528318966b9842e6f3c7ebc797efd698d84132a60bcfe94bb59b439f5eea1bb"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
     "optional_integrations": [
       {
         "pack_id": "rumi_model_evals_pack",
@@ -58,51 +104,31 @@
       "regression_triage_template",
       "scenario_catalog"
     ],
-    "asset_index": {
-      "catalog": [
-        "catalog/agentic_qa_scenarios.yaml",
-        "catalog/qa_routing_matrix.yaml",
-        "catalog/acceptance_rubric.yaml",
-        "catalog/scenario_catalog.yaml"
-      ],
-      "policy": [
-        "policies/agentic_qa_gate.policy.yaml"
-      ],
-      "spec": [],
-      "checklist": [
-        "checklists/qa_replay.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/qa_evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/regression_triage_report.template.yaml"
-      ],
-      "example": [
-        "examples/agent_regression_case.example.yaml",
-        "examples/cross_pack_acceptance.example.yaml",
-        "examples/failure_triage.example.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "profiles": [
-        "profiles/agentic_qa_reviewer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/agentic_qa_reviewer.system.md"
-      ]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_agentic_qa_pack",
+  "pack_identity": "rumi:ecosystem/rumi_agentic_qa_pack",
+  "provenance": {
+    "build_identity": "rumi_agentic_qa_pack:0.1.0",
+    "content_hash": "sha256:23d32224137fbea17938bc33e80e34f40723f26275edee9cb6610d755e8e2688",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "qa",
+      "catalog",
+      "policy",
+      "profile",
+      "prompt",
+      "preset",
+      "example",
+      "checklist",
+      "ledger",
+      "template"
+    ]
   }
 }

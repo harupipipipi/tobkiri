@@ -5,6 +5,7 @@ import { viewerLayers } from "@/src/lib/layers"
 
 const Popover = ({ children }: { children: React.ReactNode }) => {
   const [isOpen, setIsOpen] = React.useState(false)
+  const contentId = React.useId()
   const triggerRef = React.useRef<HTMLButtonElement>(null)
   const contentRef = React.useRef<HTMLDivElement>(null)
   const close = React.useCallback(() => {
@@ -57,14 +58,16 @@ const Popover = ({ children }: { children: React.ReactNode }) => {
             return React.cloneElement(child as React.ReactElement<any>, {
               ref: triggerRef,
               onClick: () => setIsOpen((open) => !open),
-              isOpen
+              isOpen,
+              'aria-controls': isOpen ? contentId : undefined,
             })
           }
           if (child.type === PopoverContent) {
             return isOpen ? React.cloneElement(child as React.ReactElement<any>, {
               ref: contentRef,
               onClose: close,
-              triggerRef
+              triggerRef,
+              id: contentId,
             }) : null
           }
         }
@@ -84,7 +87,7 @@ const PopoverTrigger = React.forwardRef<HTMLButtonElement, PopoverTriggerProps>(
     ref={ref}
     type={type}
     onClick={onClick}
-    aria-haspopup="menu"
+    aria-haspopup={props['aria-haspopup'] ?? 'menu'}
     aria-expanded={Boolean(isOpen)}
     className={cn("cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]", className)}
     {...props}

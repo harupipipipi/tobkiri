@@ -1,47 +1,102 @@
 {
-  "pack_id": "rumi_meeting_intelligence_pack",
-  "pack_identity": "rumi:ecosystem/rumi_meeting_intelligence_pack",
-  "display_name": "Rumi Meeting Intelligence Pack",
-  "version": "0.1.0",
-  "description": "Declarative local-first meeting preparation, decision capture, action extraction, and follow-up handoff pack.",
-  "vocabulary": {
-    "types": [
-      "catalog",
-      "schema",
-      "policy",
-      "checklist",
-      "ledger",
-      "template",
-      "profile",
-      "prompt",
-      "preset",
-      "example"
-    ]
-  },
-  "dependencies": {
-    "defaultspack": ">=2.0.0"
-  },
+  "components": {},
   "connectivity": {
+    "provides": [],
     "requires": [
       "defaultspack"
-    ],
-    "provides": []
+    ]
   },
-  "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": {
-    "allowed_domains": [],
-    "allowed_ports": []
-  },
+  "dependencies": {},
+  "description": "Declarative local-first meeting preparation, decision capture, action extraction, and follow-up handoff pack.",
+  "display_name": "Rumi Meeting Intelligence Pack",
   "host_execution": false,
+  "load_order": [],
   "metadata": {
-    "required_secrets": [],
-    "network_policy": "none_by_default",
-    "executable_code": false,
-    "declarative_only": true,
+    "asset_index": {
+      "catalog": [
+        "catalog/meeting_intelligence_workflows.yaml",
+        "catalog/meeting_intelligence_quality_matrix.yaml",
+        "catalog/participant_consent_matrix.yaml"
+      ],
+      "checklist": [
+        "checklists/meeting_intelligence_review.checklist.yaml"
+      ],
+      "docs": [
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "example": [
+        "examples/weekly_sync_recap.example.yaml",
+        "examples/sales_call_followup.example.yaml",
+        "examples/incident_review_decisions.example.yaml"
+      ],
+      "index": [
+        "asset_index.yaml"
+      ],
+      "ledger": [
+        "ledgers/meeting_intelligence_evidence_ledger.schema.yaml"
+      ],
+      "policy": [
+        "policies/meeting_intelligence_safety.policy.yaml"
+      ],
+      "presets": [
+        "presets/safe_default.preset.yaml",
+        "presets/handoff_review.preset.yaml",
+        "presets/quality_gate.preset.yaml"
+      ],
+      "profiles": [
+        "profiles/meeting_chief.profile.yaml"
+      ],
+      "prompts": [
+        "prompts/meeting_recap_scribe.system.md"
+      ],
+      "readme": [
+        "README.md"
+      ],
+      "schema": [
+        "schemas/meeting_intelligence_record.schema.json",
+        "schemas/action_item.schema.json"
+      ],
+      "template": [
+        "templates/meeting_intelligence_handoff.template.md",
+        "templates/followup_email.template.md"
+      ]
+    },
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:343eab2a3b11b681bbb1bbfde3f9a51f23eb1994e907f4b0a608b01fdbca7fe4",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:f911340a02d617776953a06282fa38a7e2643ef9c6ae82af362ffafbf82d3764"
+    },
     "consumes_existing_sources_only": true,
-    "output_effect": "draft_and_handoff_only",
+    "declarative_only": true,
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:f911340a02d617776953a06282fa38a7e2643ef9c6ae82af362ffafbf82d3764"
+    },
+    "legacy_annotations": {
+      "runtime_dependency_aliases": [
+        "defaultspack"
+      ]
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none_by_default",
+    "non_owner_surfaces": [
+      "connectors",
+      "scheduler",
+      "voice_capture",
+      "business_ops_workflows",
+      "document_parsing",
+      "message_sending",
+      "calendar_booking"
+    ],
     "optional_integrations": [
       {
         "pack_id": "rumi_connector_gateway_pack",
@@ -64,6 +119,7 @@
         "reason": "Adjacent owner for rumi_business_ops_pack handoff; this pack keeps declarative evidence only."
       }
     ],
+    "output_effect": "draft_and_handoff_only",
     "owner_surfaces": [
       "meeting_prebrief",
       "transcript_to_decisions",
@@ -74,66 +130,36 @@
       "evidence_linked_recap_bundle",
       "meeting_artifact_quality_gate"
     ],
-    "non_owner_surfaces": [
-      "connectors",
-      "scheduler",
-      "voice_capture",
-      "business_ops_workflows",
-      "document_parsing",
-      "message_sending",
-      "calendar_booking"
-    ],
-    "asset_index": {
-      "index": [
-        "asset_index.yaml"
-      ],
-      "readme": [
-        "README.md"
-      ],
-      "docs": [
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
-      ],
-      "catalog": [
-        "catalog/meeting_intelligence_workflows.yaml",
-        "catalog/meeting_intelligence_quality_matrix.yaml",
-        "catalog/participant_consent_matrix.yaml"
-      ],
-      "schema": [
-        "schemas/meeting_intelligence_record.schema.json",
-        "schemas/action_item.schema.json"
-      ],
-      "policy": [
-        "policies/meeting_intelligence_safety.policy.yaml"
-      ],
-      "checklist": [
-        "checklists/meeting_intelligence_review.checklist.yaml"
-      ],
-      "ledger": [
-        "ledgers/meeting_intelligence_evidence_ledger.schema.yaml"
-      ],
-      "template": [
-        "templates/meeting_intelligence_handoff.template.md",
-        "templates/followup_email.template.md"
-      ],
-      "profiles": [
-        "profiles/meeting_chief.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/meeting_recap_scribe.system.md"
-      ],
-      "presets": [
-        "presets/safe_default.preset.yaml",
-        "presets/handoff_review.preset.yaml",
-        "presets/quality_gate.preset.yaml"
-      ],
-      "example": [
-        "examples/weekly_sync_recap.example.yaml",
-        "examples/sales_call_followup.example.yaml",
-        "examples/incident_review_decisions.example.yaml"
-      ]
-    }
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": []
+  },
+  "pack_id": "rumi_meeting_intelligence_pack",
+  "pack_identity": "rumi:ecosystem/rumi_meeting_intelligence_pack",
+  "provenance": {
+    "build_identity": "rumi_meeting_intelligence_pack:0.1.0",
+    "content_hash": "sha256:343eab2a3b11b681bbb1bbfde3f9a51f23eb1994e907f4b0a608b01fdbca7fe4",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "version": "0.1.0",
+  "vocabulary": {
+    "types": [
+      "catalog",
+      "schema",
+      "policy",
+      "checklist",
+      "ledger",
+      "template",
+      "profile",
+      "prompt",
+      "preset",
+      "example"
+    ]
   }
 }

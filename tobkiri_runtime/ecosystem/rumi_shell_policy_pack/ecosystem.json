@@ -1,2 +1,54 @@
-{"pack_id":"rumi_shell_policy_pack","pack_identity":"rumi:ecosystem/rumi_shell_policy_pack","display_name":"Rumi Shell Policy Pack","version":"1.0.0","description":"Pure command inspection and risk classification.","dependencies":{},"connectivity":{"requires":[],"provides":["rumi.service.shell.inspect.v1"]},"required_secrets":[],"required_capabilities":["shell.inspect"],"required_network":{"allowed_domains":[],"allowed_ports":[]},"host_execution":false,"resources":[],"provenance":{"content_hash":"sha256:ed87da916f1f7d017c487d5862822edca64be08f53b353ca061cf57108807422","build_identity":"rumi-shell-policy-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authority":"inspect","execution":false}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.shell.inspect.v1"
+    ],
+    "requires": []
+  },
+  "dependencies": {},
+  "description": "Pure command inspection and risk classification.",
+  "display_name": "Rumi Shell Policy",
+  "host_execution": false,
+  "metadata": {
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:ec113d821a26916c4d1214809a7d7c260caf1931518e2dc38e8c2022d2e31cb2",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:1bd8e35ba1573f45290b340cca887aa42bdc211fe53dc141b030c54cb2fb71b1"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:1bd8e35ba1573f45290b340cca887aa42bdc211fe53dc141b030c54cb2fb71b1"
+    },
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_shell_policy_pack",
+  "pack_identity": "rumi:ecosystem/rumi_shell_policy_pack",
+  "provenance": {
+    "build_identity": "rumi_shell_policy_pack:1.0.0",
+    "content_hash": "sha256:b24ff2c5c66a51052742fa96322e2a515a3aa2187cda41a6f4f6d4daeeacab8e",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "shell.inspect"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

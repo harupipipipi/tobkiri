@@ -17,6 +17,7 @@ pytestmark = pytest.mark.contract
 ROOT = Path(__file__).resolve().parent.parent
 PACK_ID = "rumi_localization_pack"
 PACK_DIR = ROOT / "ecosystem" / PACK_ID
+V4_AUTHORITY_ARTIFACTS = {"pack.v4.json", "contracts.v4.json", "artifact-index.v4.json"}
 SETUP_PACK_JSON = ROOT / "ecosystem" / "setup_pack" / PACK_ID / "pack.json"
 
 
@@ -57,7 +58,8 @@ def test_pack_required_assets_and_metadata() -> None:
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
-    assert ecosystem["dependencies"] == {"defaultspack": ">=2.0.0"}
+    assert ecosystem["dependencies"] == {}
+    assert all((PACK_DIR / name).is_file() for name in V4_AUTHORITY_ARTIFACTS)
     assert ecosystem["connectivity"] == {
         "requires": ["defaultspack"],
         "provides": [],
@@ -100,8 +102,9 @@ def test_pack_required_assets_and_metadata() -> None:
     pack_files = {
         str(path.relative_to(PACK_DIR)).replace("\\", "/")
         for path in PACK_DIR.rglob("*")
-        if path.is_file()
+        if path.is_file() and path.name != "executables.v4.json"
     }
+    pack_files -= V4_AUTHORITY_ARTIFACTS
     assert pack_files - {"ecosystem.json"} == indexed
 
 

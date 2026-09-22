@@ -1,0 +1,42 @@
+{
+  "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+  "catalog_digest": "sha256:b61d88d782e29df111ff5170598b18cfa9dc406f3ed44db3493945707abc7bd0",
+  "pack_id": "rumi_tool_broker_pack",
+  "source_identity": "sha256:05738489604a92a85991b5c758f35f34ca74bb8ced10ead934b50bb74a137a1f",
+  "variants": [
+    {
+      "architecture": "any",
+      "backend": "tobkiri.python-host-v4",
+      "execution_domain_profile": "host.extension.default.v1",
+      "execution_kind": "host_extension",
+      "function_id": "rumi_tool_broker_pack.tool-broker.invoke",
+      "implementation_digest": "sha256:65ae6ff8c4236863bbffe614a46bedfcf7107a65b79e512d45d50bc1be56594b",
+      "implementation_path": "runtime/broker.py",
+      "materialization_mode": "on_demand",
+      "operations": [
+        {
+          "contract_id": "tobkiri.service.tool.invoke.v1",
+          "contract_version": "1.0.0",
+          "effect_class": "privileged",
+          "error_schema": {
+            "type": "object"
+          },
+          "idempotency": "none",
+          "input_schema": {
+            "type": "object"
+          },
+          "operation_id": "rumi_tool_broker_pack.tool-invoke",
+          "output_schema": {
+            "type": "object"
+          },
+          "revision_digest": "sha256:158048cd75aff7396e9d7eb4a80f777f679c3217398cfa26f2fbc3f3d9375a89",
+          "timeout_default_ms": 30000,
+          "timeout_hard_max_ms": 300000
+        }
+      ],
+      "platform": "any",
+      "runtime_abi": "python3.13",
+      "variant_id": "rumi_tool_broker_pack.tool-broker.invoke.python"
+    }
+  ]
+}

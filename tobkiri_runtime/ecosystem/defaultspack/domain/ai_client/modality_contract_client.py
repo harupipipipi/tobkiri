@@ -14,7 +14,7 @@ def invoke_modality(
     payload: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Invoke one active modality owner and require an object result."""
-    registry = get_container().get_or_none("interface_registry")
+    registry = get_container().get_or_none("v4_dispatch_session")
     if registry is None:
         raise RuntimeError("interface registry is unavailable")
     request = dict(payload)

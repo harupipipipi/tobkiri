@@ -12,6 +12,11 @@ from typing import Any
 
 from jsonschema import Draft202012Validator, FormatChecker
 
+from .pack_boundary import finite_children
+from tobkiri_protocol.canonical import canonical_digest
+from tobkiri_protocol.errors import ProtocolError
+from tobkiri_protocol.validation import validate_document
+
 
 class PackSdkError(ValueError):
     """Raised when Pack SDK generation or validation fails."""
@@ -304,6 +309,11 @@ def validate_pack_manifest(
 
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("pack_api_version") == "io.tobkiri.pack.v4":
+        try:
+            return validate_document(manifest, "pack")
+        except ProtocolError as exc:
+            raise PackSdkError(str(exc)) from exc
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
     errors = sorted(
         validator.iter_errors(manifest),
@@ -324,7 +334,7 @@ def scaffold_pack(
     profile: str = "complete",
     intent: str = "",
 ) -> Path:
-    """Create an untrusted Pack v3 with a deterministic agent template."""
+    """Create an inert, untrusted Pack v4 with deterministic artifacts."""
 
     from core_runtime.pack_templates import (
         PackTemplateError,
@@ -335,9 +345,14 @@ def scaffold_pack(
     normalized_id = str(pack_id or "").strip()
     if not re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+", normalized_id):
         raise PackSdkError("pack_id must be a qualified lowercase identifier")
+    target = Path(target)
+    if target.is_symlink():
+        raise PackSdkError("target directory must not be a symlink")
     if target.exists() and next(os.scandir(target), None) is not None:
         raise PackSdkError("target directory must be empty")
-    target.mkdir(parents=True, exist_ok=True)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.parent.is_symlink():
+        raise PackSdkError("target parent must not be a symlink")
     try:
         selected_profile = resolve_profile(profile, intent)
         template_files = render_template_files(
@@ -348,51 +363,218 @@ def scaffold_pack(
         )
     except PackTemplateError as exc:
         raise PackSdkError(str(exc)) from exc
-    manifest = {
-        "pack_api_version": "rumi.pack.v3",
-        "pack": {
-            "id": normalized_id,
-            "version": "0.1.0",
-            "kind": "service",
-            "display_name": str(display_name or normalized_id),
-        },
-        "contracts": {"provides": [], "requires": []},
-        "entrypoints": [],
-        "resources": [],
-        "storage": [],
-        "permissions": [],
-        "provenance": {
-            "content_hash": "sha256:" + ("0" * 64),
-            "build_identity": "local-scaffold",
-            "trust_class": "untrusted",
-            "signature": None,
-        },
-        "migration": {
-            "from": [],
-            "compatibility_aliases": [],
-            "compatibility_projection": "none",
-            "removal_wave": 10,
-            "sunset_at": "2099-12-31",
-            "rollback": "Remove the scaffolded Pack.",
-        },
-        "extensions": {
-            "tobkiri.template": {
-                "profile": selected_profile,
-                "selection": "ai_hybrid_progressive",
-                "authority": "none",
+    template_files.pop("ecosystem.json", None)
+    source = {
+        "source_api_version": "io.tobkiri.pack-scaffold-source.v1",
+        "pack_id": normalized_id,
+        "version": "0.1.0",
+        "display_name": str(display_name or normalized_id),
+        "profile": selected_profile,
+        "intent": str(intent or "")[:1000],
+        "authority": "none",
+    }
+    with tempfile.TemporaryDirectory(prefix=".tobkiri-pack-", dir=target.parent) as value:
+        staging = Path(value)
+        (staging / "scaffold-source.v1.json").write_text(
+            _json_text(source), encoding="utf-8"
+        )
+        for relative, content in sorted(template_files.items()):
+            path = _scoped_scaffold_path(staging, relative)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        refresh_scaffold_artifacts(staging)
+        if target.exists():
+            target.rmdir()
+        os.replace(staging, target)
+    return target / "pack.v4.json"
+
+
+_SCAFFOLD_GENERATED = frozenset(
+    {
+        "pack.v4.json",
+        "contracts.v4.json",
+        "artifact-index.v4.json",
+        "executables.v4.json",
+    }
+)
+
+
+def refresh_scaffold_artifacts(pack_root: Path) -> None:
+    """Regenerate and validate all Pack v4 authority files for a scaffold."""
+
+    root = Path(pack_root)
+    source_path = root / "scaffold-source.v1.json"
+    if root.is_symlink() or source_path.is_symlink() or not source_path.is_file():
+        raise PackSdkError("scaffold-source.v1.json is required in a safe Pack root")
+    source = json.loads(source_path.read_text(encoding="utf-8"))
+    if not isinstance(source, dict) or source.get("source_api_version") != (
+        "io.tobkiri.pack-scaffold-source.v1"
+    ):
+        raise PackSdkError("scaffold source is invalid")
+    pack_id = str(source.get("pack_id") or "")
+    if not re.fullmatch(r"[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+", pack_id):
+        raise PackSdkError("scaffold source pack_id is invalid")
+    artifacts: list[dict[str, str]] = []
+    for path in _finite_scaffold_files(root):
+        relative = path.relative_to(root).as_posix()
+        if relative in _SCAFFOLD_GENERATED:
+            continue
+        artifacts.append(
+            {
+                "path": relative,
+                "digest": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
+                "kind": "sidecar" if relative == source_path.name else "asset",
             }
+        )
+    source_identity = canonical_digest(source)
+    contracts = {
+        "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+        "pack_id": pack_id,
+        "source_identity": source_identity,
+        "contracts": [],
+    }
+    contract_text = _json_text(contracts)
+    artifact_set_digest = canonical_digest(artifacts)
+    provenance = {
+        "schema": "io.tobkiri.provenance.v1",
+        "source_kind": "generated",
+        "source_path": source_path.name,
+        "source_digest": source_identity,
+        "repository_commit": "working-tree",
+        "repository_tree": source_identity.removeprefix("sha256:"),
+        "generator": "tobkiri.core_runtime.pack_sdk",
+        "generator_version": "4.0.0",
+        "normative": True,
+        "evidence": [
+            {
+                "path": source_path.name,
+                "rule_id": "canonical-pack-v4-scaffold-source",
+                "digest": source_identity,
+            }
+        ],
+    }
+    manifest = {
+        "pack_api_version": "io.tobkiri.pack.v4",
+        "pack": {
+            "id": pack_id,
+            "version": str(source.get("version") or "0.1.0"),
+            "kind": "normal_sandbox",
+            "artifact_digest": artifact_set_digest,
+            "display_name": str(source.get("display_name") or pack_id),
+        },
+        "functions": [],
+        "contracts": [],
+        "artifacts": artifacts,
+        "requirements": {
+            "pack_dependencies": {},
+            "contract_dependencies": [],
+            "capabilities": [],
+            "network": {"allowed_domains": [], "allowed_ports": []},
+            "secrets": [],
+            "execution_boundary": "declarative_only",
+            "approval_policy": "none",
+            "workspace_boundary": "pack_local",
+        },
+        "operation_catalog": [],
+        "provider_catalog": [],
+        "integrity": {
+            "source_identity": source_identity,
+            "artifact_set_digest": artifact_set_digest,
+            "contract_catalog_digest": "sha256:"
+            + hashlib.sha256(contract_text.encode("utf-8")).hexdigest(),
+        },
+        "provenance": provenance,
+        "migration": {
+            "compatibility": "none",
+            "legacy_ids": [],
+            "removal_wave": 0,
+            "sunset_at": "2026-08-05",
         },
     }
-    manifest_path = target / "pack.json"
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    for relative, content in sorted(template_files.items()):
-        path = target / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-    return manifest_path
+    manifest_text = _json_text(manifest)
+    unsigned_index = {
+        "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+        "pack_id": pack_id,
+        "source_identity": source_identity,
+        "artifacts": [
+            {
+                "path": "pack.v4.json",
+                "digest": "sha256:"
+                + hashlib.sha256(manifest_text.encode("utf-8")).hexdigest(),
+                "role": "canonical_manifest",
+            },
+            {
+                "path": "contracts.v4.json",
+                "digest": "sha256:"
+                + hashlib.sha256(contract_text.encode("utf-8")).hexdigest(),
+                "role": "contract_catalog",
+            },
+            *[
+                {"path": item["path"], "digest": item["digest"], "role": "sidecar"}
+                for item in artifacts
+            ],
+        ],
+        "artifact_set_digest": artifact_set_digest,
+    }
+    index = {
+        **unsigned_index,
+        "integrity_seal": {
+            "algorithm": "sha256-canonical-v1",
+            "signed_digest": canonical_digest(unsigned_index),
+        },
+    }
+    unsigned_executables = {
+        "catalog_api_version": "io.tobkiri.executable-catalog.v4",
+        "pack_id": pack_id,
+        "source_identity": source_identity,
+        "variants": [],
+    }
+    executables = {
+        **unsigned_executables,
+        "catalog_digest": canonical_digest(unsigned_executables),
+    }
+    validate_document(manifest, "pack")
+    validate_document(contracts, "pack_contract_catalog")
+    validate_document(index, "pack_artifact_index")
+    validate_document(executables, "executable_catalog")
+    for name, document in (
+        ("pack.v4.json", manifest),
+        ("contracts.v4.json", contracts),
+        ("artifact-index.v4.json", index),
+        ("executables.v4.json", executables),
+    ):
+        path = root / name
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(_json_text(document), encoding="utf-8")
+        os.replace(temporary, path)
+
+
+def _scoped_scaffold_path(root: Path, relative: str) -> Path:
+    path = root / relative
+    resolved_root = root.resolve()
+    resolved = path.resolve()
+    if resolved_root != resolved and resolved_root not in resolved.parents:
+        raise PackSdkError("template path escaped Pack root")
+    return path
+
+
+def _finite_scaffold_files(root: Path) -> tuple[Path, ...]:
+    """Enumerate only descendants of one explicit scaffold boundary."""
+
+    files: list[Path] = []
+    pending = [root]
+    while pending:
+        current = pending.pop()
+        for path in finite_children(current):
+            if path.is_dir():
+                pending.append(path)
+            elif path.is_file():
+                files.append(path)
+    return tuple(sorted(files))
+
+
+def _json_text(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
 def _symbol(filename: str) -> str:
@@ -413,11 +595,11 @@ def _render_command_protocol_models(
         "commandProtocolError",
         "commandInvocationResult",
     )
-    models = {
-        name: definitions.get(name)
-        for name in names
-        if isinstance(definitions.get(name), dict)
-    }
+    models: dict[str, dict[str, Any]] = {}
+    for name in names:
+        model = definitions.get(name)
+        if isinstance(model, dict):
+            models[name] = model
     if set(models) != set(names):
         raise PackSdkError(
             "command protocol schema is missing SDK model definitions"

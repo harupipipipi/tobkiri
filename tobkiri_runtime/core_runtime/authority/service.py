@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -20,6 +19,7 @@ from .approval_challenge_store import (
     DEFAULT_MOBILE_APPROVAL_TOKEN_TTL_SECONDS,
 )
 from .device_key_registry import DeviceKeyRegistry
+from .debug_cli_operator import verify_authority_debug_operator
 from .models import AUTHORITY_PERMISSION_IDS, AuthorityDecision, AuthorityRequest
 from .principal import build_principal_id, parse_principal_parts, principal_scope_candidates
 from .request_store import AuthorityRequestStore, sanitize_authority_resource
@@ -115,10 +115,8 @@ class AuthorityService:
                 "error": "Mobile deny challenges cannot be persistent",
                 "status_code": 403,
             }
-        if not self._mobile_actor_has_route_grant(
-            actor_principal,
-            "authority.request.approve" if decision == "approve" else "authority.request.deny",
-        ):
+        permission_id = "authority.request.approve" if decision == "approve" else "authority.request.deny"
+        if not self._mobile_actor_has_route_grant(actor_principal, permission_id):
             return {"success": False, "error": "Mobile approver grant is not valid", "status_code": 403}
 
         profile_id = self._actor_profile_id(actor_principal)
@@ -163,7 +161,9 @@ class AuthorityService:
 
     @property
     def mode(self) -> str:
-        value = str(os.environ.get("RUMI_AUTHORITY_MODE") or "enforce").strip().lower()
+        from ..host_contract import host_contract_value
+
+        value = host_contract_value("authority_mode").strip().lower() or "enforce"
         return value if value in {"off", "observe", "enforce"} else "enforce"
 
     def check(
@@ -231,8 +231,9 @@ class AuthorityService:
         for item in items or []:
             permission_id = str(item.get("permission_id") or "").strip()
             principal_id = str(item.get("principal_id") or "").strip()
+            raw_resource = item.get("resource")
             resource = self._normalize_resource(
-                item.get("resource") if isinstance(item.get("resource"), dict) else {}
+                raw_resource if isinstance(raw_resource, dict) else {}
             )
             risk_level = self._risk_level(permission_id, resource)
             if permission_id not in AUTHORITY_PERMISSION_IDS:
@@ -403,6 +404,8 @@ class AuthorityService:
         expires_in_seconds: int | None = None,
         related_permissions: list[str] | tuple[str, ...] | None = None,
         ui_operator: dict[str, Any] | None = None,
+        debug_cli_operator: dict[str, Any] | None = None,
+        expected_digest: str = "",
         actor_principal: Any = None,
         attestation: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -470,7 +473,7 @@ class AuthorityService:
                 }
             mobile_attestation_audit = attestation_result.audit
         confirmation_text = str(config.pop("confirmation_text", "") or "").strip()
-        if self._typed_confirmation_required(request):
+        if self._typed_confirmation_required(request) and debug_cli_operator is None:
             if scope != "once":
                 return {
                     "success": False,
@@ -494,6 +497,24 @@ class AuthorityService:
                 }
         if mobile_approver:
             operator_audit = dict(mobile_attestation_audit)
+        elif debug_cli_operator is not None:
+            if str(debug_cli_operator.get("decision") or "") != "approve":
+                return {"success": False, "error": "debug operator decision mismatch", "status_code": 403}
+            if scope != "once" or related_permissions or expires_in_seconds is not None:
+                return {
+                    "success": False,
+                    "error": "Delegated debug approval must be one-shot and unbundled",
+                    "status_code": 400,
+                }
+            operator_ok, operator_error, operator_audit = verify_authority_debug_operator(
+                request, expected_digest, debug_cli_operator
+            )
+            if not operator_ok:
+                self._request_store.audit(
+                    "authority_debug_cli_operator_rejected",
+                    {"request_id": request.request_id, "reason": operator_error},
+                )
+                return {"success": False, "error": operator_error, "status_code": 403}
         else:
             operator_ok, operator_error, operator_payload = verify_ui_operator(ui_operator, request_id=request.request_id)
             if not operator_ok:
@@ -503,11 +524,18 @@ class AuthorityService:
                 )
                 return {"success": False, "error": operator_error, "status_code": 403}
             operator_audit = ui_operator_audit_record(operator_payload)
-        expires = int(
+        raw_expires = (
             mobile_attestation_audit.get("approval_expires_in_seconds")
             if mobile_approver
             else (expires_in_seconds or 86400)
         )
+        if not isinstance(raw_expires, (str, int, float, bytes)):
+            return {
+                "success": False,
+                "error": "Authority approval expiration is invalid",
+                "status_code": 403 if mobile_approver else 400,
+            }
+        expires = int(raw_expires)
         if scope == "once":
             def settle_once(settled_request: AuthorityRequest) -> dict[str, Any]:
                 issued_token_ids: list[str] = []
@@ -563,29 +591,29 @@ class AuthorityService:
                 }
             if not settlement.get("settled"):
                 return self._settlement_failure_response(settlement)
-            request = settlement["request"]
+            once_request = settlement["request"]
             settled_result = settlement.get("result") or {}
             token = settled_result["token"]
             related = settled_result["related"]
             self._audit_best_effort(
                 "authority_request_approved",
                 {
-                    "request_id": request.request_id,
+                    "request_id": once_request.request_id,
                     "scope": "once",
-                    "principal_id": request.principal_id,
-                    "permission_id": request.permission_id,
-                    "resource_hash": self._request_store.resource_hash(request.resource),
+                    "principal_id": once_request.principal_id,
+                    "permission_id": once_request.permission_id,
+                    "resource_hash": self._request_store.resource_hash(once_request.resource),
                     **operator_audit,
                 },
             )
             return {
                 "success": True,
-                "request_id": request.request_id,
+                "request_id": once_request.request_id,
                 "approved": True,
                 "scope": "once",
                 "token": token["token"],
                 "expires_at": token["expires_at"],
-                "permission_id": request.permission_id,
+                "permission_id": once_request.permission_id,
                 "related_approvals": related,
             }
 
@@ -678,26 +706,28 @@ class AuthorityService:
             }
         if not settlement.get("settled"):
             return self._settlement_failure_response(settlement)
-        request = settlement["request"]
+        persistent_request = settlement["request"]
         related = (settlement.get("result") or {})["related"]
         self._audit_best_effort(
             "authority_request_approved",
             {
-                "request_id": request.request_id,
+                "request_id": persistent_request.request_id,
                 "scope": scope,
                 "principal_id": grant_principal,
-                "permission_id": request.permission_id,
-                "resource_hash": self._request_store.resource_hash(request.resource),
+                "permission_id": persistent_request.permission_id,
+                "resource_hash": self._request_store.resource_hash(
+                    persistent_request.resource
+                ),
                 **operator_audit,
             },
         )
         return {
             "success": True,
-            "request_id": request.request_id,
+            "request_id": persistent_request.request_id,
             "approved": True,
             "scope": scope,
             "principal_id": grant_principal,
-            "permission_id": request.permission_id,
+            "permission_id": persistent_request.permission_id,
             "config": grant_config,
             "related_approvals": related,
         }
@@ -929,6 +959,8 @@ class AuthorityService:
         reason: str = "",
         persist: bool = False,
         ui_operator: dict[str, Any] | None = None,
+        debug_cli_operator: dict[str, Any] | None = None,
+        expected_digest: str = "",
         actor_principal: Any = None,
         attestation: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
@@ -942,13 +974,14 @@ class AuthorityService:
         if self._request_store.request_expired(request):
             self._request_store.set_request_status(request.request_id, "expired")
             return {"success": False, "error": "Authority request expired", "status_code": 409}
-        if self._actor_mobile_approver(actor_principal) and persist:
+        mobile_approver = self._actor_mobile_approver(actor_principal)
+        if mobile_approver and persist:
             return {
                 "success": False,
                 "error": "Mobile approver tokens may not create persistent denies",
                 "status_code": 403,
             }
-        if self._actor_mobile_approver(actor_principal):
+        if mobile_approver:
             if not self._mobile_actor_has_route_grant(actor_principal, "authority.request.deny"):
                 return {"success": False, "error": "Mobile approver grant is not valid", "status_code": 403}
             attestation_result = verify_mobile_approval_attestation(
@@ -976,6 +1009,24 @@ class AuthorityService:
                     "status_code": attestation_result.status_code,
                 }
             operator_audit = dict(attestation_result.audit)
+        elif debug_cli_operator is not None:
+            if str(debug_cli_operator.get("decision") or "") != "deny":
+                return {"success": False, "error": "debug operator decision mismatch", "status_code": 403}
+            if persist:
+                return {
+                    "success": False,
+                    "error": "Delegated debug denial cannot be persistent",
+                    "status_code": 400,
+                }
+            operator_ok, operator_error, operator_audit = verify_authority_debug_operator(
+                request, expected_digest, debug_cli_operator
+            )
+            if not operator_ok:
+                self._request_store.audit(
+                    "authority_debug_cli_operator_rejected",
+                    {"request_id": request.request_id, "reason": operator_error},
+                )
+                return {"success": False, "error": operator_error, "status_code": 403}
         else:
             operator_ok, operator_error, operator_payload = verify_ui_operator(ui_operator, request_id=request.request_id)
             if not operator_ok:
@@ -1055,6 +1106,7 @@ class AuthorityService:
         *,
         profile_id: str | None = None,
         actor_principal: Any = None,
+        debug_binding: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         requests = [
             self._request_view(item)
@@ -1064,6 +1116,7 @@ class AuthorityService:
                 profile_id=profile_id,
                 actor_principal=actor_principal,
             )
+            and self._matches_debug_binding(item, debug_binding)
         ]
         return {"requests": requests, "pending": [item for item in requests if item.get("status") == "pending"], "count": len(requests)}
 
@@ -1073,6 +1126,7 @@ class AuthorityService:
         *,
         profile_id: str | None = None,
         actor_principal: Any = None,
+        debug_binding: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         request = self._request_store.get_request(request_id)
         if request is None:
@@ -1083,7 +1137,31 @@ class AuthorityService:
             actor_principal=actor_principal,
         ):
             return {"success": False, "error": "Authority request not found", "status_code": 404}
+        if not self._matches_debug_binding(request, debug_binding):
+            return {"success": False, "error": "Authority request not found", "status_code": 404}
         return {"success": True, "request": self._request_view(request)}
+
+    @staticmethod
+    def _matches_debug_binding(
+        request: AuthorityRequest,
+        debug_binding: dict[str, Any] | None,
+    ) -> bool:
+        if not isinstance(debug_binding, dict):
+            return True
+        expected = {
+            "debug_session_id": str(debug_binding.get("debug_session_id") or ""),
+            "lease_epoch": int(debug_binding.get("lease_epoch") or 0),
+            "debug_run_id": str(debug_binding.get("debug_run_id") or ""),
+            "workspace_identity_digest": str(
+                debug_binding.get("workspace_identity_digest") or ""
+            ),
+            "pack_id": str(debug_binding.get("pack_id") or ""),
+            "debug_profile_id": str(debug_binding.get("profile_id") or ""),
+        }
+        return bool(expected["debug_session_id"]) and all(
+            str(getattr(request, key, "") or "") == str(value)
+            for key, value in expected.items()
+        )
 
     @classmethod
     def _actor_can_access_request(
@@ -1093,6 +1171,8 @@ class AuthorityService:
         profile_id: str | None = None,
         actor_principal: Any = None,
     ) -> bool:
+        if actor_principal is not None and cls._actor_core_role(actor_principal):
+            return True
         expected_profile = str(profile_id or "").strip() or cls._actor_profile_id(actor_principal)
         if not expected_profile:
             return True
@@ -1100,6 +1180,12 @@ class AuthorityService:
         if not target_profile:
             target_profile = parse_principal_parts(request.principal_id).get("profile", "")
         return bool(target_profile and target_profile == expected_profile)
+
+    @staticmethod
+    def _actor_core_role(actor_principal: Any) -> bool:
+        if isinstance(actor_principal, dict):
+            return bool(actor_principal.get("core_role"))
+        return bool(getattr(actor_principal, "core_role", False))
 
     @staticmethod
     def _actor_profile_id(actor_principal: Any) -> str:
@@ -1131,9 +1217,21 @@ class AuthorityService:
             return str(actor_principal.get("role") or "").strip() == "mobile_approver"
         return str(getattr(actor_principal, "role", "") or "").strip() == "mobile_approver"
 
+    @staticmethod
+    def _actor_scopes(actor_principal: Any) -> set[str]:
+        if isinstance(actor_principal, dict):
+            values = actor_principal.get("scopes") or ()
+        else:
+            values = getattr(actor_principal, "scopes", ()) or ()
+        if not isinstance(values, (list, tuple, set)):
+            return set()
+        return {str(value).strip() for value in values if str(value).strip()}
+
     def _mobile_actor_has_route_grant(self, actor_principal: Any, permission_id: str) -> bool:
+        if permission_id in self._actor_scopes(actor_principal):
+            return True
         manager = self._capability_grant_manager
-        if manager is None or not callable(getattr(manager, "check_authority", None)):
+        if manager is None:
             return False
         profile_id = self._actor_profile_id(actor_principal)
         if not profile_id:
@@ -1149,7 +1247,12 @@ class AuthorityService:
         configs: list[dict[str, Any]] = []
         for principal_id in principals:
             try:
-                check = manager.check_authority(principal_id, permission_id)
+                if callable(getattr(manager, "check_authority", None)):
+                    check = manager.check_authority(principal_id, permission_id)
+                elif callable(getattr(manager, "check", None)):
+                    check = manager.check(principal_id, permission_id)
+                else:
+                    return False
             except Exception:
                 return False
             if not getattr(check, "allowed", False):
@@ -1170,6 +1273,8 @@ class AuthorityService:
         token: str,
         conversation_id: str | None = None,
         principal_id: str | None = None,
+        resource: dict[str, Any] | None = None,
+        include_consumed: bool = False,
     ) -> bool:
         request = self._request_store.get_request(request_id)
         if request is None:
@@ -1184,6 +1289,8 @@ class AuthorityService:
             principal_id=expected_principal,
             permission_id=request.permission_id,
             token=token,
+            resource=resource,
+            include_consumed=include_consumed,
         )
 
     def list_grants(self, principal_id: str = "", *, actor_principal: Any = None) -> dict[str, Any]:
@@ -1192,7 +1299,7 @@ class AuthorityService:
             return {"grants": {}, "count": 0}
         principal_id = str(principal_id or "").strip()
         actor_profile_id = self._actor_profile_id(actor_principal)
-        if actor_principal is not None and not bool(getattr(actor_principal, "core_role", False)):
+        if actor_principal is not None and not self._actor_core_role(actor_principal):
             profile_prefix = f"profile:{actor_profile_id}"
             if not actor_profile_id:
                 return {"success": False, "error": "Forbidden", "status_code": 403}
@@ -1245,7 +1352,7 @@ class AuthorityService:
         return {"success": True, "principal_id": principal_id, "permission_id": permission_id, "revoked": revoked}
 
     def events(self, limit: int = 200, *, actor_principal: Any = None) -> dict[str, Any]:
-        if actor_principal is not None and not bool(getattr(actor_principal, "core_role", False)):
+        if actor_principal is not None and not self._actor_core_role(actor_principal):
             return {"success": False, "error": "Forbidden", "status_code": 403}
         return {"_sse": True, "events": self._request_store.list_events(limit)}
 
@@ -1369,8 +1476,11 @@ class AuthorityService:
             allowed_ports = set(AuthorityService._port_values(config.get("ports")))
             if not allowed_ports:
                 return False
+            raw_port = resource.get("port")
+            if not isinstance(raw_port, (str, int, float, bytes)):
+                return False
             try:
-                resource_port = int(resource.get("port"))
+                resource_port = int(raw_port)
             except (TypeError, ValueError):
                 return False
             if resource_port not in allowed_ports:
@@ -1378,8 +1488,11 @@ class AuthorityService:
         if "allow_stream" in config and resource.get("stream") and not bool(config.get("allow_stream")):
             return False
         if "max_input_tokens" in config and resource.get("input_tokens") is not None:
+            raw_max_tokens = config.get("max_input_tokens")
+            if not isinstance(raw_max_tokens, (str, int, float, bytes)):
+                return False
             try:
-                if int(resource.get("input_tokens") or 0) > int(config.get("max_input_tokens")):
+                if int(resource.get("input_tokens") or 0) > int(raw_max_tokens):
                     return False
             except (TypeError, ValueError):
                 return False
@@ -1550,6 +1663,9 @@ class AuthorityService:
         model_id = str(resource.get("model_id") or resource.get("model_ref") or "")
         function_id = str(resource.get("function_id") or "")
         pack_id = str(resource.get("pack_id") or "")
+        target_pack_id = str(resource.get("target_pack_id") or "")
+        pack_request_id = str(resource.get("pack_request_id") or "")
+        pack_request_mode = str(resource.get("mode") or "")
         app_name = str(resource.get("app_display_name") or "")
         provider_display_name = str(resource.get("provider_display_name") or provider_id or "")
         model_display_name = str(resource.get("model_display_name") or model_id or "")
@@ -1572,6 +1688,7 @@ class AuthorityService:
             "model.invoke": "Model/API",
             "api_key.use": "API key",
             "network.egress": "Network access",
+            "pack.approve": "Pack approval",
         }.get(request.permission_id, host_definition.label if host_definition is not None else request.permission_id)
         access_summary = ""
         host_execution_summary: dict[str, Any] = {}
@@ -1598,6 +1715,14 @@ class AuthorityService:
                     stream_label=stream_label,
                     summary=host_execution_summary,
                 )
+        if request.permission_id == "pack.approve" and resource.get("kind") == "defaultspack.pack_request":
+            target_label = target_pack_id or pack_id or "pack"
+            title = f"{target_label} のpack requestを承認しますか？"
+            summary = (
+                f"{target_label} への {pack_request_mode or 'pack'} request"
+                f"{f' ({pack_request_id})' if pack_request_id else ''} を確認します。"
+            )
+            access_summary = pack_request_mode or "pack request"
         if has_rich_provider_metadata and request.permission_id in {"model.invoke", "api_key.use", "network.egress"}:
             app_label = app_name or "defaultspack"
             provider_label = provider_display_name or provider_id or "provider"
@@ -1624,6 +1749,9 @@ class AuthorityService:
             "model_id": model_id or None,
             "function_id": function_id or None,
             "pack_id": pack_id or None,
+            "target_pack_id": target_pack_id or None,
+            "pack_request_id": pack_request_id or None,
+            "pack_request_mode": pack_request_mode or None,
             "app_display_name": app_name or None,
             "provider_display_name": provider_display_name or None,
             "model_display_name": model_display_name or None,

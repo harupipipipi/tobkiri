@@ -1,17 +1,27 @@
-import os
-import sys
+from __future__ import annotations
+
 import json
+import os
 import re
-from pathlib import Path
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable, Protocol
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from domain.ai_client.model_pack_router import select_model_pack
 from domain.ai_client.model_pack import ModelPack
 from domain.ai_client.model_pack_store import ModelPackStore
-from domain.ai_client.api_key_store import provider_api_metadata, provider_has_api_key, provider_named_api_keys, read_provider_api_key
-from domain.ai_client.authority_resource import build_provider_authority_resource, provider_authority_reason
+from domain.ai_client.api_key_store import (
+    provider_api_metadata,
+    provider_has_api_key,
+    provider_named_api_keys,
+    read_provider_api_key,
+)
+from domain.ai_client.authority_resource import (
+    build_provider_authority_resource,
+    provider_authority_reason,
+)
 from domain.ai_client.authority_gate import provider_requires_authority
 from domain.ai_client.capabilities.registry import get_model_provider_capabilities
 from domain.ai_client.model_metadata_schema import (
@@ -35,16 +45,39 @@ from domain.ai_client.providers import (
 _HIDDEN_RUNTIME_LIST_PROVIDER_IDS = {"human-operator", "rumi"}
 
 
+class _RemovedAuthorityService(Protocol):
+    """Type-only shape for the deleted, fail-closed compatibility boundary."""
+
+    def one_shot_approval_issued(self, **kwargs: object) -> bool: ...
+
+    def check(self, **kwargs: object) -> object: ...
+
+    def consume_one_shot_approvals_atomically(self, items: list[dict[str, object]]) -> object: ...
+
+
+def _removed_authority_boundary() -> _RemovedAuthorityService:
+    """Preserve the deleted authority service's fail-closed runtime boundary."""
+    from core_runtime.legacy_runtime_removed import removed_authority_service
+
+    removed_authority_service()
+    raise RuntimeError("legacy authority workflow is unavailable")
+
+
 class AuthorityApprovalRequired(RuntimeError):
     def __init__(self, decision):
         self.decision = decision
         super().__init__(getattr(decision, "reason", "") or "Authority approval required")
 
 
+class DirectProviderInvocationDenied(PermissionError):
+    """Raised when code attempts to bypass the captured Pack v4 provider path."""
+
+
 class AIClient:
     """AI Client - provider routing with profile and catalog compatibility."""
 
-    _instance = None
+    _instance: AIClient | None = None
+    _initialized: bool
 
     def __new__(cls):
         if cls._instance is None:
@@ -76,9 +109,14 @@ class AIClient:
             local_default_enabled = self._local_default_runtime_enabled()
             for name, instance in available.items():
                 entry = provider_catalog.get(name, {})
-                availability = entry.get("availability", {}) if isinstance(entry.get("availability"), dict) else {}
+                availability = (
+                    entry.get("availability", {})
+                    if isinstance(entry.get("availability"), dict)
+                    else {}
+                )
                 if (
-                    availability.get("configuration_source") == "default_local_endpoint"
+                    availability.get("configuration_source")
+                    in {"default_local_endpoint", "builtin_local_provider"}
                     and not local_default_enabled
                 ):
                     continue
@@ -91,7 +129,11 @@ class AIClient:
 
     @staticmethod
     def _local_default_runtime_enabled():
-        value = str(os.environ.get("RUMI_DEFAULTSPACK_ENABLE_LOCAL_PROVIDERS", "") or "").strip().lower()
+        value = (
+            str(os.environ.get("RUMI_DEFAULTSPACK_ENABLE_LOCAL_PROVIDERS", "") or "")
+            .strip()
+            .lower()
+        )
         return value in {"1", "true", "yes", "on"}
 
     def _auto_register_rumi(self):
@@ -132,7 +174,7 @@ class AIClient:
         provider = self._providers.get(provider_name)
         if provider is None:
             return []
-        listed = []
+        listed: list[object] = []
         if callable(getattr(provider, "list_models", None)):
             try:
                 listed = provider.list_models() or []
@@ -150,7 +192,7 @@ class AIClient:
             display_name = model_id
             model_type = "chat"
             defaults = {}
-            metadata = {}
+            metadata: dict[str, object] = {}
             capabilities = []
             context_window = 0
             max_context = 0
@@ -174,7 +216,9 @@ class AIClient:
             metadata = dict(raw.get("metadata", {}))
             raw_capabilities = raw.get("capabilities", [])
             capability_map = normalize_capability_map(raw_capabilities)
-            capability_map.setdefault("chat", bool(capability_map.get("text_input") or capability_map.get("text_output")))
+            capability_map.setdefault(
+                "chat", bool(capability_map.get("text_input") or capability_map.get("text_output"))
+            )
             capability_map.setdefault("vision", bool(capability_map.get("image_input")))
             capability_map.setdefault("reasoning", bool(capability_map.get("thinking")))
             capability_map.setdefault("tool_calls", bool(capability_map.get("tool_calling")))
@@ -183,19 +227,24 @@ class AIClient:
                 metadata["capabilities"] = capability_map
             context_window = context_window_value(raw, default=0)
             max_context = context_window
-            thinking = raw.get("thinking") if isinstance(raw.get("thinking"), dict) else {}
+            thinking_value = raw.get("thinking")
+            thinking: dict[str, object] = (
+                {str(key): value for key, value in thinking_value.items()}
+                if isinstance(thinking_value, dict)
+                else {}
+            )
             supports_thinking = bool(
                 raw.get("supports_thinking")
                 or capability_map.get("thinking")
                 or thinking.get("supported")
                 or metadata.get("supports_thinking")
             )
-            thinking_levels = list(
-                thinking.get("levels")
-                or raw.get("thinking_levels")
-                or metadata.get("thinking_levels")
-                or []
-            )
+            levels_value = thinking.get("levels")
+            if not isinstance(levels_value, list):
+                levels_value = raw.get("thinking_levels")
+            if not isinstance(levels_value, list):
+                levels_value = metadata.get("thinking_levels")
+            thinking_levels = list(levels_value) if isinstance(levels_value, list) else []
             if supports_thinking and not thinking_levels:
                 thinking_levels = ["low", "medium", "high", "xhigh"]
         else:
@@ -218,7 +267,15 @@ class AIClient:
             "supports_thinking": supports_thinking,
             "thinking_levels": thinking_levels,
             "default_thinking_level": (
-                raw.get("default_thinking_level", thinking.get("default_level", metadata.get("default_thinking_level", "medium" if supports_thinking else None)))
+                raw.get(
+                    "default_thinking_level",
+                    thinking.get(
+                        "default_level",
+                        metadata.get(
+                            "default_thinking_level", "medium" if supports_thinking else None
+                        ),
+                    ),
+                )
                 if isinstance(raw, dict)
                 else None
             ),
@@ -342,7 +399,7 @@ class AIClient:
     def _settings_path(self):
         from domain.frontend_settings_store import defaultspack_frontend_settings_path
 
-        return defaultspack_frontend_settings_path(Path(__file__).resolve().parents[2])
+        return defaultspack_frontend_settings_path(None)
 
     def _api_routes(self):
         data = self._settings_data()
@@ -353,7 +410,9 @@ class AIClient:
         routes = {}
         for item in self._structured_api_routes(models.get("api_routes") or apis.get("api_routes")):
             model_ref = str(item.get("model") or "").strip()
-            route_refs = [str(route).strip() for route in item.get("routes", []) if str(route).strip()]
+            route_refs = [
+                str(route).strip() for route in item.get("routes", []) if str(route).strip()
+            ]
             if model_ref and route_refs:
                 routes[model_ref] = route_refs
         raw_routes = models.get("model_api_routes") or apis.get("model_api_routes") or ""
@@ -486,15 +545,23 @@ class AIClient:
         if isinstance(tokens, dict):
             raw = tokens.get(permission_id)
             if isinstance(raw, dict):
-                request_id = str(raw.get("request_id") or raw.get("approval_request_id") or "").strip()
+                request_id = str(
+                    raw.get("request_id") or raw.get("approval_request_id") or ""
+                ).strip()
                 token = str(raw.get("approval_token") or raw.get("token") or "").strip()
                 if request_id and token:
                     return request_id, token
-        context_permission = str(context.get("permission_id") or "").strip() if isinstance(context, dict) else ""
+        context_permission = (
+            str(context.get("permission_id") or "").strip() if isinstance(context, dict) else ""
+        )
         if context_permission and context_permission != permission_id:
             return "", ""
-        request_id = str(context.get("request_id") or "").strip() if isinstance(context, dict) else ""
-        token = str(context.get("approval_token") or "").strip() if isinstance(context, dict) else ""
+        request_id = (
+            str(context.get("request_id") or "").strip() if isinstance(context, dict) else ""
+        )
+        token = (
+            str(context.get("approval_token") or "").strip() if isinstance(context, dict) else ""
+        )
         return request_id, token
 
     def _has_authority_token_for_permission(self, params, permission_id):
@@ -506,6 +573,7 @@ class AIClient:
     def _strip_authority_params(params):
         clean = dict(params or {})
         clean.pop("_authority_context", None)
+        clean.pop("_v4_authority_kernel_admitted", None)
         return clean
 
     def _authority_batch_consume_item(self, params, permission_id, decision):
@@ -520,7 +588,8 @@ class AIClient:
             return None
         return {
             "request_id": request_id,
-            "principal_id": getattr(decision, "principal_id", "") or str(context.get("principal_id") or "defaultspack"),
+            "principal_id": getattr(decision, "principal_id", "")
+            or str(context.get("principal_id") or "defaultspack"),
             "permission_id": permission_id,
             "resource": dict(getattr(decision, "resource", {}) or {}),
             "approval_token": approval_token,
@@ -586,10 +655,55 @@ class AIClient:
             stream=stream,
         )
 
-        from core_runtime.authority import get_authority_service
-
-        service = get_authority_service()
+        service = _removed_authority_boundary()
         request_id, approval_token = self._authority_token_for_permission(context, permission_id)
+        effective_request_id = request_id or str(context.get("request_id") or "").strip()
+        if (
+            context.get("allow_consumed_one_shot_tokens_for_run")
+            and effective_request_id
+            and approval_token
+        ):
+            issued = getattr(service, "one_shot_approval_issued", None)
+            if callable(issued):
+                try:
+                    issued_unconsumed = bool(
+                        issued(
+                            request_id=effective_request_id,
+                            permission_id=permission_id,
+                            token=approval_token,
+                            conversation_id=context.get("conversation_id"),
+                            principal_id=principal_id,
+                            resource=resource,
+                        )
+                    )
+                    issued_consumed = bool(
+                        issued(
+                            request_id=effective_request_id,
+                            permission_id=permission_id,
+                            token=approval_token,
+                            conversation_id=context.get("conversation_id"),
+                            principal_id=principal_id,
+                            resource=resource,
+                            include_consumed=True,
+                        )
+                    )
+                except TypeError:
+                    issued_unconsumed = False
+                    issued_consumed = False
+                except Exception:
+                    issued_unconsumed = False
+                    issued_consumed = False
+                if not issued_unconsumed and issued_consumed:
+                    from core_runtime.authority.models import AuthorityDecision
+
+                    return AuthorityDecision(
+                        allowed=True,
+                        permission_id=permission_id,
+                        principal_id=principal_id,
+                        reason="Trusted consumed one-shot approval",
+                        request_id=effective_request_id,
+                        resource=resource,
+                    )
         decision = service.check(
             principal_id=principal_id,
             permission_id=permission_id,
@@ -603,7 +717,7 @@ class AIClient:
             approval_token=approval_token,
             consume_approval_token=consume_approval_token,
         )
-        if not decision.allowed:
+        if not getattr(decision, "allowed", False):
             raise AuthorityApprovalRequired(decision)
         return decision
 
@@ -696,48 +810,67 @@ class AIClient:
         provider=None,
         stream=False,
     ):
+        authority_context = params.get("_authority_context") if isinstance(params, dict) else None
+        provider_call_key = f"{provider_id}:{api_id}:{model_id}:{bool(stream)}"
+        if isinstance(authority_context, dict):
+            verified_provider_calls = authority_context.get("_provider_one_shot_verified_for_run")
+            if (
+                isinstance(verified_provider_calls, list)
+                and provider_call_key in verified_provider_calls
+            ):
+                return
         checks = [
-            ("model.invoke", lambda *, consume_approval_token=True: self._check_authority_for_model_api(
-                provider_id=provider_id,
-                api_id=api_id,
-                model_id=model_id,
-                model_ref=model_ref,
-                params=params,
-                provider=provider,
-                stream=stream,
-                consume_approval_token=consume_approval_token,
-            )),
-            ("api_key.use", lambda *, consume_approval_token=True: self._check_authority_for_api_key_use(
-                provider_id=provider_id,
-                api_id=api_id,
-                model_id=model_id,
-                model_ref=model_ref,
-                params=params,
-                provider=provider,
-                stream=stream,
-                consume_approval_token=consume_approval_token,
-            )),
-            ("network.egress", lambda *, consume_approval_token=True: self._check_authority_for_network_egress(
-                provider_id=provider_id,
-                api_id=api_id,
-                model_id=model_id,
-                model_ref=model_ref,
-                params=params,
-                provider=provider,
-                stream=stream,
-                consume_approval_token=consume_approval_token,
-            )),
+            (
+                "model.invoke",
+                lambda *, consume_approval_token=True: self._check_authority_for_model_api(
+                    provider_id=provider_id,
+                    api_id=api_id,
+                    model_id=model_id,
+                    model_ref=model_ref,
+                    params=params,
+                    provider=provider,
+                    stream=stream,
+                    consume_approval_token=consume_approval_token,
+                ),
+            ),
+            (
+                "api_key.use",
+                lambda *, consume_approval_token=True: self._check_authority_for_api_key_use(
+                    provider_id=provider_id,
+                    api_id=api_id,
+                    model_id=model_id,
+                    model_ref=model_ref,
+                    params=params,
+                    provider=provider,
+                    stream=stream,
+                    consume_approval_token=consume_approval_token,
+                ),
+            ),
+            (
+                "network.egress",
+                lambda *, consume_approval_token=True: self._check_authority_for_network_egress(
+                    provider_id=provider_id,
+                    api_id=api_id,
+                    model_id=model_id,
+                    model_ref=model_ref,
+                    params=params,
+                    provider=provider,
+                    stream=stream,
+                    consume_approval_token=consume_approval_token,
+                ),
+            ),
         ]
         if self._has_authority_token_for_permission(params, "model.invoke"):
             missing_related = [
                 item
                 for item in checks
-                if item[0] != "model.invoke" and not self._has_authority_token_for_permission(params, item[0])
+                if item[0] != "model.invoke"
+                and not self._has_authority_token_for_permission(params, item[0])
             ]
             if missing_related:
                 checks = missing_related + [item for item in checks if item not in missing_related]
-        token_consumes = []
-        rechecks = []
+        token_consumes: list[dict[str, object]] = []
+        rechecks: list[Callable[..., object]] = []
         for permission_id, check_fn in checks:
             decision = check_fn(consume_approval_token=False)
             consume_item = self._authority_batch_consume_item(params, permission_id, decision)
@@ -748,13 +881,20 @@ class AIClient:
         for check in rechecks:
             check(consume_approval_token=True)
         if token_consumes:
-            from core_runtime.authority import get_authority_service
-
-            decision = get_authority_service().consume_one_shot_approvals_atomically(token_consumes)
-            if not decision.allowed:
+            decision = _removed_authority_boundary().consume_one_shot_approvals_atomically(
+                token_consumes
+            )
+            if not getattr(decision, "allowed", False):
                 raise AuthorityApprovalRequired(decision)
+            if isinstance(authority_context, dict):
+                current = authority_context.get("_provider_one_shot_verified_for_run")
+                verified = list(current) if isinstance(current, list) else []
+                if provider_call_key not in verified:
+                    verified.append(provider_call_key)
+                authority_context["_provider_one_shot_verified_for_run"] = verified
 
     def _api_route_attempts(self, model, route_refs, params=None, stream=False):
+        self._deny_direct_provider_invocation()
         attempts = []
         for route_ref in route_refs:
             provider_id, api_id = self._route_parts(route_ref)
@@ -778,7 +918,9 @@ class AIClient:
             api_key = read_provider_api_key(provider_id, api_id)
             if not api_key:
                 continue
-            attempts.append((provider, model_name, api_key, provider_api_metadata(provider_id, api_id)))
+            attempts.append(
+                (provider, model_name, api_key, provider_api_metadata(provider_id, api_id))
+            )
         return attempts
 
     def _api_bound_profile_parts(self, model):
@@ -803,12 +945,15 @@ class AIClient:
         if not named_key:
             return None
         metadata = provider_api_metadata(provider_id, api_id)
-        allowed = {str(item) for item in metadata.get("allowed_models", []) if str(item or "").strip()}
+        allowed = {
+            str(item) for item in metadata.get("allowed_models", []) if str(item or "").strip()
+        }
         if allowed and model_id not in allowed and f"{provider_id}/{model_id}" not in allowed:
             return None
         return provider_id, api_id, model_id, metadata
 
     def _call_api_bound_profile(self, method_name, model, messages, tools=None, params=None):
+        self._deny_direct_provider_invocation()
         parts = self._api_bound_profile_parts(model)
         if parts is None:
             return None, False
@@ -830,10 +975,25 @@ class AIClient:
         if not api_key:
             return None, False
         if method_name == "stream":
-            return self._stream_with_api_routes([(provider, model_name, api_key, metadata)], messages, tools, params), True
-        return self._call_provider_with_overrides(provider, model_name, api_key, metadata, method_name, messages, tools, params), True
+            return self._stream_with_api_routes(
+                [(provider, model_name, api_key, metadata)], messages, tools, params
+            ), True
+        return self._call_provider_with_overrides(
+            provider, model_name, api_key, metadata, method_name, messages, tools, params
+        ), True
 
-    def _call_provider_with_overrides(self, provider, model_name, api_key, metadata, method_name, messages, tools=None, params=None):
+    def _call_provider_with_overrides(
+        self,
+        provider,
+        model_name,
+        api_key,
+        metadata,
+        method_name,
+        messages,
+        tools=None,
+        params=None,
+    ):
+        self._deny_direct_provider_invocation()
         had_key = hasattr(provider, "_api_key")
         previous_key = getattr(provider, "_api_key", None)
         had_base_url = hasattr(provider, "_base_url")
@@ -864,6 +1024,7 @@ class AIClient:
                 delattr(provider, "BASE_URL")
 
     def _call_with_api_routes(self, method_name, model, messages, tools=None, params=None):
+        self._deny_direct_provider_invocation()
         routed, handled = self._call_api_bound_profile(method_name, model, messages, tools, params)
         if handled:
             return routed, True
@@ -878,9 +1039,13 @@ class AIClient:
             return self._stream_with_api_routes(route_attempts, messages, tools, params), True
 
         last_error = None
-        for provider, model_name, api_key, metadata in self._api_route_attempts(model, route_refs, params=params, stream=False):
+        for provider, model_name, api_key, metadata in self._api_route_attempts(
+            model, route_refs, params=params, stream=False
+        ):
             try:
-                return self._call_provider_with_overrides(provider, model_name, api_key, metadata, method_name, messages, tools, params), True
+                return self._call_provider_with_overrides(
+                    provider, model_name, api_key, metadata, method_name, messages, tools, params
+                ), True
             except Exception as exc:
                 last_error = exc
                 if not self._is_rate_limit_error(exc):
@@ -890,6 +1055,7 @@ class AIClient:
         return None, False
 
     def _stream_with_api_routes(self, route_attempts, messages, tools=None, params=None):
+        self._deny_direct_provider_invocation()
         last_error = None
         for provider, model_name, api_key, metadata in route_attempts:
             had_key = hasattr(provider, "_api_key")
@@ -906,7 +1072,9 @@ class AIClient:
                 if base_url:
                     provider._base_url = base_url
                     provider.BASE_URL = base_url
-                for chunk in provider.stream(model_name, messages, tools or [], self._strip_authority_params(params)):
+                for chunk in provider.stream(
+                    model_name, messages, tools or [], self._strip_authority_params(params)
+                ):
                     yielded = True
                     yield chunk
                 return
@@ -935,7 +1103,10 @@ class AIClient:
         models = data.get("models") if isinstance(data.get("models"), dict) else {}
         raw = self._jsonish(models.get("composite_models"), [])
         if isinstance(raw, dict):
-            items = [{"id": key, **(value if isinstance(value, dict) else {})} for key, value in raw.items()]
+            items = [
+                {"id": key, **(value if isinstance(value, dict) else {})}
+                for key, value in raw.items()
+            ]
         elif isinstance(raw, list):
             items = raw
         else:
@@ -944,7 +1115,9 @@ class AIClient:
         for item in items:
             if not isinstance(item, dict) or item.get("enabled", True) is False:
                 continue
-            composite_id = str(item.get("id") or item.get("profile_id") or item.get("name") or "").strip()
+            composite_id = str(
+                item.get("id") or item.get("profile_id") or item.get("name") or ""
+            ).strip()
             if composite_id:
                 composites[composite_id] = item
         return composites
@@ -963,7 +1136,11 @@ class AIClient:
     def _model_pack_for_model(self, model):
         if not isinstance(model, str):
             return None
-        store = ModelPackStore(self._settings_data().get("models") if isinstance(self._settings_data().get("models"), dict) else {})
+        store = ModelPackStore(
+            self._settings_data().get("models")
+            if isinstance(self._settings_data().get("models"), dict)
+            else {}
+        )
         return store.get(model)
 
     def _complete_model_pack(self, model_pack, messages, tools=None, params=None):
@@ -973,7 +1150,9 @@ class AIClient:
             and str(params.get("rumi_base_model_override") or "").strip()
         ):
             model_pack = ModelPack.from_dict(
-                rumi_process.default_rumi_model_pack(base_model=str(params.get("rumi_base_model_override")).strip())
+                rumi_process.default_rumi_model_pack(
+                    base_model=str(params.get("rumi_base_model_override")).strip()
+                )
             )
         selection = select_model_pack(
             model_pack,
@@ -982,14 +1161,20 @@ class AIClient:
                 "has_images": self._messages_have_images(messages),
                 "requires_tool_calling": bool(tools),
                 "requested_thinking_level": str((params or {}).get("thinking_level") or ""),
-                "task_hints": (params or {}).get("task_hints") if isinstance((params or {}).get("task_hints"), dict) else {},
+                "task_hints": (params or {}).get("task_hints")
+                if isinstance((params or {}).get("task_hints"), dict)
+                else {},
             },
-            settings=self._settings_data().get("models") if isinstance(self._settings_data().get("models"), dict) else {},
+            settings=self._settings_data().get("models")
+            if isinstance(self._settings_data().get("models"), dict)
+            else {},
         )
         if selection is None or not selection.ordered_members:
             raise RuntimeError("model pack has no runnable members")
         pack_mode = str(getattr(model_pack, "mode", "fallback_chain") or "fallback_chain")
-        composite_mode = pack_mode if pack_mode in {"ensemble", "review_chain"} else "fallback_chain"
+        composite_mode = (
+            pack_mode if pack_mode in {"ensemble", "review_chain"} else "fallback_chain"
+        )
         composite = {
             "id": selection.pack_id,
             "mode": composite_mode,
@@ -1004,7 +1189,9 @@ class AIClient:
         safety = getattr(model_pack, "safety", {}) if model_pack is not None else {}
         if isinstance(safety, dict):
             composite["safety"] = dict(safety)
-        merge_model = str(metadata.get("merge_model") or "").strip() if isinstance(metadata, dict) else ""
+        merge_model = (
+            str(metadata.get("merge_model") or "").strip() if isinstance(metadata, dict) else ""
+        )
         if merge_model:
             composite["merge_model"] = merge_model
         response = self._complete_composite(composite, messages, tools, params)
@@ -1042,7 +1229,9 @@ class AIClient:
                 continue
             try:
                 next_params = dict(params or {})
-                next_params["_composite_depth"] = int(next_params.get("_composite_depth", 0) or 0) + 1
+                next_params["_composite_depth"] = (
+                    int(next_params.get("_composite_depth", 0) or 0) + 1
+                )
                 return self.complete(model, messages, tools or [], next_params)
             except Exception as exc:
                 last_error = exc
@@ -1062,14 +1251,19 @@ class AIClient:
         has_tools = bool(tools)
         if "has_images" in conditions and bool(conditions.get("has_images")) != has_images:
             return False
-        if "requires_vision" in conditions and bool(conditions.get("requires_vision")) != has_images:
+        if (
+            "requires_vision" in conditions
+            and bool(conditions.get("requires_vision")) != has_images
+        ):
             return False
         if "has_tools" in conditions and bool(conditions.get("has_tools")) != has_tools:
             return False
         if "requires_tools" in conditions and bool(conditions.get("requires_tools")) != has_tools:
             return False
         text_contains = conditions.get("text_contains") or conditions.get("contains")
-        if text_contains and not self._condition_text_matches(text_contains, self._messages_text(messages)):
+        if text_contains and not self._condition_text_matches(
+            text_contains, self._messages_text(messages)
+        ):
             return False
         task_types = conditions.get("task_types") or conditions.get("task_type")
         if task_types and not self._condition_task_type_matches(task_types, params or {}):
@@ -1117,9 +1311,17 @@ class AIClient:
             return "quota"
         if "timeout" in message or "timed out" in message:
             return "timeout"
-        if "401" in message or "403" in message or "unauthorized" in message or "forbidden" in message:
+        if (
+            "401" in message
+            or "403" in message
+            or "unauthorized" in message
+            or "forbidden" in message
+        ):
             return "unauthorized"
-        if any(token in message for token in ("provider_error", "provider error", "502", "503", "504", "temporarily")):
+        if any(
+            token in message
+            for token in ("provider_error", "provider error", "502", "503", "504", "temporarily")
+        ):
             return "provider_error"
         return "unknown"
 
@@ -1132,13 +1334,19 @@ class AIClient:
             needles = expected
         else:
             return True
-        needles = [str(item or "").strip().casefold() for item in needles if str(item or "").strip()]
+        needles = [
+            str(item or "").strip().casefold() for item in needles if str(item or "").strip()
+        ]
         return not needles or any(needle in haystack for needle in needles)
 
     @staticmethod
     def _condition_task_type_matches(expected, params):
         hints = params.get("task_hints") if isinstance(params.get("task_hints"), dict) else {}
-        actual = str(params.get("task_type") or hints.get("task_type") or hints.get("type") or "").strip().casefold()
+        actual = (
+            str(params.get("task_type") or hints.get("task_type") or hints.get("type") or "")
+            .strip()
+            .casefold()
+        )
         if not actual:
             return False
         if isinstance(expected, str):
@@ -1147,7 +1355,9 @@ class AIClient:
             options = expected
         else:
             return True
-        return actual in {str(item or "").strip().casefold() for item in options if str(item or "").strip()}
+        return actual in {
+            str(item or "").strip().casefold() for item in options if str(item or "").strip()
+        }
 
     @staticmethod
     def _messages_text(messages):
@@ -1176,12 +1386,16 @@ class AIClient:
                         continue
                     block_type = str(block.get("type") or "").casefold()
                     mime = str(block.get("mime_type") or block.get("mime") or "").casefold()
-                    if block_type in {"image", "image_url", "input_image"} or mime.startswith("image/"):
+                    if block_type in {"image", "image_url", "input_image"} or mime.startswith(
+                        "image/"
+                    ):
                         return True
         return False
 
     def _complete_ensemble(self, composite, members, messages, tools=None, params=None):
-        member_models = [self._member_model(member) for member in members if self._member_model(member)]
+        member_models = [
+            self._member_model(member) for member in members if self._member_model(member)
+        ]
         if not member_models:
             raise RuntimeError("composite ensemble has no runnable members")
         responses = []
@@ -1197,12 +1411,20 @@ class AIClient:
             for future in as_completed(futures):
                 try:
                     model, response = future.result()
-                    responses.append({"model": model, "response": response, "text": self._response_text(response)})
+                    responses.append(
+                        {
+                            "model": model,
+                            "response": response,
+                            "text": self._response_text(response),
+                        }
+                    )
                 except Exception as exc:
                     errors.append(str(exc))
         if not responses:
             raise RuntimeError("all ensemble members failed: " + "; ".join(errors))
-        merge_model = str(composite.get("merge_model") or composite.get("synthesizer_model") or "").strip()
+        merge_model = str(
+            composite.get("merge_model") or composite.get("synthesizer_model") or ""
+        ).strip()
         if merge_model:
             synthesis_prompt = [
                 {
@@ -1228,7 +1450,10 @@ class AIClient:
             next_params["_composite_depth"] = int(next_params.get("_composite_depth", 0) or 0) + 1
             merged = self.complete(merge_model, synthesis_prompt, [], next_params)
             metadata = dict(merged.get("metadata") or {}) if isinstance(merged, dict) else {}
-            metadata["ensemble"] = {"members": [item["model"] for item in responses], "errors": errors}
+            metadata["ensemble"] = {
+                "members": [item["model"] for item in responses],
+                "errors": errors,
+            }
             if isinstance(merged, dict):
                 merged["metadata"] = metadata
             return merged
@@ -1241,7 +1466,9 @@ class AIClient:
             ],
             "finish_reason": "ensemble",
             "usage": {},
-            "metadata": {"ensemble": {"members": [item["model"] for item in responses], "errors": errors}},
+            "metadata": {
+                "ensemble": {"members": [item["model"] for item in responses], "errors": errors}
+            },
         }
 
     def _complete_review_chain(self, composite, members, messages, tools=None, params=None):
@@ -1249,7 +1476,8 @@ class AIClient:
         runnable_members = [
             member
             for member in members
-            if self._member_model(member) and self._member_conditions_match(member, messages, tools, params)
+            if self._member_model(member)
+            and self._member_conditions_match(member, messages, tools, params)
         ]
         if not runnable_members:
             raise RuntimeError("review_chain composite has no runnable members")
@@ -1266,7 +1494,9 @@ class AIClient:
         )
         generator_model = self._member_model(generator_member)
         reviewer_model = self._member_model(reviewer_member)
-        composite_metadata = composite.get("metadata") if isinstance(composite.get("metadata"), dict) else {}
+        composite_metadata = (
+            composite.get("metadata") if isinstance(composite.get("metadata"), dict) else {}
+        )
         budget = composite.get("budget") if isinstance(composite.get("budget"), dict) else {}
         generator_model = self._resolve_rumi_member_model(generator_model, params)
         reviewer_model = self._resolve_rumi_member_model(reviewer_model, params)
@@ -1280,7 +1510,8 @@ class AIClient:
         )
         base_model_metadata = (
             rumi_process.rumi_base_model_metadata(generator_model)
-            if composite.get("id") == rumi_process.RUMI_MODEL_PACK_ID or composite_metadata.get("builtin")
+            if composite.get("id") == rumi_process.RUMI_MODEL_PACK_ID
+            or composite_metadata.get("builtin")
             else {}
         )
         process = {
@@ -1300,7 +1531,9 @@ class AIClient:
             "action_preflight_required": bool(context.get("action_preflight_required")),
         }
         if process["deepthink_enabled"]:
-            harness_tool_selection = rumi_process.select_harness_tools(messages, tools or [], params)
+            harness_tool_selection = rumi_process.select_harness_tools(
+                messages, tools or [], params
+            )
             context["harness_tool_selection"] = harness_tool_selection
             process["mode"] = "deepthink"
             process["warnings"] = [rumi_process.RUMI_DEEPTHINK_WARNING_JA]
@@ -1332,10 +1565,15 @@ class AIClient:
     @staticmethod
     def _review_chain_member(members, roles, default_index=0):
         for member in members:
-            metadata = member.get("metadata") if isinstance(member, dict) and isinstance(member.get("metadata"), dict) else {}
+            metadata_value = member.get("metadata") if isinstance(member, dict) else None
+            metadata: dict[str, object] = (
+                {str(key): value for key, value in metadata_value.items()}
+                if isinstance(metadata_value, dict)
+                else {}
+            )
             role_value = ""
             if isinstance(member, dict):
-                role_value = metadata.get("role") or member.get("role") or ""
+                role_value = str(metadata.get("role") or member.get("role") or "")
             role = str(role_value).strip().casefold()
             if role in roles:
                 return member
@@ -1384,70 +1622,12 @@ class AIClient:
         return ""
 
     def complete(self, model, messages, tools=None, params=None):
-        params = dict(params or {})
-        model_pack = self._model_pack_for_model(model) if int(params.get("_composite_depth", 0) or 0) < 3 else None
-        if model_pack is not None:
-            return self._complete_model_pack(model_pack, messages, tools, params)
-        composite = self._composite_for_model(model) if int(params.get("_composite_depth", 0) or 0) < 3 else None
-        if composite is not None:
-            return self._complete_composite(composite, messages, tools, params)
-        provider_params = self._provider_params(params)
-        routed, handled = self._call_with_api_routes("complete", model, messages, tools, params)
-        if handled:
-            return routed
-        provider, model_name = self.resolve_provider(model)
-        if provider.__class__.__name__ == "StubProvider":
-            raise RuntimeError(self._provider_unconfigured_message(model))
-        provider_id = self._provider_id_for_provider(provider, model)
-        if self._provider_requires_authority(provider_id, provider, "legacy"):
-            self._check_authority_for_model_and_api_key_use(
-                provider_id=provider_id,
-                api_id="legacy",
-                model_id=model_name,
-                model_ref=model,
-                params=params,
-                provider=provider,
-                stream=False,
-            )
-        try:
-            return provider.complete(model_name, messages, tools or [], self._strip_authority_params(provider_params))
-        except NotImplementedError as e:
-            raise RuntimeError(str(e)) from None
+        del model, messages, tools, params
+        self._deny_direct_provider_invocation()
 
     def stream(self, model, messages, tools=None, params=None):
-        params = dict(params or {})
-        model_pack = self._model_pack_for_model(model) if int(params.get("_composite_depth", 0) or 0) < 3 else None
-        if model_pack is not None:
-            response = self._complete_model_pack(model_pack, messages, tools, params)
-            text = self._response_text(response)
-            return iter([{"type": "text_delta", "text": text}, {"finish_reason": response.get("finish_reason", "stop") if isinstance(response, dict) else "stop"}])
-        composite = self._composite_for_model(model) if int(params.get("_composite_depth", 0) or 0) < 3 else None
-        if composite is not None:
-            response = self._complete_composite(composite, messages, tools, params)
-            text = self._response_text(response)
-            return iter([{"type": "text_delta", "text": text}, {"finish_reason": response.get("finish_reason", "stop") if isinstance(response, dict) else "stop"}])
-        provider_params = self._provider_params(params)
-        routed, handled = self._call_with_api_routes("stream", model, messages, tools, params)
-        if handled:
-            return routed
-        provider, model_name = self.resolve_provider(model)
-        if provider.__class__.__name__ == "StubProvider":
-            raise RuntimeError(self._provider_unconfigured_message(model))
-        provider_id = self._provider_id_for_provider(provider, model)
-        if self._provider_requires_authority(provider_id, provider, "legacy"):
-            self._check_authority_for_model_and_api_key_use(
-                provider_id=provider_id,
-                api_id="legacy",
-                model_id=model_name,
-                model_ref=model,
-                params=params,
-                provider=provider,
-                stream=True,
-            )
-        try:
-            return provider.stream(model_name, messages, tools or [], self._strip_authority_params(provider_params))
-        except NotImplementedError as e:
-            raise RuntimeError(str(e)) from None
+        del model, messages, tools, params
+        self._deny_direct_provider_invocation()
 
     @staticmethod
     def _provider_params(params):
@@ -1486,11 +1666,7 @@ class AIClient:
             provider_id=provider,
             active_provider_ids=active_provider_ids,
         )
-        models = [
-            model
-            for model in models
-            if model.get("provider_id") in active_provider_ids
-        ]
+        models = [model for model in models if model.get("provider_id") in active_provider_ids]
 
         catalog_map = get_provider_catalog_map(active_provider_ids=active_provider_ids)
         seen = {model.get("qualified_model_id") for model in models}
@@ -1514,9 +1690,7 @@ class AIClient:
         active_provider_ids = self._active_provider_ids()
         catalog = get_provider_catalog(active_provider_ids=active_provider_ids)
         active = [
-            provider
-            for provider in catalog
-            if provider.get("provider_id") in active_provider_ids
+            provider for provider in catalog if provider.get("provider_id") in active_provider_ids
         ]
         known_ids = {provider.get("provider_id") for provider in active}
         for provider_id in sorted(active_provider_ids - known_ids):
@@ -1571,7 +1745,10 @@ class AIClient:
                 not profile.get("provider_id")
                 or profile.get("provider_id") in active_provider_ids
                 or profile.get("provider_id") == "composite"
-                or (isinstance(profile.get("metadata"), dict) and profile["metadata"].get("api_bound"))
+                or (
+                    isinstance(profile.get("metadata"), dict)
+                    and profile["metadata"].get("api_bound")
+                )
             )
         ]
         if provider is not None:
@@ -1583,11 +1760,17 @@ class AIClient:
         for api_key in provider_named_api_keys():
             provider_id = str(api_key.get("provider_id") or "").strip()
             api_id = str(api_key.get("api_id") or "").strip()
-            allowed = [str(item).strip() for item in api_key.get("allowed_models", []) if str(item or "").strip()]
+            allowed = [
+                str(item).strip()
+                for item in api_key.get("allowed_models", [])
+                if str(item or "").strip()
+            ]
             default_model = str(api_key.get("default_model") or "").strip()
             if default_model and default_model not in allowed:
                 allowed.insert(0, default_model)
-            configured = bool(api_key.get("configured") and read_provider_api_key(provider_id, api_id))
+            configured = bool(
+                api_key.get("configured") and self._provider_api_key_configured(provider_id, api_id)
+            )
             availability = {
                 "configured": configured,
                 "active": configured,
@@ -1622,7 +1805,9 @@ class AIClient:
                 )
         return profiles
 
-    def _check_authority_for_direct_provider_call(self, *, provider, provider_id, model_id, model_ref, params=None):
+    def _check_authority_for_direct_provider_call(
+        self, *, provider, provider_id, model_id, model_ref, params=None
+    ):
         if not self._provider_requires_authority(provider_id, provider, "legacy"):
             return
         self._check_authority_for_model_and_api_key_use(
@@ -1636,75 +1821,28 @@ class AIClient:
         )
 
     def embed(self, model, input_text):
-        provider, model_name = self.resolve_provider(model)
-        provider_id = self._provider_id_for_provider(provider, model)
-        self._check_authority_for_direct_provider_call(
-            provider=provider,
-            provider_id=provider_id,
-            model_id=model_name,
-            model_ref=model,
-        )
-        try:
-            return provider.embed(model_name, input_text)
-        except NotImplementedError as e:
-            raise RuntimeError(str(e)) from None
+        del model, input_text
+        self._deny_direct_provider_invocation()
 
     def image_gen(self, model, prompt, params=None):
-        params = dict(params or {})
-        provider, model_name = self.resolve_provider(model)
-        provider_id = self._provider_id_for_provider(provider, model)
-        self._check_authority_for_direct_provider_call(
-            provider=provider,
-            provider_id=provider_id,
-            model_id=model_name,
-            model_ref=model,
-            params=params,
-        )
-        try:
-            return provider.image_gen(model_name, prompt, self._strip_authority_params(params))
-        except NotImplementedError as e:
-            raise RuntimeError(str(e)) from None
+        del model, prompt, params
+        self._deny_direct_provider_invocation()
 
     def image_analyze(self, model, image, prompt):
-        provider, model_name = self.resolve_provider(model)
-        provider_id = self._provider_id_for_provider(provider, model)
-        self._check_authority_for_direct_provider_call(
-            provider=provider,
-            provider_id=provider_id,
-            model_id=model_name,
-            model_ref=model,
-        )
-        try:
-            return provider.image_analyze(model_name, image, prompt)
-        except NotImplementedError as e:
-            raise RuntimeError(str(e)) from None
+        del model, image, prompt
+        self._deny_direct_provider_invocation()
 
     def transcribe(self, model, audio, params=None):
-        params = dict(params or {})
-        provider, model_name = self.resolve_provider(model)
-        provider_id = self._provider_id_for_provider(provider, model)
-        self._check_authority_for_direct_provider_call(
-            provider=provider,
-            provider_id=provider_id,
-            model_id=model_name,
-            model_ref=model,
-            params=params,
-        )
-        try:
-            return provider.transcribe(model_name, audio, self._strip_authority_params(params))
-        except NotImplementedError as e:
-            raise RuntimeError(str(e)) from None
+        del model, audio, params
+        self._deny_direct_provider_invocation()
 
     def tts(self, model, text, voice=None):
-        provider, model_name = self.resolve_provider(model)
-        provider_id = self._provider_id_for_provider(provider, model)
-        self._check_authority_for_direct_provider_call(
-            provider=provider,
-            provider_id=provider_id,
-            model_id=model_name,
-            model_ref=model,
+        del model, text, voice
+        self._deny_direct_provider_invocation()
+
+    @staticmethod
+    def _deny_direct_provider_invocation() -> None:
+        raise DirectProviderInvocationDenied(
+            "direct AIClient provider invocation is unavailable; use the captured "
+            "Pack v4 AI gateway"
         )
-        try:
-            return provider.tts(model_name, text, voice)
-        except NotImplementedError as e:
-            raise RuntimeError(str(e)) from None

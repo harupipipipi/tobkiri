@@ -1,37 +1,49 @@
-import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useAppStore } from '@/src/store';
 import { useT } from '@/src/lib/i18n';
 import { cn } from '@/src/lib/utils';
-import { panelRouteMeta, panelRoutes, viewerNavGroups, type PanelRouteKey } from '@/src/lib/routes';
+import { isPanelRouteActive, panelRouteMeta, viewerNavGroups, type PanelRouteKey } from '@/src/lib/routes';
 import { Avatar } from '@/src/components/ui/Avatar';
 import { LAUNCHER_DISPLAY_NAME } from '@/src/lib/launcherBrand';
-import { fetchStartupProfiles } from '@/src/lib/api';
-import type { ApiStartupProfile } from '@/src/lib/apiTypes';
 import { preloadPanelRoute } from '@/src/lib/routeModules';
-import { BrainCircuit, Folder, FolderCog, LayoutGrid, Network, Settings, PanelLeft, Home, GitBranch, Share2, Route, Rocket } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/src/components/ui/Popover';
+import {
+  BrainCircuit,
+  Folder,
+  FolderOpen,
+  GitBranch,
+  Home,
+  Network,
+  PanelLeft,
+  Route,
+  Settings,
+  Share2,
+  UserRound,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
 
 type NavGroup = {
   id: 'workspace' | 'advanced';
   label: string;
-  items: { to: string; icon: typeof Home; label: string; route: PanelRouteKey }[];
+  items: { to: string; icon: LucideIcon; label: string; route: PanelRouteKey }[];
 };
 
 const sidebarAnimation = 'duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]';
 
-const routeIcons: Record<PanelRouteKey, typeof Home> = {
+const routeIcons: Record<PanelRouteKey, LucideIcon> = {
   home: Home,
   setup: Home,
   packs: Folder,
-  nodes: Network,
-  graphEditor: GitBranch,
-  profileGraph: Share2,
+  profile: UserRound,
+  settings: Settings,
+  profileWiring: Share2,
+  profileFiles: FolderOpen,
+  flow: Workflow,
+  graph: GitBranch,
   aiInput: BrainCircuit,
   apiMap: Route,
-  profileWorkspace: FolderCog,
-  startup: Rocket,
-  flows: LayoutGrid,
-  settings: Settings,
+  nodeManager: Network,
 };
 
 export function Sidebar() {
@@ -40,32 +52,6 @@ export function Sidebar() {
   const profile = useAppStore(state => state.profile);
   const isSidebarOpen = useAppStore(state => state.isSidebarOpen);
   const setSidebarOpen = useAppStore(state => state.setSidebarOpen);
-  const selectedStartupProfileId = useAppStore(state => state.selectedStartupProfileId);
-  const setSelectedStartupProfileId = useAppStore(state => state.setSelectedStartupProfileId);
-  const [startupProfiles, setStartupProfiles] = useState<ApiStartupProfile[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchStartupProfiles()
-      .then((response) => {
-        if (cancelled) return;
-        setStartupProfiles(response.profiles);
-        const selectedExists = response.profiles.some(
-          (startupProfile) => startupProfile.profile_id === selectedStartupProfileId,
-        );
-        if (!selectedExists) {
-          setSelectedStartupProfileId(
-            response.active_profile_id ?? response.profiles[0]?.profile_id ?? '',
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setStartupProfiles([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedStartupProfileId, setSelectedStartupProfileId]);
 
   const navGroups: NavGroup[] = viewerNavGroups.map((group) => ({
     id: group.id,
@@ -161,23 +147,6 @@ export function Sidebar() {
               >
                 {group.label}
               </div>
-              {group.id === 'advanced' && isSidebarOpen && startupProfiles.length > 0 ? (
-                <label className="mx-2 mb-1 block">
-                  <span className="sr-only">Advanced profile</span>
-                  <select
-                    aria-label="Advanced profile"
-                    className="rumi-select h-9 w-full rounded-lg border border-border bg-bg-main px-2.5 pr-8 text-xs text-text-main"
-                    onChange={(event) => setSelectedStartupProfileId(event.target.value)}
-                    value={selectedStartupProfileId}
-                  >
-                    {startupProfiles.map((startupProfile) => (
-                      <option key={startupProfile.profile_id} value={startupProfile.profile_id}>
-                        {startupProfile.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
               <ul
                 className={cn(
                   "flex flex-col transition-[gap]",
@@ -186,9 +155,7 @@ export function Sidebar() {
                 )}
               >
                 {group.items.map((link) => {
-                  const isActive =
-                    location.pathname === link.to ||
-                    (link.to !== panelRoutes.home && location.pathname.startsWith(link.to));
+                  const isActive = isPanelRouteActive(location.pathname, link.to);
                   return (
                     <li key={link.to}>
                       <Link
@@ -245,31 +212,60 @@ export function Sidebar() {
             sidebarAnimation,
             isSidebarOpen ? "p-3" : "flex justify-center p-1.5",
           )}
-        >
-          <Link
-            to={panelRoutes.settings}
-            title={!isSidebarOpen ? profile.username : undefined}
-            aria-label={profile.username}
-            onFocus={() => { void preloadPanelRoute('settings'); }}
-            onPointerEnter={() => { void preloadPanelRoute('settings'); }}
-            className={cn(
-              "flex items-center rounded-lg transition-[gap,padding,background-color] hover:bg-bg-hover",
-              sidebarAnimation,
-              isSidebarOpen ? "gap-3 p-2 w-full" : "justify-center gap-0 p-2"
-            )}
           >
-            <Avatar src={profile.avatar} username={profile.username} className="h-7 w-7 text-xs" />
-            <div
+          <Popover>
+            <PopoverTrigger
               className={cn(
-                "min-w-0 flex-1 overflow-hidden transition-[max-width,opacity,transform]",
+                "flex min-h-11 items-center rounded-lg text-left transition-[gap,padding,background-color] hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]",
                 sidebarAnimation,
-                isSidebarOpen ? "max-w-32 translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+                isSidebarOpen ? "w-full gap-3 p-2" : "justify-center gap-0 p-2",
               )}
-              aria-hidden={!isSidebarOpen}
+              aria-label={`${profile.username} profile and settings`}
+              aria-haspopup="dialog"
+              title={!isSidebarOpen ? `${profile.username} profile and settings` : undefined}
             >
-              <div className="truncate text-sm font-medium text-text-main">{profile.username}</div>
-            </div>
-          </Link>
+              <Avatar src={profile.avatar} username={profile.username} className="size-7 text-xs" />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 overflow-hidden transition-[max-width,opacity,transform]",
+                  sidebarAnimation,
+                  isSidebarOpen ? "max-w-32 translate-x-0 opacity-100" : "max-w-0 -translate-x-2 opacity-0",
+                )}
+                aria-hidden={!isSidebarOpen}
+              >
+                <span className="block truncate text-sm font-medium text-text-main">{profile.username}</span>
+              </span>
+            </PopoverTrigger>
+            <PopoverContent align="right" className="w-64" role="dialog" aria-label="Profile menu">
+              <div className="border-b border-border px-3 py-2">
+                <p className="truncate text-sm font-semibold text-text-main">{profile.username}</p>
+                <p className="text-xs text-text-muted">Launcher-local profile</p>
+              </div>
+              <nav className="flex flex-col gap-1 p-1" aria-label="Profile and settings">
+                {(['profile', 'settings'] as const).map((route) => {
+                  const meta = panelRouteMeta[route];
+                  const Icon = routeIcons[route];
+                  const isActive = location.pathname === meta.path;
+                  return (
+                    <Link
+                      key={route}
+                      to={meta.path}
+                      aria-current={isActive ? 'page' : undefined}
+                      onFocus={() => { void preloadPanelRoute(route); }}
+                      onPointerEnter={() => { void preloadPanelRoute(route); }}
+                      className={cn(
+                        "flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]",
+                        isActive ? "bg-accent/8 text-accent" : "text-text-muted hover:bg-bg-hover hover:text-text-main",
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      <span>{t(meta.navKey || meta.titleKey)}</span>
+                    </Link>
+                  );
+                })}
+              </nav>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </aside>

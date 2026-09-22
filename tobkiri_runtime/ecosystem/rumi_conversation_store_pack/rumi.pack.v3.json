@@ -1,24 +1,330 @@
 {
-  "pack_api_version": "rumi.pack.v3",
-  "pack": {"id": "rumi.conversation_store", "version": "1.0.0", "kind": "service", "display_name": "Rumi Conversation Store", "description": "Atomic authoritative conversation and ordered-message storage."},
-  "contracts": {"provides": [
-    {"id": "rumi.resource.conversation.v1", "version": "1.0.0", "provider_instance_id": "conversation-store.resource", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_conversation_store_pack", "migration_id": "conversations-v1", "rollback_id": "conversations-v1"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["conversation.read"]},
-    {"id": "rumi.action.conversation.manage.v1", "version": "1.0.0", "provider_instance_id": "conversation-store.manage", "cardinality": "one", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_conversation_store_pack", "migration_id": "conversations-v1", "rollback_id": "conversations-v1"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["conversation.manage"]},
-    {"id": "rumi.resource.message.v1", "version": "1.0.0", "provider_instance_id": "conversation-store.message-resource", "cardinality": "one", "security": "sensitive", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_conversation_store_pack", "migration_id": "conversations-v1", "rollback_id": "conversations-v1"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["message.read"]},
-    {"id": "rumi.action.message.manage.v1", "version": "1.0.0", "provider_instance_id": "conversation-store.message-manage", "cardinality": "one", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_conversation_store_pack", "migration_id": "conversations-v1", "rollback_id": "conversations-v1"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["message.manage"]},
-    {"id": "rumi.action.conversation.migrate.v1", "version": "1.0.0", "provider_instance_id": "conversation-store.migrate", "cardinality": "one", "security": "restricted", "failure": "fail_closed", "lifecycle": {"introduced": "1.0.0", "deprecated": false, "data_owner": "rumi_conversation_store_pack", "migration_id": "conversations-v1", "rollback_id": "conversations-v1"}, "schemas": {"input": {"type": "object"}, "output": {"type": "object"}}, "isolation": "in_process", "required_capabilities": ["conversation.migrate"]}
-  ], "requires": []},
+  "contracts": {
+    "provides": [
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.conversation.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_conversation_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "conversations-v1",
+          "rollback_id": "conversations-v1"
+        },
+        "provider_instance_id": "conversation-store.resource",
+        "required_capabilities": [
+          "conversation.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.conversation.manage.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_conversation_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "conversations-v1",
+          "rollback_id": "conversations-v1"
+        },
+        "provider_instance_id": "conversation-store.manage",
+        "required_capabilities": [
+          "conversation.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.resource.message.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_conversation_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "conversations-v1",
+          "rollback_id": "conversations-v1"
+        },
+        "provider_instance_id": "conversation-store.message-resource",
+        "required_capabilities": [
+          "message.read"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "sensitive",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.message.manage.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_conversation_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "conversations-v1",
+          "rollback_id": "conversations-v1"
+        },
+        "provider_instance_id": "conversation-store.message-manage",
+        "required_capabilities": [
+          "message.manage"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      },
+      {
+        "cardinality": "one",
+        "failure": "fail_closed",
+        "id": "rumi.action.conversation.migrate.v1",
+        "isolation": "in_process",
+        "lifecycle": {
+          "data_owner": "rumi_conversation_store_pack",
+          "deprecated": false,
+          "introduced": "1.0.0",
+          "migration_id": "conversations-v1",
+          "rollback_id": "conversations-v1"
+        },
+        "provider_instance_id": "conversation-store.migrate",
+        "required_capabilities": [
+          "conversation.migrate"
+        ],
+        "schemas": {
+          "input": {
+            "type": "object"
+          },
+          "output": {
+            "type": "object"
+          }
+        },
+        "security": "restricted",
+        "version": "1.0.0"
+      }
+    ],
+    "requires": []
+  },
   "entrypoints": [
-    {"id": "conversation-resource", "contract_id": "rumi.resource.conversation.v1", "loader": "python", "module": "ecosystem.rumi_conversation_store_pack.runtime.store", "symbol": "create_conversation_resource", "artifact_hash": "sha256:b4b6e4b3fe79e05a469e6cd29f616157888c695e332053e9e8b1d99b79cb03d3"},
-    {"id": "conversation-manage", "contract_id": "rumi.action.conversation.manage.v1", "loader": "python", "module": "ecosystem.rumi_conversation_store_pack.runtime.store", "symbol": "create_conversation_action", "artifact_hash": "sha256:b4b6e4b3fe79e05a469e6cd29f616157888c695e332053e9e8b1d99b79cb03d3"},
-    {"id": "message-resource", "contract_id": "rumi.resource.message.v1", "loader": "python", "module": "ecosystem.rumi_conversation_store_pack.runtime.store", "symbol": "create_message_resource", "artifact_hash": "sha256:b4b6e4b3fe79e05a469e6cd29f616157888c695e332053e9e8b1d99b79cb03d3"},
-    {"id": "message-manage", "contract_id": "rumi.action.message.manage.v1", "loader": "python", "module": "ecosystem.rumi_conversation_store_pack.runtime.store", "symbol": "create_message_action", "artifact_hash": "sha256:b4b6e4b3fe79e05a469e6cd29f616157888c695e332053e9e8b1d99b79cb03d3"},
-    {"id": "conversation-migrate", "contract_id": "rumi.action.conversation.migrate.v1", "loader": "python", "module": "ecosystem.rumi_conversation_store_pack.runtime.store", "symbol": "create_migration_action", "artifact_hash": "sha256:b4b6e4b3fe79e05a469e6cd29f616157888c695e332053e9e8b1d99b79cb03d3"}
+    {
+      "artifact_hash": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
+      "contract_id": "rumi.resource.conversation.v1",
+      "id": "conversation-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_conversation_store_pack.runtime.store",
+      "symbol": "create_conversation_resource"
+    },
+    {
+      "artifact_hash": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
+      "contract_id": "rumi.action.conversation.manage.v1",
+      "id": "conversation-manage",
+      "loader": "python",
+      "module": "ecosystem.rumi_conversation_store_pack.runtime.store",
+      "symbol": "create_conversation_action"
+    },
+    {
+      "artifact_hash": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
+      "contract_id": "rumi.resource.message.v1",
+      "id": "message-resource",
+      "loader": "python",
+      "module": "ecosystem.rumi_conversation_store_pack.runtime.store",
+      "symbol": "create_message_resource"
+    },
+    {
+      "artifact_hash": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
+      "contract_id": "rumi.action.message.manage.v1",
+      "id": "message-manage",
+      "loader": "python",
+      "module": "ecosystem.rumi_conversation_store_pack.runtime.store",
+      "symbol": "create_message_action"
+    },
+    {
+      "artifact_hash": "sha256:9157e336a496cbbf2dc8f6a664b77d818d0676ee4c7bc6deb8ff0486a57c5116",
+      "contract_id": "rumi.action.conversation.migrate.v1",
+      "id": "conversation-migrate",
+      "loader": "python",
+      "module": "ecosystem.rumi_conversation_store_pack.runtime.store",
+      "symbol": "create_migration_action"
+    }
   ],
+  "extensions": {
+    "rumi.conversation_store.boundary": {
+      "context_materialization": false,
+      "dual_write": false,
+      "knowledge_owner": false,
+      "memory_owner": false,
+      "turn_runtime": false
+    },
+    "rumi.legacy_projection": {
+      "dependencies": {},
+      "host_execution": true,
+      "manifest": {
+        "connectivity": {
+          "provides": [
+            "rumi.action.conversation.manage.v1",
+            "rumi.action.conversation.migrate.v1",
+            "rumi.action.message.manage.v1",
+            "rumi.resource.conversation.v1",
+            "rumi.resource.message.v1"
+          ],
+          "requires": []
+        },
+        "dependencies": {},
+        "description": "Atomic authoritative conversation and ordered-message storage.",
+        "display_name": "Rumi Conversation Store",
+        "host_execution": true,
+        "metadata": {
+          "authoritative_owner": true,
+          "canonical_v4": {
+            "artifact": "pack.v4.json",
+            "artifact_digest": "sha256:a50c8a495c9f97cae6ca53323b808c8642a27d4bef7c5adc730f68fed78da054",
+            "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+            "source_identity": "sha256:1848518fd6757555c22f379c080453be885d766d86bc80003432eb2e31b1343c"
+          },
+          "integrity": {
+            "artifact_manifest": "artifact-manifest.json"
+          },
+          "owner_surfaces": [
+            "conversations",
+            "messages"
+          ],
+          "projection_owner": "scripts/migrate_manifest_authority.py",
+          "security": {
+            "atomic_messages": true,
+            "dual_write": false
+          }
+        },
+        "pack_id": "rumi_conversation_store_pack",
+        "pack_identity": "rumi:ecosystem/rumi_conversation_store_pack",
+        "provenance": {
+          "build_identity": "rumi_conversation_store_pack:1.0.0",
+          "content_hash": "sha256:a576561e08c153f28b62cd5c708e30c03eeb5184115b235a749c35ec038911cd",
+          "signature": null,
+          "trust_class": "local"
+        },
+        "required_capabilities": [
+          "conversation.manage",
+          "conversation.migrate",
+          "conversation.read",
+          "message.manage",
+          "message.read"
+        ],
+        "required_network": {
+          "allowed_domains": [],
+          "allowed_ports": []
+        },
+        "required_secrets": [],
+        "resources": [],
+        "version": "1.0.0",
+        "vocabulary": {
+          "types": [
+            "service"
+          ]
+        }
+      },
+      "pack_id": "rumi_conversation_store_pack"
+    },
+    "tobkiri.offline_projection": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "owner": "rumi_conversation_store_pack",
+      "runtime_executable": false,
+      "source": "pack.v4.json",
+      "source_identity": "sha256:1848518fd6757555c22f379c080453be885d766d86bc80003432eb2e31b1343c"
+    }
+  },
+  "migration": {
+    "compatibility_aliases": [],
+    "compatibility_projection": "legacy_to_v3_read_only",
+    "from": [
+      "defaultspack.domain.chat.store"
+    ],
+    "removal_wave": 10,
+    "rollback": "Remove migrated owner state and retain the owner-only source backup.",
+    "sunset_at": "2027-12-31"
+  },
+  "pack": {
+    "description": "Atomic authoritative conversation and ordered-message storage.",
+    "display_name": "Rumi Conversation Store",
+    "id": "rumi.conversation_store",
+    "kind": "service",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "rumi.pack.v3",
+  "permissions": [
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "conversation.read"
+    },
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "conversation.manage"
+    },
+    {
+      "access": "read",
+      "approval_required": false,
+      "capability": "message.read"
+    },
+    {
+      "access": "write",
+      "approval_required": false,
+      "capability": "message.manage"
+    },
+    {
+      "access": "control",
+      "approval_required": true,
+      "capability": "conversation.migrate"
+    }
+  ],
+  "provenance": {
+    "build_identity": "rumi_conversation_store_pack:1.0.0",
+    "content_hash": "sha256:a576561e08c153f28b62cd5c708e30c03eeb5184115b235a749c35ec038911cd",
+    "signature": null,
+    "trust_class": "local"
+  },
   "resources": [],
-  "storage": [{"namespace": "rumi.conversations", "schema_version": "1.0.0", "authoritative": true, "retention": "until explicit deletion or profile removal", "export_import": true}],
-  "permissions": [{"capability": "conversation.read", "access": "read", "approval_required": false}, {"capability": "conversation.manage", "access": "write", "approval_required": false}, {"capability": "message.read", "access": "read", "approval_required": false}, {"capability": "message.manage", "access": "write", "approval_required": false}, {"capability": "conversation.migrate", "access": "control", "approval_required": true}],
-  "provenance": {"content_hash": "sha256:64bef8b249f56f9d522b9b8ad403113c319e4e57a7849521d29d11c5763e2a0f", "build_identity": "rumi-conversation-store-pack:1.0.0", "trust_class": "local", "signature": null},
-  "migration": {"from": ["defaultspack.domain.chat.store"], "compatibility_aliases": [], "compatibility_projection": "legacy_to_v3_read_only", "removal_wave": 10, "sunset_at": "2027-12-31", "rollback": "Remove migrated owner state and retain the owner-only source backup."},
-  "extensions": {"rumi.conversation_store.boundary": {"turn_runtime": false, "context_materialization": false, "memory_owner": false, "knowledge_owner": false, "dual_write": false}}
+  "storage": [
+    {
+      "authoritative": true,
+      "export_import": true,
+      "namespace": "rumi.conversations",
+      "retention": "until explicit deletion or profile removal",
+      "schema_version": "1.0.0"
+    }
+  ]
 }

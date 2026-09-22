@@ -1,2 +1,70 @@
-{"pack_id":"rumi_git_publish_pack","pack_identity":"rumi:ecosystem/rumi_git_publish_pack","display_name":"Rumi Git Publish Pack","version":"1.0.0","description":"Receipt-gated Git branch publication to an exact network remote.","dependencies":{"rumi_git_read_pack":">=1.0.0,<2.0.0","rumi_workspace_mount_pack":">=1.0.0,<2.0.0","rumi_host_authority_bridge_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.service.git.read.v1","rumi.resource.workspace.v1","rumi.service.host.authorize.v1"],"provides":["rumi.service.git.publish.v1"]},"required_secrets":[],"required_capabilities":["git.publish","git.read","workspace.metadata.read","host.authority.consume"],"required_network":{"allowed_domains":["selected_git_remote_host"],"allowed_ports":[22,443]},"host_execution":true,"resources":[],"provenance":{"content_hash":"sha256:844fe7dcff7d5777e09e0c59cd46541d48e69885b3c98b0828ddf6a6b7943aec","build_identity":"rumi-git-publish-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authority":"publish","local_write":false,"receipt_required":true,"remote_url_hash_required":true,"tool_or_ui_registry_imports":false}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.git.publish.v1"
+    ],
+    "requires": [
+      "rumi.resource.workspace.v1",
+      "rumi.service.git.read.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_git_read_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+    "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Receipt-gated Git branch publication to an exact network remote.",
+  "display_name": "Rumi Git Publish",
+  "host_execution": true,
+  "metadata": {
+    "authority": "publish",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:476bd1d0d296039b1bf37a80960f08ba5de56bc2dd90c7cedd1120d2ab01e373",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:fd295162d34ea1f62516c13448d67800925aef2a04b45ecabf77b0b3bcd072bf"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:fd295162d34ea1f62516c13448d67800925aef2a04b45ecabf77b0b3bcd072bf"
+    },
+    "local_write": false,
+    "manifest_authority": "v4-authoritative",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "receipt_required": true,
+    "remote_url_hash_required": true,
+    "tool_or_ui_registry_imports": false
+  },
+  "pack_id": "rumi_git_publish_pack",
+  "pack_identity": "rumi:ecosystem/rumi_git_publish_pack",
+  "provenance": {
+    "build_identity": "rumi_git_publish_pack:1.0.0",
+    "content_hash": "sha256:63795cba72da62efd567adbf39453de1e8069e59f6453cd5877da51a43048f1a",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "git.publish",
+    "git.read",
+    "host.authority.consume",
+    "workspace.metadata.read"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

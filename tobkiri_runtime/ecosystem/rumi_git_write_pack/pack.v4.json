@@ -1,0 +1,140 @@
+{
+  "artifacts": [
+    {
+      "digest": "sha256:4a16f8ea673195b506f578521087fbde9027a5e424c2007c60f6a4fbc0b847e8",
+      "kind": "sidecar",
+      "path": "executables.v4.json"
+    },
+    {
+      "digest": "sha256:bd659fafb83b1510377471701cc37e615677a840ce6af89e11c51cd6bc61108e",
+      "kind": "executable",
+      "path": "runtime/write.py"
+    }
+  ],
+  "contracts": [
+    {
+      "contract_id": "tobkiri.service.git.write.v1",
+      "operations": [
+        "rumi_git_write_pack.git-write"
+      ],
+      "revision_digest": "sha256:dd8a0c32e7bfcb09977b040457bc9284a935c7a5334d3507e05dc5b275d3b6d9"
+    }
+  ],
+  "functions": [
+    {
+      "contract_revision_digest": "sha256:dd8a0c32e7bfcb09977b040457bc9284a935c7a5334d3507e05dc5b275d3b6d9",
+      "id": "rumi_git_write_pack.git-write.service",
+      "implementation_digest": "sha256:bd659fafb83b1510377471701cc37e615677a840ce6af89e11c51cd6bc61108e",
+      "isolation": "dedicated_process",
+      "operations": [
+        "rumi_git_write_pack.git-write"
+      ],
+      "role": "host_capability_provider"
+    }
+  ],
+  "integrity": {
+    "artifact_set_digest": "sha256:22e399067b25de637152bcf463b577075ea900368a1da470f615c1b398222082",
+    "contract_catalog_digest": "sha256:06b21018a9ceb2cc6895ed34a5015428006fa306fe709708cba91c697d826b0e",
+    "source_identity": "sha256:ced19cf1404dcd5fa84dd96ccf5c735593ff5c57b9a9ba61af5323dce68bc614"
+  },
+  "migration": {
+    "compatibility": "read_only",
+    "legacy_ids": [
+      "rumi.service.git.write.v1",
+      "rumi:ecosystem/rumi_git_write_pack",
+      "rumi_git_write_pack"
+    ],
+    "removal_wave": 10,
+    "sunset_at": "2027-12-31"
+  },
+  "operation_catalog": [
+    {
+      "contract_reference": "tobkiri.service.git.write.v1",
+      "effect_ceiling": [
+        "capability:git.write",
+        "host:brokered-execution"
+      ],
+      "operation_id": "rumi_git_write_pack.git-write",
+      "owner": "rumi_git_write_pack",
+      "provider_id": "rumi_git_write_pack.git-write.service",
+      "source_kind": "canonical_v4_contract"
+    }
+  ],
+  "pack": {
+    "artifact_digest": "sha256:22e399067b25de637152bcf463b577075ea900368a1da470f615c1b398222082",
+    "display_name": "Rumi Git Write",
+    "id": "rumi_git_write_pack",
+    "kind": "host_extension",
+    "version": "1.0.0"
+  },
+  "pack_api_version": "io.tobkiri.pack.v4",
+  "provenance": {
+    "evidence": [
+      {
+        "digest": "sha256:ced19cf1404dcd5fa84dd96ccf5c735593ff5c57b9a9ba61af5323dce68bc614",
+        "path": "schemas/pack_v4_catalog.v1.json",
+        "rule_id": "canonical-pack-v4-source-record"
+      }
+    ],
+    "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+    "generator_version": "1.0.0",
+    "normative": true,
+    "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+    "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+    "schema": "io.tobkiri.provenance.v1",
+    "source_digest": "sha256:ced19cf1404dcd5fa84dd96ccf5c735593ff5c57b9a9ba61af5323dce68bc614",
+    "source_kind": "migration",
+    "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_git_write_pack"
+  },
+  "provider_catalog": [
+    {
+      "contract_reference": "tobkiri.service.git.write.v1",
+      "operations": [
+        "rumi_git_write_pack.git-write"
+      ],
+      "owner": "rumi_git_write_pack",
+      "provider_id": "rumi_git_write_pack.git-write.service"
+    }
+  ],
+  "requirements": {
+    "approval_policy": "capability_gated",
+    "capabilities": [
+      "git.read",
+      "git.write",
+      "host.authority.consume",
+      "workspace.metadata.read"
+    ],
+    "contract_dependencies": [
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.resource.workspace.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.git.read.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      },
+      {
+        "cardinality": "one",
+        "contract_id": "tobkiri.service.host.authorize.v1",
+        "optional": false,
+        "version_range": ">=1.0.0 <2.0.0"
+      }
+    ],
+    "execution_boundary": "host_brokered",
+    "network": {
+      "allowed_domains": [],
+      "allowed_ports": []
+    },
+    "pack_dependencies": {
+      "rumi_git_read_pack": ">=1.0.0,<2.0.0",
+      "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0",
+      "rumi_workspace_mount_pack": ">=1.0.0,<2.0.0"
+    },
+    "secrets": [],
+    "workspace_boundary": "host_brokered"
+  }
+}

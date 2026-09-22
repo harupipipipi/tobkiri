@@ -202,7 +202,8 @@ def normalize_ai_input_config(value: Any, *, strict: bool = False) -> dict[str, 
 
 
 def edge_from_dict(raw_edge: dict[str, Any], *, strict: bool = False) -> AiInputEdge | None:
-    metadata = raw_edge.get("metadata") if isinstance(raw_edge.get("metadata"), dict) else {}
+    raw_metadata = raw_edge.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
     edge_id = str(raw_edge.get("id") or "").strip()
     from_id = str(raw_edge.get("from_id") or raw_edge.get("from") or "").strip()
     to_id = str(raw_edge.get("to_id") or raw_edge.get("to") or "").strip()
@@ -234,6 +235,8 @@ def _preview_text(text: str, limit: int = 280) -> str:
 
 
 def _positive_int(value: Any, default: int) -> int:
+    if value is None:
+        return default
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -346,6 +349,8 @@ def _normalize_budgets(value: Any, *, strict: bool) -> dict[str, dict[str, Any]]
         if not port_name or not isinstance(raw_budget, dict):
             continue
         max_tokens = raw_budget.get("max_tokens")
+        if max_tokens is None:
+            continue
         try:
             max_tokens_int = int(max_tokens)
         except (TypeError, ValueError):

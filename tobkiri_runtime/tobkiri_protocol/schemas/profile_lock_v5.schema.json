@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tobkiri.local/io.tobkiri/profile-lock.v5.schema.json",
+  "title": "Tobkiri ProfileLock v5",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lock_api_version", "profile_id", "profile_revision", "profile_definition_digest", "catalog_revision", "bundle_digest", "security_epoch", "base", "shell", "application", "effective_set", "variant_pins", "requested_edges_digest", "constraints_digest", "closure_digest", "provenance_digest", "plan_digest", "profile_authority_snapshot_digest", "lock_digest"],
+  "properties": {
+    "lock_api_version": {"const": "io.tobkiri.profile-lock.v5"},
+    "profile_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+    "profile_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "profile_definition_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "catalog_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "bundle_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "security_epoch": {"type": "integer", "minimum": 1},
+    "base": {"$ref": "#/$defs/exactBase"},
+    "shell": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/exactShell"}]},
+    "application": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/exactApplication"}]},
+    "effective_set": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/effectiveArtifact"}},
+    "variant_pins": {"type": "array", "items": {"$ref": "#/$defs/variantPin"}, "uniqueItems": true},
+    "requested_edges_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "constraints_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "closure_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "provenance_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "plan_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "profile_authority_snapshot_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+    "lock_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+  },
+  "$defs": {
+    "exactBase": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pack_id", "artifact_digest", "definition_revision"],
+      "properties": {
+        "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "definition_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+      }
+    },
+    "exactShell": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider_id", "pack_id", "artifact_digest", "executable_artifact_digest", "definition_revision", "contract_id", "platform", "architecture"],
+      "properties": {
+        "provider_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "executable_artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "definition_revision": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "contract_id": {"const": "app.shell.v1"},
+        "platform": {"enum": ["macos", "windows", "linux"]},
+        "architecture": {"enum": ["arm64", "x86_64"]}
+      }
+    },
+    "exactApplication": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pack_id", "artifact_digest", "executable_artifact_digest", "definition_digest"],
+      "properties": {
+        "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "executable_artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "definition_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+      }
+    },
+    "effectiveArtifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "identity", "artifact_digest"],
+      "properties": {
+        "role": {"enum": ["base", "shell", "pack"]},
+        "identity": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"}
+      }
+    },
+    "variantPin": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pack_id", "artifact_digest", "executable_catalog_digest", "variant_id", "platform", "architecture", "runtime_abi", "backend", "execution_kind", "domain_kind"],
+      "properties": {
+        "pack_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "artifact_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "executable_catalog_digest": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/digest"},
+        "variant_id": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "platform": {"type": "string", "minLength": 1},
+        "architecture": {"type": "string", "minLength": 1},
+        "runtime_abi": {"type": "string", "minLength": 1},
+        "backend": {"$ref": "https://schemas.tobkiri.local/io.tobkiri/common.v1.schema.json#/$defs/id"},
+        "execution_kind": {"enum": ["wasm", "pack_vm", "host_extension", "remote"]},
+        "domain_kind": {"enum": ["wasm_component", "pack_vm", "dedicated_process", "remote"]}
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ import importlib
 import os
 import sys
 import types
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -101,31 +101,44 @@ def _run_main(*argv, env=None):
 class TestProductionGuard:
 
     def test_production_permissive_rejected(self):
-        """RUMI_ENVIRONMENT=production + --permissive -> SystemExit(1)"""
+        """Production cannot opt into the retired permissive CLI."""
         with pytest.raises(SystemExit) as exc:
             _run_main("--permissive", env={"RUMI_ENVIRONMENT": "production"})
-        assert exc.value.code == 1
+        assert exc.value.code == 2
 
     def test_development_permissive_allowed(self, tmp_path):
-        """RUMI_ENVIRONMENT=development + lockfile + --permissive -> 起動許可"""
+        """Development cannot restore the retired permissive CLI."""
         (tmp_path / "permissive.lock").touch()
-        _run_main("--permissive", "--headless",
-                  env={"RUMI_ENVIRONMENT": "development", "RUMI_USER_DATA": str(tmp_path)})
+        with pytest.raises(SystemExit) as exc:
+            _run_main(
+                "--permissive",
+                "--headless",
+                env={
+                    "RUMI_ENVIRONMENT": "development",
+                    "RUMI_USER_DATA": str(tmp_path),
+                },
+            )
+        assert exc.value.code == 2
 
     def test_unset_env_permissive_allowed(self):
-        """RUMI_ENVIRONMENT 未設定 + --permissive -> opt-in 不足で拒否"""
+        """An unset environment cannot restore the retired permissive CLI."""
         with pytest.raises(SystemExit) as exc:
             _run_main("--permissive", "--headless",
                       env={"RUMI_ENVIRONMENT": None, "RUMI_ALLOW_PERMISSIVE": None})
-        assert exc.value.code == 1
+        assert exc.value.code == 2
 
     def test_production_uppercase_permissive_rejected(self):
-        """RUMI_ENVIRONMENT=PRODUCTION (大文字) + --permissive -> SystemExit(1)"""
+        """Case changes cannot restore the retired permissive CLI."""
         with pytest.raises(SystemExit) as exc:
             _run_main("--permissive", env={"RUMI_ENVIRONMENT": "PRODUCTION"})
-        assert exc.value.code == 1
+        assert exc.value.code == 2
 
     def test_no_permissive_normal_startup(self):
-        """permissive 要求なしなら production でも通常起動する。"""
-        _run_main("--headless",
-                  env={"RUMI_ENVIRONMENT": "production", "RUMI_SECURITY_MODE": None})
+        """The current headless v4 entrypoint starts without permissive state."""
+        import app
+
+        kernel = MagicMock()
+        with patch.object(app, "Kernel", return_value=kernel):
+            assert app.main(["--headless"]) == 0
+        kernel.run_startup.assert_called_once()
+        kernel.shutdown.assert_called_once()

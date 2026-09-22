@@ -163,30 +163,3 @@ def test_supervisor_snapshot_does_not_advertise_live_controls() -> None:
     assert snapshot["capabilities"]["replay"] is False
     assert live_actions.isdisjoint(snapshot["action_buttons"])
     assert "replay_evidence_is_recorded" not in snapshot["security_guardrails"]
-
-
-def test_panel_dashboard_includes_supervisor_snapshot(monkeypatch) -> None:
-    from core_runtime.api.control_panel_handlers import ControlPanelHandlersMixin
-    from core_runtime import supervisor_dashboard
-
-    monkeypatch.setattr(
-        supervisor_dashboard,
-        "build_supervisor_dashboard_snapshot",
-        lambda: {"router": {"policy": "structured_first_computer_last"}, "metrics": {"active_runs": 0}},
-    )
-
-    class FakePanel(ControlPanelHandlersMixin):
-        def _panel_list_packs_internal(self):
-            return [{"enabled": True}, {"enabled": False}]
-
-        def _panel_list_flows_internal(self):
-            return [{"flow_id": "flow_1"}]
-
-        def _panel_read_profile(self):
-            return {"username": "haru", "language": "ja", "icon": None}
-
-    dashboard = FakePanel()._panel_get_dashboard()
-
-    assert dashboard["packs"] == {"total": 2, "enabled": 1, "disabled": 1}
-    assert dashboard["flows"] == {"total": 1}
-    assert dashboard["supervisor"]["router"]["policy"] == "structured_first_computer_last"

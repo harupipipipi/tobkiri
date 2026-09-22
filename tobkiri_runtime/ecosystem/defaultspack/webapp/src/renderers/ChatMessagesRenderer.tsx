@@ -885,6 +885,48 @@ function MessageActionBar({
 }
 
 function WidgetCard({ widget }: { widget: Record<string, unknown> }) {
+  if (String(widget.type ?? "") === "repository_evidence") {
+    const statistics = isRecord(widget.statistics) ? widget.statistics : {};
+    const reasons = isRecord(widget.excluded_reason_counts)
+      ? widget.excluded_reason_counts
+      : {};
+    const excludedCount = Number(statistics.files_excluded ?? 0);
+    const selectedCount = Number(statistics.files_selected ?? 0);
+    const reasonEntries = Object.entries(reasons)
+      .filter(([, value]) => Number.isFinite(Number(value)))
+      .sort(([left], [right]) => left.localeCompare(right));
+    return (
+      <section
+        className="mt-2 w-[min(520px,100%)] rounded-lg border border-cyan-500/25 bg-cyan-500/10 p-3"
+        aria-label="Repository evidence statistics"
+        data-testid="repository-evidence-widget"
+      >
+        <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-cyan-300">
+          Repository evidence
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div className="rounded-md border border-cyan-400/15 bg-zinc-950/35 px-2.5 py-2">
+            <div className="text-[10px] text-zinc-500">Selected</div>
+            <div className="font-mono text-lg text-zinc-100">{selectedCount}</div>
+          </div>
+          <div className="rounded-md border border-cyan-400/15 bg-zinc-950/35 px-2.5 py-2">
+            <div className="text-[10px] text-zinc-500">Excluded</div>
+            <div className="font-mono text-lg text-zinc-100">{excludedCount}</div>
+          </div>
+        </div>
+        {reasonEntries.length > 0 && (
+          <dl className="mt-2 grid gap-1 text-[11px]">
+            {reasonEntries.map(([reason, value]) => (
+              <div key={reason} className="flex items-center justify-between gap-3">
+                <dt className="min-w-0 truncate text-zinc-400">{reason}</dt>
+                <dd className="shrink-0 font-mono text-zinc-200">{Number(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </section>
+    );
+  }
   if (String(widget.kind ?? "") === "conversation_handoff") {
     const title = String(widget.title ?? "移動先");
     const conversationId = String(widget.conversation_id ?? "");
@@ -1648,6 +1690,8 @@ export function ChatMessagesRenderer({
   pendingToolStartedAt = {},
   messages,
   messagesEndRef,
+  messagesScrollRef,
+  onMessagesScroll,
   unknownBlockStrategy,
   showActivityInMessages,
   showWidgets,
@@ -1710,7 +1754,11 @@ export function ChatMessagesRenderer({
       ) : isNewConversation ? (
         <div className="flex-1" />
       ) : (
-        <div className="rumi-messages-scroll flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-3 sm:px-6 lg:px-8">
+        <div
+          ref={messagesScrollRef}
+          onScroll={onMessagesScroll}
+          className="rumi-messages-scroll flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-3 sm:px-6 lg:px-8"
+        >
           <div className="mx-auto w-full max-w-[980px] min-w-0 space-y-5">
             {visibleMessages.map((message) => {
               const toolActivity = showActivityInMessages && message.role === "agent"

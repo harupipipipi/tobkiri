@@ -14,6 +14,7 @@ import type { ComposerMentionMetadata } from "../lib/composerWidgets";
 import type { ComposerEntityReference } from "../lib/composerReferences";
 import type { WidgetConversationContext } from "../lib/widgetContext";
 import type { ModelSelectorSchema } from "../features/models";
+import type { ProjectInfo } from "../features/projects/projectStorage";
 
 export type { ComposerCommandItem } from "../lib/api";
 
@@ -159,6 +160,8 @@ export type ChatMessagesRendererProps = {
   pendingToolStartedAt?: Record<string, number>;
   messages: ChatUiMessage[];
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
+  messagesScrollRef?: MutableRefObject<HTMLDivElement | null>;
+  onMessagesScroll?: () => void;
   unknownBlockStrategy: string;
   showActivityInMessages: boolean;
   showWidgets: boolean;
@@ -193,10 +196,13 @@ export type ComposerRendererProps = {
   modelStatusIndicators?: ComposerModelStatusIndicator[];
   voiceInputEnabled?: boolean;
   voiceInputUseAi?: boolean;
+  manualRuntimeModeSelectionEnabled?: boolean;
   mode?: AppMode;
   codingContext?: CodingContext | null;
   codingWorkspaces?: CodingWorkspaceRecord[];
   selectedCodingWorkspaceId?: string | null;
+  projects?: ProjectInfo[];
+  selectedProjectId?: string | null;
   attachedFiles?: AttachedFile[];
   pendingMentionAttachmentPaths?: string[];
   droppedWidgets?: DroppedWidget[];
@@ -245,9 +251,12 @@ export type ComposerRendererProps = {
   onCodingDirectoryChange?: (directory: string) => void;
   onCodingWorkspaceSelect?: (workspaceId: string) => void;
   onCodingWorkspaceTrust?: (workspaceId: string) => void;
-  onCodingWorkspaceCreate?: () => void;
+  onCodingWorkspaceCreate?: (rootPath?: string) => Promise<CodingWorkspaceRecord | null | undefined> | void;
   onCodingWorkspacesRefresh?: () => void;
   onCodingContextRefresh?: () => void;
+  onProjectSelect?: (project: ProjectInfo | null) => void;
+  onProjectDirectorySelect?: () => Promise<string | null | undefined>;
+  onProjectStoragePrepare?: (rootPath: string) => Promise<{ rootPath: string; rumiDataPath: string } | null | undefined>;
 };
 
 export type ToolPreviewPanelRendererProps = {

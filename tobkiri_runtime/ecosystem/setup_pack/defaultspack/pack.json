@@ -1,17 +1,17 @@
 {
   "pack_id": "defaultspack",
-  "display_name": "Defaultspack v2",
-  "description": "Recommended defaultspack v2 cloned from defaults, promoted to the main runtime pack, with canonical /api/defaultspack routes and migration support.",
+  "display_name": "Tobkiri Defaults v4",
+  "description": "Installs the explicit defaults-basepack, shell.tauri.default, defaultspack, and rumi-file-inspect Profile v4 composition. Approval and activation require exact Authority Kernel records.",
   "target_pack_id": "defaultspack",
-  "version": "2.0.0",
+  "version": "4.0.0",
   "compatibility": {
-    "target_pack_version": ">=2.0.0",
+    "target_pack_version": ">=4.0.0",
     "python": ">=3.10",
     "platforms": ["windows", "linux", "macos"]
   },
   "marketplace": {
     "registry": "bundled",
-    "publisher": "rumi-ai",
+    "publisher": "tobkiri",
     "status": "verified"
   },
   "signing": {
@@ -19,6 +19,14 @@
     "verified": true
   },
   "recommended": true,
-  "risk_level": "low",
-  "supports_all_ok": true
+  "risk_level": "medium",
+  "supports_all_ok": false,
+  "required_permissions": [],
+  "install_surfaces": ["profile_v4"],
+  "install_prompt": {
+    "base_pack_id": "defaults-basepack",
+    "shell_provider_id": "shell.tauri.default",
+    "profile_id": "defaults",
+    "authority_mode": "authority_kernel_exact_records"
+  }
 }

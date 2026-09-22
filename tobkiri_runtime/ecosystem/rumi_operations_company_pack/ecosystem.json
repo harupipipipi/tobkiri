@@ -1,21 +1,6 @@
 {
-  "pack_id": "rumi_operations_company_pack",
-  "pack_identity": "rumi:ecosystem/rumi_operations_company_pack",
-  "version": "1.0.0",
-  "metadata": {
-    "name": "Rumi Operations Company Pack",
-    "description": "Operations Company and MiMo Coding Company profiles, routes, prompts, and UI extensions.",
-    "author": "Rumi AI Team",
-    "license": "MIT"
-  },
-  "vocabulary": {
-    "types": ["agent"]
-  },
   "components": {
     "operations_company": {
-      "type": "agent",
-      "id": "operations_company",
-      "path": "blocks/agent",
       "connectivity": {
         "provides": [
           "rumi.operations_company.manifest",
@@ -25,8 +10,50 @@
           "rumi.mimo_coding_company.status",
           "rumi.mimo_coding_company.bootstrap"
         ]
-      }
+      },
+      "id": "operations_company",
+      "path": "blocks/agent",
+      "type": "agent"
     }
   },
-  "load_order": ["agent:operations_company"]
+  "load_order": [
+    "agent:operations_company"
+  ],
+  "metadata": {
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:3ee4062949616812e352eee832ff37c92d85c187e0eeafdffcf755f75c649db2",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:11223d955bb21fb4f4673c4d3d28fe7aac1b99cbf34c401b9b362ada9e987c9e"
+    },
+    "description": "Operations Company and MiMo Coding Company profiles, routes, prompts, and UI extensions.",
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:11223d955bb21fb4f4673c4d3d28fe7aac1b99cbf34c401b9b362ada9e987c9e"
+    },
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Operations Company Pack",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_operations_company_pack",
+  "pack_identity": "rumi:ecosystem/rumi_operations_company_pack",
+  "provenance": {
+    "build_identity": "rumi_operations_company_pack:1.0.0",
+    "content_hash": "sha256:3ee4062949616812e352eee832ff37c92d85c187e0eeafdffcf755f75c649db2",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "agent"
+    ]
+  }
 }

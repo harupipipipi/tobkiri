@@ -11,8 +11,13 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_defaultspack_has_no_concrete_tool_collection() -> None:
-    assert not (DEFAULTSPACK / "extensions" / "tools").exists()
+def test_defaultspack_has_no_legacy_concrete_tool_collection() -> None:
+    extension_tools = DEFAULTSPACK / "extensions" / "tools"
+    allowed_settings_tools = {"settings_inspect", "settings_update"}
+    if extension_tools.exists():
+        assert {
+            item.name for item in extension_tools.iterdir() if item.is_dir()
+        } <= allowed_settings_tools
 
     registry_source = _read(DEFAULTSPACK / "domain" / "tool" / "registry.py")
     assert "def _register_defaults" not in registry_source

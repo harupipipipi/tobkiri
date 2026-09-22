@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import threading
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from domain.ai_client.api_key_store import (
+    _secrets_dir as provider_secrets_dir,
     provider_api_metadata,
     provider_has_api_key,
     provider_named_api_keys,
@@ -41,17 +43,82 @@ CEREBRAS_REASONING_MODELS = {"gpt-oss-120b", "zai-glm-4.7"}
 MODEL_SLOT_MAIN = "main"
 MODEL_SLOT_LIGHTWEIGHT = "lightweight"
 
+_settings_cache_lock = threading.RLock()
+_settings_cache: dict[
+    tuple[str, str], tuple[tuple[Any, ...], dict[str, Any]]
+] = {}
+
+
+def _file_signature(path: Path) -> tuple[str, int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return str(path), stat.st_mtime_ns, stat.st_size
+
+
+def _settings_dependency_signature(
+    settings_path: Path,
+    pack_root: Path,
+) -> tuple[Any, ...]:
+    """Return non-secret inputs that affect resolved model settings.
+
+    Credential values stay inside the provider credential store.  The cache
+    only tracks the boolean availability state used by the settings projection
+    so a secret is never copied into, or hashed by, this module.
+    """
+    secrets_dir = provider_secrets_dir(pack_root)
+    dependency_paths = [
+        settings_path,
+        settings_path.with_suffix(f"{settings_path.suffix}.bak"),
+        secrets_dir / "provider_api_keys.json",
+        secrets_dir / "custom_providers.json",
+        secrets_dir / "provider_oauth.json",
+        pack_root / ".env",
+        pack_root / "config" / "settings_control_center" / "oauth.env",
+    ]
+    file_signatures = tuple(
+        signature
+        for path in dependency_paths
+        if (signature := _file_signature(path)) is not None
+    )
+    credential_state = tuple(
+        (
+            provider_id,
+            provider_has_api_key(provider_id, pack_root=pack_root),
+        )
+        for provider_id in ("google", "openrouter")
+    )
+    return (tuple(file_signatures), credential_state)
+
+
+def _invalidate_settings_cache(path: Path, pack_root: Path) -> None:
+    with _settings_cache_lock:
+        _settings_cache.pop((str(path), str(pack_root)), None)
+
 
 class ModelRuntimeSettingsService:
     """Owns model runtime settings persisted in frontend_settings.json."""
 
     def __init__(self, pack_root: Path | None = None) -> None:
         self._pack_root = pack_root or Path(__file__).resolve().parents[2]
-        self._settings_path = defaultspack_frontend_settings_path(self._pack_root)
+        settings_owner = pack_root if pack_root is not None else None
+        self._settings_path = defaultspack_frontend_settings_path(settings_owner)
         self._settings_store = FrontendSettingsStore(self._settings_path)
 
     def get_settings(self) -> dict[str, Any]:
-        return self.refresh_models_settings(self._read_all().get("models", {}))
+        cache_key = (str(self._settings_path), str(self._pack_root))
+        signature = _settings_dependency_signature(self._settings_path, self._pack_root)
+        with _settings_cache_lock:
+            cached = _settings_cache.get(cache_key)
+            if cached is not None and cached[0] == signature:
+                return deepcopy(cached[1])
+
+        resolved = self._read_all().get("models", {})
+        resolved = resolved if isinstance(resolved, dict) else self.default_model_settings()
+        with _settings_cache_lock:
+            _settings_cache[cache_key] = (signature, deepcopy(resolved))
+        return deepcopy(resolved)
 
     def update_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -69,6 +136,7 @@ class ModelRuntimeSettingsService:
             return all_settings
 
         self._settings_store.update(merge)
+        _invalidate_settings_cache(self._settings_path, self._pack_root)
         return result
 
     def get_preferred_model(self) -> str:
@@ -276,6 +344,7 @@ class ModelRuntimeSettingsService:
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
         )
+        _invalidate_settings_cache(self._settings_path, self._pack_root)
         next_enabled = bool(updated.get("enabled"))
         message = (
             "DeepThinkをONにしました。タスクには数時間かかる可能性があります。"
@@ -338,7 +407,7 @@ class ModelRuntimeSettingsService:
             else:
                 result["provider_params"] = {}
             return result
-        if provider in {"openai", "openai_compatible", "openrouter"}:
+        if provider in {"openai", "openai_compatible", "openrouter", "nvidia"}:
             effort = "high" if normalized == "xhigh" else normalized
             if effort != "none":
                 result["provider_params"] = {"reasoning_effort": effort}
@@ -354,7 +423,7 @@ class ModelRuntimeSettingsService:
                 result["provider_params"] = {"reasoning_effort": effort}
             else:
                 result["provider_params"] = {}
-            result["level"] = effort if normalized == "xhigh" else normalized
+            result["level"] = normalized
         elif provider == "anthropic":
             result["provider_params"] = {"thinking_level": normalized}
         elif provider == "google":
@@ -467,7 +536,11 @@ class ModelRuntimeSettingsService:
 
             provider_map = detect_available_providers()
             available_providers.update(str(name or "").strip() for name in provider_map.keys() if str(name or "").strip())
-            for model in get_all_known_models():
+            # Rumi base-model resolution only needs models from providers that
+            # are actually available in this runtime.  Asking the catalog for
+            # every manifest here makes a routine model-pack lookup walk every
+            # unconfigured provider and repeatedly re-hash its metadata.
+            for model in get_all_known_models(active_provider_ids=available_providers):
                 if not isinstance(model, dict):
                     continue
                 if not self._is_real_chat_profile(model):

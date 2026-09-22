@@ -1,0 +1,71 @@
+{
+  "catalog_api_version": "io.tobkiri.pack-contract-catalog.v4",
+  "contracts": [
+    {
+      "contract_api_version": "io.tobkiri.contract.v4",
+      "contract_id": "tobkiri.service.connector.adapter.v1",
+      "operations": [
+        {
+          "effect_ceiling": [
+            "capability:connector.adapter.verify",
+            "capability:connector.delivery.execute",
+            "host:brokered-execution"
+          ],
+          "error_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "idempotency": {
+            "mode": "none"
+          },
+          "input_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "operation_id": "rumi_line_connector_pack.line-adapter",
+          "output_schema_digest": "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0",
+          "scope_semantics": "host_broker"
+        }
+      ],
+      "owner": "rumi_discord_connector_pack",
+      "provenance": {
+        "evidence": [
+          {
+            "digest": "sha256:12045cf43a6d5d9d14f802126d48dc3e4311740809c017a295c3dd666c5225ba",
+            "path": "schemas/pack_v4_catalog.v1.json",
+            "rule_id": "canonical-pack-v4-source-record"
+          }
+        ],
+        "generator": "tobkiri.scripts.migrate_pack_artifacts_v4",
+        "generator_version": "1.0.0",
+        "normative": true,
+        "repository_commit": "1329f300cd2a8e15170edb1accce8d7c3167882b",
+        "repository_tree": "8820370fd87572920444d7c9dc642735b35194e6e1610ad99d242a5958fb876c",
+        "schema": "io.tobkiri.provenance.v1",
+        "source_digest": "sha256:12045cf43a6d5d9d14f802126d48dc3e4311740809c017a295c3dd666c5225ba",
+        "source_kind": "migration",
+        "source_path": "schemas/pack_v4_catalog.v1.json#/packs/rumi_line_connector_pack"
+      },
+      "provider_semantics": {
+        "cardinality": "many",
+        "failure": "isolate",
+        "instance_key": "line",
+        "isolation": "process",
+        "lifecycle": {
+          "deprecated": false,
+          "introduced": "1.0.0"
+        },
+        "provider_id": "rumi_line_connector_pack.connector.line",
+        "required_capabilities": [
+          "connector.adapter.verify",
+          "connector.delivery.execute"
+        ],
+        "security": "restricted"
+      },
+      "revision_digest": "sha256:012e201606412a5a4f10f37501b77ba50eabe306a5f3d1cde99c0e4da11ecf8f",
+      "schema_catalog": {
+        "sha256:a2c799262a3ce3c19ef5cdd983bf3d12b43ab3c426227091b909dcb7054738c0": {
+          "type": "object"
+        }
+      },
+      "status": "accepted",
+      "version": "1.0.0"
+    }
+  ],
+  "pack_id": "rumi_line_connector_pack",
+  "source_identity": "sha256:12045cf43a6d5d9d14f802126d48dc3e4311740809c017a295c3dd666c5225ba"
+}

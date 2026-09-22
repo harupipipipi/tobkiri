@@ -82,8 +82,17 @@ class TestLaunchAppArguments:
 
         manager._load_meta = mock.MagicMock(return_value=sample_meta)
 
-        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "secret-token-xyz"}):
-            result = manager.launch_app("test-pack-001")
+        from core_runtime.host_contract import bind_host_contract
+
+        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "ambient-token"}):
+            with bind_host_contract(
+                {
+                    "schema_version": "tobkiri.host-contract.v1",
+                    "profile_id": "default",
+                    "values": {"desktop_api_token": "secret-token-xyz"},
+                }
+            ):
+                result = manager.launch_app("test-pack-001")
 
         assert result["success"] is True
         assert result["status"] == "launched"
@@ -113,8 +122,17 @@ class TestLaunchAppArguments:
 
         manager._load_meta = mock.MagicMock(return_value=sample_meta)
 
-        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "secret-token-xyz"}):
-            result = manager.launch_app("test-pack-001")
+        from core_runtime.host_contract import bind_host_contract
+
+        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "ambient-token"}):
+            with bind_host_contract(
+                {
+                    "schema_version": "tobkiri.host-contract.v1",
+                    "profile_id": "default",
+                    "values": {"desktop_api_token": "secret-token-xyz"},
+                }
+            ):
+                result = manager.launch_app("test-pack-001")
 
         assert result["success"] is True
         call_kwargs = mock_popen.call_args[1]
@@ -319,8 +337,17 @@ class TestLaunchAppArguments:
 
         manager._load_meta = mock.MagicMock(return_value=sample_meta)
 
-        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "secret-token-xyz"}):
-            result = manager.launch_app("test-pack-001")
+        from core_runtime.host_contract import bind_host_contract
+
+        with mock.patch.dict(os.environ, {"RUMI_API_TOKEN": "ambient-token"}):
+            with bind_host_contract(
+                {
+                    "schema_version": "tobkiri.host-contract.v1",
+                    "profile_id": "default",
+                    "values": {"desktop_api_token": "secret-token-xyz"},
+                }
+            ):
+                result = manager.launch_app("test-pack-001")
 
         assert result["success"] is True
         call_kwargs = mock_popen.call_args[1]

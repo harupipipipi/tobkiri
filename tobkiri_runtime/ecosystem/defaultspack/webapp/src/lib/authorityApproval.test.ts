@@ -131,6 +131,7 @@ test("authority approval window sends only the terse hidden resume marker", () =
   assert.match(source, /sendAuthorityResume\([\s\S]*"Internal authority resume\."/);
   assertNoRiskyAuthorityFollowupPhrases(source);
   assert.match(source, /runtime_content: authorityApprovalRuntimeContent\(settledApproval, decision\.token\)/);
+  assert.match(source, /related_permissions: authorityRelatedPermissions\(approval\)/);
 });
 
 test("authority approval window always surfaces host execution summary rows", () => {
@@ -382,17 +383,16 @@ test("authority related permissions helper can identify provider-scoped network 
 });
 
 test("authority approval browser helper builds credential-free same-origin paths", () => {
-  assert.equal(browserAuthorityApprovalPath("auth 1", "/ambient-debug?authority_approved=1"), "/approval?request_id=auth+1&return_to=%2Fambient-debug%3Fauthority_approved%3D1");
-  assert.equal(browserApprovalTokenizedPath("/finger-recording?authority_approved=1"), "/finger-recording?authority_approved=1");
+  assert.equal(browserAuthorityApprovalPath("auth 1", "/ambient-debug?chat=c1"), "/approval?request_id=auth+1&return_to=%2Fambient-debug%3Fchat%3Dc1");
+  assert.equal(browserApprovalTokenizedPath("/finger-recording?chat=c1"), "/finger-recording?chat=c1");
   assert.equal(browserApprovalTokenizedPath("https://external.invalid/fake"), null);
   assert.equal(browserApprovalTokenizedPath("/finger-recording?browser_approval_token=fake"), null);
 });
 
-test("authority approval window approves exact request by default without related permission bundling", () => {
+test("authority approval window bundles related provider permissions", () => {
   const source = authorityApprovalWindowSource();
 
-  assert.doesNotMatch(source, /related_permissions:\s*authorityRelatedPermissions/);
-  assert.doesNotMatch(source, /authorityRelatedPermissions/);
+  assert.match(source, /related_permissions:\s*authorityRelatedPermissions\(approval\)/);
   assert.match(source, /approveAuthorityApproval\(request\.request_id,[\s\S]*scope: selectedScope,[\s\S]*config,[\s\S]*ui_operator: context\.ui_operator/);
 });
 

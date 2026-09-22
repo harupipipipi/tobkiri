@@ -1,1 +1,70 @@
-{"pack_id": "rumi_mcp_server_pack", "pack_identity": "rumi:ecosystem/rumi_mcp_server_pack", "display_name": "Rumi MCP Server Pack", "version": "1.0.0", "description": "MCP server projection over global tool contracts.", "dependencies": {}, "connectivity": {"requires": ["rumi.resource.tool.definition.v1", "rumi.service.tool.invoke.v1"], "provides": ["rumi.resource.mcp.server.tool.catalog.v1", "rumi.service.mcp.server.tool.call.v1"]}, "required_secrets": [], "required_capabilities": ["mcp.server.catalog.read", "mcp.server.tool.call"], "required_network": {"allowed_domains": [], "allowed_ports": []}, "host_execution": true, "resources": [], "provenance": {"content_hash": "sha256:cec975d1dd7fb0502e3b3b1feb8f1fcb3a138f48027dac1c65835aa1cc6438ca", "build_identity": "rumi-mcp-server-pack:1.0.0", "trust_class": "local", "signature": null}, "metadata": {"authoritative_owner": false, "owner_surfaces": ["mcp_server_tool_projection"], "integrity": {"artifact_manifest": "artifact-manifest.json"}, "security": {"approval_bypass": false, "transport_owner": false}}}
+{
+  "connectivity": {
+    "provides": [
+      "rumi.resource.mcp.server.tool.catalog.v1",
+      "rumi.service.mcp.server.tool.call.v1"
+    ],
+    "requires": [
+      "rumi.resource.tool.definition.v1",
+      "rumi.service.tool.invoke.v1"
+    ]
+  },
+  "dependencies": {},
+  "description": "MCP server catalog and call projection over the global tool broker.",
+  "display_name": "Rumi MCP Server",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:cf7e9d782f5a42f460c185cd2c2a410f13215b35124c4d6df5e78ec5f3c148a4",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:3defa73d8642525f762fcd310f58d562ecff501d3655b304b020381a71ba0233"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:3defa73d8642525f762fcd310f58d562ecff501d3655b304b020381a71ba0233"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [
+      "mcp_server_tool_projection"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "security": {
+      "approval_bypass": false,
+      "transport_owner": false
+    }
+  },
+  "pack_id": "rumi_mcp_server_pack",
+  "pack_identity": "rumi:ecosystem/rumi_mcp_server_pack",
+  "provenance": {
+    "build_identity": "rumi_mcp_server_pack:1.0.0",
+    "content_hash": "sha256:480d6d9c0b206c55b15526e92be981e1851de05a48d9a54215aacdd7010470ae",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "mcp.server.catalog.read",
+    "mcp.server.tool.call"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

@@ -398,6 +398,24 @@ class BrowserCompanionController:
         }
 
     @staticmethod
+    def _client_profile_fields(client: dict[str, Any]) -> dict[str, Any]:
+        client_profile = client.get("client_profile") if isinstance(client.get("client_profile"), dict) else {}
+        browser_profile_id = client.get("browser_profile_id") or client_profile.get("browser_profile_id")
+        profile_label = client.get("profile_label") or client_profile.get("profile_label")
+        installation_id = client.get("installation_id") or client_profile.get("installation_id")
+        return {
+            "browser_profile_id": browser_profile_id,
+            "profile_label": profile_label,
+            "installation_id": installation_id,
+            "client_profile": {
+                **client_profile,
+                "browser_profile_id": browser_profile_id or "",
+                "profile_label": profile_label or "",
+                "installation_id": installation_id or "",
+            },
+        }
+
+    @staticmethod
     def _requires_approval(remote_action: str) -> bool:
         return remote_action in _PAGE_ACTIONS_REQUIRING_APPROVAL
 

@@ -1,18 +1,7 @@
 {
-  "pack_id": "rumi_workflow_scheduler_pack",
-  "pack_identity": "rumi:ecosystem/rumi_workflow_scheduler_pack",
-  "version": "1.0.0",
+  "components": {},
+  "load_order": [],
   "metadata": {
-    "name": "Rumi Workflow Scheduler Pack",
-    "description": "Declarative local-first workflow scheduler pack for recurring tasks, monitors, wakeups, follow-ups, cron-like schedules, delivery handoffs, retry policy, evidence, and stop conditions.",
-    "author": "Rumi AI Team",
-    "license": "MIT",
-    "tags": ["workflow", "scheduler", "cron", "automation", "monitor", "wakeup", "follow-up"],
-    "runtime_type": "declarative_pack",
-    "network_policy": "none_by_default",
-    "required_secrets": [],
-    "executable_code": false,
-    "implements_automations": false,
     "asset_index": {
       "catalogs": [
         "catalog/schedule_contracts.yaml",
@@ -20,15 +9,20 @@
         "catalog/delivery_handoffs.yaml",
         "catalog/scheduler_schema.json"
       ],
+      "docs": [
+        "README.md",
+        "docs/README.md",
+        "docs/architecture.md",
+        "docs/interfaces.md",
+        "docs/operations.md"
+      ],
+      "examples": [
+        "examples/daily_followup.example.yaml",
+        "examples/monitor_with_retry.example.yaml",
+        "examples/release_wakeup.example.yaml"
+      ],
       "policies": [
         "policies/retry_policy.yaml"
-      ],
-      "profiles": [
-        "profiles/scheduler_designer.profile.yaml"
-      ],
-      "prompts": [
-        "prompts/scheduler_designer.system.md",
-        "prompts/schedule_review.system.md"
       ],
       "presets": [
         "presets/recurring_followup.preset.yaml",
@@ -36,20 +30,61 @@
         "presets/release_check_wakeup.preset.yaml",
         "presets/delivery_handoff_digest.preset.yaml"
       ],
-      "examples": [
-        "examples/daily_followup.example.yaml",
-        "examples/monitor_with_retry.example.yaml",
-        "examples/release_wakeup.example.yaml"
+      "profiles": [
+        "profiles/scheduler_designer.profile.yaml"
       ],
-      "docs": [
-        "README.md",
-        "docs/README.md",
-        "docs/architecture.md",
-        "docs/interfaces.md",
-        "docs/operations.md"
+      "prompts": [
+        "prompts/scheduler_designer.system.md",
+        "prompts/schedule_review.system.md"
       ]
-    }
+    },
+    "author": "Rumi AI Team",
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:68f6f16e72c86f6276a39282e662ad5e81912af4483caaa7cbe91054edf5e8c6",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:e5167067247c9347be2b828efa85065e5d9b1667b6b5ae1cfb727474f5eafc36"
+    },
+    "description": "Declarative local-first workflow scheduler pack for recurring tasks, monitors, wakeups, follow-ups, cron-like schedules, delivery handoffs, retry policy, evidence, and stop conditions.",
+    "executable_code": false,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "ecosystem.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:e5167067247c9347be2b828efa85065e5d9b1667b6b5ae1cfb727474f5eafc36"
+    },
+    "implements_automations": false,
+    "license": "MIT",
+    "manifest_authority": "v4-authoritative",
+    "name": "Rumi Workflow Scheduler Pack",
+    "network_policy": "none_by_default",
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "runtime_type": "declarative_pack",
+    "tags": [
+      "workflow",
+      "scheduler",
+      "cron",
+      "automation",
+      "monitor",
+      "wakeup",
+      "follow-up"
+    ]
   },
+  "pack_id": "rumi_workflow_scheduler_pack",
+  "pack_identity": "rumi:ecosystem/rumi_workflow_scheduler_pack",
+  "provenance": {
+    "build_identity": "rumi_workflow_scheduler_pack:1.0.0",
+    "content_hash": "sha256:68f6f16e72c86f6276a39282e662ad5e81912af4483caaa7cbe91054edf5e8c6",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_network": [],
+  "required_secrets": [],
+  "version": "1.0.0",
   "vocabulary": {
     "types": [
       "workflow_scheduler",
@@ -61,9 +96,5 @@
       "preset",
       "example"
     ]
-  },
-  "components": {},
-  "load_order": [],
-  "required_secrets": [],
-  "required_network": []
+  }
 }

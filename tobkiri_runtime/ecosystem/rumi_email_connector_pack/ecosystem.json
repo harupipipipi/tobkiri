@@ -1,2 +1,65 @@
-{"pack_id":"rumi_email_connector_pack","pack_identity":"rumi:ecosystem/rumi_email_connector_pack","display_name":"Rumi Email Connector Pack","version":"1.0.0","description":"Signed email webhook normalization and public TLS SMTP delivery.","dependencies":{"rumi_credential_broker_pack":">=1.0.0,<2.0.0","rumi_host_authority_bridge_pack":">=1.0.0,<2.0.0"},"connectivity":{"requires":["rumi.service.credential.resolve.v1","rumi.service.host.authorize.v1"],"provides":["rumi.service.connector.adapter.v1"]},"required_secrets":[],"required_capabilities":["connector.adapter.verify","connector.delivery.execute","credential.resolve","host.authority.consume"],"required_network":{"allowed_domains":["connector-configured-smtp-host"],"allowed_ports":[465,587]},"host_execution":true,"resources":[],"provenance":{"content_hash":"sha256:4ed03ee010c3a6fe556fc8940589679b64c4f1eed20c09853390c6fd7cd8c519","build_identity":"rumi-email-connector-pack:1.0.0","trust_class":"local","signature":null},"metadata":{"authoritative_owner":false,"owner_surfaces":[]}}
-
+{
+  "connectivity": {
+    "provides": [
+      "rumi.service.connector.adapter.v1"
+    ],
+    "requires": [
+      "rumi.service.credential.resolve.v1",
+      "rumi.service.host.authorize.v1"
+    ]
+  },
+  "dependencies": {
+    "rumi_credential_broker_pack": ">=1.0.0,<2.0.0",
+    "rumi_host_authority_bridge_pack": ">=1.0.0,<2.0.0"
+  },
+  "description": "Signed email webhook normalization and TLS SMTP delivery.",
+  "display_name": "Rumi Email Connector",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": false,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:82df740a4eff86a0650354e020aabcaf91c2d038517b73fee18a65db65e16b81",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:f3b8613161123b871c4f5e3652003fc60e722754c0a7f17cc4c492144f0890d6"
+    },
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:f3b8613161123b871c4f5e3652003fc60e722754c0a7f17cc4c492144f0890d6"
+    },
+    "manifest_authority": "v4-authoritative",
+    "owner_surfaces": [],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true
+  },
+  "pack_id": "rumi_email_connector_pack",
+  "pack_identity": "rumi:ecosystem/rumi_email_connector_pack",
+  "provenance": {
+    "build_identity": "rumi_email_connector_pack:1.0.0",
+    "content_hash": "sha256:1e41994994c9f2e3385d954d5a262ab7922ead75b9f08850ac4105518697bceb",
+    "signature": null,
+    "trust_class": "local"
+  },
+  "required_capabilities": [
+    "connector.adapter.verify",
+    "connector.delivery.execute",
+    "credential.resolve",
+    "host.authority.consume"
+  ],
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
+  },
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
+  }
+}

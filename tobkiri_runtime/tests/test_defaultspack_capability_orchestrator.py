@@ -227,6 +227,29 @@ def test_compiled_model_input_is_exactly_bound_to_plan_hashes() -> None:
     ]
 
 
+def test_repository_context_connection_compiles_external_share_authority() -> None:
+    tool = _tool("repository_context_prepare")
+    tool["capability_requirements"] = {
+        "connections": ["rumi.service.repository.context.prepare.v1"],
+        "env": [],
+    }
+    tool["requires_runtime_capabilities"] = ["runtime.workspace"]
+
+    result = CapabilityOrchestrator(
+        activities=[],
+        skills=[],
+    ).compile_selected(
+        user_text="@tool:repository_context_prepare",
+        selected_tools=[tool],
+        eligible_tools=[tool],
+    )
+
+    assert tool["requires_runtime_capabilities"] == ["runtime.workspace"]
+    assert "repository.content.external_share" in result["tools"][
+        "capability_grants"
+    ]["repository_context_prepare"]
+
+
 def test_client_selected_skill_metadata_is_not_an_explicit_authority() -> None:
     skills = [
         {"id": "safe", "instructions": "Safe instructions."},

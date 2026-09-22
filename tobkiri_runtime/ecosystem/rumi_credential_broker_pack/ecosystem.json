@@ -1,50 +1,81 @@
 {
-  "pack_id": "rumi_credential_broker_pack",
-  "pack_identity": "rumi:ecosystem/rumi_credential_broker_pack",
-  "display_name": "Rumi Credential Broker Pack",
-  "version": "1.0.0",
-  "description": "Encrypted opaque credential handles bound to consumer, provider, scope, and expiry.",
-  "dependencies": {},
   "connectivity": {
-    "requires": [],
     "provides": [
-      "rumi.service.credential.resolve.v1",
       "rumi.action.credential.manage.v1",
       "rumi.action.credential.migrate.v1",
-      "rumi.resource.credential.status.v1"
-    ]
+      "rumi.resource.credential.status.v1",
+      "rumi.service.credential.resolve.v1"
+    ],
+    "requires": []
   },
-  "required_secrets": [],
+  "dependencies": {},
+  "description": "Encrypted credential handle management and scoped provider resolution.",
+  "display_name": "Rumi Credential Broker",
+  "host_execution": true,
+  "metadata": {
+    "authoritative_owner": true,
+    "canonical_v4": {
+      "artifact": "pack.v4.json",
+      "artifact_digest": "sha256:5ec5d19394edd446868f9ff96cda5ca3054d2b2f83415b0d190bc08615850eff",
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "source_identity": "sha256:ced9635a80a81dfdc65aaeaf743f3544f4681aa9a59d5c82e61a62d6bb140a37"
+    },
+    "executable_code": true,
+    "format": "rumi.ecosystem.v1",
+    "generated": true,
+    "generated_from": {
+      "generator": "tobkiri.scripts.migrate_manifest_authority/v2",
+      "historical_format": "rumi.pack.v3.json",
+      "source": "pack.v4.json",
+      "source_content_hash": "sha256:ced9635a80a81dfdc65aaeaf743f3544f4681aa9a59d5c82e61a62d6bb140a37"
+    },
+    "integrity": {
+      "artifact_manifest": "artifact-manifest.json"
+    },
+    "manifest_authority": "v4-authoritative",
+    "network_policy": "none",
+    "owner_surfaces": [
+      "credential_handles",
+      "credential_scope",
+      "credential_status"
+    ],
+    "projection_owner": "scripts/migrate_manifest_authority.py",
+    "read_only_projection": true,
+    "required_secrets": [],
+    "security": {
+      "consumer_bound": true,
+      "encrypted_at_rest": true,
+      "expiry_bound": true,
+      "provider_bound": true,
+      "redacted_listing": true,
+      "scope_bound": true
+    },
+    "storage_namespace": "rumi.credentials"
+  },
+  "pack_id": "rumi_credential_broker_pack",
+  "pack_identity": "rumi:ecosystem/rumi_credential_broker_pack",
+  "provenance": {
+    "build_identity": "rumi_credential_broker_pack:1.0.0",
+    "content_hash": "sha256:5231a9956a74ddfa7e6dd054d6860d62aae3bb4c5c622c88d54ccb02d3650e1a",
+    "signature": null,
+    "trust_class": "local"
+  },
   "required_capabilities": [
-    "credential.resolve",
     "credential.manage",
     "credential.migrate",
+    "credential.resolve",
     "credential.status.read"
   ],
-  "required_network": {"allowed_domains": [], "allowed_ports": []},
-  "host_execution": true,
-  "resources": [],
-  "provenance": {
-    "content_hash": "sha256:59df5fbfa772a0919a6117afccedd9849c080c929eaff861a50c2ba4ec96b0a6",
-    "build_identity": "rumi-credential-broker-pack:1.0.0",
-    "trust_class": "local",
-    "signature": null
+  "required_network": {
+    "allowed_domains": [],
+    "allowed_ports": []
   },
-  "metadata": {
-    "required_secrets": [],
-    "network_policy": "none",
-    "executable_code": true,
-    "authoritative_owner": true,
-    "storage_namespace": "rumi.credentials",
-    "owner_surfaces": ["credential_handles", "credential_scope", "credential_status"],
-    "integrity": {"artifact_manifest": "artifact-manifest.json"},
-    "security": {
-      "encrypted_at_rest": true,
-      "consumer_bound": true,
-      "provider_bound": true,
-      "scope_bound": true,
-      "expiry_bound": true,
-      "redacted_listing": true
-    }
+  "required_secrets": [],
+  "resources": [],
+  "version": "1.0.0",
+  "vocabulary": {
+    "types": [
+      "service"
+    ]
   }
 }

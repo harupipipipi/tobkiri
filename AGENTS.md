@@ -32,6 +32,7 @@ These notes are for coding agents working in this repository.
 
 ## Coding Workflow
 
+- Open pull requests against the `soon` branch. Do not target `master` unless the user explicitly requests an exception.
 - Use `rg` / `rg --files` first for source and file discovery.
 - Keep changes tightly scoped to the requested runtime, pack, viewer, or mobile surface.
 - Do not bypass approval, workspace jail, local guard, capability trust, or audit paths.

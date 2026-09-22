@@ -36,15 +36,13 @@ class FalAIProvider(BaseProvider):
         self._api_key = self._configured_api_key(self._connection)
         self._models_base_url = (
             str(
-                self._connection.get("base_url")
-                or os.environ.get("FAL_API_BASE_URL")
-                or self.MODELS_BASE_URL
+                self._connection.get("base_url") or self.MODELS_BASE_URL
             )
             .strip()
             .rstrip("/")
         )
         self._queue_base_url = (
-            str(os.environ.get("FAL_QUEUE_BASE_URL") or self.QUEUE_BASE_URL).strip().rstrip("/")
+            str(self.QUEUE_BASE_URL).strip().rstrip("/")
         )
         self._ssl_ctx = ssl.create_default_context()
 
@@ -57,9 +55,6 @@ class FalAIProvider(BaseProvider):
 
     @classmethod
     def _configured_api_key(cls, connection: Dict[str, Any]) -> str:
-        value = str(os.environ.get("FAL_KEY") or os.environ.get("FAL_AI_API_KEY") or "").strip()
-        if value:
-            return value
         api_id = str(connection.get("api_id") or "").strip()
         return str(read_provider_api_key(cls.provider_id, api_id) or "").strip() if api_id else ""
 

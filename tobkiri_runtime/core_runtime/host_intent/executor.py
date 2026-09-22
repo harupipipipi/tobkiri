@@ -15,9 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core_runtime.authority import get_authority_service
-
-from .approval import check_host_intent_authority
 from .models import HostIntent, is_host_intent_payload
 from .validator import validate_host_intent
 
@@ -53,55 +50,16 @@ class HostIntentExecutor:
                 "errors": validation.errors,
             }
         intent = validation.intent
-        request_id, approval_token = _authority_followup_for_operation(context, intent.operation)
-        service = get_authority_service()
-        authority = check_host_intent_authority(
-            service,
-            intent,
-            principal_id=principal_id,
-            request_id=request_id,
-            approval_token=approval_token,
-            consume_approval_token=False,
-        )
-        authority_response = _authority_gate_response(authority, intent)
-        if authority_response is not None:
-            return authority_response
-
-        prepared = _prepare_viewer_broker(intent)
-        if not isinstance(prepared, _PreparedViewerBroker):
-            return {
-                "host_intent": intent.to_dict(),
-                "authority": authority,
-                **prepared,
-            }
-
-        authority = check_host_intent_authority(
-            service,
-            intent,
-            principal_id=principal_id,
-            request_id=request_id,
-            approval_token=approval_token,
-            consume_approval_token=True,
-        )
-        authority_response = _authority_gate_response(authority, intent)
-        if authority_response is not None:
-            authority_response["host_broker"] = {"available": True, "dispatched": False}
-            return authority_response
-
-        execution_token = _issue_viewer_execution_token(intent, prepared, request_id=request_id)
-        if isinstance(execution_token, dict):
-            return {
-                "host_intent": intent.to_dict(),
-                "authority": authority,
-                **execution_token,
-            }
-        brokered = _dispatch_prepared_viewer_broker(intent, prepared, execution_token)
-        if not isinstance(brokered, dict):
-            brokered = _host_broker_initialization_failed("viewer_broker_dispatcher_returned_none")
+        del principal_id
         return {
-            "host_intent": intent.to_dict(),
-            "authority": authority,
-            **brokered,
+            "status": "error",
+            "success": False,
+            "error_type": "v4_operation_unavailable",
+            "error": (
+                "HostIntent legacy execution is disabled; invoke a declared "
+                "Pack v4 operation through V4DispatchSession"
+            ),
+            "operation": intent.operation,
         }
 
 

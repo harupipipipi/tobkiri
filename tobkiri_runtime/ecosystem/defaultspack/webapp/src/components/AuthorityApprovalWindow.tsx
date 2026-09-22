@@ -20,6 +20,8 @@ import {
   authorityApprovalRiskTone,
   authorityApprovalRuntimeContent,
   authorityApprovalTitle,
+  authorityRelatedPermissions,
+  resolvePendingAuthorityApproval,
   type AuthorityApproval,
   type AuthorityApprovalSettledStatus,
   type AuthorityApprovalScope,
@@ -28,10 +30,7 @@ import {
 import {
   safeSameOriginApprovalPath,
 } from "../lib/authorityApprovalBrowserToken";
-import {
-  broadcastAuthorityApprovalSettlement,
-  createAuthorityApprovalReturnPath,
-} from "../lib/authorityApprovalEvents";
+import { broadcastAuthorityApprovalSettlement } from "../lib/authorityApprovalEvents";
 import { closeCurrentWindow, getAuthorityApprovalContext, openFingerRecordingWindow } from "../lib/desktopApproval";
 import { cn } from "../lib/cn";
 import { authorityApprovalViewModel } from "../lib/approvalPresentation";
@@ -126,10 +125,7 @@ async function returnToFingerRecordingAfterApproval() {
   window.close();
   window.setTimeout(() => {
     if (document.hidden) return;
-    window.location.replace(createAuthorityApprovalReturnPath(
-      AMBIENT_AUTHORITY_REQUEST_ID,
-      "/finger-recording",
-    ));
+    window.location.replace("/finger-recording");
   }, 250);
 }
 
@@ -522,6 +518,7 @@ export function AuthorityApprovalWindow() {
       const decision = await authorityApprovalResources.approveAuthorityApproval(request.request_id, {
         scope: selectedScope,
         config,
+        related_permissions: authorityRelatedPermissions(approval),
         ui_operator: context.ui_operator,
       });
       if (!decision.approved) throw new Error("authority approval failed");

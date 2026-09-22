@@ -11,6 +11,7 @@ import urllib.request
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from ..base_provider import BaseProvider
+from ..api_key_store import read_provider_api_key
 
 
 class AnthropicProvider(BaseProvider):
@@ -23,8 +24,8 @@ class AnthropicProvider(BaseProvider):
     _MODEL_INVENTORY_CACHE = {}
     _MODEL_INVENTORY_CACHE_TTL_SECONDS = 300
 
-    def __init__(self):
-        self._api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    def __init__(self, api_key: str | None = None):
+        self._api_key = str(api_key or read_provider_api_key("anthropic", "legacy") or "").strip()
         self._ssl_ctx = ssl.create_default_context()
 
     def _headers(self):

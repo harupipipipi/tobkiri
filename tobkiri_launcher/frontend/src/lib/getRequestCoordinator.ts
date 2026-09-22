@@ -17,6 +17,15 @@ export interface GetRequestSnapshot {
   prefetchInFlight: number;
 }
 
+export interface GetRequestInvalidationOptions {
+  /**
+   * The request currently refreshing an expired session. It has not yet read
+   * the protected resource, so it can safely continue after the new session
+   * is installed while every other in-flight request is made stale.
+   */
+  preserveSignal?: AbortSignal;
+}
+
 interface CacheEntry {
   bytes: number;
   expiresAt: number;
@@ -153,11 +162,15 @@ export class GetRequestCoordinator {
     return withConsumerTimeout(entry.promise as Promise<T>, timeoutMs, key);
   }
 
-  invalidate(options: { preserveForeground?: boolean } = {}): void {
-    if (!options.preserveForeground) this.epoch += 1;
+  invalidate(options: GetRequestInvalidationOptions = {}): void {
+    this.epoch += 1;
     this.cache.clear();
     this.cacheBytes = 0;
     for (const entry of this.inFlight.values()) {
+      if (entry.abortController.signal === options.preserveSignal) {
+        entry.epoch = this.epoch;
+        continue;
+      }
       if (!entry.foreground) {
         entry.abortController.abort(new Error('Prefetch invalidated by a mutation or session change'));
       }

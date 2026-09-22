@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./ui/layers/layers.css";
 @import "./ui/motion/luxeMotion.css";
+@import "./styles/rumi-liquid-mobile.css";
 
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", sans-serif;
@@ -15,18 +16,34 @@ body,
   min-height: 0;
 }
 
+html {
+  min-height: 100%;
+  overflow-y: auto;
+}
+
+body {
+  height: auto;
+  min-height: 100%;
+}
+
+#root {
+  height: 100%;
+  min-height: 0;
+}
+
 body {
   background-color: #09090b; /* zinc-950 */
   color: #fafafa; /* zinc-50 */
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Scroll ownership contract:
-   - document/body stay fixed to the window so persistent navigation cannot
-     scroll away with a long conversation.
+   - the document keeps a vertical fallback for content outside the app shell;
+     persistent navigation remains fixed inside the shell.
    - .rumi-app-shell owns exactly one dynamic viewport.
    - top-level panes own internal scroll with min-h-0 + overflow-auto/y-auto. */
 .rumi-app-shell {
@@ -366,8 +383,10 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 2.25rem;
-  width: 2.25rem;
+  min-height: 44px;
+  min-width: 44px;
+  height: 44px;
+  width: 44px;
   flex-shrink: 0;
   border-radius: 0.625rem;
   color: #a1a1aa;
@@ -1511,6 +1530,8 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
 .rumi-composer-attachment-strip {
   min-width: 0;
   max-width: 100%;
+  min-height: 7rem;
+  padding: 0.5rem 0.75rem 0.75rem;
   overscroll-behavior-inline: contain;
   scrollbar-width: thin;
   scroll-snap-type: x proximity;
@@ -1518,6 +1539,39 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
 
 .rumi-composer-attachment-strip > * {
   scroll-snap-align: start;
+}
+
+.rumi-composer-attachment-reveal {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(0.5rem);
+  transition:
+    grid-template-rows 280ms cubic-bezier(0.2, 0.82, 0.2, 1),
+    opacity 180ms ease,
+    transform 280ms cubic-bezier(0.2, 0.82, 0.2, 1);
+}
+
+.rumi-composer-attachment-reveal[data-attachment-state="expanded"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.rumi-composer-attachment-reveal-inner {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.rumi-composer-new .rumi-composer-attachment-strip {
+  padding-inline: 0;
+  padding-top: 0;
+}
+
+.rumi-composer-frame:not(.rumi-composer-new) .rumi-composer-attachment-strip {
+  padding-inline: 0.75rem;
 }
 
 .rumi-composer-context-strip {
@@ -1628,7 +1682,7 @@ html.rumi-keyboard-focus #root :is(a, button, input, textarea, select, summary, 
        the lower half of the chat while the @ menu is open. */
     min-height: clamp(6.75rem, 14dvh, 8.25rem);
     border-radius: 2rem;
-    padding: 0.75rem 1.25rem 0.625rem;
+    padding: 0.625rem 1.25rem 0.5rem;
   }
 
   .rumi-composer-new .rumi-composer-toolbar {

@@ -67,10 +67,23 @@ def test_pack_required_assets_and_metadata() -> None:
     assert [path for path in required if not (PACK_DIR / path).is_file()] == []
 
     ecosystem = read_json(PACK_DIR / "ecosystem.json")
+    manifest = read_json(PACK_DIR / "pack.v4.json")
     assert validate_ecosystem(ecosystem, raise_on_error=False) == []
     assert ecosystem["pack_identity"] == f"rumi:ecosystem/{PACK_ID}"
     assert ecosystem["dependencies"] == {}
-    assert ecosystem["connectivity"]["requires"] == []
+    assert set(ecosystem["connectivity"]["requires"]) == {
+        "rumi.event.audit.recorded.v1",
+        "rumi.resource.profile.workspace.v1",
+    }
+    assert manifest["requirements"]["pack_dependencies"] == {}
+    contract_dependencies = manifest["requirements"]["contract_dependencies"]
+    assert {
+        item["contract_id"] for item in contract_dependencies
+    } == {
+        "tobkiri.event.audit.recorded.v1",
+        "tobkiri.resource.profile.workspace.v1",
+    }
+    assert all(item["optional"] is True for item in contract_dependencies)
     assert "rumi.resource.prompt.studio.v1" in ecosystem["connectivity"]["provides"]
     assert ecosystem["required_secrets"] == []
     assert ecosystem["required_network"] == {
@@ -349,7 +362,11 @@ def test_pack_docs_no_secrets_and_explain_boundaries() -> None:
     ]:
         assert expected in docs
     pattern = re.compile(r"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{12,}")
-    checked = [p for p in PACK_DIR.rglob("*") if p.is_file()] + [SETUP_PACK_JSON]
+    checked = [
+        p
+        for p in PACK_DIR.rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc"
+    ] + [SETUP_PACK_JSON]
     assert [str(p.relative_to(ROOT)) for p in checked if pattern.search(p.read_text(encoding="utf-8"))] == []
     combined = "\n".join(p.read_text(encoding="utf-8") for p in checked)
     for phrase in ["sample user request", "reviewer_ready_plan", "Complementary owner surface"]:

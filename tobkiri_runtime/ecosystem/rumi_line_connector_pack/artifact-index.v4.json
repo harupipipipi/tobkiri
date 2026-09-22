@@ -1,0 +1,32 @@
+{
+  "artifact_set_digest": "sha256:355fc1c31840af575b6e3edf56dd03a53518b02036299878679cb97e072d3ff6",
+  "artifacts": [
+    {
+      "digest": "sha256:e2eacf1530a2be06a56b3375adb6cb867248bbc51f50d9458ff7b1fd40b9ab1b",
+      "path": "contracts.v4.json",
+      "role": "contract_catalog"
+    },
+    {
+      "digest": "sha256:61d8c431742c77c58f862ff9ff2bb756f8d54b2b7e4b47377c1b95fcfc667a8c",
+      "path": "executables.v4.json",
+      "role": "sidecar"
+    },
+    {
+      "digest": "sha256:efa347558dc917ac12ba1c6aab071dc702e63b27d086c7dc2b0aec8414af4c16",
+      "path": "pack.v4.json",
+      "role": "canonical_manifest"
+    },
+    {
+      "digest": "sha256:33d9f699a92c4ef64d4d1797c9014936c1c07cdcc4ea2a44df5cf63ebc2f7f60",
+      "path": "runtime/adapter.py",
+      "role": "runtime"
+    }
+  ],
+  "index_api_version": "io.tobkiri.pack-artifact-index.v4",
+  "integrity_seal": {
+    "algorithm": "sha256-canonical-v1",
+    "signed_digest": "sha256:a29b6af29ea933854d04060d3769461ba3bc79ba2fb6325dc8208f06e3d78af1"
+  },
+  "pack_id": "rumi_line_connector_pack",
+  "source_identity": "sha256:12045cf43a6d5d9d14f802126d48dc3e4311740809c017a295c3dd666c5225ba"
+}

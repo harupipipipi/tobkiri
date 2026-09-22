@@ -48,6 +48,16 @@ export function Example() {
         rules = {item.rule for item in scan_text("src/Example.tsx", source)}
         self.assertNotIn("ux.enabled-noop-button", rules)
 
+    def test_scripted_inline_document_requires_review(self) -> None:
+        source = '<iframe sandbox="allow-scripts" srcDoc={untrustedHtml} />'
+        rules = {item.rule for item in scan_text("src/Example.tsx", source)}
+        self.assertIn("security.scripted-inline-document", rules)
+
+    def test_opaque_origin_external_frame_is_not_an_inline_document(self) -> None:
+        source = '<iframe src={isolatedPackUrl} sandbox="allow-scripts" />'
+        rules = {item.rule for item in scan_text("src/Example.tsx", source)}
+        self.assertNotIn("security.scripted-inline-document", rules)
+
     def test_icon_button_requires_name(self) -> None:
         source = '<button type="button" onClick={close}><X size={16} /></button>'
         rules = {item.rule for item in scan_text("src/Dialog.tsx", source)}
