@@ -32,20 +32,21 @@ MAX_PREVIEW_LENGTH = 160
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?ix)"
-    r"(?P<prefix>['\"]?\b(?:api[_-]?key|x-api[_-]?key|access[_-]?token|"
+_SECRET_FIELD_NAME_RE = (
+    r"(?:[a-z][a-z0-9_-]*[_-])?"
+    r"(?:api[_-]?key|x-api[_-]?key|access[_-]?token|"
     r"refresh[_-]?token|authorization|proxy-authorization|bearer|"
     r"credential|password|secret|private[_-]?key|encryption[_-]?key|"
-    r"token|key)\b['\"]?\s*[:=]\s*)"
+    r"token|key)"
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?ix)"
+    rf"(?P<prefix>['\"]?\b{_SECRET_FIELD_NAME_RE}\b['\"]?\s*[:=]\s*)"
     r"(?P<value>[^\s,;}\]\[\)\(\"'`]+)"
 )
 _SECRET_QUOTED_ASSIGNMENT_RE = re.compile(
     r"(?ix)"
-    r"(?P<prefix>['\"]?\b(?:api[_-]?key|x-api[_-]?key|access[_-]?token|"
-    r"refresh[_-]?token|authorization|proxy-authorization|bearer|"
-    r"credential|password|secret|private[_-]?key|encryption[_-]?key|"
-    r"token|key)\b['\"]?\s*[:=]\s*)"
+    rf"(?P<prefix>['\"]?\b{_SECRET_FIELD_NAME_RE}\b['\"]?\s*[:=]\s*)"
     r"(?P<quote>['\"])(?P<value>.*?)(?P=quote)"
 )
 _AUTH_SCHEME_RE = re.compile(

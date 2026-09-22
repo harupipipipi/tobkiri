@@ -156,6 +156,29 @@ def test_mobile_preview_normalizes_redacts_and_caps_text():
     assert "Keep this" in preview
 
 
+def test_mobile_preview_redacts_prefixed_credential_field_names():
+    module = _module()
+
+    preview = module._latest_safe_preview(
+        [
+            {
+                "role": "assistant",
+                "content": (
+                    "OPENAI_API_KEY=sk-visible-secret "
+                    "OPENCODE_ZEN_API_KEY='second-visible-secret'"
+                ),
+            }
+        ]
+    )
+
+    assert preview == (
+        "OPENAI_API_KEY=[redacted] "
+        "OPENCODE_ZEN_API_KEY=[redacted]"
+    )
+    assert "visible-secret" not in preview
+    assert "second-visible-secret" not in preview
+
+
 def test_mobile_list_returns_stable_error_without_legacy_fallback(monkeypatch):
     module = _module()
 
