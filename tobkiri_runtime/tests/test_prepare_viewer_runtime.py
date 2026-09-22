@@ -66,6 +66,118 @@ def test_prepare_dev_defaults_refuses_false_clean_source_provenance(tmp_path, mo
     assert not any("-c" in command for command in commands)
 
 
+def test_stage_development_shell_artifact_detaches_cargo_hardlink(tmp_path):
+    module = _load_module()
+    source = tmp_path / "cargo" / "tobkiri-shell.exe"
+    alias = tmp_path / "cargo" / "deps" / "tobkiri_launcher.exe"
+    source.parent.mkdir()
+    alias.parent.mkdir()
+    source.write_bytes(b"stable cargo output")
+    os.link(source, alias)
+    destination = tmp_path / "bundled" / "dev-shell" / source.name
+    destination.parent.mkdir(parents=True)
+
+    result = module.stage_development_shell_artifact(source, destination)
+
+    assert result == destination
+    assert source.stat().st_nlink == 2
+    assert alias.stat().st_nlink == 2
+    assert destination.stat().st_nlink == 1
+    assert destination.read_bytes() == source.read_bytes()
+    alias.write_bytes(b"cargo rebuilt in place")
+    assert destination.read_bytes() == b"stable cargo output"
+    assert not list(destination.parent.glob(".*.tmp"))
+
+
+def test_stage_development_shell_artifact_rejects_source_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_module()
+    source = tmp_path / "cargo" / "tobkiri-shell"
+    source.parent.mkdir()
+    source.write_bytes(b"first artifact")
+    destination = tmp_path / "staged" / "tobkiri-shell"
+    destination.parent.mkdir()
+    real_fstat = module.os.fstat
+    source_descriptor = None
+    source_fstat_calls = 0
+
+    def replacing_fstat(descriptor):
+        nonlocal source_descriptor, source_fstat_calls
+        result = real_fstat(descriptor)
+        if source_descriptor is None:
+            source_descriptor = descriptor
+        if descriptor == source_descriptor:
+            source_fstat_calls += 1
+            if source_fstat_calls == 2:
+                source.write_bytes(b"replacement artifact")
+        return result
+
+    monkeypatch.setattr(module.os, "fstat", replacing_fstat)
+
+    with pytest.raises(RuntimeError, match="changed while staging"):
+        module.stage_development_shell_artifact(source, destination)
+
+    assert not destination.exists()
+    assert not list(destination.parent.glob(".*.tmp"))
+
+
+def test_prepare_dev_defaults_packages_the_detached_shell_snapshot(tmp_path, monkeypatch):
+    module = _load_module()
+    target = "x86_64-pc-windows-msvc"
+    artifact = tmp_path / "cargo" / "tobkiri-shell.exe"
+    cargo_alias = tmp_path / "cargo" / "deps" / "tobkiri_launcher.exe"
+    artifact.parent.mkdir()
+    cargo_alias.parent.mkdir()
+    artifact.write_bytes(b"windows shell")
+    os.link(artifact, cargo_alias)
+
+    runtime_root = tmp_path / "tobkiri_runtime"
+    (runtime_root / "ecosystem/defaultspack/v4").mkdir(parents=True)
+    (runtime_root / "packaged_defaultspack_source_manifest.v1.json").write_text(
+        "{}\n",
+        encoding="utf-8",
+    )
+    python = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"python fixture")
+    monkeypatch.setattr(
+        module,
+        "_target_shell_spec",
+        lambda *_args: {
+            "platform": "windows",
+            "architecture": "x86_64",
+            "bundle": "nsis",
+            "artifact": artifact,
+            "relative_path": "tobkiri-shell.exe",
+            "entrypoint": "tobkiri-shell.exe",
+        },
+    )
+    generator_commands = []
+
+    def fake_command(command, **_kwargs):
+        parts = [os.fspath(part) for part in command]
+        stdout = ""
+        if parts[:3] == ["git", "rev-parse", "--verify"]:
+            stdout = "a" * 40 + "\n"
+        if "scripts.generate_packaged_defaultspack_v4_bundle" in parts:
+            generator_commands.append(parts)
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(module, "run_command", fake_command)
+
+    module.prepare_dev_defaults(tmp_path, target)
+
+    staged = runtime_root / "bundled/dev-shell/tobkiri-shell.exe"
+    assert staged.read_bytes() == artifact.read_bytes()
+    assert artifact.stat().st_nlink == 2
+    assert staged.stat().st_nlink == 1
+    assert len(generator_commands) == 1
+    command = generator_commands[0]
+    assert Path(command[command.index("--source-artifact") + 1]) == staged
+
+
 def test_resolve_target_prefers_explicit_then_tauri_environment(monkeypatch):
     module = _load_module()
     monkeypatch.setattr(module, "host_target", lambda: "host-target")
