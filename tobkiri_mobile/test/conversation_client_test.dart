@@ -38,166 +38,159 @@ const _connection = MobileConversationConnection(
 );
 
 void main() {
-  test(
-    'conversation connection accepts only exact chat scopes and safe URLs',
-    () {
-      expect(_connection.isValid, isTrue);
-      expect(
+  test('conversation connection accepts only exact chat scopes and safe URLs',
+      () {
+    expect(_connection.isValid, isTrue);
+    expect(
+      MobileConversationConnection(
+        id: _connection.id,
+        label: _connection.label,
+        baseUrl: 'https://user:pass@pc.example:8765',
+        deviceId: _connection.deviceId,
+        token: _connection.token,
+        scopes: _connection.scopes,
+      ).isValid,
+      isFalse,
+    );
+    expect(
+      MobileConversationConnection(
+        id: _connection.id,
+        label: _connection.label,
+        baseUrl: 'https://pc.example:8765?token=leak',
+        deviceId: _connection.deviceId,
+        token: _connection.token,
+        scopes: _connection.scopes,
+      ).isValid,
+      isFalse,
+    );
+    expect(
+      MobileConversationConnection(
+        id: _connection.id,
+        label: _connection.label,
+        baseUrl: _connection.baseUrl,
+        deviceId: _connection.deviceId,
+        token: _connection.token,
+        scopes: const {'chat.read', 'chat.write', 'host.execute'},
+      ).isValid,
+      isFalse,
+    );
+  });
+
+  test('secure connection store restores the prior verified connection on a failed save', () async {
+    final secrets = _MemorySecrets();
+    final store = SecureConversationConnectionStore(storage: secrets);
+    await store.saveVerified(const [_connection]);
+    final previous = secrets.values[SecureConversationConnectionStore.storageKey];
+
+    final loaded = await store.load();
+    expect(loaded, hasLength(1));
+    expect(loaded.single.id, _connection.id);
+    expect(loaded.single.scopes, _connection.scopes);
+
+    secrets.corruptNextWrite = true;
+    await expectLater(
+      store.saveVerified(const [
         MobileConversationConnection(
-          id: _connection.id,
-          label: _connection.label,
-          baseUrl: 'https://user:pass@pc.example:8765',
-          deviceId: _connection.deviceId,
-          token: _connection.token,
-          scopes: _connection.scopes,
-        ).isValid,
-        isFalse,
-      );
-      expect(
-        MobileConversationConnection(
-          id: _connection.id,
-          label: _connection.label,
-          baseUrl: 'https://pc.example:8765?token=leak',
-          deviceId: _connection.deviceId,
-          token: _connection.token,
-          scopes: _connection.scopes,
-        ).isValid,
-        isFalse,
-      );
-      expect(
-        MobileConversationConnection(
-          id: _connection.id,
-          label: _connection.label,
-          baseUrl: _connection.baseUrl,
-          deviceId: _connection.deviceId,
-          token: _connection.token,
-          scopes: const {'chat.read', 'chat.write', 'host.execute'},
-        ).isValid,
-        isFalse,
-      );
-    },
-  );
+          id: 'pc-2',
+          label: 'Office PC',
+          baseUrl: 'https://office.example:8765',
+          deviceId: 'phone-1',
+          token: 'dtk-office',
+          scopes: {'chat.read', 'chat.write'},
+        ),
+      ]),
+      throwsA(isA<StateError>()),
+    );
+    expect(
+      secrets.values[SecureConversationConnectionStore.storageKey],
+      previous,
+    );
+    expect((await store.load()).single.id, _connection.id);
+  });
 
-  test(
-    'secure connection store restores the prior verified connection on a failed save',
-    () async {
-      final secrets = _MemorySecrets();
-      final store = SecureConversationConnectionStore(storage: secrets);
-      await store.saveVerified(const [_connection]);
-      final previous =
-          secrets.values[SecureConversationConnectionStore.storageKey];
-
-      final loaded = await store.load();
-      expect(loaded, hasLength(1));
-      expect(loaded.single.id, _connection.id);
-      expect(loaded.single.scopes, _connection.scopes);
-
-      secrets.corruptNextWrite = true;
-      await expectLater(
-        store.saveVerified(const [
-          MobileConversationConnection(
-            id: 'pc-2',
-            label: 'Office PC',
-            baseUrl: 'https://office.example:8765',
-            deviceId: 'phone-1',
-            token: 'dtk-office',
-            scopes: {'chat.read', 'chat.write'},
-          ),
-        ]),
-        throwsA(isA<StateError>()),
-      );
-      expect(
-        secrets.values[SecureConversationConnectionStore.storageKey],
-        previous,
-      );
-      expect((await store.load()).single.id, _connection.id);
-    },
-  );
-
-  test(
-    'canonical client lists and creates through mobile scoped routes',
-    () async {
-      final requests = <http.Request>[];
-      final client = MockClient((request) async {
-        requests.add(request);
-        if (request.method == 'GET' &&
-            request.url.path.endsWith('conversations')) {
-          return http.Response(
-            jsonEncode({
-              'status': 'ok',
-              'data': {
-                'conversations': [
-                  {
-                    'id': 'c-1',
-                    'title': 'First',
-                    'message_count': 2,
-                    'updated_at': '2026-08-24T00:00:00Z',
-                    'pinned': true,
-                  },
-                ],
-              },
-            }),
-            200,
-          );
-        }
+  test('canonical client lists and creates through mobile scoped routes',
+      () async {
+    final requests = <http.Request>[];
+    final client = MockClient((request) async {
+      requests.add(request);
+      if (request.method == 'GET' &&
+          request.url.path.endsWith('conversations')) {
         return http.Response(
           jsonEncode({
             'status': 'ok',
             'data': {
-              'conversation': {'id': 'c-2', 'title': '', 'messages': const []},
+              'conversations': [
+                {
+                  'id': 'c-1',
+                  'title': 'First',
+                  'message_count': 2,
+                  'updated_at': '2026-08-24T00:00:00Z',
+                  'pinned': true,
+                },
+              ],
             },
           }),
           200,
         );
-      });
-      final api = CanonicalConversationNavigationClient(
-        connection: _connection,
-        client: client,
+      }
+      return http.Response(
+        jsonEncode({
+          'status': 'ok',
+          'data': {
+            'conversation': {
+              'id': 'c-2',
+              'title': '',
+              'messages': const [],
+            },
+          },
+        }),
+        200,
       );
+    });
+    final api = CanonicalConversationNavigationClient(
+      connection: _connection,
+      client: client,
+    );
 
-      final listed = await api.listConversations();
-      final created = await api.createConversation();
+    final listed = await api.listConversations();
+    final created = await api.createConversation();
 
-      expect(listed.single.displayTitle, 'First');
-      expect(created.summary.id, 'c-2');
-      expect(requests.map((request) => request.url.path), [
-        '/api/mobile/v1/conversations',
-        '/api/mobile/v1/conversations',
-      ]);
-      expect(requests.map((request) => request.method), ['GET', 'POST']);
-      expect(
-        requests.every(
-          (request) => request.headers['authorization'] == 'Bearer dtk-test',
+    expect(listed.single.displayTitle, 'First');
+    expect(created.summary.id, 'c-2');
+    expect(requests.map((request) => request.url.path), [
+      '/api/mobile/v1/conversations',
+      '/api/mobile/v1/conversations',
+    ]);
+    expect(requests.map((request) => request.method), ['GET', 'POST']);
+    expect(
+      requests.every(
+        (request) => request.headers['authorization'] == 'Bearer dtk-test',
+      ),
+      isTrue,
+    );
+    api.close();
+  });
+
+  test('canonical client does not expose response bodies in failures',
+      () async {
+    final api = CanonicalConversationNavigationClient(
+      connection: _connection,
+      client: MockClient(
+        (_) async => http.Response('secret server details dtk-sensitive', 403),
+      ),
+    );
+
+    await expectLater(
+      api.listConversations(),
+      throwsA(
+        predicate(
+          (error) =>
+              error.toString().contains('403') &&
+              !error.toString().contains('secret') &&
+              !error.toString().contains('dtk-sensitive'),
         ),
-        isTrue,
-      );
-      api.close();
-    },
-  );
-
-  test(
-    'canonical client does not expose response bodies in failures',
-    () async {
-      final api = CanonicalConversationNavigationClient(
-        connection: _connection,
-        client: MockClient(
-          (_) async =>
-              http.Response('secret server details dtk-sensitive', 403),
-        ),
-      );
-
-      await expectLater(
-        api.listConversations(),
-        throwsA(
-          predicate(
-            (error) =>
-                error.toString().contains('403') &&
-                !error.toString().contains('secret') &&
-                !error.toString().contains('dtk-sensitive'),
-          ),
-        ),
-      );
-      api.close();
-    },
-  );
+      ),
+    );
+    api.close();
+  });
 }

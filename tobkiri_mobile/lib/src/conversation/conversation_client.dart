@@ -13,7 +13,7 @@ abstract class ConversationConnectionStore {
 
 class SecureConversationConnectionStore implements ConversationConnectionStore {
   SecureConversationConnectionStore({AuthoritySecretStore? storage})
-    : _storage = storage ?? FlutterAuthoritySecretStore();
+      : _storage = storage ?? FlutterAuthoritySecretStore();
 
   static const storageKey = 'tobkiri.mobile.conversation_spaces.v1';
   final AuthoritySecretStore _storage;
