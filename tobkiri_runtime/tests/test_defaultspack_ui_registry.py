@@ -120,6 +120,38 @@ class TestDefaultspackUiRegistry(unittest.TestCase):
             },
         )
 
+    def test_skill_catalog_projection_drops_unsafe_image_metadata(self):
+        from domain.frontend.registry import FrontendRegistry
+
+        class Skills:
+            @staticmethod
+            def list(*, enabled_only):
+                return [
+                    {
+                        "id": "release_review",
+                        "display_name": "Release Review",
+                        "ui": {
+                            "icon": "shield-check",
+                            "image": "https://tracker.example/catalog.png",
+                        },
+                    }
+                ]
+
+        class Extensions:
+            @staticmethod
+            def skills():
+                return Skills()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry = FrontendRegistry(pack_root=Path(tmpdir))
+            with patch(
+                "domain.frontend.registry.get_extension_registry",
+                return_value=Extensions(),
+            ):
+                items = registry._skill_items()
+
+        self.assertEqual(items[0]["ui"], {"icon": "shield-check"})
+
     def test_skill_v2_schema_accepts_shared_icon_and_image_metadata(self):
         schema = json.loads(
             (
