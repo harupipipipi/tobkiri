@@ -335,6 +335,7 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_turn_runtime_pack.turn-runtime.saved",
         "rumi_turn_runtime_pack.turn-runtime.resource",
         "rumi_turn_runtime_pack.turn-runtime.lifecycle",
+        "rumi_turn_runtime_pack.turn-runtime.events",
         "rumi_conversation_store_pack.conversation-store.resource",
         "defaultspack.conversation.saved",
         "rumi_conversation_store_pack.conversation-store.resource",
@@ -350,10 +351,19 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "defaultspack.application-presentation",
         "defaultspack.application-presentation",
         "rumi_command_protocol_pack.catalog.read",
+        "rumi_command_protocol_pack.command.invoke",
         "rumi_model_registry_pack.model-registry.profile",
         "tobkiri.ui.catalog.read",
         "tobkiri.ui.settings.read",
         "tobkiri.ui.preferences.write",
+        "tobkiri.project.state.read",
+        "tobkiri.project.state.replace",
+        "tobkiri.ui.model-state.read",
+        "tobkiri.ui.model-state.write",
+        "tobkiri.ui.model-search.read",
+        "tobkiri.ui.recovery-diagnostic.read",
+        "tobkiri.ui.recovery-diagnostic.write",
+        "rumi_model_registry_pack.model-registry.profile",
         "rumi_model_registry_pack.model-registry.profile",
         "rumi_conversation_store_pack.conversation-store.resource",
         "rumi_conversation_store_pack.conversation-store.manage",
@@ -412,6 +422,9 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
         "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
         "rumi_host_authority_bridge_pack.host-authority.interactive-approval",
+        "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "rumi_host_authority_bridge_pack.host-authority.chat-approval-continuation",
+        "rumi_host_authority_bridge_pack.host-authority.approval-window",
         "rumi_command_protocol_pack.high-risk-command.service",
         "rumi_host_authority_bridge_pack.host-authority.interactive-effect",
         "rumi_shell_execute_pack.shell-prepare.service",
@@ -446,6 +459,11 @@ def test_bundle_is_protocol_v4_and_resolves_exact_dependency_closure() -> None:
         "rumi_default_tools_pack.calculator",
         "rumi_prompt_studio_pack.prompt-studio.resource",
         "rumi_prompt_studio_pack.prompt-studio.resource",
+        "rumi_command_protocol_pack.command.state",
+        "rumi_command_protocol_pack.command.datasource",
+        "tobkiri.ui.model-state.read",
+        "rumi_model_registry_pack.model-registry.profile",
+        "rumi_provider_registry_pack.provider-registry.resource",
     ]
     assert resolved.lock["plan_digest"] == resolved.plan["plan_digest"]
 
@@ -1858,6 +1876,55 @@ def test_activation_commit_artifact_hash_runs_outside_process_lock(
     assert (
         reader.load_active_snapshot().activation["activation_id"]
         == "activation:defaults-hash-second"
+    )
+    authority.close()
+
+
+@pytest.mark.parametrize(
+    "mutation_stage",
+    ("before_authority_commit", "after_authority_commit"),
+)
+def test_activation_rejects_artifact_changed_after_unlocked_verification(
+    tmp_path: Path,
+    mutation_stage: str,
+) -> None:
+    """Neither side of the Authority commit may publish changed bytes."""
+
+    source_catalog = _catalog()
+    assert source_catalog.artifact_root is not None
+    artifact_root = tmp_path / "platform-artifacts"
+    shutil.copytree(source_catalog.artifact_root, artifact_root)
+    catalog = replace(source_catalog, artifact_root=artifact_root)
+    selected_variant = catalog.shells["shell.tauri.default"]["launch"]["variants"][0]
+    selected_artifact = artifact_root / str(selected_variant["relative_path"])
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state = tmp_path / "state"
+    authority = _authority(tmp_path / "authority.sqlite3")
+
+    def mutate(stage: str) -> None:
+        if stage == mutation_stage:
+            with selected_artifact.open("ab") as handle:
+                handle.write(b"changed-after-verification")
+
+    store = ActivationStore(
+        state,
+        workspace,
+        profile_id="defaults",
+        authority=authority,
+        catalog=catalog,
+        fault=mutate,
+    )
+    with pytest.raises(ProfileResolutionDenied, match="changed after verification"):
+        store.activate(
+            _resolve(catalog),
+            activation_id=f"activation:defaults-{mutation_stage}",
+            created_at="2026-08-10T00:02:00Z",
+        )
+
+    assert not (state / "active.json").exists()
+    assert (state / "pending.json").exists() is (
+        mutation_stage == "after_authority_commit"
     )
     authority.close()
 

@@ -332,7 +332,7 @@ test("Viewer authenticates every dedicated Defaultspack window and rejects unsaf
   assert.match(viewerSource, /authority_approval_bootstrap_window_url\(config, &request_id\)/);
   assert.match(
     viewerSource,
-    /request_panel_presenter_code_with_retry\(\s*active_defaultspack_http_port\(\)/,
+    /request_panel_presenter_code_with_retry\(\s*active_defaultspack_http_port\(\),\s*&bootstrap_secret,\s*request_id,/
   );
   assert.match(viewerSource, /dock_registration::add_defaultspack_bootstrap_code\(url, &code\)/);
   assert.match(viewerSource, /validated_defaultspack_window_url\(config, ambient_trigger_url/);

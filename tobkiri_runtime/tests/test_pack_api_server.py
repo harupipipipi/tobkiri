@@ -2351,21 +2351,31 @@ def test_approval_bootstrap_preserves_request_id_and_strips_code(
         for url, expected in (
             (f"/approval?request_id=req-1&code={code}", "/approval?request_id=req-1"),
             (f"/approval?code={code}", "/approval"),
-            ("/approval?request_id=req-1", "/approval?request_id=req-1"),
         ):
             connection = http.client.HTTPConnection(
                 "127.0.0.1", server.port, timeout=5
             )
             connection.request("GET", url, headers={"Cookie": cookie})
             response = connection.getresponse()
-            if url == "/approval?request_id=req-1":
-                assert response.read() == b"approval application"
-                assert response.status == 200
-            else:
-                response.read()
-                assert response.status == 302
-                assert response.getheader("Location") == expected
+            document = response.read().decode("utf-8")
+            assert response.status == 200
+            assert "/api/panel/auth/exchange" in document
+            assert f"location.replace({json.dumps(expected)})" in document
+            assert code not in document
             connection.close()
+
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", server.port, timeout=5
+        )
+        connection.request(
+            "GET",
+            "/approval?request_id=req-1",
+            headers={"Cookie": cookie},
+        )
+        response = connection.getresponse()
+        assert response.read() == b"approval application"
+        connection.close()
+        assert response.status == 200
     finally:
         server.stop()
 

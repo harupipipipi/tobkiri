@@ -2387,6 +2387,9 @@ fn navigation_is_allowed(
     if scheme == "tauri" {
         return true;
     }
+    if scheme == "http" && host == "tauri.localhost" && port == Some(80) {
+        return true;
+    }
     scheme == "http"
         && (host == "localhost" || host == "127.0.0.1")
         && port.is_some_and(|candidate| allowed_ports.contains(&candidate))
@@ -5173,6 +5176,18 @@ mod tests {
             &allowed_ports
         ));
         assert!(navigation_is_allowed("tauri", "", None, &allowed_ports));
+        assert!(navigation_is_allowed(
+            "http",
+            "tauri.localhost",
+            Some(80),
+            &allowed_ports
+        ));
+        assert!(!navigation_is_allowed(
+            "http",
+            "tauri.localhost",
+            Some(8767),
+            &allowed_ports
+        ));
         assert!(!navigation_is_allowed(
             "http",
             "localhost",

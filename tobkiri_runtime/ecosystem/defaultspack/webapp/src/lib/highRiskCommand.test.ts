@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import ts from "typescript";
 
 import {
   beginHighRiskAttempt,
   highRiskCommandRef,
   highRiskPrepareArguments,
+  highRiskResumeDisposition,
   releaseHighRiskAttempt,
 } from "./highRiskCommand";
 import type { ComposerCommandItem } from "./api";
@@ -118,3 +120,89 @@ test("reload restoration opens each native high-risk approval window once", () =
     /highRiskApprovalWindowOpenedRequestRef\.current === approvalRequestId/,
   );
 });
+
+// Execute the production polling effect with deterministic API/timer boundaries.
+// This catches clearing pending state or resubmitting resume in the component.
+for (const liveState of ["claimed", "dispatched"]) {
+  for (const terminalState of ["succeeded", "ambiguous"]) {
+    test(`approval poll keeps ${liveState} pending until ${terminalState}`, async () => {
+      const appSource = readFileSync(resolve(import.meta.dirname, "..", "App.tsx"), "utf8");
+      const marker = "  useEffect(() => {\n    if (!pendingHighRiskCommand) return;";
+      const start = appSource.indexOf(marker);
+      const end = appSource.indexOf("  }, [pendingHighRiskCommand]);", start);
+      assert.ok(start >= 0 && end > start, "production approval poll effect is present");
+      const body = appSource.slice(start + "  useEffect(() => {".length, end);
+      const compiled = ts.transpileModule(`const run = () => {${body}};`, {
+        compilerOptions: { target: ts.ScriptTarget.ES2022 },
+      }).outputText;
+      const pending = { invocationId: "invocation-1", requestId: "request-1", commandLabel: "terminal" };
+      let pendingState: typeof pending | null = pending;
+      let resumeCalls = 0;
+      let statusCalls = 0;
+      const notifications: Array<{ tone: string }> = [];
+      const errors: string[] = [];
+      const timers: Array<() => void> = [];
+      const states = ["approved", "approved", "dispatched", terminalState];
+      const dependencies = {
+        pendingHighRiskCommand: pending,
+        api: {
+          getInteractiveApproval: async () => ({ request_id: pending.requestId, state: "approved" }),
+          highRiskCommandStatus: async () => ({
+            invocation_id: pending.invocationId,
+            approval_request_id: pending.requestId,
+            state: states[statusCalls++],
+          }),
+          resumeHighRiskCommand: async () => {
+            resumeCalls += 1;
+            return { invocation_id: pending.invocationId, state: liveState };
+          },
+        },
+        window: {
+          setTimeout: (callback: () => void) => { timers.push(callback); return timers.length; },
+          clearTimeout: () => {},
+        },
+        setPendingHighRiskCommand: (update: (value: typeof pending | null) => typeof pending | null) => {
+          pendingState = update(pendingState);
+        },
+        setTransientAlert: (value: { tone: string }) => notifications.push(value),
+        setError: (value: string) => errors.push(value),
+        transientAlertSequenceRef: { current: 0 },
+        highRiskResumeStartedRef: { current: new Set<string>() },
+        highRiskCancelStartedRef: { current: new Set<string>() },
+        HIGH_RISK_TERMINAL_STATES: new Set(["succeeded", "ambiguous", "stale", "cancelled", "failed"]),
+        beginHighRiskAttempt,
+        releaseHighRiskAttempt,
+        highRiskResumeDisposition,
+      };
+      const cleanup = new Function(...Object.keys(dependencies), `${compiled}; return run();`)(
+        ...Object.values(dependencies),
+      ) as () => void;
+      try {
+        for (let poll = 0; poll < states.length; poll += 1) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+          assert.equal(resumeCalls, 1, "resume must never be used to wait for completion");
+          if (poll < states.length - 1) {
+            assert.equal(pendingState, pending);
+            assert.deepEqual(notifications, []);
+            assert.deepEqual(errors, []);
+            assert.equal(timers.length, 1, "one status poll stays scheduled");
+            timers.shift()!();
+          }
+        }
+        assert.equal(pendingState, null);
+        assert.equal(timers.length, 0);
+        assert.equal(statusCalls, states.length);
+        if (terminalState === "succeeded") {
+          assert.deepEqual(notifications.map((value) => value.tone), ["success"]);
+          assert.deepEqual(errors, []);
+        } else {
+          assert.deepEqual(notifications, []);
+          assert.equal(errors.length, 1);
+          assert.match(errors[0], /ambiguous/);
+        }
+      } finally {
+        cleanup();
+      }
+    });
+  }
+}
