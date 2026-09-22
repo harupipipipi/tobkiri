@@ -1,3 +1,5 @@
+import {Link} from 'react-router';
+import {profileHref} from '@/src/lib/routes';
 import type {PackControlBinding} from '@/src/lib/apiTypes';
 import {Badge} from '@/src/components/ui/Badge';
 import {isPackInCatalogScope} from '@/src/lib/packScope';
@@ -30,6 +32,7 @@ export function PackScopeSummary({binding, pack, packRows, stale = false}: PackS
             Host-global artifact inventory and install state. Required, membership, enablement, and approval are evaluated for the active execution Profile only.
           </p>
         </div>
+        {authoritative && binding && !stale ? <Link className="text-sm font-medium text-accent underline-offset-4 hover:underline" to={profileHref(binding.profile_id, 'profile-packs')}>Edit Packs in this Profile</Link> : null}
         <Badge variant={authoritative ? 'secondary' : 'warning'}>
           {authoritative ? 'Active execution Profile' : 'Profile scope unavailable'}
         </Badge>

@@ -43,7 +43,7 @@ def test_composition_http_is_authenticated_cas_bound_and_preserves_execution(pro
         },
     }
     status, _, _ = _request(server, "POST", "/api/v4/profiles/update", body=body, headers=read_headers)
-    assert status == 403
+    assert status == 401
     status, payload, _ = _request(server, "POST", "/api/v4/profiles/update", body=body, headers=write_headers)
     assert status == 200, payload
     updated = payload["data"]

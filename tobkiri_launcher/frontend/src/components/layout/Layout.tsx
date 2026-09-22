@@ -34,7 +34,7 @@ export function Layout({verificationBanner}: {verificationBanner?: ReactNode}) {
   const location = useLocation();
   const isHome = location.pathname.replace(/\/$/, '') === panelRoutes.home.replace(/\/$/, '');
   // Runtime-only routes render their own blocking recovery gate.
-  const showLayoutVerification = location.pathname === panelRoutes.profile || location.pathname === panelRoutes.settings;
+  const showLayoutVerification = location.pathname === panelRoutes.settings;
   const runtimeReady = useAppStore(state => state.runtimeReady);
   const runtimeStatus = useAppStore(state => state.runtimeStatus);
   const runtimeError = useAppStore(state => state.runtimeError);

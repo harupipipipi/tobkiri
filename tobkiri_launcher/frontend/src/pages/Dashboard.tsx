@@ -24,7 +24,7 @@ import {
   type NamedProfileRegistry,
 } from '@/src/lib/hostClient';
 import {isDesktopShellAvailable, launchSelectedPresentation} from '@/src/lib/desktopHost';
-import {panelRoutes} from '@/src/lib/routes';
+import {panelRoutes, profileHref} from '@/src/lib/routes';
 import {
   buildNamedProfileView,
   filterAndSortNamedProfiles,
@@ -58,11 +58,6 @@ function isActiveExecutionProfile(
   // not compared with the immutable definition revision on the registry row.
   return registry.active_profile_id === entry.profile_id
     && registry.active_profile_revision !== null;
-}
-
-function profileHref(profileId: string, hash?: string): string {
-  const query = `?profile_id=${encodeURIComponent(profileId)}`;
-  return `${panelRoutes.profile}${query}${hash ? `#${hash}` : ''}`;
 }
 
 function sortModeFromParam(value: string | null): NamedProfileSortMode {

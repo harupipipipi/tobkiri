@@ -10,7 +10,7 @@ import {Input} from '@/src/components/ui/Input';
 import {useRuntimeSurface} from '@/src/hooks/useRuntimeSurface';
 import {LAUNCHER_ADVANCED_VIEWS} from '@/src/lib/advancedSurfaces';
 import {extractExactPlanBindings, type RuntimePlanBinding} from '@/src/lib/runtimeSurface';
-import {panelRoutes} from '@/src/lib/routes';
+import {profileHref} from '@/src/lib/routes';
 
 export function filterGraphBindings(bindings: readonly RuntimePlanBinding[], query: string): RuntimePlanBinding[] {
   const normalized = query.trim().toLocaleLowerCase();
@@ -47,10 +47,10 @@ export function Graph() {
           </CardHeader>
           <CardContent className="grid gap-3">
             <Link
-              to={panelRoutes.profile}
+              to={profileHref(surface.data!.profile_id, 'profile-packs')}
               className="min-h-11 self-start rounded-lg border border-border px-3 py-2 text-sm font-medium text-text-main hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring-color)]"
             >
-              Change Profile closure in the v4 ceremony
+              Edit Packs in this Profile
             </Link>
             <Input label="Find a graph edge" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Principal, Contract, operation, or binding ID" />
             {visibleBindings.map((binding) => (

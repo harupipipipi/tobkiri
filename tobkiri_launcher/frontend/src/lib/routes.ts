@@ -118,3 +118,8 @@ export function isPanelRouteActive(pathname: string, routePath: string): boolean
   }
   return pathname === routePath;
 }
+
+/** Preserve the inspected execution identity when opening its configuration. */
+export function profileHref(profileId: string, section?: 'profile-packs' | 'profile-closure' | 'profile-ceremony'): string {
+  return `${panelRoutes.profile}?profile_id=${encodeURIComponent(profileId)}${section ? `#${section}` : ''}`;
+}
