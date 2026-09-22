@@ -1177,7 +1177,7 @@ fn validate_private_root(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn restrict_private_file(path: &Path) -> Result<()> {
+pub(crate) fn restrict_private_file(path: &Path) -> Result<()> {
     let metadata = fs::symlink_metadata(path)
         .with_context(|| format!("failed to inspect Shell handoff file {}", path.display()))?;
     if metadata.file_type().is_symlink() || windows_reparse_point(&metadata) || !metadata.is_file()
