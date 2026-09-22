@@ -4,7 +4,7 @@ import {act} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
 import {JSDOM} from 'jsdom';
 
-import {ApiContractError} from '@/src/lib/api';
+import {ApiContractError, ApiPreDispatchError} from '@/src/lib/api';
 import {ConfirmationPreDispatchError} from '@/src/lib/dialogConfirmation';
 import {MutationResultUnknownError} from '@/src/lib/mutationJournal';
 import {type DialogConfig, useAppStore} from '@/src/store';
@@ -107,12 +107,12 @@ test('validation rejection is terminal and keeps object context without leaking 
   assert.equal(document.activeElement, close);
 });
 
-test('recoverable network failure preserves context, retries once, then closes on success', async () => {
+test('pre-dispatch API failure preserves context, retries once, then closes on success', async () => {
   let calls = 0;
   const surface = await renderDialog(config(async () => {
     calls += 1;
     if (calls === 1) {
-      throw new ConfirmationPreDispatchError('Network unavailable before request dispatch');
+      throw new ApiPreDispatchError('Panel bootstrap failed before request dispatch');
     }
   }));
 

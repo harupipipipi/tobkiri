@@ -1,4 +1,4 @@
-import {ApiContractError} from './api';
+import {ApiContractError, ApiPreDispatchError} from './api';
 import {MutationResultUnknownError} from './mutationJournal';
 import {createUserFacingError} from './userFacingError';
 
@@ -42,7 +42,7 @@ export interface DialogConfig {
 }
 
 /** Mark a failure that is proven to have happened before mutation dispatch. */
-export class ConfirmationPreDispatchError extends Error {
+export class ConfirmationPreDispatchError extends ApiPreDispatchError {
   constructor(message: string) {
     super(message);
     this.name = 'ConfirmationPreDispatchError';
@@ -80,7 +80,10 @@ export function classifyConfirmationFailure(
     };
   }
 
-  if (error instanceof ConfirmationPreDispatchError) {
+  if (
+    error instanceof ConfirmationPreDispatchError
+    || error instanceof ApiPreDispatchError
+  ) {
     return {
       status: 'recoverable_error',
       message: safe.message,

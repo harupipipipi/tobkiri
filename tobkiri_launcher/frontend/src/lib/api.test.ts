@@ -4,6 +4,7 @@ import {beforeEach, test} from 'node:test';
 
 import {
   apiFetch,
+  ApiPreDispatchError,
   approvePack,
   bootstrapPanelSession,
   checkHealth,
@@ -1016,6 +1017,25 @@ test('panel bootstrap exchanges its session code before setup requests', async (
   assert.equal(exchangeCount, 1);
   assert.equal(lastFetchUrl, '/api/panel/auth/exchange');
   assert.equal(window.location.href, 'http://127.0.0.1:8765/panel/setup');
+});
+
+test('failed panel bootstrap prevents an unsafe request from being dispatched', async () => {
+  installBrowser('http://127.0.0.1:8765/panel/?code=one-time-code');
+  const routes: string[] = [];
+  fetchHandler = async (input) => {
+    routes.push(String(input));
+    return new Response(JSON.stringify({success: false, data: null, error: 'expired'}), {
+      status: 401,
+      headers: {'Content-Type': 'application/json'},
+    });
+  };
+
+  await assert.rejects(
+    apiFetch('/api/v4/packvm/prepare', {method: 'POST'}),
+    ApiPreDispatchError,
+  );
+
+  assert.deepEqual(routes, ['/api/panel/auth/exchange']);
 });
 
 test('setup and health requests remain separate from Pack contract dispatch', async () => {

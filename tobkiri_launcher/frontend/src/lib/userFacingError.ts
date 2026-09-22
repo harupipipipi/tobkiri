@@ -2,6 +2,7 @@ import {recordClientDiagnostic} from './clientDiagnostics';
 
 const TYPED_ERROR_CODES: Record<string, string> = {
   ApiContractError: 'API_CONTRACT_REJECTED',
+  ApiPreDispatchError: 'CONFIRMATION_RETRYABLE',
   ApiRequestTimeoutError: 'REQUEST_TIMEOUT',
   ConfirmationPreDispatchError: 'CONFIRMATION_RETRYABLE',
   MutationBlockedError: 'MUTATION_BLOCKED',

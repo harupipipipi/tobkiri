@@ -10,9 +10,10 @@ Retry and Cancel. A conflict can expose an authoritative status refresh instead
 of repeating the mutation. Terminal and unknown-result failures never offer a
 blind retry.
 
-Only a `ConfirmationPreDispatchError` proves a request was never dispatched and
-therefore permits Retry after a transport failure. Unclassified network and
-timeout errors fail closed as unknown outcomes.
+Only a `ConfirmationPreDispatchError` or the API-layer `ApiPreDispatchError`
+proves the selected request was never dispatched and therefore permits Retry
+after a transport failure. Unclassified network and timeout errors fail closed
+as unknown outcomes.
 
 `onConflict` is reserved for an authoritative read-only status refresh. If
 that lookup fails, **Retry status** repeats only the read and never calls the
